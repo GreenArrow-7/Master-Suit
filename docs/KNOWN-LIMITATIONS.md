@@ -101,15 +101,17 @@ following items still prevent an unconditional commercial-production claim:
   - H28 covers the shell being usable on a phone. It has been verified by reading
     the CSS and the components, **not on a real handset** — no device testing has
     been done.
-- **Two face photographs were removed from the working tree but remain in Git
-  history.** `apps/hrms/tests/faces/lena.jpg` and `messi.jpg` were photographs of
-  identifiable people committed as test fixtures. They are gone from the index
-  and the tests now read fixtures from a git-ignored local path, but **no
-  history rewrite has been performed**, so any clone still contains them. The
-  repository has never been pushed (zero remotes), which makes a rewrite cheap
-  now and expensive later — see `docs/GIT-HISTORY-REMEDIATION.md` for the
-  assessment and the exact procedure. `docs/TEST-DATA-POLICY.md` records the rule
-  and `npm run check:test-data` enforces the mechanical part of it.
+- **Two face photographs were removed from source control, history included.**
+  `apps/hrms/tests/faces/lena.jpg` and `messi.jpg` were photographs of
+  identifiable people committed as test fixtures. They are gone from the index,
+  the tests now read fixtures from a git-ignored local path, and a verified
+  `git filter-repo` run removed them from history — every commit hash changed as
+  a result. `docs/TEST-DATA-POLICY.md` records the rule and
+  `npm run check:test-data` enforces the mechanical part.
+  **Two follow-ups remain:** the pre-rewrite mirror backup at
+  `../master-saas-history-backup-20260805-212249.git` still contains both images
+  and should be deleted once the rewrite is accepted; and if `GreenArrow-7` holds
+  a separate clone, it is now incompatible and still contains them.
 - **`schema.prisma` had drifted ahead of the migrations and this is a recurring
   risk.** `HrLeaveBalance`, `HrChecklistTask`, `HrOffboardingCase`,
   `HrSettlementSnapshot` and `HrEmployeeLocationAssignment` were declared in the

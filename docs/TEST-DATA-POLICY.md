@@ -28,9 +28,10 @@ clone, forever".
 
 `apps/hrms/tests/faces/lena.jpg` and `messi.jpg` were photographs of real,
 identifiable people, committed as fixtures for the Python face-engine tests. They
-have been removed from the working tree and the index. **They remain in Git
-history** — see `docs/GIT-HISTORY-REMEDIATION.md` for the decision and the
-procedure if removal is warranted.
+have been removed from the working tree, the index **and Git history** — a
+`git filter-repo` run was executed on 2026-08-05 and verified. See
+`docs/GIT-HISTORY-REMEDIATION.md`. A pre-rewrite mirror backup still holds them
+and should be deleted once the rewrite is accepted.
 
 "Lena" additionally carries its own history: it is a crop of a 1972 Playboy
 centrefold, used in imaging research for decades without the subject's meaningful

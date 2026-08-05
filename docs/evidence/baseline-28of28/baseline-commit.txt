@@ -2,3 +2,8 @@
 2026-08-05 20:29:06 +0400
 GreenArrow-7
 Initial commit: Master SaaS unified HRMS + Sales platform
+
+NOTE (2026-08-05): the hash above is PRE-REWRITE and no longer exists in this
+repository. A git filter-repo run removed two face photographs from history,
+rewriting every commit. The baseline commit is now 15a1d567c243e640298dfd0fe445b6d8b0e419ef
+and the tag hrms-28of28-baseline points at it. See docs/GIT-HISTORY-REMEDIATION.md.

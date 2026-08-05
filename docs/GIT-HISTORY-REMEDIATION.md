@@ -1,45 +1,74 @@
 # Git history remediation — face photographs
 
-## Current state
+## Status: COMPLETED
 
 `apps/hrms/tests/faces/lena.jpg` and `messi.jpg` were removed from the working
-tree and the index on 2026-08-05.
+tree and index on 2026-08-05, and **removed from Git history on the same day by
+an executed `git filter-repo` run**.
 
-**They are still present in Git history.** No history-rewrite command has been
-executed. Both blobs remain reachable from the initial commit:
+### What was executed
 
 ```
-8d42c51 Initial commit: Master SaaS unified HRMS + Sales platform
-  f06aa74a57ce3a4129340cd4407ef3c0558e3193  apps/hrms/tests/faces/lena.jpg
-  cd437610fe392d3ca892f62e26c33521f5147295  apps/hrms/tests/faces/messi.jpg
+git clone --mirror master-saas ../master-saas-history-backup-20260805-212249.git
+git filter-repo --invert-paths --path apps/hrms/tests/faces/ --force
+git reflog expire --expire=now --all
+git gc --prune=now --aggressive
 ```
 
-Anyone who clones this repository still receives both images.
+### Verification after the run
 
-## Is the repository public, shared or widely cloned?
+| Check | Result |
+|---|---|
+| `git rev-list --objects --all \| grep faces/` | no match |
+| `git cat-file -e f06aa74a…` (lena blob) | unreachable |
+| `git cat-file -e cd437610…` (messi blob) | unreachable |
+| `git count-objects -v` | 0 loose, 0 garbage, 764 in-pack |
+| Tracked files | 484, faces/ absent |
+| `tsc --noEmit` | exit 0 |
+| `vitest run` | 18 files, 168 tests, 0 failed |
 
-Observed, not assumed:
+### Commit hashes changed
 
-| Signal | Value | Meaning |
+Every commit was rewritten. Anything quoting an old hash is now stale.
+
+| Commit | Before | After |
 |---|---|---|
-| Configured remotes | **0** | Never pushed anywhere. Not on GitHub or any host. |
-| Branches | 1 (`master`), no remote-tracking | No fork or PR history. |
-| Repository created | 2026-08-05 20:29 | Hours old at the time of writing. |
-| Commits | 2 | Initial commit plus one hardening commit. |
+| Initial commit | `8d42c514` | `15a1d567c243e640298dfd0fe445b6d8b0e419ef` |
+| Pre-production hardening | `289d14ba` | `21fb6a3f` |
+| Remove face photographs | `3170f6d3` | `510c3c1578edd2f564609dbd33d941ee4e48df55` |
 
-**Assessment: local-only, not public, not externally shared, minimal
-distribution.** The repository has never been pushed, so no copy exists on a
-hosting service.
+Both tags were rewritten by filter-repo and still point at the intended commits:
 
-**One caveat, stated because it is not verifiable from inside the repository:**
-the initial commit was authored by `GreenArrow-7`, not by whoever is reading
-this. At least one other person has worked in this tree. Confirm with them
-whether they hold a separate clone, a backup, or an archive of the working
-directory before concluding that rewriting history is sufficient.
+| Tag | Points at |
+|---|---|
+| `hrms-28of28-baseline` | the initial commit (`15a1d56`) |
+| `hrms-28of28-hardening-wip` | the hardening commit (`21fb6a3`) |
 
-## Is a rewrite warranted?
+### Backup
 
-**Yes, and now is the cheapest it will ever be.** The usual argument against
+A full mirror of the pre-rewrite history — including both blobs — is at
+`../master-saas-history-backup-20260805-212249.git` (3.6 MB), alongside a copy of
+the untracked `apps/web/.env` in `../env-backup-20260805-212249/`.
+
+**That backup still contains the photographs.** It exists so the rewrite is
+reversible while it is still being reviewed. Once the rewrite is accepted,
+**delete the backup** — otherwise the images simply live somewhere else and
+nothing has actually been achieved.
+
+### Consequences for anyone else holding a clone
+
+The repository had **zero remotes** and was never pushed, so there is nothing to
+force-push and no host-side cache or fork to worry about. However, the initial
+commit was authored by `GreenArrow-7`: if that person holds a separate clone or
+an archive of the working directory, **it is now incompatible with this one and
+still contains the images**. They must delete it and take a fresh copy; pulling
+will not converge.
+
+## Original assessment (retained for the record)
+
+### Was a rewrite warranted?
+
+**Yes, and it was the cheapest it would ever be.** The usual argument against
 rewriting — that it breaks every existing clone and requires coordinating
 everyone — barely applies to a two-commit, never-pushed repository. That
 calculus reverses permanently the first time this is pushed to a shared host.
@@ -49,9 +78,10 @@ people committed without any consent record. "Lena" carries the additional
 history of being a crop of a 1972 Playboy centrefold, used for decades without
 the subject's meaningful consent, which the subject has since asked be retired.
 
-**Recommendation: rewrite before the first push to any shared remote.**
+**Recommendation at the time: rewrite before the first push to any shared
+remote. This was carried out.**
 
-## Procedure — NOT executed, run deliberately
+## Procedure, as documented and executed
 
 `git filter-repo` is the tool the Git project recommends; `filter-branch` is
 deprecated and mangles this case. Install it first (`pip install git-filter-repo`).
@@ -106,12 +136,11 @@ cd apps/web && npm ci && npx tsc --noEmit && npx vitest run
   force-push plus a coordinated re-clone by everyone, and any host-side cache,
   fork or pull request may retain the blobs regardless. Do it first.
 
-## If a rewrite is declined
+## Remaining actions
 
-Record the decision and its owner here, along with the reasoning. The images
-remain retrievable by anyone with a clone, and that should be a decision someone
-made rather than something that happened by default.
-
-| Decision | Owner | Date | Reasoning |
+| # | Action | Owner | Done |
 |---|---|---|---|
-| | | | |
+| 1 | Delete `../master-saas-history-backup-20260805-212249.git` once this rewrite is accepted — it still contains both photographs | | ☐ |
+| 2 | Delete `../env-backup-20260805-212249/` (holds a copy of the untracked `.env`) | | ☐ |
+| 3 | Confirm with `GreenArrow-7` whether a separate clone or working-directory archive exists; if so, it still contains the images and must be destroyed and re-taken | | ☐ |
+| 4 | Re-run `npm run check:test-data` in CI on every build so this cannot recur | | ☐ |
