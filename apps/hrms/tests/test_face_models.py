@@ -19,7 +19,8 @@ from app.services.face import (
 pytestmark = pytest.mark.skipif(not engine_ready(),
                                 reason="buffalo_l models not downloaded")
 
-SAMPLES = Path(os.environ.get("FACE_TEST_IMAGES", "tests/faces"))
+# Never committed — see docs/TEST-DATA-POLICY.md.
+SAMPLES = Path(os.environ.get("FACE_TEST_IMAGES", "tests/faces-local"))
 
 
 def _sample_paths():

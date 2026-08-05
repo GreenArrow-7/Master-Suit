@@ -15,6 +15,7 @@ What this proves, and what it does not:
     itself is covered by tests/test_face_models.py.
 """
 import base64
+import os
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -55,12 +56,30 @@ def world():
     yield ids
     settings.MIN_PUNCH_INTERVAL_SECONDS = _saved
 
-FACES = Path("tests/faces")
+# Supplied locally, never committed — see docs/TEST-DATA-POLICY.md.
+FACES = Path(os.environ.get("FACE_TEST_IMAGES", "tests/faces-local"))
+
+
+def _face_fixture():
+    """The image these end-to-end tests drive.
+
+    Skips rather than fails when it is absent. A missing fixture means the
+    person running the suite has not supplied their own consented image, which
+    is a setup condition, not a defect in the code under test.
+    """
+    candidates = (sorted(FACES.glob("*.jpg")) + sorted(FACES.glob("*.jpeg"))
+                  + sorted(FACES.glob("*.png"))) if FACES.is_dir() else []
+    if not candidates:
+        pytest.skip(f"No face fixture in {FACES}. Set FACE_TEST_IMAGES to a "
+                    "directory of images you are entitled to use "
+                    "(see docs/TEST-DATA-POLICY.md).")
+    return candidates[0]
 
 
 def _b64(path, tweak=None):
     img = cv2.imread(str(path))
-    assert img is not None, f"missing {path}"
+    if img is None:
+        pytest.skip(f"Could not read the face fixture at {path}.")
     if tweak is not None:
         img = tweak(img)
     ok, buf = cv2.imencode(".jpg", img)
@@ -89,7 +108,7 @@ def _shear_up(im):
 
 def enrolment_frames():
     """Four genuinely different views - enrolment rejects four identical shots."""
-    p = FACES / "lena.jpg"
+    p = _face_fixture()
     return [
         _b64(p),
         _b64(p, lambda i: _warp(i, 0.18)),
@@ -131,7 +150,7 @@ def test_employee_cannot_enrol_themselves(world):
 
 def test_identical_frames_are_rejected_as_enrolment(world):
     _consent(tok("omar@manathhomes.ae"))
-    one = _b64(FACES / "lena.jpg")
+    one = _b64(_face_fixture())
     r = client.post("/api/attendance/enrol", headers=tok("hr@manathhomes.ae"),
                     json={"employee_id": world["staff"], "frames": [one] * 4})
     assert r.status_code == 422
@@ -166,8 +185,9 @@ def test_rejected_punch_still_stores_an_encrypted_capture(world, tmp_path, monke
 
     # Two genuinely different frames of the same person, but no head turn:
     # real recognition runs, liveness legitimately fails.
-    f1 = _b64(FACES / "lena.jpg")
-    f2 = _b64(FACES / "lena.jpg", lambda i: cv2.convertScaleAbs(i, alpha=0.9, beta=5))
+    fixture = _face_fixture()
+    f1 = _b64(fixture)
+    f2 = _b64(fixture, lambda i: cv2.convertScaleAbs(i, alpha=0.9, beta=5))
     from tests.test_locations_rbac import HQ
     r = client.post("/api/attendance/punch", headers=staff, json={
         "punch_type": "checkin", "nonce": ch["nonce"], "frames": [f1, f2],
@@ -279,7 +299,7 @@ def _mirror_pair():
     pose estimation, the same-person check, template matching, geofence, the
     database write and the encrypted capture. Nothing is stubbed.
     """
-    p = FACES / "lena.jpg"
+    p = _face_fixture()
     return _b64(p), _b64(p, lambda i: cv2.flip(i, 1))
 
 

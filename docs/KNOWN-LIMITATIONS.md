@@ -101,6 +101,15 @@ following items still prevent an unconditional commercial-production claim:
   - H28 covers the shell being usable on a phone. It has been verified by reading
     the CSS and the components, **not on a real handset** — no device testing has
     been done.
+- **Two face photographs were removed from the working tree but remain in Git
+  history.** `apps/hrms/tests/faces/lena.jpg` and `messi.jpg` were photographs of
+  identifiable people committed as test fixtures. They are gone from the index
+  and the tests now read fixtures from a git-ignored local path, but **no
+  history rewrite has been performed**, so any clone still contains them. The
+  repository has never been pushed (zero remotes), which makes a rewrite cheap
+  now and expensive later — see `docs/GIT-HISTORY-REMEDIATION.md` for the
+  assessment and the exact procedure. `docs/TEST-DATA-POLICY.md` records the rule
+  and `npm run check:test-data` enforces the mechanical part of it.
 - **`schema.prisma` had drifted ahead of the migrations and this is a recurring
   risk.** `HrLeaveBalance`, `HrChecklistTask`, `HrOffboardingCase`,
   `HrSettlementSnapshot` and `HrEmployeeLocationAssignment` were declared in the

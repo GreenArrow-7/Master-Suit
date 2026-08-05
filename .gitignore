@@ -15,3 +15,13 @@ coverage/
 dist/
 *.tsbuildinfo
 cloudflared.exe
+
+# ── Biometric and identity test data — never committed ──────────────────────
+# Face fixtures and UAT evidence are photographs of identifiable people. Git
+# keeps deleted files in history forever, so the only safe place for them is
+# outside the repository. Point FACE_TEST_IMAGES at one of these directories.
+# See docs/TEST-DATA-POLICY.md.
+**/tests/faces-local/
+**/faces-local/
+**/uat-evidence/
+**/biometric-evidence/
