@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 type Scope = 'NONE' | 'OWN' | 'TEAM' | 'BRANCH' | 'REGION' | 'ORGANIZATION';
 
@@ -58,7 +59,7 @@ export default function PermissionMatrix({ endpoint, roleId, editable, rows }: {
   async function save() {
     setBusy(true); setError(null); setNotice(null);
     try {
-      const response = await fetch(`${endpoint}/matrix-update`, {
+      const response = await authFetch(`${endpoint}/matrix-update`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           roleId,

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * The HR policy editor. Every field here is generated from the registry in
@@ -49,7 +50,7 @@ export default function HrPolicyForm({ endpoint, groups, policy, readOnly }: {
     event.preventDefault();
     setBusy(true); setError(null); setSaved(null);
     try {
-      const response = await fetch(`${endpoint}/settings-update`, {
+      const response = await authFetch(`${endpoint}/settings-update`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values),
       });
       const data = await response.json().catch(() => ({}));

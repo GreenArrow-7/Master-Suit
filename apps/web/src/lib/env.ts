@@ -36,7 +36,11 @@ const schema = z.object({
   SMS_PROVIDER: z.string().default('mock'),
   WHATSAPP_PROVIDER: z.string().default('mock'),
   TELEPHONY_PROVIDER: z.enum(['mock', 'hmac']).default('mock'),
+  /** `clamav` in any deployed environment; `mock` is test-only and blocked in production. */
   ANTIVIRUS_PROVIDER: z.string().default('mock'),
+  CLAMAV_HOST: z.string().default('127.0.0.1'),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+  ANTIVIRUS_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   AI_PROVIDER: z.string().default('mock'),
   AI_API_KEY: z.string().optional(),
 

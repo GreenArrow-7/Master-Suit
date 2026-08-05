@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * Your own password and authenticator.
@@ -25,7 +26,7 @@ export default function SecurityPanel({ endpoint, status }: {
   async function call(action: string, body: Record<string, unknown> = {}) {
     setBusy(action); setError(null); setNotice(null);
     try {
-      const response = await fetch(`${endpoint}/${action}`, {
+      const response = await authFetch(`${endpoint}/${action}`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       });
       const data = await response.json().catch(() => ({}));

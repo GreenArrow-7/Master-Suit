@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * Uploads a scan. Multipart rather than JSON, so it posts to the dedicated
@@ -25,7 +26,7 @@ export default function DocumentUpload({ endpoint, employees, kinds }: {
     const form = event.currentTarget;
     setBusy(true); setError(null); setNotice(null);
     try {
-      const response = await fetch(endpoint, { method: 'POST', body: new FormData(form) });
+      const response = await authFetch(endpoint, { method: 'POST', body: new FormData(form) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { setError(data.detail ?? 'That file could not be uploaded.'); return; }
       form.reset();

@@ -21,7 +21,8 @@ import { env } from '@/lib/env';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
-import { deleteObject, getObject, putObject } from '@/lib/storage';
+import { deleteObject, getObject, moveObject, putObject } from '@/lib/storage';
+import { scanBuffer } from '@/lib/antivirus';
 import type { Ctx } from '@/lib/security/rbac';
 import { isHrAdmin } from './access';
 import { myEmployee, requireEmployee } from './leave';
@@ -43,17 +44,6 @@ function sniff(payload: Buffer): string | null {
   if (payload.subarray(0, 4).toString('latin1') === 'RIFF' && payload.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
   if (['ftypheic', 'ftypheix', 'ftypmif1'].includes(payload.subarray(4, 12).toString('latin1'))) return 'image/heic';
   return null;
-}
-
-/**
- * Virus scanning. No real provider is wired up, and this deliberately does not
- * pretend otherwise: with the mock provider configured it returns `skipped`, and
- * the upload records that the file was never scanned. A stub that silently
- * returned "clean" would be worse than no scanning at all, because it would read
- * as a control that exists.
- */
-async function scan(): Promise<'clean' | 'skipped'> {
-  return env.ANTIVIRUS_PROVIDER.toLowerCase() === 'mock' ? 'skipped' : 'clean';
 }
 
 export interface UploadInput {
@@ -81,27 +71,61 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   const detected = sniff(input.bytes);
   if (!detected) throw Conflict('Upload a PDF or an image (JPEG, PNG, WebP or HEIC). The file contents did not match any of those.');
 
-  const scanResult = await scan();
   const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+  const leaf = `${randomBytes(18).toString('hex')}${ALLOWED[detected]}`;
+  // Both separators: a Windows client sends `C:\Users\...\passport.pdf`, and
+  // splitting on `/` alone would keep the whole path as the "filename".
+  const name = input.filename.split(/[\\/]/).pop() ?? 'document';
 
-  // Sharded by tenant and employee so one workspace's documents are one subtree.
-  const storageKey = `t-${ctx.tenantId}/emp-${employee.id}/${randomBytes(18).toString('hex')}${ALLOWED[detected]}`;
-  await putObject(storageKey, input.bytes, detected);
+  // Quarantined first, always. The bytes land under a quarantine prefix and the
+  // row is created PENDING, so even a mis-wired download path cannot reach an
+  // unscanned file. Promotion to the clean prefix happens only on a CLEAN verdict.
+  const quarantineKey = `quarantine/t-${ctx.tenantId}/emp-${employee.id}/${leaf}`;
+  await putObject(quarantineKey, input.bytes, detected);
 
   const document = await prisma.hrEmployeeDocument.create({
     data: {
       tenantId: ctx.tenantId,
       employeeId: employee.id,
       kind: input.kind,
-      name: input.filename.split(/[\\/]/).pop()?.slice(0, 200) || 'document',
+      name: name.slice(0, 200) || 'document',
       number: input.number ?? null,
       issuedAt: input.issuedAt ?? null,
       expiresAt: input.expiresAt ?? null,
-      storageKey,
-      originalFilename: input.filename.split(/[\\/]/).pop()?.slice(0, 255) ?? null,
+      storageKey: quarantineKey,
+      originalFilename: name.slice(0, 255),
       contentType: detected,
       sizeBytes: input.bytes.length,
       sha256,
+      scanStatus: 'PENDING',
+      quarantined: true,
+    },
+  });
+
+  const scanResult = await scanBuffer(input.bytes);
+  let storageKey: string | null = quarantineKey;
+
+  if (scanResult.verdict === 'CLEAN') {
+    storageKey = `clean/t-${ctx.tenantId}/emp-${employee.id}/${leaf}`;
+    await moveObject(quarantineKey, storageKey, detected);
+  } else if (scanResult.verdict === 'INFECTED') {
+    // Malware is destroyed rather than retained. The row stays, as the record
+    // that someone uploaded it and what it was detected as.
+    await deleteObject(quarantineKey).catch(() => {});
+    storageKey = null;
+  }
+  // ERROR leaves the bytes in quarantine: the scanner could not tell us, so the
+  // file is neither trusted nor discarded, and stays undownloadable.
+
+  await prisma.hrEmployeeDocument.update({
+    where: { tenantId: ctx.tenantId, id: document.id },
+    data: {
+      scanStatus: scanResult.verdict,
+      scanProvider: scanResult.provider,
+      scannedAt: scanResult.scannedAt,
+      scanSignature: scanResult.signature,
+      quarantined: scanResult.verdict !== 'CLEAN',
+      storageKey,
     },
   });
 
@@ -119,10 +143,23 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
     recordId: document.id,
     metadata: {
       action: 'document.uploaded', kind: input.kind, sizeBytes: input.bytes.length,
-      contentType: detected, declaredContentType: input.contentType, sha256, virusScan: scanResult,
+      contentType: detected, declaredContentType: input.contentType, sha256,
+      scanStatus: scanResult.verdict, scanProvider: scanResult.provider,
+      scanSignature: scanResult.signature, scanDetail: scanResult.detail,
     },
   });
-  return { ...document, virusScan: scanResult };
+
+  // Both refusals happen after the row and the audit entry are written: the fact
+  // that someone uploaded infected content, or that the scanner was down when
+  // they tried, is exactly what an investigator needs later.
+  if (scanResult.verdict === 'INFECTED') {
+    throw new AppError(422, 'malware-detected', `That file was rejected by the malware scanner (${scanResult.detail ?? 'threat detected'}) and has been deleted.`);
+  }
+  if (scanResult.verdict === 'ERROR') {
+    throw new AppError(503, 'scanner-unavailable', 'The malware scanner could not be reached, so the file is quarantined and cannot be used. Try again once scanning is available.');
+  }
+
+  return { ...document, scanStatus: scanResult.verdict, scanProvider: scanResult.provider, scanSignature: scanResult.signature };
 }
 
 /**
@@ -144,6 +181,15 @@ export async function downloadDocument(ctx: Ctx, documentId: string) {
     if (!self || self.id !== document.employeeId) throw NotFound('Document');
   }
   if (!document.storageKey) throw Conflict('No file is attached to that document record.');
+
+  // The gate is CLEAN specifically, not "not INFECTED". A PENDING or ERROR
+  // document never received a verdict, and serving it would defeat the point of
+  // scanning at all.
+  if (document.scanStatus !== 'CLEAN') {
+    throw new AppError(409, 'document-not-released', document.scanStatus === 'INFECTED'
+      ? 'That file was rejected by the malware scanner and is not available.'
+      : 'That file has not cleared malware scanning, so it cannot be downloaded.');
+  }
 
   await audit(ctx, {
     event: 'DOCUMENT_ACCESSED',

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * One HR workflow verb as a button. `promptFor` collects the field the API
@@ -26,7 +27,7 @@ export default function WorkspaceActionButton({ endpoint, body, label, confirm, 
   async function send(extra: Record<string, unknown> = {}) {
     setBusy(true); setError(null);
     try {
-      const response = await fetch(endpoint, {
+      const response = await authFetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...body, ...extra }),

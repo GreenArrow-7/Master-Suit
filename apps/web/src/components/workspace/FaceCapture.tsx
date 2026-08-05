@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * The camera end of face check-in and HR enrolment.
@@ -81,7 +82,7 @@ export default function FaceCapture({ mode, endpointBase, employeeId, samplesReq
   const wait = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
   async function post(action: string, body: unknown) {
-    const response = await fetch(`${endpointBase}/${action}`, {
+    const response = await authFetch(`${endpointBase}/${action}`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));

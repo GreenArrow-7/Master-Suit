@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 /**
  * Resets someone's password and shows the temporary value once.
@@ -25,7 +26,7 @@ export default function TemporaryPasswordButton({ endpoint, userId, userName }: 
     if (!window.confirm(`Reset the password for ${userName}? Every session they have open will be signed out, and they must set their own password before anything else opens.`)) return;
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`${endpoint}/password-reset`, {
+      const response = await authFetch(`${endpoint}/password-reset`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId }),
       });
       const data = await response.json().catch(() => ({}));

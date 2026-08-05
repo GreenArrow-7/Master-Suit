@@ -1,0 +1,2 @@
+Prisma schema loaded from apps\web\prisma\schema.prisma.
+Error: The datasource.url property is required in your Prisma config file when using prisma migrate status.

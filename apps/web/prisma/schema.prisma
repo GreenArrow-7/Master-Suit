@@ -1069,6 +1069,15 @@ model HrEmployeeDocument {
   issuedAt         DateTime?
   expiresAt        DateTime?
   verifiedAt       DateTime?
+  /// PENDING until a scanner returns a verdict. Download is gated on CLEAN, so a
+  /// file that was never scanned — because the scanner was down — is never served.
+  scanStatus       HrScanStatus    @default(PENDING)
+  scanProvider     String?
+  scannedAt        DateTime?
+  /// Engine and signature-database version, so a past clean verdict can be
+  /// re-judged when a signature set is later found to have missed something.
+  scanSignature    String?
+  quarantined      Boolean         @default(true)
   createdAt        DateTime        @default(now())
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   employee         EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -1214,6 +1223,13 @@ model BiometricConsent {
   employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId])
+}
+
+enum HrScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
 }
 
 enum HrPunchType {

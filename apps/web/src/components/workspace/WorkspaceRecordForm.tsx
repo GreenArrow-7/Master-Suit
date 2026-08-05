@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@/lib/auth/client';
 
 export type FormField = {
   name: string;
@@ -25,7 +26,7 @@ export default function WorkspaceRecordForm({ endpoint, fields, submitLabel = 'C
       [...new FormData(form).entries()].filter(([, value]) => value !== ''),
     );
     try {
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const response = await authFetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const data = await response.json();
       if (!response.ok) { setError(data.detail ?? data.title ?? 'The record could not be saved.'); return; }
       form.reset();

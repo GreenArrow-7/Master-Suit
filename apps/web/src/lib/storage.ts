@@ -61,3 +61,18 @@ export async function deleteObject(key: string) {
   await ensureBucket();
   await s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: key }));
 }
+
+/**
+ * Promotes an object from one key to another — used to move a file out of
+ * quarantine once it has a clean verdict.
+ *
+ * Copy then delete, in that order: if the delete fails the object exists twice,
+ * which is untidy but harmless. Deleting first and failing the copy would lose
+ * the file.
+ */
+export async function moveObject(fromKey: string, toKey: string, contentType: string) {
+  const body = await getObject(fromKey);
+  await putObject(toKey, body, contentType);
+  await deleteObject(fromKey).catch(() => {});
+  return toKey;
+}

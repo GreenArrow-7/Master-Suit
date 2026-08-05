@@ -42,6 +42,22 @@ services:
     ports: ["9000:9000", "9001:9001"]
     volumes: ["miniodata:/data"]
 
+  # Malware scanning for uploaded documents. clamd exposes its INSTREAM protocol
+  # on 3310; the app speaks it directly. The image ships signature definitions and
+  # freshclam keeps them current, which is why the healthcheck allows a long start:
+  # the first signature download is several hundred megabytes.
+  clamav:
+    image: clamav/clamav:stable
+    environment:
+      CLAMAV_NO_MILTERD: "true"
+    volumes: ["clamavdb:/var/lib/clamav"]
+    ports: ["127.0.0.1:3310:3310"]
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
+      interval: 20s
+      retries: 40
+      start_period: 600s
+
   # Face compute only: no database, no tenant awareness, no product logic.
   # Deliberately NOT published to the host — a service that turns camera frames
   # into biometric vectors has no business being reachable from outside.
@@ -71,6 +87,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       FACE_SERVICE_URL: http://face:8000
+      ANTIVIRUS_PROVIDER: clamav
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
     env_file: [../.env]
     ports: ["3000:3000"]
     depends_on:
@@ -91,4 +110,4 @@ services:
     deploy:
       replicas: 2
 
-volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {} }
+volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {} }

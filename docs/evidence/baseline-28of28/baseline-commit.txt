@@ -1,0 +1,4 @@
+8d42c514c7b56985cbeb35020b114f74e4dab68a
+2026-08-05 20:29:06 +0400
+GreenArrow-7
+Initial commit: Master SaaS unified HRMS + Sales platform
