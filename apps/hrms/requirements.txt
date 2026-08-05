@@ -1,0 +1,32 @@
+# Core dependencies. Every one of these installs from a prebuilt wheel on
+# Windows, macOS and Linux - no compiler required.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+alembic==1.14.1
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+bcrypt==5.0.0
+pyjwt==2.10.1
+pyotp==2.10.0
+qrcode==8.2
+pillow==11.1.0          # qrcode's image backend; prebuilt wheels, no compiler
+cryptography==49.0.0
+numpy==2.2.1
+python-multipart==0.0.20
+
+# Face recognition. NOT optional: PIN check-in was removed, so face
+# verification is the only way to record attendance. Both ship prebuilt wheels
+# for every platform - no C++ compiler. (insightface was dropped precisely
+# because it had no Windows wheel and compiled a 3D mesh renderer we never call.)
+onnxruntime==1.27.0
+opencv-python-headless==4.11.0.86
+requests==2.32.3
+
+# Tests
+pytest==8.3.4
+httpx==0.28.1
+
+# The model files themselves (~275 MB) are fetched separately:
+#     python scripts/download_models.py

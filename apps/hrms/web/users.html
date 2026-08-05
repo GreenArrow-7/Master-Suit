@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Users — Manath Homes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+
+<div id="page">
+  <div class="eyebrow">Administration</div>
+  <h1>Users</h1>
+  <p class="lede">Everyone with an account. Roles decide what each person can
+    reach — you can only administer accounts at or below your own level.</p>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-body" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:210px">
+        <label for="q">Search</label>
+        <input id="q" placeholder="Name, email or employee code">
+      </div>
+      <div style="width:150px">
+        <label for="roleFilter">Role</label>
+        <select id="roleFilter">
+          <option value="">All roles</option>
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+          <option value="hr">HR</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style="width:165px">
+        <label for="showFilter">Show</label>
+        <select id="showFilter">
+          <option value="false">Active only</option>
+          <option value="true">Include suspended</option>
+        </select>
+      </div>
+      <button class="btn" id="addBtn">Add user</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Directory</h2>
+      <span class="pill" id="count">&mdash;</span>
+      <div class="spacer"></div>
+    </div>
+    <div class="card-body tight" id="tableWrap">
+      <div style="padding:18px"><div class="skel" style="width:40%"></div></div>
+    </div>
+  </div>
+
+  <div class="msg" id="msg" style="margin-top:14px"></div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- Add user -->
+<section class="panel" id="pAdd" aria-label="Add user">
+  <div class="panel-head">
+    <div>
+      <h2>Add user</h2>
+      <p>They set their own password the first time they sign in. Hand the
+        temporary one over in person &mdash; not by email.</p>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="field" id="f-name">
+      <label for="a-name">Full name</label>
+      <input id="a-name" autocomplete="off" placeholder="Nadia Kassem">
+      <div class="err">Enter their full name.</div>
+    </div>
+    <div class="field" id="f-email">
+      <label for="a-email">Work email</label>
+      <input id="a-email" type="email" autocomplete="off" placeholder="nadia@manathhomes.ae">
+      <div class="err">Enter a company email address.</div>
+    </div>
+    <div class="two">
+      <div class="field" id="f-code">
+        <label for="a-code">Employee code</label>
+        <input id="a-code" autocomplete="off" placeholder="AGT-014">
+        <div class="err">Enter a code.</div>
+      </div>
+      <div class="field">
+        <label for="a-role">Role</label>
+        <select id="a-role">
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+          <option value="hr">HR</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="two">
+      <div class="field">
+        <label for="a-dept">Department</label>
+        <input id="a-dept" placeholder="Brokerage">
+      </div>
+      <div class="field">
+        <label for="a-join">Joining date</label>
+        <input id="a-join" type="date">
+      </div>
+    </div>
+    <div class="field" id="f-pw">
+      <label for="a-pw">Temporary password</label>
+      <div style="display:flex;gap:8px">
+        <input id="a-pw">
+        <button class="btn ghost sm" id="a-gen" type="button">New</button>
+      </div>
+      <div class="hint">At least 12 characters. They'll be asked to change it
+        immediately, and nothing else opens until they do.</div>
+      <div class="err">Use at least 12 characters.</div>
+    </div>
+
+    <div class="note" id="a-result" style="display:none"></div>
+    <div class="msg" id="a-msg" style="margin-top:10px"></div>
+  </div>
+  <div class="panel-foot">
+    <button class="btn ghost" data-close>Cancel</button>
+    <button class="btn" id="a-save">Create user</button>
+  </div>
+</section>
+
+<!-- Reset password -->
+<section class="panel" id="pReset" aria-label="Reset password">
+  <div class="panel-head">
+    <div><h2>Reset password</h2><p id="r-who"></p></div>
+  </div>
+  <div class="panel-body">
+    <div class="field" id="f-rpw">
+      <label for="r-pw">Temporary password</label>
+      <div style="display:flex;gap:8px">
+        <input id="r-pw">
+        <button class="btn ghost sm" id="r-gen" type="button">New</button>
+      </div>
+      <div class="err">Use at least 12 characters.</div>
+    </div>
+    <div class="note">This signs them out everywhere and forces a change at next
+      sign-in. If the account was taken over, an attacker's session dies with it.</div>
+    <div class="note ok" id="r-result" style="display:none;margin-top:12px"></div>
+    <div class="msg" id="r-msg" style="margin-top:10px"></div>
+  </div>
+  <div class="panel-foot">
+    <button class="btn ghost" data-close>Cancel</button>
+    <button class="btn" id="r-save">Reset password</button>
+  </div>
+</section>
+
+<!-- Change role -->
+<section class="panel" id="pRole" aria-label="Change role">
+  <div class="panel-head">
+    <div><h2>Change role</h2><p id="ro-who"></p></div>
+  </div>
+  <div class="panel-body">
+    <div class="field">
+      <label for="ro-role">New role</label>
+      <select id="ro-role">
+        <option value="employee">Employee &mdash; own attendance and leave</option>
+        <option value="manager">Manager &mdash; plus their team's leave</option>
+        <option value="hr">HR &mdash; plus all staff, documents, settlements</option>
+        <option value="admin">Admin &mdash; plus roles and other admin accounts</option>
+      </select>
+    </div>
+    <div class="note">HR and admin accounts can read every passport scan and
+      salary in the system. Grant them sparingly.</div>
+    <div class="msg" id="ro-msg" style="margin-top:12px"></div>
+  </div>
+  <div class="panel-foot">
+    <button class="btn ghost" data-close>Cancel</button>
+    <button class="btn" id="ro-save">Change role</button>
+  </div>
+</section>
+
+<section class="panel" id="pFace" aria-label="Face enrolment">
+  <div class="panel-head">
+    <div><h2>Face enrolment</h2><p id="face-who"></p></div>
+  </div>
+  <div class="panel-body">
+    <div class="note">Do this in person, with the employee in front of you.
+      Four shots are needed and they must be genuinely different angles &mdash;
+      four copies of one pose are rejected by the server. Photographs are not
+      stored; only mathematical templates derived from them.</div>
+
+    <div style="margin:14px 0;background:#000;border-radius:6px;overflow:hidden;
+                aspect-ratio:4/3;display:grid;place-items:center">
+      <video id="face-cam" autoplay playsinline muted
+             style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1)"></video>
+      <div id="face-off" style="color:#888;font-size:13px">Camera off</div>
+    </div>
+
+    <div id="face-step" style="font-size:13.5px;font-weight:500;margin-bottom:8px"></div>
+    <div id="face-thumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="face-start">Start camera</button>
+      <button class="btn" id="face-shot" disabled>Capture</button>
+      <button class="btn ghost" id="face-redo" disabled>Start over</button>
+    </div>
+    <div class="msg" id="face-msg" style="margin-top:12px"></div>
+  </div>
+  <div class="panel-foot">
+    <button class="btn ghost" data-close>Close</button>
+    <button class="btn" id="face-save" disabled>Save enrolment</button>
+  </div>
+</section>
+
+<script src="shell.js"></script>
+<script>
+const RANK = { employee: 0, manager: 1, hr: 2, admin: 3 };
+
+/* ---- face enrolment ---------------------------------------------------- */
+const POSES = [
+  "Shot 1 of 4 \u2014 look straight at the camera.",
+  "Shot 2 of 4 \u2014 turn your head slightly LEFT.",
+  "Shot 3 of 4 \u2014 turn your head slightly RIGHT.",
+  "Shot 4 of 4 \u2014 tilt your chin slightly UP.",
+];
+let ENROL_STREAM = null, SHOTS = [];
+
+function stopEnrolCam() {
+  if (ENROL_STREAM) { ENROL_STREAM.getTracks().forEach(t => t.stop()); ENROL_STREAM = null; }
+  const v = $("face-cam"); if (v) v.srcObject = null;
+  const off = $("face-off"); if (off) off.style.display = "";
+}
+
+function resetEnrol() {
+  SHOTS = [];
+  stopEnrolCam();
+  $("face-thumbs").innerHTML = "";
+  $("face-step").textContent = "Press Start camera to begin.";
+  $("face-shot").disabled = true;
+  $("face-redo").disabled = true;
+  $("face-save").disabled = true;
+  say("", "", "face-msg");
+}
+
+async function startEnrolCam() {
+  say("", "", "face-msg");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return say("This browser exposes no camera API. Note that browsers only "
+             + "allow camera access over HTTPS or on localhost.", "err", "face-msg");
+  try {
+    ENROL_STREAM = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 } } });
+  } catch (e) {
+    const why = {
+      NotAllowedError: "Camera permission was refused. Allow it in the browser's "
+                     + "address-bar icon and try again.",
+      NotFoundError: "No camera was found on this device.",
+      NotReadableError: "The camera is already in use by another application.",
+      SecurityError: "The browser blocked the camera. It only permits access "
+                   + "over HTTPS or on localhost.",
+    }[e.name];
+    return say(why || ("Camera error: " + e.message), "err", "face-msg");
+  }
+  $("face-cam").srcObject = ENROL_STREAM;
+  $("face-off").style.display = "none";
+  $("face-shot").disabled = false;
+  $("face-redo").disabled = false;
+  $("face-step").textContent = POSES[0];
+}
+
+function captureShot() {
+  const v = $("face-cam");
+  if (!v.videoWidth) return say("The camera is still warming up.", "err", "face-msg");
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  const data = c.toDataURL("image/jpeg", 0.92);
+  SHOTS.push(data);
+
+  const img = document.createElement("img");
+  img.src = data;
+  img.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:4px";
+  $("face-thumbs").appendChild(img);
+
+  if (SHOTS.length >= POSES.length) {
+    $("face-step").textContent = "All four captured. Save the enrolment.";
+    $("face-shot").disabled = true;
+    $("face-save").disabled = false;
+    stopEnrolCam();
+  } else {
+    $("face-step").textContent = POSES[SHOTS.length];
+  }
+}
+
+async function saveEnrolment() {
+  $("face-save").disabled = true;
+  say("Checking the samples\u2026", "", "face-msg");
+  try {
+    const d = await api("/api/attendance/enrol", { method: "POST", body: JSON.stringify({
+      employee_id: Number($("pFace").dataset.id), frames: SHOTS }) });
+    say(`Enrolled \u2014 ${d.samples} samples stored (spread ${d.sample_spread}).`,
+        "ok", "face-msg");
+    stopEnrolCam();
+    await load();
+  } catch (e) {
+    // The server rejects poor captures on purpose; let them retry.
+    say(e.message, "err", "face-msg");
+    $("face-save").disabled = false;
+  }
+}
+let ME = null, ROWS = [];
+const findRow = id => ROWS.find(u => String(u.id) === String(id));
+const canAdminister = u => RANK[u.role] <= RANK[ME.role];
+
+const panels = {};
+const closeAll = () => Object.values(panels).forEach(p => p.close());
+
+function flags(u) {
+  const out = [];
+  if (!u.is_active) out.push('<span class="pill bad">suspended</span>');
+  if (u.locked_out) out.push('<span class="pill bad">locked out</span>');
+  if (u.must_change_password) out.push('<span class="pill warn">temp password</span>');
+  if (u.face_enrolled) out.push('<span class="pill ok">face</span>');
+  if (!u.face_enrolled && u.biometric_consent) out.push('<span class="pill">consented</span>');
+  return out.length ? '<div class="pill-row">' + out.join("") + '</div>' : "";
+}
+
+async function load() {
+  const p = new URLSearchParams();
+  if ($("q").value.trim()) p.set("q", $("q").value.trim());
+  if ($("roleFilter").value) p.set("role", $("roleFilter").value);
+  if ($("showFilter").value === "true") p.set("include_inactive", "true");
+
+  try { ROWS = await api("/api/auth/employees?" + p); }
+  catch (e) { return say(e.message, "err"); }
+
+  $("count").textContent = ROWS.length + (ROWS.length === 1 ? " person" : " people");
+
+  if (!ROWS.length) {
+    $("tableWrap").innerHTML =
+      '<div class="empty">' + I.inbox + '<b>Nobody matches</b>Try a different search or filter.</div>';
+    return;
+  }
+
+  $("tableWrap").innerHTML = '<table class="tbl">' +
+    '<thead><tr><th>Name</th><th>Employee code</th><th>Role</th><th></th></tr></thead><tbody>' +
+    ROWS.map(u => `
+      <tr class="${u.is_active ? "" : "off"}">
+        <td>
+          <div class="person">
+            <div class="avatar">${initials(u.full_name)}</div>
+            <div>
+              <div class="cell-main">${u.full_name}</div>
+              <div class="cell-sub mono">${u.work_email}</div>
+              ${flags(u)}
+            </div>
+          </div>
+        </td>
+        <td class="mono">${u.employee_code}</td>
+        <td><span class="pill role-${u.role}">${u.role}</span></td>
+        <td><div class="actions">
+          ${canAdminister(u) ? `<button class="btn ghost sm" data-reset="${u.id}">Reset password</button>` : ""}
+          ${u.locked_out && canAdminister(u) ? `<button class="btn ghost sm" data-unlock="${u.id}">Unlock</button>` : ""}
+          ${canAdminister(u) ? `<button class="btn ghost sm" data-face="${u.id}">Face enrolment</button>` : ""}
+          ${ME.role === "admin" && u.id !== ME.id ? `<button class="btn ghost sm" data-role="${u.id}">Role</button>` : ""}
+          ${canAdminister(u) && u.id !== ME.id
+            ? `<button class="btn ${u.is_active ? "danger" : "ghost"} sm" data-active="${u.id}">${u.is_active ? "Suspend" : "Restore"}</button>`
+            : ""}
+        </div></td>
+      </tr>`).join("") + "</tbody></table>";
+}
+
+/* ---- add ---------------------------------------------------------------- */
+function markField(id, isBad) { $(id).classList.toggle("bad", isBad); return !isBad; }
+
+$("addBtn").onclick = () => {
+  ["a-name", "a-email", "a-code", "a-dept"].forEach(i => $(i).value = "");
+  ["f-name", "f-email", "f-code", "f-pw"].forEach(i => $(i).classList.remove("bad"));
+  $("a-role").value = "employee";
+  $("a-join").value = new Date().toISOString().slice(0, 10);
+  $("a-pw").value = generatePassword();
+  $("a-result").style.display = "none";
+  say("", "", "a-msg");
+  panels.add.open();
+};
+$("a-gen").onclick = () => { $("a-pw").value = generatePassword(); };
+
+$("a-save").onclick = async () => {
+  // Validation lives inside the panel so the reason is always visible.
+  const name = $("a-name").value.trim();
+  const email = $("a-email").value.trim().toLowerCase();
+  const code = $("a-code").value.trim();
+  const pw = $("a-pw").value;
+
+  let ok = markField("f-name", !name);
+  ok = markField("f-email", !email || !email.includes("@")) && ok;
+  ok = markField("f-code", !code) && ok;
+  ok = markField("f-pw", pw.length < 12) && ok;
+  if (!ok) return say("Some details are missing — see the fields marked above.", "err", "a-msg");
+
+  $("a-save").disabled = true;
+  say("Creating…", "", "a-msg");
+  try {
+    await api("/api/auth/employees", { method: "POST", body: JSON.stringify({
+      full_name: name, work_email: email, employee_code: code,
+      role: $("a-role").value, department: $("a-dept").value.trim() || null,
+      date_of_joining: $("a-join").value || new Date().toISOString().slice(0, 10),
+      temporary_password: pw }) });
+
+    $("a-result").style.display = "block";
+    $("a-result").innerHTML =
+      "<b>" + name + " created.</b><br>Give them these directly — the password isn't shown again." +
+      '<div class="secret" style="margin-top:9px">' + email + "<br>" + pw + "</div>";
+    say("", "", "a-msg");
+    await load();
+  } catch (e) { say(e.message, "err", "a-msg"); }
+  $("a-save").disabled = false;
+};
+
+/* ---- row actions -------------------------------------------------------- */
+document.addEventListener("click", async ev => {
+  if (ev.target.closest("[data-close]")) { stopEnrolCam(); return closeAll(); }
+
+  const b = ev.target.closest("button[data-reset],button[data-unlock],button[data-role],button[data-active],button[data-face]");
+  if (!b) return;
+  const id = b.dataset.reset || b.dataset.unlock || b.dataset.role || b.dataset.active || b.dataset.face;
+  const u = findRow(id);
+  if (!u) return;
+
+  if (b.dataset.reset) {
+    $("r-who").textContent = u.full_name + " — " + u.work_email;
+    $("r-pw").value = generatePassword();
+    $("f-rpw").classList.remove("bad");
+    $("r-result").style.display = "none";
+    say("", "", "r-msg");
+    $("pReset").dataset.id = id;
+    return panels.reset.open();
+  }
+  if (b.dataset.face) {
+    $("pFace").dataset.id = id;
+    $("face-who").textContent = u.full_name + " \u2014 " + u.work_email;
+    resetEnrol();
+    if (!u.biometric_consent) {
+      say("This employee has not given biometric consent yet. They must do that "
+          + "themselves on their Security page \u2014 you cannot consent for them.",
+          "err", "face-msg");
+      $("face-start").disabled = true;
+    } else {
+      $("face-start").disabled = false;
+    }
+    return panels.face.open();
+  }
+  if (b.dataset.role) {
+    $("ro-who").textContent = u.full_name + " is currently " + u.role + ".";
+    $("ro-role").value = u.role;
+    say("", "", "ro-msg");
+    $("pRole").dataset.id = id;
+    return panels.role.open();
+  }
+
+  try {
+    if (b.dataset.unlock) {
+      const d = await api("/api/auth/employees/" + id + "/unlock", { method: "POST" });
+      say(d.message, "ok");
+    }
+    if (b.dataset.active) {
+      const turningOff = u.is_active;
+      if (turningOff && !confirm("Suspend " + u.full_name + "? They're signed out immediately.")) return;
+      const d = await api("/api/auth/employees/" + id + "/active", {
+        method: "POST", body: JSON.stringify({ is_active: !turningOff }) });
+      say(d.message, "ok");
+    }
+    await load();
+  } catch (e) { say(e.message, "err"); }
+});
+
+$("r-gen").onclick = () => { $("r-pw").value = generatePassword(); };
+$("r-save").onclick = async () => {
+  const pw = $("r-pw").value;
+  if (!markField("f-rpw", pw.length < 12))
+    return say("Use at least 12 characters.", "err", "r-msg");
+  $("r-save").disabled = true;
+  try {
+    const d = await api("/api/auth/employees/" + $("pReset").dataset.id + "/reset-password", {
+      method: "POST", body: JSON.stringify({ temporary_password: pw }) });
+    $("r-result").style.display = "block";
+    $("r-result").innerHTML = "<b>Password reset.</b>" +
+      '<div class="secret" style="margin-top:9px">' + d.work_email + "<br>" + pw + "</div>";
+    say("", "", "r-msg");
+    await load();
+  } catch (e) { say(e.message, "err", "r-msg"); }
+  $("r-save").disabled = false;
+};
+
+$("ro-save").onclick = async () => {
+  try {
+    const d = await api("/api/auth/employees/" + $("pRole").dataset.id + "/role", {
+      method: "POST", body: JSON.stringify({ role: $("ro-role").value }) });
+    closeAll();
+    say(d.message, "ok");
+    await load();
+  } catch (e) { say(e.message, "err", "ro-msg"); }
+};
+
+$("scrim").onclick = closeAll;
+let t;
+$("q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(load, 220); });
+$("roleFilter").onchange = load;
+$("showFilter").onchange = load;
+
+(async () => {
+  ME = await Shell.mount("users");
+  if (!ME) return;
+  if (!["hr", "admin"].includes(ME.role)) {
+    $("page").innerHTML = '<div class="empty"><b>Not available</b>This page is for HR and admins.</div>';
+    return;
+  }
+  $("addBtn").innerHTML = I.plus + "Add user";
+  panels.add = Shell.panel("pAdd");
+  panels.reset = Shell.panel("pReset");
+  panels.role = Shell.panel("pRole");
+  panels.face = Shell.panel("pFace");
+  $("face-start").onclick = startEnrolCam;
+  $("face-shot").onclick = captureShot;
+  $("face-redo").onclick = () => { resetEnrol(); startEnrolCam(); };
+  $("face-save").onclick = saveEnrolment;
+
+  await load();
+})();
+</script>
+</body>
+</html>

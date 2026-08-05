@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Manath Homes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body class="auth">
+<div class="auth-card">
+  <div class="mark">M</div>
+  <div class="eyebrow">Manath Homes</div>
+  <h1>Sign in</h1>
+  <p class="lede">Attendance, leave and people, in one place.</p>
+
+  <div class="field">
+    <label for="email">Work email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@manathhomes.ae">
+  </div>
+  <div class="field">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password">
+  </div>
+
+  <button class="btn block" id="go">Sign in</button>
+  <div class="msg" id="msg" style="margin-top:14px"></div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+async function signIn() {
+  const email = $("email").value.trim().toLowerCase(), pw = $("pw").value;
+  if (!email || !pw) return say("Enter your email and password.", "err");
+  $("go").disabled = true;
+  say("Signing in\u2026");
+  try {
+    const r = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username: email, password: pw })
+    });
+    const d = await handleResponse(r);
+
+    if (d.mfa_required) {
+      sessionStorage.setItem("mfa_token", d.mfa_token);
+      sessionStorage.setItem("mfa_email", email);
+      location.href = "verify.html";
+      return;
+    }
+    if (d.must_enrol_2fa) {
+      localStorage.setItem("token", d.enrollment_token);
+      localStorage.removeItem("refresh");
+      localStorage.setItem("email", email);
+      sessionStorage.setItem("enrollment_mode", "1");
+      location.href = "security.html";
+      return;
+    }
+    localStorage.setItem("token", d.access_token);
+    localStorage.setItem("refresh", d.refresh_token);
+    localStorage.setItem("email", email);
+    location.href = d.must_change_password ? "password.html" : "checkin.html";
+  } catch (e) {
+    say(e.message, "err");
+    $("go").disabled = false;
+  }
+}
+$("go").onclick = signIn;
+["email", "pw"].forEach(id =>
+  $(id).addEventListener("keydown", e => { if (e.key === "Enter") signIn(); }));
+$("email").focus();
+</script>
+</body>
+</html>

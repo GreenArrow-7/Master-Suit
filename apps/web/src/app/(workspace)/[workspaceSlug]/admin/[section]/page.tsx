@@ -1,0 +1,12 @@
+import { notFound } from 'next/navigation'; import { prisma } from '@/lib/db'; import { resolveWorkspacePage } from '@/lib/workspace-page'; import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+export default async function Page({ params }: { params: Promise<{ workspaceSlug: string; section: string }> }) { const { workspaceSlug, section } = await params; const { ctx, workspace } = await resolveWorkspacePage(workspaceSlug); let title = ''; let headers: string[] = []; let rows: React.ReactNode[][] = [];
+  switch (section) {
+    case 'company': title = 'Company profile'; headers = ['Field', 'Value']; rows = [['Legal name', workspace.legalName], ['Display name', workspace.displayName], ['Industry', workspace.industry ?? '—'], ['Country', workspace.country ?? '—'], ['Timezone', workspace.timezone], ['Currency', workspace.currency], ['Email', workspace.companyEmail ?? '—'], ['Phone', workspace.companyPhone ?? '—']]; break;
+    case 'roles': { title = 'Roles and permissions'; headers = ['Role', 'Key', 'Permissions']; const data = await prisma.role.findMany({ where: { tenantId: ctx.tenantId }, include: { _count: { select: { permissions: true } } } }); rows = data.map((r) => [r.name, r.key, r._count.permissions]); break; }
+    case 'modules': title = 'Modules'; headers = ['Module', 'State', 'Ends']; rows = workspace.moduleEntitlements.map((r) => [r.module, r.state, r.endsAt?.toLocaleDateString('en-AE') ?? '—']); break;
+    case 'subscription': title = 'Subscription'; headers = ['Field', 'Value']; rows = [['Plan', workspace.subscription?.plan.name ?? workspace.planCode], ['Status', workspace.subscription?.state ?? '—'], ['Maximum users', workspace.maxUsers ?? '—'], ['Maximum employees', workspace.maxEmployees ?? '—'], ['Storage MB', workspace.maxStorageMb ?? '—'], ['Trial ends', workspace.trialEndsAt?.toLocaleDateString('en-AE') ?? '—']]; break;
+    case 'security': { title = 'Security'; headers = ['Control', 'Value']; const setting = await prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId } }); rows = [['MFA required', setting?.mfaRequired ? 'Yes' : 'No'], ['Session workspace binding', 'Enabled'], ['Tenant query guard', 'Enabled'], ['Workspace status', workspace.status]]; break; }
+    default: notFound();
+  }
+  return <div style={{ display: 'grid', gap: 18 }}><div><div className="lf-eyebrow">Administration</div><h1 style={{ margin: '8px 0 0' }}>{title}</h1></div><WorkspaceTable headers={headers} rows={rows} /></div>;
+}

@@ -1,0 +1,184 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+   LeadFlow CRM — Burgundy design system
+
+   THE PROBLEM THIS SOLVES
+   Red is already load-bearing in a CRM: breached SLA, lost deal, rejected
+   document, destructive action. Making burgundy the brand colour puts two reds
+   in the same field of view and destroys both meanings.
+
+   THE RESOLUTION
+   1. Burgundy is pushed deep enough (#3A0F1C – #6B1D33) that in the chrome it
+      reads as near-black structure, not as a warning.
+   2. Alerts move to vermillion (#C8412C) — hotter, lighter, unmistakably
+      separate at a glance and at 3 m from the monitor.
+   3. The other semantic slots leave the primary/success/warning cliché entirely:
+      antique brass for at-risk, viridian for won. Both are burgundy's natural
+      companions on the wheel, so the palette stays one family.
+   4. Neutrals are PEARL, not cream. Burgundy on cream with a serif is the wine-
+      label default; burgundy on cool pearl reads jewel-like and stays a tool.
+   5. Ink is warm-shifted (#1C1418, a red-black) so text sits in the same family
+      as the brand rather than fighting it with a blue-black.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Burgundy ramp ───────────────────────────────────────────────────────
+     900 is chrome. 700 is the brand. 500 is interaction. The tints carry
+     selection and fills without ever approaching alert saturation. */
+  --lf-wine-900: #2E0B16;   /* app rail, deepest chrome */
+  --lf-wine-800: #3A0F1C;
+  --lf-wine-700: #6B1D33;   /* THE burgundy — primary actions, brand */
+  --lf-wine-600: #7C2440;
+  --lf-wine-500: #8E2B47;   /* hover, active */
+  --lf-wine-300: #C08A9C;
+  --lf-wine-200: #E4CED6;
+  --lf-wine-100: #F1E3E8;
+  --lf-wine-050: #FBF5F7;
+
+  /* ── Pearl neutrals — cool, faint red undertone, never cream ───────────── */
+  --lf-canvas:    #F3F0F1;
+  --lf-surface:   #FFFFFF;
+  --lf-surface-2: #FAF8F9;
+  --lf-line:      #E4DDE0;
+  --lf-line-2:    #CFC4C9;
+
+  /* ── Warm-shifted ink ──────────────────────────────────────────────────── */
+  --lf-ink:   #1C1418;
+  --lf-ink-2: #5F545A;
+  --lf-ink-3: #8E8288;
+  --lf-ink-4: #B3A8AE;
+
+  /* ── Semantics. Deliberately not primary/success/warning. ──────────────── */
+  --lf-brass:        #A87A22;   /* at risk, pending, awaiting */
+  --lf-brass-sub:    #F7F0DF;
+  --lf-viridian:     #12655A;   /* won, converted, verified, SLA met */
+  --lf-viridian-sub: #E0EEEB;
+  --lf-vermillion:   #C8412C;   /* breached, lost, rejected, destructive */
+  --lf-vermillion-sub:#FBE9E6;
+  --lf-slate:        #5F545A;   /* open, no state */
+  --lf-slate-sub:    #F0ECEE;
+
+  /* ── Chart ramp. Four hues that stay legible side by side and print. ───── */
+  --lf-chart-1: #6B1D33;
+  --lf-chart-2: #A87A22;
+  --lf-chart-3: #12655A;
+  --lf-chart-4: #5F545A;
+  --lf-chart-5: #C08A9C;
+  --lf-chart-6: #8E2B47;
+
+  /* ── Type ───────────────────────────────────────────────────────────────
+     Instrument Serif appears in exactly two places: the wordmark and the hero
+     metrics. That is the one place boldness is spent. Everywhere else is a
+     disciplined sans, because a data grid set in a display face is a costume.
+     Instrument Serif + Instrument Sans ship as a designed pair. */
+  /* Operational screens use one deliberately quiet sans family. The previous
+     serif metrics made the workspace feel like a marketing dashboard. */
+  --lf-font-display: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-ui:      'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-body:    'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+
+  --lf-text-2xs:  0.625rem;   /* 10px — eyebrow labels */
+  --lf-text-xs:   0.6875rem;  /* 11px — grid meta, badges */
+  --lf-text-sm:   0.8125rem;  /* 13px — grid body, the workhorse */
+  --lf-text-base: 0.9375rem;  /* 15px — forms, detail panes */
+  --lf-text-lg:   1.0625rem;
+  --lf-text-xl:   1.375rem;
+  --lf-text-2xl:  1.875rem;
+  --lf-text-hero: 2.75rem;    /* serif metrics only */
+
+  --lf-track-tight: -0.02em;
+  --lf-track-wide:   0.09em;
+
+  /* ── Density ────────────────────────────────────────────────────────────── */
+  --lf-row-comfortable: 44px;
+  --lf-row-compact:     32px;
+  --lf-row: var(--lf-row-comfortable);
+
+  --lf-space-1: 4px;  --lf-space-2: 8px;  --lf-space-3: 12px;
+  --lf-space-4: 16px; --lf-space-5: 20px; --lf-space-6: 24px;
+  --lf-space-8: 32px; --lf-space-10: 40px;
+
+  --lf-radius-sm: 4px;
+  --lf-radius:    7px;
+  --lf-radius-lg: 10px;
+
+  /* Commercial design-token aliases shared by Sales, People and Platform. */
+  --background: var(--lf-canvas);
+  --surface: var(--lf-surface);
+  --surface-elevated: var(--lf-surface-2);
+  --border: var(--lf-line);
+  --text-primary: var(--lf-ink);
+  --text-secondary: var(--lf-ink-2);
+  --text-muted: var(--lf-ink-3);
+  --primary: var(--lf-wine-700);
+  --primary-hover: var(--lf-wine-500);
+  --success: var(--lf-viridian);
+  --warning: var(--lf-brass);
+  --danger: var(--lf-vermillion);
+  --information: #315C7D;
+
+  /* Shadows are wine-tinted, not neutral grey. On a pearl canvas a grey shadow
+     reads dirty; a wine-tinted one reads as depth. */
+  --lf-shadow-1: 0 1px 2px rgb(46 11 22 / 0.07);
+  --lf-shadow-2: 0 4px 14px rgb(46 11 22 / 0.10), 0 1px 3px rgb(46 11 22 / 0.06);
+  --lf-shadow-3: 0 18px 44px rgb(46 11 22 / 0.16);
+
+  --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--lf-wine-500);
+
+  /* Brass hairline. The one metallic accent, used only to mark the active
+     navigation item and the active stage segment. Restraint is the point. */
+  --lf-brass-edge: linear-gradient(180deg, #D9B25E 0%, #A87A22 50%, #7C5714 100%);
+}
+
+[data-density='compact'] {
+  --lf-row: var(--lf-row-compact);
+  --lf-text-sm: 0.75rem;
+}
+
+/* ── Dark: the rail colour swallows the whole canvas ─────────────────────── */
+[data-theme='dark'] {
+  --lf-canvas:    #1A0A11;
+  --lf-surface:   #24101A;
+  --lf-surface-2: #2E1622;
+  --lf-line:      #3D2130;
+  --lf-line-2:    #573145;
+
+  --lf-ink:   #F3E9EC;
+  --lf-ink-2: #C4AFB8;
+  --lf-ink-3: #9A838E;
+  --lf-ink-4: #74606B;
+
+  --lf-wine-700: #C4718C;
+  --lf-wine-600: #B7647F;
+  --lf-wine-500: #D08AA1;
+  --lf-wine-100: #3A1826;
+  --lf-wine-050: #2C1220;
+
+  --lf-brass:        #D9B25E;
+  --lf-brass-sub:    #35280F;
+  --lf-viridian:     #4FB3A2;
+  --lf-viridian-sub: #0F2E29;
+  --lf-vermillion:   #EE8478;
+  --lf-vermillion-sub:#3A1714;
+  --lf-slate:        #A2919A;
+  --lf-slate-sub:    #2C1F26;
+
+  --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
+  --lf-shadow-3: 0 18px 44px rgb(0 0 0 / 0.55);
+}
+
+/* Every figure in the product is tabular so columns align without extra CSS. */
+.lf-num,
+td[data-type='number'], td[data-type='currency'], td[data-type='date'] {
+  font-family: var(--lf-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero' 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

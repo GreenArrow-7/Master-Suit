@@ -1,0 +1,17 @@
+.env
+**/.env
+**/.venv/
+**/node_modules/
+**/.next/
+**/__pycache__/
+**/.pytest_cache/
+**/pytest-cache-files-*/
+**/*.pyc
+**/*.db
+**/storage/
+**/*.log
+.runtime/
+coverage/
+dist/
+*.tsbuildinfo
+cloudflared.exe

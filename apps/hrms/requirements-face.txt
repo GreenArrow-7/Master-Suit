@@ -1,0 +1,18 @@
+# Kept only so older instructions keep working.
+#
+# Face recognition is no longer optional: PIN check-in was removed, so face
+# verification is the only way to record attendance. These packages are now in
+# requirements.txt and are installed by default - you do not need this file.
+#
+# It deliberately lists ONLY the face packages. It must NOT pull in
+# requirements.txt: doing so drags pillow and pydantic-core into a stray
+# `pip install`, and if that pip belongs to Python 3.14 they have no wheel and
+# try to compile from source (zlib headers / PyO3 3.13 ceiling). Every package
+# below has a prebuilt wheel on every supported interpreter.
+#
+# Install into the SAME interpreter that runs the API, e.g. on Windows:
+#     .\.venv\Scripts\python.exe -m pip install -r requirements-face.txt
+#     .\.venv\Scripts\python.exe scripts\download_models.py
+onnxruntime==1.27.0
+opencv-python-headless==4.11.0.86
+requests==2.32.3

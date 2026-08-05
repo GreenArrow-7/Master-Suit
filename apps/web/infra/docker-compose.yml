@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: leadflow
+      POSTGRES_PASSWORD: leadflow
+      POSTGRES_DB: leadflow
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - max_connections=200
+      - -c
+      - random_page_cost=1.1
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadflow"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["6379:6379"]
+    volumes: ["redisdata:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: leadflow
+      MINIO_ROOT_PASSWORD: leadflow123
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+  # Face compute only: no database, no tenant awareness, no product logic.
+  # Deliberately NOT published to the host — a service that turns camera frames
+  # into biometric vectors has no business being reachable from outside.
+  face:
+    build: { context: ../../face, dockerfile: Dockerfile }
+    environment:
+      FACE_MODEL_DIR: /models
+      FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:-}
+    volumes: ["facemodels:/models"]
+    # Bound to loopback only. Local development runs the web app on the host, so
+    # it needs a port — but a service that turns camera frames into biometric
+    # vectors must never be reachable from the network. In a deployment where web
+    # runs in this compose network, drop the mapping and use `expose` instead.
+    ports: ["127.0.0.1:8081:8000"]
+    healthcheck:
+      # The models are downloaded on first boot (~275 MB), so allow a long start.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,json,sys; sys.exit(0 if json.load(urllib.request.urlopen('http://localhost:8000/health'))['ready'] else 1)\""]
+      interval: 15s
+      retries: 40
+      start_period: 300s
+
+  web:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    environment:
+      PROCESS_ROLE: web
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      FACE_SERVICE_URL: http://face:8000
+    env_file: [../.env]
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    command: ["node", "dist/workers/index.js"]
+    environment:
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    env_file: [../.env]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    deploy:
+      replicas: 2
+
+volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {} }

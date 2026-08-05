@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Check in — Manath Homes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+<style>
+.seal{position:relative;width:214px;height:214px;margin:0 auto}
+.seal svg{width:100%;height:100%;transform:rotate(-90deg)}
+.seal .track{fill:none;stroke:var(--line);stroke-width:5}
+.seal .arc{fill:none;stroke:var(--brass);stroke-width:5;
+  stroke-dasharray:190 590;stroke-dashoffset:190;
+  transition:stroke-dashoffset .45s ease,stroke .25s}
+.seal .arc.done{stroke:var(--green-500);stroke-dashoffset:0}
+.seal .arc.fail{stroke:var(--bad);stroke-dashoffset:0}
+.seal .face{position:absolute;inset:24px;border-radius:50%;overflow:hidden;
+  background:var(--green-900);display:grid;place-items:center}
+.seal video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.seal .ph{color:var(--brass-300);font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.1em;text-align:center;padding:0 22px}
+.gates{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line-2)}
+.gate{padding:13px 10px;text-align:center;border-right:1px solid var(--line-2)}
+.gate:last-child{border-right:0}
+.gate .k{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.gate .v{font-family:var(--display);font-size:16px;margin-top:5px;color:var(--faint)}
+.gate[data-state="pass"] .v{color:var(--ok)}
+.gate[data-state="fail"] .v{color:var(--bad)}
+.prompt{min-height:40px;text-align:center;font-family:var(--display);font-size:18px;line-height:1.35}
+.clock{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center}
+
+/* Phone: the seal scales to the viewport, and the whole capture card stacks
+   above the record panel (the .g2 grid already collapses to one column). */
+@media (max-width:640px){
+  .seal{width:min(72vw,240px);height:min(72vw,240px)}
+  .seal .face{inset:20px}
+  .gates{grid-template-columns:repeat(3,1fr)}
+  .gate{padding:11px 6px}
+  .gate .v{font-size:14px}
+}
+</style>
+</head>
+<body>
+
+<div id="page">
+  <div class="eyebrow">Attendance</div>
+  <h1>Check in</h1>
+  <p class="lede">Your location is checked against the site. Nothing is recorded
+    until every gate below passes.</p>
+
+  <div class="grid g2" style="align-items:start">
+    <div class="card">
+      <div class="card-body">
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="seal" style="margin-top:14px">
+          <svg viewBox="0 0 214 214" aria-hidden="true">
+            <circle class="track" cx="107" cy="107" r="95"/>
+            <circle class="arc" id="arc-live" cx="107" cy="107" r="95"/>
+            <circle class="arc" id="arc-face" cx="107" cy="107" r="95"
+                    style="transform-origin:center;transform:rotate(120deg)"/>
+            <circle class="arc" id="arc-loc" cx="107" cy="107" r="95"
+                    style="transform-origin:center;transform:rotate(240deg)"/>
+          </svg>
+          <div class="face">
+            <video id="cam" autoplay playsinline muted></video>
+            <div class="ph" id="ph">CAMERA OFF</div>
+          </div>
+        </div>
+        <div class="prompt" id="prompt" style="margin-top:14px"></div>
+      </div>
+      <div class="gates">
+        <div class="gate" data-state="idle" id="g-live"><div class="k">Live</div><div class="v">—</div></div>
+        <div class="gate" data-state="idle" id="g-face"><div class="k">Identity</div><div class="v">—</div></div>
+        <div class="gate" data-state="idle" id="g-loc"><div class="k">On site</div><div class="v">—</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-head"><h2>Record attendance</h2></div>
+        <div class="card-body">
+          <div class="field">
+            <label>Your assigned location(s)</label>
+            <div id="myloc" style="font-size:13.5px;line-height:1.6">Loading…</div>
+            <div id="locstat" style="font-family:ui-monospace,monospace;font-size:12.5px;
+                 margin-top:6px;color:var(--muted,#6B6455)"></div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn ghost sm" id="retryloc" type="button">Retry location</button>
+              <button class="btn ghost sm" id="reqexc" type="button" style="display:none">Request exception</button>
+            </div>
+          </div>
+
+          <div id="faceBlock">
+            <button class="btn block" id="start">Start camera</button>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn" id="in" style="flex:1" disabled>Check in</button>
+              <button class="btn ghost" id="out" style="flex:1" disabled>Check out</button>
+            </div>
+          </div>
+
+          <div class="msg" id="msg" style="margin-top:12px"></div>
+          <div class="hint mono" id="coords" style="margin-top:8px">Location not read yet</div>
+          <div class="hint" id="queued" style="color:var(--warn)"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Recent</h2><div class="spacer"></div>
+          <a class="link" href="#" id="refresh">Refresh</a></div>
+        <div class="card-body tight" id="recent">
+          <div style="padding:18px"><div class="skel" style="width:55%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+const GATES = { live: "g-live", face: "g-face", loc: "g-loc" };
+let stream = null;
+
+setInterval(() => {
+  $("clock").textContent =
+    new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Dubai" }) + " GST";
+}, 1000);
+
+function setGate(k, state, label) {
+  const g = $(GATES[k]);
+  g.dataset.state = state;
+  g.querySelector(".v").textContent = label;
+  const arc = $("arc-" + k);
+  arc.classList.toggle("done", state === "pass");
+  arc.classList.toggle("fail", state === "fail");
+}
+const resetGates = () => ["live", "face", "loc"].forEach(k => setGate(k, "idle", "\u2014"));
+
+function gatesFrom(result) {
+  const liveFail = result === "rejected_liveness";
+  const faceFail = result === "rejected_face";
+  const locFail = ["rejected_geofence", "rejected_accuracy"].includes(result);
+  const ok = ["accepted", "flagged_review"].includes(result);
+  setGate("live", liveFail ? "fail" : (ok || faceFail || locFail) ? "pass" : "idle",
+          liveFail ? "No" : (ok || faceFail || locFail) ? "Yes" : "\u2014");
+  setGate("face", faceFail ? "fail" : (ok || locFail) ? "pass" : "idle",
+          faceFail ? "No" : (ok || locFail) ? "Yes" : "\u2014");
+  setGate("loc", locFail ? "fail" : ok ? "pass" : "idle",
+          locFail ? "Off site" : ok ? "Yes" : "\u2014");
+}
+
+$("start").onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 } } });
+    $("cam").srcObject = stream;
+    $("ph").style.display = "none";
+    $("in").disabled = $("out").disabled = false;
+    say("Ready. Check in when you're on site.");
+  } catch {
+    say("Camera access is blocked. Enable it in your browser settings \u2014 note that "
+      + "browsers only allow the camera over HTTPS or on localhost.", "err");
+  }
+};
+
+function grab() {
+  const v = $("cam"), c = document.createElement("canvas");
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const position = () => new Promise((res, rej) =>
+  navigator.geolocation.getCurrentPosition(res, rej,
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }));
+
+async function facePunch(type) {
+  resetGates(); say("Starting\u2026");
+  let pos;
+  try { pos = await position(); }
+  catch { setGate("loc", "fail", "No fix"); return say("Turn on location and retry.", "err"); }
+  $("coords").textContent = pos.coords.latitude.toFixed(5) + ", " +
+    pos.coords.longitude.toFixed(5) + "  \u00b1" + Math.round(pos.coords.accuracy) + "m";
+
+  let ch;
+  try { ch = await api("/api/attendance/challenge", { method: "POST" }); }
+  catch (e) { return say(e.message, "err"); }
+
+  $("prompt").textContent = ch.instruction;
+  const neutral = grab();
+  await wait(1400);
+  const moved = grab();
+  $("prompt").textContent = "";
+
+  const body = {
+    punch_type: type, site_id: null, nonce: ch.nonce,
+    frames: [neutral, moved],
+    latitude: pos.coords.latitude, longitude: pos.coords.longitude,
+    gps_accuracy_m: pos.coords.accuracy, device_fingerprint: deviceId(),
+    client_time: new Date().toISOString(), client_punch_uid: crypto.randomUUID()
+  };
+
+  say("Checking\u2026");
+  try {
+    const d = await api("/api/attendance/punch", { method: "POST", body: JSON.stringify(body) });
+    gatesFrom(d.result); showPunchOutcome(d);
+    say(d.message, d.result === "accepted" ? "ok" : "err");
+    await loadRecent();
+  } catch (e) {
+    queue({ path: "/api/attendance/punch", body });
+    say("No connection. Saved and will sync when you're back online.", "err");
+    showQueued();
+  }
+}
+
+function showQueued() {
+  const n = readQueue().length;
+  $("queued").textContent = n ? n + " check-in" + (n > 1 ? "s" : "") + " waiting to sync" : "";
+}
+
+async function loadRecent() {
+  try {
+    const rows = await api("/api/attendance/mine?limit=6");
+    if (!rows.length) {
+      $("recent").innerHTML = '<div class="empty">' + I.clock +
+        "<b>No check-ins yet</b>Your history appears here.</div>";
+      return;
+    }
+    $("recent").innerHTML = '<table class="tbl"><tbody>' + rows.map(p => {
+      const cls = p.result === "accepted" ? "ok" : p.result === "flagged_review" ? "warn" : "bad";
+      return `<tr><td>
+          <div class="cell-main">${p.type === "checkin" ? "Check in" : "Check out"}</div>
+          <div class="cell-sub mono">${new Date(p.at).toLocaleString("en-GB")}</div>
+        </td>
+        <td style="text-align:right">
+          <span class="pill ${cls}">${p.result.replace(/_/g, " ")}</span>
+          <div class="cell-sub">${p.method}</div>
+        </td></tr>`;
+    }).join("") + "</tbody></table>";
+  } catch (e) { /* non-fatal */ }
+}
+
+let LASTGEO = null;
+let OPEN_CHECKIN = false;
+
+async function loadMyLocations(fresh) {
+  try {
+    const d = await api("/api/attendance/my-locations");
+    OPEN_CHECKIN = !!d.open_checkin;
+    if (!d.locations.length) {
+      $("myloc").innerHTML = "<b style='color:var(--alert,#8C3A2B)'>No active location " +
+        "assignment.</b> You cannot check in until HR assigns you to a location.";
+      $("reqexc").style.display = "";
+    } else {
+      $("myloc").innerHTML = d.locations.map(l =>
+        `<div><b>${l.name}</b> — allowed radius ${l.radius_m} m` +
+        `${l.assignment_type !== "primary" ? " · " + l.assignment_type : ""}` +
+        `${l.checkout_rule === "same_location" ? " · check out at the same location" : ""}</div>`
+      ).join("");
+    }
+    if (d.open_checkin) $("myloc").innerHTML +=
+      "<div style='margin-top:4px;color:var(--muted,#6B6455)'>You have an open check-in.</div>";
+  } catch (e) { $("myloc").textContent = e.message; }
+  if (fresh || !LASTGEO) refreshGeoStatus();
+}
+
+function refreshGeoStatus() {
+  if (!navigator.geolocation) return;
+  $("locstat").textContent = "Reading GPS…";
+  navigator.geolocation.getCurrentPosition(pos => {
+    LASTGEO = pos;
+    $("locstat").textContent =
+      `GPS accuracy ±${Math.round(pos.coords.accuracy)} m · checking distance…`;
+    runPreflight();
+  }, () => {
+    LASTGEO = null;
+    $("locstat").textContent = "Location permission denied — attendance will be rejected.";
+    gateButtons(false, false);
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+/* Server-measured position report. Advisory only: the punch endpoints
+   re-validate everything, so a tampered response cannot let anyone in. */
+async function runPreflight() {
+  if (!LASTGEO) return;
+  const action = OPEN_CHECKIN ? "checkout" : "checkin";
+  let d;
+  try {
+    d = await api("/api/attendance/preflight", { method: "POST", body: JSON.stringify({
+      action,
+      latitude: LASTGEO.coords.latitude,
+      longitude: LASTGEO.coords.longitude,
+      gps_accuracy_m: LASTGEO.coords.accuracy }) });
+  } catch (e) {
+    $("locstat").textContent = "Couldn't check your position: " + e.message;
+    return;
+  }
+  const near = (d.candidates || [])[0];
+  const lines = [`GPS accuracy ±${Math.round(LASTGEO.coords.accuracy)} m`];
+  if (near) {
+    lines.push(`${Math.round(near.distance_m)} m from ${near.name}`);
+    lines.push(`radius ${near.radius_m} m`);
+    lines.push(near.inside ? "INSIDE geofence" : "OUTSIDE geofence");
+  }
+  $("locstat").textContent = lines.join(" · ");
+  $("locstat").style.color = d.ok ? "" : "var(--bad,#9B2C2C)";
+  if (!d.ok) say(d.message, "err");
+  gateButtons(d.ok, d.can_request_exception);
+}
+
+function gateButtons(ok, canExcept) {
+  ["in", "out"].forEach(id => {
+    const b = $(id);
+    if (b) { b.disabled = !ok; b.title = ok ? "" : "Blocked: see the location status above."; }
+  });
+  $("reqexc").style.display = canExcept ? "" : "none";
+}
+
+function showPunchOutcome(d) {
+  const parts = [];
+  if (d.distance_from_site_m != null)
+    parts.push(`distance ${Math.round(d.distance_from_site_m)} m`);
+  $("locstat").textContent = parts.join(" · ");
+  const rejected = !["accepted", "flagged_review"].includes(d.result);
+  $("reqexc").style.display = rejected ? "" : "none";
+}
+
+async function requestException() {
+  const reason = prompt(
+    "Why can't you punch from your assigned location?\n" +
+    "client_meeting / emergency_site_visit / gps_failure / device_failure / " +
+    "temporary_assignment / business_travel / remote_work_authorised",
+    "client_meeting");
+  if (!reason) return;
+  const text = prompt("Add a short explanation for your manager:") || "";
+  try {
+    await api("/api/locations/exceptions", { method: "POST", body: JSON.stringify({
+      requested_action: "checkin", requested_for: new Date().toISOString(),
+      latitude: LASTGEO ? LASTGEO.coords.latitude : null,
+      longitude: LASTGEO ? LASTGEO.coords.longitude : null,
+      reason_code: reason.trim(), reason_text: text }) });
+    say("Exception request submitted — your manager and HR will review it.", "ok");
+  } catch (e) { say(e.message, "err"); }
+}
+
+$("in").onclick = () => facePunch("checkin");
+$("out").onclick = () => facePunch("checkout");
+$("refresh").onclick = e => { e.preventDefault(); loadRecent(); };
+
+(async () => {
+  if (!await Shell.mount("checkin")) return;
+  await loadMyLocations();
+  $("retryloc").onclick = () => loadMyLocations(true);
+  $("reqexc").onclick = requestException;
+  try {
+    const eng = await api("/api/attendance/engine");
+    if (!eng.face_engine_ready) {
+      // No PIN fallback exists any more, so say plainly that attendance
+      // cannot be recorded rather than showing a dead button.
+      $("faceBlock").style.display = "none";
+      gateButtons(false, true);
+      say("Face check-in is unavailable on this server, so attendance can't be "
+        + "recorded right now. Tell HR \u2014 they can raise an attendance "
+        + "exception for you in the meantime.", "err");
+    }
+  } catch (e) { say(e.message, "err"); }
+  await loadRecent();
+  await flushQueue();
+  showQueued();
+})();
+
+window.addEventListener("online", async () => {
+  const n = await flushQueue();
+  if (n) { say("Synced " + n + " saved check-in" + (n > 1 ? "s" : "") + ".", "ok"); showQueued(); }
+  await loadRecent();
+});
+</script>
+</body>
+</html>

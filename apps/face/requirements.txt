@@ -1,0 +1,10 @@
+# Every package here has a prebuilt wheel on every platform we support, so
+# installation needs no C++ compiler anywhere. That is the whole reason
+# face_engine.py runs the ONNX graphs directly instead of importing insightface,
+# whose Cython mesh renderer we never call but pip insists on building.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+onnxruntime==1.27.0
+opencv-python-headless==4.11.0.86
+numpy==2.2.1
+requests==2.32.3

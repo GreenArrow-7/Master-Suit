@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attendance &middot; Manath Homes</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+.tiles{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:22px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.tile .k{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-family:var(--display);font-size:30px;margin-top:4px}
+.toolbar{align-items:flex-end}
+.toolbar .field{margin:0}
+.open{color:var(--brass);font-weight:500}
+</style>
+</head>
+<body>
+<div id="page">
+  <div class="eyebrow">Attendance</div>
+  <h1>Attendance</h1>
+  <p style="font-size:13.5px;color:var(--muted);max-width:760px;margin-top:0">
+    One row per day, built from accepted check-ins and check-outs. Times are shown
+    in Asia/Dubai. A day stays <b>open</b> until a check-out is recorded.</p>
+
+  <div class="toolbar">
+    <div class="field"><label for="from">From</label><input type="date" id="from"></div>
+    <div class="field"><label for="to">To</label><input type="date" id="to"></div>
+    <div class="field" id="whoWrap" style="display:none;min-width:220px">
+      <label for="who">Employee</label><select id="who"></select>
+    </div>
+    <button class="btn" id="apply">Apply</button>
+    <button class="btn ghost" id="csv">Export CSV</button>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+  <div id="rows"></div>
+  <div class="msg" id="msg" style="margin-top:12px"></div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+let ME = null, DATA = [];
+
+const TZ = "Asia/Dubai";
+const fmtTime = iso => iso
+  ? new Date(iso).toLocaleTimeString("en-GB",
+      { hour: "2-digit", minute: "2-digit", timeZone: TZ })
+  : "—";
+const fmtDay = d =>
+  new Date(d + "T00:00:00Z").toLocaleDateString("en-GB",
+    { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" });
+
+function defaultRange() {
+  const to = new Date();
+  const from = new Date(to.getTime() - 29 * 86400000);
+  $("to").value = to.toISOString().slice(0, 10);
+  $("from").value = from.toISOString().slice(0, 10);
+}
+
+function summarise(rows) {
+  const worked = rows.reduce((a, r) => a + (r.worked_minutes || 0), 0);
+  const complete = rows.filter(r => r.status === "complete").length;
+  const open = rows.filter(r => r.checkin_at && !r.checkout_at).length;
+  const verified = rows.filter(r => r.face_verified).length;
+  $("tiles").innerHTML = `
+    <div class="tile"><div class="k">Days recorded</div><div class="v">${rows.length}</div></div>
+    <div class="tile"><div class="k">Total hours</div>
+      <div class="v">${Math.floor(worked / 60)}<span style="font-size:16px">h ${worked % 60}m</span></div></div>
+    <div class="tile"><div class="k">Completed</div><div class="v">${complete}</div></div>
+    <div class="tile"><div class="k">Still open</div><div class="v">${open}</div></div>
+    <div class="tile"><div class="k">Face verified</div><div class="v">${verified}</div></div>`;
+}
+
+function render(rows) {
+  summarise(rows);
+  if (!rows.length) {
+    $("rows").innerHTML = '<div class="empty">No attendance in this period.</div>';
+    return;
+  }
+  $("rows").innerHTML = `<table>
+    <tr><th>Date</th><th>Check in</th><th>Check out</th><th>Duration</th>
+        <th>Location</th><th>Verified</th><th>Status</th></tr>` +
+    rows.map(r => `<tr>
+      <td>${fmtDay(r.day)}</td>
+      <td class="mono">${fmtTime(r.checkin_at)}</td>
+      <td class="mono">${r.checkout_at ? fmtTime(r.checkout_at)
+          : '<span class="open">open</span>'}</td>
+      <td class="mono">${r.worked_hhmm || "—"}</td>
+      <td>${esc(r.checkin_location || "—")}${
+        r.checkout_location && r.checkout_location !== r.checkin_location
+          ? " → " + esc(r.checkout_location) : ""}</td>
+      <td>${r.face_verified ? '<span class="pill ok">face</span>'
+                            : '<span class="pill">—</span>'}</td>
+      <td>${esc(r.status)}</td>
+    </tr>`).join("") + "</table>";
+}
+
+async function load() {
+  say("", "");
+  const q = new URLSearchParams({ start: $("from").value, end: $("to").value });
+  if (ME && ["hr", "admin"].includes(ME.role) && $("who").value)
+    q.set("employee_id", $("who").value);
+  try {
+    DATA = await api("/api/attendance/days?" + q.toString());
+    render(DATA);
+  } catch (e) {
+    say(e.message, "err");
+    $("rows").innerHTML = "";
+  }
+}
+
+function exportCsv() {
+  if (!DATA.length) return say("Nothing to export.", "err");
+  const head = ["Employee", "Date", "Check in", "Check out", "Duration",
+                "Check-in location", "Check-out location", "Face verified", "Status"];
+  const lines = [head.join(",")].concat(DATA.map(r => [
+    r.employee_name || "", r.day, r.checkin_at || "", r.checkout_at || "",
+    r.worked_hhmm || "", r.checkin_location || "", r.checkout_location || "",
+    r.face_verified ? "yes" : "no", r.status,
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")));
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `attendance_${$("from").value}_${$("to").value}.csv`;
+  a.click();
+}
+
+(async () => {
+  ME = await Shell.mount("attendance");
+  if (!ME) return;
+  defaultRange();
+  $("apply").onclick = load;
+  $("csv").onclick = exportCsv;
+
+  if (["hr", "admin"].includes(ME.role)) {
+    $("whoWrap").style.display = "";
+    try {
+      const staff = await api("/api/auth/employees");
+      $("who").innerHTML = `<option value="">Me (${esc(ME.full_name)})</option>` +
+        staff.filter(e => e.id !== ME.id)
+             .map(e => `<option value="${e.id}">${esc(e.full_name)}</option>`).join("");
+      $("who").onchange = load;
+    } catch { $("whoWrap").style.display = "none"; }
+  }
+  await load();
+})();
+</script>
+</body>
+</html>

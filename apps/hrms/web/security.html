@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security — Manath Homes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+
+<div id="page">
+  <div class="eyebrow">Your account</div>
+  <h1>Security</h1>
+  <p class="lede">Two-factor authentication and your password.</p>
+
+  <div class="grid g2">
+    <!-- 2FA -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Two-factor authentication</h2>
+        <div class="spacer"></div>
+        <span class="pill" id="tfaPill">—</span>
+      </div>
+      <div class="card-body">
+        <p class="hint" id="tfaSummary" style="margin:0 0 14px">Loading…</p>
+
+        <div id="stepStart" style="display:none">
+          <div class="note info">An authenticator means a stolen password isn't
+            enough to reach your account — and it lets you reset your own
+            password without calling HR.</div>
+          <button class="btn" id="begin" style="margin-top:14px">Set up authenticator</button>
+        </div>
+
+        <div id="stepScan" style="display:none">
+          <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+            <img id="qr" alt="Authenticator QR code"
+                 style="width:172px;height:172px;background:#fff;padding:8px;
+                        border:1px solid var(--line);border-radius:var(--r-sm)">
+            <div style="flex:1;min-width:180px">
+              <p class="hint" style="margin-top:0">Scan with Google Authenticator,
+                Microsoft Authenticator or 1Password. Can't scan? Type this key:</p>
+              <div class="secret" id="secret" style="font-size:12px"></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:16px">
+            <label for="code2">Enter the 6-digit code to confirm</label>
+            <input id="code2" inputmode="numeric" maxlength="6" placeholder="000000"
+                   style="font-family:var(--mono);font-size:19px;letter-spacing:.26em;text-align:center">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" id="confirm">Confirm and enable</button>
+            <button class="btn ghost" id="cancel">Cancel</button>
+          </div>
+        </div>
+
+        <div id="stepCodes" style="display:none">
+          <div class="note"><b>Save these recovery codes now.</b> Each works once,
+            and this is the only time they're shown.</div>
+          <div class="codes" id="codeList" style="margin:14px 0"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" id="copy">Copy codes</button>
+            <button class="btn ghost" id="done">I've saved them</button>
+          </div>
+        </div>
+
+        <div id="stepManaged" style="display:none;gap:8px">
+          <button class="btn ghost" id="regen">New recovery codes</button>
+          <button class="btn danger" id="off">Turn off</button>
+        </div>
+
+        <div class="msg" id="msg" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- biometric consent -->
+    <div class="card">
+      <div class="card-head"><h2>Face check-in consent</h2></div>
+      <div class="card-body">
+        <p class="hint" style="margin-top:0">Your face data is biometric data.
+          Under UAE PDPL we may only process it with your explicit consent, and
+          you can withdraw it at any time. Only you can give this consent —
+          HR cannot record it on your behalf.</p>
+
+        <div class="note" style="margin:14px 0">
+          <b>What is stored:</b> four mathematical templates derived from your
+          face, not photographs of you. At each check-in the camera frame is
+          encrypted before it is written to disk and is readable only by
+          authorised HR staff. Withdrawing consent deletes your templates
+          immediately.
+        </div>
+
+        <div id="consentState" class="hint" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="giveConsent">I consent to face check-in</button>
+          <button class="btn danger" id="withdrawConsent">Withdraw consent</button>
+        </div>
+        <div class="msg" id="msgBio" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- password -->
+    <div class="card">
+      <div class="card-head"><h2>Password</h2></div>
+      <div class="card-body">
+        <p class="hint" style="margin-top:0">Changing your password signs you out
+          of every other device.</p>
+        <div class="field" style="margin-top:14px">
+          <label for="cur">Current password</label><input id="cur" type="password">
+        </div>
+        <div class="field">
+          <label for="nw">New password</label><input id="nw" type="password">
+          <div class="hint">At least 12 characters.</div>
+        </div>
+        <button class="btn" id="savepw">Change password</button>
+        <div class="msg" id="msg2" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+const show = (id, on) => $(id).style.display = on ? (id === "stepManaged" ? "flex" : "block") : "none";
+
+async function render() {
+  const st = await api("/api/auth/2fa/status");
+  const pill = $("tfaPill");
+  pill.textContent = st.enabled ? (st.low_recovery_codes ? "low codes" : "on") : "off";
+  pill.className = "pill " + (st.enabled ? (st.low_recovery_codes ? "warn" : "ok") : "bad");
+
+  if (st.enabled) {
+    $("tfaSummary").innerHTML =
+      "On since " + new Date(st.confirmed_at).toLocaleDateString() + ". <b>" +
+      st.recovery_codes_remaining + "</b> recovery codes left." +
+      (st.low_recovery_codes ? " Generate new ones soon." : "") +
+      (st.required_for_your_role ? "<br>Required for your role \u2014 it can't be turned off." : "");
+    show("stepStart", false); show("stepScan", false); show("stepManaged", true);
+    $("off").style.display = st.required_for_your_role ? "none" : "";
+  } else {
+    $("tfaSummary").textContent = st.required_for_your_role
+      ? "Required for your role. Set it up to keep using your account."
+      : "Not set up. Your password is the only thing protecting this account.";
+    show("stepStart", true); show("stepManaged", false);
+  }
+}
+
+$("begin").onclick = async () => {
+  try {
+    const d = await api("/api/auth/2fa/setup", { method: "POST" });
+    $("qr").src = "data:image/png;base64," + d.qr_png_base64;
+    $("secret").textContent = d.secret;
+    show("stepStart", false); show("stepScan", true);
+    $("code2").focus();
+  } catch (e) { say(e.message, "err"); }
+};
+$("cancel").onclick = () => { show("stepScan", false); show("stepStart", true); say(""); };
+
+$("confirm").onclick = async () => {
+  try {
+    const d = await api("/api/auth/2fa/enable",
+      { method: "POST", body: JSON.stringify({ code: $("code2").value.trim() }) });
+    $("codeList").innerHTML = d.recovery_codes.map(c => "<div>" + c + "</div>").join("");
+    show("stepScan", false); show("stepCodes", true);
+    say("Two-factor authentication is on.", "ok");
+  } catch (e) { say(e.message, "err"); }
+};
+
+$("copy").onclick = () => {
+  const text = [...document.querySelectorAll("#codeList div")].map(d => d.textContent).join("\n");
+  navigator.clipboard.writeText(text).then(() => say("Copied.", "ok"));
+};
+$("done").onclick = async () => {
+  if (sessionStorage.getItem("enrollment_mode") === "1") {
+    sessionStorage.removeItem("enrollment_mode");
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh");
+    location.href = "login.html";
+    return;
+  }
+  show("stepCodes", false); say(""); await render();
+};
+
+$("regen").onclick = async () => {
+  const code = prompt("Enter a code from your authenticator app to confirm:");
+  if (!code) return;
+  try {
+    const d = await api("/api/auth/2fa/recovery/regenerate",
+      { method: "POST", body: JSON.stringify({ code: code.trim() }) });
+    $("codeList").innerHTML = d.recovery_codes.map(c => "<div>" + c + "</div>").join("");
+    show("stepManaged", false); show("stepCodes", true);
+    say("New codes generated. The old ones no longer work.", "ok");
+  } catch (e) { say(e.message, "err"); }
+};
+
+$("off").onclick = async () => {
+  const pw = prompt("Confirm your password:");
+  if (!pw) return;
+  const code = prompt("Enter a code from your authenticator app:");
+  if (!code) return;
+  try {
+    await api("/api/auth/2fa/disable", { method: "POST",
+      body: JSON.stringify({ current_password: pw, code: code.trim() }) });
+    say("Two-factor authentication is off.", "ok");
+    await render();
+  } catch (e) { say(e.message, "err"); }
+};
+
+$("savepw").onclick = async () => {
+  try {
+    await api("/api/auth/password", { method: "POST", body: JSON.stringify({
+      current_password: $("cur").value, new_password: $("nw").value }) });
+    say("Password changed.", "ok", "msg2");
+    $("cur").value = $("nw").value = "";
+  } catch (e) { say(e.message, "err", "msg2"); }
+};
+
+const POLICY_VERSION = "v1";
+
+async function renderConsent(me) {
+  const on = !!me.biometric_consent;
+  $("consentState").innerHTML = on
+    ? "Status: <b>consent given</b>. Face check-in is available to you."
+    : "Status: <b>no consent recorded</b>. Face check-in is unavailable until "
+      + "you consent, and HR cannot enrol your face.";
+  $("giveConsent").style.display = on ? "none" : "";
+  $("withdrawConsent").style.display = on ? "" : "none";
+}
+
+async function setConsent(accepted) {
+  if (!accepted && !confirm(
+      "Withdraw consent?\n\nYour face templates will be deleted immediately "
+      + "and you will not be able to use face check-in until you consent again."))
+    return;
+  try {
+    const d = await api("/api/auth/consent", { method: "POST", body: JSON.stringify({
+      accepted, policy_version: POLICY_VERSION }) });
+    say(d.message, "ok", "msgBio");
+    const me = await api("/api/auth/me");
+    await renderConsent(me);
+  } catch (e) { say(e.message, "err", "msgBio"); }
+}
+
+(async () => {
+  if (sessionStorage.getItem("enrollment_mode") === "1") {
+    document.querySelectorAll(".card").forEach((card, index) => {
+      if (index > 0) card.style.display = "none";
+    });
+    try { await render(); } catch (e) { say(e.message, "err"); }
+    return;
+  }
+  const me = await Shell.mount("security");
+  if (!me) return;
+  $("giveConsent").onclick = () => setConsent(true);
+  $("withdrawConsent").onclick = () => setConsent(false);
+  try { await renderConsent(await api("/api/auth/me")); }
+  catch (e) { say(e.message, "err", "msgBio"); }
+  try { await render(); } catch (e) { say(e.message, "err"); }
+})();
+</script>
+</body>
+</html>

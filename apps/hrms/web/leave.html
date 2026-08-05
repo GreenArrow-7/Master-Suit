@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leave — Manath Homes HRMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#EFE9DC; --surface:#F7F3EA; --royal:#0E3B2E; --royal-deep:#082720;
+  --brass:#B08D4F; --brass-soft:#D9C293; --ink:#1C1A16; --muted:#6B6455;
+  --line:rgba(14,59,46,.16); --alert:#8C3A2B;
+  --display:"Fraunces",Georgia,serif; --body:"Inter Tight",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace; --r:4px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--body)}
+header{background:var(--royal-deep);color:var(--surface);padding:16px 24px;
+       display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.brand{font-family:var(--display);font-size:20px;font-weight:600}
+.brand span{color:var(--brass)}
+nav{display:flex;gap:20px;font-size:14px}
+nav a{color:var(--brass-soft);text-decoration:none;padding-bottom:3px}
+nav a.on{color:var(--surface);border-bottom:2px solid var(--brass)}
+main{max-width:1040px;margin:0 auto;padding:32px 20px 64px}
+h1{font-family:var(--display);font-weight:400;font-size:32px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:30px}
+h2{font-family:var(--display);font-weight:600;font-size:17px;margin:36px 0 14px;
+   display:flex;align-items:center;gap:12px}
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* Balance meters — the signature: leave shown as a depleting brass bar ---- */
+.meters{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.meter{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.meter .name{font-size:13px;font-weight:500;margin-bottom:2px}
+.meter .unpaid{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+               text-transform:uppercase;color:var(--brass)}
+.meter .num{font-family:var(--display);font-size:30px;line-height:1.1;margin:8px 0 2px}
+.meter .of{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.bar{height:5px;background:rgba(14,59,46,.1);border-radius:3px;margin-top:12px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--royal);border-radius:3px}
+.bar i.low{background:var(--brass)}
+.bar i.none{background:var(--alert)}
+
+/* Form ------------------------------------------------------------------ */
+.form{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+      padding:20px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.field{display:flex;flex-direction:column}
+label{font-size:12px;font-weight:500;margin-bottom:5px}
+input,select,textarea{font-family:var(--body);font-size:14px;padding:10px 11px;
+       background:var(--canvas);border:1px solid var(--line);border-radius:var(--r);color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brass);outline-offset:1px}
+.full{grid-column:1/-1}
+.check{flex-direction:row;align-items:center;gap:8px}
+.check input{width:auto}
+button{font-family:var(--body);font-size:14px;font-weight:500;padding:11px 20px;
+       background:var(--royal);color:var(--surface);border:1px solid var(--royal);
+       border-radius:var(--r);cursor:pointer}
+button:hover{background:var(--royal-deep)}
+button:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+button.small{padding:7px 14px;font-size:13px}
+button.ghost{background:transparent;color:var(--royal)}
+button.danger{background:transparent;color:var(--alert);border-color:var(--alert)}
+
+/* Table ----------------------------------------------------------------- */
+table{width:100%;border-collapse:collapse;background:var(--surface);
+      border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+   text-transform:uppercase;color:var(--muted);padding:11px 14px;
+   border-bottom:1px solid var(--line);font-weight:400}
+td{padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td.dates{font-family:var(--mono);font-size:12px}
+.tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+     padding:3px 8px;border-radius:2px;border:1px solid currentColor}
+.tag.pending{color:var(--brass)}
+.tag.approved{color:var(--royal)}
+.tag.rejected,.tag.cancelled{color:var(--muted)}
+.empty{padding:26px;text-align:center;color:var(--muted);font-size:14px;
+       background:var(--surface);border:1px dashed var(--line);border-radius:var(--r)}
+.msg{margin-top:14px;font-size:14px;min-height:20px}
+.msg.err{color:var(--alert)} .msg.ok{color:var(--royal);font-weight:500}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<div id="page">
+  <h1>Leave</h1>
+  <div class="sub" id="sub">Loading…</div>
+
+  <h2>Your balance</h2>
+  <div class="meters" id="meters"></div>
+
+  <h2>Apply</h2>
+  <div class="form">
+    <div class="field">
+      <label for="type">Leave type</label>
+      <select id="type"></select>
+    </div>
+    <div class="field">
+      <label for="start">First day</label>
+      <input id="start" type="date">
+    </div>
+    <div class="field">
+      <label for="end">Last day</label>
+      <input id="end" type="date">
+    </div>
+    <div class="field check">
+      <input id="half" type="checkbox">
+      <label for="half" style="margin:0">Half day</label>
+    </div>
+    <div class="field full">
+      <label for="reason">Reason (optional)</label>
+      <textarea id="reason" rows="2"></textarea>
+    </div>
+    <div class="field full" id="docwrap" style="display:none">
+      <label for="doc">Supporting document reference</label>
+      <input id="doc" placeholder="e.g. /docs/medical-note.pdf">
+    </div>
+    <div class="full"><button class="btn" id="submit">Apply for leave</button></div>
+    <div class="msg full" id="msg"></div>
+  </div>
+
+  <h2>Your requests</h2>
+  <div id="mine"></div>
+
+  <div id="approvals" style="display:none">
+    <h2>Waiting on you</h2>
+    <div id="pending"></div>
+  </div>
+</div>
+
+<script src="shell.js"></script>
+<script>
+
+let TYPES = [];
+
+async function loadMe() {
+  const me = await api("/api/auth/me");
+  $("sub").textContent = `${me.full_name} · ${me.designation || me.role}`;
+  if (["manager", "hr", "admin"].includes(me.role)) {
+    $("approvals").style.display = "block";
+    loadPending();
+  }
+}
+
+async function loadBalances() {
+  const rows = await api("/api/leave/balances");
+  $("meters").innerHTML = rows.map(b => {
+    const total = b.accrued_days + b.carried_forward_days;
+    const pct = total > 0 ? Math.max(0, Math.min(100, (b.available_days / total) * 100)) : 0;
+    const cls = b.available_days === 0 ? "none" : pct < 25 ? "low" : "";
+    return `<div class="meter">
+      <div class="name">${b.leave_type}</div>
+      ${b.is_paid ? "" : '<div class="unpaid">Unpaid</div>'}
+      <div class="num">${b.available_days}</div>
+      <div class="of">of ${total.toFixed(1)} days · ${b.taken_days} used</div>
+      <div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
+    </div>`;
+  }).join("");
+}
+
+async function loadTypes() {
+  TYPES = await api("/api/leave/types");
+  $("type").innerHTML = TYPES.map(t =>
+    `<option value="${t.code}">${t.name}${t.is_paid ? "" : " (unpaid)"}</option>`).join("");
+  toggleDoc();
+}
+
+function toggleDoc() {
+  const t = TYPES.find(x => x.code === $("type").value);
+  $("docwrap").style.display = t && t.requires_document ? "flex" : "none";
+}
+
+function tableOf(rows, actions) {
+  if (!rows.length) return '<div class="empty">Nothing here yet.</div>';
+  return `<table><thead><tr>
+      ${actions ? "<th>Who</th>" : ""}<th>Type</th><th>Dates</th><th>Days</th>
+      <th>Status</th><th></th></tr></thead><tbody>` +
+    rows.map(r => `<tr>
+      ${actions ? `<td>${r.employee_name}</td>` : ""}
+      <td>${r.leave_type}</td>
+      <td class="dates">${r.start_date} → ${r.end_date}</td>
+      <td>${r.days_count}</td>
+      <td><span class="tag ${r.status}">${r.status}</span></td>
+      <td>${actions
+        ? `<button class="small" data-approve="${r.id}">Approve</button>
+           <button class="small danger" data-reject="${r.id}">Reject</button>`
+        : (["pending", "approved"].includes(r.status)
+            ? `<button class="small ghost" data-cancel="${r.id}">Cancel</button>` : "")}</td>
+    </tr>`).join("") + "</tbody></table>";
+}
+
+async function loadMine() {
+  $("mine").innerHTML = tableOf(await api("/api/leave/mine"), false);
+}
+
+async function loadPending() {
+  $("pending").innerHTML = tableOf(await api("/api/leave/pending"), true);
+}
+
+$("type").onchange = toggleDoc;
+
+$("submit").onclick = async () => {
+  say("");
+  const body = {
+    leave_type_code: $("type").value,
+    start_date: $("start").value,
+    end_date: $("end").value || $("start").value,
+    half_day: $("half").checked,
+    reason: $("reason").value || null,
+    document_path: $("doc").value || null
+  };
+  if (!body.start_date) return say("Pick a start date.", "err");
+  try {
+    const d = await api("/api/leave/apply", { method: "POST", body: JSON.stringify(body) });
+    say(`Applied for ${d.days_count} day${d.days_count === 1 ? "" : "s"}. Waiting for approval.`, "ok");
+    $("reason").value = ""; $("doc").value = "";
+    loadMine(); loadBalances();
+  } catch (e) { say(e.message, "err"); }
+};
+
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-approve],button[data-reject],button[data-cancel]");
+  if (!b) return;
+  try {
+    if (b.dataset.approve) {
+      await api(`/api/leave/${b.dataset.approve}/approve`, { method: "POST", body: "{}" });
+    } else if (b.dataset.reject) {
+      const note = prompt("Why are you rejecting this? The employee will see it.");
+      if (!note) return;
+      await api(`/api/leave/${b.dataset.reject}/reject`,
+                { method: "POST", body: JSON.stringify({ note }) });
+    } else {
+      if (!confirm("Cancel this leave request?")) return;
+      await api(`/api/leave/${b.dataset.cancel}/cancel`, { method: "POST" });
+    }
+    loadMine(); loadBalances(); loadPending();
+  } catch (e) { say(e.message, "err"); }
+});
+
+(async () => {
+  if (!await Shell.mount("leave")) return;
+  try { await loadMe(); await loadTypes(); await loadBalances(); await loadMine(); }
+  catch (e) { $("sub").textContent = e.message; }
+})();
+</script>
+</body>
+</html>
