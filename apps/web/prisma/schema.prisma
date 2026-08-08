@@ -561,46 +561,53 @@ model BillingEvent {
 }
 
 model OrganizationSetting {
-  id                String   @id @default(cuid())
-  tenantId          String   @unique
-  productName       String   @default("Master App")
-  logoUrl           String?
-  faviconUrl        String?
-  primaryColor      String   @default("#2447C7")
-  accentColor       String   @default("#0E7C66")
-  emailFromName     String?
-  emailFromAddress  String?
-  defaultTimezone   String   @default("Asia/Dubai")
-  defaultLocale     String   @default("en-AE")
-  defaultCurrency   String   @default("AED")
-  fiscalYearStart   Int      @default(1)
-  terminology       Json     @default("{}")
-  workingHours      Json     @default("{}")
-  quietHours        Json     @default("{}")
-  passwordPolicy    Json     @default("{}")
-  sessionTtlMinutes Int      @default(480)
-  mfaRequired       Boolean  @default(false)
-  ipAllowlist       String[] @default([])
-  retentionPolicy   Json     @default("{}")
-  featureFlags      Json     @default("{}")
+  id                    String   @id @default(cuid())
+  tenantId              String   @unique
+  productName           String   @default("Master App")
+  logoUrl               String?
+  faviconUrl            String?
+  primaryColor          String   @default("#2447C7")
+  accentColor           String   @default("#0E7C66")
+  emailFromName         String?
+  emailFromAddress      String?
+  defaultTimezone       String   @default("Asia/Dubai")
+  defaultLocale         String   @default("en-AE")
+  defaultCurrency       String   @default("AED")
+  fiscalYearStart       Int      @default(1)
+  terminology           Json     @default("{}")
+  workingHours          Json     @default("{}")
+  quietHours            Json     @default("{}")
+  passwordPolicy        Json     @default("{}")
+  sessionTtlMinutes     Int      @default(480)
+  mfaRequired           Boolean  @default(false)
+  ipAllowlist           String[] @default([])
+  retentionPolicy       Json     @default("{}")
+  featureFlags          Json     @default("{}")
   /// Workspace overrides for the HR policy registry in src/services/hr/settings.ts.
   /// Only keys that differ from the statutory/product default are stored, so a
   /// default that changes in a release reaches every workspace that never
   /// overrode it.
-  hrPolicy          Json     @default("{}")
+  hrPolicy              Json     @default("{}")
   /// Administrator-chosen grid columns, keyed by object type ("LEAD": ["stage", ...]).
   /// Only the chosen order is stored; labels and rendering stay in
   /// src/lib/grid/columns.ts so a catalogue change reaches every workspace.
-  gridColumns       Json     @default("{}")
+  gridColumns           Json     @default("{}")
   /// Which connected telephony vendor places this workspace's calls: twilio,
   /// exotel, knowlarity or plivo. One column rather than a TelephonyConfiguration
   /// table, because the per-vendor credentials and settings already have a home
   /// in IntegrationConnection — this records only which of them is the default.
   /// Null means "infer, if exactly one vendor is connected"; see
   /// src/lib/integrations/telephony/resolve.ts.
-  telephonyProvider String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  telephonyProvider     String?
+  /// Seconds a number is off-limits after it has been dialled. The rule the
+  /// auto-dialer exists to keep: ringing somebody twice in five minutes is the
+  /// complaint that ends a campaign, and it is not something to leave to an
+  /// agent watching the clock.
+  dialerCooldownSeconds Int      @default(300)
+  /// Attempts before a contact is retired from the queue as EXHAUSTED.
+  dialerMaxAttempts     Int      @default(4)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
@@ -5359,4 +5366,128 @@ model ClientRequirement {
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
   @@index([tenantId, ownerId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The auto-dialer (M7)
+//
+// Click-to-call, four telephony vendors, recordings, transcripts and campaigns
+// already existed. What did not was the thing that turns a list into a shift:
+// a queue an agent works through without deciding who to ring next.
+//
+// The acceptance criterion is the whole design — "dialer state survives a page
+// refresh; no call is lost or double-dialled" — and it has three consequences
+// visible below. The agent's position is a column, not client state. A contact
+// is claimed by exactly one session at a time. And an agent has at most one
+// live session, enforced by a partial unique index rather than by hoping.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DialerSessionStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum CampaignContactStatus {
+  PENDING
+  /// Claimed by a session. Nobody else may take it.
+  IN_PROGRESS
+  COMPLETED
+  /// The client asked to be rung back; `nextAttemptAt` says when.
+  CALLBACK
+  SKIPPED
+  /// Out of attempts, or the number does not work.
+  EXHAUSTED
+  /// Do not contact. Terminal, and never re-queued.
+  SUPPRESSED
+}
+
+/// One person to ring, once, as part of one campaign.
+model CampaignContact {
+  id         String @id @default(cuid())
+  tenantId   String
+  campaignId String
+
+  /// Who. A campaign is built from leads today; contactId is here because the
+  /// same queue will be pointed at an existing customer base for re-engagement.
+  leadId    String?
+  contactId String?
+
+  /// Denormalised from the lead, because the queue is worked at speed and the
+  /// number is what gets dialled. `phoneNormalized` is what the cooldown and
+  /// the duplicate check compare — the raw string is what a human reads.
+  displayName     String?
+  phone           String
+  phoneNormalized String?
+
+  status   CampaignContactStatus @default(PENDING)
+  /// Sequential order. The dialer hands them out by this, so a campaign can be
+  /// ordered by score, by recency, or by whatever the loader chose.
+  position Int                   @default(0)
+
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  /// When this row becomes eligible again — a callback time, or a retry after
+  /// no answer. NULL means "now".
+  nextAttemptAt DateTime?
+
+  /// Set while a session holds it. Released on advance, on end, and by the
+  /// stale-claim sweep.
+  claimedBySessionId String?
+  claimedAt          DateTime?
+
+  outcome    CallOutcome?
+  /// The last call placed for this row, so the outcome can be traced to audio.
+  lastCallId String?
+  notes      String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  /// One row per person per campaign. Ringing the same number twice off one
+  /// list is the complaint that ends a campaign.
+  @@unique([campaignId, phoneNormalized])
+  @@index([tenantId, campaignId, status, position])
+  @@index([tenantId, campaignId, nextAttemptAt])
+  @@index([tenantId, claimedBySessionId])
+  @@index([tenantId, leadId])
+}
+
+/// An agent working a campaign queue.
+///
+/// The row *is* the dialer. A refresh re-reads it and the agent is where they
+/// were, on the same contact, with the same counts — there is no client state
+/// to lose because there is no client state.
+model DialerSession {
+  id         String @id @default(cuid())
+  tenantId   String
+  campaignId String
+  userId     String
+
+  status DialerSessionStatus @default(ACTIVE)
+
+  /// The contact currently in front of the agent. The single most important
+  /// column here: it is what survives the refresh.
+  currentContactId String?
+  /// The call placed for that contact, if the agent has dialled yet.
+  currentCallId    String?
+
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  /// Touched on every advance. A session idle past the ceiling is reaped and
+  /// its claim released, so one closed laptop cannot strand a contact.
+  lastActivityAt DateTime  @default(now())
+
+  dialed    Int @default(0)
+  connected Int @default(0)
+  skipped   Int @default(0)
+  callbacks Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, campaignId, status])
+  @@index([tenantId, userId, status])
+  @@index([tenantId, status, lastActivityAt])
 }

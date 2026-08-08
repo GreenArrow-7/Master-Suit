@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import { can } from '@/lib/security/rbac';
+import SalesLink from '@/components/workspace/SalesLink';
 import CampaignSend from './CampaignSend';
 
 export const metadata = { title: 'Campaign Detail' };
@@ -78,7 +79,16 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
             {campaign.owner && ` · Owned by ${campaign.owner.fullName}`}
           </p>
         </div>
-        <Badge tone={STATUS_TONE[campaign.status]}>{campaign.status.toLowerCase()}</Badge>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* The dial queue lives here rather than under Calls: a queue belongs
+              to the campaign that decided who is in it. */}
+          {can(ctx, 'dialer', 'VIEW') && (
+            <SalesLink className="lf-btn lf-btn--sm" href={`/campaigns/${campaign.id}/dialer`}>
+              Open dialer
+            </SalesLink>
+          )}
+          <Badge tone={STATUS_TONE[campaign.status]}>{campaign.status.toLowerCase()}</Badge>
+        </div>
       </div>
 
       {can(ctx, 'campaigns', 'EDIT') && <CampaignSend campaignId={campaign.id} eligible={eligible} />}

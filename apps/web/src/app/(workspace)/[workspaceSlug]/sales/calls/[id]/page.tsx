@@ -35,7 +35,16 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
       include: {
         caller: { select: { id: true, fullName: true } },
         consent: true,
-        recording: { select: { id: true, mimeType: true, durationSecs: true, sizeBytes: true, createdAt: true } },
+        recording: {
+          select: {
+            id: true,
+            mimeType: true,
+            durationSecs: true,
+            sizeBytes: true,
+            createdAt: true,
+            storageBucket: true,
+          },
+        },
         transcript: { select: { id: true, wordCount: true, language: true, createdAt: true } },
       },
     }),
@@ -205,6 +214,34 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                   </>
                 )}
               </dl>
+
+              {/*
+                Playback, with a scrubber the browser draws.
+
+                A native <audio> element is the whole feature: seek, speed and
+                keyboard control for free, and better than a hand-rolled
+                scrubber would be. `preload="none"` because a call recording is
+                megabytes and most visits to this page never press play.
+
+                `storageBucket === 'provider'` means the media is still on the
+                telephony vendor's servers — the ingest worker has not pulled it
+                into our bucket yet, and the download route refuses it until it
+                has. Saying so beats a player that fails silently.
+              */}
+              {call.recording.storageBucket === 'provider' ? (
+                <p className="lf-hint" style={{ marginTop: 'var(--lf-space-3)' }}>
+                  Still transferring from the telephony provider. It will play once the media worker has it.
+                </p>
+              ) : (
+                <audio
+                  controls
+                  preload="none"
+                  src={`/api/v1/calls/${call.id}/recording/media`}
+                  style={{ width: '100%', marginTop: 'var(--lf-space-3)' }}
+                >
+                  Your browser cannot play audio.
+                </audio>
+              )}
             </section>
           )}
 
