@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  annualLeaveAccrued, expirySeverity, gratuityUae, monthsOfService,
-  noticePayInLieu, serviceYears, workingDays,
+  annualLeaveAccrued,
+  expirySeverity,
+  gratuityUae,
+  monthsOfService,
+  noticePayInLieu,
+  serviceYears,
+  workingDays,
 } from '@/services/hr/rules';
 
 /**

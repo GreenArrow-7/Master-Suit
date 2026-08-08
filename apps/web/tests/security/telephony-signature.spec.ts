@@ -4,7 +4,9 @@ import { HmacTelephonyProvider, MockTelephonyProvider } from '@/lib/integrations
 
 const secret = 'test-webhook-secret-with-enough-entropy';
 const payload = JSON.stringify({
-  callId: 'provider-call-42', status: 'completed', duration: 45,
+  callId: 'provider-call-42',
+  status: 'completed',
+  duration: 45,
   timestamp: '2026-08-03T08:00:00.000Z',
 });
 

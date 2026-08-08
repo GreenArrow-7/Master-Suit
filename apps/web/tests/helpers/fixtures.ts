@@ -6,8 +6,62 @@
  * suite asserted against data that never existed and proved nothing.
  */
 import { randomBytes } from 'node:crypto';
+import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createSessionToken } from './session';
+
+/**
+ * A workspace user as the application actually creates one: a PlatformUser that
+ * owns the login, a WorkspaceMembership binding it to the tenant, and the
+ * workspace-scoped `User` actor that carries the role.
+ *
+ * Fixtures used to create only the third of those, which worked solely because
+ * the test session helper wrote a legacy `Session` row keyed on it. That row
+ * type is gone, and with it a resolveCtx branch that skipped the `tenant.status`
+ * check — so fixtures now build the whole identity, and the tests authenticate
+ * the way production does.
+ */
+export async function createWorkspaceUser(input: {
+  tenantId: string;
+  roleId: string;
+  email: string;
+  fullName: string;
+  branchId?: string | null;
+  regionId?: string | null;
+}) {
+  const platformUser = await prisma.platformUser.create({
+    data: {
+      email: input.email,
+      normalizedEmail: input.email.toLowerCase(),
+      fullName: input.fullName,
+      status: 'ACTIVE',
+    },
+  });
+
+  const user = await prisma.user.create({
+    data: {
+      tenantId: input.tenantId,
+      email: input.email,
+      fullName: input.fullName,
+      roleId: input.roleId,
+      status: 'ACTIVE',
+      branchId: input.branchId ?? null,
+      regionId: input.regionId ?? null,
+    },
+  });
+
+  await prisma.workspaceMembership.create({
+    data: {
+      tenantId: input.tenantId,
+      platformUserId: platformUser.id,
+      salesUserId: user.id,
+      status: 'ACTIVE',
+      joinedAt: new Date(),
+    },
+  });
+
+  return user;
+}
 
 export interface TenantFixture {
   tenantId: string;
@@ -32,15 +86,22 @@ const MODULES = ['leads', 'calls', 'events', 'campaigns', 'accounts', 'contacts'
 /** An admin role holding every permission at ORGANIZATION scope. */
 async function createAdminRole(tenantId: string, suffix: string) {
   const role = await prisma.role.create({
-    data: { tenantId, key: `admin-${suffix}`, name: 'Test Administrator', rank: 0, defaultScope: 'ORGANIZATION', isSystem: true },
+    data: {
+      tenantId,
+      key: `admin-${suffix}`,
+      name: 'Test Administrator',
+      rank: 0,
+      defaultScope: 'ORGANIZATION',
+      isSystem: true,
+    },
   });
 
-  for (const module of MODULES) {
+  for (const permissionModule of MODULES) {
     for (const action of ALL_ACTIONS) {
       const permission = await prisma.permission.upsert({
-        where: { module_action: { module, action } },
+        where: { module_action: { module: permissionModule, action } },
         update: {},
-        create: { module, action },
+        create: { module: permissionModule, action },
       });
       await prisma.rolePermission.create({
         data: { tenantId, roleId: role.id, permissionId: permission.id, scope: 'ORGANIZATION' },
@@ -66,14 +127,11 @@ async function createTenant(label: string, suffix: string, leadCount: number): P
   });
 
   const role = await createAdminRole(tenant.id, suffix);
-  const user = await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      email: `admin@${slug}.test`,
-      fullName: `${label} Administrator`,
-      roleId: role.id,
-      status: 'ACTIVE',
-    },
+  const user = await createWorkspaceUser({
+    tenantId: tenant.id,
+    roleId: role.id,
+    email: `admin@${slug}.test`,
+    fullName: `${label} Administrator`,
   });
 
   const stage = await prisma.leadStage.create({
@@ -114,9 +172,16 @@ export interface Member {
 export interface Hierarchy {
   tenantId: string;
   /** Reps, each owning exactly one lead. */
-  repA1: Member; repA2: Member; repSubTeam: Member; repB1: Member; repOtherRegion: Member;
+  repA1: Member;
+  repA2: Member;
+  repSubTeam: Member;
+  repB1: Member;
+  repOtherRegion: Member;
   /** Managers at each visibility scope. */
-  teamManagerA: Member; branchManager: Member; regionalManager: Member; director: Member;
+  teamManagerA: Member;
+  branchManager: Member;
+  regionalManager: Member;
+  director: Member;
   totalLeads: number;
   cleanup: () => Promise<void>;
 }
@@ -142,12 +207,24 @@ export async function seedHierarchy(): Promise<Hierarchy> {
 
   const region1 = await prisma.region.create({ data: { tenantId, name: 'Region 1', code: `R1-${suffix}` } });
   const region2 = await prisma.region.create({ data: { tenantId, name: 'Region 2', code: `R2-${suffix}` } });
-  const branch1 = await prisma.branch.create({ data: { tenantId, name: 'Branch 1', code: `B1-${suffix}`, regionId: region1.id } });
-  const branch2 = await prisma.branch.create({ data: { tenantId, name: 'Branch 2', code: `B2-${suffix}`, regionId: region1.id } });
-  const branch3 = await prisma.branch.create({ data: { tenantId, name: 'Branch 3', code: `B3-${suffix}`, regionId: region2.id } });
-  const team1 = await prisma.team.create({ data: { tenantId, name: 'Team 1', code: `T1-${suffix}`, branchId: branch1.id } });
-  const team1a = await prisma.team.create({ data: { tenantId, name: 'Team 1a', code: `T1A-${suffix}`, branchId: branch1.id, parentTeamId: team1.id } });
-  const team2 = await prisma.team.create({ data: { tenantId, name: 'Team 2', code: `T2-${suffix}`, branchId: branch2.id } });
+  const branch1 = await prisma.branch.create({
+    data: { tenantId, name: 'Branch 1', code: `B1-${suffix}`, regionId: region1.id },
+  });
+  const branch2 = await prisma.branch.create({
+    data: { tenantId, name: 'Branch 2', code: `B2-${suffix}`, regionId: region1.id },
+  });
+  const branch3 = await prisma.branch.create({
+    data: { tenantId, name: 'Branch 3', code: `B3-${suffix}`, regionId: region2.id },
+  });
+  const team1 = await prisma.team.create({
+    data: { tenantId, name: 'Team 1', code: `T1-${suffix}`, branchId: branch1.id },
+  });
+  const team1a = await prisma.team.create({
+    data: { tenantId, name: 'Team 1a', code: `T1A-${suffix}`, branchId: branch1.id, parentTeamId: team1.id },
+  });
+  const team2 = await prisma.team.create({
+    data: { tenantId, name: 'Team 2', code: `T2-${suffix}`, branchId: branch2.id },
+  });
 
   const stage = await prisma.leadStage.create({
     data: { tenantId, key: `new-${suffix}`, name: 'New', position: 0, isDefault: true },
@@ -183,14 +260,13 @@ export async function seedHierarchy(): Promise<Hierarchy> {
     roleId: string,
     placement: { branchId?: string; regionId?: string; teamId?: string; isManager?: boolean },
   ): Promise<Member> {
-    const user = await prisma.user.create({
-      data: {
-        tenantId, roleId, status: 'ACTIVE',
-        email: `${name}-${suffix}@hierarchy.test`,
-        fullName: name,
-        branchId: placement.branchId ?? null,
-        regionId: placement.regionId ?? null,
-      },
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId,
+      email: `${name}-${suffix}@hierarchy.test`,
+      fullName: name,
+      branchId: placement.branchId,
+      regionId: placement.regionId,
     });
     if (placement.teamId) {
       await prisma.userTeam.create({
@@ -207,10 +283,19 @@ export async function seedHierarchy(): Promise<Hierarchy> {
     tenantId,
     repA1: await member('repA1', repRole.id, { branchId: branch1.id, regionId: region1.id, teamId: team1.id }),
     repA2: await member('repA2', repRole.id, { branchId: branch1.id, regionId: region1.id, teamId: team1.id }),
-    repSubTeam: await member('repSubTeam', repRole.id, { branchId: branch1.id, regionId: region1.id, teamId: team1a.id }),
+    repSubTeam: await member('repSubTeam', repRole.id, {
+      branchId: branch1.id,
+      regionId: region1.id,
+      teamId: team1a.id,
+    }),
     repB1: await member('repB1', repRole.id, { branchId: branch2.id, regionId: region1.id, teamId: team2.id }),
     repOtherRegion: await member('repOtherRegion', repRole.id, { branchId: branch3.id, regionId: region2.id }),
-    teamManagerA: await member('teamManagerA', teamRole.id, { branchId: branch1.id, regionId: region1.id, teamId: team1.id, isManager: true }),
+    teamManagerA: await member('teamManagerA', teamRole.id, {
+      branchId: branch1.id,
+      regionId: region1.id,
+      teamId: team1.id,
+      isManager: true,
+    }),
     branchManager: await member('branchManager', branchRole.id, { branchId: branch1.id, regionId: region1.id }),
     regionalManager: await member('regionalManager', regionRole.id, { branchId: branch1.id, regionId: region1.id }),
     director: await member('director', directorRole.id, {}),
@@ -219,7 +304,9 @@ export async function seedHierarchy(): Promise<Hierarchy> {
   return {
     ...hierarchy,
     totalLeads: 9,
-    cleanup: async () => { await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {}); },
+    cleanup: async () => {
+      await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
+    },
   };
 }
 
@@ -241,4 +328,39 @@ export async function seedTwoTenants(): Promise<Fixture> {
       }
     },
   };
+}
+
+/**
+ * Grants a role a set of permissions, creating the catalogue rows on demand.
+ *
+ * Extracted because six specs had their own copy of this loop, each typing the
+ * pairs as `[string, string][]` — which only compiled because `tests` was
+ * excluded from tsconfig, so `tsc --noEmit` had never checked the suite at all.
+ */
+/**
+ * `[module, action]` pairs for a role.
+ *
+ * Typed against Prisma's own enum so a misspelt action is a compile error. Six
+ * specs declared these as `[string, string][]`, which only ever compiled because
+ * `tests` was excluded from tsconfig — so `tsc --noEmit` had never checked the
+ * suite at all.
+ */
+export type Grants = readonly (readonly [string, PermissionAction])[];
+
+export async function grantPermissions(
+  tenantId: string,
+  roleId: string,
+  pairs: Grants,
+  scope: VisibilityScope = 'ORGANIZATION',
+) {
+  for (const [permissionModule, action] of pairs) {
+    const permission = await prisma.permission.upsert({
+      where: { module_action: { module: permissionModule, action } },
+      update: {},
+      create: { module: permissionModule, action },
+    });
+    await prisma.rolePermission.create({
+      data: { tenantId, roleId, permissionId: permission.id, granted: true, scope },
+    });
+  }
 }

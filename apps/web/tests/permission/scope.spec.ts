@@ -12,8 +12,12 @@ import { PATCH as patchLead } from '@/app/api/v1/leads/[id]/route';
 import { get, patch } from '../helpers/request';
 
 let h: Hierarchy;
-beforeAll(async () => { h = await seedHierarchy(); }, 60_000);
-afterAll(async () => { await h?.cleanup(); });
+beforeAll(async () => {
+  h = await seedHierarchy();
+}, 60_000);
+afterAll(async () => {
+  await h?.cleanup();
+});
 
 const ownersVisibleTo = async (cookie: string): Promise<Set<string>> => {
   const res = await get(listLeads, '/api/v1/leads?limit=200', cookie);
@@ -23,7 +27,7 @@ const ownersVisibleTo = async (cookie: string): Promise<Set<string>> => {
 
 describe('visibility scopes', () => {
   it('OWN — a rep sees only their own leads', async () => {
-    expect([...await ownersVisibleTo(h.repA1.cookie)]).toEqual([h.repA1.id]);
+    expect([...(await ownersVisibleTo(h.repA1.cookie))]).toEqual([h.repA1.id]);
   });
 
   it('TEAM — a team manager sees the whole team, including descendant teams', async () => {
@@ -76,12 +80,22 @@ describe('write-path re-check (IDOR)', () => {
   });
 
   it('a manager can patch a lead inside their scope', async () => {
-    const res = await patch(patchLead, `/api/v1/leads/${h.repA1.leadId}`, { fullName: 'Coached' }, h.teamManagerA.cookie);
+    const res = await patch(
+      patchLead,
+      `/api/v1/leads/${h.repA1.leadId}`,
+      { fullName: 'Coached' },
+      h.teamManagerA.cookie,
+    );
     expect(res.status).toBe(200);
   });
 
   it('a team manager cannot patch a lead outside their team', async () => {
-    const res = await patch(patchLead, `/api/v1/leads/${h.repOtherRegion.leadId}`, { fullName: 'Reached' }, h.teamManagerA.cookie);
+    const res = await patch(
+      patchLead,
+      `/api/v1/leads/${h.repOtherRegion.leadId}`,
+      { fullName: 'Reached' },
+      h.teamManagerA.cookie,
+    );
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 });

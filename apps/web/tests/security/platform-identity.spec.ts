@@ -20,11 +20,15 @@ describe('platform identity policy', () => {
     expect(isActiveWorkspaceMembership({ ...active, status: 'SUSPENDED' })).toBe(false);
     expect(isActiveWorkspaceMembership({ ...active, tenant: { ...active.tenant, status: 'SUSPENDED' } })).toBe(false);
     expect(isActiveWorkspaceMembership({ ...active, salesUser: null })).toBe(false);
-    expect(isActiveWorkspaceMembership({ ...active, salesUser: { status: 'DEACTIVATED', deletedAt: null } })).toBe(false);
+    expect(isActiveWorkspaceMembership({ ...active, salesUser: { status: 'DEACTIVATED', deletedAt: null } })).toBe(
+      false,
+    );
   });
 
   it('rejects soft-deleted workspaces and sales actors', () => {
     expect(isActiveWorkspaceMembership({ ...active, tenant: { ...active.tenant, deletedAt: new Date() } })).toBe(false);
-    expect(isActiveWorkspaceMembership({ ...active, salesUser: { ...active.salesUser, deletedAt: new Date() } })).toBe(false);
+    expect(isActiveWorkspaceMembership({ ...active, salesUser: { ...active.salesUser, deletedAt: new Date() } })).toBe(
+      false,
+    );
   });
 });

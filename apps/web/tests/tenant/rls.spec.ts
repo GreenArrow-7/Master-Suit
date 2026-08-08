@@ -10,7 +10,32 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 
+/**
+ * Never skipped.
+ *
+ * This used to be `describe.skipIf(!rlsUrl)`, so unsetting one environment
+ * variable made the entire cross-tenant proof disappear while the run stayed
+ * green — which is how "tenant isolation verified" got reported by a suite that
+ * verified nothing. If the connection is not configured, that is a broken test
+ * environment and it must say so.
+ */
 const rlsUrl = process.env.RLS_DATABASE_URL;
+if (!rlsUrl) {
+  throw new Error(
+    'RLS_DATABASE_URL is not set, so the row-level-security proof cannot run.\n' +
+      '  It must name the same NOBYPASSRLS role as DATABASE_URL — testing a role the\n' +
+      '  application never connects as proves nothing. See apps/web/.env.test.',
+  );
+}
+if (rlsUrl !== process.env.DATABASE_URL) {
+  throw new Error(
+    'RLS_DATABASE_URL and DATABASE_URL name different connections.\n' +
+      '  This suite exists to prove the database refuses cross-tenant access for the\n' +
+      '  role the application actually uses. Pointing it at a different role makes it\n' +
+      `  a decoration.\n    DATABASE_URL:     ${process.env.DATABASE_URL}\n    RLS_DATABASE_URL: ${rlsUrl}`,
+  );
+}
+
 const suffix = Date.now().toString(36);
 
 // Two workspaces standing in for the acceptance scenario's named companies.
@@ -54,6 +79,12 @@ beforeAll(async () => {
     await prisma.department.create({
       data: { tenantId: tenant.id, name: 'Sales', code: `SALES-${suffix}` },
     });
+    await prisma.moduleEntitlement.createMany({
+      data: [
+        { tenantId: tenant.id, module: 'HRMS', state: 'ACTIVE' },
+        { tenantId: tenant.id, module: 'SALES', state: 'ACTIVE' },
+      ],
+    });
   }
 
   app = new Client({ connectionString: rlsUrl });
@@ -67,11 +98,9 @@ afterAll(async () => {
   }
 });
 
-describe.skipIf(!rlsUrl)('postgres row-level security', () => {
+describe('postgres row-level security', () => {
   it('connects as a role that cannot bypass RLS', async () => {
-    const [row] = (await app.query(
-      `SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user`,
-    )).rows;
+    const [row] = (await app.query(`SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user`)).rows;
     expect(row.rolbypassrls).toBe(false);
     expect(row.rolsuper).toBe(false);
   });
@@ -102,11 +131,10 @@ describe.skipIf(!rlsUrl)('postgres row-level security', () => {
   });
 
   it('blocks a cross-workspace update', async () => {
-    const rows = await asTenant(
-      manath.id,
-      'UPDATE "Lead" SET "fullName" = $1 WHERE "tenantId" = $2 RETURNING id',
-      ['hijacked', leaders.id],
-    );
+    const rows = await asTenant(manath.id, 'UPDATE "Lead" SET "fullName" = $1 WHERE "tenantId" = $2 RETURNING id', [
+      'hijacked',
+      leaders.id,
+    ]);
     expect(rows).toHaveLength(0);
 
     const untouched = await prisma.lead.findFirst({ where: { tenantId: leaders.id } });
@@ -141,10 +169,71 @@ describe.skipIf(!rlsUrl)('postgres row-level security', () => {
     // cross-tenant control-plane tables gated by requirePlatformOwner instead.
     // AuthenticationFactor and PlatformSession are absent because they carry no
     // tenantId at all — they hang off the platform user, not a workspace.
-    expect(rows.map((r: any) => r.table_name)).toEqual([
-      'APIKey', 'AIAnalysis', 'CallAudit', 'IntegrationConnection',
-      'PasswordResetToken', 'PlatformAuditEvent', 'RateLimitCounter',
-      'Recording', 'RecordingConsent', 'Session', 'Transcript', 'WorkspaceMembership',
-    ].sort());
+    expect(rows.map((r: any) => r.table_name)).toEqual(
+      [
+        'APIKey',
+        'AIAnalysis',
+        'CallAudit',
+        'IntegrationConnection',
+        'PasswordResetToken',
+        'PlatformAuditEvent',
+        'RateLimitCounter',
+        'Recording',
+        'RecordingConsent',
+        'Session',
+        'Transcript',
+        // Redeemed by someone not signed in, before any tenant is known — the
+        // same category as PasswordResetToken. What guards it instead is that the
+        // token is stored hashed and every administrative read is tenant-scoped.
+        'WorkspaceInvitation',
+        'WorkspaceMembership',
+      ].sort(),
+    );
+  });
+});
+
+/**
+ * The pin, not just the policy.
+ *
+ * RLS being correct is only half of it: the application must actually tell
+ * Postgres which tenant it is acting for. When it does not, reads succeed and
+ * simply return nothing — no error, no 403, just empty relations.
+ *
+ * That failure mode shipped: requireWorkspace loads the workspace by primary key
+ * and pulls moduleEntitlements and subscription through it, but the pin only
+ * looked for a `tenantId` filter and a Tenant row is keyed by `id`. The includes
+ * came back empty, the UI read that as "no modules entitled", and the People
+ * module disappeared from the sidebar for every workspace.
+ *
+ * The rest of the suite connects as the owner role, which bypasses RLS and so
+ * cannot see any of this. These cases connect as the application role on purpose.
+ */
+describe('tenant pinning as the application role', () => {
+  it('returns no entitlements for a Tenant read that is not pinned', async () => {
+    const { rows } = await app.query(`SELECT count(*)::int AS count FROM "ModuleEntitlement" WHERE "tenantId" = $1`, [
+      manath.id,
+    ]);
+    expect(rows[0].count).toBe(0);
+  });
+
+  it('returns the entitlements once the tenant is pinned', async () => {
+    const rows = await asTenant(manath.id, 'SELECT module FROM "ModuleEntitlement" WHERE "tenantId" = $1', [manath.id]);
+    expect(rows.map((r: any) => r.module).sort()).toEqual(['HRMS', 'SALES']);
+  });
+
+  it('reads every tenant when acting as platform admin', async () => {
+    await app.query('BEGIN');
+    try {
+      await app.query(`SELECT set_config('app.platform_admin', 'on', true)`);
+      const { rows } = await app.query(
+        `SELECT count(DISTINCT "tenantId")::int AS tenants FROM "ModuleEntitlement" WHERE "tenantId" = ANY($1)`,
+        [[manath.id, leaders.id]],
+      );
+      // The platform console lists every workspace; without this it showed each
+      // one as having no modules and no employees.
+      expect(rows[0].tenants).toBe(2);
+    } finally {
+      await app.query('ROLLBACK');
+    }
   });
 });

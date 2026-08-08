@@ -27,8 +27,13 @@ function stubFetch(handler: Handler) {
   return { calls, spy };
 }
 
-beforeEach(() => { __resetAuthClientForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); __resetAuthClientForTests(); });
+beforeEach(() => {
+  __resetAuthClientForTests();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  __resetAuthClientForTests();
+});
 
 describe('no token is ever held in JavaScript', () => {
   it('never touches localStorage or sessionStorage', async () => {
@@ -66,15 +71,16 @@ describe('expiry and rotation', () => {
     let firstAttemptDone = false;
     const { calls } = stubFetch((url) => {
       if (url.includes('/auth/refresh')) return { status: 200 };
-      if (!firstAttemptDone) { firstAttemptDone = true; return { status: 401 }; }
+      if (!firstAttemptDone) {
+        firstAttemptDone = true;
+        return { status: 401 };
+      }
       return { status: 200 };
     });
 
     const response = await authFetch('/api/v1/thing');
     expect(response.status).toBe(200);
-    expect(calls.map((call) => call.url)).toEqual([
-      '/api/v1/thing', '/api/v1/auth/refresh', '/api/v1/thing',
-    ]);
+    expect(calls.map((call) => call.url)).toEqual(['/api/v1/thing', '/api/v1/auth/refresh', '/api/v1/thing']);
   });
 
   it('retries at most once — a second 401 is the answer', async () => {
@@ -98,7 +104,10 @@ describe('single flight', () => {
     const expired = new Set(['/api/v1/a', '/api/v1/b', '/api/v1/c', '/api/v1/d', '/api/v1/e']);
     const { calls } = stubFetch((url) => {
       if (url.includes('/auth/refresh')) return { status: 200 };
-      if (expired.has(url)) { expired.delete(url); return { status: 401 }; }
+      if (expired.has(url)) {
+        expired.delete(url);
+        return { status: 401 };
+      }
       return { status: 200 };
     });
 
@@ -115,7 +124,9 @@ describe('single flight', () => {
   it('allows a fresh refresh after the previous one settles', async () => {
     const { calls } = stubFetch(() => ({ status: 200 }));
     await refreshSession();
-    await new Promise((resolve) => { queueMicrotask(() => resolve(null)); });
+    await new Promise((resolve) => {
+      queueMicrotask(() => resolve(null));
+    });
     await refreshSession();
     expect(calls.filter((call) => call.url.includes('/auth/refresh'))).toHaveLength(2);
   });
@@ -135,10 +146,13 @@ describe('failing closed', () => {
   });
 
   it('treats a network failure during refresh as a failed refresh, not a success', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).includes('/auth/refresh')) throw new Error('network down');
-      return new Response(null, { status: 401 });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/auth/refresh')) throw new Error('network down');
+        return new Response(null, { status: 401 });
+      }),
+    );
     const ended = vi.fn();
     onSessionEnded(ended);
 
@@ -157,7 +171,9 @@ describe('failing closed', () => {
 
   it('survives a listener that throws', async () => {
     stubFetch(() => ({ status: 401 }));
-    onSessionEnded(() => { throw new Error('bad listener'); });
+    onSessionEnded(() => {
+      throw new Error('bad listener');
+    });
     const good = vi.fn();
     onSessionEnded(good);
     await expect(authFetch('/api/v1/thing')).resolves.toBeDefined();

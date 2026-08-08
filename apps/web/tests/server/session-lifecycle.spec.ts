@@ -14,7 +14,8 @@ import { hashPassword } from '@/lib/auth/password';
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
-    connectionString: process.env.E2E_DATABASE_URL ?? 'postgresql://leadflow:leadflow@localhost:5432/leadflow?schema=public',
+    connectionString:
+      process.env.E2E_DATABASE_URL ?? 'postgresql://leadflow:leadflow@localhost:5432/leadflow?schema=public',
   }),
 });
 
@@ -29,14 +30,35 @@ beforeAll(async () => {
   const passwordHash = await hashPassword(password);
 
   const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: `Session ${suffix}`, passwordHash, emailVerifiedAt: new Date(), status: 'ACTIVE' },
+    data: {
+      email,
+      normalizedEmail: email,
+      fullName: `Session ${suffix}`,
+      passwordHash,
+      emailVerifiedAt: new Date(),
+      status: 'ACTIVE',
+    },
   });
   platformUserId = platformUser.id;
   const user = await prisma.user.create({
-    data: { tenantId: tenant!.id, email, fullName: `Session ${suffix}`, passwordHash, emailVerifiedAt: new Date(), status: 'ACTIVE', roleId: role!.id, passwordChangedAt: new Date() },
+    data: {
+      tenantId: tenant!.id,
+      email,
+      fullName: `Session ${suffix}`,
+      emailVerifiedAt: new Date(),
+      status: 'ACTIVE',
+      roleId: role!.id,
+    },
   });
   await prisma.workspaceMembership.create({
-    data: { tenantId: tenant!.id, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', roleSnapshot: 'org_admin', joinedAt: new Date() },
+    data: {
+      tenantId: tenant!.id,
+      platformUserId: platformUser.id,
+      salesUserId: user.id,
+      status: 'ACTIVE',
+      roleSnapshot: 'org_admin',
+      joinedAt: new Date(),
+    },
   });
 });
 
@@ -68,7 +90,8 @@ async function clearLoginLimits() {
 async function login(): Promise<string> {
   await clearLoginLimits();
   const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
   expect(response.status, await response.clone().text()).toBe(200);
@@ -113,7 +136,7 @@ describe.sequential('session lifecycle', () => {
 
   it('treats replay of a rotated token as theft and revokes every session', async () => {
     const deviceA = await login();
-    await login();                                   // a second, innocent device
+    await login(); // a second, innocent device
     expect(await liveSessions()).toBeGreaterThanOrEqual(2);
 
     const rotated = await call('/api/v1/auth/refresh', 'POST', deviceA);

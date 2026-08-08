@@ -10,8 +10,12 @@ import { GET as getLead, PATCH as patchLead, DELETE as deleteLead } from '@/app/
 import { get, patch, del } from '../helpers/request';
 
 let fx: Fixture;
-beforeAll(async () => { fx = await seedTwoTenants(); });
-afterAll(async () => { await fx?.cleanup(); });
+beforeAll(async () => {
+  fx = await seedTwoTenants();
+});
+afterAll(async () => {
+  await fx?.cleanup();
+});
 
 describe('tenant isolation', () => {
   it('a list endpoint never returns another workspace records', async () => {
@@ -58,7 +62,9 @@ describe('tenant isolation', () => {
 
 describe('prisma tenant guard', () => {
   it('throws when a tenant-scoped read omits tenantId', async () => {
-    await expect(prisma.lead.findMany({ where: { score: { gte: 0 } } as any })).rejects.toBeInstanceOf(TenantGuardError);
+    await expect(prisma.lead.findMany({ where: { score: { gte: 0 } } as any })).rejects.toBeInstanceOf(
+      TenantGuardError,
+    );
   });
 
   it('throws when a create omits tenantId', async () => {
@@ -66,7 +72,9 @@ describe('prisma tenant guard', () => {
   });
 
   it('throws when an updateMany omits tenantId', async () => {
-    await expect(prisma.lead.updateMany({ where: { score: 0 } as any, data: { score: 1 } })).rejects.toBeInstanceOf(TenantGuardError);
+    await expect(prisma.lead.updateMany({ where: { score: 0 } as any, data: { score: 1 } })).rejects.toBeInstanceOf(
+      TenantGuardError,
+    );
   });
 
   it('excludes soft-deleted rows from reads by default', async () => {

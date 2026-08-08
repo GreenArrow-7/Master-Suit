@@ -55,7 +55,9 @@ describe('resolving stored overrides', () => {
   it('falls back to the default when a stored value is out of range', () => {
     // A range tightened in a release must not leave a nonsense number in force.
     expect(resolvePolicy({ faceMatchThreshold: 9 }).faceMatchThreshold).toBe(DEFAULT_POLICY.faceMatchThreshold);
-    expect(resolvePolicy({ faceMatchThreshold: 'nonsense' }).faceMatchThreshold).toBe(DEFAULT_POLICY.faceMatchThreshold);
+    expect(resolvePolicy({ faceMatchThreshold: 'nonsense' }).faceMatchThreshold).toBe(
+      DEFAULT_POLICY.faceMatchThreshold,
+    );
   });
 
   it('ignores keys that are not in the registry', () => {
@@ -64,7 +66,10 @@ describe('resolving stored overrides', () => {
 
   it('normalises weekend days and agent departments', () => {
     expect(resolvePolicy({ weekendDays: ['5', '6', '5'] }).weekendDays).toEqual([5, 6]);
-    expect(resolvePolicy({ agentDepartments: ' Brokerage , Leasing ' }).agentDepartments).toEqual(['brokerage', 'leasing']);
+    expect(resolvePolicy({ agentDepartments: ' Brokerage , Leasing ' }).agentDepartments).toEqual([
+      'brokerage',
+      'leasing',
+    ]);
   });
 });
 
@@ -77,7 +82,12 @@ describe('policy actually changes the outcome', () => {
   });
 
   it('changes accrual when a workspace is more generous than the statutory floor', () => {
-    const generous = { accrualMinMonthsService: 0, accrualDaysPerMonthUnderYear: 3, accrualDaysPerMonthAfterYear: 3, accrualAnnualCapDays: 40 };
+    const generous = {
+      accrualMinMonthsService: 0,
+      accrualDaysPerMonthUnderYear: 3,
+      accrualDaysPerMonthAfterYear: 3,
+      accrualAnnualCapDays: 40,
+    };
     expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'))).toBe(0);
     expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'), generous)).toBe(15);
   });
@@ -87,15 +97,21 @@ describe('policy actually changes the outcome', () => {
     const exited = day('2024-01-01');
     const statutory = gratuityUae(10_000, joined, exited);
     const richer = gratuityUae(10_000, joined, exited, {
-      gratuityMinYears: 1, gratuityFirstPeriodYears: 5,
-      gratuityDaysFirstPeriod: 30, gratuityDaysAfterFirstPeriod: 30, gratuityCapMonths: 24,
+      gratuityMinYears: 1,
+      gratuityFirstPeriodYears: 5,
+      gratuityDaysFirstPeriod: 30,
+      gratuityDaysAfterFirstPeriod: 30,
+      gratuityCapMonths: 24,
     });
     expect(richer.days).toBeGreaterThan(statutory.days);
 
     // A zero cap removes the ceiling rather than zeroing the payout.
     const uncapped = gratuityUae(10_000, day('1990-01-01'), day('2026-01-01'), {
-      gratuityMinYears: 1, gratuityFirstPeriodYears: 5,
-      gratuityDaysFirstPeriod: 21, gratuityDaysAfterFirstPeriod: 30, gratuityCapMonths: 0,
+      gratuityMinYears: 1,
+      gratuityFirstPeriodYears: 5,
+      gratuityDaysFirstPeriod: 21,
+      gratuityDaysAfterFirstPeriod: 30,
+      gratuityCapMonths: 0,
     });
     expect(uncapped.amount).toBeGreaterThan(240_000);
     expect(uncapped.cappedAtTwoYears).toBe(false);
@@ -103,7 +119,15 @@ describe('policy actually changes the outcome', () => {
 
   it('changes how far the head must turn to satisfy a challenge', () => {
     const face = (over: Partial<Detection> = {}): Detection => ({
-      ok: true, embedding: [1, 0, 0], detScore: 0.9, yaw: 0, pitch: 0, roll: 0, bboxAreaRatio: 0.2, blurScore: 200, ...over,
+      ok: true,
+      embedding: [1, 0, 0],
+      detScore: 0.9,
+      yaw: 0,
+      pitch: 0,
+      roll: 0,
+      bboxAreaRatio: 0.2,
+      blurScore: 200,
+      ...over,
     });
     const frames = [face(), face({ yaw: 8 })];
     const strict = { livenessYawDegrees: 12, livenessPitchDegrees: 10, livenessSamePersonThreshold: 0.4 };

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { haversineM, insideGeofence, withinTimeWindow, zonedParts } from '@/services/hr/rules';
-import { bestMatch, cosine, enrolmentSpread, fromBytes, toBytes, verifyLiveness, type Detection } from '@/services/hr/face';
+import {
+  bestMatch,
+  cosine,
+  enrolmentSpread,
+  fromBytes,
+  toBytes,
+  verifyLiveness,
+  type Detection,
+} from '@/services/hr/face';
 import { candidateAssignments } from '@/services/hr/attendance';
 
 /**
@@ -53,16 +61,27 @@ describe('opening hours', () => {
 });
 
 describe('candidate assignments', () => {
-  const at = new Date('2026-08-04T06:00:00.000Z');   // 10:00 Tuesday in Dubai
+  const at = new Date('2026-08-04T06:00:00.000Z'); // 10:00 Tuesday in Dubai
   const location = {
-    status: 'ACTIVE', effectiveFrom: null, effectiveTo: null,
-    workingDays: [1, 2, 3, 4, 5], openingTime: '08:00', closingTime: '18:00',
+    status: 'ACTIVE',
+    effectiveFrom: null,
+    effectiveTo: null,
+    workingDays: [1, 2, 3, 4, 5],
+    openingTime: '08:00',
+    closingTime: '18:00',
   };
   const assignment = {
-    status: 'ACTIVE', effectiveFrom: null, effectiveTo: null,
-    checkInAllowed: true, checkOutAllowed: true,
-    allowedDays: [], allowedStartTime: null, allowedEndTime: null,
-    locationId: 'loc', checkoutRule: 'SAME_LOCATION', location,
+    status: 'ACTIVE',
+    effectiveFrom: null,
+    effectiveTo: null,
+    checkInAllowed: true,
+    checkOutAllowed: true,
+    allowedDays: [],
+    allowedStartTime: null,
+    allowedEndTime: null,
+    locationId: 'loc',
+    checkoutRule: 'SAME_LOCATION',
+    location,
   };
   const run = (overrides: Record<string, unknown> = {}, action: 'CHECK_IN' | 'CHECK_OUT' = 'CHECK_IN') =>
     candidateAssignments([{ ...assignment, ...overrides } as never], action, at, 'Asia/Dubai');
@@ -114,16 +133,33 @@ describe('face templates', () => {
   });
 
   it('reports four shots of one pose as no spread', () => {
-    const same = [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]];
+    const same = [
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+    ];
     expect(enrolmentSpread(same)).toBeCloseTo(0, 6);
-    expect(enrolmentSpread([[1, 0, 0], [0.8, 0.6, 0]])).toBeGreaterThan(0.1);
+    expect(
+      enrolmentSpread([
+        [1, 0, 0],
+        [0.8, 0.6, 0],
+      ]),
+    ).toBeGreaterThan(0.1);
   });
 });
 
 describe('challenge-response liveness', () => {
   const face = (over: Partial<Detection> = {}): Detection => ({
-    ok: true, embedding: [1, 0, 0], detScore: 0.9, yaw: 0, pitch: 0, roll: 0,
-    bboxAreaRatio: 0.2, blurScore: 200, ...over,
+    ok: true,
+    embedding: [1, 0, 0],
+    detScore: 0.9,
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+    bboxAreaRatio: 0.2,
+    blurScore: 200,
+    ...over,
   });
 
   it('passes when the head turned the way the server asked', () => {

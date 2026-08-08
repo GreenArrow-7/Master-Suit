@@ -14,15 +14,21 @@ async function withProvider(provider: string, run: () => Promise<void>) {
   vi.resetModules();
   const previous = process.env.ANTIVIRUS_PROVIDER;
   process.env.ANTIVIRUS_PROVIDER = provider;
-  try { await run(); } finally {
+  try {
+    await run();
+  } finally {
     if (previous === undefined) delete process.env.ANTIVIRUS_PROVIDER;
     else process.env.ANTIVIRUS_PROVIDER = previous;
     vi.resetModules();
   }
 }
 
-beforeEach(() => { vi.resetModules(); });
-afterEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.resetModules();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('mock provider (tests only)', () => {
   it('detects the EICAR test file rather than blanket-approving', async () => {

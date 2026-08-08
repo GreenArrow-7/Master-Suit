@@ -22,15 +22,17 @@ async function tenantIds(): Promise<string[]> {
 describe('calls and events permission catalogue', () => {
   it('carries every action the leads module carries', async () => {
     const leadActions = await prisma.permission.findMany({
-      where: { module: 'leads' }, select: { action: true },
+      where: { module: 'leads' },
+      select: { action: true },
     });
     expect(leadActions.length).toBeGreaterThan(0);
 
-    for (const module of ENGAGEMENT) {
-      const actions = await prisma.permission.findMany({ where: { module }, select: { action: true } });
-      const missing = leadActions
-        .map((p) => p.action)
-        .filter((action) => !actions.some((a) => a.action === action));
+    for (const permissionModule of ENGAGEMENT) {
+      const actions = await prisma.permission.findMany({
+        where: { module: permissionModule },
+        select: { action: true },
+      });
+      const missing = leadActions.map((p) => p.action).filter((action) => !actions.some((a) => a.action === action));
       expect(missing, `${module} is missing actions`).toEqual([]);
     }
   });
@@ -44,7 +46,8 @@ describe('calls and events permission catalogue', () => {
     const roles = await prisma.role.findMany({
       where: { tenantId: { in: tenants } },
       select: {
-        id: true, key: true,
+        id: true,
+        key: true,
         permissions: {
           where: { granted: true, permission: { module: { in: ['leads', ...ENGAGEMENT] } } },
           select: { scope: true, permission: { select: { module: true, action: true } } },
@@ -53,13 +56,11 @@ describe('calls and events permission catalogue', () => {
     });
     for (const role of roles) {
       const leads = new Map(
-        role.permissions
-          .filter((p) => p.permission.module === 'leads')
-          .map((p) => [p.permission.action, p.scope]),
+        role.permissions.filter((p) => p.permission.module === 'leads').map((p) => [p.permission.action, p.scope]),
       );
 
-      for (const module of ENGAGEMENT) {
-        const granted = role.permissions.filter((p) => p.permission.module === module);
+      for (const permissionModule of ENGAGEMENT) {
+        const granted = role.permissions.filter((p) => p.permission.module === permissionModule);
 
         // A role with no leads access must not have gained engagement access, and a
         // role with leads access must not exceed the scope it holds there.
