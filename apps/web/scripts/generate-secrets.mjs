@@ -10,7 +10,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 
-const KEYS = ['SESSION_SECRET', 'FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'];
+const KEYS = ['FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'];
 
 /**
  * Which env files to write. Defaults to both; name them to narrow it.
@@ -23,6 +23,7 @@ const KEYS = ['SESSION_SECRET', 'FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'
  * Vitest prefers `.env.test` over `.env` — so generating it on a runner that has
  * only one database sent every suite at a database that does not exist.
  */
+const FORCE = process.argv.includes('--force');
 const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
 const TARGETS = (requested.length > 0 ? requested : ['.env', '.env.test']).filter(
   (file) => existsSync(file) || existsSync(`${file}.example`),
@@ -46,6 +47,23 @@ for (const target of TARGETS) {
   let env = readFileSync(target, 'utf8');
 
   for (const key of KEYS) {
+    const current = new RegExp(`^${key}=(.*)$`, 'm').exec(env)?.[1]?.trim() ?? '';
+
+    /**
+     * A real value is left alone unless --force.
+     *
+     * This used to overwrite unconditionally, which quietly re-keyed an existing
+     * environment: FIELD_ENCRYPTION_KEY seals authenticator secrets, so running
+     * `npm run secrets` on a working checkout orphaned every enrolled second
+     * factor with no warning. Setting up is not the same operation as rotating —
+     * rotating is scripts/rotate-field-encryption-key.mjs, which re-wraps first.
+     */
+    const isPlaceholder = !current || /^CHANGE_ME/i.test(current);
+    if (!isPlaceholder && !FORCE) {
+      console.log(`  ${target}: ${key} already set — left alone (use --force to replace)`);
+      continue;
+    }
+
     // 32 bytes, base64 — 44 characters. lib/env.ts decodes and measures the
     // bytes, so a shorter value is rejected at boot rather than accepted.
     const secret = randomBytes(32).toString('base64');

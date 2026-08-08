@@ -39,7 +39,6 @@ if (-not (Test-Path -LiteralPath $webEnv)) {
   $ownerPasswordPlain = [System.Net.NetworkCredential]::new('', $ownerPasswordSecure).Password
   if ($ownerPasswordPlain.Length -lt 16) { throw 'The platform owner password must contain at least 16 characters.' }
   $template = Get-Content -LiteralPath (Join-Path $webRoot '.env.example') -Raw
-  $template = $template -replace 'SESSION_SECRET=.*', "SESSION_SECRET=$(New-Secret 32)"
   $template = $template -replace 'FIELD_ENCRYPTION_KEY=.*', "FIELD_ENCRYPTION_KEY=$(New-Secret 32)"
   $template = $template -replace 'WEBHOOK_SIGNING_PEPPER=.*', "WEBHOOK_SIGNING_PEPPER=$(New-Secret 32)"
   $template = $template.Replace('PLATFORM_OWNER_PASSWORD=CHANGE_ME_AT_LEAST_16_CHARS', "PLATFORM_OWNER_PASSWORD=$ownerPasswordPlain")

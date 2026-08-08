@@ -38,7 +38,7 @@ if (!existsSync('.env')) {
   problems.push({ what: '.env is missing', why: 'Nothing can read DATABASE_URL.', fix: 'npm run secrets' });
 } else {
   const env = readFileSync('.env', 'utf8');
-  const placeholder = /^(SESSION_SECRET|FIELD_ENCRYPTION_KEY|WEBHOOK_SIGNING_PEPPER)=CHANGE_ME/m.test(env);
+  const placeholder = /^(FIELD_ENCRYPTION_KEY|WEBHOOK_SIGNING_PEPPER)=CHANGE_ME/m.test(env);
   if (placeholder) {
     problems.push({
       what: '.env still has placeholder secrets',

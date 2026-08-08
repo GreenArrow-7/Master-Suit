@@ -57,7 +57,10 @@ const schema = z.object({
   DATABASE_REPLICA_URL: z.string().url().optional().or(z.literal('')),
   REDIS_URL: z.string().url(),
 
-  SESSION_SECRET: b64,
+  // SESSION_SECRET was here. Nothing ever read it: sessions are rows in
+  // PlatformSession matched by SHA-256 token hash, with no signing step, so
+  // requiring it at boot promised a session-revocation lever that did not
+  // exist. Use revokeAllSessions, or the platform PATCH `revokeSessions`.
   FIELD_ENCRYPTION_KEY: b64,
   WEBHOOK_SIGNING_PEPPER: b64,
 

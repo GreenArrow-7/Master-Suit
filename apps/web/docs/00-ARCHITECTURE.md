@@ -173,7 +173,6 @@ DATABASE_REPLICA_URL=                 # optional read replica for reports
 REDIS_URL=redis://redis:6379/0
 
 # ── Secrets (32-byte base64) ────────────────────────────
-SESSION_SECRET=
 FIELD_ENCRYPTION_KEY=                 # AES-256-GCM for provider/integration configs
 WEBHOOK_SIGNING_PEPPER=
 

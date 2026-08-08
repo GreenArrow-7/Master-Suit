@@ -50,12 +50,19 @@ matters; the rest are inputs to it.
 
 | # | Secret | Blast radius if rotated | Procedure written | Rehearsed |
 |---|---|---|---|---|
-| 4.1 | `SESSION_SECRET` | All sessions invalid; users sign in again | ☐ | ☐ |
-| 4.2 | `FIELD_ENCRYPTION_KEY` | **Attendance captures and TOTP secrets become undecryptable.** Affected users must re-enrol 2FA | ☐ | ☐ |
-| 4.3 | `WEBHOOK_SIGNING_PEPPER` | Inbound webhook signatures fail until partners update | ☐ | ☐ |
-| 4.4 | Database credentials | Downtime unless rotated with a rolling restart | ☐ | ☐ |
-| 4.5 | S3 credentials | Uploads and downloads fail | ☐ | ☐ |
-| 4.6 | `FACE_SERVICE_TOKEN` | Face check-in fails closed until both sides updated | ☐ | ☐ |
+| 4.1 | `FIELD_ENCRYPTION_KEY` | **Attendance captures and TOTP secrets become undecryptable** if the value is simply replaced. Re-wrap first with `scripts/rotate-field-encryption-key.mjs` (dry run, then `--apply`), and deploy the new key only once that completes | ☐ | ☐ |
+| 4.2 | `WEBHOOK_SIGNING_PEPPER` | Inbound webhook signatures fail until partners update | ☐ | ☐ |
+| 4.3 | Database credentials | Downtime unless rotated with a rolling restart | ☐ | ☐ |
+| 4.4 | S3 credentials | Uploads and downloads fail | ☐ | ☐ |
+| 4.5 | `FACE_SERVICE_TOKEN` | Face check-in fails closed until both sides updated | ☐ | ☐ |
+
+There is no secret whose rotation signs users out. `SESSION_SECRET` used to be
+listed here as doing exactly that, and it did not: sessions are rows in
+`PlatformSession` matched by SHA-256 token hash, with no signing step anywhere.
+Reaching for it during an incident would have left every session valid while
+appearing to revoke them all. It has been removed. To revoke sessions, use
+`revokeAllSessions` for one account, or `PATCH /api/v1/platform/workspaces/:id`
+with `revokeSessions` for a whole workspace.
 
 **4.2 is destructive and needs a written migration path before it is ever done.**
 Rotating that key without re-encrypting is data loss, not a rotation.
