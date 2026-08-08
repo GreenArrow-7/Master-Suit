@@ -139,6 +139,7 @@ export default function WorkspaceSidebar({
           { label: 'Activities', href: `/${slug}/sales/activities`, icon: 'activity', permission: 'activities' },
           { label: 'Tasks', href: `/${slug}/sales/tasks`, icon: 'task', permission: 'tasks' },
           { label: 'Calendar', href: `/${slug}/sales/calendar`, icon: 'calendar', permission: 'tasks' },
+          { label: 'Site visits', href: `/${slug}/sales/site-visits`, icon: 'attendance', permission: 'visits' },
         ],
       },
       {

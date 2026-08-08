@@ -173,27 +173,12 @@ export function noticePayInLieu(
 }
 
 // ── Geofence ───────────────────────────────────────────────────────────────
-
-const EARTH_RADIUS_M = 6_371_000;
-
-/** Great-circle distance in metres. */
-export function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = p2 - p1;
-  const dl = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
-}
-
-/**
- * GPS accuracy is subtracted so someone genuinely standing at the edge of the
- * fence is not rejected by sensor noise. A client-reported "I am inside" flag is
- * never trusted — only the coordinates, measured here.
- */
-export function insideGeofence(distanceM: number, radiusM: number, gpsAccuracyM = 0): boolean {
-  return distanceM - Math.max(gpsAccuracyM, 0) <= radiusM;
-}
+//
+// Moved to lib/geo.ts when site visits became a second caller. Re-exported
+// rather than relocated at every call site: the maths is shared, but "what the
+// radius is and what happens outside it" is HR policy here and property policy
+// there, and neither should import the other's module to get a cosine.
+export { haversineM, insideGeofence } from '@/lib/geo';
 
 /**
  * Weekday and minute-of-day in a named timezone. Opening hours are a wall-clock

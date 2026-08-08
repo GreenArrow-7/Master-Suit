@@ -606,6 +606,14 @@ model OrganizationSetting {
   dialerCooldownSeconds Int      @default(300)
   /// Attempts before a contact is retired from the queue as EXHAUSTED.
   dialerMaxAttempts     Int      @default(4)
+  /// Metres a site-visit punch may be from the property and still count as
+  /// arrival. A tower has a car park, a gate and a sales centre, so the fence is
+  /// wider than an office door — and how much wider is a workspace's call.
+  visitGeofenceRadiusM  Int      @default(250)
+  /// Kilometres per hour between two consecutive punches above which the pair is
+  /// flagged for a human. Not blocked: a genuine visit from a passenger seat on
+  /// a motorway looks exactly like this.
+  visitMaxTravelKph     Int      @default(160)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -4950,6 +4958,7 @@ model Project {
   units       UnitInventory[]
   favourites  ProjectFavourite[]
   listings    Listing[]
+  siteVisits  SiteVisit[]
 
   @@unique([tenantId, code])
   /// The keyset order. Every list page ends in (updatedAt DESC, id DESC), so the
@@ -5047,9 +5056,10 @@ model UnitInventory {
   createdById String?
   updatedById String?
 
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  unitPlan UnitPlan? @relation(fields: [unitPlanId], references: [id], onDelete: SetNull)
-  listings Listing[]
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitPlan   UnitPlan?   @relation(fields: [unitPlanId], references: [id], onDelete: SetNull)
+  listings   Listing[]
+  siteVisits SiteVisit[]
 
   @@unique([projectId, unitNumber])
   @@index([tenantId, projectId, status])
@@ -5241,6 +5251,7 @@ model Listing {
   micromarket   Micromarket?   @relation(fields: [micromarketId], references: [id], onDelete: SetNull)
   media         ListingMedia[]
   mandates      Mandate[]
+  siteVisits    SiteVisit[]
 
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.
@@ -5490,4 +5501,141 @@ model DialerSession {
   @@index([tenantId, campaignId, status])
   @@index([tenantId, userId, status])
   @@index([tenantId, status, lastActivityAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site visits and client meetings (M6)
+//
+// One table, not two, and that is the decision worth defending. The spec names
+// `SiteVisit` and `Meeting` separately, but they share a lifecycle (requested →
+// approved → checked in → completed), a geo check-in, and one leader
+// verification queue. Two tables would be two copies of the same state machine
+// and two queues a manager has to remember to look at; `kind` distinguishes
+// them in the one place they actually differ, which is where the appointment is.
+//
+// It is deliberately *not* `FieldVisit`, which already exists. That records a
+// rep calling on a lead: no approval, no client in the car, no property. A site
+// visit is a client taken to see something, which needs signing off before it
+// happens and verifying after.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SiteVisitKind {
+  /// Taking a client to see a project or a listing.
+  PROPERTY_VISIT
+  /// Meeting a client somewhere — their office, a café, or online.
+  CLIENT_MEETING
+}
+
+enum SiteVisitStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  /// The agent has punched in at the destination.
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  /// Approved, the time passed, nobody arrived.
+  NO_SHOW
+}
+
+enum VisitVerification {
+  /// Nobody has looked at it yet.
+  PENDING
+  VERIFIED
+  /// A leader looked and did not believe it.
+  DISPUTED
+}
+
+model SiteVisit {
+  id       String        @id @default(cuid())
+  tenantId String
+  kind     SiteVisitKind @default(PROPERTY_VISIT)
+
+  /// The agent taking the client. Named `ownerId` so visibilityWhere works with
+  /// its defaults, like every other owned record on the platform.
+  ownerId String
+
+  /// Who is being taken. A lead becomes a contact; either may be set.
+  leadId    String?
+  contactId String?
+
+  /// Where. A project, a specific unit, a listing, or a free address for a
+  /// meeting. All optional because a CLIENT_MEETING may be at a café, and the
+  /// migration enforces that a property visit names something.
+  projectId       String?
+  unitInventoryId String?
+  listingId       String?
+
+  address    String?
+  latitude   Float?
+  longitude  Float?
+  /// Set for an online meeting. Populated by the Google Meet integration when
+  /// the workspace has connected it.
+  meetingUrl String?
+
+  status       SiteVisitStatus   @default(REQUESTED)
+  verification VisitVerification @default(PENDING)
+
+  scheduledAt DateTime
+  durationMin Int      @default(60)
+
+  /// Approval. A site visit costs a car, a set of keys and often a developer's
+  /// time, which is why it is requested rather than simply booked.
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  /// The punch. Coordinates are recorded as measured — never a client-reported
+  /// "I am here" flag, which is a boolean anybody can send.
+  checkInAt       DateTime?
+  checkInLat      Float?
+  checkInLng      Float?
+  checkInAccuracy Float?
+  checkOutAt      DateTime?
+  checkOutLat     Float?
+  checkOutLng     Float?
+
+  /// Metres between the punch and the destination, and whether that is inside
+  /// the workspace's radius. Null when there was nothing to measure against.
+  distanceMeters Int?
+  geofenceOk     Boolean?
+
+  /// Server-side plausibility, per docs/ARCHITECTURE §5: the browser cannot
+  /// detect a mocked GPS, so the checks are travel speed between consecutive
+  /// punches and coordinates repeated to the metre. Flagged for a human, never
+  /// hard-blocked — a genuine visit from a passenger seat looks like a fast one.
+  locationSuspect Boolean @default(false)
+  suspectReason   String?
+
+  outcome String?
+  notes   String?
+
+  /// Every edit after COMPLETED carries a reason, and the reason is what the
+  /// audit row quotes. See the acceptance criterion in the migration.
+  amendedAt   DateTime?
+  amendedById String?
+  amendReason String?
+
+  verifiedById String?
+  verifiedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  project Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  unit    UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  listing Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, ownerId, scheduledAt])
+  @@index([tenantId, status, scheduledAt])
+  /// The approval queue and the verification queue, which are the two lists a
+  /// leader actually opens.
+  @@index([tenantId, status, verification])
+  @@index([tenantId, projectId, scheduledAt])
+  @@index([tenantId, leadId])
+  /// The plausibility check reads a user's punches in time order.
+  @@index([tenantId, ownerId, checkInAt])
 }
