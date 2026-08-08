@@ -31,43 +31,57 @@ export const GET = route(
 
 const patchBody = z
   .discriminatedUnion('action', [
-    z.object({
-      /** Finish the contact and take the next. */
-      action: z.literal('next'),
-      outcome: z
-        .enum([
-          'CONNECTED',
-          'NO_ANSWER',
-          'BUSY',
-          'VOICEMAIL',
-          'WRONG_NUMBER',
-          'CALLBACK_REQUESTED',
-          'NOT_INTERESTED',
-          'INTERESTED',
-          'QUALIFIED',
-          'CONVERTED',
-        ])
-        .optional(),
-      notes: z.string().max(2000).optional(),
-    }),
-    z.object({
-      /** Pass without burning an attempt. */
-      action: z.literal('skip'),
-      notes: z.string().max(2000).optional(),
-    }),
-    z.object({
-      action: z.literal('callback'),
-      /** When the client asked to be rung. Defaults to an hour out. */
-      callbackAt: z.coerce.date().optional(),
-      notes: z.string().max(2000).optional(),
-    }),
-    z.object({
-      /** Records the call just placed against the contact in front of the agent. */
-      action: z.literal('attachCall'),
-      callId: z.string().cuid(),
-    }),
+    z
+      .object({
+        /** Finish the contact and take the next. */
+        action: z.literal('next'),
+        outcome: z
+          .enum([
+            'CONNECTED',
+            'NO_ANSWER',
+            'BUSY',
+            'VOICEMAIL',
+            'WRONG_NUMBER',
+            'CALLBACK_REQUESTED',
+            'NOT_INTERESTED',
+            'INTERESTED',
+            'QUALIFIED',
+            'CONVERTED',
+          ])
+          .optional(),
+        notes: z.string().max(2000).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        /** Pass without burning an attempt. */
+        action: z.literal('skip'),
+        notes: z.string().max(2000).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal('callback'),
+        /** When the client asked to be rung. Defaults to an hour out. */
+        callbackAt: z.coerce.date().optional(),
+        notes: z.string().max(2000).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        /** Records the call just placed against the contact in front of the agent. */
+        action: z.literal('attachCall'),
+        callId: z.string().cuid(),
+      })
+      .strict(),
   ])
-  .and(z.object({}).strict().partial());
+  // No `.and(z.object({}).strict())` here.
+  //
+  // That intersection was meant to reject unknown keys and instead rejected
+  // *every* key: an empty strict object allows nothing, and an intersection has
+  // to satisfy both halves. A discriminatedUnion of strict members is already
+  // strict, which is what was wanted.
+  .describe('dialer advance');
 
 /**
  * One endpoint for every way a contact ends.

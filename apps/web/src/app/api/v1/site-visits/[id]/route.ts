@@ -26,36 +26,50 @@ export const GET = route(
 
 const patchBody = z
   .discriminatedUnion('action', [
-    z.object({
-      /** Move through the register: approve, reject, cancel, complete, no-show. */
-      action: z.literal('transition'),
-      status: z.enum(VISIT_STATUSES),
-      note: z.string().max(1000).optional(),
-    }),
-    z.object({
-      /** Ordinary edit, while the visit is still open. */
-      action: z.literal('edit'),
-      scheduledAt: z.coerce.date().optional(),
-      durationMin: z.coerce.number().int().min(5).max(1440).optional(),
-      address: z.string().max(400).nullable().optional(),
-      notes: z.string().max(4000).nullable().optional(),
-      outcome: z.string().max(200).nullable().optional(),
-    }),
-    z.object({
-      /** Correcting a completed visit. The reason is not optional. */
-      action: z.literal('amend'),
-      reason: z.string().min(5).max(1000),
-      outcome: z.string().max(200).optional(),
-      notes: z.string().max(4000).optional(),
-    }),
-    z.object({
-      /** A leader deciding whether to believe it. */
-      action: z.literal('verify'),
-      verdict: z.enum(['VERIFIED', 'DISPUTED']),
-      note: z.string().max(1000).optional(),
-    }),
+    z
+      .object({
+        /** Move through the register: approve, reject, cancel, complete, no-show. */
+        action: z.literal('transition'),
+        status: z.enum(VISIT_STATUSES),
+        note: z.string().max(1000).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        /** Ordinary edit, while the visit is still open. */
+        action: z.literal('edit'),
+        scheduledAt: z.coerce.date().optional(),
+        durationMin: z.coerce.number().int().min(5).max(1440).optional(),
+        address: z.string().max(400).nullable().optional(),
+        notes: z.string().max(4000).nullable().optional(),
+        outcome: z.string().max(200).nullable().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        /** Correcting a completed visit. The reason is not optional. */
+        action: z.literal('amend'),
+        reason: z.string().min(5).max(1000),
+        outcome: z.string().max(200).optional(),
+        notes: z.string().max(4000).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        /** A leader deciding whether to believe it. */
+        action: z.literal('verify'),
+        verdict: z.enum(['VERIFIED', 'DISPUTED']),
+        note: z.string().max(1000).optional(),
+      })
+      .strict(),
   ])
-  .and(z.object({}).strict().partial());
+  // No `.and(z.object({}).strict())` here.
+  //
+  // That intersection was meant to reject unknown keys and instead rejected
+  // *every* key: an empty strict object allows nothing, and an intersection has
+  // to satisfy both halves. A discriminatedUnion of strict members is already
+  // strict, which is what was wanted.
+  .describe('site visit change');
 
 /**
  * Four ways a visit changes, and they are genuinely different operations rather
