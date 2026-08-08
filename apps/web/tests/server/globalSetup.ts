@@ -95,6 +95,11 @@ export default async function setup() {
   child = spawn('npm', ['run', 'dev', '--', '--port', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
+    // Its own process group on POSIX, so stop() can signal the whole tree.
+    // `npm run dev` is a wrapper: signalling it alone leaves `next dev` running,
+    // and an orphaned one holds Next's dev lock — which then refuses the next
+    // server to start with "Another next dev server is already running".
+    detached: process.platform !== 'win32',
     env: { ...serverEnv(), PORT: String(port) },
   });
 
@@ -121,18 +126,46 @@ export default async function setup() {
   return stop;
 }
 
+/**
+ * Stops the application, and everything it started.
+ *
+ * `npm run dev` is a wrapper around `next dev`, which in turn spawns a worker.
+ * Signalling only the process we hold leaves the real server running, and an
+ * orphan holds Next's dev lock: the next server to start dies with "Another
+ * next dev server is already running", which is exactly how the E2E gate failed
+ * after the integration gate had passed.
+ */
 async function stop() {
   const target = child;
   child = null;
-  if (!target || target.exitCode != null) return;
+  if (!target?.pid || target.exitCode != null) return;
 
-  // `next dev` spawns a worker; killing the tree is the only reliable way to
-  // free the port on Windows.
-  if (process.platform === 'win32' && target.pid) {
+  const exited = once(target, 'exit');
+
+  if (process.platform === 'win32') {
     spawn('taskkill', ['/pid', String(target.pid), '/t', '/f'], { stdio: 'ignore' });
   } else {
-    target.kill('SIGTERM');
+    // Negative pid signals the whole process group, which `detached` gave us.
+    try {
+      process.kill(-target.pid, 'SIGTERM');
+    } catch {
+      target.kill('SIGTERM');
+    }
   }
 
-  await Promise.race([once(target, 'exit'), new Promise((resolve) => setTimeout(resolve, 15_000))]);
+  const timedOut = Symbol('timeout');
+  const outcome = await Promise.race([
+    exited.then(() => 'exited'),
+    new Promise((resolve) => setTimeout(() => resolve(timedOut), 10_000)),
+  ]);
+
+  // Escalate rather than leave a server behind for the next gate to trip over.
+  if (outcome === timedOut && process.platform !== 'win32') {
+    try {
+      process.kill(-target.pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+  }
 }
