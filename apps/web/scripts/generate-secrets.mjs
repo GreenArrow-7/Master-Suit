@@ -12,8 +12,28 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 
 const KEYS = ['SESSION_SECRET', 'FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'];
 
-/** Only files whose .example exists; `.env.test` is optional in a deployment. */
-const TARGETS = ['.env', '.env.test'].filter((file) => existsSync(file) || existsSync(`${file}.example`));
+/**
+ * Which env files to write. Defaults to both; name them to narrow it.
+ *
+ *   node scripts/generate-secrets.mjs          # .env and .env.test
+ *   node scripts/generate-secrets.mjs .env     # .env only
+ *
+ * CI passes `.env` deliberately. `.env.test` points DATABASE_URL at a separate
+ * `master_saas_test` database that a developer creates with `npm run setup`, and
+ * Vitest prefers `.env.test` over `.env` — so generating it on a runner that has
+ * only one database sent every suite at a database that does not exist.
+ */
+const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
+const TARGETS = (requested.length > 0 ? requested : ['.env', '.env.test']).filter(
+  (file) => existsSync(file) || existsSync(`${file}.example`),
+);
+
+if (TARGETS.length === 0) {
+  console.error(
+    `No env file to write. Looked for: ${(requested.length > 0 ? requested : ['.env', '.env.test']).join(', ')}`,
+  );
+  process.exit(1);
+}
 
 let wrote = 0;
 

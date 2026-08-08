@@ -66,8 +66,14 @@ jobs:
 
       # Creates apps/web/.env from apps/web/.env.example, then overwrites the
       # three placeholder secrets with real 32-byte values.
+      #
+      # `.env` only, deliberately. `.env.test` points DATABASE_URL at a separate
+      # `master_saas_test` database that a developer creates locally with
+      # `npm run setup`; this runner has one. Vitest prefers `.env.test` when it
+      # exists, so generating it here sent every suite at a database that does
+      # not exist on the server.
       - name: Generate .env
-        run: node scripts/generate-secrets.mjs
+        run: node scripts/generate-secrets.mjs .env
 
       # tests/tenant/rls.spec.ts refuses to run unless RLS_DATABASE_URL is set and
       # names the *same* connection as DATABASE_URL — testing a role the

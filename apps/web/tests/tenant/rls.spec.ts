@@ -180,7 +180,7 @@ describe('postgres row-level security', () => {
         'RateLimitCounter',
         'Recording',
         'RecordingConsent',
-        'Session',
+        // 'Session' was here until migration 20260808120000 dropped the table.
         'Transcript',
         // Redeemed by someone not signed in, before any tenant is known — the
         // same category as PasswordResetToken. What guards it instead is that the
