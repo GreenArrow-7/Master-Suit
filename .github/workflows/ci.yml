@@ -47,9 +47,14 @@ jobs:
           --health-retries 20
 
     env:
-      # .env.example carries non-secret development defaults and the generated
-      # secrets below. CI never reads a committed .env.
-      NODE_ENV: development
+      # NODE_ENV is deliberately NOT set here.
+      #
+      # `next build` must run as production. Forcing development leaks into the
+      # build and breaks prerendering with "Cannot read properties of null
+      # (reading 'useContext')" — React resolves to the wrong runtime for the
+      # server render. Each step gets what it needs instead: vitest sets `test`,
+      # the seed reads the default `development` from lib/env.ts, and the build
+      # gets production from Next itself.
       CI: 'true'
 
     steps:
@@ -96,6 +101,8 @@ jobs:
         # disposable. A CI database is created and destroyed with the job.
         env:
           ALLOW_DEMO_SEED: 'yes'
+          # The seed refuses to run against production, and says so.
+          NODE_ENV: development
         run: npm run db:seed
 
       # ── Gate 1 ────────────────────────────────────────────────────────────
