@@ -25,3 +25,11 @@ cloudflared.exe
 **/faces-local/
 **/uat-evidence/
 **/biometric-evidence/
+
+# Test environment carries real database credentials and secrets. The template
+# beside it (.env.test.example) is what belongs in the repository.
+**/.env.test
+
+# Playwright run artefacts: traces, screenshots and the last-run summary.
+**/test-results/
+**/playwright-report/
