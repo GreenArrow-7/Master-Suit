@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
-import { auditCall } from '@/lib/ai/audit';
+import { Conflict, NotFound } from '@/lib/errors';
+import { enqueue } from '@/lib/queue';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -12,6 +12,14 @@ const auditBody = z
   })
   .strict();
 
+/**
+ * Requests an audit against a scorecard. The model call runs on the `ai` queue.
+ *
+ * The pipeline already audits automatically once an analysis completes, when the
+ * workspace has an active scorecard. This endpoint exists for the other cases: a
+ * second scorecard, a re-score after the criteria changed, or a call whose
+ * analysis predates the scorecard.
+ */
 export const POST = route(
   {
     module: 'calls',
@@ -22,71 +30,33 @@ export const POST = route(
     auditEvent: 'CALL_AUDIT_COMPLETED',
   },
   async ({ ctx, params, body }) => {
-    const [call, transcript, analysis, scorecard] = await Promise.all([
+    const [call, analysis, scorecard, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
-      prisma.transcript.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
       prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId, status: 'COMPLETED' } }),
-      prisma.auditScorecard.findFirst({
-        where: { id: body.scorecardId, tenantId: ctx.tenantId, isActive: true },
-        include: { criteria: { orderBy: { position: 'asc' } } },
+      prisma.auditScorecard.findFirst({ where: { id: body.scorecardId, tenantId: ctx.tenantId, isActive: true } }),
+      prisma.callAudit.findFirst({
+        where: { callId: params.id, tenantId: ctx.tenantId, scorecardId: body.scorecardId },
       }),
     ]);
 
     if (!call) throw NotFound('Call');
-    if (!transcript) throw NotFound('Transcript');
     if (!analysis) throw NotFound('Completed analysis — run analysis first');
     if (!scorecard) throw NotFound('Active scorecard');
+    if (existing?.status === 'PROCESSING') throw Conflict('This audit is already in progress.');
 
-    const callAudit = await prisma.callAudit.create({
-      data: {
-        tenantId: ctx.tenantId,
-        callId: params.id,
-        scorecardId: body.scorecardId,
-        status: 'PROCESSING',
-      },
-    });
+    // Claimed here for the same reason as the analysis: a second press must be
+    // refused now, not deduplicated later by a worker that has already started.
+    const row = existing
+      ? await prisma.callAudit.update({
+          where: { id: existing.id },
+          data: { status: 'PROCESSING', errorMessage: null },
+        })
+      : await prisma.callAudit.create({
+          data: { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId, status: 'PROCESSING' },
+        });
 
-    try {
-      const result = await auditCall({
-        transcript: transcript.content,
-        analysisJson: {
-          summary: analysis.summary,
-          clientNeeds: analysis.clientNeeds,
-          objections: analysis.objections,
-          commitments: analysis.commitments,
-          topicsDiscussed: analysis.topicsDiscussed,
-          topicsMissed: analysis.topicsMissed,
-          sentiment: analysis.sentiment,
-        },
-        criteria: scorecard.criteria.map((c) => ({
-          label: c.label,
-          description: c.description ?? undefined,
-          weight: c.weight,
-          isRequired: c.isRequired,
-        })),
-      });
-
-      return prisma.callAudit.update({
-        where: { id: callAudit.id },
-        data: {
-          status: 'COMPLETED',
-          overallScore: result.overallScore,
-          maxScore: result.maxScore,
-          criteriaScores: result.criteriaScores as any,
-          missedPoints: result.missedPoints,
-          strengths: result.strengths,
-          risks: result.risks,
-          suggestions: result.suggestions,
-          nextAction: result.nextAction,
-        },
-      });
-    } catch (err: any) {
-      await prisma.callAudit.update({
-        where: { id: callAudit.id },
-        data: { status: 'FAILED', errorMessage: err.message?.slice(0, 500) },
-      });
-      throw err;
-    }
+    await enqueue('ai', 'audit', { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId });
+    return row;
   },
 );
 

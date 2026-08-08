@@ -127,6 +127,20 @@ export function route<
         { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
         'request',
       );
+
+      /**
+       * A handler that streams bytes returns its own Response.
+       *
+       * Without this, a download had to bypass the kernel and re-implement
+       * authentication, entitlement, permission, rate limiting and audit by
+       * hand — five chances to omit one. `scrubSecrets` leaves a Response
+       * untouched (it is not a plain object), so nothing above is skipped.
+       */
+      if (result instanceof Response) {
+        result.headers.set('x-request-id', requestId);
+        return result;
+      }
+
       return NextResponse.json(result ?? { ok: true }, { headers: { 'x-request-id': requestId } });
     } catch (err) {
       return toResponse(err, requestId, { module: spec.module, action: spec.action, tenantId: ctx?.tenantId });

@@ -2,90 +2,40 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
-import { analyzeTranscript } from '@/lib/ai/analysis';
+import { enqueue } from '@/lib/queue';
+import { claimAnalysis } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
+/**
+ * Requests an analysis. Does not wait for one.
+ *
+ * This handler used to call Gemini inline: seconds of held connection, a 500
+ * when the model was down, and a row stranded in PROCESSING whenever the client
+ * gave up. The work now runs on the `ai` queue with backoff and a recorded
+ * failure message, and this returns the row so the caller can poll GET.
+ *
+ * The row is still claimed *here* rather than in the worker, so a second press
+ * of the button is refused immediately with a 409 instead of silently queueing a
+ * second billed model call.
+ */
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
-    const [call, transcript, existing] = await Promise.all([
+    const [call, transcript] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.transcript.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
-      prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId, status: 'PROCESSING' } }),
     ]);
 
     if (!call) throw NotFound('Call');
     if (!transcript) throw NotFound('Transcript — upload a transcript before requesting analysis');
-    if (existing) throw Conflict('Analysis is already in progress for this call.');
-
-    // Fetch campaign talking points and qualifications if campaign-linked
-    let talkingPoints: { label: string; isRequired: boolean }[] = [];
-    let qualifications: { question: string; expectedAnswer?: string | null }[] = [];
-    let campaignName: string | undefined;
-
-    if (call.campaignId) {
-      const [tps, qs, campaign] = await Promise.all([
-        prisma.campaignTalkingPoint.findMany({
-          where: { tenantId: ctx.tenantId, campaignId: call.campaignId },
-          select: { label: true, isRequired: true },
-        }),
-        prisma.campaignQualification.findMany({
-          where: { tenantId: ctx.tenantId, campaignId: call.campaignId },
-          select: { question: true, expectedAnswer: true },
-        }),
-        prisma.campaign.findFirst({
-          where: { id: call.campaignId, tenantId: ctx.tenantId },
-          select: { name: true },
-        }),
-      ]);
-      talkingPoints = tps;
-      qualifications = qs;
-      campaignName = campaign?.name ?? undefined;
+    if (!(await claimAnalysis(ctx.tenantId, params.id))) {
+      throw Conflict('Analysis is already in progress for this call.');
     }
 
-    try {
-      const { result, modelId, processingMs } = await analyzeTranscript({
-        transcript: transcript.content,
-        talkingPoints,
-        qualifications: qualifications.map((q) => ({
-          question: q.question,
-          expectedAnswer: q.expectedAnswer ?? undefined,
-        })),
-        callDirection: call.direction,
-        campaignName,
-      });
+    await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
 
-      return prisma.aIAnalysis.update({
-        where: { callId: params.id },
-        data: {
-          status: 'COMPLETED',
-          modelId,
-          processingMs,
-          summary: result.summary,
-          clientNeeds: result.clientNeeds,
-          objections: result.objections,
-          commitments: result.commitments,
-          buyingSignals: result.buyingSignals,
-          risks: result.risks,
-          nextSteps: result.nextSteps,
-          topicsDiscussed: result.topicsDiscussed,
-          topicsMissed: result.topicsMissed,
-          sentiment: result.sentiment,
-          sentimentScore: result.sentimentScore,
-          suggestedStatus: result.suggestedStatus,
-          complianceFlags: result.complianceFlags,
-          uncertainItems: result.uncertainItems,
-          rawOutput: result as any,
-        },
-      });
-    } catch (err: any) {
-      await prisma.aIAnalysis.update({
-        where: { callId: params.id },
-        data: { status: 'FAILED', errorMessage: err.message?.slice(0, 500) },
-      });
-      throw err;
-    }
+    return prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } });
   },
 );
 
@@ -112,6 +62,15 @@ const correctionBody = z
   })
   .strict();
 
+/**
+ * A human correcting the model.
+ *
+ * `humanCorrected` is set and never cleared: once a person has edited a summary,
+ * a later re-run must not quietly overwrite their words with the model's. The
+ * worker writes the whole row, so a workspace that re-analyses a corrected call
+ * loses the correction — which is why re-analysis is an explicit action rather
+ * than something the pipeline does on its own.
+ */
 export const PATCH = route(
   {
     module: 'calls',
@@ -128,7 +87,7 @@ export const PATCH = route(
     if (!analysis) throw NotFound('Analysis');
 
     return prisma.aIAnalysis.update({
-      where: { callId: params.id },
+      where: { callId: params.id, tenantId: ctx.tenantId },
       data: {
         ...body,
         humanCorrected: true,

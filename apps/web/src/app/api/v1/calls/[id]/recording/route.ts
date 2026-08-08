@@ -25,15 +25,15 @@ export const POST = route(
     if (!call) throw NotFound('Call');
 
     // Recording must never begin without consent
-    const consent = await prisma.recordingConsent.findUnique({
-      where: { callId: params.id },
+    const consent = await prisma.recordingConsent.findFirst({
+      where: { callId: params.id, tenantId: ctx.tenantId },
     });
     if (!consent?.consentGiven || consent.withdrawnAt) {
       throw Forbidden('Cannot store recording without active consent.');
     }
 
     return prisma.recording.upsert({
-      where: { callId: params.id },
+      where: { callId: params.id, tenantId: ctx.tenantId },
       create: { tenantId: ctx.tenantId, callId: params.id, ...body },
       update: body,
     });
@@ -49,19 +49,28 @@ export const GET = route(
     if (!recording) throw NotFound('Recording');
 
     await prisma.recording.update({
-      where: { callId: params.id },
+      where: { callId: params.id, tenantId: ctx.tenantId },
       data: { accessCount: { increment: 1 }, lastAccessedAt: new Date() },
     });
 
+    /**
+     * `storageKey` is deliberately absent.
+     *
+     * Until the ingest job runs it holds the vendor's own media URL, and a
+     * vendor URL in a response body is a copy of a client conversation that
+     * outlives every access control here (§7). Afterwards it is an object key,
+     * which is useless to a browser and a hint to anyone enumerating the bucket.
+     * The bytes are served by ./media, which re-checks permission and consent.
+     */
     return {
       id: recording.id,
-      storageKey: recording.storageKey,
-      storageBucket: recording.storageBucket,
       mimeType: recording.mimeType,
       sizeBytes: recording.sizeBytes,
       durationSecs: recording.durationSecs,
       createdAt: recording.createdAt,
       accessCount: recording.accessCount + 1,
+      /** False while the media is still only on the vendor's servers. */
+      available: recording.storageBucket !== 'provider',
     };
   },
 );

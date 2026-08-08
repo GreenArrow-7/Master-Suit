@@ -4,7 +4,19 @@ import { redis } from './redis';
 import { logger } from './logger';
 
 export type QueueName =
-  'automation' | 'distribution' | 'sla' | 'messaging' | 'campaign' | 'import' | 'export' | 'webhook' | 'maintenance';
+  | 'automation'
+  | 'distribution'
+  | 'sla'
+  | 'messaging'
+  | 'campaign'
+  | 'import'
+  | 'export'
+  | 'webhook'
+  | 'maintenance'
+  /** Fetching call recordings out of a vendor and into our own bucket. */
+  | 'media'
+  /** Transcription, Gemini analysis and the call audit that follows them. */
+  | 'ai';
 
 const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   automation: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 } },
@@ -16,6 +28,14 @@ const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   export: { attempts: 2, backoff: { type: 'fixed', delay: 60_000 } },
   webhook: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
   maintenance: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
+  // Vendors publish recording media a little after they announce it, and some
+  // 404 for a few seconds. Long backoff, several attempts: the alternative to
+  // retrying is losing the only copy of a client conversation.
+  media: { attempts: 6, backoff: { type: 'exponential', delay: 15_000 } },
+  // Model and speech vendors rate-limit and have outages. Four attempts over
+  // roughly eight minutes; past that the row is left FAILED with the vendor's
+  // message on it, which a human can act on, rather than retried forever.
+  ai: { attempts: 4, backoff: { type: 'exponential', delay: 30_000 } },
 };
 
 const queues = new Map<QueueName, Queue>();

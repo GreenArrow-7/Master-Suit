@@ -8,7 +8,19 @@ import { logger } from '../logger';
 export interface WhatsAppTemplate {
   name: string;
   language: string;
-  components?: { type: string; parameters: { type: string; text?: string }[] }[];
+  /**
+   * `sub_type` and `index` are required for button components and meaningless
+   * for body ones. Meta's dynamic-URL buttons are how a per-recipient link
+   * reaches a template — the alternative, putting the URL in a body parameter,
+   * is rejected at template review for exactly the phishing reason you would
+   * expect.
+   */
+  components?: {
+    type: string;
+    sub_type?: string;
+    index?: string;
+    parameters: { type: string; text?: string }[];
+  }[];
 }
 
 export interface WhatsAppMessage {

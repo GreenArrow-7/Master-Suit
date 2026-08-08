@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { NotFound, Invalid } from '@/lib/errors';
 import { getWhatsAppProvider } from '@/lib/integrations/whatsapp';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { rsvpToken } from '@/lib/events/rsvpToken';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -17,6 +18,16 @@ const body = z
     inviteeIds: z.array(z.string().cuid()).max(100).optional(),
     /** Re-send to invitees already notified once. */
     resend: z.boolean().default(false),
+    /**
+     * Set when the approved template carries a dynamic-URL button pointing at
+     * `{APP_URL}/rsvp/`. Each recipient then gets their own signed token as the
+     * suffix, which is what makes the invitation self-service rather than
+     * something an agent has to phone them about.
+     *
+     * Off by default because sending a button parameter to a template that has
+     * no button is a 132000 from Meta for every recipient.
+     */
+    rsvpButton: z.boolean().default(false),
   })
   .strict();
 
@@ -83,6 +94,18 @@ export const POST = route(
                 { type: 'text', text: where },
               ],
             },
+            ...(body.rsvpButton
+              ? [
+                  {
+                    type: 'button',
+                    sub_type: 'url',
+                    index: '0',
+                    // The suffix only — the template holds the base URL, which
+                    // is what stops a compromised send from redirecting anyone.
+                    parameters: [{ type: 'text', text: rsvpToken(ctx.tenantId, invitee.id) }],
+                  },
+                ]
+              : []),
           ],
         },
       });

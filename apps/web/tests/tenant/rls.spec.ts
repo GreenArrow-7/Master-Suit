@@ -169,19 +169,24 @@ describe('postgres row-level security', () => {
     // cross-tenant control-plane tables gated by requirePlatformOwner instead.
     // AuthenticationFactor and PlatformSession are absent because they carry no
     // tenantId at all — they hang off the platform user, not a workspace.
+    //
+    // AIAnalysis, CallAudit, Recording, RecordingConsent and Transcript were on
+    // this list and are not any more (20260808200000_rls_call_intelligence).
+    // They were never bootstrap cases: `callId` is a cuid, not a bearer secret,
+    // and every caller already knew the tenant. Being here made recordings and
+    // transcripts of client conversations the least protected rows in the
+    // database. If one reappears, a `findUnique({ where: { callId } })` has been
+    // reintroduced somewhere and this test is the thing that says so.
     expect(rows.map((r: any) => r.table_name)).toEqual(
       [
         'APIKey',
-        'AIAnalysis',
-        'CallAudit',
+        // A telephony vendor posts to a URL knowing nothing about workspaces, so
+        // the key in that URL is the only thing that can resolve the tenant.
         'IntegrationConnection',
         'PasswordResetToken',
         'PlatformAuditEvent',
         'RateLimitCounter',
-        'Recording',
-        'RecordingConsent',
         // 'Session' was here until migration 20260808120000 dropped the table.
-        'Transcript',
         // Redeemed by someone not signed in, before any tenant is known — the
         // same category as PasswordResetToken. What guards it instead is that the
         // token is stored hashed and every administrative read is tenant-scoped.

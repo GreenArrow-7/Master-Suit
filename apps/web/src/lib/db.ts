@@ -59,12 +59,22 @@ const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
   // prisma/migrations/20260807020000_invitation_bootstrap_lookup.
   WorkspaceInvitation: ['tokenHash'],
   APIKey: ['prefix', 'keyHash'],
+  // A telephony vendor posts to a URL and knows nothing about workspaces, so the
+  // key in that URL is the only thing that can identify the tenant. This is the
+  // last genuine bootstrap lookup among the engagement tables.
   IntegrationConnection: ['webhookKey'],
-  RecordingConsent: ['callId'],
-  Recording: ['callId'],
-  Transcript: ['callId'],
-  AIAnalysis: ['callId'],
-  CallAudit: ['id'],
+  // RecordingConsent, Recording, Transcript, AIAnalysis and CallAudit were here.
+  //
+  // They were not bootstrap lookups. `callId` is a cuid, not a bearer secret,
+  // and every caller already knew the tenant — the exemption existed only
+  // because `findUnique({ where: { callId } })` was the convenient way to write
+  // the query. It bought a guard hole on five tables holding transcripts and
+  // recordings of client conversations, and it forced those five tables out of
+  // row-level security entirely, because a query with no tenant filter sets no
+  // `app.tenant_id` and a policy would have returned nothing.
+  //
+  // Every call site now passes tenantId alongside callId, so both layers apply.
+  // See 20260808200000_rls_call_intelligence.
 };
 
 /** Models carrying deletedAt — reads exclude soft-deleted rows unless asked. */

@@ -28,15 +28,15 @@ export const POST = route(
     });
     if (!call) throw NotFound('Call');
 
-    const existing = await prisma.recordingConsent.findUnique({
-      where: { callId: params.id },
+    const existing = await prisma.recordingConsent.findFirst({
+      where: { callId: params.id, tenantId: ctx.tenantId },
     });
     if (existing?.consentGiven && !existing.withdrawnAt) {
       throw Conflict('Consent already recorded for this call.');
     }
 
     return prisma.recordingConsent.upsert({
-      where: { callId: params.id },
+      where: { callId: params.id, tenantId: ctx.tenantId },
       create: {
         tenantId: ctx.tenantId,
         callId: params.id,
@@ -66,15 +66,15 @@ export const DELETE = route(
     });
     if (!call) throw NotFound('Call');
 
-    const consent = await prisma.recordingConsent.findUnique({
-      where: { callId: params.id },
+    const consent = await prisma.recordingConsent.findFirst({
+      where: { callId: params.id, tenantId: ctx.tenantId },
     });
     if (!consent || !consent.consentGiven || consent.withdrawnAt) {
       throw NotFound('Active consent');
     }
 
     return prisma.recordingConsent.update({
-      where: { callId: params.id },
+      where: { callId: params.id, tenantId: ctx.tenantId },
       data: { consentGiven: false, withdrawnAt: new Date() },
     });
   },

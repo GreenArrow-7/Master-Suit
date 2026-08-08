@@ -3,20 +3,36 @@
 The requested unified SaaS acceptance flow is implemented and tested, but the
 following items still prevent an unconditional commercial-production claim:
 
-- **RLS coverage is now complete, but the runtime still connects as the owner.**
-  `20260803230000_rls_full_coverage` enables RLS on every table carrying
-  `tenantId` (103 tables) except a documented bootstrap set, and makes
-  `master_saas_app` a `LOGIN`, `NOBYPASSRLS`, non-superuser role.
-  `tests/tenant/rls.spec.ts` connects *as that role over raw pg* and proves
-  fails-closed reads, cross-workspace read/update/delete refusal and `WITH CHECK`
-  insert refusal — the application code is not in the loop for that proof.
-  What remains: the default `DATABASE_URL` still names the owner role. Flipping
-  it to `master_saas_app` needs every query path to carry tenant context. The
-  Prisma extension now sets `app.tenant_id` per query for any operation with a
-  literal `tenantId`, and `withTx`/`withTenantTx` cover transactions, but queries
-  filtering `{ tenantId: { in: [...] } }` and the bootstrap bearer-secret lookups
-  do not — so the flip would break them today. This is the single largest
-  remaining gap between "RLS is enforced" and "RLS is enforced for the app".
+- **Row-level security is enforced, and the application connects as the role it
+  applies to.** `20260803230000_rls_full_coverage` enables RLS on every table
+  carrying `tenantId`, `20260806000000_rls_force_and_platform_admin` adds FORCE
+  so table ownership is not a quiet bypass, and `master_saas_app` is a `LOGIN`,
+  `NOBYPASSRLS`, non-superuser role. `DATABASE_URL` names that role in `.env`,
+  `.env.test` and `.env.example`; `MIGRATION_DATABASE_URL` keeps the owner, and
+  `src/lib/startup-check.ts` refuses to boot in production if the two are the
+  same, if the role can bypass RLS, or if it owns an unforced table.
+  `tests/tenant/rls.spec.ts` proves the policies over raw pg; the 639-test suite
+  and the server integration suite both run against the application role, so the
+  application code *is* in the loop.
+  The `{ tenantId: { in: [...] } }` gap recorded here previously is gone — no such
+  filter remains in `src/`.
+  `20260808200000_rls_call_intelligence` closes the last real hole: RecordingConsent,
+  Recording, Transcript, AIAnalysis and CallAudit were on the bootstrap exclusion
+  list and did not belong there. A bootstrap exclusion is for a lookup that
+  *cannot* name a tenant — a session token, a reset link, a webhook key. Those
+  five were excluded only because the code reached them by `callId`, which is
+  unique, so `findUnique({ where: { callId } })` compiled; every one of those
+  callers already knew the tenant. The effect was that transcripts, AI summaries
+  of what a client said, and the audio itself were the least protected rows in
+  the database. Call sites now pass `tenantId` alongside `callId`, the exemptions
+  are gone from `src/lib/db.ts`, and the coverage assertion in `rls.spec.ts` will
+  fail if any of them reappears.
+  What remains: `IntegrationConnection`, `APIKey`, `PasswordResetToken`,
+  `RateLimitCounter`, `WorkspaceInvitation`, `WorkspaceMembership` and
+  `PlatformAuditEvent` are still outside RLS. Each is a genuine bootstrap or
+  control-plane case — a telephony vendor posting to a URL knows nothing about
+  workspaces — and each is guarded by a hashed bearer secret and tenant-scoped
+  administrative reads instead.
 - **`tests/permission/field.spec.ts` was deleted, not fixed.** It asserted
   against `/api/v1/leads/export` and `/api/v1/reports/run`, neither of which
   exists, using fabricated fixtures. Field-level permission behaviour
@@ -133,18 +149,97 @@ following items still prevent an unconditional commercial-production claim:
   read an `IntegrationConnection` row with `status = 'CONNECTED'` and refuse to
   run without one. They deliberately do **not** fall back to the mock providers,
   because a mock returns a plausible meeting link and message id that would read
-  as success while nothing was sent. There is no UI yet for entering those
-  credentials — the rows must be inserted directly.
-- **Outbound dialling depends on a provider implementation that does not exist.**
-  `POST /api/v1/calls/[id]/dial` is wired end to end, but `HmacTelephonyProvider`
-  throws on `initiateCall`; only inbound status/recording webhooks are implemented.
-  A vendor-specific provider (Twilio, Vonage, …) must be added to the factory in
-  `src/lib/integrations/telephony.ts` before a call can actually be placed.
-- **RSVP is recorded by agents, not by invitees.** `/{workspaceSlug}/sales/events/[id]`
-  lets a caller record CONFIRMED/TENTATIVE/DECLINED and reveals the Meet link on
-  confirmation. There is no public self-service RSVP page; that needs a signed,
-  single-use token column on `EventInvitee` rather than exposing the cuid.
+  as success while nothing was sent.
+  Those rows now have a UI: `/{slug}/admin/integrations` connects, verifies,
+  re-tests and disconnects every provider, and shows the callback URL to paste
+  into the vendor's console. Credentials are wrapped with AES-256-GCM under a
+  key derived from `FIELD_ENCRYPTION_KEY` before they reach the database and are
+  never returned by any route — see `src/lib/security/envelope.ts`.
+- **Outbound dialling now has four vendor implementations, none of which has
+  placed a real call.** `src/lib/integrations/telephony/` carries Twilio, Exotel,
+  Knowlarity and Plivo behind one interface, each with its own signature scheme
+  (`X-Twilio-Signature` over URL + sorted params; `X-Plivo-Signature-V3` over URL
+  + nonce; a derived URL token for the two that sign nothing), and
+  `resolveTelephony` picks the workspace's chosen vendor from
+  `OrganizationSetting.telephonyProvider`.
+  What remains: **every adapter is written against the vendors' documented APIs,
+  and no live account has yet placed a call.** What *is* proven, and is as close
+  as a test suite can get: `tests/security/telephony-vendors.spec.ts` covers the
+  four signature schemes and the status normalisation, and
+  `tests/integration/telephony-webhook-flow.spec.ts` drives the whole lifecycle
+  through the real webhook route with signed, vendor-shaped bodies — ringing,
+  answer, completion, a redelivery, an out-of-order callback that must not reopen
+  a finished call, a recording discarded for want of consent and one stored with
+  it, plus refusals for an unsigned delivery, an unknown connection key and an
+  Exotel callback missing its URL token. What that cannot prove is the *outbound*
+  half: that the vendor accepts our create-call request. Save-and-verify makes a
+  live authenticated read at connect time for Twilio, Plivo and Exotel, which
+  catches a wrong key; the rest needs a handset.
+  `docs/TELEPHONY-PROVIDERS.md` has the per-vendor console setup and a
+  step-by-step first-call procedure — run it with a colleague, not a client.
+  Capability gaps are declared rather than papered over: Plivo
+  exposes no CallUUID at create time so hang-up and status polling are absent
+  from its capability list, and Knowlarity has no read-only endpoint so its
+  connection cannot be verified at save time and reports as unverified.
+  Exotel and Knowlarity **do not sign callbacks at all**. Their endpoint is
+  authenticated by the unguessable `webhookKey` in the path plus a derived
+  `token` query parameter compared in constant time. That proves the caller knows
+  a secret; it does not prove the body is untampered. Restrict those endpoints to
+  the vendor's source addresses at the edge where the deployment allows it.
+- **Call recordings are fetched into our own object storage, and only then are
+  they readable.** The webhook stores the vendor URL under
+  `Recording.storageBucket = 'provider'` and enqueues `media/recording.ingest`;
+  the worker downloads the media, writes it to `recordings/{tenantId}/{callId}`
+  and clears the marker. `GET /api/v1/calls/[id]/recording` no longer returns
+  `storageKey` at all, and `/recording/media` streams the bytes through an
+  authorised handler that re-checks consent on every read.
+  What remains: **the ingest worker must be running.** `npm run worker` now
+  starts it; without it recordings stay on the vendor's servers, the download
+  route refuses them and transcription has nothing to read.
+- **AI call analysis never completed a single run before this release.**
+  `POST /api/v1/calls/[id]/analysis` ended in
+  `prisma.aIAnalysis.update({ where: { callId } })` against a row that nothing
+  created, so every first analysis raised P2025 *after* the model had been
+  called and paid for — and because `POST /calls/[id]/audit` requires a
+  `COMPLETED` analysis, the whole audit, scoring and coaching chain was
+  unreachable. The row is now claimed atomically before the model is called,
+  which is also the concurrency guard the previous read-then-act check was not.
+  Transcription, analysis and audit now run on the `ai` queue rather than inside
+  the request: recording ingested → transcribe → analyse → audit, each step
+  idempotent, each claiming its row before any billed work, with BullMQ backoff
+  and the vendor's own message recorded on the row when it finally gives up. The
+  routes claim and enqueue, so a second press is a 409 rather than a second
+  billed model call, and the caller polls `GET`.
+  What remains: **the `ai` worker must be running** (`npm run worker`), or every
+  summary and audit stays `PENDING` forever. And a re-analysis overwrites a
+  human's corrections — `humanCorrected` is recorded but not honoured by the
+  worker, which is why re-analysis is an explicit action and not automatic.
+- **Invitees can now RSVP for themselves** at `/rsvp/{token}`, a public page
+  outside every route group with no session and no workspace shell. The token is
+  `{tenantId}.{inviteeId}.{HMAC}` derived under `WEBHOOK_SIGNING_PEPPER` — no
+  column, revocable for everyone at once by rotating the pepper, and carrying the
+  tenant so the unauthenticated lookup is scoped exactly like an authenticated
+  one rather than needing an exception in the tenant guard and in RLS. A bad
+  token is a 404, never a 403, so a valid token cannot be used to enumerate an
+  event's guest list. The Meet link is withheld until the invitee confirms,
+  because an invitation carrying the joining link *is* the joining link and
+  invitations get forwarded. `viewedAt` is its own column rather than an
+  `RsvpStatus` value, since viewing and answering are orthogonal.
+  What remains: **the WhatsApp template must carry a dynamic-URL button** for the
+  link to reach anyone. Send with `rsvpButton: true` against a template whose
+  button base URL is `{APP_URL}/rsvp/`; the token goes in as the suffix. Sending
+  that parameter to a template without a button is a 132000 from Meta for every
+  recipient, which is why it is off by default. No email invitation carries the
+  link yet either — WhatsApp only.
 - **"Square Beats" is not implemented.** No feature list, screenshots or access to
-  the Square Yards application were available, so nothing was built for it.
+  the Square Yards application were available, so nothing was built for it. The
+  product owner has said they will supply the module list, workflows and screens;
+  until they arrive there is nothing to map Reuse/Enhance/Replace/Integrate/
+  Deprecate against, and guessing would create exactly the duplicate modules the
+  requirement exists to prevent.
+- **The legacy `Integration` table is now unreferenced.** It was a catalogue model
+  that nothing ever wrote a row to, read by one page that has been replaced with
+  the `IntegrationConnection` board. Dropping it is a one-line migration nobody
+  has run, because dropping a table is not reversible by a rollback of code.
 
 These are explicit release gates, not hidden behind placeholder success states.
