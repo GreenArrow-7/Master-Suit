@@ -1,0 +1,146 @@
+# The release gates, in the order a failure is cheapest to diagnose: static
+# checks first, then tests, then a build, then the dependency audit.
+#
+# There is one job, not eight. Every gate needs the same installed node_modules
+# and the same generated Prisma client, and splitting them into parallel jobs
+# would pay that cost repeatedly to save less time than it spends.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/web
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: leadflow
+          POSTGRES_PASSWORD: leadflow
+          POSTGRES_DB: leadflow
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U leadflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # .env.example carries non-secret development defaults and the generated
+      # secrets below. CI never reads a committed .env.
+      NODE_ENV: development
+      CI: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Creates apps/web/.env from apps/web/.env.example, then overwrites the
+      # three placeholder secrets with real 32-byte values.
+      - name: Generate .env
+        run: node scripts/generate-secrets.mjs
+
+      # tests/tenant/rls.spec.ts refuses to run unless RLS_DATABASE_URL is set and
+      # names the *same* connection as DATABASE_URL — testing a role the
+      # application never connects as would prove nothing, so it throws rather
+      # than skipping. Derived from .env rather than repeated, so the two cannot
+      # drift apart.
+      - name: Export RLS connection
+        run: echo "RLS_DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)" >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      # The server integration specs sign in as a member of the `manath-homes`
+      # workspace, which only exists once the demo data is seeded. The seed
+      # refuses to run against NODE_ENV=production, so it cannot touch a real
+      # deployment from here.
+      - name: Seed demo data
+        # ALLOW_DEMO_SEED is the seed's own guard: it creates dozens of active
+        # logins and refuses to run until the operator confirms the target is
+        # disposable. A CI database is created and destroyed with the job.
+        env:
+          ALLOW_DEMO_SEED: 'yes'
+        run: npm run db:seed
+
+      # ── Gate 1 ────────────────────────────────────────────────────────────
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # ── Gate 2 ────────────────────────────────────────────────────────────
+      - name: Lint
+        run: npm run lint
+
+      # ── Gate 3 ────────────────────────────────────────────────────────────
+      - name: Format check
+        run: npm run format:check
+
+      # ── Gate 4 ────────────────────────────────────────────────────────────
+      #
+      # A skipped test is a failure here. `describe.skip` and `it.skip` are the
+      # cheapest way to make a suite green while deleting its coverage, and a
+      # summary line reading "0 failed" hides them completely — so the run is
+      # rejected if the reporter mentions any.
+      - name: Test
+        run: |
+          set -o pipefail
+          npx vitest run --reporter=default 2>&1 | tee vitest.log
+          if grep -Eq '[0-9]+ (skipped|todo)' vitest.log; then
+            echo "::error::Skipped or todo tests are not allowed. See the summary above."
+            exit 1
+          fi
+
+      # ── Gate 5 ────────────────────────────────────────────────────────────
+      #
+      # Integration specs that drive a running application. They own their own
+      # server: tests/server/globalSetup.ts starts one on a free port, waits for
+      # it to answer, and stops it again whether the run passes or fails. Gate 4
+      # used to collect these, and failed on every clean run because nothing had
+      # started a server yet.
+      - name: Integration (server)
+        run: npm run test:server
+
+      # ── Gate 6 ────────────────────────────────────────────────────────────
+      - name: E2E
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      # ── Gate 7 ────────────────────────────────────────────────────────────
+      - name: Build
+        run: npm run build
+
+      # ── Gate 8 ────────────────────────────────────────────────────────────
+      #
+      # Production dependencies only. A dev-only advisory does not ship.
+      - name: Audit
+        run: npm audit --omit=dev --audit-level=high

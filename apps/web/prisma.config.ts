@@ -30,13 +30,20 @@ export default defineConfig({
   schema: path.join('prisma', 'schema.prisma'),
   migrations: {
     path: path.join('prisma', 'migrations'),
-    // Migrations run as a BYPASSRLS role; the application role never has it.
     seed: 'tsx prisma/seed/index.ts',
   },
   datasource: {
-    // `prisma generate` does not need a URL, so don't throw when it is absent —
-    // migrate and studio will report a clear error of their own if it is missing.
-    url: process.env.DATABASE_URL ?? '',
+    // MIGRATION_DATABASE_URL, not DATABASE_URL.
+    //
+    // Migrations need the owning role: they create tables, enable row-level
+    // security and write policies. The application must never hold that role —
+    // a table owner bypasses RLS whether or not any role attribute says so, so
+    // running the app as the migration role turns tenant isolation off silently.
+    // src/lib/startup-check.ts refuses to boot if the two are ever the same.
+    //
+    // Falls back to DATABASE_URL so an existing single-role checkout still runs
+    // `prisma generate`; deployments set both explicitly.
+    url: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || '',
     shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
   },
 });

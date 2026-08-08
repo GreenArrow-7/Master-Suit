@@ -1,30 +1,13 @@
 import type { NextConfig } from 'next';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
 const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-  {
-    key: 'Content-Security-Policy',
-    value: [
-      "default-src 'self'",
-      isProduction
-        ? "script-src 'self' 'unsafe-inline'"
-        : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "connect-src 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; '),
-  },
+  // Content-Security-Policy is NOT here. It carries a per-request script nonce,
+  // which a static header cannot express — see src/middleware.ts.
 ];
 
 const config: NextConfig = {
@@ -40,6 +23,19 @@ const config: NextConfig = {
   serverExternalPackages: ['@node-rs/argon2', '@prisma/client', 'pino', 'bullmq'],
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
+  },
+  experimental: {
+    /**
+     * Enables `forbidden()` and `forbidden.tsx`.
+     *
+     * A page the viewer lacks permission for used to throw a 403 AppError, which
+     * the generic error boundary rendered as "Something went wrong on our side"
+     * — reporting a server fault for a working access check, and offering "Try
+     * again" as the remedy. Detecting the status in the boundary is not an
+     * option: React strips the message in production and leaves only a digest.
+     * This is the framework's own interrupt for exactly this case.
+     */
+    authInterrupts: true,
   },
 };
 
