@@ -22,7 +22,7 @@ import { audit } from '@/lib/security/audit';
 import { isHrAdmin } from './access';
 import type { Ctx } from '@/lib/security/rbac';
 
-export type SettingGroup = 'face' | 'liveness' | 'attendance' | 'leave' | 'gratuity' | 'lifecycle';
+export type SettingGroup = 'face' | 'liveness' | 'attendance' | 'leave' | 'overtime' | 'gratuity' | 'lifecycle';
 
 interface BaseDefinition {
   key: string;
@@ -299,6 +299,121 @@ export const HR_SETTINGS: Definition[] = [
     help: 'The most that can accrue in one entitlement year.',
   },
 
+  // ── Overtime ─────────────────────────────────────────────────────────────
+  {
+    key: 'overtimeDetectionEnabled',
+    group: 'overtime',
+    type: 'boolean',
+    default: true,
+    label: 'Detect overtime from attendance',
+    help: 'Scan the daily roll-up for time worked beyond the rostered shift and raise a claim for approval. Detection never pays anything on its own — every claim still needs a decision.',
+  },
+  {
+    key: 'overtimeMinMinutes',
+    group: 'overtime',
+    type: 'number',
+    default: 30,
+    min: 0,
+    max: 240,
+    step: 5,
+    unit: 'minutes',
+    label: 'Ignore overruns shorter than',
+    help: 'Staff who stay four minutes past their shift should not generate an approval queue nobody reads. Below this, an overrun is not a claim.',
+  },
+  {
+    key: 'overtimeDailyCapMinutes',
+    group: 'overtime',
+    type: 'number',
+    default: 120,
+    min: 30,
+    max: 720,
+    step: 30,
+    unit: 'minutes',
+    statutory: true,
+    label: 'Daily overtime ceiling',
+    help: 'UAE law caps ordinary overtime at two hours a day outside defined exceptions. A claim above this is still recorded, but it is flagged so an approver sees it rather than rubber-stamping it.',
+  },
+  {
+    key: 'overtimeMultiplierNormal',
+    group: 'overtime',
+    type: 'number',
+    default: 1.25,
+    min: 1,
+    max: 3,
+    step: 0.05,
+    statutory: true,
+    label: 'Ordinary overtime rate',
+    help: 'Federal Decree-Law 33/2021 art. 19: basic wage plus 25%. Expressed as a multiplier of the hourly basic rate.',
+  },
+  {
+    key: 'overtimeMultiplierNight',
+    group: 'overtime',
+    type: 'number',
+    default: 1.5,
+    min: 1,
+    max: 3,
+    step: 0.05,
+    statutory: true,
+    label: 'Night overtime rate',
+    help: 'The higher statutory rate for hours worked between the night window below. Shift workers whose ordinary roster falls at night are excluded by law; this applies to overtime.',
+  },
+  {
+    key: 'overtimeNightStartHour',
+    group: 'overtime',
+    type: 'number',
+    default: 22,
+    min: 0,
+    max: 23,
+    step: 1,
+    unit: 'hour',
+    label: 'Night window starts',
+    help: 'Local hour the night rate begins. 22 means 22:00.',
+  },
+  {
+    key: 'overtimeNightEndHour',
+    group: 'overtime',
+    type: 'number',
+    default: 4,
+    min: 0,
+    max: 23,
+    step: 1,
+    unit: 'hour',
+    label: 'Night window ends',
+    help: 'Local hour the night rate stops. 4 means 04:00. The window wraps midnight when this is lower than the start.',
+  },
+  {
+    key: 'overtimeMultiplierWeekend',
+    group: 'overtime',
+    type: 'number',
+    default: 1.5,
+    min: 1,
+    max: 3,
+    step: 0.05,
+    statutory: true,
+    label: 'Rest-day rate',
+    help: 'Work on a rest day is compensated with a day off in lieu or this uplift. Set the claim to time off in lieu when the employee takes the day instead.',
+  },
+  {
+    key: 'overtimeMultiplierHoliday',
+    group: 'overtime',
+    type: 'number',
+    default: 2.5,
+    min: 1,
+    max: 4,
+    step: 0.05,
+    statutory: true,
+    label: 'Public-holiday rate',
+    help: 'Applied when the date is in the holiday register. Commonly 150% on top of ordinary pay; confirm against your own contracts.',
+  },
+  {
+    key: 'overtimeCompensatoryAllowed',
+    group: 'overtime',
+    type: 'boolean',
+    default: true,
+    label: 'Allow time off in lieu',
+    help: 'Lets an approver settle a claim with compensatory rest instead of pay. Payroll skips claims settled this way.',
+  },
+
   // ── Gratuity and settlement ──────────────────────────────────────────────
   {
     key: 'gratuityMinYears',
@@ -435,6 +550,16 @@ export type HrPolicy = {
   accrualDaysPerMonthUnderYear: number;
   accrualDaysPerMonthAfterYear: number;
   accrualAnnualCapDays: number;
+  overtimeDetectionEnabled: boolean;
+  overtimeMinMinutes: number;
+  overtimeDailyCapMinutes: number;
+  overtimeMultiplierNormal: number;
+  overtimeMultiplierNight: number;
+  overtimeNightStartHour: number;
+  overtimeNightEndHour: number;
+  overtimeMultiplierWeekend: number;
+  overtimeMultiplierHoliday: number;
+  overtimeCompensatoryAllowed: boolean;
   gratuityMinYears: number;
   gratuityDaysFirstPeriod: number;
   gratuityDaysAfterFirstPeriod: number;
@@ -455,6 +580,7 @@ export const GROUP_LABELS: Record<SettingGroup, string> = {
   liveness: 'Liveness challenge',
   attendance: 'Attendance and geofence',
   leave: 'Leave and accrual',
+  overtime: 'Overtime',
   gratuity: 'Gratuity and final settlement',
   lifecycle: 'Employee lifecycle',
 };

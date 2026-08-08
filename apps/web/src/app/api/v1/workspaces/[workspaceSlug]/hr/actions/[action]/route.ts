@@ -16,6 +16,7 @@ import {
 } from '@/services/hr/lifecycle';
 import { enrolFace, grantConsent, preflight, punch, requestChallenge, withdrawConsent } from '@/services/hr/attendance';
 import { updateHrPolicy } from '@/services/hr/settings';
+import { cancelOvertime, decideOvertime, detectOvertime, requestOvertime } from '@/services/hr/overtime';
 import { deleteDocument } from '@/services/hr/documents';
 import {
   decideAttendanceException,
@@ -61,6 +62,10 @@ const paramsSchema = z.object({
     'exception-request',
     'exception-decide',
     'document-delete',
+    'overtime-request',
+    'overtime-decide',
+    'overtime-cancel',
+    'overtime-detect',
   ]),
 });
 
@@ -73,6 +78,10 @@ const ACTION_PERMISSION: Partial<Record<string, [string, 'EDIT' | 'APPROVE' | 'M
   'leave-reject': ['leave', 'APPROVE'],
   'leave-carry-forward': ['leave', 'APPROVE'],
   'exception-decide': ['attendance', 'APPROVE'],
+  // Raising and withdrawing your own claim are self-service, so they are absent
+  // here and gated inside the service instead. Deciding and detecting are not.
+  'overtime-decide': ['overtime', 'APPROVE'],
+  'overtime-detect': ['overtime', 'APPROVE'],
   'temporary-decide': ['attendance', 'APPROVE'],
   'onboarding-start': ['employee', 'EDIT'],
   'employee-activate': ['employee', 'EDIT'],
@@ -132,6 +141,43 @@ export const POST = route(
       case 'leave-cancel': {
         const input = z.object({ requestId: id }).parse(body);
         return cancelLeave(ctx, input.requestId);
+      }
+
+      case 'overtime-request': {
+        const input = z
+          .object({
+            employeeId: id.optional(),
+            workDate: z.coerce.date(),
+            minutes: z.coerce.number().int().min(1).max(1440),
+            reason: z.string().min(1).max(1000),
+          })
+          .parse(body);
+        return requestOvertime(ctx, input);
+      }
+
+      case 'overtime-decide': {
+        const input = z
+          .object({
+            requestId: id,
+            approve: z.coerce.boolean(),
+            note,
+            compensatory: z.coerce.boolean().optional(),
+          })
+          .parse(body);
+        return decideOvertime(ctx, input.requestId, input.approve, {
+          note: input.note,
+          compensatory: input.compensatory,
+        });
+      }
+
+      case 'overtime-cancel': {
+        const input = z.object({ requestId: id }).parse(body);
+        return cancelOvertime(ctx, input.requestId);
+      }
+
+      case 'overtime-detect': {
+        const input = z.object({ from: z.coerce.date(), to: z.coerce.date() }).parse(body);
+        return detectOvertime(ctx, { from: input.from, to: input.to });
       }
 
       case 'leave-carry-forward': {

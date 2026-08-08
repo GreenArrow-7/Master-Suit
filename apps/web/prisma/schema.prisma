@@ -399,6 +399,7 @@ model Tenant {
   hrAttendancePunches   HrAttendancePunch[]
   hrTemporaryRequests   HrTemporaryLocationRequest[]
   hrExceptionRequests   HrAttendanceExceptionRequest[]
+  hrOvertimeRequests    HrOvertimeRequest[]
   workspaceUsage        WorkspaceUsage[]
   billingEvents         BillingEvent[]
 
@@ -927,6 +928,9 @@ model EmployeeProfile {
   exceptionRequests       HrAttendanceExceptionRequest[] @relation("HrExceptionEmployee")
   exceptionManagerActions HrAttendanceExceptionRequest[] @relation("HrExceptionManager")
   exceptionHrActions      HrAttendanceExceptionRequest[] @relation("HrExceptionHr")
+  overtimeClaims          HrOvertimeRequest[]            @relation("HrOvertimeEmployee")
+  overtimeRaised          HrOvertimeRequest[]            @relation("HrOvertimeRequester")
+  overtimeDecisions       HrOvertimeRequest[]            @relation("HrOvertimeApprover")
 
   @@unique([tenantId, employeeNumber])
   @@index([tenantId, employmentStatus])
@@ -1013,6 +1017,57 @@ model HrEmployeeShift {
   shift       HrShift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, effectiveOn])
+}
+
+/**
+ * A claim on paid overtime, whether the server noticed it or a person asked for it.
+ *
+ * One row per employee per day per source. The unique constraint is the whole
+ * idempotency story: re-running detection over a week that was already scanned
+ * updates the minutes on the existing DETECTED row instead of stacking a second
+ * claim on the same day, and an employee cannot file two REQUESTED claims for
+ * one date. Detection and a manual request coexist deliberately — the manager
+ * needs to see both "the clock says 90 minutes" and "he says he worked 120".
+ */
+model HrOvertimeRequest {
+  id         String           @id @default(cuid())
+  tenantId   String
+  employeeId String
+  workDate   DateTime
+  minutes    Int
+  kind       HrOvertimeKind
+  source     HrOvertimeSource
+  status     HrOvertimeStatus @default(PENDING)
+  reason     String?
+  /**
+   * Resolved when the claim is approved, never read live afterwards. A workspace
+   * that lowers its weekend rate in March must not restate February's approved
+   * overtime — §106. Null while pending, because no rate has been committed yet.
+   */
+  multiplier Float?
+  /** Taken as time off in lieu instead of pay, so payroll skips it. */
+  compensatory  Boolean         @default(false)
+  requestedById String?
+  approverId    String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  /**
+   * Set when a payroll run consumes the row. A locked claim cannot be edited,
+   * re-decided or cancelled — otherwise a payslip already issued stops
+   * reconciling against the hours behind it.
+   */
+  lockedAt     DateTime?
+  payrollRunId String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee     EmployeeProfile  @relation("HrOvertimeEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  requestedBy  EmployeeProfile? @relation("HrOvertimeRequester", fields: [requestedById], references: [id])
+  approver     EmployeeProfile? @relation("HrOvertimeApprover", fields: [approverId], references: [id])
+
+  @@unique([tenantId, employeeId, workDate, source])
+  @@index([tenantId, status, workDate])
+  @@index([tenantId, employeeId, workDate])
 }
 
 model HrAttendanceRecord {
@@ -1373,6 +1428,33 @@ enum HrTemporaryRequestStatus {
   APPROVED
   REJECTED
   EXPIRED
+}
+
+/** Where an overtime claim came from. Detection is advisory; only a decision pays. */
+enum HrOvertimeSource {
+  DETECTED
+  REQUESTED
+}
+
+/**
+ * Which statutory rate applies. UAE Federal Decree-Law 33/2021 art. 19 sets the
+ * ordinary uplift and a higher one for night hours; rest-day and public-holiday
+ * work are compensated differently again. The multipliers themselves are
+ * workspace settings — only the categories are fixed, because a report that
+ * groups by "kind" has to mean the same thing in every workspace.
+ */
+enum HrOvertimeKind {
+  NORMAL
+  NIGHT
+  WEEKEND
+  HOLIDAY
+}
+
+enum HrOvertimeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 enum HrExceptionStatus {

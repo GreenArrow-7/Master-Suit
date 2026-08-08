@@ -44,6 +44,17 @@ export const isApprover = (ctx: Ctx) => atLeast(ctx, 'leave', 'APPROVE', 'TEAM')
 export const isAttendanceApprover = (ctx: Ctx) => atLeast(ctx, 'attendance', 'APPROVE', 'TEAM');
 
 /**
+ * Decides overtime claims, and may raise one on someone else's behalf.
+ *
+ * Separate from `attendance:APPROVE` because the two authorities have different
+ * consequences: correcting a missed punch fixes a record, while approving
+ * overtime spends money. A line manager who should fix timesheets without a
+ * signing authority is a normal arrangement, and one permission for both had no
+ * way to express it.
+ */
+export const isOvertimeApprover = (ctx: Ctx) => atLeast(ctx, 'overtime', 'APPROVE', 'TEAM');
+
+/**
  * Reads passport scans, visas, labour cards.
  *
  * Deliberately its own permission rather than a consequence of administering HR.

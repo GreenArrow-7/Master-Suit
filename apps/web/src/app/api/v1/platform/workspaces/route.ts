@@ -136,6 +136,7 @@ export async function POST(req: Request) {
           'attendance',
           'hr_documents',
           'departments',
+          'overtime',
           'shifts',
           'holidays',
           'work_locations',
@@ -158,6 +159,7 @@ export async function POST(req: Request) {
       permissionPairs.push(
         { module: 'leave', action: 'APPROVE' },
         { module: 'attendance', action: 'APPROVE' },
+        { module: 'overtime', action: 'APPROVE' },
         { module: 'hr_documents', action: 'VIEW_SENSITIVE_FIELDS' },
       );
       // 144 sequential upserts — one network round trip each — inside a 5 s

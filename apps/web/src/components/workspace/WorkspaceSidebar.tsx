@@ -82,6 +82,10 @@ export default function WorkspaceSidebar({
               { label: 'Check in', href: `/${slug}/people/check-in`, icon: 'attendance' },
               { label: 'Attendance', href: `/${slug}/people/attendance`, icon: 'attendance', permission: 'employee' },
               { label: 'Leave', href: `/${slug}/people/leave`, icon: 'leave', permission: 'employee' },
+              // Unkeyed to `overtime` deliberately: claiming your own overtime is
+              // self-service, the same as checking in. The page shows the
+              // approval queue only to someone holding `overtime:APPROVE`.
+              { label: 'Overtime', href: `/${slug}/people/overtime`, icon: 'attendance', permission: 'employee' },
               { label: 'Lifecycle', href: `/${slug}/people/lifecycle`, icon: 'shield', permission: 'employee' },
               { label: 'Departments', href: `/${slug}/people/departments`, icon: 'org', permission: 'employee' },
               {

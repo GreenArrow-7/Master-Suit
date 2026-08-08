@@ -11,6 +11,7 @@ import { attendanceDays, faceStatus, myPunches, reviewQueue } from '@/services/h
 import { DEFAULT_POLICY, getHrPolicy, HR_SETTINGS } from '@/services/hr/settings';
 import { EXCEPTION_REASONS, listExceptionRequests, listTemporaryRequests } from '@/services/hr/requests';
 import { listDocuments } from '@/services/hr/documents';
+import { listOvertime } from '@/services/hr/overtime';
 import { inviteUser } from '@/services/identity/invitations';
 import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_WITH_ROLE_PUBLIC } from '@/services/hr/publicSelect';
 
@@ -43,6 +44,8 @@ const paramsSchema = z.object({
     'temporary-requests',
     'exception-requests',
     'exception-reasons',
+    'overtime',
+    'overtime-pending',
   ]),
 });
 
@@ -58,6 +61,8 @@ const querySchema = z
     limit: z.coerce.number().int().min(1).max(500).optional(),
     locationId: z.string().max(64).optional(),
     mine: z.string().optional(),
+    status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+    cursor: z.string().max(64).optional(),
   })
   .passthrough();
 
@@ -75,6 +80,10 @@ const RESOURCE_PERMISSION: Partial<Record<string, [string, 'VIEW' | 'EDIT' | 'AP
   'exception-requests': ['attendance', 'APPROVE'],
   'temporary-requests': ['attendance', 'APPROVE'],
   'leave-pending': ['leave', 'APPROVE'],
+  // `overtime` itself is intentionally absent: an employee reads their own
+  // claims, and `listOvertime` narrows the query to them. Only the approval
+  // queue needs the signing authority.
+  'overtime-pending': ['overtime', 'APPROVE'],
   settings: ['employee', 'EDIT'],
 };
 
@@ -161,6 +170,21 @@ export const GET = route(
         const employeeId = await resolveEmployeeId(ctx, query.employeeId);
         return checklistFor(ctx, employeeId, query.phase);
       }
+
+      // Own claims by default; an approver may narrow to one employee. The
+      // service refuses a non-approver asking for somebody else's.
+      case 'overtime':
+        return listOvertime(ctx, {
+          employeeId: query.employeeId,
+          status: query.status,
+          from: query.start,
+          to: query.end,
+          limit: query.limit,
+          cursor: query.cursor,
+        });
+
+      case 'overtime-pending':
+        return listOvertime(ctx, { status: 'PENDING', limit: query.limit, cursor: query.cursor });
 
       case 'lifecycle':
         return lifecycleDashboard(ctx);
