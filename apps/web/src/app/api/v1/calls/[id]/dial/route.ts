@@ -8,17 +8,19 @@ import { getTelephonyProvider } from '@/lib/integrations/telephony';
 
 const params = z.object({ id: z.string().cuid() });
 
-const body = z.object({
-  /** Ask the provider to record. Refused unless consent is already on file. */
-  record: z.boolean().default(false),
-}).strict();
+const body = z
+  .object({
+    /** Ask the provider to record. Refused unless consent is already on file. */
+    record: z.boolean().default(false),
+  })
+  .strict();
 
 /**
  * Places the outbound leg for a queued call. Status, duration and the recording URL
  * arrive later on /api/v1/webhooks/telephony, which matches on externalCallId.
  */
 export const POST = route(
-  { module: 'calls', action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -35,7 +37,13 @@ export const POST = route(
     });
     const credentials = (integration?.credentials ?? {}) as Record<string, string>;
     if (!integration || !credentials.callerNumber) {
-      throw Invalid([{ field: 'integration', code: 'not_connected', message: 'Connect a telephony provider with a caller number before dialling.' }]);
+      throw Invalid([
+        {
+          field: 'integration',
+          code: 'not_connected',
+          message: 'Connect a telephony provider with a caller number before dialling.',
+        },
+      ]);
     }
 
     // Recording is consent-gated at the point the provider is told to record, not
@@ -43,7 +51,9 @@ export const POST = route(
     if (body.record) {
       const consent = await prisma.recordingConsent.findUnique({ where: { callId: call.id } });
       if (!consent?.consentGiven || consent.withdrawnAt) {
-        throw Invalid([{ field: 'record', code: 'no_consent', message: 'Record consent before asking the provider to record.' }]);
+        throw Invalid([
+          { field: 'record', code: 'no_consent', message: 'Record consent before asking the provider to record.' },
+        ]);
       }
     }
 

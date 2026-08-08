@@ -1,7 +1,5 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
@@ -11,11 +9,14 @@ import ListHeader from '@/components/workspace/ListHeader';
 export const metadata = { title: 'Automation' };
 
 const STATE_TONE: Record<string, Tone> = {
-  PUBLISHED: 'viridian', DRAFT: 'slate', PAUSED: 'brass', ARCHIVED: 'slate',
+  PUBLISHED: 'viridian',
+  DRAFT: 'slate',
+  PAUSED: 'brass',
+  ARCHIVED: 'slate',
 };
 
 export default async function AutomationPage() {
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['automation', 'VIEW'] });
   if (!can(ctx, 'automation', 'VIEW')) redirect('/home');
 
   const rows = await prisma.automation.findMany({
@@ -27,9 +28,13 @@ export default async function AutomationPage() {
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Automation"
-        description={<>{rows.length} rule{rows.length === 1 ? '' : 's'}</>}
+        description={
+          <>
+            {rows.length} rule{rows.length === 1 ? '' : 's'}
+          </>
+        }
       />
 
       {rows.length === 0 ? (
@@ -55,9 +60,15 @@ export default async function AutomationPage() {
                 <tr key={r.id}>
                   <td style={{ fontWeight: 500 }}>{r.name}</td>
                   <td style={{ color: 'var(--lf-ink-2)' }}>{r.objectType}</td>
-                  <td><Badge tone={STATE_TONE[r.state] ?? 'slate'}>{r.state.toLowerCase()}</Badge></td>
+                  <td>
+                    <Badge tone={STATE_TONE[r.state] ?? 'slate'}>{r.state.toLowerCase()}</Badge>
+                  </td>
                   <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-                    {new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {new Date(r.createdAt).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
                   </td>
                 </tr>
               ))}

@@ -9,8 +9,7 @@ const opts = {
 
 export const hashPassword = (plain: string) => hash(plain, opts);
 
-export const verifyPassword = (digest: string, plain: string) =>
-  verify(digest, plain, opts).catch(() => false);
+export const verifyPassword = (digest: string, plain: string) => verify(digest, plain, opts).catch(() => false);
 
 /**
  * Burns roughly the same CPU as a real verification. Called when the email is
@@ -30,8 +29,13 @@ export interface PasswordPolicy {
 }
 
 export const DEFAULT_POLICY: PasswordPolicy = {
-  minLength: 12, requireUpper: true, requireLower: true,
-  requireNumber: true, requireSymbol: false, reuseWindow: 5, maxAgeDays: null,
+  minLength: 12,
+  requireUpper: true,
+  requireLower: true,
+  requireNumber: true,
+  requireSymbol: false,
+  reuseWindow: 5,
+  maxAgeDays: null,
 };
 
 export function checkPolicy(plain: string, policy: PasswordPolicy): string[] {

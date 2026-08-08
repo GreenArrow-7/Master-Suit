@@ -1,4 +1,4 @@
-import { withTenantTx } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { nextReference } from '../shared/reference';
 import { emit } from '../shared/events';
@@ -20,7 +20,7 @@ export interface CreateAccountInput {
 }
 
 export async function createAccount(ctx: Ctx, input: CreateAccountInput) {
-  const account = await withTenantTx(ctx.tenantId, async (tx) => {
+  const account = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'ACCOUNT');
     const ownerId = input.ownerId ?? ctx.actor.id;
 
@@ -44,7 +44,11 @@ export async function createAccount(ctx: Ctx, input: CreateAccountInput) {
       },
     });
 
-    await audit(ctx, { event: 'RECORD_CREATED', objectType: 'account', recordId: created.id, newValue: { reference } }, tx);
+    await audit(
+      ctx,
+      { event: 'RECORD_CREATED', objectType: 'account', recordId: created.id, newValue: { reference } },
+      tx,
+    );
     return created;
   });
 

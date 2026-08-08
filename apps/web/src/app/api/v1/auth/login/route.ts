@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
@@ -37,12 +38,20 @@ export async function POST(req: Request) {
     await consume(limits.loginPerAccount(body.email));
 
     const normalizedEmail = body.email.trim().toLowerCase();
+    // `salesUser` is deliberately not joined here.
+    //
+    // Login is a bootstrap: no tenant is known yet, so this query runs with no
+    // `app.tenant_id`. PlatformUser, WorkspaceMembership and Tenant are exempt
+    // from RLS for exactly that reason, but `User` is not — joining it from here
+    // returns null for every membership, which read as "no active workspace" and
+    // rejected every login. The sales users are hydrated below, one tenant at a
+    // time, where the context can be set.
     const user = await prisma.platformUser.findUnique({
       where: { normalizedEmail },
       include: {
         memberships: {
           where: { status: 'ACTIVE' },
-          include: { tenant: true, salesUser: { include: { role: true } } },
+          include: { tenant: true },
           orderBy: { joinedAt: 'asc' },
         },
       },
@@ -68,7 +77,7 @@ export async function POST(req: Request) {
       throw Unauthorized(GENERIC);
     }
 
-    const memberships = user.memberships.filter(isActiveWorkspaceMembership);
+    const memberships = (await hydrateSalesUsers(user.memberships)).filter(isActiveWorkspaceMembership);
     if (user.platformRole === 'USER' && memberships.length === 0) {
       await burnTiming();
       await recordFailure(null, user.id, ip, ua, requestId, 'NO_ACTIVE_WORKSPACE');
@@ -94,15 +103,70 @@ export async function POST(req: Request) {
     const settings = activeMembership
       ? await prisma.organizationSetting.findUnique({ where: { tenantId: activeMembership.tenantId } })
       : null;
-    const mfaRequired = user.mfaEnabled || settings?.mfaRequired === true;
+    /**
+     * Platform staff always need a second factor.
+     *
+     * Without this an owner with no authenticator would get a FULL session that
+     * resolvePlatformCtx then refuses — locked out with no way to enrol, which
+     * is the same trap mandatory workspace MFA used to be. Marking it required
+     * here routes them to the enrolment grant instead.
+     */
+    const mfaRequired =
+      user.mfaEnabled || settings?.mfaRequired === true || isPrivilegedPlatformRole(user.platformRole);
+
+    // Policy demands a second factor and this account has none.
+    //
+    // The old code asked for a TOTP code anyway. There was no secret to generate
+    // one from and no way to enrol, so switching `mfaRequired` on locked out
+    // every user who had not already enrolled — permanently, with no path back.
+    //
+    // Issue a restricted grant instead: enough to reach /enroll-2fa and nothing
+    // else. It is not a signed-in session — resolvePlatformCtx refuses it
+    // everywhere except the enrolment, verification and logout endpoints.
+    if (mfaRequired && !user.mfaSecret) {
+      await prisma.platformUser.update({
+        where: { id: user.id },
+        data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
+      });
+      const grant = await createPlatformSession({
+        platformUserId: user.id,
+        activeTenantId: activeMembership?.tenantId ?? null,
+        ip,
+        userAgent: ua,
+        mfaSatisfied: false,
+        purpose: 'MFA_ENROLMENT',
+      });
+      await prisma.platformAuditEvent
+        .create({
+          data: {
+            tenantId: activeMembership?.tenantId,
+            actorUserId: user.id,
+            event: 'LOGIN',
+            objectType: 'platform_user',
+            objectId: user.id,
+            ipAddress: ip,
+            userAgent: ua,
+            requestId,
+            metadata: { mfa: false, purpose: 'MFA_ENROLMENT' },
+          },
+        })
+        .catch(() => {});
+
+      return NextResponse.json(
+        {
+          mfaEnrolmentRequired: true,
+          destination: '/enroll-2fa',
+          expiresAt: grant.expiresAt,
+          detail: 'This workspace requires two-factor authentication. Set up an authenticator to continue.',
+        },
+        { status: 200, headers: { 'x-request-id': requestId } },
+      );
+    }
 
     // MFA is verified on a second call; the session below is created only after it
     // succeeds, so an unverified session never exists.
     if (mfaRequired && !body.mfaCode && !body.recoveryCode) {
-      return NextResponse.json(
-        { mfaRequired: true, challengeToken: await issueChallenge(user.id) },
-        { status: 200, headers: { 'x-request-id': requestId } },
-      );
+      return NextResponse.json({ mfaRequired: true }, { status: 200, headers: { 'x-request-id': requestId } });
     }
     if (mfaRequired && (body.mfaCode || body.recoveryCode)) {
       const { verifyTotp } = await import('@/lib/auth/mfa');
@@ -113,20 +177,29 @@ export async function POST(req: Request) {
       // passed through unchanged by decryptSecret.
       const byTotp = Boolean(body.mfaCode && user.mfaSecret && verifyTotp(decryptSecret(user.mfaSecret), body.mfaCode));
       // A recovery code is spent here, so a captured one is worthless twice.
-      const byRecovery = !byTotp && Boolean(body.recoveryCode) && await consumeRecoveryCode(user.id, body.recoveryCode!);
+      const byRecovery =
+        !byTotp && Boolean(body.recoveryCode) && (await consumeRecoveryCode(user.id, body.recoveryCode!));
 
       if (!byTotp && !byRecovery) {
         await recordFailure(activeMembership?.tenantId ?? null, user.id, ip, ua, requestId, 'BAD_MFA');
         throw Unauthorized(GENERIC);
       }
       if (byRecovery) {
-        await prisma.platformAuditEvent.create({
-          data: {
-            tenantId: activeMembership?.tenantId, actorUserId: user.id, event: 'LOGIN',
-            objectType: 'platform_user', objectId: user.id, ipAddress: ip, userAgent: ua, requestId,
-            metadata: { mfa: true, viaRecoveryCode: true },
-          },
-        }).catch(() => {});
+        await prisma.platformAuditEvent
+          .create({
+            data: {
+              tenantId: activeMembership?.tenantId,
+              actorUserId: user.id,
+              event: 'LOGIN',
+              objectType: 'platform_user',
+              objectId: user.id,
+              ipAddress: ip,
+              userAgent: ua,
+              requestId,
+              metadata: { mfa: true, viaRecoveryCode: true },
+            },
+          })
+          .catch(() => {});
       }
     }
 
@@ -161,7 +234,11 @@ export async function POST(req: Request) {
       {
         user: { id: user.id, fullName: user.fullName, email: user.email, platformRole: user.platformRole },
         activeWorkspace: activeMembership
-          ? { id: activeMembership.tenant.id, slug: activeMembership.tenant.slug, displayName: activeMembership.tenant.displayName }
+          ? {
+              id: activeMembership.tenant.id,
+              slug: activeMembership.tenant.slug,
+              displayName: activeMembership.tenant.displayName,
+            }
           : null,
         workspaces: memberships.map((membership) => ({
           id: membership.tenant.id,
@@ -169,9 +246,19 @@ export async function POST(req: Request) {
           displayName: membership.tenant.displayName,
           role: membership.salesUser?.role.key ?? membership.roleSnapshot,
         })),
-        destination: user.platformRole === 'OWNER' && !activeMembership
-          ? '/platform'
-          : activeMembership ? `/${activeMembership.tenant.slug}/dashboard` : '/login',
+        // Null passwordChangedAt is what an administrator's reset leaves behind:
+        // the account is on a temporary password and must replace it before
+        // anything else opens. Surfaced here so the client routes straight to
+        // the change screen rather than discovering it on the first 403.
+        mustChangePassword: user.passwordChangedAt === null,
+        destination:
+          user.passwordChangedAt === null && activeMembership
+            ? `/${activeMembership.tenant.slug}/profile/security`
+            : user.platformRole === 'OWNER' && !activeMembership
+              ? '/platform'
+              : activeMembership
+                ? `/${activeMembership.tenant.slug}/dashboard`
+                : '/login',
         expiresAt: session.expiresAt,
       },
       { headers: { 'x-request-id': requestId } },
@@ -189,21 +276,48 @@ export async function POST(req: Request) {
 
 const GENERIC = 'That email and password combination did not work.';
 
-async function recordFailure(
-  tenantId: string | null, userId: string | null, ip: string, ua: string | null, requestId: string, reason: string,
-) {
-  await prisma.platformAuditEvent.create({
-    data: {
-      tenantId, actorUserId: userId, event: 'LOGIN_FAILED',
-      objectType: 'platform_user', objectId: userId, ipAddress: ip, userAgent: ua, requestId,
-      metadata: { reason },
-    },
-  }).catch(() => {});
+/**
+ * Attaches each membership's workspace user, read per tenant.
+ *
+ * `User` is RLS-forced, so it can only be read once a tenant is named. Each
+ * lookup below passes `tenantId` explicitly, which is what makes the tenant
+ * guard set `app.tenant_id` for the query — see runPinned in lib/db.ts.
+ */
+async function hydrateSalesUsers<T extends { tenantId: string; salesUserId: string | null }>(memberships: T[]) {
+  return Promise.all(
+    memberships.map(async (membership) => {
+      const salesUser = membership.salesUserId
+        ? await prisma.user.findFirst({
+            where: { tenantId: membership.tenantId, id: membership.salesUserId },
+            select: { id: true, status: true, deletedAt: true, role: { select: { key: true } } },
+          })
+        : null;
+      return { ...membership, salesUser };
+    }),
+  );
 }
 
-async function issueChallenge(userId: string) {
-  const { redis } = await import('@/lib/redis');
-  const token = ulid();
-  await redis.set(`mfa:challenge:${token}`, userId, 'EX', 300);
-  return token;
+async function recordFailure(
+  tenantId: string | null,
+  userId: string | null,
+  ip: string,
+  ua: string | null,
+  requestId: string,
+  reason: string,
+) {
+  await prisma.platformAuditEvent
+    .create({
+      data: {
+        tenantId,
+        actorUserId: userId,
+        event: 'LOGIN_FAILED',
+        objectType: 'platform_user',
+        objectId: userId,
+        ipAddress: ip,
+        userAgent: ua,
+        requestId,
+        metadata: { reason },
+      },
+    })
+    .catch(() => {});
 }

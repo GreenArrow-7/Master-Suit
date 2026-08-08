@@ -16,16 +16,19 @@ export async function GET(req: Request) {
       include: { tenant: true, salesUser: { include: { role: true } } },
       orderBy: { tenant: { displayName: 'asc' } },
     });
-    return NextResponse.json({
-      activeWorkspaceId: ctx.activeTenantId,
-      workspaces: memberships.map((membership) => ({
-        id: membership.tenant.id,
-        slug: membership.tenant.slug,
-        name: membership.tenant.displayName,
-        status: membership.tenant.status,
-        role: membership.salesUser?.role.key ?? membership.roleSnapshot,
-      })),
-    }, { headers: { 'x-request-id': requestId } });
+    return NextResponse.json(
+      {
+        activeWorkspaceId: ctx.activeTenantId,
+        workspaces: memberships.map((membership) => ({
+          id: membership.tenant.id,
+          slug: membership.tenant.slug,
+          name: membership.tenant.displayName,
+          status: membership.tenant.status,
+          role: membership.salesUser?.role.key ?? membership.roleSnapshot,
+        })),
+      },
+      { headers: { 'x-request-id': requestId } },
+    );
   } catch (error) {
     return problem(error, requestId);
   }
@@ -57,7 +60,10 @@ export async function POST(req: Request) {
 
 function problem(error: unknown, requestId: string) {
   if (error instanceof AppError) {
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+    return NextResponse.json(error.toProblem(requestId), {
+      status: error.status,
+      headers: { 'x-request-id': requestId },
+    });
   }
   return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

@@ -38,6 +38,12 @@ function generateRecoveryCodes() {
   });
 }
 
+/**
+ * The one place that legitimately loads the credential columns: every caller
+ * below verifies a TOTP code, a recovery code or a password against them.
+ * The returned object is never handed back to a caller as-is — each exported
+ * function projects it — and lib/api/handler.ts scrubs the same keys on egress.
+ */
 async function platformUserFor(ctx: Ctx, userId = ctx.actor.id) {
   const membership = await prisma.workspaceMembership.findUnique({
     where: { salesUserId: userId },
@@ -56,7 +62,8 @@ async function platformUserFor(ctx: Ctx, userId = ctx.actor.id) {
  */
 export async function beginTotpEnrolment(ctx: Ctx) {
   const user = await platformUserFor(ctx);
-  if (user.mfaEnabled) throw Conflict('Two-factor authentication is already enabled. Disable it first if you want to re-enrol.');
+  if (user.mfaEnabled)
+    throw Conflict('Two-factor authentication is already enabled. Disable it first if you want to re-enrol.');
 
   const secret = generateSecret();
   await prisma.platformUser.update({ where: { id: user.id }, data: { mfaSecret: encryptSecret(secret) } });
@@ -89,7 +96,12 @@ export async function confirmTotpEnrolment(ctx: Ctx, code: string) {
     data: { platformUserId: user.id, type: 'TOTP', verifiedAt: new Date() },
   });
 
-  await audit(ctx, { event: 'MFA_ENROLLED', objectType: 'platform_user', recordId: user.id, metadata: { action: 'mfa.enabled' } });
+  await audit(ctx, {
+    event: 'MFA_ENROLLED',
+    objectType: 'platform_user',
+    recordId: user.id,
+    metadata: { action: 'mfa.enabled' },
+  });
   return {
     enabled: true,
     recoveryCodes: codes,
@@ -105,7 +117,12 @@ export async function regenerateRecoveryCodes(ctx: Ctx, code: string) {
 
   const codes = generateRecoveryCodes();
   await prisma.platformUser.update({ where: { id: user.id }, data: { mfaRecoveryCodes: codes.map(hashCode) } });
-  await audit(ctx, { event: 'MFA_ENROLLED', objectType: 'platform_user', recordId: user.id, metadata: { action: 'mfa.recovery_codes_regenerated' } });
+  await audit(ctx, {
+    event: 'MFA_ENROLLED',
+    objectType: 'platform_user',
+    recordId: user.id,
+    metadata: { action: 'mfa.recovery_codes_regenerated' },
+  });
   return { recoveryCodes: codes, note: 'The previous codes no longer work.' };
 }
 
@@ -117,11 +134,17 @@ export async function regenerateRecoveryCodes(ctx: Ctx, code: string) {
 export async function disableTotp(ctx: Ctx, password: string, code: string) {
   const user = await platformUserFor(ctx);
   if (!user.mfaEnabled || !user.mfaSecret) throw Conflict('Two-factor authentication is not enabled on this account.');
-  if (!user.passwordHash || !(await verifyPassword(user.passwordHash, password))) throw Forbidden('That password is not correct.');
+  if (!user.passwordHash || !(await verifyPassword(user.passwordHash, password)))
+    throw Forbidden('That password is not correct.');
   if (!verifyTotp(decryptSecret(user.mfaSecret), code)) throw Forbidden('That code did not match.');
 
-  await clearFactors(user.id);
-  await audit(ctx, { event: 'MFA_ENROLLED', objectType: 'platform_user', recordId: user.id, metadata: { action: 'mfa.disabled.self' } });
+  await clearFactors(ctx, user.id);
+  await audit(ctx, {
+    event: 'MFA_ENROLLED',
+    objectType: 'platform_user',
+    recordId: user.id,
+    metadata: { action: 'mfa.disabled.self' },
+  });
   return { enabled: false };
 }
 
@@ -140,14 +163,21 @@ export async function removeTotpFor(ctx: Ctx, userId: string) {
     throw Forbidden('You cannot administer an account at or above your own level.');
   }
 
-  await clearFactors(target.workspaceMembership.platformUserId);
+  await clearFactors(ctx, target.workspaceMembership.platformUserId);
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'MFA_RESET');
-  await audit(ctx, { event: 'MFA_ENROLLED', objectType: 'user', recordId: target.id, metadata: { action: 'mfa.removed.by_admin' } });
+  await audit(ctx, {
+    event: 'MFA_ENROLLED',
+    objectType: 'user',
+    recordId: target.id,
+    metadata: { action: 'mfa.removed.by_admin' },
+  });
   return { userId: target.id, enabled: false };
 }
 
-async function clearFactors(platformUserId: string) {
-  await withTx(async (tx) => {
+async function clearFactors(ctx: Ctx, platformUserId: string) {
+  // PlatformUser and AuthenticationFactor are identity tables, exempt from RLS;
+  // the tenant is declared anyway so every transaction in the codebase does.
+  await withTx(ctx.tenantId, async (tx) => {
     await tx.platformUser.update({
       where: { id: platformUserId },
       data: { mfaEnabled: false, mfaSecret: null, mfaRecoveryCodes: [] },
@@ -162,7 +192,10 @@ async function clearFactors(platformUserId: string) {
  * use, so a captured code is worthless the second time.
  */
 export async function consumeRecoveryCode(platformUserId: string, submitted: string): Promise<boolean> {
-  const user = await prisma.platformUser.findUnique({ where: { id: platformUserId }, select: { mfaRecoveryCodes: true } });
+  const user = await prisma.platformUser.findUnique({
+    where: { id: platformUserId },
+    select: { mfaRecoveryCodes: true },
+  });
   if (!user?.mfaRecoveryCodes.length) return false;
 
   const candidate = Buffer.from(hashCode(submitted));

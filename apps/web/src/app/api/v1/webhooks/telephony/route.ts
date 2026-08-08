@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { getTelephonyProvider } from '@/lib/integrations/telephony';
+import { consume, limits } from '@/lib/security/ratelimit';
 
 export async function POST(req: Request) {
   const rawBody = await req.text();
@@ -14,6 +15,24 @@ export async function POST(req: Request) {
 
   if (!signature || !timestamp || !webhookId || !integrationKey) {
     return NextResponse.json({ error: 'invalid webhook authentication' }, { status: 401 });
+  }
+
+  /**
+   * Before the database is touched.
+   *
+   * This endpoint is unauthenticated at the point of arrival — the signature
+   * cannot be verified until the integration has been looked up — so every hit,
+   * valid or not, cost one query and often two. Anyone who learned the URL could
+   * drive that load indefinitely.
+   */
+  try {
+    await consume(limits.webhook(integrationKey));
+  } catch (err) {
+    const retryAfter = (err as { retryAfter?: number }).retryAfter;
+    return NextResponse.json(
+      { error: 'rate limited' },
+      { status: 429, headers: retryAfter ? { 'retry-after': String(retryAfter) } : undefined },
+    );
   }
 
   const integration = await prisma.integrationConnection.findUnique({
@@ -74,7 +93,9 @@ export async function POST(req: Request) {
     await prisma.webhookEvent.update({
       where: {
         tenantId_provider_externalId: {
-          tenantId: integration.tenantId, provider: providerKey, externalId: webhookId,
+          tenantId: integration.tenantId,
+          provider: providerKey,
+          externalId: webhookId,
         },
       },
       data: { processed: true, processedAt: new Date(), errorMessage: 'call not found' },
@@ -134,7 +155,9 @@ export async function POST(req: Request) {
   await prisma.webhookEvent.update({
     where: {
       tenantId_provider_externalId: {
-        tenantId: integration.tenantId, provider: providerKey, externalId: webhookId,
+        tenantId: integration.tenantId,
+        provider: providerKey,
+        externalId: webhookId,
       },
     },
     data: { processed: true, processedAt: new Date() },

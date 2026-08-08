@@ -3,10 +3,10 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { ctxForUser } from '@/lib/auth/session';
-import { automationGraph, findNode, type AutomationGraph } from './graph';
+import { automationGraph, findNode } from './graph';
 import { evaluateFilterNode } from './evaluateFilter';
 import { runAction } from './actions';
-import { isAutomationObjectType, loadRecord, type AutomationObjectType } from './records';
+import { isAutomationObjectType, loadRecord } from './records';
 
 /**
  * "record.created" / "record.updated" / etc. fired by service-layer domain events,
@@ -22,7 +22,13 @@ export async function enrollMatchingAutomations(tenantId: string, event: string,
   if (!isAutomationObjectType(object)) return;
 
   const automations = await prisma.automation.findMany({
-    where: { tenantId, objectType: object, state: 'PUBLISHED', deletedAt: null, activeVersionId: { not: { equals: null } } },
+    where: {
+      tenantId,
+      objectType: object,
+      state: 'PUBLISHED',
+      deletedAt: null,
+      activeVersionId: { not: { equals: null } },
+    },
     include: { versions: true },
   });
 
@@ -42,14 +48,21 @@ export async function enrollMatchingAutomations(tenantId: string, event: string,
 
     const graph = automationGraph.safeParse(version.graph);
     if (!graph.success) {
-      logger.error({ automationId: automation.id, versionId: version.id, err: graph.error }, 'automation graph failed validation');
+      logger.error(
+        { automationId: automation.id, versionId: version.id, err: graph.error },
+        'automation graph failed validation',
+      );
       continue;
     }
 
     const enrollment = await prisma.automationEnrollment.create({
       data: {
-        tenantId, automationId: automation.id, versionId: version.id,
-        objectType: object, recordId, currentNodeId: graph.data.entry,
+        tenantId,
+        automationId: automation.id,
+        versionId: version.id,
+        objectType: object,
+        recordId,
+        currentNodeId: graph.data.entry,
       },
     });
 
@@ -117,7 +130,12 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
           where: { tenantId, id: execution.id },
           data: { status: 'SUCCEEDED', finishedAt: new Date(), durationMs: Date.now() - started },
         });
-        await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id }, { delayMs: node.spec.durationMinutes * 60_000 });
+        await enqueue(
+          'automation',
+          'run-node',
+          { tenantId, enrollmentId: enrollment.id },
+          { delayMs: node.spec.durationMinutes * 60_000 },
+        );
         return;
       }
 
@@ -136,13 +154,21 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
 
     if (!nextNodeId) return exit(tenantId, enrollment.id, 'graph_end', 'COMPLETED');
 
-    await prisma.automationEnrollment.update({ where: { tenantId, id: enrollment.id }, data: { currentNodeId: nextNodeId } });
+    await prisma.automationEnrollment.update({
+      where: { tenantId, id: enrollment.id },
+      data: { currentNodeId: nextNodeId },
+    });
     await enqueue('automation', 'run-node', { tenantId, enrollmentId: enrollment.id });
   } catch (err) {
     logger.error({ err, enrollmentId: enrollment.id, nodeId: node.id }, 'automation node failed');
     await prisma.automationExecution.update({
       where: { tenantId, id: execution.id },
-      data: { status: 'FAILED', finishedAt: new Date(), durationMs: Date.now() - started, errorMessage: err instanceof Error ? err.message : String(err) },
+      data: {
+        status: 'FAILED',
+        finishedAt: new Date(),
+        durationMs: Date.now() - started,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      },
     });
     throw err; // let BullMQ's retry policy (queue.ts RETRY.automation) handle re-attempts
   }

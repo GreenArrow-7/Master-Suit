@@ -5,13 +5,15 @@ import { NotFound } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const patchBody = z.object({
-  status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
-  completedAt: z.coerce.date().nullable().optional(),
-}).strict();
+const patchBody = z
+  .object({
+    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    completedAt: z.coerce.date().nullable().optional(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'leads', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const task = await prisma.task.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!task) throw NotFound('Task');

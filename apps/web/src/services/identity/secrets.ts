@@ -21,7 +21,15 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
 const key = () =>
-  Buffer.from(hkdfSync('sha256', Buffer.from(env.FIELD_ENCRYPTION_KEY), Buffer.from('master-saas-authenticator-secret-v1'), Buffer.from(''), 32));
+  Buffer.from(
+    hkdfSync(
+      'sha256',
+      Buffer.from(env.FIELD_ENCRYPTION_KEY),
+      Buffer.from('master-saas-authenticator-secret-v1'),
+      Buffer.from(''),
+      32,
+    ),
+  );
 
 export function encryptSecret(plain: string): string {
   const iv = randomBytes(IV_BYTES);
@@ -31,7 +39,7 @@ export function encryptSecret(plain: string): string {
 }
 
 export function decryptSecret(stored: string): string {
-  if (!stored.startsWith(PREFIX)) return stored;   // pre-encryption value
+  if (!stored.startsWith(PREFIX)) return stored; // pre-encryption value
   const payload = Buffer.from(stored.slice(PREFIX.length), 'base64');
   const decipher = createDecipheriv('aes-256-gcm', key(), payload.subarray(0, IV_BYTES));
   decipher.setAuthTag(payload.subarray(payload.length - TAG_BYTES));

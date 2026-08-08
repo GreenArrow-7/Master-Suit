@@ -19,7 +19,18 @@ export default function SignOff({ complete, remaining }: { complete: boolean; re
   }
 
   return (
-    <div className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--lf-space-4)', flexWrap: 'wrap' }}>
+    <div
+      className="lf-card"
+      style={{
+        padding: 'var(--lf-space-5)',
+        marginTop: 'var(--lf-space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--lf-space-4)',
+        flexWrap: 'wrap',
+      }}
+    >
       <div>
         <div style={{ fontWeight: 600 }}>{complete ? 'All targets met for today' : 'Targets still open'}</div>
         <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
@@ -28,11 +39,7 @@ export default function SignOff({ complete, remaining }: { complete: boolean; re
             : `${remaining} more to go before today's targets are met.`}
         </div>
       </div>
-      <button
-        className={complete ? 'lf-btn' : 'lf-btn lf-btn--ghost'}
-        onClick={signOut}
-        disabled={busy}
-      >
+      <button className={complete ? 'lf-btn' : 'lf-btn lf-btn--ghost'} onClick={signOut} disabled={busy}>
         {busy ? 'Signing out…' : complete ? 'Finish for the day and sign out' : 'Sign out anyway'}
       </button>
     </div>

@@ -26,7 +26,12 @@ export const dayKey = (value: Date) => toDay(value).toISOString().slice(0, 10);
  * Days that actually consume leave balance. Weekends and public holidays do not:
  * an employee taking Thu–Mon burns three days, not five.
  */
-export function workingDays(start: Date, end: Date, holidays: Date[] = [], weekend: readonly number[] = UAE_WEEKEND): number {
+export function workingDays(
+  start: Date,
+  end: Date,
+  holidays: Date[] = [],
+  weekend: readonly number[] = UAE_WEEKEND,
+): number {
   const from = toDay(start);
   const to = toDay(end);
   if (to < from) throw new Error('End date must be on or after the start date.');
@@ -115,15 +120,28 @@ const STATUTORY_GRATUITY: GratuityPolicy = {
  * The old unlimited-contract resignation reduction no longer applies under that
  * law, so there is deliberately no `resigned` discount here.
  */
-export function gratuityUae(basicMonthly: number, joined: Date, exited: Date, policy: GratuityPolicy = STATUTORY_GRATUITY): Gratuity {
+export function gratuityUae(
+  basicMonthly: number,
+  joined: Date,
+  exited: Date,
+  policy: GratuityPolicy = STATUTORY_GRATUITY,
+): Gratuity {
   const years = serviceYears(joined, exited);
   if (years < policy.gratuityMinYears) {
-    return { years: round3(years), days: 0, amount: 0, cappedAtTwoYears: false, note: `Under ${policy.gratuityMinYears} year of service — no gratuity entitlement.` };
+    return {
+      years: round3(years),
+      days: 0,
+      amount: 0,
+      cappedAtTwoYears: false,
+      note: `Under ${policy.gratuityMinYears} year of service — no gratuity entitlement.`,
+    };
   }
 
   const basic = Math.max(basicMonthly, 0);
   const first = policy.gratuityFirstPeriodYears;
-  const days = Math.min(years, first) * policy.gratuityDaysFirstPeriod + Math.max(years - first, 0) * policy.gratuityDaysAfterFirstPeriod;
+  const days =
+    Math.min(years, first) * policy.gratuityDaysFirstPeriod +
+    Math.max(years - first, 0) * policy.gratuityDaysAfterFirstPeriod;
   const amount = days * (basic / 30);
   const cap = policy.gratuityCapMonths > 0 ? basic * policy.gratuityCapMonths : Infinity;
 
@@ -143,7 +161,12 @@ export type NoticeBasis = 'total' | 'basic';
  * remuneration — the opposite of the gratuity basis, which catches people out.
  * `basis` is settable because a minority of contracts specify basic pay.
  */
-export function noticePayInLieu(basicMonthly: number, totalMonthly: number, shortfallDays: number, basis: NoticeBasis = 'total') {
+export function noticePayInLieu(
+  basicMonthly: number,
+  totalMonthly: number,
+  shortfallDays: number,
+  basis: NoticeBasis = 'total',
+) {
   if (shortfallDays <= 0) return { days: 0, basis, amount: 0 };
   const monthly = Math.max(basis === 'total' ? totalMonthly : basicMonthly, 0);
   return { days: shortfallDays, basis, amount: round2((monthly / 30) * shortfallDays) };
@@ -181,7 +204,11 @@ export function insideGeofence(distanceM: number, radiusM: number, gpsAccuracyM 
  */
 export function zonedParts(at: Date, timeZone: string): { weekday: number; minutes: number } {
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
   }).formatToParts(at);
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
   const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));

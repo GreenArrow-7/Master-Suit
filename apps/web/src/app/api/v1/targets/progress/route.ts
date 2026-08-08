@@ -2,13 +2,15 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 
-const body = z.object({
-  targetId: z.string().cuid(),
-  increment: z.number().int().positive().default(1),
-}).strict();
+const body = z
+  .object({
+    targetId: z.string().cuid(),
+    increment: z.number().int().positive().default(1),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'leads', action: 'EDIT', body },
+  { module: 'leads', productModule: 'SALES', action: 'EDIT', body },
   async ({ ctx, body: { targetId, increment } }) => {
     const dateKey = new Date().toISOString().slice(0, 10);
 

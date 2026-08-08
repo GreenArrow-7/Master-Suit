@@ -12,8 +12,20 @@
  */
 
 export const GRID_OBJECTS = [
-  'LEAD', 'ACCOUNT', 'CONTACT', 'OPPORTUNITY', 'ACTIVITY', 'TASK', 'CALL',
-  'CAMPAIGN', 'COMMUNICATION', 'PRODUCT', 'TICKET', 'DOCUMENT', 'FOLLOWUP', 'FIELDVISIT',
+  'LEAD',
+  'ACCOUNT',
+  'CONTACT',
+  'OPPORTUNITY',
+  'ACTIVITY',
+  'TASK',
+  'CALL',
+  'CAMPAIGN',
+  'COMMUNICATION',
+  'PRODUCT',
+  'TICKET',
+  'DOCUMENT',
+  'FOLLOWUP',
+  'FIELDVISIT',
 ] as const;
 
 export type GridObject = (typeof GRID_OBJECTS)[number];

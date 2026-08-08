@@ -9,12 +9,18 @@ export function GridSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: num
     <div className="lf-grid-wrap" aria-busy="true" aria-live="polite">
       <div style={{ height: 36, background: 'var(--lf-surface-2)', borderBottom: '1px solid var(--lf-line)' }} />
       {Array.from({ length: rows }).map((_, r) => (
-        <div key={r} style={{
-          display: 'grid', gridTemplateColumns: `2fr ${'1fr '.repeat(cols - 1)}`,
-          gap: 'var(--lf-space-4)', alignItems: 'center',
-          height: 'var(--lf-row)', padding: '0 var(--lf-space-3)',
-          borderBottom: '1px solid var(--lf-line)',
-        }}>
+        <div
+          key={r}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `2fr ${'1fr '.repeat(cols - 1)}`,
+            gap: 'var(--lf-space-4)',
+            alignItems: 'center',
+            height: 'var(--lf-row)',
+            padding: '0 var(--lf-space-3)',
+            borderBottom: '1px solid var(--lf-line)',
+          }}
+        >
           {Array.from({ length: cols }).map((__, c) => (
             <Skeleton key={c} h={10} w={c === 0 ? '70%' : `${40 + ((r * 7 + c * 13) % 40)}%`} />
           ))}

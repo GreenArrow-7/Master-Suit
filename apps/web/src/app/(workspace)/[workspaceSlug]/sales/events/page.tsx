@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -10,14 +8,22 @@ import ListHeader from '@/components/workspace/ListHeader';
 export const metadata = { title: 'Events' };
 
 const STATUS_TONE: Record<string, Tone> = {
-  DRAFT: 'slate', PUBLISHED: 'viridian', CANCELLED: 'vermillion', COMPLETED: 'brass',
+  DRAFT: 'slate',
+  PUBLISHED: 'viridian',
+  CANCELLED: 'vermillion',
+  COMPLETED: 'brass',
 };
 
-const TABS = [['All', ''], ['Upcoming', 'upcoming'], ['Draft', 'DRAFT'], ['Completed', 'COMPLETED']] as const;
+const TABS = [
+  ['All', ''],
+  ['Upcoming', 'upcoming'],
+  ['Draft', 'DRAFT'],
+  ['Completed', 'COMPLETED'],
+] as const;
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['events', 'VIEW'] });
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };
@@ -32,25 +38,63 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <ListHeader title="Events" count={events.length} capped={events.length === 50}
-        actions={<SalesLink href="/events/new" className="lf-btn lf-btn--sm">+ New Event</SalesLink>} />
+      <ListHeader
+        title="Events"
+        count={events.length}
+        capped={events.length === 50}
+        actions={
+          <SalesLink href="/events/new" className="lf-btn lf-btn--sm">
+            + New Event
+          </SalesLink>
+        }
+      />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Event filter">
         {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/events?tab=${key}` : '/events'}
-             aria-selected={(params.tab ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/events?tab=${key}` : '/events'}
+            aria-selected={(params.tab ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
       </nav>
 
       {events.length === 0 ? (
-        <div className="lf-card"><EmptyState title="No events" description="Create an event to get started." actionLabel="New Event" actionHref="/events/new" /></div>
+        <div className="lf-card">
+          <EmptyState
+            title="No events"
+            description="Create an event to get started."
+            actionLabel="New Event"
+            actionHref="/events/new"
+          />
+        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 'var(--lf-space-4)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: 'var(--lf-space-4)',
+          }}
+        >
           {events.map((e) => (
-            <SalesLink key={e.id} href={`/events/${e.id}`} className="lf-card" style={{ padding: 'var(--lf-space-5)', textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--lf-space-3)' }}>
+            <SalesLink
+              key={e.id}
+              href={`/events/${e.id}`}
+              className="lf-card"
+              style={{ padding: 'var(--lf-space-5)', textDecoration: 'none', color: 'inherit' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: 'var(--lf-space-3)',
+                }}
+              >
                 <div>
                   <div style={{ fontWeight: 600 }}>{e.title}</div>
                   <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)', marginTop: 2 }}>
@@ -60,13 +104,23 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
                 <Badge tone={STATUS_TONE[e.status]}>{e.status.toLowerCase()}</Badge>
               </div>
               <div style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-                {e.startAt.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                {e.startAt.toLocaleDateString('en-GB', {
+                  weekday: 'short',
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
               </div>
               {e.location && (
-                <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)', marginTop: 4 }}>{e.location}</div>
+                <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)', marginTop: 4 }}>
+                  {e.location}
+                </div>
               )}
               {e.meetingUrl && (
-                <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-viridian)', marginTop: 4 }}>Online meeting link available</div>
+                <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-viridian)', marginTop: 4 }}>
+                  Online meeting link available
+                </div>
               )}
             </SalesLink>
           ))}

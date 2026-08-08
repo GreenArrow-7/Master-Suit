@@ -42,9 +42,20 @@ export default function PlanForm() {
   }
 
   return (
-    <form onSubmit={submit} className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)' }}>
-      <div><div className="lf-eyebrow">Plan management</div><h2 style={{ margin: '6px 0 0' }}>Create a subscription plan</h2></div>
-      {error && <div className="lf-alert" role="alert">{error}</div>}
+    <form
+      onSubmit={submit}
+      className="lf-card"
+      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)' }}
+    >
+      <div>
+        <div className="lf-eyebrow">Plan management</div>
+        <h2 style={{ margin: '6px 0 0' }}>Create a subscription plan</h2>
+      </div>
+      {error && (
+        <div className="lf-alert" role="alert">
+          {error}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-4)' }}>
         <Field label="Plan name" name="name" required />
         <Field label="Plan code" name="code" placeholder="growth" required />
@@ -52,8 +63,12 @@ export default function PlanForm() {
       <fieldset style={{ border: '1px solid var(--lf-line)', borderRadius: 8, padding: 'var(--lf-space-4)' }}>
         <legend className="lf-label">Included modules</legend>
         <div style={{ display: 'flex', gap: 'var(--lf-space-5)' }}>
-          <label><input type="checkbox" name="modules" value="HRMS" defaultChecked /> People / HRMS</label>
-          <label><input type="checkbox" name="modules" value="SALES" defaultChecked /> Sales CRM</label>
+          <label>
+            <input type="checkbox" name="modules" value="HRMS" defaultChecked /> People / HRMS
+          </label>
+          <label>
+            <input type="checkbox" name="modules" value="SALES" defaultChecked /> Sales CRM
+          </label>
         </div>
       </fieldset>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--lf-space-4)' }}>
@@ -61,12 +76,28 @@ export default function PlanForm() {
         <Field label="Maximum employees" name="maxEmployees" type="number" defaultValue="100" required />
         <Field label="Storage (MB)" name="maxStorageMb" type="number" defaultValue="10240" required />
       </div>
-      <div><button type="submit" className="lf-btn" disabled={busy}>{busy ? 'Creating…' : 'Create plan'}</button></div>
+      <div>
+        <button type="submit" className="lf-btn" disabled={busy}>
+          {busy ? 'Creating…' : 'Create plan'}
+        </button>
+      </div>
     </form>
   );
 }
 
-function Field(props: { label: string; name: string; type?: string; required?: boolean; defaultValue?: string; placeholder?: string }) {
+function Field(props: {
+  label: string;
+  name: string;
+  type?: string;
+  required?: boolean;
+  defaultValue?: string;
+  placeholder?: string;
+}) {
   const { label, ...inputProps } = props;
-  return <label className="lf-field"><span className="lf-label">{label}</span><input className="lf-input" {...inputProps} /></label>;
+  return (
+    <label className="lf-field">
+      <span className="lf-label">{label}</span>
+      <input className="lf-input" {...inputProps} />
+    </label>
+  );
 }

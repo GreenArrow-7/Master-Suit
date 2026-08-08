@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { logger } from '../logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +46,10 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
 
   async sendTemplate(message: WhatsAppMessage): Promise<WhatsAppResult> {
     const id = `mock_wa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    logger.info({ provider: 'mock', action: 'sendTemplate', to: message.to, template: message.template.name }, 'whatsapp mock');
+    logger.info(
+      { provider: 'mock', action: 'sendTemplate', to: message.to, template: message.template.name },
+      'whatsapp mock',
+    );
     return { externalMessageId: id, status: 'queued' };
   }
 
@@ -127,10 +131,14 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 
   verifyWebhookSignature(payload: string, signature: string): boolean {
     if (!this.webhookVerifyToken) return false;
-    // In production, verify HMAC-SHA256 of payload with app secret
-    const crypto = require('node:crypto');
-    const expected = crypto.createHmac('sha256', this.webhookVerifyToken).update(payload).digest('hex');
-    return crypto.timingSafeEqual(Buffer.from(`sha256=${expected}`), Buffer.from(signature));
+    const expected = Buffer.from(
+      `sha256=${createHmac('sha256', this.webhookVerifyToken).update(payload).digest('hex')}`,
+    );
+    const supplied = Buffer.from(signature);
+    // timingSafeEqual throws RangeError when the lengths differ, so a malformed
+    // signature raised a 500 instead of being rejected. Compare lengths first —
+    // that comparison leaks only the length, which is fixed for a real one.
+    return supplied.length === expected.length && timingSafeEqual(supplied, expected);
   }
 }
 

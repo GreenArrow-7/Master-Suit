@@ -11,8 +11,16 @@ const OPTIONS = ['CONFIRMED', 'TENTATIVE', 'DECLINED'] as const;
  * read it out or send it on.
  */
 export default function RsvpControl({
-  eventId, inviteeId, current, meetingUrl,
-}: { eventId: string; inviteeId: string; current: string; meetingUrl: string | null }) {
+  eventId,
+  inviteeId,
+  current,
+  meetingUrl,
+}: {
+  eventId: string;
+  inviteeId: string;
+  current: string;
+  meetingUrl: string | null;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

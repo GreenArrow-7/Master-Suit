@@ -5,17 +5,19 @@ import { NotFound, Forbidden } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const createBody = z.object({
-  storageKey: z.string().min(1).max(1000),
-  storageBucket: z.string().max(200).optional(),
-  mimeType: z.string().max(100).default('audio/webm'),
-  sizeBytes: z.number().int().positive().optional(),
-  durationSecs: z.number().int().min(0).optional(),
-  retainUntil: z.coerce.date().optional(),
-}).strict();
+const createBody = z
+  .object({
+    storageKey: z.string().min(1).max(1000),
+    storageBucket: z.string().max(200).optional(),
+    mimeType: z.string().max(100).default('audio/webm'),
+    sizeBytes: z.number().int().positive().optional(),
+    durationSecs: z.number().int().min(0).optional(),
+    retainUntil: z.coerce.date().optional(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'calls', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, params, body }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -39,7 +41,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
   async ({ ctx, params }) => {
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },

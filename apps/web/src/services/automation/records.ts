@@ -5,7 +5,10 @@ import { prisma } from '@/lib/db';
  * more entities need automation coverage — see docs/04-AUTOMATION-ENGINE.md §1.
  */
 const MODELS = {
-  LEAD: 'lead', OPPORTUNITY: 'opportunity', ACCOUNT: 'account', CONTACT: 'contact',
+  LEAD: 'lead',
+  OPPORTUNITY: 'opportunity',
+  ACCOUNT: 'account',
+  CONTACT: 'contact',
 } as const;
 
 export type AutomationObjectType = keyof typeof MODELS;
@@ -22,7 +25,13 @@ export async function loadRecord(tenantId: string, objectType: AutomationObjectT
   return delegate(objectType).findFirst({ where: { tenantId, id: recordId } });
 }
 
-export async function updateRecordField(tenantId: string, objectType: AutomationObjectType, recordId: string, field: string, value: unknown) {
+export async function updateRecordField(
+  tenantId: string,
+  objectType: AutomationObjectType,
+  recordId: string,
+  field: string,
+  value: unknown,
+) {
   await delegate(objectType).updateMany({ where: { tenantId, id: recordId }, data: { [field]: value } });
 }
 

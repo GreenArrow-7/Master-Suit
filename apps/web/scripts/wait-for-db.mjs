@@ -9,9 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 
-const url = existsSync('.env')
-  ? (/^DATABASE_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '').trim()
-  : '';
+const url = existsSync('.env') ? (/^DATABASE_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '').trim() : '';
 const host = /@([^:/]+)/.exec(url)?.[1] ?? 'localhost';
 const port = Number(/@[^:]+:(\d+)/.exec(url)?.[1] ?? 5432);
 const deadline = Date.now() + 90_000;
@@ -19,7 +17,10 @@ const deadline = Date.now() + 90_000;
 const probe = () =>
   new Promise((resolve) => {
     const s = createConnection({ host, port });
-    const done = (v) => { s.destroy(); resolve(v); };
+    const done = (v) => {
+      s.destroy();
+      resolve(v);
+    };
     s.setTimeout(1000);
     s.once('connect', () => done(true));
     s.once('timeout', () => done(false));

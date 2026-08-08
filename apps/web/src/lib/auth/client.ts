@@ -36,7 +36,11 @@ export function onSessionEnded(listener: Listener): () => void {
 
 function endSession() {
   for (const listener of listeners) {
-    try { listener(); } catch { /* one bad listener must not stop the rest */ }
+    try {
+      listener();
+    } catch {
+      /* one bad listener must not stop the rest */
+    }
   }
 }
 
@@ -58,7 +62,9 @@ export function refreshSession(): Promise<boolean> {
     } finally {
       // Cleared in a microtask so callers that awaited this promise all observe
       // the same result before a new refresh can start.
-      queueMicrotask(() => { inFlight = null; });
+      queueMicrotask(() => {
+        inFlight = null;
+      });
     }
   })();
   return inFlight;

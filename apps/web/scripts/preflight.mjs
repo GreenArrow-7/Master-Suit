@@ -13,13 +13,13 @@ const ok = [];
 // 1. Node version — Prisma 7 aborts its own install below this ──────────────
 const [maj, min] = process.versions.node.split('.').map(Number);
 const nodeOk = (maj === 20 && min >= 19) || (maj === 22 && min >= 12) || maj >= 24;
-nodeOk
-  ? ok.push(`Node ${process.versions.node}`)
-  : problems.push({
-      what: `Node ${process.versions.node} is too old`,
-      why: 'Prisma 7 requires 20.19+, 22.12+ or 24+.',
-      fix: 'winget install OpenJS.NodeJS.LTS   (then reopen your terminal)',
-    });
+if (nodeOk) ok.push(`Node ${process.versions.node}`);
+else
+  problems.push({
+    what: `Node ${process.versions.node} is too old`,
+    why: 'Prisma 7 requires 20.19+, 22.12+ or 24+.',
+    fix: 'winget install OpenJS.NodeJS.LTS   (then reopen your terminal)',
+  });
 
 // 2. Dependencies installed — explains most downstream failures ────────────
 const installed = existsSync('node_modules');
@@ -39,13 +39,15 @@ if (!existsSync('.env')) {
 } else {
   const env = readFileSync('.env', 'utf8');
   const placeholder = /^(SESSION_SECRET|FIELD_ENCRYPTION_KEY|WEBHOOK_SIGNING_PEPPER)=CHANGE_ME/m.test(env);
-  placeholder
-    ? problems.push({
-        what: '.env still has placeholder secrets',
-        why: 'Boot-time validation requires 32-byte values.',
-        fix: 'npm run secrets',
-      })
-    : ok.push('.env configured');
+  if (placeholder) {
+    problems.push({
+      what: '.env still has placeholder secrets',
+      why: 'Boot-time validation requires 32-byte values.',
+      fix: 'npm run secrets',
+    });
+  } else {
+    ok.push('.env configured');
+  }
 }
 
 // 3. Prisma client generated — the npm 12 allow-scripts trap ────────────────
@@ -69,18 +71,21 @@ else if (installed) {
 const reachable = (host, port) =>
   new Promise((resolve) => {
     const socket = createConnection({ host, port });
-    const done = (v) => { socket.destroy(); resolve(v); };
+    const done = (v) => {
+      socket.destroy();
+      resolve(v);
+    };
     socket.setTimeout(1500);
     socket.once('connect', () => done(true));
     socket.once('timeout', () => done(false));
     socket.once('error', () => done(false));
   });
 
-const url = existsSync('.env') ? /^DATABASE_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '' : '';
+const url = existsSync('.env') ? (/^DATABASE_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '') : '';
 const dbPort = Number(/:(\d+)\//.exec(url)?.[1] ?? 5432);
 const dbHost = /@([^:/]+)/.exec(url)?.[1] ?? 'localhost';
 
-const redisUrl = existsSync('.env') ? /^REDIS_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '' : '';
+const redisUrl = existsSync('.env') ? (/^REDIS_URL=(.*)$/m.exec(readFileSync('.env', 'utf8'))?.[1] ?? '') : '';
 const redisPort = Number(/:(\d+)(?:\/|$)/.exec(redisUrl.split('@').pop() ?? '')?.[1] ?? 6379);
 const redisHost = /@([^:/]+)/.exec(redisUrl)?.[1] ?? 'localhost';
 
@@ -89,7 +94,11 @@ const [pg, redis] = await Promise.all([reachable(dbHost, dbPort), reachable(redi
 if (pg) ok.push(`PostgreSQL ${dbHost}:${dbPort}`);
 else {
   let dockerUp = true;
-  try { execSync('docker info', { stdio: 'ignore' }); } catch { dockerUp = false; }
+  try {
+    execSync('docker info', { stdio: 'ignore' });
+  } catch {
+    dockerUp = false;
+  }
 
   if (!dockerUp) {
     problems.push({
@@ -104,10 +113,13 @@ else {
     let exited = false;
     try {
       const psAll = execSync('docker compose -f infra/docker-compose.yml ps -a --format "{{.Service}} {{.State}}"', {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
       });
       exited = /postgres\s+(exited|restarting|dead)/i.test(psAll);
-    } catch { /* compose unavailable; fall through to the generic message */ }
+    } catch {
+      /* compose unavailable; fall through to the generic message */
+    }
 
     problems.push(
       exited
@@ -126,14 +138,19 @@ else {
 }
 
 if (redis) ok.push(`Redis ${redisHost}:${redisPort}`);
-else if (pg) problems.push({
-  what: `Redis is not reachable at ${redisHost}:${redisPort}`,
-  why: 'Background jobs and rate limiting need it.',
-  fix: 'docker compose -f infra/docker-compose.yml up -d redis',
-});
+else if (pg)
+  problems.push({
+    what: `Redis is not reachable at ${redisHost}:${redisPort}`,
+    why: 'Background jobs and rate limiting need it.',
+    fix: 'docker compose -f infra/docker-compose.yml up -d redis',
+  });
 
 // ── report ─────────────────────────────────────────────────────────────────
-const G = '\x1b[32m', R = '\x1b[31m', D = '\x1b[2m', B = '\x1b[1m', X = '\x1b[0m';
+const G = '\x1b[32m',
+  R = '\x1b[31m',
+  D = '\x1b[2m',
+  B = '\x1b[1m',
+  X = '\x1b[0m';
 
 for (const line of ok) console.log(`${G}✓${X} ${D}${line}${X}`);
 

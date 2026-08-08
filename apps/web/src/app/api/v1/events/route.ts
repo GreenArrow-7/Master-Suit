@@ -5,26 +5,29 @@ import { logger } from '@/lib/logger';
 import { getCalendarProvider } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
 
-const createBody = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().max(5000).optional(),
-  eventType: z.enum(['ONLINE', 'PHYSICAL', 'HYBRID']).default('PHYSICAL'),
-  startAt: z.coerce.date(),
-  endAt: z.coerce.date(),
-  timezone: z.string().max(60).default('Asia/Dubai'),
-  hostId: z.string().cuid().optional(),
-  location: z.string().max(300).optional(),
-  address: z.string().max(500).optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  meetingUrl: z.string().url().optional(),
-  capacity: z.number().int().positive().optional(),
-  campaignId: z.string().cuid().optional(),
-  notes: z.string().max(2000).optional(),
-}).strict().refine((d) => d.endAt > d.startAt, { message: 'endAt must be after startAt' });
+const createBody = z
+  .object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(5000).optional(),
+    eventType: z.enum(['ONLINE', 'PHYSICAL', 'HYBRID']).default('PHYSICAL'),
+    startAt: z.coerce.date(),
+    endAt: z.coerce.date(),
+    timezone: z.string().max(60).default('Asia/Dubai'),
+    hostId: z.string().cuid().optional(),
+    location: z.string().max(300).optional(),
+    address: z.string().max(500).optional(),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    meetingUrl: z.string().url().optional(),
+    capacity: z.number().int().positive().optional(),
+    campaignId: z.string().cuid().optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .strict()
+  .refine((d) => d.endAt > d.startAt, { message: 'endAt must be after startAt' });
 
 export const POST = route(
-  { module: 'events', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'events', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const event = await prisma.event.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
@@ -64,14 +67,16 @@ export const POST = route(
   },
 );
 
-const listQuery = z.object({
-  status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']).optional(),
-  upcoming: z.enum(['true', 'false']).optional(),
-  campaignId: z.string().optional(),
-}).strict();
+const listQuery = z
+  .object({
+    status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']).optional(),
+    upcoming: z.enum(['true', 'false']).optional(),
+    campaignId: z.string().optional(),
+  })
+  .strict();
 
 export const GET = route(
-  { module: 'events', action: 'VIEW', query: listQuery },
+  { module: 'events', productModule: 'SALES', action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
     if (query.status) where.status = query.status;

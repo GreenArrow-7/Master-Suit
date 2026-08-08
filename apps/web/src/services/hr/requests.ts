@@ -23,11 +23,17 @@ import { haversineM, toDay } from './rules';
 import { isApprover, isHrAdmin } from './access';
 import { myEmployee, requireEmployee } from './leave';
 import { upsertDay } from './attendance';
+import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
 /** Why someone is asking for an attendance correction. Fixed list so the queue is sortable. */
 export const EXCEPTION_REASONS = [
-  'client_meeting', 'emergency_site_visit', 'gps_failure', 'device_failure',
-  'temporary_assignment', 'business_travel', 'remote_work_authorised',
+  'client_meeting',
+  'emergency_site_visit',
+  'gps_failure',
+  'device_failure',
+  'temporary_assignment',
+  'business_travel',
+  'remote_work_authorised',
 ] as const;
 
 export type ExceptionReason = (typeof EXCEPTION_REASONS)[number];
@@ -51,7 +57,10 @@ export async function requestTemporaryLocation(ctx: Ctx, input: TemporaryRequest
   // themselves an employee (a platform bootstrap account, say) therefore cannot
   // raise one, and should be told that rather than shown a bare 404.
   const requester = await myEmployee(ctx);
-  if (!requester) throw Conflict('Your account has no employee record in this workspace, so it cannot raise a temporary-location request. Ask HR to create one, or have an employee raise it.');
+  if (!requester)
+    throw Conflict(
+      'Your account has no employee record in this workspace, so it cannot raise a temporary-location request. Ask HR to create one, or have an employee raise it.',
+    );
   if (input.validTo <= input.validFrom) throw Conflict('The end of the window must be after its start.');
   if (!input.employeeIds.length) throw Conflict('Name at least one employee the temporary site should cover.');
 
@@ -95,25 +104,34 @@ export async function requestTemporaryLocation(ctx: Ctx, input: TemporaryRequest
 export async function decideTemporaryLocation(ctx: Ctx, requestId: string, approve: boolean, note?: string) {
   if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can decide a temporary-location request.');
 
-  const request = await prisma.hrTemporaryLocationRequest.findFirst({ where: { tenantId: ctx.tenantId, id: requestId } });
+  const request = await prisma.hrTemporaryLocationRequest.findFirst({
+    where: { tenantId: ctx.tenantId, id: requestId },
+  });
   if (!request) throw NotFound('Temporary-location request');
   if (request.status !== 'PENDING') throw Conflict(`This request is already ${request.status.toLowerCase()}.`);
 
   const actor = await myEmployee(ctx);
   // Nobody approves their own request, however senior. The whole point of the
   // approval is that a second person looked at it.
-  if (actor && actor.id === request.requestedById) throw Conflict('You cannot approve your own temporary-location request.');
+  if (actor && actor.id === request.requestedById)
+    throw Conflict('You cannot approve your own temporary-location request.');
 
   if (!approve) {
     const rejected = await prisma.hrTemporaryLocationRequest.update({
       where: { tenantId: ctx.tenantId, id: request.id },
       data: { status: 'REJECTED', approverId: actor?.id ?? null, decidedAt: new Date(), decisionNote: note ?? null },
     });
-    await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_temporary_location_request', recordId: request.id, newValue: { status: 'REJECTED' }, metadata: { action: 'location.temp.rejected', note } });
+    await audit(ctx, {
+      event: 'RECORD_UPDATED',
+      objectType: 'hr_temporary_location_request',
+      recordId: request.id,
+      newValue: { status: 'REJECTED' },
+      metadata: { action: 'location.temp.rejected', note },
+    });
     return rejected;
   }
 
-  const result = await withTx(async (tx) => {
+  const result = await withTx(ctx.tenantId, async (tx) => {
     const location = await tx.hrWorkLocation.create({
       data: {
         tenantId: ctx.tenantId,
@@ -148,7 +166,13 @@ export async function decideTemporaryLocation(ctx: Ctx, requestId: string, appro
 
     const approved = await tx.hrTemporaryLocationRequest.update({
       where: { tenantId: ctx.tenantId, id: request.id },
-      data: { status: 'APPROVED', approverId: actor?.id ?? null, decidedAt: new Date(), decisionNote: note ?? null, createdLocationId: location.id },
+      data: {
+        status: 'APPROVED',
+        approverId: actor?.id ?? null,
+        decidedAt: new Date(),
+        decisionNote: note ?? null,
+        createdLocationId: location.id,
+      },
     });
     return { request: approved, location };
   });
@@ -158,7 +182,11 @@ export async function decideTemporaryLocation(ctx: Ctx, requestId: string, appro
     objectType: 'hr_temporary_location_request',
     recordId: request.id,
     newValue: { status: 'APPROVED' },
-    metadata: { action: 'location.temp.approved', locationId: result.location.id, assignments: request.employeeIds.length },
+    metadata: {
+      action: 'location.temp.approved',
+      locationId: result.location.id,
+      assignments: request.employeeIds.length,
+    },
   });
   return result.request;
 }
@@ -170,8 +198,8 @@ export async function listTemporaryRequests(ctx: Ctx, limit = 200) {
   return prisma.hrTemporaryLocationRequest.findMany({
     where: { tenantId: ctx.tenantId, ...scope },
     include: {
-      requestedBy: { include: { membership: { include: { platformUser: true } } } },
-      approver: { include: { membership: { include: { platformUser: true } } } },
+      requestedBy: EMPLOYEE_WITH_PERSON,
+      approver: EMPLOYEE_WITH_PERSON,
       createdLocation: true,
     },
     orderBy: { requestedAt: 'desc' },
@@ -198,7 +226,8 @@ export interface ExceptionRequestInput {
  */
 export async function requestAttendanceException(ctx: Ctx, input: ExceptionRequestInput) {
   const employee = await myEmployee(ctx);
-  if (!employee) throw Conflict('Your account has no employee record in this workspace, so there is no attendance to correct.');
+  if (!employee)
+    throw Conflict('Your account has no employee record in this workspace, so there is no attendance to correct.');
   if (!EXCEPTION_REASONS.includes(input.reasonCode as ExceptionReason)) throw Conflict('Unknown reason code.');
 
   let nearestLocationId: string | null = null;
@@ -210,7 +239,10 @@ export async function requestAttendanceException(ctx: Ctx, input: ExceptionReque
     });
     for (const location of locations) {
       const distance = haversineM(input.latitude, input.longitude, location.latitude, location.longitude);
-      if (distanceM === null || distance < distanceM) { distanceM = distance; nearestLocationId = location.id; }
+      if (distanceM === null || distance < distanceM) {
+        distanceM = distance;
+        nearestLocationId = location.id;
+      }
     }
   }
 
@@ -235,7 +267,11 @@ export async function requestAttendanceException(ctx: Ctx, input: ExceptionReque
     event: 'RECORD_CREATED',
     objectType: 'hr_attendance_exception_request',
     recordId: request.id,
-    metadata: { action: 'attendance.exception.requested', reasonCode: input.reasonCode, distanceM: distanceM === null ? null : Math.round(distanceM) },
+    metadata: {
+      action: 'attendance.exception.requested',
+      reasonCode: input.reasonCode,
+      distanceM: distanceM === null ? null : Math.round(distanceM),
+    },
   });
   return request;
 }
@@ -244,7 +280,10 @@ export async function requestAttendanceException(ctx: Ctx, input: ExceptionReque
 async function isLineManagerOf(ctx: Ctx, employeeId: string) {
   const [actor, target] = await Promise.all([
     myEmployee(ctx),
-    prisma.employeeProfile.findFirst({ where: { tenantId: ctx.tenantId, id: employeeId }, select: { managerMembershipId: true } }),
+    prisma.employeeProfile.findFirst({
+      where: { tenantId: ctx.tenantId, id: employeeId },
+      select: { managerMembershipId: true },
+    }),
   ]);
   return Boolean(actor && target?.managerMembershipId && target.managerMembershipId === actor.membershipId);
 }
@@ -258,7 +297,9 @@ async function isLineManagerOf(ctx: Ctx, employeeId: string) {
 export async function decideAttendanceException(ctx: Ctx, requestId: string, approve: boolean, comment: string) {
   if (!comment.trim()) throw Conflict('Give a comment so the employee knows the basis for the decision.');
 
-  const request = await prisma.hrAttendanceExceptionRequest.findFirst({ where: { tenantId: ctx.tenantId, id: requestId } });
+  const request = await prisma.hrAttendanceExceptionRequest.findFirst({
+    where: { tenantId: ctx.tenantId, id: requestId },
+  });
   if (!request) throw NotFound('Attendance exception request');
 
   const actor = await myEmployee(ctx);
@@ -273,9 +314,21 @@ export async function decideAttendanceException(ctx: Ctx, requestId: string, app
     }
     const updated = await prisma.hrAttendanceExceptionRequest.update({
       where: { tenantId: ctx.tenantId, id: request.id },
-      data: { managerId: actor?.id ?? null, managerComment: comment, managerAt: now, status: approve ? 'PENDING_HR' : 'REJECTED' },
+      data: {
+        managerId: actor?.id ?? null,
+        managerComment: comment,
+        managerAt: now,
+        status: approve ? 'PENDING_HR' : 'REJECTED',
+      },
     });
-    await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_attendance_exception_request', recordId: request.id, previousValue: { status: request.status }, newValue: { status: updated.status }, metadata: { action: 'attendance.exception.manager_decision', comment } });
+    await audit(ctx, {
+      event: 'RECORD_UPDATED',
+      objectType: 'hr_attendance_exception_request',
+      recordId: request.id,
+      previousValue: { status: request.status },
+      newValue: { status: updated.status },
+      metadata: { action: 'attendance.exception.manager_decision', comment },
+    });
     return updated;
   }
 
@@ -287,14 +340,21 @@ export async function decideAttendanceException(ctx: Ctx, requestId: string, app
         where: { tenantId: ctx.tenantId, id: request.id },
         data: { hrId: actor?.id ?? null, hrComment: comment, hrAt: now, status: 'REJECTED' },
       });
-      await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_attendance_exception_request', recordId: request.id, previousValue: { status: request.status }, newValue: { status: 'REJECTED' }, metadata: { action: 'attendance.exception.hr_decision', comment } });
+      await audit(ctx, {
+        event: 'RECORD_UPDATED',
+        objectType: 'hr_attendance_exception_request',
+        recordId: request.id,
+        previousValue: { status: request.status },
+        newValue: { status: 'REJECTED' },
+        metadata: { action: 'attendance.exception.hr_decision', comment },
+      });
       return rejected;
     }
 
     // The correction is a new accepted punch, marked as an exception so it is
     // never mistaken for a verified face check-in. The original rejected punch
     // stays exactly where it is.
-    const approved = await withTx(async (tx) => {
+    const approved = await withTx(ctx.tenantId, async (tx) => {
       const punch = await tx.hrAttendancePunch.create({
         data: {
           tenantId: ctx.tenantId,
@@ -326,7 +386,14 @@ export async function decideAttendanceException(ctx: Ctx, requestId: string, app
       locationId: request.nearestLocationId,
     });
 
-    await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_attendance_exception_request', recordId: request.id, previousValue: { status: request.status }, newValue: { status: 'APPROVED' }, metadata: { action: 'attendance.exception.hr_decision', punchId: approved.createdPunchId, comment } });
+    await audit(ctx, {
+      event: 'RECORD_UPDATED',
+      objectType: 'hr_attendance_exception_request',
+      recordId: request.id,
+      previousValue: { status: request.status },
+      newValue: { status: 'APPROVED' },
+      metadata: { action: 'attendance.exception.hr_decision', punchId: approved.createdPunchId, comment },
+    });
     return approved;
   }
 
@@ -350,7 +417,7 @@ export async function listExceptionRequests(ctx: Ctx, options: { mine?: boolean;
   return prisma.hrAttendanceExceptionRequest.findMany({
     where: { tenantId: ctx.tenantId, ...scope },
     include: {
-      employee: { include: { membership: { include: { platformUser: true } } } },
+      employee: EMPLOYEE_WITH_PERSON,
       nearestLocation: { select: { name: true } },
     },
     orderBy: { createdAt: 'desc' },

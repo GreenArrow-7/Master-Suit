@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type SlaState = 'ON_TRACK' | 'AT_RISK' | 'BREACHED' | 'MET' | 'PAUSED';
 
@@ -29,10 +29,13 @@ export interface StageRailProps {
  * Rendered identically on leads, opportunities and tickets.
  */
 export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', slaDueAt, compact }: StageRailProps) {
-  const index = Math.max(stages.findIndex((s) => s.key === currentKey), 0);
+  const index = Math.max(
+    stages.findIndex((s) => s.key === currentKey),
+    0,
+  );
   const current = stages[index];
-  const terminal = current?.category === 'CONVERSION' ? 'terminal'
-    : current?.category?.startsWith('TERMINAL') ? 'lost' : null;
+  const terminal =
+    current?.category === 'CONVERSION' ? 'terminal' : current?.category?.startsWith('TERMINAL') ? 'lost' : null;
 
   const countdown = useCountdown(slaDueAt);
   const showTimer = !!slaDueAt && (slaState === 'ON_TRACK' || slaState === 'AT_RISK' || slaState === 'BREACHED');
@@ -48,16 +51,19 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
         const state = i < index ? 'done' : i === index ? 'active' : 'pending';
         // Progressive saturation across completed segments.
         const depth = index > 0 ? i / index : 0;
-        const style = state === 'done'
-          ? { background: `color-mix(in oklab, var(--lf-wine-700) ${16 + depth * 44}%, var(--lf-wine-050))` }
-          : undefined;
+        const style =
+          state === 'done'
+            ? { background: `color-mix(in oklab, var(--lf-wine-700) ${16 + depth * 44}%, var(--lf-wine-050))` }
+            : undefined;
 
         return (
           <div
             key={stage.key}
             className="lf-rail__seg"
             data-state={state}
-            data-sla={state === 'active' && slaState !== 'ON_TRACK' && slaState !== 'MET' ? slaState.toLowerCase() : undefined}
+            data-sla={
+              state === 'active' && slaState !== 'ON_TRACK' && slaState !== 'MET' ? slaState.toLowerCase() : undefined
+            }
             style={style}
             title={stage.name}
             aria-current={state === 'active' ? 'step' : undefined}
@@ -70,7 +76,9 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
             ) : (
               <span aria-hidden="true">{i < index ? '' : ''}</span>
             )}
-            <span className="sr-only" style={SR_ONLY}>{stage.name}</span>
+            <span className="sr-only" style={SR_ONLY}>
+              {stage.name}
+            </span>
           </div>
         );
       })}
@@ -81,19 +89,34 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
 /** Ticks once a second, but only while the deadline is inside 24 h — a countdown
  *  that re-renders a 30-day timer every second is pure battery cost. */
 function useCountdown(due?: string | Date | null): string | null {
-  const [, tick] = useState(0);
   const target = due ? new Date(due).getTime() : null;
 
-  useEffect(() => {
-    if (!target) return;
-    const remaining = target - Date.now();
-    if (Math.abs(remaining) > 86_400_000) return;
-    const id = setInterval(() => tick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [target]);
+  /**
+   * The wall clock is an external mutable source, so it is subscribed to rather
+   * than read during render. `Date.now()` in the render body is impure, and it
+   * also made the server and the client compute two different times, so every
+   * countdown hydrated mismatched. The server snapshot is null, so both sides
+   * render nothing until the subscription supplies a real reading.
+   */
+  const subscribe = useCallback(
+    (onTick: () => void) => {
+      if (!target || Math.abs(target - Date.now()) > 86_400_000) return () => {};
+      const id = setInterval(onTick, 1000);
+      return () => clearInterval(id);
+    },
+    [target],
+  );
 
-  if (!target) return null;
-  const diff = target - Date.now();
+  // Whole seconds: getSnapshot must return an equal value between ticks, or
+  // React re-renders in a loop.
+  const seconds = useSyncExternalStore<number | null>(
+    subscribe,
+    () => Math.floor(Date.now() / 1000),
+    () => null,
+  );
+
+  if (!target || seconds === null) return null;
+  const diff = target - seconds * 1000;
   const overdue = diff < 0;
   const s = Math.floor(Math.abs(diff) / 1000);
   const d = Math.floor(s / 86400);
@@ -106,6 +129,13 @@ function useCountdown(due?: string | Date | null): string | null {
 }
 
 const SR_ONLY: React.CSSProperties = {
-  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
-  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
 };

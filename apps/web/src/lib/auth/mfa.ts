@@ -24,35 +24,48 @@ export function otpauthUrl(secret: string, account: string, issuer = PRODUCT_NAM
   return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SECONDS}`;
 }
 
-function totp(secretBase32: string, counter: number): string {
+/** The code for a given step. Exported so tests can generate a valid one. */
+export function totp(secretBase32: string, counter: number): string {
   const buf = Buffer.alloc(8);
   buf.writeBigUInt64BE(BigInt(counter));
   const hmac = createHmac('sha1', base32Decode(secretBase32)).update(buf).digest();
   const offset = hmac[hmac.length - 1]! & 0x0f;
-  const value = ((hmac[offset]! & 0x7f) << 24) | (hmac[offset + 1]! << 16) | (hmac[offset + 2]! << 8) | hmac[offset + 3]!;
+  const value =
+    ((hmac[offset]! & 0x7f) << 24) | (hmac[offset + 1]! << 16) | (hmac[offset + 2]! << 8) | hmac[offset + 3]!;
   return String(value % 10 ** DIGITS).padStart(DIGITS, '0');
 }
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
 function base32Encode(buf: Buffer): string {
-  let bits = 0, value = 0, out = '';
+  let bits = 0,
+    value = 0,
+    out = '';
   for (const byte of buf) {
-    value = (value << 8) | byte; bits += 8;
-    while (bits >= 5) { out += ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; }
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
   }
   if (bits > 0) out += ALPHABET[(value << (5 - bits)) & 31];
   return out;
 }
 
 function base32Decode(s: string): Buffer {
-  let bits = 0, value = 0;
+  let bits = 0,
+    value = 0;
   const out: number[] = [];
   for (const ch of s.replace(/=+$/, '').toUpperCase()) {
     const idx = ALPHABET.indexOf(ch);
     if (idx === -1) continue;
-    value = (value << 5) | idx; bits += 5;
-    if (bits >= 8) { out.push((value >>> (bits - 8)) & 0xff); bits -= 8; }
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
   }
   return Buffer.from(out);
 }

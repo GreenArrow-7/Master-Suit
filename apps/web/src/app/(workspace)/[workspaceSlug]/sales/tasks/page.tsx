@@ -1,9 +1,6 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
-import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -24,11 +21,16 @@ const TABS = [
 
 function tabWhere(tab: string | undefined, now: Date): Record<string, unknown> {
   switch (tab) {
-    case 'open': return { status: 'OPEN' };
-    case 'overdue': return { status: 'OPEN', dueAt: { lt: now } };
-    case 'completed': return { status: 'COMPLETED' };
-    case 'cancelled': return { status: 'CANCELLED' };
-    default: return {};
+    case 'open':
+      return { status: 'OPEN' };
+    case 'overdue':
+      return { status: 'OPEN', dueAt: { lt: now } };
+    case 'completed':
+      return { status: 'COMPLETED' };
+    case 'cancelled':
+      return { status: 'CANCELLED' };
+    default:
+      return {};
   }
 }
 
@@ -39,7 +41,7 @@ function tabOrder(tab: string | undefined): Record<string, string>[] {
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['tasks', 'VIEW'] });
   const scope = await visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' });
   const now = new Date();
 
@@ -64,17 +66,31 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Tasks"
-        description={<>{rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your scope</>}
-      
-        actions={can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="TASK" current={columns.map((c) => c.key)} />}
+        description={
+          <>
+            {rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
+            scope
+          </>
+        }
+
+        actions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+            <ColumnEditor object="TASK" current={columns.map((c) => c.key)} />
+          )
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Task filter">
         {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/tasks?tab=${key}` : '/tasks'}
-             aria-selected={(params.tab ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/tasks?tab=${key}` : '/tasks'}
+            aria-selected={(params.tab ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
@@ -89,8 +105,4 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       )}
     </>
   );
-}
-
-function fmtDate(d: Date) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }

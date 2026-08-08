@@ -3,22 +3,29 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 
-const createBody = z.object({
-  userId: z.string().cuid(),
-  campaignId: z.string().cuid().optional(),
-  metric: z.enum([
-    'LEADS_ASSIGNED', 'CALLS_ATTEMPTED', 'CALLS_CONNECTED',
-    'FOLLOWUPS_COMPLETED', 'INVITATIONS_SENT', 'RSVPS_CONFIRMED',
-    'LEADS_QUALIFIED', 'LEADS_CONVERTED',
-  ]),
-  period: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).default('DAILY'),
-  targetValue: z.number().int().positive(),
-  periodStart: z.coerce.date(),
-  periodEnd: z.coerce.date(),
-}).strict();
+const createBody = z
+  .object({
+    userId: z.string().cuid(),
+    campaignId: z.string().cuid().optional(),
+    metric: z.enum([
+      'LEADS_ASSIGNED',
+      'CALLS_ATTEMPTED',
+      'CALLS_CONNECTED',
+      'FOLLOWUPS_COMPLETED',
+      'INVITATIONS_SENT',
+      'RSVPS_CONFIRMED',
+      'LEADS_QUALIFIED',
+      'LEADS_CONVERTED',
+    ]),
+    period: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).default('DAILY'),
+    targetValue: z.number().int().positive(),
+    periodStart: z.coerce.date(),
+    periodEnd: z.coerce.date(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'leads', action: 'ASSIGN', body: createBody, auditEvent: 'TARGET_CREATED' },
+  { module: 'leads', productModule: 'SALES', action: 'ASSIGN', body: createBody, auditEvent: 'TARGET_CREATED' },
   async ({ ctx, body }) => {
     return prisma.employeeTarget.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
@@ -26,15 +33,17 @@ export const POST = route(
   },
 );
 
-const listQuery = z.object({
-  userId: z.string().optional(),
-  campaignId: z.string().optional(),
-  period: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).optional(),
-  active: z.enum(['true', 'false']).optional(),
-}).strict();
+const listQuery = z
+  .object({
+    userId: z.string().optional(),
+    campaignId: z.string().optional(),
+    period: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).optional(),
+    active: z.enum(['true', 'false']).optional(),
+  })
+  .strict();
 
 export const GET = route(
-  { module: 'leads', action: 'VIEW', query: listQuery },
+  { module: 'leads', productModule: 'SALES', action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const now = new Date();
     const scope = scopeFor(ctx, 'leads', 'VIEW');

@@ -17,17 +17,38 @@ function parseCsv(text: string): string[][] {
     const char = text[i];
     if (quoted) {
       if (char === '"') {
-        if (text[i + 1] === '"') { field += '"'; i += 1; } else { quoted = false; }
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
       } else field += char;
       continue;
     }
-    if (char === '"') { quoted = true; continue; }
-    if (char === ',') { row.push(field); field = ''; continue; }
+    if (char === '"') {
+      quoted = true;
+      continue;
+    }
+    if (char === ',') {
+      row.push(field);
+      field = '';
+      continue;
+    }
     if (char === '\r') continue;
-    if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; continue; }
+    if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      continue;
+    }
     field += char;
   }
-  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
   return rows.filter((r) => r.some((cell) => cell.trim() !== ''));
 }
 
@@ -58,7 +79,9 @@ export default function LeadImport() {
       return;
     }
 
-    const headers = rows[0].map((h) => h.trim().replace(/^﻿/, ''));
+    // \uFEFF as an escape, not the literal byte: Excel writes a UTF-8 BOM onto
+    // the first header cell, and a raw BOM here is invisible to every reader.
+    const headers = rows[0].map((h) => h.trim().replace(/^\uFEFF/, ''));
     if (!headers.includes(REQUIRED)) {
       setBusy(false);
       setError(`The header row must include a "${REQUIRED}" column. Found: ${headers.join(', ') || '(none)'}`);
@@ -104,37 +127,88 @@ export default function LeadImport() {
   }
 
   if (!open) {
-    return <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(true)}>Import</button>;
+    return (
+      <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(true)}>
+        Import
+      </button>
+    );
   }
 
   return (
-    <div className="lf-card" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 20, width: 340, padding: 'var(--lf-space-4)', boxShadow: 'var(--lf-shadow-2)', textAlign: 'left' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--lf-space-3)' }}>
+    <div
+      className="lf-card"
+      style={{
+        position: 'absolute',
+        right: 0,
+        top: '100%',
+        marginTop: 6,
+        zIndex: 20,
+        width: 340,
+        padding: 'var(--lf-space-4)',
+        boxShadow: 'var(--lf-shadow-2)',
+        textAlign: 'left',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 'var(--lf-space-3)',
+        }}
+      >
         <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import leads from CSV</strong>
-        <button className="lf-toast__action" onClick={() => { setOpen(false); setReport(null); setError(''); }}>Close</button>
+        <button
+          className="lf-toast__action"
+          onClick={() => {
+            setOpen(false);
+            setReport(null);
+            setError('');
+          }}
+        >
+          Close
+        </button>
       </div>
 
       <p style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)', margin: '0 0 var(--lf-space-3)' }}>
-        First row must be a header. Recognised columns: {ACCEPTED.join(', ')}. Rows are
-        sent in batches of 500; a row that fails is reported and skipped, not rolled back.
+        First row must be a header. Recognised columns: {ACCEPTED.join(', ')}. Rows are sent in batches of 500; a row
+        that fails is reported and skipped, not rolled back.
       </p>
 
       <input
-        type="file" accept=".csv,text/csv" disabled={busy} aria-label="CSV file"
-        onChange={(event) => { const file = event.target.files?.[0]; if (file) handleFile(file); }}
+        type="file"
+        accept=".csv,text/csv"
+        disabled={busy}
+        aria-label="CSV file"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleFile(file);
+        }}
       />
 
-      {busy && <p style={{ fontSize: 'var(--lf-text-sm)', marginTop: 8 }}>Importing… {progress > 0 && `${progress} rows sent`}</p>}
+      {busy && (
+        <p style={{ fontSize: 'var(--lf-text-sm)', marginTop: 8 }}>
+          Importing… {progress > 0 && `${progress} rows sent`}
+        </p>
+      )}
       {error && <p style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', marginTop: 8 }}>{error}</p>}
 
       {report && (
         <div style={{ marginTop: 'var(--lf-space-3)', fontSize: 'var(--lf-text-2xs)' }}>
-          <p style={{ margin: 0, color: 'var(--lf-viridian)' }}>{report.created} lead{report.created === 1 ? '' : 's'} created.</p>
+          <p style={{ margin: 0, color: 'var(--lf-viridian)' }}>
+            {report.created} lead{report.created === 1 ? '' : 's'} created.
+          </p>
           {report.failed.length > 0 && (
             <>
-              <p style={{ margin: '6px 0 2px', color: 'var(--lf-vermillion)' }}>{report.failed.length} row(s) rejected:</p>
+              <p style={{ margin: '6px 0 2px', color: 'var(--lf-vermillion)' }}>
+                {report.failed.length} row(s) rejected:
+              </p>
               <ul style={{ margin: 0, paddingLeft: 16, maxHeight: 120, overflowY: 'auto' }}>
-                {report.failed.slice(0, 20).map((f) => <li key={f.line}>Line {f.line}: {f.reason}</li>)}
+                {report.failed.slice(0, 20).map((f) => (
+                  <li key={f.line}>
+                    Line {f.line}: {f.reason}
+                  </li>
+                ))}
               </ul>
             </>
           )}

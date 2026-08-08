@@ -7,7 +7,13 @@ import type { ReactNode } from 'react';
  * inline-styled copies that drift apart.
  */
 export default function ListHeader({
-  title, count, noun = 'record', capped, actions, description: override, eyebrow,
+  title,
+  count,
+  noun = 'record',
+  capped,
+  actions,
+  description: override,
+  eyebrow,
 }: {
   title: ReactNode;
   /** Rows on screen. Omit for screens that are not a record list. */
@@ -22,11 +28,13 @@ export default function ListHeader({
   eyebrow?: string;
   actions?: ReactNode;
 }) {
-  const description = override ?? (count === undefined
-    ? undefined
-    : capped
-      ? `First ${count} ${noun}s in your scope`
-      : `${count} ${noun}${count === 1 ? '' : 's'} in your scope`);
+  const description =
+    override ??
+    (count === undefined
+      ? undefined
+      : capped
+        ? `First ${count} ${noun}s in your scope`
+        : `${count} ${noun}${count === 1 ? '' : 's'} in your scope`);
 
   return (
     <header className="lf-list-header">

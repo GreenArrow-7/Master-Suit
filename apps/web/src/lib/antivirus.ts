@@ -38,9 +38,19 @@ async function clamavScan(payload: Buffer): Promise<ScanResult> {
     // clamd answers "stream: OK" or "stream: <Name> FOUND" or "... ERROR".
     if (/\bOK\s*$/.test(reply)) return { ...base, verdict: 'CLEAN', signature: version, detail: null };
     if (/\bFOUND\s*$/.test(reply)) {
-      return { ...base, verdict: 'INFECTED', signature: version, detail: reply.replace(/^stream:\s*/, '').replace(/\s*FOUND\s*$/, '') };
+      return {
+        ...base,
+        verdict: 'INFECTED',
+        signature: version,
+        detail: reply.replace(/^stream:\s*/, '').replace(/\s*FOUND\s*$/, ''),
+      };
     }
-    return { ...base, verdict: 'ERROR', signature: version, detail: `Unrecognised scanner reply: ${reply.slice(0, 120)}` };
+    return {
+      ...base,
+      verdict: 'ERROR',
+      signature: version,
+      detail: `Unrecognised scanner reply: ${reply.slice(0, 120)}`,
+    };
   } catch (error) {
     // Unreachable, timed out, refused — all the same answer: we do not know.
     logger.error({ err: error, host: env.CLAMAV_HOST, port: env.CLAMAV_PORT }, 'antivirus: scan failed');
@@ -67,9 +77,14 @@ function instream(payload: Buffer): Promise<string> {
       }
       socket.write(Buffer.from([0, 0, 0, 0]));
     });
-    socket.on('data', (chunk) => { reply += chunk.toString('utf8'); });
+    socket.on('data', (chunk) => {
+      reply += chunk.toString('utf8');
+    });
     socket.on('end', () => resolve(reply.replace(/\0/g, '').trim()));
-    socket.on('timeout', () => { socket.destroy(); reject(new Error(`clamd did not answer within ${env.ANTIVIRUS_TIMEOUT_MS} ms`)); });
+    socket.on('timeout', () => {
+      socket.destroy();
+      reject(new Error(`clamd did not answer within ${env.ANTIVIRUS_TIMEOUT_MS} ms`));
+    });
     socket.on('error', reject);
   });
 }
@@ -80,9 +95,14 @@ function clamdVersion(): Promise<string> {
     socket.setTimeout(env.ANTIVIRUS_TIMEOUT_MS);
     let reply = '';
     socket.on('connect', () => socket.write('zVERSION\0'));
-    socket.on('data', (chunk) => { reply += chunk.toString('utf8'); });
+    socket.on('data', (chunk) => {
+      reply += chunk.toString('utf8');
+    });
     socket.on('end', () => resolve(reply.replace(/\0/g, '').trim()));
-    socket.on('timeout', () => { socket.destroy(); reject(new Error('clamd version timeout')); });
+    socket.on('timeout', () => {
+      socket.destroy();
+      reject(new Error('clamd version timeout'));
+    });
     socket.on('error', reject);
   });
 }
@@ -117,11 +137,19 @@ function mockScan(payload: Buffer): ScanResult {
  */
 export async function scanBuffer(payload: Buffer): Promise<ScanResult> {
   switch (env.ANTIVIRUS_PROVIDER.toLowerCase()) {
-    case 'clamav': return clamavScan(payload);
-    case 'mock': return mockScan(payload);
+    case 'clamav':
+      return clamavScan(payload);
+    case 'mock':
+      return mockScan(payload);
     default:
       logger.error({ provider: env.ANTIVIRUS_PROVIDER }, 'antivirus: unknown provider configured');
-      return { verdict: 'ERROR', provider: env.ANTIVIRUS_PROVIDER, signature: null, detail: 'No malware scanner is configured.', scannedAt: new Date() };
+      return {
+        verdict: 'ERROR',
+        provider: env.ANTIVIRUS_PROVIDER,
+        signature: null,
+        detail: 'No malware scanner is configured.',
+        scannedAt: new Date(),
+      };
   }
 }
 
@@ -132,12 +160,20 @@ export async function antivirusHealth(): Promise<{ ready: boolean; provider: str
     return { ready: true, provider, detail: 'Test provider: recognises the EICAR test file only. Not protection.' };
   }
   if (provider !== 'clamav') {
-    return { ready: false, provider, detail: 'No malware scanner is configured. Uploads will be quarantined and cannot be downloaded.' };
+    return {
+      ready: false,
+      provider,
+      detail: 'No malware scanner is configured. Uploads will be quarantined and cannot be downloaded.',
+    };
   }
   try {
     const version = await clamdVersion();
     return { ready: true, provider, detail: version };
   } catch (error) {
-    return { ready: false, provider, detail: `clamd at ${env.CLAMAV_HOST}:${env.CLAMAV_PORT} is unreachable: ${(error as Error).message}` };
+    return {
+      ready: false,
+      provider,
+      detail: `clamd at ${env.CLAMAV_HOST}:${env.CLAMAV_PORT} is unreachable: ${(error as Error).message}`,
+    };
   }
 }

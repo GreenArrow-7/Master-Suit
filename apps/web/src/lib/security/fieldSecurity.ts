@@ -40,7 +40,9 @@ export function applyFieldSecurity<T extends Record<string, any>>(
 
     if (!bypass && sensitiveFields.includes(k) && !rule?.canView) continue;
     if (rule && !rule.canView) {
-      if (rule.maskStrategy && rule.maskStrategy !== 'HIDE') { out[k] = mask(v, rule.maskStrategy); }
+      if (rule.maskStrategy && rule.maskStrategy !== 'HIDE') {
+        out[k] = mask(v, rule.maskStrategy);
+      }
       continue; // HIDE, or no strategy: the key is absent entirely
     }
     out[k] = v;
@@ -49,10 +51,7 @@ export function applyFieldSecurity<T extends Record<string, any>>(
 }
 
 /** Drops fields the actor may not write, so a crafted payload cannot smuggle them in. */
-export function stripUneditableFields<T extends Record<string, any>>(
-  rules: Map<string, FieldRule>,
-  payload: T,
-): T {
+export function stripUneditableFields<T extends Record<string, any>>(rules: Map<string, FieldRule>, payload: T): T {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(payload)) {
     const rule = rules.get(k);
@@ -69,7 +68,11 @@ export function stripUneditableFields<T extends Record<string, any>>(
 export function assertFilterableFields(rules: Map<string, FieldRule>, fields: readonly string[]) {
   const blocked = fields.filter((f) => rules.get(f)?.canView === false);
   if (blocked.length) {
-    throw new AppError(403, 'forbidden', `Cannot filter or sort on restricted field${blocked.length > 1 ? 's' : ''}: ${blocked.join(', ')}.`);
+    throw new AppError(
+      403,
+      'forbidden',
+      `Cannot filter or sort on restricted field${blocked.length > 1 ? 's' : ''}: ${blocked.join(', ')}.`,
+    );
   }
 }
 
@@ -80,7 +83,9 @@ function mask(value: unknown, strategy: MaskStrategy): string | null {
     case 'MASK_ALL':
       return '•'.repeat(Math.min(s.length, 9));
     case 'MASK_PARTIAL':
-      return s.length <= 4 ? '•'.repeat(s.length) : `${s.slice(0, 5)}${'•'.repeat(Math.max(s.length - 7, 1))}${s.slice(-2)}`;
+      return s.length <= 4
+        ? '•'.repeat(s.length)
+        : `${s.slice(0, 5)}${'•'.repeat(Math.max(s.length - 7, 1))}${s.slice(-2)}`;
     case 'MASK_EMAIL': {
       const [local, domain] = s.split('@');
       if (!domain) return '•'.repeat(s.length);

@@ -10,7 +10,7 @@ import { updateLead, deleteLead } from '@/services/leads/updateLead';
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'leads', action: 'VIEW', params },
+  { module: 'leads', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
@@ -27,23 +27,25 @@ export const GET = route(
   },
 );
 
-const patchBody = z.object({
-  fullName: z.string().min(1).max(160).optional(),
-  email: z.string().email().max(254).optional(),
-  phone: z.string().max(32).optional(),
-  company: z.string().max(160).optional(),
-  jobTitle: z.string().max(120).optional(),
-  country: z.string().max(80).optional(),
-  city: z.string().max(80).optional(),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  tags: z.array(z.string().max(40)).max(20).optional(),
-  notes: z.string().max(5000).nullable().optional(),
-  stageId: z.string().cuid().optional(),
-  ownerId: z.string().cuid().nullable().optional(),
-}).strict();
+const patchBody = z
+  .object({
+    fullName: z.string().min(1).max(160).optional(),
+    email: z.string().email().max(254).optional(),
+    phone: z.string().max(32).optional(),
+    company: z.string().max(160).optional(),
+    jobTitle: z.string().max(120).optional(),
+    country: z.string().max(80).optional(),
+    city: z.string().max(80).optional(),
+    priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
+    tags: z.array(z.string().max(40)).max(20).optional(),
+    notes: z.string().max(5000).nullable().optional(),
+    stageId: z.string().cuid().optional(),
+    ownerId: z.string().cuid().nullable().optional(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'leads', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     const safe = stripUneditableFields(rules, body);
@@ -53,7 +55,7 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'leads', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await deleteLead(ctx, params.id);
     return { ok: true };

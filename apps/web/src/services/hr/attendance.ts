@@ -14,17 +14,32 @@ import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { haversineM, insideGeofence, toDay, withinTimeWindow, zonedParts } from './rules';
 import {
-  analyse, bestMatch, consumeChallenge, engineHealth, enrolmentSpread, EngineUnavailable,
-  issueChallenge, toBytes, verifyLiveness, type Detection,
+  analyse,
+  bestMatch,
+  consumeChallenge,
+  engineHealth,
+  enrolmentSpread,
+  EngineUnavailable,
+  issueChallenge,
+  toBytes,
+  verifyLiveness,
+  type Detection,
 } from './face';
 import { isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { storeCapture } from './captureVault';
+import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
 export type PunchType = 'CHECK_IN' | 'CHECK_OUT';
 export type PunchResult =
-  | 'ACCEPTED' | 'FLAGGED_REVIEW' | 'REJECTED_FACE' | 'REJECTED_LIVENESS'
-  | 'REJECTED_GEOFENCE' | 'REJECTED_ACCURACY' | 'REJECTED_DUPLICATE' | 'REJECTED_STALE_SYNC';
+  | 'ACCEPTED'
+  | 'FLAGGED_REVIEW'
+  | 'REJECTED_FACE'
+  | 'REJECTED_LIVENESS'
+  | 'REJECTED_GEOFENCE'
+  | 'REJECTED_ACCURACY'
+  | 'REJECTED_DUPLICATE'
+  | 'REJECTED_STALE_SYNC';
 
 const MAX_FRAME_BYTES = 3 * 1024 * 1024;
 
@@ -41,7 +56,14 @@ export class PunchRejected extends Error {
     readonly code: string,
     message: string,
     readonly result: PunchResult,
-    readonly location?: { id: string; name: string; latitude: number; longitude: number; radiusMeters: number; maxAccuracyMeters: number } | null,
+    readonly location?: {
+      id: string;
+      name: string;
+      latitude: number;
+      longitude: number;
+      radiusMeters: number;
+      maxAccuracyMeters: number;
+    } | null,
     readonly distanceM?: number | null,
   ) {
     super(message);
@@ -126,23 +148,35 @@ export async function validatePunch(
   enforceGeofence = true,
   policy?: HrPolicy,
 ): Promise<PunchContext> {
-  const effective = policy ?? await getHrPolicy(ctx);
+  const effective = policy ?? (await getHrPolicy(ctx));
   if (!['ACTIVE', 'NOTICE', 'ONBOARDING'].includes(employee.employmentStatus)) {
     throw new PunchRejected('EMPLOYMENT_INACTIVE', 'You have no active employment record.', 'REJECTED_DUPLICATE');
   }
 
   const open = await openCheckIn(ctx, employee.id);
   if (action === 'CHECK_IN' && open) {
-    throw new PunchRejected('ALREADY_CHECKED_IN', 'You already have an open check-in. Check out first.', 'REJECTED_DUPLICATE');
+    throw new PunchRejected(
+      'ALREADY_CHECKED_IN',
+      'You already have an open check-in. Check out first.',
+      'REJECTED_DUPLICATE',
+    );
   }
   if (action === 'CHECK_OUT' && !open) {
-    throw new PunchRejected('NO_OPEN_CHECKIN', 'There is no open check-in to close. If you forgot to check in, ask HR to record it.', 'REJECTED_DUPLICATE');
+    throw new PunchRejected(
+      'NO_OPEN_CHECKIN',
+      'There is no open check-in to close. If you forgot to check in, ask HR to record it.',
+      'REJECTED_DUPLICATE',
+    );
   }
 
   const [assignments, timeZone] = await Promise.all([loadAssignments(ctx, employee.id), workspaceTimezone(ctx)]);
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
   if (!candidates.length) {
-    throw new PunchRejected('NO_ACTIVE_ASSIGNMENT', 'You have no active work-location assignment valid right now. Contact HR.', 'REJECTED_GEOFENCE');
+    throw new PunchRejected(
+      'NO_ACTIVE_ASSIGNMENT',
+      'You have no active work-location assignment valid right now. Contact HR.',
+      'REJECTED_GEOFENCE',
+    );
   }
 
   // Check-out rules narrow the candidates before any distance is measured.
@@ -150,12 +184,20 @@ export async function validatePunch(
     const checkedInAt = candidates.find((candidate) => candidate.locationId === open.locationId);
     const rule = checkedInAt?.checkoutRule ?? 'SAME_LOCATION';
     if (rule === 'EXCEPTION_ONLY') {
-      throw new PunchRejected('CHECKOUT_REQUIRES_EXCEPTION', 'Check-out from this assignment requires an approved attendance exception.', 'REJECTED_GEOFENCE');
+      throw new PunchRejected(
+        'CHECKOUT_REQUIRES_EXCEPTION',
+        'Check-out from this assignment requires an approved attendance exception.',
+        'REJECTED_GEOFENCE',
+      );
     }
     if (rule === 'SAME_LOCATION') {
       const same = candidates.filter((candidate) => candidate.locationId === open.locationId);
       if (!same.length) {
-        throw new PunchRejected('CHECKOUT_WRONG_LOCATION', 'Check-out must happen at the same location you checked in from.', 'REJECTED_GEOFENCE');
+        throw new PunchRejected(
+          'CHECKOUT_WRONG_LOCATION',
+          'Check-out must happen at the same location you checked in from.',
+          'REJECTED_GEOFENCE',
+        );
       }
       candidates = same;
     }
@@ -164,7 +206,12 @@ export async function validatePunch(
   const measured = candidates
     .map((assignment) => ({
       assignment,
-      distanceM: haversineM(position.latitude, position.longitude, assignment.location.latitude, assignment.location.longitude),
+      distanceM: haversineM(
+        position.latitude,
+        position.longitude,
+        assignment.location.latitude,
+        assignment.location.longitude,
+      ),
     }))
     .sort((a, b) => a.distanceM - b.distanceM);
 
@@ -174,12 +221,15 @@ export async function validatePunch(
     throw new PunchRejected(
       'LOCATION_ACCURACY_TOO_LOW',
       `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m and this location requires ±${maxAccuracy} m or better. Move to an open area, away from glass and covered parking, and try again.`,
-      'REJECTED_ACCURACY', nearest.assignment.location, nearest.distanceM,
+      'REJECTED_ACCURACY',
+      nearest.assignment.location,
+      nearest.distanceM,
     );
   }
 
   const within = measured.find(({ assignment, distanceM }) =>
-    insideGeofence(distanceM, assignment.location.radiusMeters, position.gpsAccuracyM));
+    insideGeofence(distanceM, assignment.location.radiusMeters, position.gpsAccuracyM),
+  );
 
   if (!within) {
     if (enforceGeofence) throw geofenceRejection(nearest.assignment.location, nearest.distanceM);
@@ -188,11 +238,23 @@ export async function validatePunch(
   return { assignment: within.assignment, distanceM: within.distanceM, inside: true };
 }
 
-export function geofenceRejection(location: { id: string; name: string; latitude: number; longitude: number; radiusMeters: number; maxAccuracyMeters: number }, distanceM: number) {
+export function geofenceRejection(
+  location: {
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    maxAccuracyMeters: number;
+  },
+  distanceM: number,
+) {
   return new PunchRejected(
     'OUTSIDE_APPROVED_LOCATION',
     `You are ${Math.round(distanceM)} metres from ${location.name}. The permitted radius is ${location.radiusMeters} metres. Move inside the approved location and try again.`,
-    'REJECTED_GEOFENCE', location, distanceM,
+    'REJECTED_GEOFENCE',
+    location,
+    distanceM,
   );
 }
 
@@ -206,17 +268,29 @@ export function geofenceRejection(location: { id: string; name: string; latitude
  * This writes nothing and grants nothing. validatePunch re-derives every one of
  * these values at punch time, so a stale or forged preflight lets nobody in.
  */
-export async function preflight(ctx: Ctx, action: PunchType, position: { latitude: number; longitude: number; gpsAccuracyM: number }) {
+export async function preflight(
+  ctx: Ctx,
+  action: PunchType,
+  position: { latitude: number; longitude: number; gpsAccuracyM: number },
+) {
   const employee = await myEmployee(ctx);
   if (!employee) throw NotFound('Employee');
 
   const [assignments, timeZone, open, policy] = await Promise.all([
-    loadAssignments(ctx, employee.id), workspaceTimezone(ctx), openCheckIn(ctx, employee.id), getHrPolicy(ctx),
+    loadAssignments(ctx, employee.id),
+    workspaceTimezone(ctx),
+    openCheckIn(ctx, employee.id),
+    getHrPolicy(ctx),
   ]);
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
 
   if (!candidates.length) {
-    return { ok: false, code: 'NO_ACTIVE_ASSIGNMENT', message: 'You have no active work-location assignment for this action right now. Contact HR.', candidates: [] };
+    return {
+      ok: false,
+      code: 'NO_ACTIVE_ASSIGNMENT',
+      message: 'You have no active work-location assignment for this action right now. Contact HR.',
+      candidates: [],
+    };
   }
   if (action === 'CHECK_OUT' && open?.locationId) {
     const checkedInAt = candidates.find((candidate) => candidate.locationId === open.locationId);
@@ -225,7 +299,12 @@ export async function preflight(ctx: Ctx, action: PunchType, position: { latitud
 
   const rows = candidates
     .map((assignment) => {
-      const distanceM = haversineM(position.latitude, position.longitude, assignment.location.latitude, assignment.location.longitude);
+      const distanceM = haversineM(
+        position.latitude,
+        position.longitude,
+        assignment.location.latitude,
+        assignment.location.longitude,
+      );
       const maxAccuracyM = assignment.location.maxAccuracyMeters || policy.maxGpsAccuracyM;
       return {
         assignmentId: assignment.id,
@@ -243,13 +322,28 @@ export async function preflight(ctx: Ctx, action: PunchType, position: { latitud
 
   const nearest = rows[0]!;
   if (!nearest.accuracyOk) {
-    return { ok: false, code: 'LOCATION_ACCURACY_TOO_LOW', message: `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m. This location requires ${nearest.maxAccuracyM} m or better. Move to an open area and retry.`, candidates: rows };
+    return {
+      ok: false,
+      code: 'LOCATION_ACCURACY_TOO_LOW',
+      message: `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m. This location requires ${nearest.maxAccuracyM} m or better. Move to an open area and retry.`,
+      candidates: rows,
+    };
   }
   const ready = rows.find((row) => row.inside);
   if (!ready) {
-    return { ok: false, code: 'OUTSIDE_APPROVED_LOCATION', message: `You are ${Math.round(nearest.distanceM)} metres away from ${nearest.name}. The permitted radius is ${nearest.radiusM} metres.`, candidates: rows };
+    return {
+      ok: false,
+      code: 'OUTSIDE_APPROVED_LOCATION',
+      message: `You are ${Math.round(nearest.distanceM)} metres away from ${nearest.name}. The permitted radius is ${nearest.radiusM} metres.`,
+      candidates: rows,
+    };
   }
-  return { ok: true, code: 'READY', message: `Inside ${ready.name} — ${Math.round(ready.distanceM)} m from centre, radius ${ready.radiusM} m.`, candidates: rows };
+  return {
+    ok: true,
+    code: 'READY',
+    message: `Inside ${ready.name} — ${Math.round(ready.distanceM)} m from centre, radius ${ready.radiusM} m.`,
+    candidates: rows,
+  };
 }
 
 // ── Consent and enrolment ──────────────────────────────────────────────────
@@ -271,7 +365,12 @@ export async function grantConsent(ctx: Ctx, policyVersion = 'PDPL-2026-01') {
   const consent = await prisma.biometricConsent.create({
     data: { tenantId: ctx.tenantId, employeeId: employee.id, grantedAt: new Date(), policyVersion },
   });
-  await audit(ctx, { event: 'CONSENT_RECORDED', objectType: 'biometric_consent', recordId: consent.id, metadata: { action: 'biometric.consent.granted', policyVersion } });
+  await audit(ctx, {
+    event: 'CONSENT_RECORDED',
+    objectType: 'biometric_consent',
+    recordId: consent.id,
+    metadata: { action: 'biometric.consent.granted', policyVersion },
+  });
   return consent;
 }
 
@@ -287,11 +386,19 @@ export async function withdrawConsent(ctx: Ctx, employeeId?: string) {
   if (targetId !== self?.id && !isHrAdmin(ctx)) throw Forbidden('You can only withdraw your own biometric consent.');
 
   const [consents, templates] = await Promise.all([
-    prisma.biometricConsent.updateMany({ where: { tenantId: ctx.tenantId, employeeId: targetId, withdrawnAt: null }, data: { withdrawnAt: new Date() } }),
+    prisma.biometricConsent.updateMany({
+      where: { tenantId: ctx.tenantId, employeeId: targetId, withdrawnAt: null },
+      data: { withdrawnAt: new Date() },
+    }),
     prisma.hrFaceTemplate.deleteMany({ where: { tenantId: ctx.tenantId, employeeId: targetId } }),
   ]);
 
-  await audit(ctx, { event: 'CONSENT_WITHDRAWN', objectType: 'biometric_consent', recordId: targetId, metadata: { action: 'biometric.consent.withdrawn', templatesDeleted: templates.count } });
+  await audit(ctx, {
+    event: 'CONSENT_WITHDRAWN',
+    objectType: 'biometric_consent',
+    recordId: targetId,
+    metadata: { action: 'biometric.consent.withdrawn', templatesDeleted: templates.count },
+  });
   return { consentsWithdrawn: consents.count, templatesDeleted: templates.count };
 }
 
@@ -316,18 +423,28 @@ export async function enrolFace(ctx: Ctx, employeeId: string, frames: string[]) 
   const embeddings = detections.map((detection) => detection.embedding!);
   const spread = enrolmentSpread(embeddings);
   if (spread < policy.faceEnrolmentMinSpread) {
-    throw Conflict('The samples are too similar. Capture different angles: straight on, slight left, slight right, slight up.');
+    throw Conflict(
+      'The samples are too similar. Capture different angles: straight on, slight left, slight right, slight up.',
+    );
   }
 
   await prisma.hrFaceTemplate.deleteMany({ where: { tenantId: ctx.tenantId, employeeId: employee.id } });
   await prisma.hrFaceTemplate.createMany({
     data: embeddings.map((embedding) => ({
-      tenantId: ctx.tenantId, employeeId: employee.id,
-      embedding: toBytes(embedding), dim: embedding.length, modelVersion: 'buffalo_l',
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      embedding: toBytes(embedding),
+      dim: embedding.length,
+      modelVersion: 'buffalo_l',
     })),
   });
 
-  await audit(ctx, { event: 'RECORD_CREATED', objectType: 'hr_face_template', recordId: employee.id, metadata: { action: 'face.enrolled', samples: embeddings.length, spread: Math.round(spread * 10_000) / 10_000 } });
+  await audit(ctx, {
+    event: 'RECORD_CREATED',
+    objectType: 'hr_face_template',
+    recordId: employee.id,
+    metadata: { action: 'face.enrolled', samples: embeddings.length, spread: Math.round(spread * 10_000) / 10_000 },
+  });
   return { employeeId: employee.id, samples: embeddings.length, sampleSpread: Math.round(spread * 10_000) / 10_000 };
 }
 
@@ -336,7 +453,8 @@ export async function enrolFace(ctx: Ctx, employeeId: string, frames: string[]) 
 export async function requestChallenge(ctx: Ctx) {
   const employee = await myEmployee(ctx);
   if (!employee) throw NotFound('Employee');
-  if (!(await activeConsent(ctx, employee.id))) throw Forbidden('Record your biometric consent before using face check-in.');
+  if (!(await activeConsent(ctx, employee.id)))
+    throw Forbidden('Record your biometric consent before using face check-in.');
 
   const policy = await getHrPolicy(ctx);
   const enrolled = await prisma.hrFaceTemplate.count({ where: { tenantId: ctx.tenantId, employeeId: employee.id } });
@@ -379,7 +497,14 @@ async function record(
   employeeId: string,
   input: PunchInput,
   result: PunchResult,
-  detail: { rejectCode?: string | null; rejectReason?: string | null; faceScore?: number | null; livenessScore?: number | null; distanceM?: number | null; location?: PunchRejected['location'] },
+  detail: {
+    rejectCode?: string | null;
+    rejectReason?: string | null;
+    faceScore?: number | null;
+    livenessScore?: number | null;
+    distanceM?: number | null;
+    location?: PunchRejected['location'];
+  },
 ) {
   try {
     return await createPunch();
@@ -396,32 +521,32 @@ async function record(
 
   function createPunch() {
     return prisma.hrAttendancePunch.create({
-    data: {
-      tenantId: ctx.tenantId,
-      employeeId,
-      punchType: input.punchType,
-      result,
-      method: 'face',
-      clientTime: input.clientTime ?? null,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      gpsAccuracyM: input.gpsAccuracyM,
-      distanceM: detail.distanceM ?? null,
-      faceScore: detail.faceScore ?? null,
-      livenessScore: detail.livenessScore ?? null,
-      deviceFingerprint: input.deviceFingerprint,
-      mockLocationFlag: input.mockLocationFlag ?? false,
-      rejectCode: detail.rejectCode ?? null,
-      rejectReason: detail.rejectReason ?? null,
-      syncedOffline: input.syncedOffline ?? false,
-      clientPunchUid: input.clientPunchUid ?? null,
-      requestId: ctx.requestId,
-      serverIp: ctx.ip,
-      locationId: detail.location?.id ?? null,
-      locLatitude: detail.location?.latitude ?? null,
-      locLongitude: detail.location?.longitude ?? null,
-      locRadiusM: detail.location?.radiusMeters ?? null,
-    },
+      data: {
+        tenantId: ctx.tenantId,
+        employeeId,
+        punchType: input.punchType,
+        result,
+        method: 'face',
+        clientTime: input.clientTime ?? null,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        gpsAccuracyM: input.gpsAccuracyM,
+        distanceM: detail.distanceM ?? null,
+        faceScore: detail.faceScore ?? null,
+        livenessScore: detail.livenessScore ?? null,
+        deviceFingerprint: input.deviceFingerprint,
+        mockLocationFlag: input.mockLocationFlag ?? false,
+        rejectCode: detail.rejectCode ?? null,
+        rejectReason: detail.rejectReason ?? null,
+        syncedOffline: input.syncedOffline ?? false,
+        clientPunchUid: input.clientPunchUid ?? null,
+        requestId: ctx.requestId,
+        serverIp: ctx.ip,
+        locationId: detail.location?.id ?? null,
+        locLatitude: detail.location?.latitude ?? null,
+        locLongitude: detail.location?.longitude ?? null,
+        locRadiusM: detail.location?.radiusMeters ?? null,
+      },
     });
   }
 }
@@ -456,7 +581,8 @@ async function keepCapture(ctx: Ctx, employeeId: string, punchId: string, frames
 export async function punch(ctx: Ctx, input: PunchInput) {
   const employee = await myEmployee(ctx);
   if (!employee) throw NotFound('Employee');
-  if (!(await activeConsent(ctx, employee.id))) throw Forbidden('Record your biometric consent before using face check-in.');
+  if (!(await activeConsent(ctx, employee.id)))
+    throw Forbidden('Record your biometric consent before using face check-in.');
   assertFrameSizes(input.frames);
   const policy = await getHrPolicy(ctx);
 
@@ -464,7 +590,12 @@ export async function punch(ctx: Ctx, input: PunchInput) {
   if (input.clientPunchUid) {
     const existing = await findByClientUid(ctx, employee.id, input.clientPunchUid);
     if (existing) {
-      return { result: existing.result, message: 'Already recorded.', serverTime: existing.serverTime, distanceM: existing.distanceM };
+      return {
+        result: existing.result,
+        message: 'Already recorded.',
+        serverTime: existing.serverTime,
+        distanceM: existing.distanceM,
+      };
     }
   }
 
@@ -472,17 +603,38 @@ export async function punch(ctx: Ctx, input: PunchInput) {
   if (input.syncedOffline && input.clientTime) {
     const ageHours = (Date.now() - input.clientTime.getTime()) / 3_600_000;
     if (ageHours > policy.maxOfflineSyncHours) {
-      const row = await record(ctx, employee.id, input, 'REJECTED_STALE_SYNC', { rejectCode: 'STALE_SYNC', rejectReason: `Offline punch ${Math.round(ageHours)}h old` });
-      return { result: row.result, message: 'This queued check-in is too old to sync. Ask HR to record it manually.', serverTime: row.serverTime, distanceM: null };
+      const row = await record(ctx, employee.id, input, 'REJECTED_STALE_SYNC', {
+        rejectCode: 'STALE_SYNC',
+        rejectReason: `Offline punch ${Math.round(ageHours)}h old`,
+      });
+      return {
+        result: row.result,
+        message: 'This queued check-in is too old to sync. Ask HR to record it manually.',
+        serverTime: row.serverTime,
+        distanceM: null,
+      };
     }
   }
 
   const recent = await prisma.hrAttendancePunch.findFirst({
-    where: { tenantId: ctx.tenantId, employeeId: employee.id, result: 'ACCEPTED', serverTime: { gte: new Date(Date.now() - policy.minPunchIntervalSeconds * 1000) } },
+    where: {
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      result: 'ACCEPTED',
+      serverTime: { gte: new Date(Date.now() - policy.minPunchIntervalSeconds * 1000) },
+    },
   });
   if (recent) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_DUPLICATE', { rejectCode: 'MIN_INTERVAL', rejectReason: 'Within minimum interval' });
-    return { result: row.result, message: 'You just checked in. Wait a moment and retry.', serverTime: row.serverTime, distanceM: null };
+    const row = await record(ctx, employee.id, input, 'REJECTED_DUPLICATE', {
+      rejectCode: 'MIN_INTERVAL',
+      rejectReason: 'Within minimum interval',
+    });
+    return {
+      result: row.result,
+      message: 'You just checked in. Wait a moment and retry.',
+      serverTime: row.serverTime,
+      distanceM: null,
+    };
   }
 
   let context: PunchContext;
@@ -490,8 +642,18 @@ export async function punch(ctx: Ctx, input: PunchInput) {
     context = await validatePunch(ctx, employee, input.punchType, input, false, policy);
   } catch (error) {
     if (!(error instanceof PunchRejected)) throw error;
-    const row = await record(ctx, employee.id, input, error.result, { rejectCode: error.code, rejectReason: error.message, distanceM: error.distanceM, location: error.location });
-    return { result: row.result, message: error.message, serverTime: row.serverTime, distanceM: error.distanceM ?? null };
+    const row = await record(ctx, employee.id, input, error.result, {
+      rejectCode: error.code,
+      rejectReason: error.message,
+      distanceM: error.distanceM,
+      location: error.location,
+    });
+    return {
+      result: row.result,
+      message: error.message,
+      serverTime: row.serverTime,
+      distanceM: error.distanceM ?? null,
+    };
   }
 
   // 3. Spend the nonce. From here a replayed payload is worthless.
@@ -499,9 +661,17 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 
   // A resent still image is caught before any model runs.
   if (new Set(input.frames).size < input.frames.length) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', { rejectCode: 'IDENTICAL_FRAMES', rejectReason: 'Identical frames' });
+    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', {
+      rejectCode: 'IDENTICAL_FRAMES',
+      rejectReason: 'Identical frames',
+    });
     await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return { result: row.result, message: 'Identical frames — send live camera frames.', serverTime: row.serverTime, distanceM: null };
+    return {
+      result: row.result,
+      message: 'Identical frames — send live camera frames.',
+      serverTime: row.serverTime,
+      distanceM: null,
+    };
   }
 
   // An engine outage is an operational fault, not the employee's doing: this
@@ -512,25 +682,53 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 
   const liveness = verifyLiveness(detections, direction, policy);
   if (!liveness.passed) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', { rejectCode: 'LIVENESS', rejectReason: liveness.reason, livenessScore: liveness.score });
+    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', {
+      rejectCode: 'LIVENESS',
+      rejectReason: liveness.reason,
+      livenessScore: liveness.score,
+    });
     await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
     return { result: row.result, message: liveness.reason, serverTime: row.serverTime, distanceM: null };
   }
 
-  const templates = await prisma.hrFaceTemplate.findMany({ where: { tenantId: ctx.tenantId, employeeId: employee.id }, select: { embedding: true } });
-  if (templates.length < policy.faceSamplesRequired) throw Conflict('Finish face enrolment with HR before checking in.');
+  const templates = await prisma.hrFaceTemplate.findMany({
+    where: { tenantId: ctx.tenantId, employeeId: employee.id },
+    select: { embedding: true },
+  });
+  if (templates.length < policy.faceSamplesRequired)
+    throw Conflict('Finish face enrolment with HR before checking in.');
 
-  const score = bestMatch(liveness.embedding!, templates.map((template) => template.embedding));
+  const score = bestMatch(
+    liveness.embedding!,
+    templates.map((template) => template.embedding),
+  );
   if (score < policy.faceMatchThreshold) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_FACE', { rejectCode: 'FACE_MISMATCH', rejectReason: `Score ${score.toFixed(3)}`, faceScore: score, livenessScore: liveness.score });
+    const row = await record(ctx, employee.id, input, 'REJECTED_FACE', {
+      rejectCode: 'FACE_MISMATCH',
+      rejectReason: `Score ${score.toFixed(3)}`,
+      faceScore: score,
+      livenessScore: liveness.score,
+    });
     await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return { result: row.result, message: 'We could not confirm it is you. Try again or contact HR.', serverTime: row.serverTime, distanceM: null };
+    return {
+      result: row.result,
+      message: 'We could not confirm it is you. Try again or contact HR.',
+      serverTime: row.serverTime,
+      distanceM: null,
+    };
   }
 
   // 4. Geofence last, now that the nonce is spent.
   if (!context.inside) {
     const rejection = geofenceRejection(context.assignment.location, context.distanceM);
-    const row = await record(ctx, employee.id, input, rejection.result, { rejectCode: rejection.code, rejectReason: rejection.message, faceScore: score, livenessScore: liveness.score, distanceM: context.distanceM, location: context.assignment.location });
+    const row = await record(ctx, employee.id, input, rejection.result, {
+      rejectCode: rejection.code,
+      rejectReason: rejection.message,
+      faceScore: score,
+      livenessScore: liveness.score,
+      distanceM: context.distanceM,
+      location: context.assignment.location,
+    });
     await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
     return { result: row.result, message: rejection.message, serverTime: row.serverTime, distanceM: context.distanceM };
   }
@@ -538,7 +736,10 @@ export async function punch(ctx: Ctx, input: PunchInput) {
   const result: PunchResult = input.mockLocationFlag ? 'FLAGGED_REVIEW' : 'ACCEPTED';
   const row = await record(ctx, employee.id, input, result, {
     rejectReason: input.mockLocationFlag ? 'Mock location reported by device' : null,
-    faceScore: score, livenessScore: liveness.score, distanceM: context.distanceM, location: context.assignment.location,
+    faceScore: score,
+    livenessScore: liveness.score,
+    distanceM: context.distanceM,
+    location: context.assignment.location,
   });
   await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
   await upsertDay(ctx, employee.id, row);
@@ -562,14 +763,25 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 }
 
 /** The day roll-up the attendance screens read. */
-export async function upsertDay(ctx: Ctx, employeeId: string, punchRow: { punchType: PunchType; serverTime: Date; locationId: string | null }) {
+export async function upsertDay(
+  ctx: Ctx,
+  employeeId: string,
+  punchRow: { punchType: PunchType; serverTime: Date; locationId: string | null },
+) {
   const workDate = toDay(punchRow.serverTime);
 
   if (punchRow.punchType === 'CHECK_IN') {
     await prisma.hrAttendanceRecord.upsert({
       where: { tenantId_employeeId_workDate: { tenantId: ctx.tenantId, employeeId, workDate } },
       update: { checkInAt: punchRow.serverTime, locationId: punchRow.locationId, status: 'PRESENT' },
-      create: { tenantId: ctx.tenantId, employeeId, workDate, checkInAt: punchRow.serverTime, locationId: punchRow.locationId, status: 'PRESENT' },
+      create: {
+        tenantId: ctx.tenantId,
+        employeeId,
+        workDate,
+        checkInAt: punchRow.serverTime,
+        locationId: punchRow.locationId,
+        status: 'PRESENT',
+      },
     });
     return;
   }
@@ -616,7 +828,10 @@ export async function myPunches(ctx: Ctx, limit = 30) {
 }
 
 /** An employee sees only their own days; asking for someone else's is refused. */
-export async function attendanceDays(ctx: Ctx, options: { employeeId?: string; start?: Date; end?: Date; limit?: number } = {}) {
+export async function attendanceDays(
+  ctx: Ctx,
+  options: { employeeId?: string; start?: Date; end?: Date; limit?: number } = {},
+) {
   const self = await myEmployee(ctx);
   let employeeId = self?.id;
   if (options.employeeId && options.employeeId !== self?.id) {
@@ -629,9 +844,16 @@ export async function attendanceDays(ctx: Ctx, options: { employeeId?: string; s
     where: {
       tenantId: ctx.tenantId,
       employeeId,
-      ...(options.start || options.end ? { workDate: { ...(options.start ? { gte: toDay(options.start) } : {}), ...(options.end ? { lte: toDay(options.end) } : {}) } } : {}),
+      ...(options.start || options.end
+        ? {
+            workDate: {
+              ...(options.start ? { gte: toDay(options.start) } : {}),
+              ...(options.end ? { lte: toDay(options.end) } : {}),
+            },
+          }
+        : {}),
     },
-    include: { location: { select: { name: true } }, employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { location: { select: { name: true } }, employee: EMPLOYEE_WITH_PERSON },
     orderBy: { workDate: 'desc' },
     take: Math.min(options.limit ?? 100, 366),
   });
@@ -642,7 +864,7 @@ export async function reviewQueue(ctx: Ctx, limit = 200) {
   if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can review attendance.');
   return prisma.hrAttendancePunch.findMany({
     where: { tenantId: ctx.tenantId, result: { in: ['FLAGGED_REVIEW', 'REJECTED_FACE', 'REJECTED_LIVENESS'] } },
-    include: { employee: { include: { membership: { include: { platformUser: true } } } }, location: { select: { name: true } } },
+    include: { employee: EMPLOYEE_WITH_PERSON, location: { select: { name: true } } },
     orderBy: { serverTime: 'desc' },
     take: Math.min(limit, 500),
   });

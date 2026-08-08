@@ -1,10 +1,18 @@
 import { z } from 'zod';
+import { MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import {
-  accountDetail, changeUserRole, listAccounts, resetUserPassword,
-  revokeUserSessions, setManager, setUserActive, unlockUser,
+  accountDetail,
+  changeUserRole,
+  listAccounts,
+  resetUserPassword,
+  revokeUserSessions,
+  setManager,
+  setUserActive,
+  unlockUser,
 } from '@/services/identity/accounts';
+import { inviteUser, listInvitations, resendInvitation, revokeInvitation } from '@/services/identity/invitations';
 import { removeTotpFor } from '@/services/identity/twoFactor';
 
 /**
@@ -20,28 +28,48 @@ import { removeTotpFor } from '@/services/identity/twoFactor';
 const paramsSchema = z.object({
   workspaceSlug: z.string().min(2).max(64),
   action: z.enum([
-    'accounts', 'account',
-    'password-reset', 'account-unlock', 'account-active', 'account-role',
-    'account-manager', 'sessions-revoke', 'two-factor-remove',
+    'accounts',
+    'account',
+    'invitations',
+    'password-reset',
+    'account-unlock',
+    'account-active',
+    'account-role',
+    'account-manager',
+    'sessions-revoke',
+    'two-factor-remove',
+    'invite',
+    'invitation-resend',
+    'invitation-revoke',
   ]),
 });
 
 const id = z.string().min(1).max(64);
 
 export const GET = route(
-  { module: 'users', productModule: 'HRMS', action: 'VIEW', params: paramsSchema, query: z.object({ userId: z.string().max(64).optional() }).passthrough() },
+  {
+    module: 'users',
+    action: 'VIEW',
+    params: paramsSchema,
+    query: z.object({ userId: z.string().max(64).optional() }).passthrough(),
+  },
   async ({ ctx, params, query }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
     switch (params.action) {
-      case 'accounts': return listAccounts(ctx);
-      case 'account': return accountDetail(ctx, query.userId ?? ctx.actor.id);
-      default: throw new Error('Use POST for this action.');
+      case 'accounts':
+        return listAccounts(ctx);
+      case 'invitations':
+        return listInvitations(ctx);
+      case 'account':
+        return accountDetail(ctx, query.userId ?? ctx.actor.id);
+      default:
+        throw MethodNotAllowed('POST');
     }
   },
 );
 
 export const POST = route(
-  { module: 'users', productModule: 'HRMS', action: 'MANAGE_USERS', params: paramsSchema, body: z.record(z.string(), z.unknown()) },
+  { module: 'users', action: 'MANAGE_USERS', params: paramsSchema, body: z.record(z.string(), z.unknown()) },
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
 
@@ -55,7 +83,9 @@ export const POST = route(
         return unlockUser(ctx, input.userId);
       }
       case 'account-active': {
-        const input = z.object({ userId: id, active: z.coerce.boolean(), reason: z.string().max(300).optional() }).parse(body);
+        const input = z
+          .object({ userId: id, active: z.coerce.boolean(), reason: z.string().max(300).optional() })
+          .parse(body);
         return setUserActive(ctx, input.userId, input.active, input.reason);
       }
       case 'account-role': {
@@ -74,7 +104,34 @@ export const POST = route(
         const input = z.object({ userId: id }).parse(body);
         return removeTotpFor(ctx, input.userId);
       }
-      default: throw new Error('Use GET for this action.');
+
+      // ── Invitations ───────────────────────────────────────────────────────
+      // The only route by which a login comes into existence. Every field the
+      // new account starts with is decided here; the password is not one of
+      // them, and is never seen by the person sending the invitation.
+      case 'invite': {
+        const input = z
+          .object({
+            email: z.string().email().max(254),
+            fullName: z.string().min(2).max(160),
+            roleId: id,
+            employeeNumber: z.string().min(1).max(40).optional(),
+            jobTitle: z.string().max(120).optional(),
+            departmentId: id.optional().or(z.literal('')),
+          })
+          .parse(body);
+        return inviteUser(ctx, { ...input, departmentId: input.departmentId || undefined });
+      }
+      case 'invitation-resend': {
+        const input = z.object({ invitationId: id }).parse(body);
+        return resendInvitation(ctx, input.invitationId);
+      }
+      case 'invitation-revoke': {
+        const input = z.object({ invitationId: id, reason: z.string().max(300).optional() }).parse(body);
+        return revokeInvitation(ctx, input.invitationId, input.reason);
+      }
+      default:
+        throw new Error('Use GET for this action.');
     }
   },
 );

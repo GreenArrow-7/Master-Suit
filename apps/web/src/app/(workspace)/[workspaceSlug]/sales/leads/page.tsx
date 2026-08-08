@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
@@ -25,7 +23,7 @@ const FILTERS: Record<string, (now: Date) => Record<string, unknown>> = {
 
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ filter?: string; q?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
   const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date()) : {};
@@ -40,24 +38,41 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: 50,
       select: {
-        id: true, reference: true, fullName: true, email: true, phone: true, company: true,
-        score: true, grade: true, priority: true, slaState: true, nextFollowUpAt: true,
-        updatedAt: true, ownerId: true,
+        id: true,
+        reference: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        company: true,
+        score: true,
+        grade: true,
+        priority: true,
+        slaState: true,
+        nextFollowUpAt: true,
+        updatedAt: true,
+        ownerId: true,
         stage: { select: { key: true, name: true, color: true } },
         owner: { select: { fullName: true } },
       },
     }),
-    prisma.leadStage.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { position: 'asc' }, select: { id: true, key: true, name: true } }),
+    prisma.leadStage.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { position: 'asc' },
+      select: { id: true, key: true, name: true },
+    }),
     prisma.user.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-      orderBy: { fullName: 'asc' }, select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+      select: { id: true, fullName: true },
     }),
     prisma.taskType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
-      orderBy: { name: 'asc' }, select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
     }),
     prisma.organizationSetting.findUnique({
-      where: { tenantId: ctx.tenantId }, select: { gridColumns: true },
+      where: { tenantId: ctx.tenantId },
+      select: { gridColumns: true },
     }),
   ]);
 
@@ -72,30 +87,46 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <ListHeader
         title="Leads"
         count={rows.length}
-       
+
         capped={rows.length === 50}
-        actions={<span style={{ position: 'relative', display: 'flex', gap: 'var(--lf-space-2)' }}>
-          {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
-          {can(ctx, 'leads', 'EXPORT') && (
-            <a className="lf-btn lf-btn--secondary lf-btn--sm"
-               href={`/api/v1/leads/export?${new URLSearchParams({ ...(params.filter ? { filter: params.filter } : {}), ...(params.q ? { q: params.q } : {}) })}`}>
-              Export
-            </a>
-          )}
-          {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-            <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} />
-          )}
-          {can(ctx, 'leads', 'CREATE') && <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">Add lead</SalesLink>}
-        </span>}
+        actions={
+          <span style={{ position: 'relative', display: 'flex', gap: 'var(--lf-space-2)' }}>
+            {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
+            {can(ctx, 'leads', 'EXPORT') && (
+              <a
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                href={`/api/v1/leads/export?${new URLSearchParams({ ...(params.filter ? { filter: params.filter } : {}), ...(params.q ? { q: params.q } : {}) })}`}
+              >
+                Export
+              </a>
+            )}
+            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+              <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} />
+            )}
+            {can(ctx, 'leads', 'CREATE') && (
+              <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
+                Add lead
+              </SalesLink>
+            )}
+          </span>
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Saved views">
         {[
-          ['All leads', ''], ['Unassigned', 'unassigned'], ['Overdue follow-up', 'overdue'],
-          ['SLA breached', 'breached'], ['High score', 'high_score'],
+          ['All leads', ''],
+          ['Unassigned', 'unassigned'],
+          ['Overdue follow-up', 'overdue'],
+          ['SLA breached', 'breached'],
+          ['High score', 'high_score'],
         ].map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/leads?filter=${key}` : '/leads'}
-             aria-selected={(params.filter ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/leads?filter=${key}` : '/leads'}
+            aria-selected={(params.filter ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}

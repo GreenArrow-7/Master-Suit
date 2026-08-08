@@ -33,7 +33,10 @@ export default function OpportunityForm({ accounts }: { accounts: { id: string; 
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.detail ?? 'Could not create this opportunity.'); return; }
+      if (!res.ok) {
+        setError(data.detail ?? 'Could not create this opportunity.');
+        return;
+      }
       router.push(`${base}/opportunities/${data.id}`);
       router.refresh();
     } catch {
@@ -45,40 +48,89 @@ export default function OpportunityForm({ accounts }: { accounts: { id: string; 
 
   return (
     <form onSubmit={submit} style={{ display: 'grid', gap: 'var(--lf-space-4)' }} noValidate>
-      {error && <div className="lf-alert" role="alert">{error}</div>}
+      {error && (
+        <div className="lf-alert" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="name">Opportunity name</label>
-        <input id="name" className="lf-input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        <label className="lf-label" htmlFor="name">
+          Opportunity name
+        </label>
+        <input
+          id="name"
+          className="lf-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+        />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="accountId">Account</label>
+        <label className="lf-label" htmlFor="accountId">
+          Account
+        </label>
         <select id="accountId" className="lf-input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
           <option value="">No account</option>
-          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
         </select>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 'var(--lf-space-3)' }}>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="amount">Amount</label>
-          <input id="amount" className="lf-input" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <label className="lf-label" htmlFor="amount">
+            Amount
+          </label>
+          <input
+            id="amount"
+            className="lf-input"
+            type="number"
+            min="0"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="currency">Currency</label>
-          <input id="currency" className="lf-input" maxLength={3} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+          <label className="lf-label" htmlFor="currency">
+            Currency
+          </label>
+          <input
+            id="currency"
+            className="lf-input"
+            maxLength={3}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+          />
         </div>
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="expectedCloseDate">Expected close date</label>
-        <input id="expectedCloseDate" className="lf-input" type="date" value={expectedCloseDate} onChange={(e) => setExpectedCloseDate(e.target.value)} />
+        <label className="lf-label" htmlFor="expectedCloseDate">
+          Expected close date
+        </label>
+        <input
+          id="expectedCloseDate"
+          className="lf-input"
+          type="date"
+          value={expectedCloseDate}
+          onChange={(e) => setExpectedCloseDate(e.target.value)}
+        />
       </div>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
-        <button className="lf-btn" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create opportunity'}</button>
-        <SalesLink className="lf-btn lf-btn--secondary" href="/opportunities">Cancel</SalesLink>
+        <button className="lf-btn" type="submit" disabled={busy}>
+          {busy ? 'Creating…' : 'Create opportunity'}
+        </button>
+        <SalesLink className="lf-btn lf-btn--secondary" href="/opportunities">
+          Cancel
+        </SalesLink>
       </div>
     </form>
   );

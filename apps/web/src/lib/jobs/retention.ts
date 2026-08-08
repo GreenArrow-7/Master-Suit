@@ -11,7 +11,12 @@ export interface RetentionResult {
 
 export async function runRetentionCleanup(dryRun = false): Promise<RetentionResult> {
   const now = new Date();
-  const result: RetentionResult = { expiredRecordings: 0, oldWebhookEvents: 0, attendanceCaptures: 0, purgeSummary: {} };
+  const result: RetentionResult = {
+    expiredRecordings: 0,
+    oldWebhookEvents: 0,
+    attendanceCaptures: 0,
+    purgeSummary: {},
+  };
 
   // 1. Delete recordings past their retainUntil date
   const expiredRecordings = await prisma.$queryRawUnsafe<{ id: string; callId: string }[]>(
@@ -23,10 +28,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
   if (!dryRun && expiredRecordings.length > 0) {
     const ids = expiredRecordings.map((r) => r.id);
     // ponytail: batch delete, no S3 cleanup yet — add when storage provider exists
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM "Recording" WHERE id = ANY($1::text[])`,
-      ids,
-    );
+    await prisma.$executeRawUnsafe(`DELETE FROM "Recording" WHERE id = ANY($1::text[])`, ids);
     logger.info({ count: ids.length }, 'retention: deleted expired recordings');
   }
 
@@ -46,9 +48,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
 
   // 3. Hard-delete soft-deleted records older than 90 days
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const softDeleteTables = [
-    'Call', 'FollowUpTask', 'Event',
-  ] as const;
+  const softDeleteTables = ['Call', 'FollowUpTask', 'Event'] as const;
 
   for (const table of softDeleteTables) {
     if (!dryRun) {

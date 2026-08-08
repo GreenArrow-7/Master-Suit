@@ -2,16 +2,35 @@ import { prisma } from '../db';
 import type { Ctx } from './rbac';
 
 export type AuditEventName =
-  | 'LOGIN' | 'LOGOUT' | 'LOGIN_FAILED' | 'PASSWORD_CHANGED' | 'MFA_ENROLLED'
-  | 'RECORD_CREATED' | 'RECORD_UPDATED' | 'RECORD_DELETED' | 'RECORD_RESTORED'
-  | 'STAGE_CHANGED' | 'OWNER_CHANGED' | 'PERMISSION_CHANGED'
-  | 'EXPORT_REQUESTED' | 'IMPORT_STARTED' | 'API_KEY_CREATED' | 'API_KEY_REVOKED'
-  | 'AUTOMATION_MODIFIED' | 'INTEGRATION_MODIFIED' | 'DOCUMENT_ACCESSED'
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'LOGIN_FAILED'
+  | 'PASSWORD_CHANGED'
+  | 'MFA_ENROLLED'
+  | 'RECORD_CREATED'
+  | 'RECORD_UPDATED'
+  | 'RECORD_DELETED'
+  | 'RECORD_RESTORED'
+  | 'STAGE_CHANGED'
+  | 'OWNER_CHANGED'
+  | 'PERMISSION_CHANGED'
+  | 'EXPORT_REQUESTED'
+  | 'IMPORT_STARTED'
+  | 'API_KEY_CREATED'
+  | 'API_KEY_REVOKED'
+  | 'AUTOMATION_MODIFIED'
+  | 'INTEGRATION_MODIFIED'
+  | 'DOCUMENT_ACCESSED'
   | 'SENSITIVE_FIELD_VIEWED'
-  | 'TARGET_CREATED' | 'TARGET_UPDATED'
-  | 'CALL_STARTED' | 'CALL_COMPLETED'
-  | 'RECORDING_ACCESSED' | 'CONSENT_RECORDED' | 'CONSENT_WITHDRAWN'
-  | 'AI_ANALYSIS_COMPLETED' | 'CALL_AUDIT_COMPLETED';
+  | 'TARGET_CREATED'
+  | 'TARGET_UPDATED'
+  | 'CALL_STARTED'
+  | 'CALL_COMPLETED'
+  | 'RECORDING_ACCESSED'
+  | 'CONSENT_RECORDED'
+  | 'CONSENT_WITHDRAWN'
+  | 'AI_ANALYSIS_COMPLETED'
+  | 'CALL_AUDIT_COMPLETED';
 
 export interface AuditInput {
   event: AuditEventName;
@@ -23,8 +42,25 @@ export interface AuditInput {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Field names that are credentials rather than data.
+ *
+ * One list, two consumers: the audit writer below refuses to record them, and
+ * `lib/api/handler.ts` refuses to serialise them into a response. Adding a
+ * column here is the single place that closes both egress paths at once.
+ */
+export const SECRET_KEYS: ReadonlySet<string> = new Set([
+  'passwordHash',
+  'mfaSecret',
+  'mfaRecoveryCodes',
+  'tokenHash',
+  'keyHash',
+  'configEncrypted',
+  'signingSecretEnc',
+]);
+
 /** Values that must never reach the audit table, even as a "previous value". */
-const NEVER_LOG = new Set(['passwordHash', 'mfaSecret', 'mfaRecoveryCodes', 'tokenHash', 'keyHash', 'configEncrypted', 'signingSecretEnc']);
+const NEVER_LOG = SECRET_KEYS;
 
 export async function audit(ctx: Ctx, input: AuditInput, tx: any = prisma) {
   if (input.fieldKey && NEVER_LOG.has(input.fieldKey)) return;

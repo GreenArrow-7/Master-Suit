@@ -4,22 +4,29 @@ import { loadFieldRules, stripUneditableFields } from '@/lib/security/fieldSecur
 import { createLead } from '@/services/leads/createLead';
 
 /** Mirrors the create endpoint's accepted fields, minus anything an import cannot set. */
-const importRow = z.object({
-  fullName: z.string().min(1).max(160),
-  email: z.string().email().max(254).optional(),
-  phone: z.string().max(32).optional(),
-  company: z.string().max(160).optional(),
-  jobTitle: z.string().max(120).optional(),
-  city: z.string().max(80).optional(),
-  country: z.string().max(80).optional(),
-  source: z.string().max(60).optional(),
-  notes: z.string().max(5000).optional(),
-}).strict();
+const importRow = z
+  .object({
+    fullName: z.string().min(1).max(160),
+    email: z.string().email().max(254).optional(),
+    phone: z.string().max(32).optional(),
+    company: z.string().max(160).optional(),
+    jobTitle: z.string().max(120).optional(),
+    city: z.string().max(80).optional(),
+    country: z.string().max(80).optional(),
+    source: z.string().max(60).optional(),
+    notes: z.string().max(5000).optional(),
+  })
+  .strict();
 
-const body = z.object({
-  /** 1-based line numbers from the source file, so failures point at the user's row. */
-  rows: z.array(z.object({ line: z.number().int().positive(), values: z.record(z.string(), z.unknown()) })).min(1).max(1000),
-}).strict();
+const body = z
+  .object({
+    /** 1-based line numbers from the source file, so failures point at the user's row. */
+    rows: z
+      .array(z.object({ line: z.number().int().positive(), values: z.record(z.string(), z.unknown()) }))
+      .min(1)
+      .max(1000),
+  })
+  .strict();
 
 /**
  * Bulk lead import. Each row goes through the same `createLead` service the form and
@@ -30,7 +37,7 @@ const body = z.object({
  * batch, because a 900-row file with three typos should still land 897 leads.
  */
 export const POST = route(
-  { module: 'leads', action: 'IMPORT', body, auditEvent: 'IMPORT_STARTED' },
+  { module: 'leads', productModule: 'SALES', action: 'IMPORT', body, auditEvent: 'IMPORT_STARTED' },
   async ({ ctx, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     const failed: { line: number; reason: string }[] = [];

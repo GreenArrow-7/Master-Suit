@@ -12,7 +12,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { audit } from '@/lib/security/audit';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { GRID_COLUMNS, resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 
 const query = z.object({ filter: z.string().max(40).optional(), q: z.string().max(200).optional() }).strict();
 
@@ -83,9 +83,12 @@ async function handle(req: Request, requestId: string) {
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
   const value = (row: Record<string, any>, key: string) => {
     switch (key) {
-      case 'stage': return row.stage?.name;
-      case 'owner': return row.owner?.fullName ?? 'Unassigned';
-      default: return row[key];
+      case 'stage':
+        return row.stage?.name;
+      case 'owner':
+        return row.owner?.fullName ?? 'Unassigned';
+      default:
+        return row[key];
     }
   };
 
@@ -108,9 +111,19 @@ async function handle(req: Request, requestId: string) {
         take: PAGE,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         select: {
-          id: true, reference: true, fullName: true, email: true, phone: true, company: true,
-          score: true, grade: true, priority: true, slaState: true, nextFollowUpAt: true,
-          updatedAt: true, ownerId: true,
+          id: true,
+          reference: true,
+          fullName: true,
+          email: true,
+          phone: true,
+          company: true,
+          score: true,
+          grade: true,
+          priority: true,
+          slaState: true,
+          nextFollowUpAt: true,
+          updatedAt: true,
+          ownerId: true,
           stage: { select: { key: true, name: true, color: true } },
           owner: { select: { fullName: true } },
         },

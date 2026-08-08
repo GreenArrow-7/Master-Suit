@@ -24,8 +24,9 @@ import { logger } from '@/lib/logger';
 import { deleteObject, getObject, moveObject, putObject } from '@/lib/storage';
 import { scanBuffer } from '@/lib/antivirus';
 import type { Ctx } from '@/lib/security/rbac';
-import { isHrAdmin } from './access';
+import { isHrAdmin, mayReadSensitiveDocuments } from './access';
 import { myEmployee, requireEmployee } from './leave';
+import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
 /** What a scan may legitimately be, and the extension the stored key gets. */
 const ALLOWED: Record<string, string> = {
@@ -41,7 +42,8 @@ function sniff(payload: Buffer): string | null {
   if (payload.subarray(0, 4).toString('latin1') === '%PDF') return 'application/pdf';
   if (payload[0] === 0xff && payload[1] === 0xd8 && payload[2] === 0xff) return 'image/jpeg';
   if (payload.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
-  if (payload.subarray(0, 4).toString('latin1') === 'RIFF' && payload.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (payload.subarray(0, 4).toString('latin1') === 'RIFF' && payload.subarray(8, 12).toString('latin1') === 'WEBP')
+    return 'image/webp';
   if (['ftypheic', 'ftypheix', 'ftypmif1'].includes(payload.subarray(4, 12).toString('latin1'))) return 'image/heic';
   return null;
 }
@@ -63,13 +65,15 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
 
   if (!input.bytes.length) throw Conflict('That file is empty.');
   const maxBytes = env.UPLOAD_MAX_MB * 1024 * 1024;
-  if (input.bytes.length > maxBytes) throw new AppError(413, 'file-too-large', `Files must be under ${env.UPLOAD_MAX_MB} MB.`);
+  if (input.bytes.length > maxBytes)
+    throw new AppError(413, 'file-too-large', `Files must be under ${env.UPLOAD_MAX_MB} MB.`);
   if (input.expiresAt && input.issuedAt && input.expiresAt < input.issuedAt) {
     throw Conflict('The expiry date cannot be before the issue date.');
   }
 
   const detected = sniff(input.bytes);
-  if (!detected) throw Conflict('Upload a PDF or an image (JPEG, PNG, WebP or HEIC). The file contents did not match any of those.');
+  if (!detected)
+    throw Conflict('Upload a PDF or an image (JPEG, PNG, WebP or HEIC). The file contents did not match any of those.');
 
   const sha256 = createHash('sha256').update(input.bytes).digest('hex');
   const leaf = `${randomBytes(18).toString('hex')}${ALLOWED[detected]}`;
@@ -142,10 +146,16 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
     objectType: 'hr_employee_document',
     recordId: document.id,
     metadata: {
-      action: 'document.uploaded', kind: input.kind, sizeBytes: input.bytes.length,
-      contentType: detected, declaredContentType: input.contentType, sha256,
-      scanStatus: scanResult.verdict, scanProvider: scanResult.provider,
-      scanSignature: scanResult.signature, scanDetail: scanResult.detail,
+      action: 'document.uploaded',
+      kind: input.kind,
+      sizeBytes: input.bytes.length,
+      contentType: detected,
+      declaredContentType: input.contentType,
+      sha256,
+      scanStatus: scanResult.verdict,
+      scanProvider: scanResult.provider,
+      scanSignature: scanResult.signature,
+      scanDetail: scanResult.detail,
     },
   });
 
@@ -153,13 +163,26 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   // that someone uploaded infected content, or that the scanner was down when
   // they tried, is exactly what an investigator needs later.
   if (scanResult.verdict === 'INFECTED') {
-    throw new AppError(422, 'malware-detected', `That file was rejected by the malware scanner (${scanResult.detail ?? 'threat detected'}) and has been deleted.`);
+    throw new AppError(
+      422,
+      'malware-detected',
+      `That file was rejected by the malware scanner (${scanResult.detail ?? 'threat detected'}) and has been deleted.`,
+    );
   }
   if (scanResult.verdict === 'ERROR') {
-    throw new AppError(503, 'scanner-unavailable', 'The malware scanner could not be reached, so the file is quarantined and cannot be used. Try again once scanning is available.');
+    throw new AppError(
+      503,
+      'scanner-unavailable',
+      'The malware scanner could not be reached, so the file is quarantined and cannot be used. Try again once scanning is available.',
+    );
   }
 
-  return { ...document, scanStatus: scanResult.verdict, scanProvider: scanResult.provider, scanSignature: scanResult.signature };
+  return {
+    ...document,
+    scanStatus: scanResult.verdict,
+    scanProvider: scanResult.provider,
+    scanSignature: scanResult.signature,
+  };
 }
 
 /**
@@ -176,7 +199,11 @@ export async function downloadDocument(ctx: Ctx, documentId: string) {
   });
   if (!document) throw NotFound('Document');
 
-  if (!isHrAdmin(ctx)) {
+  // Reading someone else's passport scan needs the permission for exactly that,
+  // not "administers HR". Those were the same check until P1-8: anyone who could
+  // restructure the department tree could also read every identity document in
+  // the company, and no company could grant one without the other.
+  if (!mayReadSensitiveDocuments(ctx)) {
     const self = await myEmployee(ctx);
     if (!self || self.id !== document.employeeId) throw NotFound('Document');
   }
@@ -186,9 +213,13 @@ export async function downloadDocument(ctx: Ctx, documentId: string) {
   // document never received a verdict, and serving it would defeat the point of
   // scanning at all.
   if (document.scanStatus !== 'CLEAN') {
-    throw new AppError(409, 'document-not-released', document.scanStatus === 'INFECTED'
-      ? 'That file was rejected by the malware scanner and is not available.'
-      : 'That file has not cleared malware scanning, so it cannot be downloaded.');
+    throw new AppError(
+      409,
+      'document-not-released',
+      document.scanStatus === 'INFECTED'
+        ? 'That file was rejected by the malware scanner and is not available.'
+        : 'That file has not cleared malware scanning, so it cannot be downloaded.',
+    );
   }
 
   await audit(ctx, {
@@ -210,7 +241,11 @@ export async function downloadDocument(ctx: Ctx, documentId: string) {
   // store, which otherwise surfaces as an unopenable passport scan months later.
   if (document.sha256 && createHash('sha256').update(bytes).digest('hex') !== document.sha256) {
     logger.error({ documentId }, 'document checksum mismatch');
-    throw new AppError(409, 'document-corrupt', 'That file failed its integrity check and was not returned. Upload it again.');
+    throw new AppError(
+      409,
+      'document-corrupt',
+      'That file failed its integrity check and was not returned. Upload it again.',
+    );
   }
 
   return {
@@ -234,20 +269,26 @@ export async function deleteDocument(ctx: Ctx, documentId: string) {
     });
   }
   await prisma.hrEmployeeDocument.delete({ where: { tenantId: ctx.tenantId, id: document.id } });
-  await audit(ctx, { event: 'RECORD_DELETED', objectType: 'hr_employee_document', recordId: document.id, metadata: { action: 'document.deleted', kind: document.kind } });
+  await audit(ctx, {
+    event: 'RECORD_DELETED',
+    objectType: 'hr_employee_document',
+    recordId: document.id,
+    metadata: { action: 'document.deleted', kind: document.kind },
+  });
   return { deleted: true, documentId: document.id };
 }
 
-/** HR sees the workspace; everyone else sees only their own documents. */
+/**
+ * Holders of `hr_documents:VIEW_SENSITIVE_FIELDS` see the workspace; everyone
+ * else sees only their own documents.
+ */
 export async function listDocuments(ctx: Ctx, employeeId?: string) {
   const self = await myEmployee(ctx);
-  const scope = isHrAdmin(ctx)
-    ? (employeeId ? { employeeId } : {})
-    : { employeeId: self?.id ?? '' };
+  const scope = mayReadSensitiveDocuments(ctx) ? (employeeId ? { employeeId } : {}) : { employeeId: self?.id ?? '' };
 
   return prisma.hrEmployeeDocument.findMany({
     where: { tenantId: ctx.tenantId, ...scope },
-    include: { employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { employee: EMPLOYEE_WITH_PERSON },
     orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
     take: 300,
   });

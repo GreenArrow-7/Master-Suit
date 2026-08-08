@@ -5,12 +5,14 @@ import { NotFound, Invalid } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const body = z.object({
-  /** Callers to spread the queue across, round-robin. Defaults to the requester. */
-  callerIds: z.array(z.string().cuid()).min(1).max(50).optional(),
-  /** Only queue invitees currently in these RSVP states. */
-  rsvpStatus: z.array(z.enum(['PENDING', 'NO_RESPONSE', 'TENTATIVE', 'CONFIRMED', 'DECLINED'])).optional(),
-}).strict();
+const body = z
+  .object({
+    /** Callers to spread the queue across, round-robin. Defaults to the requester. */
+    callerIds: z.array(z.string().cuid()).min(1).max(50).optional(),
+    /** Only queue invitees currently in these RSVP states. */
+    rsvpStatus: z.array(z.enum(['PENDING', 'NO_RESPONSE', 'TENTATIVE', 'CONFIRMED', 'DECLINED'])).optional(),
+  })
+  .strict();
 
 /** ponytail: capped per request; re-run to queue the next slice. Batch it through the
  *  distribution worker in src/workers/distribution.ts if events grow past a few hundred. */
@@ -22,7 +24,7 @@ const BATCH_LIMIT = 200;
  * Gemini analysis then run through the existing per-call endpoints unchanged.
  */
 export const POST = route(
-  { module: 'calls', action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
+  { module: 'calls', productModule: 'SALES', action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -35,7 +37,9 @@ export const POST = route(
       select: { id: true },
     });
     if (callers.length !== callerIds.length) {
-      throw Invalid([{ field: 'callerIds', code: 'unknown_user', message: 'Every caller must be an active user of this workspace.' }]);
+      throw Invalid([
+        { field: 'callerIds', code: 'unknown_user', message: 'Every caller must be an active user of this workspace.' },
+      ]);
     }
 
     const invitees = await prisma.eventInvitee.findMany({
@@ -52,7 +56,9 @@ export const POST = route(
     // Never queue the same invitee twice for one event.
     const queued = await prisma.call.findMany({
       where: {
-        tenantId: ctx.tenantId, eventId: event.id, deletedAt: null,
+        tenantId: ctx.tenantId,
+        eventId: event.id,
+        deletedAt: null,
         status: { in: ['SCHEDULED', 'RINGING', 'IN_PROGRESS'] },
       },
       select: { recipientNumber: true },

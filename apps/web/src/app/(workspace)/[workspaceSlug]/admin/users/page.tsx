@@ -1,7 +1,5 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
@@ -11,9 +9,17 @@ import SalesLink from '@/components/workspace/SalesLink';
 export const metadata = { title: 'Administration' };
 
 const STATUS_TONE: Record<string, Tone> = {
-  ACTIVE: 'viridian', INVITED: 'brass', SUSPENDED: 'vermillion', DEACTIVATED: 'slate',
+  ACTIVE: 'viridian',
+  INVITED: 'brass',
+  SUSPENDED: 'vermillion',
+  DEACTIVATED: 'slate',
 };
-const TABS = [['All', ''], ['Active', 'ACTIVE'], ['Invited', 'INVITED'], ['Suspended', 'SUSPENDED']] as const;
+const TABS = [
+  ['All', ''],
+  ['Active', 'ACTIVE'],
+  ['Invited', 'INVITED'],
+  ['Suspended', 'SUSPENDED'],
+] as const;
 
 function relativeTime(date: Date | null | undefined): string {
   if (!date) return '—';
@@ -31,19 +37,25 @@ function relativeTime(date: Date | null | undefined): string {
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ permission: ['users', 'VIEW'] });
   if (!can(ctx, 'users', 'VIEW')) redirect('/home');
 
-  const statusFilter = params.status && ['ACTIVE', 'INVITED', 'SUSPENDED', 'DEACTIVATED'].includes(params.status)
-    ? { status: params.status as any }
-    : {};
+  const statusFilter =
+    params.status && ['ACTIVE', 'INVITED', 'SUSPENDED', 'DEACTIVATED'].includes(params.status)
+      ? { status: params.status as any }
+      : {};
 
   const rows = await prisma.user.findMany({
     where: { tenantId: ctx.tenantId, ...statusFilter },
     orderBy: { fullName: 'asc' },
     select: {
-      id: true, fullName: true, email: true, status: true, lastLoginAt: true,
+      id: true,
+      fullName: true,
+      email: true,
+      status: true,
       role: { select: { name: true } },
+      // Last sign-in belongs to the identity, not the membership.
+      workspaceMembership: { select: { platformUser: { select: { lastLoginAt: true } } } },
       branch: { select: { name: true } },
     },
     take: 100,
@@ -51,9 +63,13 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}>
+      <header
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      >
         <div>
-          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>Administration</h1>
+          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
+            Administration
+          </h1>
           <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
             {rows.length} user{rows.length === 1 ? '' : 's'}
           </p>
@@ -62,8 +78,13 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Status filter">
         {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/admin?status=${key}` : '/admin'}
-             aria-selected={(params.status ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/admin?status=${key}` : '/admin'}
+            aria-selected={(params.status ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
@@ -95,8 +116,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                   <td style={{ color: 'var(--lf-ink-2)' }}>{r.email}</td>
                   <td>{r.role.name}</td>
                   <td style={{ color: 'var(--lf-ink-2)' }}>{r.branch?.name ?? '—'}</td>
-                  <td><Badge tone={STATUS_TONE[r.status] ?? 'slate'}>{r.status.toLowerCase()}</Badge></td>
-                  <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>{relativeTime(r.lastLoginAt)}</td>
+                  <td>
+                    <Badge tone={STATUS_TONE[r.status] ?? 'slate'}>{r.status.toLowerCase()}</Badge>
+                  </td>
+                  <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                    {relativeTime(r.workspaceMembership?.platformUser.lastLoginAt ?? null)}
+                  </td>
                 </tr>
               ))}
             </tbody>

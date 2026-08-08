@@ -7,7 +7,7 @@ import { analyzeTranscript } from '@/lib/ai/analysis';
 const params = z.object({ id: z.string().cuid() });
 
 export const POST = route(
-  { module: 'calls', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
     const [call, transcript, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
@@ -18,12 +18,6 @@ export const POST = route(
     if (!call) throw NotFound('Call');
     if (!transcript) throw NotFound('Transcript — upload a transcript before requesting analysis');
     if (existing) throw Conflict('Analysis is already in progress for this call.');
-
-    const analysis = await prisma.aIAnalysis.upsert({
-      where: { callId: params.id },
-      create: { tenantId: ctx.tenantId, callId: params.id, status: 'PROCESSING' },
-      update: { status: 'PROCESSING', errorMessage: null },
-    });
 
     // Fetch campaign talking points and qualifications if campaign-linked
     let talkingPoints: { label: string; isRequired: boolean }[] = [];
@@ -54,7 +48,10 @@ export const POST = route(
       const { result, modelId, processingMs } = await analyzeTranscript({
         transcript: transcript.content,
         talkingPoints,
-        qualifications: qualifications.map((q) => ({ question: q.question, expectedAnswer: q.expectedAnswer ?? undefined })),
+        qualifications: qualifications.map((q) => ({
+          question: q.question,
+          expectedAnswer: q.expectedAnswer ?? undefined,
+        })),
         callDirection: call.direction,
         campaignName,
       });
@@ -93,7 +90,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
@@ -103,18 +100,27 @@ export const GET = route(
   },
 );
 
-const correctionBody = z.object({
-  summary: z.string().max(5000).optional(),
-  clientNeeds: z.array(z.string()).optional(),
-  objections: z.array(z.string()).optional(),
-  commitments: z.array(z.string()).optional(),
-  nextSteps: z.array(z.string()).optional(),
-  topicsMissed: z.array(z.string()).optional(),
-  sentiment: z.string().max(50).optional(),
-}).strict();
+const correctionBody = z
+  .object({
+    summary: z.string().max(5000).optional(),
+    clientNeeds: z.array(z.string()).optional(),
+    objections: z.array(z.string()).optional(),
+    commitments: z.array(z.string()).optional(),
+    nextSteps: z.array(z.string()).optional(),
+    topicsMissed: z.array(z.string()).optional(),
+    sentiment: z.string().max(50).optional(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'calls', action: 'EDIT', params, body: correctionBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: correctionBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },

@@ -1,11 +1,8 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -17,7 +14,7 @@ export const metadata = { title: 'Opportunities' };
 
 export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['opportunities', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'opportunities', 'VIEW', { includeUnassigned: true });
   const search = params.q ? { name: { contains: params.q, mode: 'insensitive' as const } } : {};
@@ -30,8 +27,15 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     take: 50,
     select: {
-      id: true, reference: true, name: true, status: true, amount: true, currency: true,
-      probability: true, expectedCloseDate: true, updatedAt: true,
+      id: true,
+      reference: true,
+      name: true,
+      status: true,
+      amount: true,
+      currency: true,
+      probability: true,
+      expectedCloseDate: true,
+      updatedAt: true,
       stage: { select: { key: true, name: true, color: true } },
       account: { select: { name: true } },
       owner: { select: { fullName: true } },
@@ -45,14 +49,27 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Opportunities"
-        description={<>{rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your scope
-            {pipelineTotal > 0 && ` · ${rows[0]?.currency ?? 'AED'} ${pipelineTotal.toLocaleString()} open pipeline`}</>}
-        actions={<>
-          {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="OPPORTUNITY" current={columns.map((c) => c.key)} />}
-{can(ctx, 'opportunities', 'CREATE') && <SalesLink className="lf-btn lf-btn--sm" href="/opportunities/new">Add opportunity</SalesLink>}
-        </>}
+        description={
+          <>
+            {rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
+            scope
+            {pipelineTotal > 0 && ` · ${rows[0]?.currency ?? 'AED'} ${pipelineTotal.toLocaleString()} open pipeline`}
+          </>
+        }
+        actions={
+          <>
+            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+              <ColumnEditor object="OPPORTUNITY" current={columns.map((c) => c.key)} />
+            )}
+            {can(ctx, 'opportunities', 'CREATE') && (
+              <SalesLink className="lf-btn lf-btn--sm" href="/opportunities/new">
+                Add opportunity
+              </SalesLink>
+            )}
+          </>
+        }
       />
 
       {data.length === 0 ? (
@@ -69,9 +86,4 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       )}
     </>
   );
-}
-
-function formatDate(value?: string | Date | null) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }

@@ -1,6 +1,6 @@
-import { withTenantTx, prisma } from '@/lib/db';
+import { withTx, prisma } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
-import { auditDiff, audit } from '@/lib/security/audit';
+import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { can } from '@/lib/security/rbac';
 import { findDuplicates } from './findDuplicates';
@@ -49,7 +49,7 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   // A user without ASSIGN cannot hand the lead to someone else; it stays theirs.
   const ownerId = input.ownerId && can(ctx, 'leads', 'ASSIGN') ? input.ownerId : ctx.actor.id;
 
-  const lead = await withTenantTx(ctx.tenantId, async (tx) => {
+  const lead = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'LEAD');
 
     const created = await tx.lead.create({
@@ -88,7 +88,12 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
       });
       for (const def of defs) {
         await tx.leadCustomFieldValue.create({
-          data: { tenantId: ctx.tenantId, leadId: created.id, definitionId: def.id, ...columnFor(def.type, input.custom[def.key]) },
+          data: {
+            tenantId: ctx.tenantId,
+            leadId: created.id,
+            definitionId: def.id,
+            ...columnFor(def.type, input.custom[def.key]),
+          },
         });
       }
     }
@@ -99,11 +104,21 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
 
     if (ownerId) {
       await tx.leadAssignmentHistory.create({
-        data: { tenantId: ctx.tenantId, leadId: created.id, toOwnerId: ownerId, assignedById: ctx.actor.id, reason: 'CREATED' },
+        data: {
+          tenantId: ctx.tenantId,
+          leadId: created.id,
+          toOwnerId: ownerId,
+          assignedById: ctx.actor.id,
+          reason: 'CREATED',
+        },
       });
     }
 
-    await audit(ctx, { event: 'RECORD_CREATED', objectType: 'lead', recordId: created.id, newValue: { reference, stage: stage.key } }, tx);
+    await audit(
+      ctx,
+      { event: 'RECORD_CREATED', objectType: 'lead', recordId: created.id, newValue: { reference, stage: stage.key } },
+      tx,
+    );
     return created;
   });
 
@@ -111,11 +126,21 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   //    must never observe a state that was rolled back.
   await Promise.all([
     enqueue('distribution', 'assign-lead', { tenantId: ctx.tenantId, leadId: lead.id }, { skip: !!ownerId }),
-    enqueue('sla', 'lead-first-contact', { tenantId: ctx.tenantId, leadId: lead.id }, {
-      skip: !lead.slaDueAt,
-      delayMs: lead.slaDueAt ? Math.max(lead.slaDueAt.getTime() - Date.now(), 0) : undefined,
+    enqueue(
+      'sla',
+      'lead-first-contact',
+      { tenantId: ctx.tenantId, leadId: lead.id },
+      {
+        skip: !lead.slaDueAt,
+        delayMs: lead.slaDueAt ? Math.max(lead.slaDueAt.getTime() - Date.now(), 0) : undefined,
+      },
+    ),
+    enqueue('automation', 'trigger', {
+      tenantId: ctx.tenantId,
+      event: 'record.created',
+      object: 'LEAD',
+      recordId: lead.id,
     }),
-    enqueue('automation', 'trigger', { tenantId: ctx.tenantId, event: 'record.created', object: 'LEAD', recordId: lead.id }),
   ]);
 
   emit(ctx, 'lead.created', { leadId: lead.id, duplicates: duplicates.length });
@@ -124,10 +149,20 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
 
 function columnFor(type: string, value: unknown) {
   switch (type) {
-    case 'NUMBER': case 'CURRENCY': case 'PERCENTAGE': return { valueNumber: value as any };
-    case 'CHECKBOX': return { valueBool: Boolean(value) };
-    case 'DATE': case 'DATETIME': return { valueDate: new Date(value as string) };
-    case 'MULTI_SELECT': case 'GEO_POINT': case 'FORMULA': return { valueJson: value as any };
-    default: return { valueText: value == null ? null : String(value) };
+    case 'NUMBER':
+    case 'CURRENCY':
+    case 'PERCENTAGE':
+      return { valueNumber: value as any };
+    case 'CHECKBOX':
+      return { valueBool: Boolean(value) };
+    case 'DATE':
+    case 'DATETIME':
+      return { valueDate: new Date(value as string) };
+    case 'MULTI_SELECT':
+    case 'GEO_POINT':
+    case 'FORMULA':
+      return { valueJson: value as any };
+    default:
+      return { valueText: value == null ? null : String(value) };
   }
 }

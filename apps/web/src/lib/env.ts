@@ -1,13 +1,59 @@
 import { z } from 'zod';
 
-const b64 = z.string().min(32, 'must be a 32-byte base64 secret');
+/**
+ * Placeholders that look like configuration but are not secret.
+ *
+ * Matched on the decoded bytes as well as the raw string, so a base64-wrapped
+ * placeholder is caught too.
+ */
+const PLACEHOLDERS = /^(change[_-]?me|placeholder|secret|password|todo|xxx+|test|example|changeit)$/i;
+
+/**
+ * A real 32-byte secret, not merely a long string.
+ *
+ * This was `z.string().min(32)`, which measures characters. A 32-byte secret in
+ * base64 is 44 characters, so the check was loose in the direction that matters:
+ * `"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"` passed and gave 24 bytes of entropy from
+ * a single repeated character, and `CHANGE_ME_CHANGE_ME_CHANGE_ME_ME` passed
+ * too. Decoding and measuring the bytes is the check that was intended.
+ */
+export const b64 = z.string().superRefine((value, ctx) => {
+  const fail = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+
+  if (PLACEHOLDERS.test(value.trim())) {
+    return fail('is a placeholder, not a secret. Generate one with `npm run secrets`.');
+  }
+
+  // base64 and base64url both, since generate-secrets.mjs emits base64 and
+  // several deployment tools rewrite it to base64url.
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(value)) {
+    return fail('must be base64. Generate one with `npm run secrets`.');
+  }
+
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.byteLength < 32) {
+    return fail(`must decode to at least 32 bytes; this decodes to ${bytes.byteLength}. Run \`npm run secrets\`.`);
+  }
+
+  // A key of one repeated byte decodes to the right length and has no entropy.
+  if (new Set(bytes).size < 8) {
+    return fail('decodes to too few distinct bytes to be random. Run `npm run secrets`.');
+  }
+});
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PROCESS_ROLE: z.enum(['web', 'worker']).default('web'),
   APP_URL: z.string().url(),
 
+  /** The application role: NOBYPASSRLS, no DDL. See docs/RLS-ROLLOUT.md. */
   DATABASE_URL: z.string().url(),
+  /**
+   * The owning role, used by `prisma migrate` and nothing else. Declared here
+   * only so the startup check can refuse a deployment that points both at the
+   * same role — it is never used to open a connection from the application.
+   */
+  MIGRATION_DATABASE_URL: z.string().url().optional().or(z.literal('')),
   DATABASE_REPLICA_URL: z.string().url().optional().or(z.literal('')),
   REDIS_URL: z.string().url(),
 
@@ -19,7 +65,18 @@ const schema = z.object({
   SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(60),
   MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
   LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
-  TRUST_PROXY_HEADERS: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  /**
+   * Comma-separated CIDRs of the proxies in front of this server, e.g.
+   * `10.0.0.0/8,172.16.0.0/12`. Forwarded headers are believed only when the
+   * request actually arrived from one of them.
+   *
+   * This replaced a `TRUST_PROXY_HEADERS` boolean that defaulted to false and
+   * made `clientIp` return null behind every load balancer — so every request
+   * on the platform shared one rate-limit bucket keyed `unknown`, and every
+   * audit row recorded `unknown` as the source. Production refuses to start
+   * with this empty; see lib/startup-check.ts.
+   */
+  TRUSTED_PROXY_CIDRS: z.string().default(''),
   ARGON2_MEMORY_KIB: z.coerce.number().int().positive().default(19456),
   ARGON2_TIME_COST: z.coerce.number().int().positive().default(2),
   ARGON2_PARALLELISM: z.coerce.number().int().positive().default(1),
@@ -32,7 +89,12 @@ const schema = z.object({
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
   SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
-  EMAIL_PROVIDER: z.string().default('mock'),
+  EMAIL_PROVIDER: z.enum(['mock', 'smtp']).default('mock'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
   SMS_PROVIDER: z.string().default('mock'),
   WHATSAPP_PROVIDER: z.string().default('mock'),
   TELEPHONY_PROVIDER: z.enum(['mock', 'hmac']).default('mock'),
@@ -65,21 +127,30 @@ const schema = z.object({
   IMPORT_CHUNK_SIZE: z.coerce.number().int().positive().default(5_000),
   UPLOAD_MAX_MB: z.coerce.number().int().positive().default(25),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
-}).superRefine((value, ctx) => {
-  if (value.NODE_ENV !== 'production') return;
-  for (const key of [
-    'EMAIL_PROVIDER', 'SMS_PROVIDER', 'WHATSAPP_PROVIDER', 'TELEPHONY_PROVIDER',
-    'ANTIVIRUS_PROVIDER', 'AI_PROVIDER',
-  ] as const) {
-    if (value[key].toLowerCase() === 'mock') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: 'mock providers are forbidden in production',
-      });
-    }
-  }
 });
+
+/** Providers that must be real before the server serves a request. */
+export const PROVIDER_KEYS = [
+  'EMAIL_PROVIDER',
+  'SMS_PROVIDER',
+  'WHATSAPP_PROVIDER',
+  'TELEPHONY_PROVIDER',
+  'ANTIVIRUS_PROVIDER',
+  'AI_PROVIDER',
+] as const;
+
+/**
+ * `next build` sets NODE_ENV=production and evaluates this module while
+ * collecting page data, so enforcing provider configuration here made the build
+ * itself depend on ClamAV, Twilio and SMTP credentials that a build server has
+ * no reason to hold. "Is this binary safe to run in production" is a runtime
+ * question; it is asked at boot instead — see instrumentation.ts.
+ *
+ * Every other rule above still applies during the build.
+ */
+export function mockProviders(value: Record<string, string>): string[] {
+  return PROVIDER_KEYS.filter((key) => String(value[key] ?? '').toLowerCase() === 'mock');
+}
 
 const parsed = schema.safeParse(process.env);
 

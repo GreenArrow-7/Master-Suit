@@ -51,7 +51,9 @@ export interface QualityPolicy {
 }
 
 const DEFAULT_LIVENESS: LivenessPolicy = {
-  livenessYawDegrees: 12, livenessPitchDegrees: 10, livenessSamePersonThreshold: 0.4,
+  livenessYawDegrees: 12,
+  livenessPitchDegrees: 10,
+  livenessSamePersonThreshold: 0.4,
 };
 
 /** No engine, no attendance. A 503 naming what is missing, never a wave-through. */
@@ -73,14 +75,21 @@ export interface Detection {
 
 export async function engineHealth(): Promise<{ ready: boolean; detail: string }> {
   if (!env.FACE_SERVICE_URL) {
-    return { ready: false, detail: 'FACE_SERVICE_URL is not configured, so face check-in is unavailable. Start the face service (docker compose up face) and set the variable.' };
+    return {
+      ready: false,
+      detail:
+        'FACE_SERVICE_URL is not configured, so face check-in is unavailable. Start the face service (docker compose up face) and set the variable.',
+    };
   }
   try {
     const response = await fetch(`${env.FACE_SERVICE_URL}/health`, { signal: AbortSignal.timeout(5_000) });
-    const body = await response.json() as { ready?: boolean; detail?: string };
+    const body = (await response.json()) as { ready?: boolean; detail?: string };
     return { ready: Boolean(body.ready), detail: body.detail ?? 'The face service did not explain its state.' };
   } catch (error) {
-    return { ready: false, detail: `The face service at ${env.FACE_SERVICE_URL} could not be reached: ${(error as Error).message}` };
+    return {
+      ready: false,
+      detail: `The face service at ${env.FACE_SERVICE_URL} could not be reached: ${(error as Error).message}`,
+    };
   }
 }
 
@@ -104,10 +113,10 @@ export async function analyse(frames: string[], quality?: QualityPolicy): Promis
   }
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { detail?: string };
+    const body = (await response.json().catch(() => ({}))) as { detail?: string };
     throw EngineUnavailable(body.detail ?? `The face service returned ${response.status}.`);
   }
-  const body = await response.json() as { detections: Detection[] };
+  const body = (await response.json()) as { detections: Detection[] };
   return body.detections;
 }
 
@@ -129,7 +138,8 @@ export async function issueChallenge(tenantId: string, employeeId: string, ttlSe
 /** Single use. A replayed nonce is refused even inside its TTL. */
 export async function consumeChallenge(tenantId: string, employeeId: string, nonce: string): Promise<Direction> {
   const raw = await redis.getdel(challengeKey(nonce));
-  if (!raw) throw new AppError(409, 'challenge-expired', 'That check-in attempt expired or was already used. Start again.');
+  if (!raw)
+    throw new AppError(409, 'challenge-expired', 'That check-in attempt expired or was already used. Start again.');
   const challenge = JSON.parse(raw) as { tenantId: string; employeeId: string; direction: Direction };
   if (challenge.tenantId !== tenantId || challenge.employeeId !== employeeId) {
     throw new AppError(409, 'challenge-expired', 'That check-in attempt expired or was already used. Start again.');
@@ -155,7 +165,7 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
 /** Templates are stored as raw little-endian float32, matching the sidecar's output. */
 export const toBytes = (vector: number[]) => Buffer.from(new Float32Array(vector).buffer);
 export function fromBytes(blob: Uint8Array): Float32Array {
-  const copy = new Uint8Array(blob);   // Prisma may hand back a view with a non-zero offset
+  const copy = new Uint8Array(blob); // Prisma may hand back a view with a non-zero offset
   return new Float32Array(copy.buffer, copy.byteOffset, copy.byteLength / 4);
 }
 
@@ -184,8 +194,13 @@ export interface LivenessResult {
  *
  * The byte-identical-frames check happens before this, on the raw payload.
  */
-export function verifyLiveness(detections: Detection[], direction: Direction, policy: LivenessPolicy = DEFAULT_LIVENESS): LivenessResult {
-  if (detections.length < 2) return { passed: false, score: 0, reason: 'Send at least two frames: one neutral, one after moving.' };
+export function verifyLiveness(
+  detections: Detection[],
+  direction: Direction,
+  policy: LivenessPolicy = DEFAULT_LIVENESS,
+): LivenessResult {
+  if (detections.length < 2)
+    return { passed: false, score: 0, reason: 'Send at least two frames: one neutral, one after moving.' };
 
   const failed = detections.find((detection) => !detection.ok);
   if (failed) return { passed: false, score: 0, reason: failed.error ?? 'A frame could not be used.' };
@@ -199,12 +214,18 @@ export function verifyLiveness(detections: Detection[], direction: Direction, po
 
   const moved = detections[detections.length - 1]!;
   const turned =
-    direction === 'left' ? moved.yaw! - base.yaw! >= policy.livenessYawDegrees
-    : direction === 'right' ? base.yaw! - moved.yaw! >= policy.livenessYawDegrees
-    : Math.abs(base.pitch! - moved.pitch!) >= policy.livenessPitchDegrees;
+    direction === 'left'
+      ? moved.yaw! - base.yaw! >= policy.livenessYawDegrees
+      : direction === 'right'
+        ? base.yaw! - moved.yaw! >= policy.livenessYawDegrees
+        : Math.abs(base.pitch! - moved.pitch!) >= policy.livenessPitchDegrees;
 
   if (!turned) {
-    return { passed: false, score: 0, reason: `Head movement not detected. Turn your head ${direction} and hold for a moment.` };
+    return {
+      passed: false,
+      score: 0,
+      reason: `Head movement not detected. Turn your head ${direction} and hold for a moment.`,
+    };
   }
 
   // Blends detector confidence with sharpness: a printed photo or a phone screen

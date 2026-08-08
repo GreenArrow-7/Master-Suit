@@ -6,16 +6,33 @@ import type { Prisma } from '@prisma/client';
  * cannot collide, and the number never rewinds after a delete.
  */
 const PREFIX: Record<string, string> = {
-  LEAD: 'LD', OPPORTUNITY: 'OP', ACCOUNT: 'AC', CONTACT: 'CT',
-  TICKET: 'TK', PRODUCT: 'PR', CAMPAIGN: 'CP',
+  LEAD: 'LD',
+  OPPORTUNITY: 'OP',
+  ACCOUNT: 'AC',
+  CONTACT: 'CT',
+  TICKET: 'TK',
+  PRODUCT: 'PR',
+  CAMPAIGN: 'CP',
 };
 
 /** Tables the sequence has to be seeded from. Only those carrying `reference`. */
 const TABLE: Record<string, string> = {
-  LEAD: 'Lead', OPPORTUNITY: 'Opportunity', ACCOUNT: 'Account', CONTACT: 'Contact',
+  LEAD: 'Lead',
+  OPPORTUNITY: 'Opportunity',
+  ACCOUNT: 'Account',
+  CONTACT: 'Contact',
 };
 
-export async function nextReference(tx: Prisma.TransactionClient, tenantId: string, objectType: string): Promise<string> {
+/**
+ * Only the two raw escapes this function actually uses.
+ *
+ * Naming `Prisma.TransactionClient` here forced every caller to hold the
+ * unextended client type, which the extended client's transaction does not
+ * satisfy. The structural minimum accepts both and states the real dependency.
+ */
+type RawCapable = Pick<Prisma.TransactionClient, '$queryRawUnsafe' | '$executeRawUnsafe'>;
+
+export async function nextReference(tx: RawCapable, tenantId: string, objectType: string): Promise<string> {
   const prefix = PREFIX[objectType] ?? 'RC';
   const seq = `ref_${objectType.toLowerCase()}_${tenantId.replace(/[^a-z0-9]/gi, '')}`;
   const table = TABLE[objectType];
@@ -42,7 +59,8 @@ export async function nextReference(tx: Prisma.TransactionClient, tenantId: stri
         `SELECT COALESCE(MAX(SUBSTRING(reference FROM '[0-9]+$')::bigint), 0)::int AS max
            FROM "${table}"
           WHERE "tenantId" = $1 AND reference LIKE $2`,
-        tenantId, `${prefix}-%`,
+        tenantId,
+        `${prefix}-%`,
       );
       start = (rows[0]?.max ?? 0) + 1;
     }

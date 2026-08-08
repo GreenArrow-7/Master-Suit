@@ -15,11 +15,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     redirect('/login');
   }
 
-  return <div className="lf-app-frame">
-    <PlatformSidebar email={owner!.email} />
-    <div className="lf-content-column">
-      <TopBar module="platform" workspaceName="Platform control" />
-      <main className="lf-page-main">{children}</main>
+  return (
+    <div className="lf-app-frame">
+      <PlatformSidebar email={owner!.email} />
+      <div className="lf-content-column">
+        <TopBar module="platform" workspaceName="Platform control" />
+        <main className="lf-page-main">{children}</main>
+      </div>
     </div>
-  </div>;
+  );
 }

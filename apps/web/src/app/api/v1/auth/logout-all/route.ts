@@ -27,36 +27,35 @@ export async function POST(req: Request) {
       where: { tokenHash: createHash('sha256').update(token).digest('hex') },
       select: { platformUserId: true, activeTenantId: true, revokedAt: true, expiresAt: true },
     });
-    if (!session || session.revokedAt || session.expiresAt < new Date()) throw Unauthorized('Your session has expired.');
+    if (!session || session.revokedAt || session.expiresAt < new Date())
+      throw Unauthorized('Your session has expired.');
 
     const platform = await prisma.platformSession.updateMany({
       where: { platformUserId: session.platformUserId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'USER_LOGOUT_ALL' },
     });
 
-    // The workspace-scoped sessions belong to the same person and must go too.
-    const memberships = await prisma.workspaceMembership.findMany({
-      where: { platformUserId: session.platformUserId },
-      select: { tenantId: true, salesUserId: true },
-    });
-    let workspace = 0;
-    for (const membership of memberships) {
-      if (!membership.salesUserId) continue;
-      const { count } = await prisma.session.updateMany({
-        where: { tenantId: membership.tenantId, userId: membership.salesUserId, revokedAt: null },
-        data: { revokedAt: new Date(), revokedReason: 'USER_LOGOUT_ALL' },
-      });
-      workspace += count;
-    }
+    // The legacy per-workspace sweep that used to run here read every
+    // membership and then revoked rows in a table nothing creates.
+    // PlatformSession is the only session store and was cleared above, so the
+    // query and the count it produced were both dead weight.
+    const workspace = 0;
 
-    await prisma.platformAuditEvent.create({
-      data: {
-        tenantId: session.activeTenantId, actorUserId: session.platformUserId, event: 'LOGOUT',
-        objectType: 'platform_user', objectId: session.platformUserId,
-        ipAddress: clientIp(req), userAgent: req.headers.get('user-agent'), requestId,
-        metadata: { scope: 'all-devices', platformSessions: platform.count, workspaceSessions: workspace },
-      },
-    }).catch(() => {});
+    await prisma.platformAuditEvent
+      .create({
+        data: {
+          tenantId: session.activeTenantId,
+          actorUserId: session.platformUserId,
+          event: 'LOGOUT',
+          objectType: 'platform_user',
+          objectId: session.platformUserId,
+          ipAddress: clientIp(req),
+          userAgent: req.headers.get('user-agent'),
+          requestId,
+          metadata: { scope: 'all-devices', platformSessions: platform.count, workspaceSessions: workspace },
+        },
+      })
+      .catch(() => {});
 
     jar.delete(SESSION_COOKIE);
     return NextResponse.json(
@@ -65,7 +64,10 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+      return NextResponse.json(error.toProblem(requestId), {
+        status: error.status,
+        headers: { 'x-request-id': requestId },
+      });
     }
     logger.error({ err: error, requestId }, 'logout-all failed');
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });

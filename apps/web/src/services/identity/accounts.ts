@@ -30,14 +30,18 @@ import type { Ctx } from '@/lib/security/rbac';
 export const ADMIN_ROLE_RANK = 10;
 
 export async function passwordPolicy(tenantId: string): Promise<PasswordPolicy> {
-  const settings = await prisma.organizationSetting.findUnique({ where: { tenantId }, select: { passwordPolicy: true } });
+  const settings = await prisma.organizationSetting.findUnique({
+    where: { tenantId },
+    select: { passwordPolicy: true },
+  });
   const stored = (settings?.passwordPolicy ?? {}) as Partial<PasswordPolicy>;
   return { ...DEFAULT_POLICY, ...stored };
 }
 
 function assertPolicy(plain: string, policy: PasswordPolicy) {
   const problems = checkPolicy(plain, policy);
-  if (problems.length) throw Invalid(problems.map((message) => ({ field: 'newPassword', code: 'weak-password', message })));
+  if (problems.length)
+    throw Invalid(problems.map((message) => ({ field: 'newPassword', code: 'weak-password', message })));
 }
 
 /**
@@ -52,7 +56,29 @@ export const generateTemporaryPassword = () =>
 async function loadTarget(ctx: Ctx, userId: string) {
   const user = await prisma.user.findFirst({
     where: { tenantId: ctx.tenantId, id: userId, deletedAt: null },
-    include: { role: true, workspaceMembership: { include: { platformUser: true } } },
+    include: {
+      role: true,
+      workspaceMembership: {
+        include: {
+          // Explicit: nothing here needs the credential columns, and `true` would
+          // pull passwordHash and mfaSecret into every account screen.
+          platformUser: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              status: true,
+              lockedUntil: true,
+              failedLoginCount: true,
+              lastLoginAt: true,
+              mfaEnabled: true,
+              mfaRecoveryCodes: true,
+              passwordChangedAt: true,
+            },
+          },
+        },
+      },
+    },
   });
   if (!user) throw NotFound('User');
   return user;
@@ -84,7 +110,9 @@ function assertMayAdminister(ctx: Ctx, target: { id: string; role: { rank: numbe
 async function otherActiveAdmins(tenantId: string, excludeUserId: string) {
   return prisma.user.count({
     where: {
-      tenantId, deletedAt: null, status: 'ACTIVE',
+      tenantId,
+      deletedAt: null,
+      status: 'ACTIVE',
       id: { not: excludeUserId },
       role: { rank: { lte: ADMIN_ROLE_RANK } },
     },
@@ -99,30 +127,39 @@ async function otherActiveAdmins(tenantId: string, excludeUserId: string) {
  * revoked, keeping the one making the change.
  */
 export async function changeOwnPassword(ctx: Ctx, currentPassword: string, newPassword: string) {
-  const user = await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id: ctx.actor.id, deletedAt: null } });
-  if (!user?.passwordHash) throw NotFound('User');
+  // The credential lives on PlatformUser and nowhere else, so it is read and
+  // written in one place. Verifying against a second copy is how the two used
+  // to drift apart.
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { salesUserId: ctx.actor.id },
+    select: { platformUserId: true },
+  });
+  if (!membership) throw NotFound('User');
+  const identity = await prisma.platformUser.findUnique({
+    where: { id: membership.platformUserId },
+    select: { id: true, passwordHash: true },
+  });
+  if (!identity?.passwordHash) throw NotFound('User');
 
-  if (!(await verifyPassword(user.passwordHash, currentPassword))) {
+  if (!(await verifyPassword(identity.passwordHash, currentPassword))) {
     throw Forbidden('That is not your current password.');
   }
   if (currentPassword === newPassword) throw Conflict('The new password must be different from the current one.');
   assertPolicy(newPassword, await passwordPolicy(ctx.tenantId));
 
   const passwordHash = await hashPassword(newPassword);
-  const membership = await prisma.workspaceMembership.findUnique({ where: { salesUserId: user.id } });
-
-  await withTx(async (tx) => {
-    await tx.user.update({ where: { tenantId: ctx.tenantId, id: user.id }, data: { passwordHash, passwordChangedAt: new Date() } });
-    if (membership) {
-      await tx.platformUser.update({
-        where: { id: membership.platformUserId },
-        data: { passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null },
-      });
-    }
+  await prisma.platformUser.update({
+    where: { id: identity.id },
+    data: { passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null },
   });
 
-  await revokeAllSessions(ctx.tenantId, user.id, undefined, 'PASSWORD_CHANGED');
-  await audit(ctx, { event: 'PASSWORD_CHANGED', objectType: 'user', recordId: user.id, metadata: { action: 'password.changed.self' } });
+  await revokeAllSessions(ctx.tenantId, ctx.actor.id, undefined, 'PASSWORD_CHANGED');
+  await audit(ctx, {
+    event: 'PASSWORD_CHANGED',
+    objectType: 'user',
+    recordId: ctx.actor.id,
+    metadata: { action: 'password.changed.self' },
+  });
   return { changed: true };
 }
 
@@ -141,19 +178,18 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   assertPolicy(password, await passwordPolicy(ctx.tenantId));
   const passwordHash = await hashPassword(password);
 
-  await withTx(async (tx) => {
-    await tx.user.update({
-      where: { tenantId: ctx.tenantId, id: target.id },
-      data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
-    });
-    await tx.platformUser.update({
-      where: { id: target.workspaceMembership!.platformUserId },
-      data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
-    });
+  await prisma.platformUser.update({
+    where: { id: target.workspaceMembership!.platformUserId },
+    data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
   });
 
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'PASSWORD_RESET');
-  await audit(ctx, { event: 'PASSWORD_CHANGED', objectType: 'user', recordId: target.id, metadata: { action: 'password.reset.by_admin' } });
+  await audit(ctx, {
+    event: 'PASSWORD_CHANGED',
+    objectType: 'user',
+    recordId: target.id,
+    metadata: { action: 'password.reset.by_admin' },
+  });
 
   return {
     userId: target.id,
@@ -164,11 +200,11 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
 
 /** True when the account is still on an administrator-issued temporary password. */
 export async function mustChangePassword(ctx: Ctx) {
-  const user = await prisma.user.findFirst({
-    where: { tenantId: ctx.tenantId, id: ctx.actor.id, deletedAt: null },
-    select: { passwordChangedAt: true },
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { salesUserId: ctx.actor.id },
+    select: { platformUser: { select: { passwordChangedAt: true } } },
   });
-  return user !== null && user.passwordChangedAt === null;
+  return membership !== null && membership.platformUser.passwordChangedAt === null;
 }
 
 // ── H07: lockout, suspension, sessions ─────────────────────────────────────
@@ -178,12 +214,19 @@ export async function unlockUser(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
-  await withTx(async (tx) => {
-    await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { failedLoginCount: 0, lockedUntil: null } });
-    await tx.platformUser.update({ where: { id: target.workspaceMembership!.platformUserId }, data: { failedLoginCount: 0, lockedUntil: null } });
+  await withTx(ctx.tenantId, async (tx) => {
+    await tx.platformUser.update({
+      where: { id: target.workspaceMembership!.platformUserId },
+      data: { failedLoginCount: 0, lockedUntil: null },
+    });
   });
 
-  await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'user', recordId: target.id, metadata: { action: 'account.unlocked' } });
+  await audit(ctx, {
+    event: 'RECORD_UPDATED',
+    objectType: 'user',
+    recordId: target.id,
+    metadata: { action: 'account.unlocked' },
+  });
   return { userId: target.id, unlocked: true };
 }
 
@@ -197,19 +240,27 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   assertMayAdminister(ctx, target);
 
   if (!active && target.role.rank <= ADMIN_ROLE_RANK && (await otherActiveAdmins(ctx.tenantId, target.id)) === 0) {
-    throw Conflict('This is the last active administrator. Promote someone else before suspending this account, or the workspace locks itself out.');
+    throw Conflict(
+      'This is the last active administrator. Promote someone else before suspending this account, or the workspace locks itself out.',
+    );
   }
 
   const status = active ? 'ACTIVE' : 'SUSPENDED';
-  await withTx(async (tx) => {
+  await withTx(ctx.tenantId, async (tx) => {
     await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status } });
-    await tx.workspaceMembership.update({ where: { id: target.workspaceMembership!.id }, data: { status: active ? 'ACTIVE' : 'SUSPENDED' } });
+    await tx.workspaceMembership.update({
+      where: { id: target.workspaceMembership!.id },
+      data: { status: active ? 'ACTIVE' : 'SUSPENDED' },
+    });
   });
 
   if (!active) await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ACCOUNT_SUSPENDED');
   await audit(ctx, {
-    event: 'RECORD_UPDATED', objectType: 'user', recordId: target.id,
-    previousValue: { status: target.status }, newValue: { status },
+    event: 'RECORD_UPDATED',
+    objectType: 'user',
+    recordId: target.id,
+    previousValue: { status: target.status },
+    newValue: { status },
     metadata: { action: active ? 'account.restored' : 'account.suspended', reason },
   });
   return { userId: target.id, status };
@@ -220,7 +271,12 @@ export async function revokeUserSessions(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target, true);
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ADMIN_REVOKED');
-  await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'user', recordId: target.id, metadata: { action: 'sessions.revoked' } });
+  await audit(ctx, {
+    event: 'RECORD_UPDATED',
+    objectType: 'user',
+    recordId: target.id,
+    metadata: { action: 'sessions.revoked' },
+  });
   return { userId: target.id, revoked: true };
 }
 
@@ -228,8 +284,20 @@ export async function revokeUserSessions(ctx: Ctx, userId: string) {
 export async function accountDetail(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
   const [sessions, employee] = await Promise.all([
-    prisma.session.findMany({
-      where: { tenantId: ctx.tenantId, userId: target.id, revokedAt: null, expiresAt: { gt: new Date() } },
+    /**
+     * Read from PlatformSession, which is where sessions actually live.
+     *
+     * This used to read the legacy `Session` table. Nothing has created a row in
+     * it since the single-credential-store change, so an administrator opening
+     * an account saw "no active sessions" for a user who was signed in on three
+     * devices — and would have judged a suspected compromise on that.
+     */
+    prisma.platformSession.findMany({
+      where: {
+        platformUserId: target.workspaceMembership!.platformUserId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
       select: { id: true, ipAddress: true, userAgent: true, lastSeenAt: true, expiresAt: true },
       orderBy: { lastSeenAt: 'desc' },
     }),
@@ -266,7 +334,11 @@ export async function listAccounts(ctx: Ctx) {
     where: { tenantId: ctx.tenantId, deletedAt: null },
     include: {
       role: true,
-      workspaceMembership: { include: { platformUser: { select: { lockedUntil: true, mfaEnabled: true, lastLoginAt: true, passwordChangedAt: true } } } },
+      workspaceMembership: {
+        include: {
+          platformUser: { select: { lockedUntil: true, mfaEnabled: true, lastLoginAt: true, passwordChangedAt: true } },
+        },
+      },
     },
     orderBy: [{ role: { rank: 'asc' } }, { fullName: 'asc' }],
   });
@@ -285,7 +357,11 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
   if (!role) throw NotFound('Role');
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot grant a role at or above your own level.');
 
-  if (target.role.rank <= ADMIN_ROLE_RANK && role.rank > ADMIN_ROLE_RANK && (await otherActiveAdmins(ctx.tenantId, target.id)) === 0) {
+  if (
+    target.role.rank <= ADMIN_ROLE_RANK &&
+    role.rank > ADMIN_ROLE_RANK &&
+    (await otherActiveAdmins(ctx.tenantId, target.id)) === 0
+  ) {
     throw Conflict('This is the last active administrator. Promote someone else before demoting this account.');
   }
 
@@ -294,13 +370,20 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
     data: { roleId: role.id },
     include: { role: true },
   });
-  await prisma.workspaceMembership.update({ where: { id: target.workspaceMembership!.id }, data: { roleSnapshot: role.key } });
+  await prisma.workspaceMembership.update({
+    where: { id: target.workspaceMembership!.id },
+    data: { roleSnapshot: role.key },
+  });
 
   // A role change alters what the session may do, so the session must be rebuilt.
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ROLE_CHANGED');
   await audit(ctx, {
-    event: 'PERMISSION_CHANGED', objectType: 'user', recordId: target.id,
-    fieldKey: 'roleId', previousValue: target.role.key, newValue: role.key,
+    event: 'PERMISSION_CHANGED',
+    objectType: 'user',
+    recordId: target.id,
+    fieldKey: 'roleId',
+    previousValue: target.role.key,
+    newValue: role.key,
     metadata: { action: 'account.role_changed' },
   });
   return updated;
@@ -308,13 +391,17 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
 
 /** Sets the line manager, which is what drives leave approval and exception endorsement. */
 export async function setManager(ctx: Ctx, employeeId: string, managerEmployeeId: string | null) {
-  const employee = await prisma.employeeProfile.findFirst({ where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null } });
+  const employee = await prisma.employeeProfile.findFirst({
+    where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
+  });
   if (!employee) throw NotFound('Employee');
 
   let managerMembershipId: string | null = null;
   if (managerEmployeeId) {
     if (managerEmployeeId === employeeId) throw Conflict('An employee cannot be their own manager.');
-    const manager = await prisma.employeeProfile.findFirst({ where: { tenantId: ctx.tenantId, id: managerEmployeeId, deletedAt: null } });
+    const manager = await prisma.employeeProfile.findFirst({
+      where: { tenantId: ctx.tenantId, id: managerEmployeeId, deletedAt: null },
+    });
     if (!manager) throw NotFound('Manager');
 
     // Walk up from the proposed manager. Reaching this employee means the chain
@@ -324,7 +411,7 @@ export async function setManager(ctx: Ctx, employeeId: string, managerEmployeeId
     const visited = new Set<string>();
     while (cursor) {
       if (cursor === employee.membershipId) throw Conflict('That would create a reporting loop.');
-      if (visited.has(cursor)) break;   // a pre-existing cycle elsewhere; don't spin on it
+      if (visited.has(cursor)) break; // a pre-existing cycle elsewhere; don't spin on it
       visited.add(cursor);
       const next: { managerMembershipId: string | null } | null = await prisma.employeeProfile.findFirst({
         where: { tenantId: ctx.tenantId, membershipId: cursor, deletedAt: null },
@@ -340,8 +427,12 @@ export async function setManager(ctx: Ctx, employeeId: string, managerEmployeeId
     data: { managerMembershipId },
   });
   await audit(ctx, {
-    event: 'RECORD_UPDATED', objectType: 'employee', recordId: employee.id,
-    fieldKey: 'managerMembershipId', previousValue: employee.managerMembershipId, newValue: managerMembershipId,
+    event: 'RECORD_UPDATED',
+    objectType: 'employee',
+    recordId: employee.id,
+    fieldKey: 'managerMembershipId',
+    previousValue: employee.managerMembershipId,
+    newValue: managerMembershipId,
     metadata: { action: 'employee.manager_changed' },
   });
   return updated;

@@ -49,7 +49,7 @@ export class MockCalendarProvider implements CalendarProvider {
     };
   }
 
-  async updateEvent(externalId: string, event: Partial<CalendarEvent>): Promise<CalendarEventResult> {
+  async updateEvent(externalId: string, _event: Partial<CalendarEvent>): Promise<CalendarEventResult> {
     logger.info({ provider: 'mock', action: 'updateEvent', externalId }, 'calendar mock');
     return { externalCalendarId: externalId };
   }
@@ -79,9 +79,7 @@ export class MockCalendarProvider implements CalendarProvider {
 export class GoogleCalendarProvider implements CalendarProvider {
   name = 'google';
 
-  constructor(
-    private accessToken: string,
-  ) {}
+  constructor(private accessToken: string) {}
 
   async createEvent(event: CalendarEvent): Promise<CalendarEventResult> {
     const body = {
@@ -91,19 +89,18 @@ export class GoogleCalendarProvider implements CalendarProvider {
       end: { dateTime: event.endAt.toISOString(), timeZone: event.timezone },
       location: event.location,
       attendees: event.attendees?.map((a) => ({ email: a.email, displayName: a.name })),
-      conferenceData: event.createMeetLink ? {
-        createRequest: { requestId: `lf_${Date.now()}`, conferenceSolutionKey: { type: 'hangoutsMeet' } },
-      } : undefined,
+      conferenceData: event.createMeetLink
+        ? {
+            createRequest: { requestId: `lf_${Date.now()}`, conferenceSolutionKey: { type: 'hangoutsMeet' } },
+          }
+        : undefined,
     };
 
-    const res = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    );
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
     if (!res.ok) {
       const err = await res.text();
@@ -128,14 +125,11 @@ export class GoogleCalendarProvider implements CalendarProvider {
     if (event.endAt) body.end = { dateTime: event.endAt.toISOString(), timeZone: event.timezone };
     if (event.location !== undefined) body.location = event.location;
 
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    );
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
     if (!res.ok) throw new Error(`Google Calendar update error: ${res.status}`);
     const data = await res.json();
@@ -143,18 +137,17 @@ export class GoogleCalendarProvider implements CalendarProvider {
   }
 
   async cancelEvent(externalId: string): Promise<void> {
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`,
-      { method: 'DELETE', headers: { Authorization: `Bearer ${this.accessToken}` } },
-    );
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
     if (!res.ok && res.status !== 410) throw new Error(`Google Calendar cancel error: ${res.status}`);
   }
 
   async getEvent(externalId: string): Promise<CalendarEventResult | null> {
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`,
-      { headers: { Authorization: `Bearer ${this.accessToken}` } },
-    );
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Google Calendar get error: ${res.status}`);
     const data = await res.json();

@@ -26,7 +26,9 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
       return addTag(ctx.tenantId, objectType, recordId, spec.tag as string);
 
     case 'create_task': {
-      const type = await prisma.taskType.findFirst({ where: { tenantId: ctx.tenantId, key: spec.taskTypeKey as string } });
+      const type = await prisma.taskType.findFirst({
+        where: { tenantId: ctx.tenantId, key: spec.taskTypeKey as string },
+      });
       if (!type) throw new Error(`Unknown task type "${spec.taskTypeKey}"`);
       const dueInMinutes = (spec.dueInMinutes as number) ?? 30;
       await prisma.task.create({
@@ -44,7 +46,10 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
 
     case 'notify_manager':
     case 'notify_owner': {
-      const record = await (prisma as any)[objectType.toLowerCase()].findFirst({ where: { tenantId: ctx.tenantId, id: recordId }, select: { ownerId: true } });
+      const record = await (prisma as any)[objectType.toLowerCase()].findFirst({
+        where: { tenantId: ctx.tenantId, id: recordId },
+        select: { ownerId: true },
+      });
       if (!record?.ownerId) return;
       await prisma.notification.create({
         data: {

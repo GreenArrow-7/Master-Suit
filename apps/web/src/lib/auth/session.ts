@@ -2,41 +2,20 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '../db';
 import { env } from '../env';
-import { Unauthorized } from '../errors';
+import { Forbidden, Unauthorized } from '../errors';
 import type { Actor, Ctx, Scope } from '../security/rbac';
+import { buildSupportActor, isSupportRole } from './support-actor';
+import { isPrivilegedPlatformRole } from './platform-policy';
+import { isInAny, parseCidrList, parseIp, type Cidr } from '../security/cidr';
 
 export const SESSION_COOKIE = 'lf_session';
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
-export async function createSession(input: {
-  tenantId: string; userId: string; ip: string | null; userAgent: string | null; mfaSatisfied: boolean;
-}) {
-  const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + env.SESSION_TTL_MINUTES * 60_000);
+/** Minutes an MFA-enrolment grant lives. Long enough to scan a QR code, no longer. */
+export const MFA_ENROLMENT_TTL_MINUTES = 10;
 
-  await prisma.session.create({
-    data: {
-      tenantId: input.tenantId,
-      userId: input.userId,
-      tokenHash: sha256(token),
-      ipAddress: input.ip,
-      userAgent: input.userAgent,
-      mfaSatisfied: input.mfaSatisfied,
-      expiresAt,
-    },
-  });
-
-  (await cookies()).set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    expires: expiresAt,
-  });
-
-  return { token, expiresAt };
-}
+export type SessionPurpose = 'FULL' | 'MFA_ENROLMENT';
 
 export async function createPlatformSession(input: {
   platformUserId: string;
@@ -44,9 +23,14 @@ export async function createPlatformSession(input: {
   ip: string | null;
   userAgent: string | null;
   mfaSatisfied: boolean;
+  purpose?: SessionPurpose;
 }) {
   const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + env.SESSION_TTL_MINUTES * 60_000);
+  const purpose = input.purpose ?? 'FULL';
+  const expiresAt =
+    purpose === 'MFA_ENROLMENT'
+      ? new Date(Date.now() + MFA_ENROLMENT_TTL_MINUTES * 60_000)
+      : new Date(Date.now() + env.SESSION_TTL_MINUTES * 60_000);
 
   await prisma.platformSession.create({
     data: {
@@ -56,55 +40,72 @@ export async function createPlatformSession(input: {
       ipAddress: input.ip,
       userAgent: input.userAgent,
       mfaSatisfied: input.mfaSatisfied,
+      purpose,
       expiresAt,
     },
   });
 
-  (await cookies()).set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    expires: expiresAt,
-  });
-
+  await setSessionCookie(token, expiresAt);
   return { token, expiresAt };
+}
+
+/**
+ * Writes the session cookie.
+ *
+ * Separated from session creation because they are different concerns and fail
+ * differently: creating the row is the security decision, writing the cookie is
+ * transport. `cookies()` throws outside a Next request scope, which made every
+ * session-creating route impossible to exercise from a test — the reason the
+ * login flow had no coverage at all before Phase 3.
+ *
+ * Outside a request scope this is a no-op and the caller still gets its token.
+ * That is safe: the only callers that skip the scope are tests, and a route
+ * that fails to set a cookie in production would have thrown here anyway.
+ */
+export async function setSessionCookie(token: string, expiresAt: Date) {
+  try {
+    (await cookies()).set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      expires: expiresAt,
+    });
+  } catch {
+    // No request scope — a direct handler call from a test.
+  }
 }
 
 export async function revokeSession(token: string, reason = 'USER_LOGOUT') {
   const tokenHash = sha256(token);
-  await Promise.all([
-    prisma.platformSession.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: reason },
-    }),
-    prisma.session.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: reason },
-    }),
-  ]);
-  (await cookies()).delete(SESSION_COOKIE);
+  await prisma.platformSession.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
+  try {
+    (await cookies()).delete(SESSION_COOKIE);
+  } catch {
+    /* no request scope */
+  }
 }
 
 /** A password or role change invalidates every other session for that user. */
-export async function revokeAllSessions(tenantId: string, userId: string, except?: string, reason = 'CREDENTIAL_CHANGE') {
+export async function revokeAllSessions(
+  tenantId: string,
+  userId: string,
+  except?: string,
+  reason = 'CREDENTIAL_CHANGE',
+) {
   const membership = await prisma.workspaceMembership.findUnique({ where: { salesUserId: userId } });
-  await Promise.all([
-    prisma.session.updateMany({
-      where: { tenantId, userId, revokedAt: null, ...(except ? { NOT: { tokenHash: sha256(except) } } : {}) },
-      data: { revokedAt: new Date(), revokedReason: reason },
-    }),
-    membership
-      ? prisma.platformSession.updateMany({
-          where: {
-            platformUserId: membership.platformUserId,
-            revokedAt: null,
-            ...(except ? { NOT: { tokenHash: sha256(except) } } : {}),
-          },
-          data: { revokedAt: new Date(), revokedReason: reason },
-        })
-      : Promise.resolve({ count: 0 }),
-  ]);
+  if (!membership) return;
+  await prisma.platformSession.updateMany({
+    where: {
+      platformUserId: membership.platformUserId,
+      revokedAt: null,
+      ...(except ? { NOT: { tokenHash: sha256(except) } } : {}),
+    },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
 }
 
 export type PlatformCtx = {
@@ -114,6 +115,7 @@ export type PlatformCtx = {
   fullName: string;
   activeTenantId: string | null;
   sessionId: string;
+  purpose: SessionPurpose;
   requestId: string;
   ip: string | null;
   userAgent: string | null;
@@ -142,7 +144,19 @@ async function sessionToken(req: Request): Promise<string | undefined> {
   }
 }
 
-export async function resolvePlatformCtx(req: Request, requestId: string): Promise<PlatformCtx> {
+/**
+ * Resolves the platform session.
+ *
+ * `allowPurpose` defaults to FULL only. An MFA-enrolment grant is not a signed-in
+ * session: it exists so a user forced to enrol has somewhere to do it, and it
+ * must be refused everywhere except the enrolment, verification and logout
+ * endpoints, which opt in explicitly.
+ */
+export async function resolvePlatformCtx(
+  req: Request,
+  requestId: string,
+  allowPurpose: readonly SessionPurpose[] = ['FULL'],
+): Promise<PlatformCtx> {
   const token = await sessionToken(req);
   if (!token) throw Unauthorized();
 
@@ -152,6 +166,14 @@ export async function resolvePlatformCtx(req: Request, requestId: string): Promi
   });
   const now = new Date();
   if (!session || session.revokedAt || session.expiresAt < now) throw Unauthorized('Your session has expired.');
+
+  if (!allowPurpose.includes(session.purpose as SessionPurpose)) {
+    throw Unauthorized(
+      session.purpose === 'MFA_ENROLMENT'
+        ? 'Finish setting up two-factor authentication before continuing.'
+        : 'This session cannot be used here.',
+    );
+  }
 
   const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
   if (session.lastSeenAt < idleCutoff) {
@@ -165,6 +187,26 @@ export async function resolvePlatformCtx(req: Request, requestId: string): Promi
   const user = session.platformUser;
   if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
 
+  /**
+   * Platform staff must have completed two-factor authentication.
+   *
+   * These roles read across every customer workspace — the owner through the
+   * platform console, all three through the support actor — and nothing
+   * previously required more than a password to do it.
+   *
+   * `session.mfaSatisfied` is the authority: a column on PlatformSession written
+   * by the login route only after a TOTP code or a recovery code has actually
+   * verified. It is never derived from anything the client sends, so a caller
+   * cannot assert it.
+   *
+   * The enrolment grant is exempt because it is the way out: it reaches
+   * /enroll-2fa and nothing else, so an owner without an authenticator can still
+   * set one up rather than being locked out for good.
+   */
+  if (session.purpose !== 'MFA_ENROLMENT' && !session.mfaSatisfied && isPrivilegedPlatformRole(user.platformRole)) {
+    throw Forbidden('Two-factor authentication is required for platform access. Sign in again to set it up.');
+  }
+
   if (now.getTime() - session.lastSeenAt.getTime() > 60_000) {
     await prisma.platformSession.update({ where: { id: session.id }, data: { lastSeenAt: now } });
   }
@@ -176,6 +218,7 @@ export async function resolvePlatformCtx(req: Request, requestId: string): Promi
     fullName: user.fullName,
     activeTenantId: session.activeTenantId,
     sessionId: session.id,
+    purpose: session.purpose as SessionPurpose,
     requestId,
     ip: clientIp(req),
     userAgent: req.headers.get('user-agent'),
@@ -225,8 +268,15 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
       },
       select: { salesUserId: true },
     });
-    if (!membership?.salesUserId) throw Unauthorized('Your workspace access is not active.');
-    const actor = await buildActor(membership.salesUserId, platformCtx.activeTenantId);
+    // Platform staff have no membership by design. Rather than locking them out
+    // of every workspace URL, give them a read-only support actor — otherwise the
+    // People and Sales modules are unreachable from the platform console.
+    const actor = membership?.salesUserId
+      ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
+      : isSupportRole(platformCtx.platformRole)
+        ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId)
+        : null;
+    if (!actor) throw Unauthorized('Your workspace access is not active.');
     return {
       tenantId: platformCtx.activeTenantId,
       actor,
@@ -236,47 +286,18 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
     };
   }
 
-  const session = await prisma.session.findUnique({
-    where: { tokenHash: sha256(token) },
-    include: {
-      user: {
-        include: {
-          role: { include: { permissions: { include: { permission: true } } } },
-          teams: { select: { teamId: true } },
-        },
-      },
-    },
-  });
-
-  const now = new Date();
-  if (!session || session.revokedAt || session.expiresAt < now) throw Unauthorized('Your session has expired.');
-
-  const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
-  if (session.lastSeenAt < idleCutoff) {
-    await prisma.session.update({
-      where: { tenantId: session.tenantId, id: session.id },
-      data: { revokedAt: now, revokedReason: 'IDLE_TIMEOUT' },
-    });
-    throw Unauthorized('Your session timed out.');
-  }
-
-  const user = session.user;
-  if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
-
-  // Cheap heartbeat; avoids a write on every single request.
-  if (now.getTime() - session.lastSeenAt.getTime() > 60_000) {
-    await prisma.session.update({ where: { tenantId: session.tenantId, id: session.id }, data: { lastSeenAt: now } });
-  }
-
-  const actor = await buildActor(user.id, user.tenantId);
-
-  return {
-    tenantId: user.tenantId,
-    actor,
-    requestId,
-    ip: clientIp(req),
-    userAgent: req.headers.get('user-agent'),
-  };
+  /**
+   * Only a PlatformSession is a session.
+   *
+   * There used to be a second branch here reading a legacy `Session` row. No
+   * code path in the application ever created one — `createSession` was dead —
+   * so it was reachable only from test fixtures, which meant the permission
+   * suite authenticated through something production does not have. Worse, it
+   * checked the user but never `tenant.status`, so it would have kept a
+   * suspended workspace working. Both are gone; the table is next, once a
+   * migration can drop it safely.
+   */
+  throw Unauthorized('Your session has expired.');
 }
 
 /**
@@ -324,10 +345,89 @@ async function buildActor(userId: string, tenantId: string): Promise<Actor> {
   };
 }
 
-export function clientIp(req: Request, trustProxyHeaders = env.TRUST_PROXY_HEADERS): string | null {
-  if (!trustProxyHeaders) return null;
-  const fwd = req.headers.get('x-forwarded-for');
-  return fwd ? fwd.split(',')[0]!.trim() : req.headers.get('x-real-ip');
+/**
+ * The client's address, as far as it can be trusted.
+ *
+ * `X-Forwarded-For` is a list the client can start: a request arriving with
+ * `X-Forwarded-For: 1.2.3.4` and no proxy in front has simply told us a lie.
+ * So the list is walked from the **right**, discarding entries contributed by
+ * proxies we recognise, and the first address that is not one of ours is the
+ * furthest hop we have any reason to believe.
+ *
+ * Taking `split(',')[0]` — the previous behaviour of the disabled branch — reads
+ * the leftmost entry, which is precisely the one an attacker controls.
+ *
+ * With no trusted proxies configured, the socket address is used unchanged and
+ * forwarded headers are ignored entirely.
+ */
+export function clientIp(req: Request, trusted: readonly Cidr[] = trustedProxies()): string | null {
+  /**
+   * With nothing declared in front of this server, every forwarded header is
+   * attacker-controlled and none of them may be believed.
+   *
+   * This branch used to `return socketIp` — the raw `x-real-ip` header — so a
+   * deployment with `TRUSTED_PROXY_CIDRS=none` let any client pick its own
+   * rate-limit identity by setting one header, and rotate it freely to make the
+   * login limiter irrelevant. Returning null costs per-IP limiting (the caller
+   * falls back to a shared bucket) but it cannot be steered by the caller, and
+   * the per-account limit still applies. Configure TRUSTED_PROXY_CIDRS to get
+   * per-IP limiting back.
+   */
+  if (trusted.length === 0) return null;
+
+  /**
+   * Right to left, because our own proxies append as the request passes through
+   * them. The first entry from the right that is not one of ours is the furthest
+   * hop we have any reason to believe; everything to its left was supplied by
+   * the client and is unverifiable.
+   *
+   * Entries that do not parse as an address are skipped rather than returned, so
+   * a malformed or injected header cannot become a rate-limit key.
+   */
+  const chain = (req.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const candidate = normaliseIp(chain[i]);
+    if (!candidate) continue;
+    if (!isInAny(candidate, trusted)) return candidate;
+  }
+
+  // No usable chain, or all of it is ours: a declared proxy is expected to set
+  // x-real-ip, and only a declared proxy can reach this line.
+  return normaliseIp(req.headers.get('x-real-ip') ?? '');
+}
+
+/**
+ * A header value reduced to a bare address, or null if it is not one.
+ *
+ * Proxies write `x-forwarded-for` entries in several shapes: bare IPv4,
+ * `1.2.3.4:5678`, bracketed `[2001:db8::1]:443`, and IPv4-mapped IPv6. Anything
+ * that survives here has been validated by parseIp, so a caller cannot inject
+ * arbitrary text into a Redis key.
+ */
+function normaliseIp(raw: string): string | null {
+  let value = raw.trim();
+  if (!value) return null;
+
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(value);
+  if (bracketed) value = bracketed[1];
+  // `host:port` only when there is exactly one colon — more than one is IPv6.
+  else if (value.indexOf(':') !== -1 && value.indexOf(':') === value.lastIndexOf(':')) value = value.split(':')[0];
+
+  return parseIp(value) ? value.toLowerCase() : null;
+}
+
+/** Parsed once. An unparseable entry is a configuration error, not a runtime one. */
+let trustedCache: Cidr[] | null = null;
+export function trustedProxies(): Cidr[] {
+  if (trustedCache) return trustedCache;
+  const raw = env.TRUSTED_PROXY_CIDRS.trim();
+  // 'none' is the explicit "nothing in front of this server" answer.
+  trustedCache = !raw || raw.toLowerCase() === 'none' ? [] : parseCidrList(raw);
+  return trustedCache;
 }
 
 export function safeCompare(a: string, b: string): boolean {

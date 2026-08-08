@@ -7,7 +7,13 @@ import type { Actor, Ctx, Scope } from '../security/rbac';
 import { consume, limits } from '../security/ratelimit';
 
 /** lf_live_<8-char prefix>_<43-char secret>. Only the prefix is stored in clear. */
-export async function issueApiKey(tenantId: string, name: string, roleId: string, scopes: string[], createdById: string) {
+export async function issueApiKey(
+  tenantId: string,
+  name: string,
+  roleId: string,
+  scopes: string[],
+  createdById: string,
+) {
   const prefix = randomBytes(4).toString('hex');
   const secret = randomBytes(32).toString('base64url');
   const full = `lf_live_${prefix}_${secret}`;

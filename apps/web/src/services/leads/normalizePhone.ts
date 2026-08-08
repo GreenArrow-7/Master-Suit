@@ -4,8 +4,16 @@
  * raw input is why "+971 50 123 4567" and "0501234567" end up as two leads.
  */
 const DIALLING_CODES: Record<string, string> = {
-  AE: '971', SA: '966', QA: '974', KW: '965', BH: '973', OM: '968',
-  IN: '91', PK: '92', GB: '44', US: '1',
+  AE: '971',
+  SA: '966',
+  QA: '974',
+  KW: '965',
+  BH: '973',
+  OM: '968',
+  IN: '91',
+  PK: '92',
+  GB: '44',
+  US: '1',
 };
 
 const NATIONAL_TRUNK_PREFIX = '0';

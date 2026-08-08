@@ -28,7 +28,10 @@ const DOMAINS: Record<string, { label: string; objectTypes: string[] }> = {
   auth: { label: 'Sign-in', objectTypes: ['platform_user', 'platform_session'] },
   access: { label: 'Accounts and roles', objectTypes: ['user', 'role', 'membership_role', 'hr_policy'] },
   leave: { label: 'Leave', objectTypes: ['hr_leave_request', 'hr_leave_balance'] },
-  attendance: { label: 'Attendance', objectTypes: ['hr_attendance_punch', 'hr_attendance_exception_request', 'hr_temporary_location_request'] },
+  attendance: {
+    label: 'Attendance',
+    objectTypes: ['hr_attendance_punch', 'hr_attendance_exception_request', 'hr_temporary_location_request'],
+  },
   lifecycle: { label: 'Lifecycle', objectTypes: ['employee', 'hr_checklist_task', 'hr_offboarding_case'] },
   documents: { label: 'Documents', objectTypes: ['hr_employee_document'] },
   biometrics: { label: 'Biometrics', objectTypes: ['biometric_consent', 'hr_face_template'] },
@@ -37,13 +40,16 @@ const DOMAINS: Record<string, { label: string; objectTypes: string[] }> = {
 const title = (value: string) => value.replace(/[_.]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const truncate = (value: string) => (value.length > 40 ? `${value.slice(0, 40)}…` : value);
 
-export default async function Page({ params, searchParams }: {
+export default async function Page({
+  params,
+  searchParams,
+}: {
   params: Promise<{ workspaceSlug: string }>;
   searchParams: Promise<{ domain?: string }>;
 }) {
   const { workspaceSlug } = await params;
   const { domain } = await searchParams;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug);
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: ['auditlogs', 'VIEW'] });
 
   if (!can(ctx, 'auditlogs', 'VIEW')) {
     return <EmptyState title="Access denied" description="You do not have permission to view the audit log." />;
@@ -57,14 +63,33 @@ export default async function Page({ params, searchParams }: {
       where: { tenantId: ctx.tenantId, ...(selected ? { objectType: { in: selected.objectTypes } } : {}) },
       orderBy: { occurredAt: 'desc' },
       take: 150,
-      select: { id: true, event: true, objectType: true, fieldKey: true, previousValue: true, newValue: true, metadata: true, actorUserId: true, ipAddress: true, occurredAt: true },
+      select: {
+        id: true,
+        event: true,
+        objectType: true,
+        fieldKey: true,
+        previousValue: true,
+        newValue: true,
+        metadata: true,
+        actorUserId: true,
+        ipAddress: true,
+        occurredAt: true,
+      },
     }),
     showAuth
       ? prisma.platformAuditEvent.findMany({
           where: { tenantId: ctx.tenantId },
           orderBy: { occurredAt: 'desc' },
           take: 60,
-          select: { id: true, event: true, objectType: true, metadata: true, actorUserId: true, ipAddress: true, occurredAt: true },
+          select: {
+            id: true,
+            event: true,
+            objectType: true,
+            metadata: true,
+            actorUserId: true,
+            ipAddress: true,
+            occurredAt: true,
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -72,7 +97,10 @@ export default async function Page({ params, searchParams }: {
   // One name lookup for both tables rather than a join per row.
   const [users, platformUsers] = await Promise.all([
     prisma.user.findMany({
-      where: { tenantId: ctx.tenantId, id: { in: [...new Set(records.map((row) => row.actorUserId).filter(Boolean))] as string[] } },
+      where: {
+        tenantId: ctx.tenantId,
+        id: { in: [...new Set(records.map((row) => row.actorUserId).filter(Boolean))] as string[] },
+      },
       select: { id: true, fullName: true },
     }),
     prisma.platformUser.findMany({
@@ -89,7 +117,7 @@ export default async function Page({ params, searchParams }: {
     ...records.map((row) => ({
       id: row.id,
       at: row.occurredAt,
-      actor: row.actorUserId ? names.get(row.actorUserId) ?? 'Removed user' : 'System',
+      actor: row.actorUserId ? (names.get(row.actorUserId) ?? 'Removed user') : 'System',
       action: (row.metadata as { action?: string } | null)?.action ?? row.event,
       event: row.event as string,
       objectType: row.objectType ?? '—',
@@ -101,7 +129,7 @@ export default async function Page({ params, searchParams }: {
       return {
         id: row.id,
         at: row.occurredAt,
-        actor: row.actorUserId ? names.get(row.actorUserId) ?? 'Removed user' : 'System',
+        actor: row.actorUserId ? (names.get(row.actorUserId) ?? 'Removed user') : 'System',
         action: reason ? `${row.event.toLowerCase()} · ${reason}` : row.event.toLowerCase(),
         event: row.event as string,
         objectType: row.objectType ?? 'platform_user',
@@ -109,49 +137,81 @@ export default async function Page({ params, searchParams }: {
         ip: row.ipAddress,
       };
     }),
-  ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 200);
+  ]
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, 200);
 
-  return <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-    <section>
-      <div className="lf-eyebrow">Administration</div>
-      <h1 style={{ margin: '8px 0 0' }}>Audit log</h1>
-      <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
-        Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one timeline. Nothing here can be edited or deleted from within the product.
-      </p>
-    </section>
+  return (
+    <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
+      <section>
+        <div className="lf-eyebrow">Administration</div>
+        <h1 style={{ margin: '8px 0 0' }}>Audit log</h1>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
+          Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one
+          timeline. Nothing here can be edited or deleted from within the product.
+        </p>
+      </section>
 
-    <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Filter by domain">
-      <Link className="lf-btn lf-btn--ghost" href="?" aria-current={!selected ? 'page' : undefined}>All</Link>
-      {Object.entries(DOMAINS).map(([key, value]) => (
-        <Link key={key} className="lf-btn lf-btn--ghost" href={`?domain=${key}`} aria-current={domain === key ? 'page' : undefined}>{value.label}</Link>
-      ))}
-    </nav>
+      <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Filter by domain">
+        <Link className="lf-btn lf-btn--ghost" href="?" aria-current={!selected ? 'page' : undefined}>
+          All
+        </Link>
+        {Object.entries(DOMAINS).map(([key, value]) => (
+          <Link
+            key={key}
+            className="lf-btn lf-btn--ghost"
+            href={`?domain=${key}`}
+            aria-current={domain === key ? 'page' : undefined}
+          >
+            {value.label}
+          </Link>
+        ))}
+      </nav>
 
-    <WorkspaceTable
-      headers={['When', 'Who', 'Action', 'Object', 'Detail', 'From']}
-      empty="Nothing recorded in this domain yet."
-      rows={merged.map((row) => [
-        row.at.toLocaleString('en-AE', { timeZone: 'UTC' }),
-        row.actor,
-        <span key="a">
-          <strong>{title(row.action)}</strong>
-          {row.action !== row.event && <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>{row.event.toLowerCase().replace(/_/g, ' ')}</div>}
-        </span>,
-        <code key="o" style={{ fontSize: 'var(--lf-text-xs)' }}>{row.objectType}</code>,
-        <span key="d" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-600)' }}>{row.detail}</span>,
-        row.ip ?? '—',
-      ])}
-    />
-  </div>;
+      <WorkspaceTable
+        headers={['When', 'Who', 'Action', 'Object', 'Detail', 'From']}
+        empty="Nothing recorded in this domain yet."
+        rows={merged.map((row) => [
+          row.at.toLocaleString('en-AE', { timeZone: 'UTC' }),
+          row.actor,
+          <span key="a">
+            <strong>{title(row.action)}</strong>
+            {row.action !== row.event && (
+              <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                {row.event.toLowerCase().replace(/_/g, ' ')}
+              </div>
+            )}
+          </span>,
+          <code key="o" style={{ fontSize: 'var(--lf-text-xs)' }}>
+            {row.objectType}
+          </code>,
+          <span key="d" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-600)' }}>
+            {row.detail}
+          </span>,
+          row.ip ?? '—',
+        ])}
+      />
+    </div>
+  );
 }
 
 /** A one-line summary: the field that changed, or whatever else the action recorded. */
-function describe(row: { fieldKey: string | null; previousValue: unknown; newValue: unknown; metadata: unknown }): string {
+function describe(row: {
+  fieldKey: string | null;
+  previousValue: unknown;
+  newValue: unknown;
+  metadata: unknown;
+}): string {
   if (row.fieldKey) {
     return `${row.fieldKey}: ${truncate(JSON.stringify(row.previousValue) ?? 'null')} → ${truncate(JSON.stringify(row.newValue) ?? 'null')}`;
   }
   const metadata = { ...(row.metadata as Record<string, unknown> | null) };
   delete metadata.action;
   const parts = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined);
-  return parts.length ? parts.map(([key, value]) => `${key}=${truncate(String(value))}`).join(' · ').slice(0, 120) : '—';
+  return parts.length
+    ? parts
+        .map(([key, value]) => `${key}=${truncate(String(value))}`)
+        .join(' · ')
+        .slice(0, 120)
+    : '—';
 }

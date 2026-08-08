@@ -5,14 +5,23 @@ import { NotFound, Conflict } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const consentBody = z.object({
-  consentGiven: z.literal(true),
-  method: z.enum(['VERBAL', 'WRITTEN', 'ELECTRONIC', 'PRE_AUTHORIZED']),
-  consentVersion: z.string().max(50).optional(),
-}).strict();
+const consentBody = z
+  .object({
+    consentGiven: z.literal(true),
+    method: z.enum(['VERBAL', 'WRITTEN', 'ELECTRONIC', 'PRE_AUTHORIZED']),
+    consentVersion: z.string().max(50).optional(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'calls', action: 'EDIT', params, body: consentBody, auditEvent: 'CONSENT_RECORDED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: consentBody,
+    auditEvent: 'CONSENT_RECORDED',
+  },
   async ({ ctx, params, body }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -50,7 +59,7 @@ export const POST = route(
 );
 
 export const DELETE = route(
-  { module: 'calls', action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
   async ({ ctx, params }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

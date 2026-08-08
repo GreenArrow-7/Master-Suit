@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Invalid, Unauthorized } from '../errors';
+import { AppError, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { consume, limits } from '../security/ratelimit';
-import { audit, type AuditEventName } from '../security/audit';
+import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
 import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
@@ -17,6 +17,19 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
   productModule?: ProductModule;
   /** Skip authentication entirely. Only for /public and /webhooks/inbound routes. */
   anonymous?: boolean;
+  /**
+   * Authenticated, tenant-checked, but no permission required.
+   *
+   * Only for routes where every action reads `ctx.actor` and takes no target
+   * parameter — changing your own password, enrolling your own authenticator.
+   * These were gated on `hrms:VIEW`, which meant a Sales-only workspace's users
+   * could not change their own password; gating them on a `users` permission
+   * instead would lock out the HR-created employees who most need to replace a
+   * temporary one. Neither is right: self-service is not a privilege.
+   *
+   * `module` is still declared, for audit and rate-limit keys.
+   */
+  selfService?: boolean;
   params?: PS;
   query?: QS;
   body?: BS;
@@ -45,10 +58,7 @@ export function route<
   P = unknown extends z.infer<PS> ? unknown : z.infer<PS>,
   Q = unknown extends z.infer<QS> ? unknown : z.infer<QS>,
   B = unknown extends z.infer<BS> ? unknown : z.infer<BS>,
->(
-  spec: RouteSpec<PS, QS, BS>,
-  handler: (args: HandlerArgs<P, Q, B>) => Promise<unknown>,
-) {
+>(spec: RouteSpec<PS, QS, BS>, handler: (args: HandlerArgs<P, Q, B>) => Promise<unknown>) {
   return async (req: Request, context: { params: Promise<Record<string, string>> }) => {
     const requestId = req.headers.get('x-request-id') ?? ulid();
     const started = Date.now();
@@ -73,27 +83,35 @@ export function route<
 
       // 3. Authorize — before the handler body runs ────────────────────────────
       if (ctx) {
-        await assertModuleEntitlement(ctx.tenantId, spec.productModule ?? 'SALES');
-        assertPermission(ctx, spec.module, spec.action);
-      }
-      else if (!spec.anonymous) throw Unauthorized();
+        // Only when the route declares one. The previous `?? 'SALES'` default
+        // silently demanded the Sales entitlement from routes that had nothing
+        // to do with Sales, and made "forgot to declare it" indistinguishable
+        // from "deliberately Sales". Platform-level surfaces — users, roles,
+        // profile, notifications — belong to no product module.
+        if (spec.productModule) await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+        if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
+      } else if (!spec.anonymous) throw Unauthorized();
 
       // 4. Validate ────────────────────────────────────────────────────────────
-      const rawParams = context?.params
-        ? await context.params.catch(() => ({}))
-        : {};
+      // `!= null`, not truthiness: a Promise is always truthy, so the old test
+      // was checking presence by accident rather than by intent.
+      const rawParams = context?.params != null ? await context.params.catch(() => ({})) : {};
       const url = new URL(req.url);
       const rawQuery = Object.fromEntries(url.searchParams);
-      const rawBody = ['POST', 'PATCH', 'PUT'].includes(req.method)
-        ? await req.json().catch(() => ({}))
-        : {};
+      const rawBody = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await req.json().catch(() => ({})) : {};
 
       const params = spec.params ? parse(spec.params, rawParams) : (rawParams as P);
       const query = spec.query ? parse(spec.query, rawQuery) : (rawQuery as unknown as Q);
       const body = spec.body ? parse(spec.body, rawBody) : (rawBody as B);
 
       // 5. Handle ──────────────────────────────────────────────────────────────
-      const result = await handler({ ctx: ctx!, params, query, body, req });
+      // Scrubbed on the way out. A handler that returns a Prisma record with a
+      // relation included returns *every* scalar on that relation, so one
+      // `include: { platformUser: true }` was enough to publish password hashes
+      // and live TOTP secrets. Per-route selects are the real fix; this is the
+      // net under them, and it is here because this is the one place every
+      // response body passes through.
+      const result = scrubSecrets(await handler({ ctx: ctx!, params, query, body, req }));
 
       // 6. Audit ───────────────────────────────────────────────────────────────
       if (ctx && spec.auditEvent) {
@@ -105,13 +123,52 @@ export function route<
         });
       }
 
-      logger.info({ requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId }, 'request');
+      logger.info(
+        { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
+        'request',
+      );
       return NextResponse.json(result ?? { ok: true }, { headers: { 'x-request-id': requestId } });
     } catch (err) {
       return toResponse(err, requestId, { module: spec.module, action: spec.action, tenantId: ctx?.tenantId });
     }
   };
 }
+
+/**
+ * Deep-removes credential fields from anything on its way into a response body.
+ *
+ * Only plain objects and arrays are walked. Date, Buffer, Decimal, Map, Set and
+ * every other class instance is returned untouched — rebuilding them as plain
+ * objects would corrupt the payload, and none of them carry a key from
+ * SECRET_KEYS. Cycles are tracked because Prisma results can carry back-relations.
+ */
+function scrubSecrets<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing as T;
+    const out: unknown[] = [];
+    seen.set(value, out);
+    for (const item of value) out.push(scrubSecrets(item, seen));
+    return out as T;
+  }
+  // Anything that is not a plain object is a value type to us.
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+
+  const existing = seen.get(value);
+  if (existing) return existing as T;
+  const out: Record<string, unknown> = {};
+  seen.set(value, out);
+  for (const [key, item] of Object.entries(value)) {
+    if (SECRET_KEYS.has(key)) continue;
+    out[key] = scrubSecrets(item, seen);
+  }
+  return out as T;
+}
+
+/** Exposed for tests/security/secret-egress.spec.ts. Not part of the route API. */
+export const scrubForTest = <T>(value: T): T => scrubSecrets(value);
 
 function parse<T extends ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   try {
@@ -130,17 +187,21 @@ function toResponse(err: unknown, requestId: string, meta: Record<string, unknow
   // Validation may also happen inside a handler when the payload is adapted for
   // an existing module. Keep those failures client-safe instead of reporting a 500.
   if (err instanceof ZodError) {
-    const invalid = Invalid(err.issues.map((issue) => ({
-      field: issue.path.join('.'),
-      code: issue.code,
-      message: issue.message,
-    })));
+    const invalid = Invalid(
+      err.issues.map((issue) => ({
+        field: issue.path.join('.'),
+        code: issue.code,
+        message: issue.message,
+      })),
+    );
     logger.warn({ requestId, code: invalid.code, status: invalid.status, ...meta }, 'request rejected');
     return NextResponse.json(invalid.toProblem(requestId), { status: invalid.status, headers });
   }
 
   if (err instanceof AppError) {
     if ((err as any).retryAfter) headers['retry-after'] = String((err as any).retryAfter);
+    // RFC 9110: a 405 must say which methods are allowed.
+    if (err instanceof MethodNotAllowedError) headers['allow'] = err.allow.join(', ');
     if (err.status >= 500) logger.error({ err, requestId, ...meta }, 'request failed');
     else logger.warn({ requestId, code: err.code, status: err.status, ...meta }, 'request rejected');
     return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });

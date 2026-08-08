@@ -32,7 +32,9 @@ export async function POST(req: Request) {
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const session = await prisma.platformSession.findUnique({
       where: { tokenHash },
-      include: { platformUser: true },
+      // Only what the checks below read. `true` would pull the credential
+      // columns into a rotation that has no use for them.
+      include: { platformUser: { select: { id: true, status: true, deletedAt: true } } },
     });
     if (!session) throw Unauthorized('Your session has expired.');
 
@@ -42,14 +44,21 @@ export async function POST(req: Request) {
         where: { platformUserId: session.platformUserId, revokedAt: null },
         data: { revokedAt: new Date(), revokedReason: 'ROTATED_TOKEN_REPLAYED' },
       });
-      await prisma.platformAuditEvent.create({
-        data: {
-          tenantId: session.activeTenantId, actorUserId: session.platformUserId, event: 'LOGIN_FAILED',
-          objectType: 'platform_session', objectId: session.id, ipAddress: clientIp(req),
-          userAgent: req.headers.get('user-agent'), requestId,
-          metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
-        },
-      }).catch(() => {});
+      await prisma.platformAuditEvent
+        .create({
+          data: {
+            tenantId: session.activeTenantId,
+            actorUserId: session.platformUserId,
+            event: 'LOGIN_FAILED',
+            objectType: 'platform_session',
+            objectId: session.id,
+            ipAddress: clientIp(req),
+            userAgent: req.headers.get('user-agent'),
+            requestId,
+            metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
+          },
+        })
+        .catch(() => {});
       jar.delete(SESSION_COOKIE);
       throw Unauthorized('Your session has expired.');
     }
@@ -59,7 +68,10 @@ export async function POST(req: Request) {
 
     const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
     if (session.lastSeenAt < idleCutoff) {
-      await prisma.platformSession.update({ where: { id: session.id }, data: { revokedAt: now, revokedReason: 'IDLE_TIMEOUT' } });
+      await prisma.platformSession.update({
+        where: { id: session.id },
+        data: { revokedAt: now, revokedReason: 'IDLE_TIMEOUT' },
+      });
       throw Unauthorized('Your session timed out.');
     }
 
@@ -83,7 +95,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ expiresAt: rotated.expiresAt }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
     if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+      return NextResponse.json(error.toProblem(requestId), {
+        status: error.status,
+        headers: { 'x-request-id': requestId },
+      });
     }
     logger.error({ err: error, requestId }, 'session refresh failed');
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });

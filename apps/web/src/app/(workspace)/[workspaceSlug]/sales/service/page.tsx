@@ -1,10 +1,7 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -23,7 +20,7 @@ const TABS = [
 
 export default async function ServicePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['tickets', 'VIEW'] });
 
   if (!can(ctx, 'tickets', 'VIEW')) {
     return <EmptyState title="Access denied" description="You do not have permission to view tickets." />;
@@ -37,8 +34,14 @@ export default async function ServicePage({ searchParams }: { searchParams: Prom
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
-      id: true, number: true, subject: true, priority: true,
-      status: true, channel: true, slaState: true, createdAt: true,
+      id: true,
+      number: true,
+      subject: true,
+      priority: true,
+      status: true,
+      channel: true,
+      slaState: true,
+      createdAt: true,
       agent: { select: { fullName: true } },
     },
   });
@@ -47,14 +50,26 @@ export default async function ServicePage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <ListHeader title="Service" count={rows.length} capped={rows.length === 50} 
-        actions={can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="TICKET" current={columns.map((c) => c.key)} />}
+      <ListHeader
+        title="Service"
+        count={rows.length}
+        capped={rows.length === 50}
+        actions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+            <ColumnEditor object="TICKET" current={columns.map((c) => c.key)} />
+          )
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }}>
         {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/service?tab=${key}` : '/service'}
-             aria-selected={(params.tab ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/service?tab=${key}` : '/service'}
+            aria-selected={(params.tab ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}

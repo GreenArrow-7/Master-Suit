@@ -1,22 +1,43 @@
 import { NextResponse } from 'next/server';
+import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 
-const updateSchema = z.object({
-  status: z.enum(['ACTIVE', 'SUSPENDED', 'ARCHIVED']).optional(),
-  planCode: z.string().min(1).max(64).optional(),
-  subscriptionState: z.enum(['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELED']).optional(),
-  maxUsers: z.number().int().positive().nullable().optional(),
-  maxEmployees: z.number().int().positive().nullable().optional(),
-  maxStorageMb: z.number().int().positive().nullable().optional(),
-  enabledModules: z.array(z.enum(['HRMS', 'SALES'])).min(1).optional(),
-  trialStartedAt: z.coerce.date().nullable().optional(),
-  trialEndsAt: z.coerce.date().nullable().optional(),
-  revokeSessions: z.boolean().optional(),
-}).refine((value) => Object.keys(value).length > 0, 'At least one change is required.');
+const updateSchema = z
+  .object({
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'ARCHIVED']).optional(),
+    planCode: z.string().min(1).max(64).optional(),
+    subscriptionState: z.enum(['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELED']).optional(),
+    maxUsers: z.number().int().positive().nullable().optional(),
+    maxEmployees: z.number().int().positive().nullable().optional(),
+    maxStorageMb: z.number().int().positive().nullable().optional(),
+    enabledModules: z
+      .array(z.enum(['HRMS', 'SALES']))
+      .min(1)
+      .optional(),
+    trialStartedAt: z.coerce.date().nullable().optional(),
+    trialEndsAt: z.coerce.date().nullable().optional(),
+    revokeSessions: z.boolean().optional(),
+
+    // Workspace profile. Fixed at provisioning and unchangeable thereafter until
+    // now — a customer who rebranded, moved office or mistyped their legal name at
+    // sign-up had no way to correct any of it.
+    workspaceName: z.string().min(2).max(120).optional(),
+    legalName: z.string().min(2).max(180).optional(),
+    displayName: z.string().min(2).max(120).optional(),
+    industry: z.string().max(100).nullable().optional(),
+    country: z.string().length(2).optional(),
+    timezone: z.string().min(1).max(80).optional(),
+    currency: z.string().length(3).optional(),
+    companyEmail: z.string().email().nullable().optional(),
+    companyPhone: z.string().max(40).nullable().optional(),
+    companyAddress: z.string().max(500).nullable().optional(),
+    logoUrl: z.string().url().nullable().optional().or(z.literal('')),
+  })
+  .refine((value) => Object.keys(value).length > 0, 'At least one change is required.');
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
@@ -34,7 +55,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
       : null;
     if (body.planCode && !plan) throw NotFound('Subscription plan');
 
-    const workspace = await withTx(async (tx) => {
+    const workspace = await withPlatformTx(async (tx) => {
       const updated = await tx.tenant.update({
         where: { id: current.id },
         data: {
@@ -46,6 +67,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
           trialStartedAt: body.trialStartedAt,
           trialEndsAt: body.trialEndsAt,
           archivedAt: body.status === 'ARCHIVED' ? new Date() : body.status === 'ACTIVE' ? null : undefined,
+
+          workspaceName: body.workspaceName,
+          legalName: body.legalName,
+          displayName: body.displayName,
+          industry: body.industry,
+          country: body.country?.toUpperCase(),
+          timezone: body.timezone,
+          currency: body.currency?.toUpperCase(),
+          companyEmail: body.companyEmail?.toLowerCase(),
+          companyPhone: body.companyPhone,
+          ...(body.companyAddress === undefined
+            ? {}
+            : { address: body.companyAddress ? { formatted: body.companyAddress } : {} }),
+          ...(body.logoUrl === undefined ? {} : { logoUrl: body.logoUrl || null }),
         },
       });
       if (current.subscription && (plan || body.subscriptionState)) {
@@ -61,25 +96,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
         });
       }
       if (body.enabledModules) {
-        for (const module of ['HRMS', 'SALES'] as const) {
-          const enabled = body.enabledModules.includes(module);
+        for (const productModule of ['HRMS', 'SALES'] as const) {
+          const enabled = body.enabledModules.includes(productModule);
           await tx.moduleEntitlement.upsert({
-            where: { tenantId_module: { tenantId: current.id, module } },
-            update: { state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED', endsAt: enabled ? body.trialEndsAt : new Date() },
-            create: { tenantId: current.id, module, state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED', endsAt: enabled ? body.trialEndsAt : new Date() },
+            where: { tenantId_module: { tenantId: current.id, module: productModule } },
+            update: {
+              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
+              endsAt: enabled ? body.trialEndsAt : new Date(),
+            },
+            create: {
+              tenantId: current.id,
+              module: productModule,
+              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
+              endsAt: enabled ? body.trialEndsAt : new Date(),
+            },
           });
           if (current.subscription) {
             await tx.subscriptionModule.upsert({
-              where: { subscriptionId_module: { subscriptionId: current.subscription.id, module } },
+              where: { subscriptionId_module: { subscriptionId: current.subscription.id, module: productModule } },
               update: { state: enabled ? (body.subscriptionState ?? current.subscription.state) : 'CANCELED' },
-              create: { subscriptionId: current.subscription.id, module, state: enabled ? (body.subscriptionState ?? current.subscription.state) : 'CANCELED' },
+              create: {
+                subscriptionId: current.subscription.id,
+                module: productModule,
+                state: enabled ? (body.subscriptionState ?? current.subscription.state) : 'CANCELED',
+              },
             });
           }
         }
       }
       if (body.revokeSessions) {
-        await tx.platformSession.updateMany({ where: { activeTenantId: current.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'PLATFORM_OWNER_REVOKED' } });
-        await tx.session.updateMany({ where: { tenantId: current.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: 'PLATFORM_OWNER_REVOKED' } });
+        await tx.platformSession.updateMany({
+          where: { activeTenantId: current.id, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'PLATFORM_OWNER_REVOKED' },
+        });
       }
       await tx.platformAuditEvent.create({
         data: {
@@ -97,13 +146,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
       return updated;
     });
 
+    // Entitlements are cached for a minute on the request path. Clearing the
+    // keys after the commit means revoking a module takes effect on the next
+    // request rather than whenever the TTL happens to expire.
+    await invalidateEntitlements(workspace.id);
+
     return NextResponse.json({ workspace }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
     if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+      return NextResponse.json(error.toProblem(requestId), {
+        status: error.status,
+        headers: { 'x-request-id': requestId },
+      });
     }
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ status: 422, title: 'Validation failed', requestId, errors: error.flatten() }, { status: 422 });
+      return NextResponse.json(
+        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
+        { status: 422 },
+      );
     }
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
   }

@@ -3,12 +3,36 @@ import { Forbidden } from '../errors';
 export type Scope = 'NONE' | 'OWN' | 'TEAM' | 'BRANCH' | 'REGION' | 'ORGANIZATION';
 
 export type Action =
-  | 'VIEW' | 'CREATE' | 'EDIT' | 'DELETE' | 'EXPORT' | 'IMPORT' | 'ASSIGN' | 'REASSIGN'
-  | 'BULK_UPDATE' | 'VIEW_REPORTS' | 'MANAGE_AUTOMATION' | 'MANAGE_USERS'
-  | 'MANAGE_CONFIGURATION' | 'ACCESS_API' | 'VIEW_SENSITIVE_FIELDS';
+  | 'VIEW'
+  | 'CREATE'
+  | 'EDIT'
+  | 'DELETE'
+  | 'EXPORT'
+  | 'IMPORT'
+  | 'ASSIGN'
+  | 'REASSIGN'
+  | 'BULK_UPDATE'
+  | 'VIEW_REPORTS'
+  | 'MANAGE_AUTOMATION'
+  | 'MANAGE_USERS'
+  | 'MANAGE_CONFIGURATION'
+  | 'ACCESS_API'
+  | 'VIEW_SENSITIVE_FIELDS'
+  /**
+   * Deciding someone else's request — a leave application, an attendance
+   * exception. Distinct from EDIT: a line manager approves their reports' leave
+   * without being able to edit employee records, and an HR administrator edits
+   * records without necessarily sitting in an approval chain.
+   */
+  | 'APPROVE';
 
 export const SCOPE_RANK: Record<Scope, number> = {
-  NONE: 0, OWN: 1, TEAM: 2, BRANCH: 3, REGION: 4, ORGANIZATION: 5,
+  NONE: 0,
+  OWN: 1,
+  TEAM: 2,
+  BRANCH: 3,
+  REGION: 4,
+  ORGANIZATION: 5,
 };
 
 /** `module:ACTION` → granted scope. Built once per request from the role's rows. */

@@ -2,13 +2,15 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 
-const body = z.object({
-  leadIds: z.array(z.string().cuid()).min(1).max(500),
-  ownerId: z.string().cuid(),
-}).strict();
+const body = z
+  .object({
+    leadIds: z.array(z.string().cuid()).min(1).max(500),
+    ownerId: z.string().cuid(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'leads', action: 'ASSIGN', body, auditEvent: 'OWNER_CHANGED' },
+  { module: 'leads', productModule: 'SALES', action: 'ASSIGN', body, auditEvent: 'OWNER_CHANGED' },
   async ({ ctx, body: { leadIds, ownerId } }) => {
     const owner = await prisma.user.findFirst({
       where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null },

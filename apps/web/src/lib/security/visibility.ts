@@ -1,7 +1,19 @@
-import { prisma } from '../db';
+import { prisma, type TxClient } from '../db';
 import { Forbidden } from '../errors';
 import type { Ctx, Scope, Action } from './rbac';
 import { scopeFor } from './rbac';
+
+/**
+ * The client visibility lookups run on.
+ *
+ * It matters which one. These helpers are called from inside `withTx`, and
+ * `withTx` sets `app.tenant_id` on *its own* connection. A query issued through
+ * the global client from inside that callback lands on a different pooled
+ * connection with no tenant context, so once RLS was enforced the team and
+ * branch lookups returned nothing and a manager's legitimate edit was refused.
+ * Callers inside a transaction must pass `tx`.
+ */
+type VisibilityDb = TxClient | typeof prisma;
 
 /**
  * Translates a permission scope into a Prisma `where` fragment on the owner column.
@@ -48,7 +60,7 @@ export async function visibilityWhere(
  * manager change. Deliberately returns ids rather than a nested query so the
  * planner sees a plain IN list against the (tenantId, ownerId, …) indexes.
  */
-export async function resolveOwnerIds(ctx: Ctx, scope: Scope): Promise<string[]> {
+export async function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb = prisma): Promise<string[]> {
   const self = ctx.actor.id;
 
   switch (scope) {
@@ -57,8 +69,8 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope): Promise<string[]>
 
     case 'TEAM': {
       if (ctx.actor.teamIds.length === 0) return [self, ...ctx.actor.managedUserIds];
-      const teamIds = await descendantTeamIds(ctx.tenantId, ctx.actor.teamIds);
-      const rows = await prisma.userTeam.findMany({
+      const teamIds = await descendantTeamIds(ctx.tenantId, ctx.actor.teamIds, db);
+      const rows = await db.userTeam.findMany({
         where: { tenantId: ctx.tenantId, teamId: { in: teamIds } },
         select: { userId: true },
       });
@@ -67,7 +79,7 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope): Promise<string[]>
 
     case 'BRANCH': {
       if (!ctx.actor.branchId) return [self];
-      const rows = await prisma.user.findMany({
+      const rows = await db.user.findMany({
         where: { tenantId: ctx.tenantId, branchId: ctx.actor.branchId },
         select: { id: true },
       });
@@ -76,11 +88,11 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope): Promise<string[]>
 
     case 'REGION': {
       if (!ctx.actor.regionId) return [self];
-      const branches = await prisma.branch.findMany({
+      const branches = await db.branch.findMany({
         where: { tenantId: ctx.tenantId, regionId: ctx.actor.regionId },
         select: { id: true },
       });
-      const rows = await prisma.user.findMany({
+      const rows = await db.user.findMany({
         where: { tenantId: ctx.tenantId, branchId: { in: branches.map((b) => b.id) } },
         select: { id: true },
       });
@@ -93,11 +105,15 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope): Promise<string[]>
 }
 
 /** Team visibility descends the tree: a manager of a parent team sees its children. */
-async function descendantTeamIds(tenantId: string, roots: readonly string[]): Promise<string[]> {
+async function descendantTeamIds(
+  tenantId: string,
+  roots: readonly string[],
+  db: VisibilityDb = prisma,
+): Promise<string[]> {
   const seen = new Set(roots);
   let frontier = [...roots];
   while (frontier.length) {
-    const children = await prisma.team.findMany({
+    const children = await db.team.findMany({
       where: { tenantId, parentTeamId: { in: frontier } },
       select: { id: true },
     });
@@ -107,11 +123,18 @@ async function descendantTeamIds(tenantId: string, roots: readonly string[]): Pr
   return [...seen];
 }
 
-/** Write-path check. Call inside the transaction, after loading the current row. */
+/**
+ * Write-path check. Call inside the transaction, after loading the current row.
+ *
+ * `db` must be the transaction client — see the note on VisibilityDb. It is
+ * required rather than defaulted: every caller is already inside a transaction,
+ * and a silent default is exactly how the wrong connection got used before.
+ */
 export async function assertRecordVisible(
   ctx: Ctx,
   module: string,
   record: { tenantId: string; ownerId?: string | null } & Record<string, unknown>,
+  db: VisibilityDb,
   action: Action = 'EDIT',
   ownerField = 'ownerId',
 ) {
@@ -122,7 +145,7 @@ export async function assertRecordVisible(
 
   const ownerId = record[ownerField] as string | null | undefined;
   if (ownerId == null) return; // unassigned; claiming is governed by ASSIGN
-  const allowed = await resolveOwnerIds(ctx, scope);
+  const allowed = await resolveOwnerIds(ctx, scope, db);
   if (!allowed.includes(ownerId)) throw Forbidden();
 }
 

@@ -33,6 +33,7 @@ const TITLES: Record<number, string> = {
   401: 'Authentication required',
   403: 'Not permitted',
   404: 'Not found',
+  405: 'Method not allowed',
   409: 'Conflict',
   422: 'Validation failed',
   429: 'Too many requests',
@@ -43,9 +44,31 @@ const TITLES: Record<number, string> = {
 export const Unauthorized = (m = 'Sign in to continue.') => new AppError(401, 'unauthorized', m);
 export const Forbidden = (m = 'Your role does not allow this action.') => new AppError(403, 'forbidden', m);
 export const Conflict = (m: string) => new AppError(409, 'conflict', m);
+
+/**
+ * Carries the methods that *are* allowed, because RFC 9110 requires a 405 to
+ * send an `Allow` header — a client told only "no" has to guess.
+ *
+ * The three action routes used to `throw new Error('Use POST for this action.')`
+ * for a GET on a write-only action, which the kernel turned into a 500: a
+ * client-side mistake reported as a server fault, and paged as one.
+ */
+export class MethodNotAllowedError extends AppError {
+  constructor(readonly allow: readonly string[]) {
+    super(405, 'method-not-allowed', `Use ${allow.join(' or ')} for this action.`);
+    this.name = 'MethodNotAllowedError';
+  }
+}
+
+export const MethodNotAllowed = (...allow: string[]) => new MethodNotAllowedError(allow);
 export const TooManyRequests = (m = 'Slow down and try again shortly.') => new AppError(429, 'rate-limited', m);
 export const Invalid = (errors: FieldError[]) =>
-  new AppError(422, 'validation-failed', `${errors.length} field${errors.length === 1 ? '' : 's'} failed validation`, errors);
+  new AppError(
+    422,
+    'validation-failed',
+    `${errors.length} field${errors.length === 1 ? '' : 's'} failed validation`,
+    errors,
+  );
 
 /**
  * Out-of-tenant and out-of-visibility both return 404. A 403 would confirm the

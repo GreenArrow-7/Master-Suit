@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { requirePlatformOwner } from '@/lib/auth/platform';
@@ -9,7 +9,11 @@ import { hashPassword } from '@/lib/auth/password';
 
 const createSchema = z.object({
   workspaceName: z.string().min(2).max(120),
-  slug: z.string().min(2).max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  slug: z
+    .string()
+    .min(2)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   legalName: z.string().min(2).max(180),
   displayName: z.string().min(2).max(120),
   planCode: z.string().min(1).max(64),
@@ -65,11 +69,11 @@ export async function POST(req: Request) {
 
     const trialStartedAt = body.trialStartDate ?? null;
     const trialEndsAt = body.trialEndDate ?? null;
-    const state = trialEndsAt && trialEndsAt > new Date() ? 'TRIAL' as const : 'ACTIVE' as const;
+    const state = trialEndsAt && trialEndsAt > new Date() ? ('TRIAL' as const) : ('ACTIVE' as const);
     const adminEmail = body.primaryAdminEmail.trim().toLowerCase();
     const passwordHash = await hashPassword(body.primaryAdminPassword);
 
-    const workspace = await withTx(async (tx) => {
+    const workspace = await withPlatformTx(async (tx) => {
       const created = await tx.tenant.create({
         data: {
           workspaceName: body.workspaceName,
@@ -111,21 +115,51 @@ export async function POST(req: Request) {
               { metric: 'storage_mb', used: 0, limit: body.maxStorageMb },
             ],
           },
-          hrLeaveTypes: body.enabledModules.includes('HRMS') ? {
-            create: [
-              { code: 'ANNUAL', name: 'Annual Leave', annualAllowance: 30, paid: true },
-              { code: 'SICK', name: 'Sick Leave', annualAllowance: 15, paid: true, requiresDocument: true },
-            ],
-          } : undefined,
+          hrLeaveTypes: body.enabledModules.includes('HRMS')
+            ? {
+                create: [
+                  { code: 'ANNUAL', name: 'Annual Leave', annualAllowance: 30, paid: true },
+                  { code: 'SICK', name: 'Sick Leave', annualAllowance: 15, paid: true, requiresDocument: true },
+                ],
+              }
+            : undefined,
         },
         include: { subscription: { include: { plan: true } }, moduleEntitlements: true },
       });
 
       const permissionPairs = [
-        ...['hrms', 'employees', 'departments', 'attendance', 'shifts', 'leave', 'holidays', 'hr_documents', 'work_locations', 'hr_reports'],
+        ...[
+          // HR, split into the authorities it actually contains (P1-8) rather
+          // than one `hrms` permission that conferred all of them at once.
+          'employee',
+          'leave',
+          'attendance',
+          'hr_documents',
+          'departments',
+          'shifts',
+          'holidays',
+          'work_locations',
+          'hr_reports',
+          // Retained so an upgraded workspace and a new one look the same, and
+          // so the migration's backfill has a source to derive from.
+          'hrms',
+        ],
         ...['leads', 'opportunities', 'accounts', 'contacts', 'activities', 'tasks', 'calls', 'campaigns', 'reports'],
         ...['users', 'roles', 'settings', 'auditlogs', 'integrations'],
-      ].flatMap((module) => ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'MANAGE_USERS', 'MANAGE_CONFIGURATION'].map((action) => ({ module, action })));
+      ].flatMap((module) =>
+        ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'MANAGE_USERS', 'MANAGE_CONFIGURATION'].map((action) => ({
+          module,
+          action,
+        })),
+      );
+      // The approval and sensitive-read authorities exist only where they mean
+      // something, so an administrator editing the matrix is not shown rows like
+      // `leads:APPROVE` that nothing consults.
+      permissionPairs.push(
+        { module: 'leave', action: 'APPROVE' },
+        { module: 'attendance', action: 'APPROVE' },
+        { module: 'hr_documents', action: 'VIEW_SENSITIVE_FIELDS' },
+      );
       // 144 sequential upserts — one network round trip each — inside a 5 s
       // interactive transaction. It measured a hair over the limit under any
       // concurrent load, so workspace provisioning failed intermittently with an
@@ -160,7 +194,6 @@ export async function POST(req: Request) {
           tenantId: created.id,
           email: adminEmail,
           emailVerifiedAt: new Date(),
-          passwordHash,
           fullName: body.primaryAdminName,
           status: 'ACTIVE',
           roleId: adminRole.id,
@@ -169,18 +202,36 @@ export async function POST(req: Request) {
           timezone: body.timezone,
         },
       });
-      const platformUser = await tx.platformUser.upsert({
+      // An existing identity keeps its own password.
+      //
+      // This was an upsert whose `update` branch silently omitted passwordHash,
+      // so provisioning a workspace with an email that already existed — a
+      // consultant administering two customers — produced an administrator who
+      // could not sign in with the password the platform owner had just typed
+      // and communicated. Say which of the two happened instead of guessing.
+      const existingIdentity = await tx.platformUser.findUnique({
         where: { normalizedEmail: adminEmail },
-        update: { fullName: body.primaryAdminName, status: 'ACTIVE' },
-        create: {
-          email: adminEmail,
-          normalizedEmail: adminEmail,
-          fullName: body.primaryAdminName,
-          passwordHash,
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-        },
+        select: { id: true, deletedAt: true },
       });
+      if (existingIdentity?.deletedAt) {
+        throw Conflict('That email belongs to a deleted account. Restore it or use a different address.');
+      }
+      const reusedExistingIdentity = Boolean(existingIdentity);
+      const platformUser = existingIdentity
+        ? await tx.platformUser.update({
+            where: { id: existingIdentity.id },
+            data: { fullName: body.primaryAdminName, status: 'ACTIVE' },
+          })
+        : await tx.platformUser.create({
+            data: {
+              email: adminEmail,
+              normalizedEmail: adminEmail,
+              fullName: body.primaryAdminName,
+              passwordHash,
+              status: 'ACTIVE',
+              emailVerifiedAt: new Date(),
+            },
+          });
       const membership = await tx.workspaceMembership.create({
         data: {
           tenantId: created.id,
@@ -192,7 +243,9 @@ export async function POST(req: Request) {
           joinedAt: new Date(),
         },
       });
-      await tx.membershipRole.create({ data: { tenantId: created.id, membershipId: membership.id, roleId: adminRole.id } });
+      await tx.membershipRole.create({
+        data: { tenantId: created.id, membershipId: membership.id, roleId: adminRole.id },
+      });
       await tx.employeeProfile.create({
         data: {
           tenantId: created.id,
@@ -223,13 +276,33 @@ export async function POST(req: Request) {
           requestId,
           ipAddress: ctx.ip,
           userAgent: ctx.userAgent,
-          metadata: { slug: created.slug, planCode: plan.code, modules: body.enabledModules, primaryAdmin: adminEmail },
+          metadata: {
+            slug: created.slug,
+            planCode: plan.code,
+            modules: body.enabledModules,
+            primaryAdmin: adminEmail,
+            reusedExistingIdentity,
+          },
         },
       });
-      return created;
+      return { created, reusedExistingIdentity };
     });
 
-    return NextResponse.json({ workspace }, { status: 201, headers: { 'x-request-id': requestId } });
+    return NextResponse.json(
+      {
+        workspace: workspace.created,
+        // The caller told us a password; say plainly whether it was used, so the
+        // owner does not communicate one that will not work.
+        primaryAdmin: {
+          email: adminEmail,
+          credential: workspace.reusedExistingIdentity ? 'EXISTING' : 'CREATED',
+          note: workspace.reusedExistingIdentity
+            ? 'That email already had an account on this platform. It keeps its existing password — the one supplied here was not applied.'
+            : 'The supplied password is now active for this administrator.',
+        },
+      },
+      { status: 201, headers: { 'x-request-id': requestId } },
+    );
   } catch (error) {
     return problem(error, requestId);
   }
@@ -237,10 +310,16 @@ export async function POST(req: Request) {
 
 function problem(error: unknown, requestId: string) {
   if (error instanceof AppError) {
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+    return NextResponse.json(error.toProblem(requestId), {
+      status: error.status,
+      headers: { 'x-request-id': requestId },
+    });
   }
   if (error instanceof z.ZodError) {
-    return NextResponse.json({ status: 422, title: 'Validation failed', requestId, errors: error.flatten() }, { status: 422 });
+    return NextResponse.json(
+      { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
+      { status: 422 },
+    );
   }
   // An unexpected failure here was previously answered with a bare 500 and never
   // written anywhere, so provisioning failures were undiagnosable from the logs.

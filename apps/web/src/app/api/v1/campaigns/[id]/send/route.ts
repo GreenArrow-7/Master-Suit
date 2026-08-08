@@ -8,40 +8,52 @@ import { connectionCredentials } from '@/lib/integrations/connection';
 
 const params = z.object({ id: z.string().cuid() });
 
-const body = z.object({
-  /** An approved Meta message template. Business-initiated WhatsApp cannot send free text. */
-  template: z.string().min(1).max(120),
-  language: z.string().min(2).max(10).default('en'),
-  /** Send again to leads this campaign has already messaged on WhatsApp. */
-  resend: z.boolean().default(false),
-}).strict();
+const body = z
+  .object({
+    /** An approved Meta message template. Business-initiated WhatsApp cannot send free text. */
+    template: z.string().min(1).max(120),
+    language: z.string().min(2).max(10).default('en'),
+    /** Send again to leads this campaign has already messaged on WhatsApp. */
+    resend: z.boolean().default(false),
+  })
+  .strict();
 
 /** ponytail: sequential send, capped per request. Move to the BullMQ queue in
  *  src/lib/queue.ts once a campaign audience outgrows a single request. */
 const BATCH_LIMIT = 100;
 
 export const POST = route(
-  { module: 'campaigns', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
+  { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const campaign = await prisma.campaign.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
     if (!campaign) throw NotFound('Campaign');
     if (campaign.status === 'CANCELLED' || campaign.status === 'COMPLETED') {
-      throw Invalid([{ field: 'status', code: 'not_sendable', message: `A ${campaign.status.toLowerCase()} campaign cannot send.` }]);
+      throw Invalid([
+        { field: 'status', code: 'not_sendable', message: `A ${campaign.status.toLowerCase()} campaign cannot send.` },
+      ]);
     }
 
     const credentials = await connectionCredentials(ctx.tenantId, 'meta');
     if (!credentials?.accessToken || !credentials?.phoneNumberId) {
-      throw Invalid([{ field: 'integration', code: 'not_connected', message: 'Connect WhatsApp Business before sending a campaign.' }]);
+      throw Invalid([
+        {
+          field: 'integration',
+          code: 'not_connected',
+          message: 'Connect WhatsApp Business before sending a campaign.',
+        },
+      ]);
     }
 
     // Promotional contact is consent-gated: an UNKNOWN or WITHDRAWN lead, or one
     // flagged do-not-call, is never messaged regardless of campaign membership.
-    const alreadySent = body.resend ? [] : await prisma.communication.findMany({
-      where: { tenantId: ctx.tenantId, campaignId: campaign.id, channel: 'WHATSAPP', status: { not: 'FAILED' } },
-      select: { leadId: true },
-    });
+    const alreadySent = body.resend
+      ? []
+      : await prisma.communication.findMany({
+          where: { tenantId: ctx.tenantId, campaignId: campaign.id, channel: 'WHATSAPP', status: { not: 'FAILED' } },
+          select: { leadId: true },
+        });
 
     const leads = await prisma.lead.findMany({
       where: {
@@ -68,19 +80,23 @@ export const POST = route(
         template: {
           name: body.template,
           language: body.language,
-          components: [{
-            type: 'body',
-            parameters: [
-              { type: 'text', text: lead.fullName },
-              { type: 'text', text: campaign.name },
-            ],
-          }],
+          components: [
+            {
+              type: 'body',
+              parameters: [
+                { type: 'text', text: lead.fullName },
+                { type: 'text', text: campaign.name },
+              ],
+            },
+          ],
         },
       });
 
       const ok = result.status !== 'failed';
-      ok ? (sent += 1) : (failed += 1);
-      if (!ok) logger.warn({ campaignId: campaign.id, leadId: lead.id, code: result.errorCode }, 'campaign send failed');
+      if (ok) sent += 1;
+      else failed += 1;
+      if (!ok)
+        logger.warn({ campaignId: campaign.id, leadId: lead.id, code: result.errorCode }, 'campaign send failed');
 
       await prisma.communication.create({
         data: {
@@ -112,8 +128,12 @@ export const POST = route(
 
     const remaining = await prisma.lead.count({
       where: {
-        tenantId: ctx.tenantId, campaignId: campaign.id, deletedAt: null,
-        doNotCall: false, consentStatus: { in: ['GRANTED', 'IMPLIED'] }, phone: { not: null },
+        tenantId: ctx.tenantId,
+        campaignId: campaign.id,
+        deletedAt: null,
+        doNotCall: false,
+        consentStatus: { in: ['GRANTED', 'IMPLIED'] },
+        phone: { not: null },
         communications: { none: { campaignId: campaign.id, channel: 'WHATSAPP', status: { not: 'FAILED' } } },
       },
     });

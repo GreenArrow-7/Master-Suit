@@ -1,9 +1,6 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -23,7 +20,7 @@ const CHANNELS = [
 
 export default async function CommunicationsPage({ searchParams }: { searchParams: Promise<{ channel?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['communications', 'VIEW'] });
 
   if (!can(ctx, 'communications', 'VIEW')) {
     return <EmptyState title="Access denied" description="You do not have permission to view communications." />;
@@ -35,8 +32,13 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
-      id: true, channel: true, direction: true, toAddress: true,
-      subject: true, status: true, createdAt: true,
+      id: true,
+      channel: true,
+      direction: true,
+      toAddress: true,
+      subject: true,
+      status: true,
+      createdAt: true,
     },
   });
 
@@ -44,14 +46,26 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
 
   return (
     <>
-      <ListHeader title="Communications" count={rows.length} capped={rows.length === 50} 
-        actions={can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="COMMUNICATION" current={columns.map((c) => c.key)} />}
+      <ListHeader
+        title="Communications"
+        count={rows.length}
+        capped={rows.length === 50}
+        actions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+            <ColumnEditor object="COMMUNICATION" current={columns.map((c) => c.key)} />
+          )
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }}>
         {CHANNELS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/communications?channel=${key}` : '/communications'}
-             aria-selected={(params.channel ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/communications?channel=${key}` : '/communications'}
+            aria-selected={(params.channel ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}

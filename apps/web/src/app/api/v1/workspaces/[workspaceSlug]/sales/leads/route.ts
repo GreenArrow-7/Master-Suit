@@ -10,7 +10,12 @@ export const GET = route(
   { module: 'leads', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
     await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
-    return prisma.lead.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null }, include: { stage: true, owner: true }, orderBy: { createdAt: 'desc' }, take: 100 });
+    return prisma.lead.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null },
+      include: { stage: true, owner: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   },
 );
 
@@ -23,13 +28,24 @@ const bodySchema = z.object({
 });
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'CREATE', params: paramsSchema, body: bodySchema, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'leads',
+    productModule: 'SALES',
+    action: 'CREATE',
+    params: paramsSchema,
+    body: bodySchema,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
-    const stage = await prisma.leadStage.findFirst({ where: { tenantId: ctx.tenantId, deletedAt: null, isDefault: true } });
+    const stage = await prisma.leadStage.findFirst({
+      where: { tenantId: ctx.tenantId, deletedAt: null, isDefault: true },
+    });
     if (!stage) throw NotFound('Default lead stage');
     if (body.ownerId) {
-      const owner = await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id: body.ownerId, deletedAt: null, status: 'ACTIVE' } });
+      const owner = await prisma.user.findFirst({
+        where: { tenantId: ctx.tenantId, id: body.ownerId, deletedAt: null, status: 'ACTIVE' },
+      });
       if (!owner) throw NotFound('Lead owner');
     }
     const count = await prisma.lead.count({ where: { tenantId: ctx.tenantId } });

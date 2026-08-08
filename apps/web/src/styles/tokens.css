@@ -24,46 +24,46 @@
   /* ── Burgundy ramp ───────────────────────────────────────────────────────
      900 is chrome. 700 is the brand. 500 is interaction. The tints carry
      selection and fills without ever approaching alert saturation. */
-  --lf-wine-900: #2E0B16;   /* app rail, deepest chrome */
-  --lf-wine-800: #3A0F1C;
-  --lf-wine-700: #6B1D33;   /* THE burgundy — primary actions, brand */
-  --lf-wine-600: #7C2440;
-  --lf-wine-500: #8E2B47;   /* hover, active */
-  --lf-wine-300: #C08A9C;
-  --lf-wine-200: #E4CED6;
-  --lf-wine-100: #F1E3E8;
-  --lf-wine-050: #FBF5F7;
+  --lf-wine-900: #2e0b16; /* app rail, deepest chrome */
+  --lf-wine-800: #3a0f1c;
+  --lf-wine-700: #6b1d33; /* THE burgundy — primary actions, brand */
+  --lf-wine-600: #7c2440;
+  --lf-wine-500: #8e2b47; /* hover, active */
+  --lf-wine-300: #c08a9c;
+  --lf-wine-200: #e4ced6;
+  --lf-wine-100: #f1e3e8;
+  --lf-wine-050: #fbf5f7;
 
   /* ── Pearl neutrals — cool, faint red undertone, never cream ───────────── */
-  --lf-canvas:    #F3F0F1;
-  --lf-surface:   #FFFFFF;
-  --lf-surface-2: #FAF8F9;
-  --lf-line:      #E4DDE0;
-  --lf-line-2:    #CFC4C9;
+  --lf-canvas: #f3f0f1;
+  --lf-surface: #ffffff;
+  --lf-surface-2: #faf8f9;
+  --lf-line: #e4dde0;
+  --lf-line-2: #cfc4c9;
 
   /* ── Warm-shifted ink ──────────────────────────────────────────────────── */
-  --lf-ink:   #1C1418;
-  --lf-ink-2: #5F545A;
-  --lf-ink-3: #8E8288;
-  --lf-ink-4: #B3A8AE;
+  --lf-ink: #1c1418;
+  --lf-ink-2: #5f545a;
+  --lf-ink-3: #8e8288;
+  --lf-ink-4: #b3a8ae;
 
   /* ── Semantics. Deliberately not primary/success/warning. ──────────────── */
-  --lf-brass:        #A87A22;   /* at risk, pending, awaiting */
-  --lf-brass-sub:    #F7F0DF;
-  --lf-viridian:     #12655A;   /* won, converted, verified, SLA met */
-  --lf-viridian-sub: #E0EEEB;
-  --lf-vermillion:   #C8412C;   /* breached, lost, rejected, destructive */
-  --lf-vermillion-sub:#FBE9E6;
-  --lf-slate:        #5F545A;   /* open, no state */
-  --lf-slate-sub:    #F0ECEE;
+  --lf-brass: #a87a22; /* at risk, pending, awaiting */
+  --lf-brass-sub: #f7f0df;
+  --lf-viridian: #12655a; /* won, converted, verified, SLA met */
+  --lf-viridian-sub: #e0eeeb;
+  --lf-vermillion: #c8412c; /* breached, lost, rejected, destructive */
+  --lf-vermillion-sub: #fbe9e6;
+  --lf-slate: #5f545a; /* open, no state */
+  --lf-slate-sub: #f0ecee;
 
   /* ── Chart ramp. Four hues that stay legible side by side and print. ───── */
-  --lf-chart-1: #6B1D33;
-  --lf-chart-2: #A87A22;
-  --lf-chart-3: #12655A;
-  --lf-chart-4: #5F545A;
-  --lf-chart-5: #C08A9C;
-  --lf-chart-6: #8E2B47;
+  --lf-chart-1: #6b1d33;
+  --lf-chart-2: #a87a22;
+  --lf-chart-3: #12655a;
+  --lf-chart-4: #5f545a;
+  --lf-chart-5: #c08a9c;
+  --lf-chart-6: #8e2b47;
 
   /* ── Type ───────────────────────────────────────────────────────────────
      Instrument Serif appears in exactly two places: the wordmark and the hero
@@ -73,33 +73,38 @@
   /* Operational screens use one deliberately quiet sans family. The previous
      serif metrics made the workspace feel like a marketing dashboard. */
   --lf-font-display: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-ui:      'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-body:    'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+  --lf-font-ui: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-body: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  --lf-text-2xs:  0.625rem;   /* 10px — eyebrow labels */
-  --lf-text-xs:   0.6875rem;  /* 11px — grid meta, badges */
-  --lf-text-sm:   0.8125rem;  /* 13px — grid body, the workhorse */
-  --lf-text-base: 0.9375rem;  /* 15px — forms, detail panes */
-  --lf-text-lg:   1.0625rem;
-  --lf-text-xl:   1.375rem;
-  --lf-text-2xl:  1.875rem;
-  --lf-text-hero: 2.75rem;    /* serif metrics only */
+  --lf-text-2xs: 0.625rem; /* 10px — eyebrow labels */
+  --lf-text-xs: 0.6875rem; /* 11px — grid meta, badges */
+  --lf-text-sm: 0.8125rem; /* 13px — grid body, the workhorse */
+  --lf-text-base: 0.9375rem; /* 15px — forms, detail panes */
+  --lf-text-lg: 1.0625rem;
+  --lf-text-xl: 1.375rem;
+  --lf-text-2xl: 1.875rem;
+  --lf-text-hero: 2.75rem; /* serif metrics only */
 
   --lf-track-tight: -0.02em;
-  --lf-track-wide:   0.09em;
+  --lf-track-wide: 0.09em;
 
   /* ── Density ────────────────────────────────────────────────────────────── */
   --lf-row-comfortable: 44px;
-  --lf-row-compact:     32px;
+  --lf-row-compact: 32px;
   --lf-row: var(--lf-row-comfortable);
 
-  --lf-space-1: 4px;  --lf-space-2: 8px;  --lf-space-3: 12px;
-  --lf-space-4: 16px; --lf-space-5: 20px; --lf-space-6: 24px;
-  --lf-space-8: 32px; --lf-space-10: 40px;
+  --lf-space-1: 4px;
+  --lf-space-2: 8px;
+  --lf-space-3: 12px;
+  --lf-space-4: 16px;
+  --lf-space-5: 20px;
+  --lf-space-6: 24px;
+  --lf-space-8: 32px;
+  --lf-space-10: 40px;
 
   --lf-radius-sm: 4px;
-  --lf-radius:    7px;
+  --lf-radius: 7px;
   --lf-radius-lg: 10px;
 
   /* Commercial design-token aliases shared by Sales, People and Platform. */
@@ -115,19 +120,19 @@
   --success: var(--lf-viridian);
   --warning: var(--lf-brass);
   --danger: var(--lf-vermillion);
-  --information: #315C7D;
+  --information: #315c7d;
 
   /* Shadows are wine-tinted, not neutral grey. On a pearl canvas a grey shadow
      reads dirty; a wine-tinted one reads as depth. */
   --lf-shadow-1: 0 1px 2px rgb(46 11 22 / 0.07);
-  --lf-shadow-2: 0 4px 14px rgb(46 11 22 / 0.10), 0 1px 3px rgb(46 11 22 / 0.06);
+  --lf-shadow-2: 0 4px 14px rgb(46 11 22 / 0.1), 0 1px 3px rgb(46 11 22 / 0.06);
   --lf-shadow-3: 0 18px 44px rgb(46 11 22 / 0.16);
 
   --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--lf-wine-500);
 
   /* Brass hairline. The one metallic accent, used only to mark the active
      navigation item and the active stage segment. Restraint is the point. */
-  --lf-brass-edge: linear-gradient(180deg, #D9B25E 0%, #A87A22 50%, #7C5714 100%);
+  --lf-brass-edge: linear-gradient(180deg, #d9b25e 0%, #a87a22 50%, #7c5714 100%);
 }
 
 [data-density='compact'] {
@@ -137,31 +142,31 @@
 
 /* ── Dark: the rail colour swallows the whole canvas ─────────────────────── */
 [data-theme='dark'] {
-  --lf-canvas:    #1A0A11;
-  --lf-surface:   #24101A;
-  --lf-surface-2: #2E1622;
-  --lf-line:      #3D2130;
-  --lf-line-2:    #573145;
+  --lf-canvas: #1a0a11;
+  --lf-surface: #24101a;
+  --lf-surface-2: #2e1622;
+  --lf-line: #3d2130;
+  --lf-line-2: #573145;
 
-  --lf-ink:   #F3E9EC;
-  --lf-ink-2: #C4AFB8;
-  --lf-ink-3: #9A838E;
-  --lf-ink-4: #74606B;
+  --lf-ink: #f3e9ec;
+  --lf-ink-2: #c4afb8;
+  --lf-ink-3: #9a838e;
+  --lf-ink-4: #74606b;
 
-  --lf-wine-700: #C4718C;
-  --lf-wine-600: #B7647F;
-  --lf-wine-500: #D08AA1;
-  --lf-wine-100: #3A1826;
-  --lf-wine-050: #2C1220;
+  --lf-wine-700: #c4718c;
+  --lf-wine-600: #b7647f;
+  --lf-wine-500: #d08aa1;
+  --lf-wine-100: #3a1826;
+  --lf-wine-050: #2c1220;
 
-  --lf-brass:        #D9B25E;
-  --lf-brass-sub:    #35280F;
-  --lf-viridian:     #4FB3A2;
-  --lf-viridian-sub: #0F2E29;
-  --lf-vermillion:   #EE8478;
-  --lf-vermillion-sub:#3A1714;
-  --lf-slate:        #A2919A;
-  --lf-slate-sub:    #2C1F26;
+  --lf-brass: #d9b25e;
+  --lf-brass-sub: #35280f;
+  --lf-viridian: #4fb3a2;
+  --lf-viridian-sub: #0f2e29;
+  --lf-vermillion: #ee8478;
+  --lf-vermillion-sub: #3a1714;
+  --lf-slate: #a2919a;
+  --lf-slate-sub: #2c1f26;
 
   --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
@@ -170,14 +175,18 @@
 
 /* Every figure in the product is tabular so columns align without extra CSS. */
 .lf-num,
-td[data-type='number'], td[data-type='currency'], td[data-type='date'] {
+td[data-type='number'],
+td[data-type='currency'],
+td[data-type='date'] {
   font-family: var(--lf-font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'zero' 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }

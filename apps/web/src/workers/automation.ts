@@ -8,7 +8,12 @@ export function startAutomationWorker() {
     'automation',
     async (job) => {
       if (job.name === 'trigger') {
-        const { tenantId, event, object, recordId } = job.data as { tenantId: string; event: string; object: string; recordId: string };
+        const { tenantId, event, object, recordId } = job.data as {
+          tenantId: string;
+          event: string;
+          object: string;
+          recordId: string;
+        };
         return enrollMatchingAutomations(tenantId, event, object, recordId);
       }
       if (job.name === 'run-node') {

@@ -12,7 +12,10 @@ export const pageQuery = z.object({
 
 export type PageQuery = z.infer<typeof pageQuery>;
 
-export interface Cursor { updatedAt: string; id: string }
+export interface Cursor {
+  updatedAt: string;
+  id: string;
+}
 
 export const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString('base64url');
 

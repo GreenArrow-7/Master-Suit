@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
@@ -16,7 +14,7 @@ export const metadata = { title: 'Contacts' };
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['contacts', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'contacts', 'VIEW', { includeUnassigned: true });
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
@@ -29,7 +27,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     take: 50,
     select: {
-      id: true, reference: true, fullName: true, jobTitle: true, email: true, phone: true, updatedAt: true,
+      id: true,
+      reference: true,
+      fullName: true,
+      jobTitle: true,
+      email: true,
+      phone: true,
+      updatedAt: true,
       account: { select: { id: true, name: true } },
       owner: { select: { fullName: true } },
     },
@@ -41,13 +45,26 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Contacts"
-        description={<>{rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your scope</>}
-        actions={<>
-          {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="CONTACT" current={columns.map((c) => c.key)} />}
-{can(ctx, 'contacts', 'CREATE') && <SalesLink className="lf-btn lf-btn--sm" href="/contacts/new">Add contact</SalesLink>}
-        </>}
+        description={
+          <>
+            {rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
+            scope
+          </>
+        }
+        actions={
+          <>
+            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+              <ColumnEditor object="CONTACT" current={columns.map((c) => c.key)} />
+            )}
+            {can(ctx, 'contacts', 'CREATE') && (
+              <SalesLink className="lf-btn lf-btn--sm" href="/contacts/new">
+                Add contact
+              </SalesLink>
+            )}
+          </>
+        }
       />
 
       {data.length === 0 ? (

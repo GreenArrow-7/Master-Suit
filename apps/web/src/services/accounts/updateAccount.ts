@@ -1,4 +1,4 @@
-import { withTenantTx } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
@@ -20,10 +20,10 @@ export interface UpdateAccountInput {
 }
 
 export async function updateAccount(ctx: Ctx, id: string, input: UpdateAccountInput) {
-  const updated = await withTenantTx(ctx.tenantId, async (tx) => {
+  const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.account.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Account');
-    await assertRecordVisible(ctx, 'accounts', before, 'EDIT');
+    await assertRecordVisible(ctx, 'accounts', before, tx, 'EDIT');
 
     const after = await tx.account.update({
       where: { tenantId: ctx.tenantId, id },
@@ -51,11 +51,14 @@ export async function updateAccount(ctx: Ctx, id: string, input: UpdateAccountIn
 }
 
 export async function deleteAccount(ctx: Ctx, id: string) {
-  await withTenantTx(ctx.tenantId, async (tx) => {
+  await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.account.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Account');
-    await assertRecordVisible(ctx, 'accounts', before, 'DELETE');
-    await tx.account.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date(), updatedById: ctx.actor.id } });
+    await assertRecordVisible(ctx, 'accounts', before, tx, 'DELETE');
+    await tx.account.update({
+      where: { tenantId: ctx.tenantId, id },
+      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+    });
     await auditDiff(ctx, 'account', id, before, { ...before, deletedAt: new Date() }, tx);
   });
 }

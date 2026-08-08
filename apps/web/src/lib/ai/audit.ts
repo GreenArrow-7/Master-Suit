@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
 export interface AuditInput {
@@ -42,7 +43,9 @@ function buildAuditPrompt(input: AuditInput): string {
   ];
 
   for (const c of input.criteria) {
-    parts.push(`- ${c.label} (weight: ${c.weight}${c.isRequired ? ', REQUIRED' : ''})${c.description ? `: ${c.description}` : ''}`);
+    parts.push(
+      `- ${c.label} (weight: ${c.weight}${c.isRequired ? ', REQUIRED' : ''})${c.description ? `: ${c.description}` : ''}`,
+    );
   }
 
   parts.push(
@@ -50,7 +53,7 @@ function buildAuditPrompt(input: AuditInput): string {
     '--- ANALYSIS CONTEXT ---',
     JSON.stringify(input.analysisJson, null, 2).slice(0, 8000),
     '--- TRANSCRIPT ---',
-    input.transcript.slice(0, 30000),
+    redact(input.transcript.slice(0, 30000)).text,
     '--- END ---',
   );
 
@@ -90,31 +93,34 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const data = await withRetry('gemini-audit', async () => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildAuditPrompt(input) }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: AUDIT_SCHEMA,
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-        },
-      }),
-    });
+  const data = await withRetry(
+    'gemini-audit',
+    async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildAuditPrompt(input) }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: AUDIT_SCHEMA,
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+          },
+        }),
+      });
 
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      logger.error({ status: res.status, model }, 'Gemini audit API error');
-      const e: any = new Error(`Gemini API error: ${res.status}`);
-      e.status = res.status;
-      throw e;
-    }
+      if (!res.ok) {
+        logger.error({ status: res.status, model }, 'Gemini audit API error');
+        const e: any = new Error(`Gemini API error: ${res.status}`);
+        e.status = res.status;
+        throw e;
+      }
 
-    return res.json();
-  }, { maxAttempts: 3, retryOn: isTransient });
+      return res.json();
+    },
+    { maxAttempts: 3, retryOn: isTransient },
+  );
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty response from Gemini');
 

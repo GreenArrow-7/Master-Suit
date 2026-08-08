@@ -8,22 +8,24 @@ import { connectionCredentials } from '@/lib/integrations/connection';
 
 const params = z.object({ id: z.string().cuid() });
 
-const body = z.object({
-  /** An approved Meta message template. Business-initiated WhatsApp cannot send free text. */
-  template: z.string().min(1).max(120),
-  language: z.string().min(2).max(10).default('en'),
-  /** Omit to circulate to every not-yet-notified WhatsApp invitee. */
-  inviteeIds: z.array(z.string().cuid()).max(100).optional(),
-  /** Re-send to invitees already notified once. */
-  resend: z.boolean().default(false),
-}).strict();
+const body = z
+  .object({
+    /** An approved Meta message template. Business-initiated WhatsApp cannot send free text. */
+    template: z.string().min(1).max(120),
+    language: z.string().min(2).max(10).default('en'),
+    /** Omit to circulate to every not-yet-notified WhatsApp invitee. */
+    inviteeIds: z.array(z.string().cuid()).max(100).optional(),
+    /** Re-send to invitees already notified once. */
+    resend: z.boolean().default(false),
+  })
+  .strict();
 
 /** ponytail: sequential send, capped per request. Move to the BullMQ queue in
  *  src/lib/queue.ts if a single event ever needs to notify more than a few hundred. */
 const BATCH_LIMIT = 100;
 
 export const POST = route(
-  { module: 'events', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
+  { module: 'events', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -32,7 +34,13 @@ export const POST = route(
 
     const credentials = await connectionCredentials(ctx.tenantId, 'meta');
     if (!credentials?.accessToken || !credentials?.phoneNumberId) {
-      throw Invalid([{ field: 'integration', code: 'not_connected', message: 'Connect WhatsApp Business before circulating an event.' }]);
+      throw Invalid([
+        {
+          field: 'integration',
+          code: 'not_connected',
+          message: 'Connect WhatsApp Business before circulating an event.',
+        },
+      ]);
     }
 
     const invitees = await prisma.eventInvitee.findMany({
@@ -50,7 +58,9 @@ export const POST = route(
 
     const provider = getWhatsAppProvider('meta', credentials);
     const when = event.startAt.toLocaleString('en-GB', {
-      dateStyle: 'full', timeStyle: 'short', timeZone: event.timezone,
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: event.timezone,
     });
     const where = event.meetingUrl ?? event.location ?? event.address ?? 'Details to follow';
 
@@ -63,15 +73,17 @@ export const POST = route(
         template: {
           name: body.template,
           language: body.language,
-          components: [{
-            type: 'body',
-            parameters: [
-              { type: 'text', text: invitee.name ?? 'there' },
-              { type: 'text', text: event.title },
-              { type: 'text', text: when },
-              { type: 'text', text: where },
-            ],
-          }],
+          components: [
+            {
+              type: 'body',
+              parameters: [
+                { type: 'text', text: invitee.name ?? 'there' },
+                { type: 'text', text: event.title },
+                { type: 'text', text: when },
+                { type: 'text', text: where },
+              ],
+            },
+          ],
         },
       });
 
@@ -93,8 +105,11 @@ export const POST = route(
 
     const remaining = await prisma.eventInvitee.count({
       where: {
-        tenantId: ctx.tenantId, eventId: event.id,
-        inviteChannel: 'WHATSAPP', phone: { not: null }, inviteSentAt: null,
+        tenantId: ctx.tenantId,
+        eventId: event.id,
+        inviteChannel: 'WHATSAPP',
+        phone: { not: null },
+        inviteSentAt: null,
       },
     });
 

@@ -6,12 +6,21 @@ import { auditCall } from '@/lib/ai/audit';
 
 const params = z.object({ id: z.string().cuid() });
 
-const auditBody = z.object({
-  scorecardId: z.string().cuid(),
-}).strict();
+const auditBody = z
+  .object({
+    scorecardId: z.string().cuid(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'calls', action: 'EDIT', params, body: auditBody, auditEvent: 'CALL_AUDIT_COMPLETED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: auditBody,
+    auditEvent: 'CALL_AUDIT_COMPLETED',
+  },
   async ({ ctx, params, body }) => {
     const [call, transcript, analysis, scorecard] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
@@ -82,7 +91,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
     const data = await prisma.callAudit.findMany({
       where: { callId: params.id, tenantId: ctx.tenantId },
@@ -92,12 +101,14 @@ export const GET = route(
   },
 );
 
-const reviewBody = z.object({
-  auditId: z.string().cuid(),
-}).strict();
+const reviewBody = z
+  .object({
+    auditId: z.string().cuid(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'calls', action: 'EDIT', params, body: reviewBody, auditEvent: 'RECORD_UPDATED' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: reviewBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const audit = await prisma.callAudit.findFirst({
       where: { id: body.auditId, callId: params.id, tenantId: ctx.tenantId },

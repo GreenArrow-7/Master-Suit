@@ -5,14 +5,16 @@ import { NotFound } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const body = z.object({
-  inviteeId: z.string().cuid(),
-  rsvpStatus: z.enum(['CONFIRMED', 'DECLINED', 'TENTATIVE']),
-  channel: z.enum(['EMAIL', 'WHATSAPP', 'SMS', 'IN_APP']).optional(),
-}).strict();
+const body = z
+  .object({
+    inviteeId: z.string().cuid(),
+    rsvpStatus: z.enum(['CONFIRMED', 'DECLINED', 'TENTATIVE']),
+    channel: z.enum(['EMAIL', 'WHATSAPP', 'SMS', 'IN_APP']).optional(),
+  })
+  .strict();
 
 export const POST = route(
-  { module: 'events', action: 'EDIT', params, body },
+  { module: 'events', productModule: 'SALES', action: 'EDIT', params, body },
   async ({ ctx, params, body: { inviteeId, rsvpStatus, channel } }) => {
     const invitee = await prisma.eventInvitee.findFirst({
       where: { id: inviteeId, eventId: params.id, tenantId: ctx.tenantId },

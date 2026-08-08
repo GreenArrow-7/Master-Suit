@@ -1,4 +1,4 @@
-import { withTenantTx } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
@@ -31,24 +31,34 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     delete input.ownerId;
   }
 
-  const updated = await withTenantTx(ctx.tenantId, async (tx) => {
+  const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', before, 'EDIT');
+    await assertRecordVisible(ctx, 'leads', before, tx, 'EDIT');
 
     if (input.stageId && input.stageId !== before.stageId) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
       if (!stage) throw NotFound('Lead stage');
       await tx.leadStageHistory.create({
-        data: { tenantId: ctx.tenantId, leadId: id, fromStageId: before.stageId, toStageId: stage.id, changedById: ctx.actor.id },
+        data: {
+          tenantId: ctx.tenantId,
+          leadId: id,
+          fromStageId: before.stageId,
+          toStageId: stage.id,
+          changedById: ctx.actor.id,
+        },
       });
     }
 
     if (input.ownerId !== undefined && input.ownerId !== before.ownerId) {
       await tx.leadAssignmentHistory.create({
         data: {
-          tenantId: ctx.tenantId, leadId: id, fromOwnerId: before.ownerId, toOwnerId: input.ownerId,
-          assignedById: ctx.actor.id, reason: 'REASSIGNED',
+          tenantId: ctx.tenantId,
+          leadId: id,
+          fromOwnerId: before.ownerId,
+          toOwnerId: input.ownerId,
+          assignedById: ctx.actor.id,
+          reason: 'REASSIGNED',
         },
       });
     }
@@ -76,18 +86,26 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     return after;
   });
 
-  await enqueue('automation', 'trigger', { tenantId: ctx.tenantId, event: 'record.updated', object: 'LEAD', recordId: id });
+  await enqueue('automation', 'trigger', {
+    tenantId: ctx.tenantId,
+    event: 'record.updated',
+    object: 'LEAD',
+    recordId: id,
+  });
   emit(ctx, 'lead.updated', { leadId: id });
   return updated;
 }
 
 /** Soft delete: sets deletedAt rather than removing the row — every list query filters it out. */
 export async function deleteLead(ctx: Ctx, id: string) {
-  await withTenantTx(ctx.tenantId, async (tx) => {
+  await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Lead');
-    await assertRecordVisible(ctx, 'leads', before, 'DELETE');
-    await tx.lead.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date(), updatedById: ctx.actor.id } });
+    await assertRecordVisible(ctx, 'leads', before, tx, 'DELETE');
+    await tx.lead.update({
+      where: { tenantId: ctx.tenantId, id },
+      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+    });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
 }

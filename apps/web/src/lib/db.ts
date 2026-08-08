@@ -24,11 +24,20 @@ globalForPrisma.__inTenantTx = inTenantTx;
  * Adding a model here is a security decision and needs review.
  */
 const GLOBAL_MODELS = new Set([
-  'Tenant', 'Permission', 'SubscriptionPlan', 'WebhookEvent',
+  'Tenant',
+  'Permission',
+  'SubscriptionPlan',
+  'WebhookEvent',
   // Identity/control-plane records cross workspace boundaries by design. Access
   // to them must go through resolvePlatformCtx/requirePlatformOwner.
-  'PlatformUser', 'WorkspaceMembership', 'PlatformSession', 'PlatformAuditEvent',
-  'AuthenticationFactor', 'PlanModule', 'PlanLimit', 'SubscriptionModule',
+  'PlatformUser',
+  'WorkspaceMembership',
+  'PlatformSession',
+  'PlatformAuditEvent',
+  'AuthenticationFactor',
+  'PlanModule',
+  'PlanLimit',
+  'SubscriptionModule',
 ]);
 
 /**
@@ -41,6 +50,14 @@ const GLOBAL_MODELS = new Set([
 const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
   Session: ['tokenHash'],
   PlatformSession: ['tokenHash', 'id'],
+  // The reset link is the only thing the caller holds; the tenant is resolved
+  // *from* it. Without this the guard threw on every reset attempt and the
+  // endpoint answered 500 unconditionally — the migration's RLS bootstrap list
+  // already exempts this table for the same reason.
+  PasswordResetToken: ['tokenHash'],
+  // Redeemed by someone not signed in, before any tenant is known. See
+  // prisma/migrations/20260807020000_invitation_bootstrap_lookup.
+  WorkspaceInvitation: ['tokenHash'],
   APIKey: ['prefix', 'keyHash'],
   IntegrationConnection: ['webhookKey'],
   RecordingConsent: ['callId'],
@@ -52,16 +69,53 @@ const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
 
 /** Models carrying deletedAt — reads exclude soft-deleted rows unless asked. */
 const SOFT_DELETE_MODELS = new Set([
-  'User', 'Region', 'Branch', 'Territory', 'Department', 'Team', 'Lead', 'LeadStage',
-  'LeadCustomFieldDefinition', 'Account', 'Contact', 'Opportunity', 'Product',
-  'Activity', 'Task', 'Campaign', 'MarketingList', 'EmailCampaign', 'MessageTemplate',
-  'Form', 'LandingPage', 'FieldVisit', 'Ticket', 'Document', 'SmartView', 'Dashboard',
-  'Report', 'Automation', 'DistributionRule', 'Call', 'FollowUpTask', 'Event',
-  'PlatformUser', 'EmployeeProfile',
+  'User',
+  'Region',
+  'Branch',
+  'Territory',
+  'Department',
+  'Team',
+  'Lead',
+  'LeadStage',
+  'LeadCustomFieldDefinition',
+  'Account',
+  'Contact',
+  'Opportunity',
+  'Product',
+  'Activity',
+  'Task',
+  'Campaign',
+  'MarketingList',
+  'EmailCampaign',
+  'MessageTemplate',
+  'Form',
+  'LandingPage',
+  'FieldVisit',
+  'Ticket',
+  'Document',
+  'SmartView',
+  'Dashboard',
+  'Report',
+  'Automation',
+  'DistributionRule',
+  'Call',
+  'FollowUpTask',
+  'Event',
+  'PlatformUser',
+  'EmployeeProfile',
   'Designation',
 ]);
 
-const READ_OPS = new Set(['findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow', 'count', 'aggregate', 'groupBy']);
+const READ_OPS = new Set([
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'findUnique',
+  'findUniqueOrThrow',
+  'count',
+  'aggregate',
+  'groupBy',
+]);
 const CREATE_OPS = new Set(['create', 'createMany', 'createManyAndReturn']);
 const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMany', 'upsert']);
 
@@ -86,15 +140,56 @@ export class TenantGuardError extends Error {}
  * multi-tenant filters such as `{ tenantId: { in: [...] } }`. Those tables are
  * excluded from RLS in the migration; the guard above still covers them.
  */
-function literalTenantId(operation: string, args: any): string | null {
+function literalTenantId(model: string, operation: string, args: any): string | null {
+  // On Tenant itself the tenant id is the primary key, not a `tenantId` column.
+  //
+  // requireWorkspace loads the workspace by id and pulls moduleEntitlements,
+  // subscription and _count through it. Those tables *are* RLS-protected, so
+  // without this the includes evaluated with no tenant setting and came back
+  // empty — which the UI reads as "no modules entitled" and hides the People
+  // module entirely, while the dashboard shows a blank plan and no subscription.
+  if (model === 'Tenant' && typeof args?.where?.id === 'string') return args.where.id;
+
   if (CREATE_OPS.has(operation)) {
     const rows = operation === 'create' ? [args?.data] : (args?.data ?? []);
     const ids = (rows as any[]).map((row) => row?.tenantId).filter((id) => typeof id === 'string');
     // createMany spanning tenants cannot be pinned to one GUC value.
     return ids.length === rows.length && new Set(ids).size === 1 ? ids[0] : null;
   }
-  const tenantId = args?.where?.tenantId;
-  return typeof tenantId === 'string' ? tenantId : null;
+  const where = args?.where ?? {};
+  if (typeof where.tenantId === 'string') return where.tenantId;
+
+  // Compound unique keys carry the tenant one level down:
+  //   { where: { tenantId_module: { tenantId, module } } }
+  // The guard above already accepts these as scoped; missing them here meant the
+  // query ran with no tenant setting and RLS returned nothing — which surfaced
+  // as "module not entitled" 403s on every request once RLS was enforced.
+  for (const key of Object.keys(where)) {
+    if (!key.startsWith('tenantId_')) continue;
+    const compound = where[key];
+    if (compound && typeof compound.tenantId === 'string') return compound.tenantId;
+  }
+  return null;
+}
+
+/**
+ * Layer 3: hand Postgres the tenant it should enforce.
+ *
+ * A batched `$transaction` is the one form that guarantees both statements land
+ * on the same pooled connection, so `set_config` is still in scope for the
+ * query. Skipped inside withTx/withPlatformTx, which already set it — those own
+ * a connection and a second transaction on top would deadlock against it.
+ */
+async function runPinned(base: PrismaClient, model: string, operation: string, args: any, query: any) {
+  const tenantId = literalTenantId(model, operation, args);
+  if (tenantId && !inTenantTx.getStore()) {
+    const [, result] = await base.$transaction([
+      base.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
+      query(args),
+    ]);
+    return result;
+  }
+  return query(args);
 }
 
 function tenantGuard(base: PrismaClient) {
@@ -103,8 +198,17 @@ function tenantGuard(base: PrismaClient) {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }: any) {
-          if (!model || GLOBAL_MODELS.has(model)) return query(args);
+          if (!model) return query(args);
           if (operation === '$queryRaw' || operation === '$executeRaw') return query(args);
+
+          // A global model still needs the tenant setting when it *names* one.
+          //
+          // WorkspaceMembership is global, but resolveCtx filters it on a related
+          // `salesUser` — and User is RLS-forced. Returning early here meant the
+          // join was evaluated with no tenant context, matched nothing, and every
+          // request 401'd. Only the *guard* is skipped for global models; handing
+          // Postgres the tenant is not optional.
+          if (GLOBAL_MODELS.has(model)) return runPinned(base, model, operation, args, query);
 
           if (READ_OPS.has(operation) || FILTERED_WRITE_OPS.has(operation)) {
             const where = args?.where ?? {};
@@ -116,10 +220,15 @@ function tenantGuard(base: PrismaClient) {
             if (!scoped) {
               throw new TenantGuardError(
                 `${model}.${operation} was issued without a tenantId filter. ` +
-                `Pass ctx.tenantId — see docs/05-SECURITY.md §3.`,
+                  `Pass ctx.tenantId — see docs/05-SECURITY.md §3.`,
               );
             }
-            if (READ_OPS.has(operation) && SOFT_DELETE_MODELS.has(model) && where.deletedAt === undefined && args?.__includeDeleted !== true) {
+            if (
+              READ_OPS.has(operation) &&
+              SOFT_DELETE_MODELS.has(model) &&
+              where.deletedAt === undefined &&
+              args?.__includeDeleted !== true
+            ) {
               args.where = { ...where, deletedAt: null };
             }
           }
@@ -135,19 +244,7 @@ function tenantGuard(base: PrismaClient) {
 
           if (args) delete args.__includeDeleted;
 
-          // Layer 3: hand Postgres the tenant it should enforce. A batched
-          // $transaction is the one form that guarantees both statements land on
-          // the same pooled connection, so set_config is still in scope for the
-          // query. Skipped inside withTenantTx, which already set it.
-          const tenantId = literalTenantId(operation, args);
-          if (tenantId && !inTenantTx.getStore()) {
-            const [, result] = await base.$transaction([
-              base.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
-              query(args),
-            ]);
-            return result;
-          }
-          return query(args);
+          return runPinned(base, model, operation, args, query);
         },
       },
     },
@@ -171,10 +268,12 @@ function build(url: string) {
     if (/\.prisma[\\/]client|did not initialize|@prisma\/client did not/i.test(message)) {
       throw new Error(
         'The Prisma client has not been generated.\n\n' +
-        '  npm approve-scripts --allow-scripts-pending\n' +
-        '  npx prisma generate\n\n' +
-        'npm 12 blocks package install scripts by default, so Prisma\'s postinstall ' +
-        'never ran. See SETUP.md.\n\nOriginal error: ' + message,
+          '  npm approve-scripts --allow-scripts-pending\n' +
+          '  npx prisma generate\n\n' +
+          "npm 12 blocks package install scripts by default, so Prisma's postinstall " +
+          'never ran. See SETUP.md.\n\nOriginal error: ' +
+          message,
+        { cause: err },
       );
     }
     throw err;
@@ -187,32 +286,62 @@ if (env.NODE_ENV !== 'production') globalForPrisma.__prisma = prisma;
 /** Read replica for reports and exports; falls back to primary when unset. */
 export const prismaRead = env.DATABASE_REPLICA_URL ? build(env.DATABASE_REPLICA_URL) : prisma;
 
-/**
- * Interactive transaction. Use this instead of calling prisma.$transaction(fn)
- * directly.
- *
- * An interactive transaction owns one connection and every query inside it must
- * stay there. The per-query wrapper in tenantGuard would otherwise open a second
- * transaction on a *different* connection part-way through, where rows written by
- * the outer one are not yet visible — which surfaces as foreign-key violations
- * against records the caller just created. This flag tells the wrapper to stand
- * down for the duration.
- */
 export type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
-export function withTx<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
-  return inTenantTx.run(true, () => prisma.$transaction(fn as any) as Promise<T>);
+/**
+ * Interactive transaction, pinned to one tenant. Use this instead of calling
+ * prisma.$transaction(fn) directly.
+ *
+ * Two things happen here, and they are inseparable:
+ *
+ *  1. `inTenantTx` tells the per-query wrapper above to stand down. An
+ *     interactive transaction owns one connection and every query inside must
+ *     stay on it; the wrapper would otherwise open a second transaction on a
+ *     *different* pooled connection part-way through, where rows written by the
+ *     outer one are not yet visible — surfacing as foreign-key violations
+ *     against records the caller just created.
+ *
+ *  2. Because of (1), this function must set `app.tenant_id` itself. It
+ *     previously did not, and nothing noticed: the runtime connected as the
+ *     table owner, which bypasses RLS entirely. The moment the application
+ *     connected as a NOBYPASSRLS role, every INSERT and UPDATE inside a
+ *     transaction would have failed its WITH CHECK against an empty setting.
+ *     That is why `tenantId` is a required parameter and not an option.
+ *
+ * `set_config(..., true)` is transaction-local, so the value cannot leak to the
+ * next borrower of this pooled connection.
+ */
+export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): Promise<T> {
+  if (!tenantId) throw new TenantGuardError('withTx requires a tenantId. Use withPlatformTx for cross-tenant work.');
+  return inTenantTx.run(
+    true,
+    () =>
+      prisma.$transaction(async (tx: any) => {
+        await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
+        return fn(tx);
+      }) as Promise<T>,
+  );
 }
 
 /**
- * Runs a transaction with app.tenant_id set, which is what the RLS policies read.
- * Any query inside is protected by Postgres even if the guard above is bypassed.
+ * Interactive transaction for the control plane: provisioning a workspace,
+ * editing a subscription, managing plans.
+ *
+ * These legitimately span tenants — or write rows for a tenant that does not
+ * exist until part-way through — so no single `app.tenant_id` can describe
+ * them. Rather than leaving the setting empty (which reads as "unset" and would
+ * silently mean something different if a policy ever changed), this asserts a
+ * distinct `app.platform_admin` flag that the RLS policies name explicitly.
+ *
+ * Every caller must already be behind `requirePlatformOwner`.
  */
-export async function withTenantTx<T>(tenantId: string, fn: (tx: any) => Promise<T>): Promise<T> {
-  return inTenantTx.run(true, () =>
-    prisma.$transaction(async (tx: any) => {
-      await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
-      return fn(tx);
-    }),
+export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
+  return inTenantTx.run(
+    true,
+    () =>
+      prisma.$transaction(async (tx: any) => {
+        await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
+        return fn(tx);
+      }) as Promise<T>,
   );
 }

@@ -7,20 +7,29 @@ import { renderCell, type GridRow } from './gridCells';
  * the selection and sorting machinery that LeadGrid carries.
  */
 export default function ConfigurableGrid({
-  object, columns, rows, emptyLabel = '—',
+  object,
+  columns,
+  rows,
+  emptyLabel = '—',
 }: {
   object: GridObject;
   columns: ColumnDef[];
   rows: GridRow[];
+  /** Placeholder for an empty *cell*. */
   emptyLabel?: string;
 }) {
+  // No no-rows branch here on purpose: every page that renders this grid already
+  // checks `length === 0` and shows an EmptyState with copy specific to what the
+  // list is. A second, generic one underneath would be unreachable.
   return (
     <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
       <table className="lf-grid">
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column.key} style={{ textAlign: column.align ?? 'left' }}>{column.label}</th>
+              <th key={column.key} style={{ textAlign: column.align ?? 'left' }}>
+                {column.label}
+              </th>
             ))}
           </tr>
         </thead>

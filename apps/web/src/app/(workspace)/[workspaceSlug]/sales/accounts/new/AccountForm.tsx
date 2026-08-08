@@ -35,7 +35,10 @@ export default function AccountForm() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.detail ?? 'Could not create this account.'); return; }
+      if (!res.ok) {
+        setError(data.detail ?? 'Could not create this account.');
+        return;
+      }
       router.push(`${base}/accounts/${data.id}`);
       router.refresh();
     } catch {
@@ -47,41 +50,87 @@ export default function AccountForm() {
 
   return (
     <form onSubmit={submit} style={{ display: 'grid', gap: 'var(--lf-space-4)' }} noValidate>
-      {error && <div className="lf-alert" role="alert">{error}</div>}
+      {error && (
+        <div className="lf-alert" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="name">Account name</label>
-        <input id="name" className="lf-input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        <label className="lf-label" htmlFor="name">
+          Account name
+        </label>
+        <input
+          id="name"
+          className="lf-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+        />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="accountType">Type</label>
-        <input id="accountType" className="lf-input" value={accountType} onChange={(e) => setAccountType(e.target.value)} placeholder="e.g. Enterprise" />
+        <label className="lf-label" htmlFor="accountType">
+          Type
+        </label>
+        <input
+          id="accountType"
+          className="lf-input"
+          value={accountType}
+          onChange={(e) => setAccountType(e.target.value)}
+          placeholder="e.g. Enterprise"
+        />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="industry">Industry</label>
+        <label className="lf-label" htmlFor="industry">
+          Industry
+        </label>
         <input id="industry" className="lf-input" value={industry} onChange={(e) => setIndustry(e.target.value)} />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="website">Website</label>
-        <input id="website" className="lf-input" type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
+        <label className="lf-label" htmlFor="website">
+          Website
+        </label>
+        <input
+          id="website"
+          className="lf-input"
+          type="url"
+          value={website}
+          onChange={(e) => setWebsite(e.target.value)}
+          placeholder="https://"
+        />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="mainPhone">Phone</label>
+        <label className="lf-label" htmlFor="mainPhone">
+          Phone
+        </label>
         <input id="mainPhone" className="lf-input" value={mainPhone} onChange={(e) => setMainPhone(e.target.value)} />
       </div>
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="mainEmail">Email</label>
-        <input id="mainEmail" className="lf-input" type="email" value={mainEmail} onChange={(e) => setMainEmail(e.target.value)} />
+        <label className="lf-label" htmlFor="mainEmail">
+          Email
+        </label>
+        <input
+          id="mainEmail"
+          className="lf-input"
+          type="email"
+          value={mainEmail}
+          onChange={(e) => setMainEmail(e.target.value)}
+        />
       </div>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
-        <button className="lf-btn" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button>
-        <SalesLink className="lf-btn lf-btn--secondary" href="/accounts">Cancel</SalesLink>
+        <button className="lf-btn" type="submit" disabled={busy}>
+          {busy ? 'Creating…' : 'Create account'}
+        </button>
+        <SalesLink className="lf-btn lf-btn--secondary" href="/accounts">
+          Cancel
+        </SalesLink>
       </div>
     </form>
   );

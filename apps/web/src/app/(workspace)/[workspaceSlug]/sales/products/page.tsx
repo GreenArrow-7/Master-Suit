@@ -1,8 +1,5 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
-import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -14,15 +11,12 @@ import { can } from '@/lib/security/rbac';
 export const metadata = { title: 'Products' };
 
 const CATEGORIES = ['Off-plan', 'Ready', 'Commercial', 'Mortgage', 'Services'] as const;
-const fmt = new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', minimumFractionDigits: 0 });
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['products', 'VIEW'] });
 
-  const catFilter = params.category && CATEGORIES.includes(params.category as any)
-    ? { category: params.category }
-    : {};
+  const catFilter = params.category && CATEGORIES.includes(params.category as any) ? { category: params.category } : {};
 
   const rows = await prisma.product.findMany({
     where: { tenantId: ctx.tenantId, ...catFilter },
@@ -35,17 +29,30 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Products"
-        description={<>{rows.length} product{rows.length === 1 ? '' : 's'}</>}
-      
-        actions={can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="PRODUCT" current={columns.map((c) => c.key)} />}
+        description={
+          <>
+            {rows.length} product{rows.length === 1 ? '' : 's'}
+          </>
+        }
+
+        actions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+            <ColumnEditor object="PRODUCT" current={columns.map((c) => c.key)} />
+          )
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Category filter">
         {[['All', ''] as const, ...CATEGORIES.map((c) => [c, c] as const)].map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/products?category=${key}` : '/products'}
-             aria-selected={(params.category ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/products?category=${key}` : '/products'}
+            aria-selected={(params.category ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
@@ -53,7 +60,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
       {rows.length === 0 ? (
         <div className="lf-card">
-          <EmptyState title="No products found" description="Adjust the category filter or add a product to get started." />
+          <EmptyState
+            title="No products found"
+            description="Adjust the category filter or add a product to get started."
+          />
         </div>
       ) : (
         <ConfigurableGrid object="PRODUCT" columns={columns} rows={rows as any} />

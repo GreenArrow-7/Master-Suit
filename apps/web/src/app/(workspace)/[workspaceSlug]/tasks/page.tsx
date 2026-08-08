@@ -1,2 +1,21 @@
-import { prisma } from '@/lib/db'; import { resolveWorkspacePage } from '@/lib/workspace-page'; import WorkspaceTable from '@/components/workspace/WorkspaceTable';
-export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) { const { workspaceSlug } = await params; const { ctx } = await resolveWorkspacePage(workspaceSlug); const rows = await prisma.task.findMany({ where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null }, orderBy: { dueAt: 'asc' }, take: 100 }); return <div style={{ display: 'grid', gap: 18 }}><h1>My tasks</h1><WorkspaceTable headers={['Task', 'Status', 'Priority', 'Due']} rows={rows.map((r) => [r.title, r.status, r.priority, r.dueAt?.toLocaleString('en-AE') ?? '—'])} /></div>; }
+import { prisma } from '@/lib/db';
+import { resolveWorkspacePage } from '@/lib/workspace-page';
+import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
+  const { workspaceSlug } = await params;
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: ['tasks', 'VIEW'] });
+  const rows = await prisma.task.findMany({
+    where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null },
+    orderBy: { dueAt: 'asc' },
+    take: 100,
+  });
+  return (
+    <div style={{ display: 'grid', gap: 18 }}>
+      <h1>My tasks</h1>
+      <WorkspaceTable
+        headers={['Task', 'Status', 'Priority', 'Due']}
+        rows={rows.map((r) => [r.title, r.status, r.priority, r.dueAt?.toLocaleString('en-AE') ?? '—'])}
+      />
+    </div>
+  );
+}

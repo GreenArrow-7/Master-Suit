@@ -14,11 +14,7 @@ const DEFAULTS: Required<RetryOptions> = {
   retryOn: () => true,
 };
 
-export async function withRetry<T>(
-  label: string,
-  fn: () => Promise<T>,
-  opts?: RetryOptions,
-): Promise<T> {
+export async function withRetry<T>(label: string, fn: () => Promise<T>, opts?: RetryOptions): Promise<T> {
   const { maxAttempts, baseDelayMs, maxDelayMs, retryOn } = { ...DEFAULTS, ...opts };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -43,7 +39,11 @@ export function isTransient(err: unknown): boolean {
       const s = (err as any).status;
       return s === 429 || s === 502 || s === 503 || s === 504;
     }
-    if (err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT') || err.message.includes('fetch failed')) {
+    if (
+      err.message.includes('ECONNRESET') ||
+      err.message.includes('ETIMEDOUT') ||
+      err.message.includes('fetch failed')
+    ) {
       return true;
     }
   }

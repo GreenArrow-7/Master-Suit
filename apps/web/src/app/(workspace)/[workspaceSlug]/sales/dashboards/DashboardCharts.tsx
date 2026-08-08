@@ -1,10 +1,7 @@
 'use client';
 
 import MetricCard from '@/components/ui/MetricCard';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 // Design system colors hardcoded for recharts (can't read CSS vars in SVG props)
 const WINE = '#722F37';
@@ -33,13 +30,24 @@ interface Props {
 }
 
 export default function DashboardCharts({
-  totalLeads, newThisMonth, openTasks, overdueTasks,
-  leadsByStage, leadsBySource, slaStats,
+  totalLeads,
+  newThisMonth,
+  openTasks,
+  overdueTasks,
+  leadsByStage,
+  leadsBySource,
+  slaStats,
 }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--lf-space-4)' }}>
       {/* KPI tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <MetricCard label="Total Leads" value={totalLeads} tone="wine" />
         <MetricCard label="New This Month" value={newThisMonth} tone="brass" />
         <MetricCard label="Open Tasks" value={openTasks} tone="slate" />
@@ -49,7 +57,9 @@ export default function DashboardCharts({
       {/* Pipeline funnel */}
       {leadsByStage.length > 0 && (
         <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-          <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>Pipeline by Stage</div>
+          <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+            Pipeline by Stage
+          </div>
           <ResponsiveContainer width="100%" height={Math.max(200, leadsByStage.length * 40)}>
             <BarChart data={leadsByStage} layout="vertical" margin={{ left: 20, right: 20 }}>
               <XAxis type="number" hide />
@@ -66,10 +76,18 @@ export default function DashboardCharts({
       )}
 
       {/* Two pie charts side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         {leadsBySource.length > 0 && (
           <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>Leads by Source</div>
+            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+              Leads by Source
+            </div>
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={leadsBySource} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
@@ -86,7 +104,9 @@ export default function DashboardCharts({
 
         {slaStats.length > 0 && (
           <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>SLA Health</div>
+            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+              SLA Health
+            </div>
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={slaStats} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>

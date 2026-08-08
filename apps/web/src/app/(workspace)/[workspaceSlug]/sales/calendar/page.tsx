@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import CalendarView from './CalendarView';
@@ -8,7 +6,7 @@ import CalendarView from './CalendarView';
 export const metadata = { title: 'Calendar' };
 
 export default async function CalendarPage() {
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['tasks', 'VIEW'] });
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -33,14 +31,14 @@ export default async function CalendarPage() {
   ]);
 
   const items = [
-    ...tasks.map(t => ({
+    ...tasks.map((t) => ({
       id: t.id,
       date: t.dueAt.toISOString(),
       label: t.title,
       kind: 'task' as const,
       completed: t.status === 'COMPLETED',
     })),
-    ...activities.map(a => ({
+    ...activities.map((a) => ({
       id: a.id,
       date: a.occurredAt.toISOString(),
       label: a.type.name,
@@ -51,7 +49,9 @@ export default async function CalendarPage() {
   return (
     <>
       <header style={{ marginBottom: 'var(--lf-space-4)' }}>
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>Calendar</h1>
+        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
+          Calendar
+        </h1>
         <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
           Tasks and activities for the current month
         </p>

@@ -57,54 +57,130 @@ export default function ColumnEditor({ object, current }: { object: GridObject; 
   if (!open) {
     return (
       <span style={{ position: 'relative', display: 'inline-flex' }}>
-        <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(true)}>Columns</button>
+        <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(true)}>
+          Columns
+        </button>
       </span>
     );
   }
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
-      <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)}>Columns</button>
-      <div className="lf-card" style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 20, width: 320, padding: 'var(--lf-space-4)', boxShadow: 'var(--lf-shadow-2)', textAlign: 'left' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--lf-space-3)' }}>
-        <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Grid columns</strong>
-        <button className="lf-toast__action" onClick={() => setOpen(false)} aria-label="Close column editor">Close</button>
-      </div>
+      <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)}>
+        Columns
+      </button>
+      <div
+        className="lf-card"
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: '100%',
+          marginTop: 6,
+          zIndex: 20,
+          width: 320,
+          padding: 'var(--lf-space-4)',
+          boxShadow: 'var(--lf-shadow-2)',
+          textAlign: 'left',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 'var(--lf-space-3)',
+          }}
+        >
+          <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Grid columns</strong>
+          <button className="lf-toast__action" onClick={() => setOpen(false)} aria-label="Close column editor">
+            Close
+          </button>
+        </div>
 
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 320, overflowY: 'auto' }}>
-        {fixed.map((column) => (
-          <li key={column.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-            <input type="checkbox" checked disabled aria-label={`${column.label} is always shown`} />
-            {column.label}
-            <span style={{ marginLeft: 'auto', fontSize: 'var(--lf-text-2xs)' }}>always</span>
-          </li>
-        ))}
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 320, overflowY: 'auto' }}>
+          {fixed.map((column) => (
+            <li
+              key={column.key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '5px 0',
+                color: 'var(--lf-ink-3)',
+                fontSize: 'var(--lf-text-sm)',
+              }}
+            >
+              <input type="checkbox" checked disabled aria-label={`${column.label} is always shown`} />
+              {column.label}
+              <span style={{ marginLeft: 'auto', fontSize: 'var(--lf-text-2xs)' }}>always</span>
+            </li>
+          ))}
 
-        {chosen.map((key, index) => (
-          <li key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 'var(--lf-text-sm)' }}>
-            <input type="checkbox" checked onChange={() => toggle(key)} aria-label={`Hide ${label(key)}`} />
-            {label(key)}
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
-              <button className="lf-toast__action" onClick={() => move(key, -1)} disabled={index === 0} aria-label={`Move ${label(key)} up`}>↑</button>
-              <button className="lf-toast__action" onClick={() => move(key, 1)} disabled={index === chosen.length - 1} aria-label={`Move ${label(key)} down`}>↓</button>
-            </span>
-          </li>
-        ))}
+          {chosen.map((key, index) => (
+            <li
+              key={key}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 'var(--lf-text-sm)' }}
+            >
+              <input type="checkbox" checked onChange={() => toggle(key)} aria-label={`Hide ${label(key)}`} />
+              {label(key)}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                <button
+                  className="lf-toast__action"
+                  onClick={() => move(key, -1)}
+                  disabled={index === 0}
+                  aria-label={`Move ${label(key)} up`}
+                >
+                  ↑
+                </button>
+                <button
+                  className="lf-toast__action"
+                  onClick={() => move(key, 1)}
+                  disabled={index === chosen.length - 1}
+                  aria-label={`Move ${label(key)} down`}
+                >
+                  ↓
+                </button>
+              </span>
+            </li>
+          ))}
 
-        {optional.filter((column) => !chosen.includes(column.key)).map((column) => (
-          <li key={column.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-            <input type="checkbox" checked={false} onChange={() => toggle(column.key)} aria-label={`Show ${column.label}`} />
-            {column.label}
-          </li>
-        ))}
-      </ul>
+          {optional
+            .filter((column) => !chosen.includes(column.key))
+            .map((column) => (
+              <li
+                key={column.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '5px 0',
+                  color: 'var(--lf-ink-3)',
+                  fontSize: 'var(--lf-text-sm)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={false}
+                  onChange={() => toggle(column.key)}
+                  aria-label={`Show ${column.label}`}
+                />
+                {column.label}
+              </li>
+            ))}
+        </ul>
 
-      {error && <p style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', marginTop: 8 }}>{error}</p>}
+        {error && (
+          <p style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', marginTop: 8 }}>{error}</p>
+        )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 'var(--lf-space-3)' }}>
-        <button className="lf-btn lf-btn--sm" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save for workspace'}</button>
-        <button className="lf-btn lf-btn--sm lf-btn--secondary" onClick={() => setChosen([])} disabled={busy}>Reset to default</button>
-      </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 'var(--lf-space-3)' }}>
+          <button className="lf-btn lf-btn--sm" onClick={save} disabled={busy}>
+            {busy ? 'Saving…' : 'Save for workspace'}
+          </button>
+          <button className="lf-btn lf-btn--sm lf-btn--secondary" onClick={() => setChosen([])} disabled={busy}>
+            Reset to default
+          </button>
+        </div>
       </div>
     </span>
   );

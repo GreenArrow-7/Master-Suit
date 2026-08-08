@@ -1,14 +1,16 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
-import Badge, { type Tone } from '@/components/ui/Badge';
+import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 
 export const metadata = { title: 'Integrations' };
 
-const TABS = [['All', ''], ['Active', 'active'], ['Inactive', 'inactive']] as const;
+const TABS = [
+  ['All', ''],
+  ['Active', 'active'],
+  ['Inactive', 'inactive'],
+] as const;
 
 function relativeTime(date: Date | null | undefined): string {
   if (!date) return '—';
@@ -26,7 +28,7 @@ function relativeTime(date: Date | null | undefined): string {
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
   let activeFilter: Record<string, unknown> = {};
   if (params.tab === 'active') activeFilter = { isActive: true };
@@ -36,17 +38,28 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     where: { tenantId: ctx.tenantId, ...activeFilter },
     orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     select: {
-      id: true, name: true, key: true, category: true, authMethod: true,
-      isActive: true, lastSyncAt: true, lastSyncStatus: true, lastErrorMessage: true,
+      id: true,
+      name: true,
+      key: true,
+      category: true,
+      authMethod: true,
+      isActive: true,
+      lastSyncAt: true,
+      lastSyncStatus: true,
+      lastErrorMessage: true,
     },
     take: 50,
   });
 
   return (
     <>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}>
+      <header
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      >
         <div>
-          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>Integrations</h1>
+          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
+            Integrations
+          </h1>
           <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
             {rows.length} integration{rows.length === 1 ? '' : 's'}
           </p>
@@ -55,8 +68,13 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Status filter">
         {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/integrations?tab=${key}` : '/integrations'}
-             aria-selected={(params.tab ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/integrations?tab=${key}` : '/integrations'}
+            aria-selected={(params.tab ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
@@ -64,7 +82,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
       {rows.length === 0 ? (
         <div className="lf-card">
-          <EmptyState title="No integrations configured" description="Connect third-party services like email, telephony, or marketing tools." />
+          <EmptyState
+            title="No integrations configured"
+            description="Connect third-party services like email, telephony, or marketing tools."
+          />
         </div>
       ) : (
         <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
@@ -87,19 +108,38 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                   <td>{r.category}</td>
                   <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>{r.authMethod}</td>
                   <td>
-                    <Badge tone={r.isActive ? 'viridian' : 'slate'}>
-                      {r.isActive ? 'active' : 'inactive'}
-                    </Badge>
+                    <Badge tone={r.isActive ? 'viridian' : 'slate'}>{r.isActive ? 'active' : 'inactive'}</Badge>
                   </td>
-                  <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>{relativeTime(r.lastSyncAt)}</td>
+                  <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                    {relativeTime(r.lastSyncAt)}
+                  </td>
                   <td>
                     {r.lastSyncStatus ? (
-                      <Badge tone={r.lastSyncStatus === 'SUCCESS' ? 'viridian' : r.lastSyncStatus === 'PARTIAL' ? 'brass' : 'vermillion'}>
+                      <Badge
+                        tone={
+                          r.lastSyncStatus === 'SUCCESS'
+                            ? 'viridian'
+                            : r.lastSyncStatus === 'PARTIAL'
+                              ? 'brass'
+                              : 'vermillion'
+                        }
+                      >
                         {r.lastSyncStatus.toLowerCase()}
                       </Badge>
-                    ) : '—'}
+                    ) : (
+                      '—'
+                    )}
                   </td>
-                  <td style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-sm)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td
+                    style={{
+                      color: 'var(--lf-vermillion)',
+                      fontSize: 'var(--lf-text-sm)',
+                      maxWidth: 200,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {r.lastErrorMessage ?? '—'}
                   </td>
                 </tr>

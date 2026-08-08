@@ -88,10 +88,10 @@ function buildWhere(fields: string[], probe: DuplicateProbe): Record<string, unk
 
 const CONFIDENCE: Record<string, number> = {
   'email+phoneNormalized': 0.99,
-  'email': 0.95,
-  'phoneNormalized': 0.9,
+  email: 0.95,
+  phoneNormalized: 0.9,
   'fullName+phoneNormalized': 0.85,
-  'fullName': 0.4,
+  fullName: 0.4,
 };
 
 /** Used until an administrator configures rules in Administration → Duplicates. */

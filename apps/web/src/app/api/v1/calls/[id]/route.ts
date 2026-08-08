@@ -6,7 +6,7 @@ import { NotFound } from '@/lib/errors';
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'calls', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -21,19 +21,34 @@ export const GET = route(
   },
 );
 
-const patchBody = z.object({
-  status: z.enum(['SCHEDULED', 'RINGING', 'IN_PROGRESS', 'COMPLETED', 'MISSED', 'FAILED', 'CANCELLED']).optional(),
-  outcome: z.enum(['CONNECTED', 'NO_ANSWER', 'BUSY', 'VOICEMAIL', 'WRONG_NUMBER', 'CALLBACK_REQUESTED', 'NOT_INTERESTED', 'INTERESTED', 'QUALIFIED', 'CONVERTED']).optional(),
-  notes: z.string().max(5000).optional(),
-  startedAt: z.coerce.date().optional(),
-  answeredAt: z.coerce.date().optional(),
-  endedAt: z.coerce.date().optional(),
-  durationSecs: z.number().int().min(0).optional(),
-  followUpAt: z.coerce.date().optional(),
-}).strict();
+const patchBody = z
+  .object({
+    status: z.enum(['SCHEDULED', 'RINGING', 'IN_PROGRESS', 'COMPLETED', 'MISSED', 'FAILED', 'CANCELLED']).optional(),
+    outcome: z
+      .enum([
+        'CONNECTED',
+        'NO_ANSWER',
+        'BUSY',
+        'VOICEMAIL',
+        'WRONG_NUMBER',
+        'CALLBACK_REQUESTED',
+        'NOT_INTERESTED',
+        'INTERESTED',
+        'QUALIFIED',
+        'CONVERTED',
+      ])
+      .optional(),
+    notes: z.string().max(5000).optional(),
+    startedAt: z.coerce.date().optional(),
+    answeredAt: z.coerce.date().optional(),
+    endedAt: z.coerce.date().optional(),
+    durationSecs: z.number().int().min(0).optional(),
+    followUpAt: z.coerce.date().optional(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'calls', action: 'EDIT', params, body: patchBody, auditEvent: 'CALL_COMPLETED' },
+  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'CALL_COMPLETED' },
   async ({ ctx, params, body }) => {
     const existing = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

@@ -60,7 +60,10 @@ export async function permissionMatrix(ctx: Ctx, roleId: string) {
 
   const [catalogue, granted] = await Promise.all([
     prisma.permission.findMany({ orderBy: [{ module: 'asc' }, { action: 'asc' }] }),
-    prisma.rolePermission.findMany({ where: { tenantId: ctx.tenantId, roleId }, select: { permissionId: true, granted: true, scope: true } }),
+    prisma.rolePermission.findMany({
+      where: { tenantId: ctx.tenantId, roleId },
+      select: { permissionId: true, granted: true, scope: true },
+    }),
   ]);
   const current = new Map(granted.map((row) => [row.permissionId, row]));
 
@@ -82,32 +85,63 @@ export async function permissionMatrix(ctx: Ctx, roleId: string) {
   };
 }
 
-export async function createRole(ctx: Ctx, input: { key: string; name: string; description?: string; rank: number; defaultScope: Scope }) {
+export async function createRole(
+  ctx: Ctx,
+  input: { key: string; name: string; description?: string; rank: number; defaultScope: Scope },
+) {
   if (input.rank <= ctx.actor.roleRank) throw Forbidden('You cannot create a role at or above your own level.');
-  const key = input.key.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
-  if (await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, key } })) throw Conflict('A role with that key already exists.');
+  const key = input.key
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_');
+  if (await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, key } }))
+    throw Conflict('A role with that key already exists.');
 
   const role = await prisma.role.create({
     data: {
-      tenantId: ctx.tenantId, key, name: input.name, description: input.description ?? null,
-      rank: input.rank, defaultScope: input.defaultScope, isSystem: false, createdById: ctx.actor.id,
+      tenantId: ctx.tenantId,
+      key,
+      name: input.name,
+      description: input.description ?? null,
+      rank: input.rank,
+      defaultScope: input.defaultScope,
+      isSystem: false,
+      createdById: ctx.actor.id,
     },
   });
-  await audit(ctx, { event: 'PERMISSION_CHANGED', objectType: 'role', recordId: role.id, newValue: { key, rank: input.rank }, metadata: { action: 'role.created' } });
+  await audit(ctx, {
+    event: 'PERMISSION_CHANGED',
+    objectType: 'role',
+    recordId: role.id,
+    newValue: { key, rank: input.rank },
+    metadata: { action: 'role.created' },
+  });
   return role;
 }
 
-export async function updateRole(ctx: Ctx, roleId: string, input: { name?: string; description?: string; rank?: number; defaultScope?: Scope }) {
+export async function updateRole(
+  ctx: Ctx,
+  roleId: string,
+  input: { name?: string; description?: string; rank?: number; defaultScope?: Scope },
+) {
   const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: roleId } });
   if (!role) throw NotFound('Role');
   assertMayEditRole(ctx, role);
-  if (input.rank !== undefined && input.rank <= ctx.actor.roleRank) throw Forbidden('You cannot raise a role to or above your own level.');
+  if (input.rank !== undefined && input.rank <= ctx.actor.roleRank)
+    throw Forbidden('You cannot raise a role to or above your own level.');
 
   const updated = await prisma.role.update({
     where: { tenantId: ctx.tenantId, id: role.id },
     data: { ...input, updatedById: ctx.actor.id },
   });
-  await audit(ctx, { event: 'PERMISSION_CHANGED', objectType: 'role', recordId: role.id, previousValue: { name: role.name, rank: role.rank }, newValue: { name: updated.name, rank: updated.rank }, metadata: { action: 'role.updated' } });
+  await audit(ctx, {
+    event: 'PERMISSION_CHANGED',
+    objectType: 'role',
+    recordId: role.id,
+    previousValue: { name: role.name, rank: role.rank },
+    newValue: { name: updated.name, rank: updated.rank },
+    metadata: { action: 'role.updated' },
+  });
   return updated;
 }
 
@@ -120,10 +154,19 @@ export async function deleteRole(ctx: Ctx, roleId: string) {
   if (!role) throw NotFound('Role');
   assertMayEditRole(ctx, role);
   if (isSystemRole(role)) throw Conflict('System roles cannot be deleted. The workspace bootstrap depends on them.');
-  if (role._count.users > 0) throw Conflict(`${role._count.users} account${role._count.users === 1 ? ' is' : 's are'} still on this role. Move them to another role first.`);
+  if (role._count.users > 0)
+    throw Conflict(
+      `${role._count.users} account${role._count.users === 1 ? ' is' : 's are'} still on this role. Move them to another role first.`,
+    );
 
   await prisma.role.delete({ where: { tenantId: ctx.tenantId, id: role.id } });
-  await audit(ctx, { event: 'PERMISSION_CHANGED', objectType: 'role', recordId: role.id, previousValue: { key: role.key }, metadata: { action: 'role.deleted' } });
+  await audit(ctx, {
+    event: 'PERMISSION_CHANGED',
+    objectType: 'role',
+    recordId: role.id,
+    previousValue: { key: role.key },
+    metadata: { action: 'role.deleted' },
+  });
   return { deleted: true, roleId: role.id };
 }
 
@@ -146,7 +189,9 @@ export async function updatePermissionMatrix(ctx: Ctx, roleId: string, changes: 
   if (!role) throw NotFound('Role');
   assertMayEditRole(ctx, role);
 
-  const permissions = await prisma.permission.findMany({ where: { id: { in: changes.map((change) => change.permissionId) } } });
+  const permissions = await prisma.permission.findMany({
+    where: { id: { in: changes.map((change) => change.permissionId) } },
+  });
   const byId = new Map(permissions.map((permission) => [permission.id, permission]));
 
   for (const change of changes) {
@@ -155,14 +200,18 @@ export async function updatePermissionMatrix(ctx: Ctx, roleId: string, changes: 
     if (!change.granted) continue;
     const ceiling = scopeFor(ctx, permission.module, permission.action as Action);
     if (SCOPE_RANK[change.scope] > SCOPE_RANK[ceiling]) {
-      throw Forbidden(`You cannot grant ${permission.module}:${permission.action} at ${change.scope} — you hold ${ceiling} on it yourself.`);
+      throw Forbidden(
+        `You cannot grant ${permission.module}:${permission.action} at ${change.scope} — you hold ${ceiling} on it yourself.`,
+      );
     }
   }
 
-  await withTx(async (tx) => {
+  await withTx(ctx.tenantId, async (tx) => {
     for (const change of changes) {
       if (!change.granted || change.scope === 'NONE') {
-        await tx.rolePermission.deleteMany({ where: { tenantId: ctx.tenantId, roleId, permissionId: change.permissionId } });
+        await tx.rolePermission.deleteMany({
+          where: { tenantId: ctx.tenantId, roleId, permissionId: change.permissionId },
+        });
         continue;
       }
       // Read-then-write rather than upsert: the (roleId, permissionId) unique key
@@ -177,17 +226,28 @@ export async function updatePermissionMatrix(ctx: Ctx, roleId: string, changes: 
         await tx.rolePermission.update({ where: { id: current.id }, data: { granted: true, scope: change.scope } });
       } else {
         await tx.rolePermission.create({
-          data: { tenantId: ctx.tenantId, roleId, permissionId: change.permissionId, granted: true, scope: change.scope },
+          data: {
+            tenantId: ctx.tenantId,
+            roleId,
+            permissionId: change.permissionId,
+            granted: true,
+            scope: change.scope,
+          },
         });
       }
     }
   });
 
-  const holders = await prisma.user.findMany({ where: { tenantId: ctx.tenantId, roleId, deletedAt: null }, select: { id: true } });
+  const holders = await prisma.user.findMany({
+    where: { tenantId: ctx.tenantId, roleId, deletedAt: null },
+    select: { id: true },
+  });
   for (const holder of holders) await revokeAllSessions(ctx.tenantId, holder.id, undefined, 'PERMISSIONS_CHANGED');
 
   await audit(ctx, {
-    event: 'PERMISSION_CHANGED', objectType: 'role', recordId: roleId,
+    event: 'PERMISSION_CHANGED',
+    objectType: 'role',
+    recordId: roleId,
     metadata: { action: 'role.permissions_updated', changes: changes.length, sessionsRevoked: holders.length },
   });
   return { roleId, changed: changes.length, sessionsRevoked: holders.length };
@@ -200,7 +260,17 @@ export async function updatePermissionMatrix(ctx: Ctx, roleId: string, changes: 
  * holds. This is how cover works — someone acts up while a manager is on leave,
  * and the grant lapses on its own rather than depending on anyone remembering.
  */
-export async function assignRole(ctx: Ctx, input: { membershipId: string; roleId: string; effectiveFrom?: Date; effectiveTo?: Date; scopeType?: string; scopeId?: string }) {
+export async function assignRole(
+  ctx: Ctx,
+  input: {
+    membershipId: string;
+    roleId: string;
+    effectiveFrom?: Date;
+    effectiveTo?: Date;
+    scopeType?: string;
+    scopeId?: string;
+  },
+) {
   const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: input.roleId } });
   if (!role) throw NotFound('Role');
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot assign a role at or above your own level.');
@@ -208,32 +278,48 @@ export async function assignRole(ctx: Ctx, input: { membershipId: string; roleId
     throw Conflict('The end of the window must be after its start.');
   }
 
-  const membership = await prisma.workspaceMembership.findFirst({ where: { tenantId: ctx.tenantId, id: input.membershipId } });
+  const membership = await prisma.workspaceMembership.findFirst({
+    where: { tenantId: ctx.tenantId, id: input.membershipId },
+  });
   if (!membership) throw NotFound('Membership');
 
-  const existing = await prisma.membershipRole.findFirst({ where: { tenantId: ctx.tenantId, membershipId: input.membershipId, roleId: input.roleId } });
+  const existing = await prisma.membershipRole.findFirst({
+    where: { tenantId: ctx.tenantId, membershipId: input.membershipId, roleId: input.roleId },
+  });
   if (existing && existing.status === 'ACTIVE') throw Conflict('That role is already assigned to this account.');
 
   const assignment = existing
     ? await prisma.membershipRole.update({
         where: { tenantId: ctx.tenantId, id: existing.id },
         data: {
-          status: 'ACTIVE', effectiveFrom: input.effectiveFrom ?? null, effectiveTo: input.effectiveTo ?? null,
-          assignedById: ctx.actor.id, revokedAt: null, revokedById: null, revocationReason: null,
+          status: 'ACTIVE',
+          effectiveFrom: input.effectiveFrom ?? null,
+          effectiveTo: input.effectiveTo ?? null,
+          assignedById: ctx.actor.id,
+          revokedAt: null,
+          revokedById: null,
+          revocationReason: null,
         },
       })
     : await prisma.membershipRole.create({
         data: {
-          tenantId: ctx.tenantId, membershipId: input.membershipId, roleId: input.roleId,
-          scopeType: input.scopeType ?? 'ORGANIZATION', scopeId: input.scopeId ?? null,
-          effectiveFrom: input.effectiveFrom ?? null, effectiveTo: input.effectiveTo ?? null,
-          status: 'ACTIVE', assignedById: ctx.actor.id,
+          tenantId: ctx.tenantId,
+          membershipId: input.membershipId,
+          roleId: input.roleId,
+          scopeType: input.scopeType ?? 'ORGANIZATION',
+          scopeId: input.scopeId ?? null,
+          effectiveFrom: input.effectiveFrom ?? null,
+          effectiveTo: input.effectiveTo ?? null,
+          status: 'ACTIVE',
+          assignedById: ctx.actor.id,
         },
       });
 
   if (membership.salesUserId) await revokeAllSessions(ctx.tenantId, membership.salesUserId, undefined, 'ROLE_ASSIGNED');
   await audit(ctx, {
-    event: 'PERMISSION_CHANGED', objectType: 'membership_role', recordId: assignment.id,
+    event: 'PERMISSION_CHANGED',
+    objectType: 'membership_role',
+    recordId: assignment.id,
     newValue: { role: role.key, from: input.effectiveFrom, to: input.effectiveTo },
     metadata: { action: 'role.assigned' },
   });
@@ -247,7 +333,8 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
     include: { role: true, membership: true },
   });
   if (!assignment) throw NotFound('Role assignment');
-  if (assignment.role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot revoke a role at or above your own level.');
+  if (assignment.role.rank <= ctx.actor.roleRank)
+    throw Forbidden('You cannot revoke a role at or above your own level.');
   if (assignment.status !== 'ACTIVE') throw Conflict('That assignment is already revoked.');
 
   const revoked = await prisma.membershipRole.update({
@@ -259,15 +346,21 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
     await revokeAllSessions(ctx.tenantId, assignment.membership.salesUserId, undefined, 'ROLE_REVOKED');
   }
   await audit(ctx, {
-    event: 'PERMISSION_CHANGED', objectType: 'membership_role', recordId: assignment.id,
-    previousValue: { status: 'ACTIVE' }, newValue: { status: 'REVOKED' },
+    event: 'PERMISSION_CHANGED',
+    objectType: 'membership_role',
+    recordId: assignment.id,
+    previousValue: { status: 'ACTIVE' },
+    newValue: { status: 'REVOKED' },
     metadata: { action: 'role.revoked', reason },
   });
   return revoked;
 }
 
 /** Every grant and revocation, current and past. */
-export async function roleAssignmentHistory(ctx: Ctx, options: { membershipId?: string; roleId?: string; limit?: number } = {}) {
+export async function roleAssignmentHistory(
+  ctx: Ctx,
+  options: { membershipId?: string; roleId?: string; limit?: number } = {},
+) {
   const assignments = await prisma.membershipRole.findMany({
     where: {
       tenantId: ctx.tenantId,
@@ -294,8 +387,8 @@ export async function roleAssignmentHistory(ctx: Ctx, options: { membershipId?: 
     revocationReason: assignment.revocationReason,
     /** Whether the grant is actually in force right now, dates included. */
     inForce:
-      assignment.status === 'ACTIVE'
-      && (!assignment.effectiveFrom || assignment.effectiveFrom <= now)
-      && (!assignment.effectiveTo || assignment.effectiveTo >= now),
+      assignment.status === 'ACTIVE' &&
+      (!assignment.effectiveFrom || assignment.effectiveFrom <= now) &&
+      (!assignment.effectiveTo || assignment.effectiveTo >= now),
   }));
 }

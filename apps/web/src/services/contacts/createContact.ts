@@ -1,4 +1,4 @@
-import { withTenantTx } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { nextReference } from '../shared/reference';
 import { emit } from '../shared/events';
@@ -22,7 +22,7 @@ export interface CreateContactInput {
 export async function createContact(ctx: Ctx, input: CreateContactInput) {
   const phoneNormalized = input.phone ? normalizePhone(input.phone, 'AE') : null;
 
-  const contact = await withTenantTx(ctx.tenantId, async (tx) => {
+  const contact = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'CONTACT');
     const ownerId = input.ownerId ?? ctx.actor.id;
 
@@ -46,7 +46,11 @@ export async function createContact(ctx: Ctx, input: CreateContactInput) {
       },
     });
 
-    await audit(ctx, { event: 'RECORD_CREATED', objectType: 'contact', recordId: created.id, newValue: { reference } }, tx);
+    await audit(
+      ctx,
+      { event: 'RECORD_CREATED', objectType: 'contact', recordId: created.id, newValue: { reference } },
+      tx,
+    );
     return created;
   });
 

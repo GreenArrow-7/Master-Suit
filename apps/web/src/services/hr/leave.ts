@@ -15,6 +15,7 @@ import type { Ctx } from '@/lib/security/rbac';
 import { annualLeaveAccrued, dayKey, daysBetween, toDay, workingDays } from './rules';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { isApprover, isHrAdmin } from './access';
+import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
 // Re-exported so the many existing call sites keep one import for HR access.
 export { isApprover, isHrAdmin };
@@ -24,7 +25,6 @@ export const BLOCKING_STATUSES = ['PENDING', 'APPROVED'] as const;
 
 /** Roles at or above this rank can be the fallback approver. 10 is company_admin. */
 const ADMIN_ROLE_RANK = 10;
-
 
 type Db = TxClient | typeof prisma;
 
@@ -55,7 +55,14 @@ export async function holidaysFor(ctx: Ctx, start: Date, end: Date, db: Db = pri
   return rows;
 }
 
-export async function countLeaveDays(ctx: Ctx, start: Date, end: Date, halfDay: boolean, db: Db = prisma, known?: HrPolicy) {
+export async function countLeaveDays(
+  ctx: Ctx,
+  start: Date,
+  end: Date,
+  halfDay: boolean,
+  db: Db = prisma,
+  known?: HrPolicy,
+) {
   const [holidayRows, policy] = await Promise.all([holidaysFor(ctx, start, end, db), known ?? getHrPolicy(ctx)]);
   const holidays = holidayRows.map((holiday) => holiday.holidayDate);
   if (halfDay) {
@@ -67,7 +74,13 @@ export async function countLeaveDays(ctx: Ctx, start: Date, end: Date, halfDay: 
 
 // ── Balances ───────────────────────────────────────────────────────────────
 
-export async function ensureBalanceRow(ctx: Ctx, employeeId: string, leaveTypeId: string, year: number, db: Db = prisma) {
+export async function ensureBalanceRow(
+  ctx: Ctx,
+  employeeId: string,
+  leaveTypeId: string,
+  year: number,
+  db: Db = prisma,
+) {
   const leaveType = await db.hrLeaveType.findFirst({ where: { tenantId: ctx.tenantId, id: leaveTypeId } });
   if (!leaveType) throw NotFound('Leave type');
   return db.hrLeaveBalance.upsert({
@@ -91,13 +104,22 @@ export async function recomputeAccrual(
 ) {
   const year = toDay(asOf).getUTCFullYear();
   await ensureBalanceRow(ctx, employee.id, leaveType.id, year, db);
-  const policy = known ?? await getHrPolicy(ctx);
+  const policy = known ?? (await getHrPolicy(ctx));
   const accruedDays = leaveType.accrues
-    ? employee.joinedOn ? annualLeaveAccrued(employee.joinedOn, asOf, policy) : 0
+    ? employee.joinedOn
+      ? annualLeaveAccrued(employee.joinedOn, asOf, policy)
+      : 0
     : leaveType.annualAllowance;
 
   return db.hrLeaveBalance.update({
-    where: { tenantId_employeeId_leaveTypeId_year: { tenantId: ctx.tenantId, employeeId: employee.id, leaveTypeId: leaveType.id, year } },
+    where: {
+      tenantId_employeeId_leaveTypeId_year: {
+        tenantId: ctx.tenantId,
+        employeeId: employee.id,
+        leaveTypeId: leaveType.id,
+        year,
+      },
+    },
     data: { accruedDays },
   });
 }
@@ -127,7 +149,14 @@ export async function availableDays(
   const takenDays = consuming.reduce((total, row) => total + row.days, 0);
 
   const updated = await db.hrLeaveBalance.update({
-    where: { tenantId_employeeId_leaveTypeId_year: { tenantId: ctx.tenantId, employeeId: employee.id, leaveTypeId: leaveType.id, year } },
+    where: {
+      tenantId_employeeId_leaveTypeId_year: {
+        tenantId: ctx.tenantId,
+        employeeId: employee.id,
+        leaveTypeId: leaveType.id,
+        year,
+      },
+    },
     data: { takenDays },
   });
 
@@ -145,20 +174,22 @@ export async function balancesFor(ctx: Ctx, employeeId: string, asOf: Date = new
     getHrPolicy(ctx),
   ]);
 
-  return Promise.all(types.map(async (leaveType) => {
-    const { balance, available } = await availableDays(ctx, employee, leaveType, asOf, prisma, policy);
-    return {
-      leaveTypeId: leaveType.id,
-      code: leaveType.code,
-      name: leaveType.name,
-      paid: leaveType.paid,
-      entitledDays: balance.entitledDays,
-      accruedDays: balance.accruedDays,
-      carriedForwardDays: balance.carriedForwardDays,
-      takenDays: balance.takenDays,
-      availableDays: available,
-    };
-  }));
+  return Promise.all(
+    types.map(async (leaveType) => {
+      const { balance, available } = await availableDays(ctx, employee, leaveType, asOf, prisma, policy);
+      return {
+        leaveTypeId: leaveType.id,
+        code: leaveType.code,
+        name: leaveType.name,
+        paid: leaveType.paid,
+        entitledDays: balance.entitledDays,
+        accruedDays: balance.accruedDays,
+        carriedForwardDays: balance.carriedForwardDays,
+        takenDays: balance.takenDays,
+        availableDays: available,
+      };
+    }),
+  );
 }
 
 // ── Approval chain ─────────────────────────────────────────────────────────
@@ -168,7 +199,11 @@ export async function balancesFor(ctx: Ctx, employeeId: string, asOf: Date = new
  * active administrator picks it up — a request with no approver can never be
  * decided, so falling back is not optional.
  */
-export async function approverFor(ctx: Ctx, employee: { id: string; managerMembershipId: string | null }, db: Db = prisma) {
+export async function approverFor(
+  ctx: Ctx,
+  employee: { id: string; managerMembershipId: string | null },
+  db: Db = prisma,
+) {
   if (employee.managerMembershipId) {
     const manager = await db.employeeProfile.findFirst({
       where: {
@@ -200,7 +235,14 @@ export async function approverFor(ctx: Ctx, employee: { id: string; managerMembe
   });
 }
 
-export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date, excludeId?: string, db: Db = prisma) {
+export async function findOverlap(
+  ctx: Ctx,
+  employeeId: string,
+  start: Date,
+  end: Date,
+  excludeId?: string,
+  db: Db = prisma,
+) {
   return db.hrLeaveRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
@@ -245,21 +287,27 @@ export async function applyForLeave(ctx: Ctx, input: ApplyLeaveInput) {
   const policy = await getHrPolicy(ctx);
   const backdated = daysBetween(start, new Date());
   if (backdated > policy.leaveMaxBackdateDays && !isHrAdmin(ctx)) {
-    throw Conflict(`You cannot apply more than ${policy.leaveMaxBackdateDays} days after the leave started. Ask HR to record it for you.`);
+    throw Conflict(
+      `You cannot apply more than ${policy.leaveMaxBackdateDays} days after the leave started. Ask HR to record it for you.`,
+    );
   }
   if (leaveType.requiresDocument && !input.documentId) {
     throw Conflict(`${leaveType.name} needs a supporting document.`);
   }
 
   const clash = await findOverlap(ctx, employee.id, start, end);
-  if (clash) throw Conflict(`Leave already exists from ${dayKey(clash.startDate)} to ${dayKey(clash.endDate)}. Cancel it first.`);
+  if (clash)
+    throw Conflict(
+      `Leave already exists from ${dayKey(clash.startDate)} to ${dayKey(clash.endDate)}. Cancel it first.`,
+    );
 
   const days = await countLeaveDays(ctx, start, end, input.halfDay ?? false, prisma, policy);
   if (days <= 0) throw Conflict('Those dates are all weekends or public holidays — no leave is needed.');
 
   if (leaveType.paid) {
     const { available } = await availableDays(ctx, employee, leaveType, start, prisma, policy);
-    if (days > available) throw Conflict(`${available} days of ${leaveType.name} are available and ${days} were requested.`);
+    if (days > available)
+      throw Conflict(`${available} days of ${leaveType.name} are available and ${days} were requested.`);
   }
 
   const approver = await approverFor(ctx, employee);
@@ -279,7 +327,7 @@ export async function applyForLeave(ctx: Ctx, input: ApplyLeaveInput) {
       status: 'PENDING',
       approverId: approver.id,
     },
-    include: { leaveType: true, employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { leaveType: true, employee: EMPLOYEE_WITH_PERSON },
   });
 
   await audit(ctx, {
@@ -310,7 +358,9 @@ export async function decideLeave(ctx: Ctx, requestId: string, approve: boolean,
   if (approve && request.leaveType.paid) {
     const { available } = await availableDays(ctx, request.employee, request.leaveType, request.startDate);
     if (request.days > available) {
-      throw Conflict(`Only ${available} days of ${request.leaveType.name} remain. Reject the request or ask for it to be shortened.`);
+      throw Conflict(
+        `Only ${available} days of ${request.leaveType.name} remain. Reject the request or ask for it to be shortened.`,
+      );
     }
   }
 
@@ -322,7 +372,7 @@ export async function decideLeave(ctx: Ctx, requestId: string, approve: boolean,
       decidedAt: new Date(),
       decisionNote: note ?? null,
     },
-    include: { leaveType: true, employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { leaveType: true, employee: EMPLOYEE_WITH_PERSON },
   });
 
   // Keep the stored balance in step with the decision straight away.
@@ -357,7 +407,7 @@ export async function cancelLeave(ctx: Ctx, requestId: string) {
   const cancelled = await prisma.hrLeaveRequest.update({
     where: { tenantId: ctx.tenantId, id: request.id },
     data: { status: 'CANCELED', cancelledAt: new Date(), cancelledById: self?.id ?? null },
-    include: { leaveType: true, employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { leaveType: true, employee: EMPLOYEE_WITH_PERSON },
   });
 
   // Cancelling releases the days it was holding.
@@ -383,7 +433,9 @@ export async function runCarryForward(ctx: Ctx, fromYear: number) {
 
   const [types, employees] = await Promise.all([
     prisma.hrLeaveType.findMany({ where: { tenantId: ctx.tenantId, accrues: true, isActive: true } }),
-    prisma.employeeProfile.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } } }),
+    prisma.employeeProfile.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+    }),
   ]);
 
   const rolled: { employeeId: string; leaveType: string; days: number }[] = [];
@@ -400,7 +452,14 @@ export async function runCarryForward(ctx: Ctx, fromYear: number) {
 
       await ensureBalanceRow(ctx, employee.id, leaveType.id, fromYear + 1);
       await prisma.hrLeaveBalance.update({
-        where: { tenantId_employeeId_leaveTypeId_year: { tenantId: ctx.tenantId, employeeId: employee.id, leaveTypeId: leaveType.id, year: fromYear + 1 } },
+        where: {
+          tenantId_employeeId_leaveTypeId_year: {
+            tenantId: ctx.tenantId,
+            employeeId: employee.id,
+            leaveTypeId: leaveType.id,
+            year: fromYear + 1,
+          },
+        },
         data: { carriedForwardDays: days },
       });
       rolled.push({ employeeId: employee.id, leaveType: leaveType.code, days });
@@ -426,8 +485,14 @@ export async function teamCalendar(ctx: Ctx, start: Date, end: Date) {
 
   const [leave, holidays] = await Promise.all([
     prisma.hrLeaveRequest.findMany({
-      where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: toDay(end) }, endDate: { gte: toDay(start) }, ...scope },
-      include: { leaveType: true, employee: { include: { membership: { include: { platformUser: true } } } } },
+      where: {
+        tenantId: ctx.tenantId,
+        status: 'APPROVED',
+        startDate: { lte: toDay(end) },
+        endDate: { gte: toDay(start) },
+        ...scope,
+      },
+      include: { leaveType: true, employee: EMPLOYEE_WITH_PERSON },
       orderBy: { startDate: 'asc' },
     }),
     holidaysFor(ctx, start, end),

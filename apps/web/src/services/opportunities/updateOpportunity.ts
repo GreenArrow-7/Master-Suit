@@ -1,4 +1,4 @@
-import { withTenantTx } from '@/lib/db';
+import { withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
@@ -25,18 +25,26 @@ export async function updateOpportunity(ctx: Ctx, id: string, input: UpdateOppor
     delete input.ownerId;
   }
 
-  const updated = await withTenantTx(ctx.tenantId, async (tx) => {
+  const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.opportunity.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Opportunity');
-    await assertRecordVisible(ctx, 'opportunities', before, 'EDIT');
+    await assertRecordVisible(ctx, 'opportunities', before, tx, 'EDIT');
 
     let probability = before.probability;
     if (input.stageId && input.stageId !== before.stageId) {
-      const stage = await tx.pipelineStage.findFirst({ where: { tenantId: ctx.tenantId, pipelineId: before.pipelineId, id: input.stageId } });
+      const stage = await tx.pipelineStage.findFirst({
+        where: { tenantId: ctx.tenantId, pipelineId: before.pipelineId, id: input.stageId },
+      });
       if (!stage) throw NotFound('Pipeline stage');
       probability = stage.probability;
       await tx.opportunityStageHistory.create({
-        data: { tenantId: ctx.tenantId, opportunityId: id, fromStageId: before.stageId, toStageId: stage.id, changedById: ctx.actor.id },
+        data: {
+          tenantId: ctx.tenantId,
+          opportunityId: id,
+          fromStageId: before.stageId,
+          toStageId: stage.id,
+          changedById: ctx.actor.id,
+        },
       });
     }
 
@@ -66,17 +74,33 @@ export async function updateOpportunity(ctx: Ctx, id: string, input: UpdateOppor
     return after;
   });
 
-  await enqueue('automation', 'trigger', { tenantId: ctx.tenantId, event: 'record.updated', object: 'OPPORTUNITY', recordId: id });
-  emit(ctx, updated.status === 'WON' ? 'opportunity.won' : updated.status === 'LOST' ? 'opportunity.lost' : 'opportunity.updated', { opportunityId: id });
+  await enqueue('automation', 'trigger', {
+    tenantId: ctx.tenantId,
+    event: 'record.updated',
+    object: 'OPPORTUNITY',
+    recordId: id,
+  });
+  emit(
+    ctx,
+    updated.status === 'WON'
+      ? 'opportunity.won'
+      : updated.status === 'LOST'
+        ? 'opportunity.lost'
+        : 'opportunity.updated',
+    { opportunityId: id },
+  );
   return updated;
 }
 
 export async function deleteOpportunity(ctx: Ctx, id: string) {
-  await withTenantTx(ctx.tenantId, async (tx) => {
+  await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.opportunity.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Opportunity');
-    await assertRecordVisible(ctx, 'opportunities', before, 'DELETE');
-    await tx.opportunity.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date(), updatedById: ctx.actor.id } });
+    await assertRecordVisible(ctx, 'opportunities', before, tx, 'DELETE');
+    await tx.opportunity.update({
+      where: { tenantId: ctx.tenantId, id },
+      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+    });
     await auditDiff(ctx, 'opportunity', id, before, { ...before, deletedAt: new Date() }, tx);
   });
 }

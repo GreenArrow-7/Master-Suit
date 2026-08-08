@@ -19,9 +19,18 @@ const TEST_PATHS = [/(^|\/)tests?\//i, /(^|\/)__tests__\//i, /(^|\/)fixtures?\//
 
 /** Filenames that announce what they contain regardless of where they sit. */
 const NAMED = [
-  /passport/i, /emirates[-_ ]?id/i, /\bvisa\b/i, /labour[-_ ]?card/i,
-  /driving[-_ ]?licen[cs]e/i, /national[-_ ]?id/i, /\bpayslip/i, /\bnbe\b/i,
-  /(^|\/)faces?\//i, /\bselfie/i, /\bbiometric/i, /\bmugshot/i,
+  /passport/i,
+  /emirates[-_ ]?id/i,
+  /\bvisa\b/i,
+  /labour[-_ ]?card/i,
+  /driving[-_ ]?licen[cs]e/i,
+  /national[-_ ]?id/i,
+  /\bpayslip/i,
+  /\bnbe\b/i,
+  /(^|\/)faces?\//i,
+  /\bselfie/i,
+  /\bbiometric/i,
+  /\bmugshot/i,
 ];
 
 /** Known-problematic research images, by reputation rather than content. */
@@ -29,16 +38,18 @@ const KNOWN = [/\blena\b/i, /\blenna\b/i, /\bbarbara\b\.(jpe?g|png)/i, /\bmessi\
 
 /** Paths that are legitimately images and legitimately committed. */
 const ALLOWED = [
-  /^docs\/evidence\//,          // product screenshots, reviewed before commit
-  /^apps\/web\/public\//,       // brand and UI assets
+  /^docs\/evidence\//, // product screenshots, reviewed before commit
+  /^apps\/web\/public\//, // brand and UI assets
   /(^|\/)favicon\./,
-  /\.svg$/i,                    // vector marks, not photographs
+  /\.svg$/i, // vector marks, not photographs
 ];
 
 function tracked() {
   try {
     return execSync('git ls-files', { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
-      .split('\n').map((line) => line.trim()).filter(Boolean);
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
   } catch (error) {
     console.error('check-test-data: could not read the Git index.', error.message);
     process.exit(2);

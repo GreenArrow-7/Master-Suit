@@ -77,7 +77,10 @@ export class MockTelephonyProvider implements TelephonyProvider {
 export class HmacTelephonyProvider implements TelephonyProvider {
   name: string;
 
-  constructor(name: string, private readonly webhookSecret: string) {
+  constructor(
+    name: string,
+    private readonly webhookSecret: string,
+  ) {
     if (!name || !webhookSecret) throw new Error('Telephony provider and webhook secret are required.');
     this.name = name;
   }
@@ -102,9 +105,7 @@ export class HmacTelephonyProvider implements TelephonyProvider {
 
     const supplied = signature.startsWith('sha256=') ? signature.slice(7) : signature;
     if (!/^[a-f\d]{64}$/i.test(supplied)) return false;
-    const expected = createHmac('sha256', this.webhookSecret)
-      .update(`${timestamp}.${payload}`)
-      .digest();
+    const expected = createHmac('sha256', this.webhookSecret).update(`${timestamp}.${payload}`).digest();
     const actual = Buffer.from(supplied, 'hex');
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
@@ -113,7 +114,9 @@ export class HmacTelephonyProvider implements TelephonyProvider {
     if (!payload || typeof payload !== 'object') throw new Error('Invalid webhook body.');
     const p = payload as Record<string, unknown>;
     const externalCallId = String(p.callId ?? '').trim();
-    const status = String(p.status ?? '').trim().toLowerCase();
+    const status = String(p.status ?? '')
+      .trim()
+      .toLowerCase();
     const timestamp = String(p.timestamp ?? '').trim();
     if (!externalCallId || !['initiated', 'ringing', 'in_progress', 'completed', 'failed'].includes(status)) {
       throw new Error('Invalid call identifier or status.');

@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
@@ -23,12 +21,10 @@ const TYPE_TABS = [
 
 export default async function ActivitiesPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['activities', 'VIEW'] });
   const scope = await visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' });
 
-  const typeFilter = params.tab
-    ? { type: { key: params.tab } }
-    : {};
+  const typeFilter = params.tab ? { type: { key: params.tab } } : {};
 
   const rows = await prisma.activity.findMany({
     where: { ...scope, deletedAt: null, ...typeFilter },
@@ -49,17 +45,31 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
 
   return (
     <>
-            <ListHeader
+      <ListHeader
         title="Activities"
-        description={<>{rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your scope</>}
-      
-        actions={can(ctx, 'settings', 'MANAGE_CONFIGURATION') && <ColumnEditor object="ACTIVITY" current={columns.map((c) => c.key)} />}
+        description={
+          <>
+            {rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
+            scope
+          </>
+        }
+
+        actions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+            <ColumnEditor object="ACTIVITY" current={columns.map((c) => c.key)} />
+          )
+        }
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Activity type">
         {TYPE_TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={key ? `/activities?tab=${key}` : '/activities'}
-             aria-selected={(params.tab ?? '') === key} role="tab">
+          <SalesLink
+            key={label}
+            className="lf-tab"
+            href={key ? `/activities?tab=${key}` : '/activities'}
+            aria-selected={(params.tab ?? '') === key}
+            role="tab"
+          >
             {label}
           </SalesLink>
         ))}
@@ -74,16 +84,4 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       )}
     </>
   );
-}
-
-function fmtDate(d: Date) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDuration(secs: number | null) {
-  if (secs == null) return '--';
-  if (secs < 60) return `${secs}s`;
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return s ? `${m}m ${s}s` : `${m}m`;
 }

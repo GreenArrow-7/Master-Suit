@@ -35,7 +35,15 @@ const root = () => path.resolve(env.ATTENDANCE_CAPTURE_DIR);
  * key are never the same value even though both come from one secret.
  */
 function key(): Buffer {
-  return Buffer.from(hkdfSync('sha256', Buffer.from(env.FIELD_ENCRYPTION_KEY), Buffer.from('master-saas-attendance-capture-v1'), Buffer.from(''), 32));
+  return Buffer.from(
+    hkdfSync(
+      'sha256',
+      Buffer.from(env.FIELD_ENCRYPTION_KEY),
+      Buffer.from('master-saas-attendance-capture-v1'),
+      Buffer.from(''),
+      32,
+    ),
+  );
 }
 
 /**
@@ -58,7 +66,13 @@ function pathFor(tenantId: string, employeeId: string, punchId: string, when: Da
  * error for the employee standing at the door. Losing the capture is bad;
  * blocking the punch is worse, and the punch row is written either way.
  */
-export async function storeCapture(tenantId: string, employeeId: string, punchId: string, frame: Buffer, when = new Date()): Promise<string | null> {
+export async function storeCapture(
+  tenantId: string,
+  employeeId: string,
+  punchId: string,
+  frame: Buffer,
+  when = new Date(),
+): Promise<string | null> {
   if (!frame.length) return null;
   try {
     const relative = pathFor(tenantId, employeeId, punchId, when);
@@ -107,19 +121,35 @@ export async function purgeExpiredCaptures(): Promise<{ removed: number; workspa
 
   async function walk(directory: string, cutoff: number) {
     let entries;
-    try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       const full = path.join(directory, entry.name);
-      if (entry.isDirectory()) { await walk(full, cutoff); continue; }
+      if (entry.isDirectory()) {
+        await walk(full, cutoff);
+        continue;
+      }
       if (!entry.name.endsWith(SUFFIX)) continue;
       try {
-        if ((await stat(full)).mtimeMs < cutoff) { await unlink(full); removed += 1; }
-      } catch { /* a file that vanished under us was already purged */ }
+        if ((await stat(full)).mtimeMs < cutoff) {
+          await unlink(full);
+          removed += 1;
+        }
+      } catch {
+        /* a file that vanished under us was already purged */
+      }
     }
   }
 
   let shards;
-  try { shards = await readdir(root(), { withFileTypes: true }); } catch { return { removed: 0, workspaces: 0 }; }
+  try {
+    shards = await readdir(root(), { withFileTypes: true });
+  } catch {
+    return { removed: 0, workspaces: 0 };
+  }
 
   for (const shard of shards) {
     if (!shard.isDirectory() || !shard.name.startsWith('t-')) continue;

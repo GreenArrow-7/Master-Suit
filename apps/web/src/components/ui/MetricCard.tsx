@@ -43,9 +43,20 @@ export default function MetricCard({ label, value, tone = 'slate', delta, href }
     </>
   );
 
-  const style: React.CSSProperties = { padding: 'var(--lf-space-5)', display: 'block', textDecoration: 'none', color: 'inherit' };
+  const style: React.CSSProperties = {
+    padding: 'var(--lf-space-5)',
+    display: 'block',
+    textDecoration: 'none',
+    color: 'inherit',
+  };
 
-  return href
-    ? <SalesLink className="lf-card" style={style} href={href}>{body}</SalesLink>
-    : <div className="lf-card" style={style}>{body}</div>;
+  return href ? (
+    <SalesLink className="lf-card" style={style} href={href}>
+      {body}
+    </SalesLink>
+  ) : (
+    <div className="lf-card" style={style}>
+      {body}
+    </div>
+  );
 }

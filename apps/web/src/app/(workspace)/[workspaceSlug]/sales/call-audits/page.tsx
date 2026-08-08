@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -11,7 +9,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 export const metadata = { title: 'Call Audits' };
 
 export default async function CallAuditsPage() {
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
 
   const scope = scopeFor(ctx, 'calls', 'VIEW');
   const callWhere: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
@@ -52,43 +50,78 @@ export default async function CallAuditsPage() {
         </div>
       ) : (
         <div className="lf-grid-wrap" style={{ marginTop: 'var(--lf-space-4)' }}>
-        <table className="lf-grid">
-          <thead>
-            <tr>
-              <th>Call</th><th>Caller</th><th>Date</th><th>Score</th><th>Status</th><th>Reviewed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {audits.map((a) => {
-              const pct = a.maxScore ? Math.round(((a.overallScore ?? 0) / a.maxScore) * 100) : null;
-              const scoreTone: Tone = pct != null ? (pct >= 70 ? 'viridian' : pct >= 40 ? 'brass' : 'vermillion') : 'slate';
-              return (
-                <tr key={a.id}>
-                  <td>
-                    <SalesLink href={`/calls/${a.call.id}`} style={{ textDecoration: 'none', color: 'inherit', fontWeight: 500 }}>
-                      {a.call.recipientNumber ?? a.call.id.slice(0, 8)}
-                    </SalesLink>
-                  </td>
-                  <td style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-                    {a.call.caller?.fullName ?? '—'}
-                  </td>
-                  <td style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-                    {(a.call.startedAt ?? a.call.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td>
-                    {pct != null ? (
-                      <span className="lf-num" style={{ fontWeight: 700, color: scoreTone === 'viridian' ? 'var(--lf-viridian)' : scoreTone === 'brass' ? 'var(--lf-brass)' : 'var(--lf-vermillion)' }}>
-                        {pct}%
-                      </span>
-                    ) : '—'}
-                  </td>
-                  <td><Badge tone={a.status === 'COMPLETED' ? 'viridian' : a.status === 'FAILED' ? 'vermillion' : 'brass'}>{a.status.toLowerCase()}</Badge></td>
-                  <td>{a.humanReviewed ? <Badge tone="viridian">reviewed</Badge> : <Badge tone="slate">pending</Badge>}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          <table className="lf-grid">
+            <thead>
+              <tr>
+                <th>Call</th>
+                <th>Caller</th>
+                <th>Date</th>
+                <th>Score</th>
+                <th>Status</th>
+                <th>Reviewed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audits.map((a) => {
+                const pct = a.maxScore ? Math.round(((a.overallScore ?? 0) / a.maxScore) * 100) : null;
+                const scoreTone: Tone =
+                  pct != null ? (pct >= 70 ? 'viridian' : pct >= 40 ? 'brass' : 'vermillion') : 'slate';
+                return (
+                  <tr key={a.id}>
+                    <td>
+                      <SalesLink
+                        href={`/calls/${a.call.id}`}
+                        style={{ textDecoration: 'none', color: 'inherit', fontWeight: 500 }}
+                      >
+                        {a.call.recipientNumber ?? a.call.id.slice(0, 8)}
+                      </SalesLink>
+                    </td>
+                    <td style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+                      {a.call.caller?.fullName ?? '—'}
+                    </td>
+                    <td style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+                      {(a.call.startedAt ?? a.call.createdAt).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td>
+                      {pct != null ? (
+                        <span
+                          className="lf-num"
+                          style={{
+                            fontWeight: 700,
+                            color:
+                              scoreTone === 'viridian'
+                                ? 'var(--lf-viridian)'
+                                : scoreTone === 'brass'
+                                  ? 'var(--lf-brass)'
+                                  : 'var(--lf-vermillion)',
+                          }}
+                        >
+                          {pct}%
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
+                      <Badge
+                        tone={a.status === 'COMPLETED' ? 'viridian' : a.status === 'FAILED' ? 'vermillion' : 'brass'}
+                      >
+                        {a.status.toLowerCase()}
+                      </Badge>
+                    </td>
+                    <td>
+                      {a.humanReviewed ? <Badge tone="viridian">reviewed</Badge> : <Badge tone="slate">pending</Badge>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </>

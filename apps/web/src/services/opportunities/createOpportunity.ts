@@ -1,4 +1,4 @@
-import { withTenantTx, prisma } from '@/lib/db';
+import { withTx, prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
@@ -30,13 +30,18 @@ export async function createOpportunity(ctx: Ctx, input: CreateOpportunityInput)
   if (!pipeline) throw NotFound('Pipeline');
 
   const stage = input.stageId
-    ? await prisma.pipelineStage.findFirst({ where: { tenantId: ctx.tenantId, pipelineId: pipeline.id, id: input.stageId } })
-    : await prisma.pipelineStage.findFirst({ where: { tenantId: ctx.tenantId, pipelineId: pipeline.id }, orderBy: { position: 'asc' } });
+    ? await prisma.pipelineStage.findFirst({
+        where: { tenantId: ctx.tenantId, pipelineId: pipeline.id, id: input.stageId },
+      })
+    : await prisma.pipelineStage.findFirst({
+        where: { tenantId: ctx.tenantId, pipelineId: pipeline.id },
+        orderBy: { position: 'asc' },
+      });
   if (!stage) throw NotFound('Pipeline stage');
 
   const ownerId = input.ownerId && can(ctx, 'opportunities', 'ASSIGN') ? input.ownerId : ctx.actor.id;
 
-  const opportunity = await withTenantTx(ctx.tenantId, async (tx) => {
+  const opportunity = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'OPPORTUNITY');
 
     const created = await tx.opportunity.create({
@@ -65,11 +70,25 @@ export async function createOpportunity(ctx: Ctx, input: CreateOpportunityInput)
       data: { tenantId: ctx.tenantId, opportunityId: created.id, toStageId: stage.id, changedById: ctx.actor.id },
     });
 
-    await audit(ctx, { event: 'RECORD_CREATED', objectType: 'opportunity', recordId: created.id, newValue: { reference, stage: stage.key } }, tx);
+    await audit(
+      ctx,
+      {
+        event: 'RECORD_CREATED',
+        objectType: 'opportunity',
+        recordId: created.id,
+        newValue: { reference, stage: stage.key },
+      },
+      tx,
+    );
     return created;
   });
 
-  await enqueue('automation', 'trigger', { tenantId: ctx.tenantId, event: 'record.created', object: 'OPPORTUNITY', recordId: opportunity.id });
+  await enqueue('automation', 'trigger', {
+    tenantId: ctx.tenantId,
+    event: 'record.created',
+    object: 'OPPORTUNITY',
+    recordId: opportunity.id,
+  });
   emit(ctx, 'opportunity.created', { opportunityId: opportunity.id });
   return opportunity;
 }

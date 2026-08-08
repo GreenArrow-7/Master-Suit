@@ -9,14 +9,15 @@ import { updateOpportunity, deleteOpportunity } from '@/services/opportunities/u
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'opportunities', action: 'VIEW', params },
+  { module: 'opportunities', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
     const rules = await loadFieldRules(ctx, 'OPPORTUNITY');
     const scope = await visibilityWhere(ctx, 'opportunities', 'VIEW', { includeUnassigned: true });
     const opportunity = await prisma.opportunity.findFirst({
       where: { ...scope, id: params.id },
       include: {
-        stage: true, pipeline: true,
+        stage: true,
+        pipeline: true,
         account: { select: { id: true, name: true } },
         owner: { select: { id: true, fullName: true, email: true } },
       },
@@ -26,21 +27,30 @@ export const GET = route(
   },
 );
 
-const patchBody = z.object({
-  name: z.string().min(1).max(200).optional(),
-  stageId: z.string().cuid().optional(),
-  ownerId: z.string().cuid().nullable().optional(),
-  amount: z.number().min(0).optional(),
-  currency: z.string().length(3).optional(),
-  expectedCloseDate: z.string().datetime().nullable().optional(),
-  status: z.enum(['OPEN', 'WON', 'LOST', 'ABANDONED']).optional(),
-  lossReasonId: z.string().cuid().optional(),
-  lossNotes: z.string().max(1000).optional(),
-  tags: z.array(z.string().max(40)).max(20).optional(),
-}).strict();
+const patchBody = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    stageId: z.string().cuid().optional(),
+    ownerId: z.string().cuid().nullable().optional(),
+    amount: z.number().min(0).optional(),
+    currency: z.string().length(3).optional(),
+    expectedCloseDate: z.string().datetime().nullable().optional(),
+    status: z.enum(['OPEN', 'WON', 'LOST', 'ABANDONED']).optional(),
+    lossReasonId: z.string().cuid().optional(),
+    lossNotes: z.string().max(1000).optional(),
+    tags: z.array(z.string().max(40)).max(20).optional(),
+  })
+  .strict();
 
 export const PATCH = route(
-  { module: 'opportunities', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'opportunities',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     const rules = await loadFieldRules(ctx, 'OPPORTUNITY');
     const safe = stripUneditableFields(rules, body);
@@ -50,7 +60,7 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'opportunities', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'opportunities', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await deleteOpportunity(ctx, params.id);
     return { ok: true };

@@ -7,18 +7,27 @@
  * that can check permissions and write an audit row. A pre-signed URL would
  * bypass both the moment it leaked.
  */
-import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  CreateBucketCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { env } from './env';
 import { logger } from './logger';
 
 const globalForS3 = globalThis as unknown as { __s3?: S3Client; __bucketReady?: Promise<void> };
 
-export const s3 = globalForS3.__s3 ?? new S3Client({
-  endpoint: env.S3_ENDPOINT,
-  region: env.S3_REGION,
-  forcePathStyle: env.S3_FORCE_PATH_STYLE,
-  credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY },
-});
+export const s3 =
+  globalForS3.__s3 ??
+  new S3Client({
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION,
+    forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET_ACCESS_KEY },
+  });
 if (env.NODE_ENV !== 'production') globalForS3.__s3 = s3;
 
 /**
@@ -35,7 +44,7 @@ function ensureBucket(): Promise<void> {
         await s3.send(new CreateBucketCommand({ Bucket: env.S3_BUCKET }));
         logger.info({ bucket: env.S3_BUCKET }, 'storage: bucket created');
       } catch (error) {
-        globalForS3.__bucketReady = undefined;   // let the next call retry
+        globalForS3.__bucketReady = undefined; // let the next call retry
         throw error;
       }
     }

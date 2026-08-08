@@ -1,5 +1,6 @@
 import { logger } from '../logger';
 import { withRetry, isTransient } from '../integrations/retry';
+import { redact } from './redact';
 
 export interface AnalysisInput {
   transcript: string;
@@ -45,9 +46,20 @@ const RESPONSE_SCHEMA = {
     uncertainItems: { type: 'array' as const, items: { type: 'string' as const } },
   },
   required: [
-    'summary', 'clientNeeds', 'objections', 'commitments', 'buyingSignals',
-    'risks', 'nextSteps', 'topicsDiscussed', 'topicsMissed', 'sentiment',
-    'sentimentScore', 'suggestedStatus', 'complianceFlags', 'uncertainItems',
+    'summary',
+    'clientNeeds',
+    'objections',
+    'commitments',
+    'buyingSignals',
+    'risks',
+    'nextSteps',
+    'topicsDiscussed',
+    'topicsMissed',
+    'sentiment',
+    'sentimentScore',
+    'suggestedStatus',
+    'complianceFlags',
+    'uncertainItems',
   ],
 };
 
@@ -85,12 +97,17 @@ function buildPrompt(input: AnalysisInput): string {
     }
   }
 
-  parts.push('', '--- TRANSCRIPT START ---', input.transcript, '--- TRANSCRIPT END ---');
+  const { text, counts } = redact(input.transcript);
+  if (Object.keys(counts).length) logger.info({ redacted: counts }, 'transcript redacted before Gemini');
+
+  parts.push('', '--- TRANSCRIPT START ---', text, '--- TRANSCRIPT END ---');
 
   return parts.join('\n');
 }
 
-export async function analyzeTranscript(input: AnalysisInput): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
+export async function analyzeTranscript(
+  input: AnalysisInput,
+): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -100,31 +117,35 @@ export async function analyzeTranscript(input: AnalysisInput): Promise<{ result:
   const prompt = buildPrompt(input);
   const started = Date.now();
 
-  const data = await withRetry('gemini-analysis', async () => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-        },
-      }),
-    });
+  const data = await withRetry(
+    'gemini-analysis',
+    async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: RESPONSE_SCHEMA,
+            temperature: 0.2,
+            maxOutputTokens: 4096,
+          },
+        }),
+      });
 
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      logger.error({ status: res.status, model }, 'Gemini API error');
-      const e: any = new Error(`Gemini API error: ${res.status} — ${err.slice(0, 200)}`);
-      e.status = res.status;
-      throw e;
-    }
+      if (!res.ok) {
+        const err = await res.text().catch(() => '');
+        logger.error({ status: res.status, model }, 'Gemini API error');
+        const e: any = new Error(`Gemini API error: ${res.status} — ${err.slice(0, 200)}`);
+        e.status = res.status;
+        throw e;
+      }
 
-    return res.json();
-  }, { maxAttempts: 3, retryOn: isTransient });
+      return res.json();
+    },
+    { maxAttempts: 3, retryOn: isTransient },
+  );
 
   const processingMs = Date.now() - started;
 

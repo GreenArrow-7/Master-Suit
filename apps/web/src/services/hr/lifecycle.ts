@@ -18,6 +18,7 @@ import type { Ctx } from '@/lib/security/rbac';
 import { addDays, daysBetween, expirySeverity, gratuityUae, noticePayInLieu, toDay, type NoticeBasis } from './rules';
 import { isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { getHrPolicy } from './settings';
+import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_PUBLIC } from './publicSelect';
 
 export type ChecklistPhase = 'ONBOARDING' | 'OFFBOARDING';
 
@@ -69,7 +70,11 @@ const OFFBOARDING_TEMPLATE: TemplateRow[] = [
   ['Exit interview completed', 'HR', 0, false],
 ];
 
-type EmployeeLike = { reraBrn: string | null; departmentCode: string | null; department?: { name: string; code: string } | null };
+type EmployeeLike = {
+  reraBrn: string | null;
+  departmentCode: string | null;
+  department?: { name: string; code: string } | null;
+};
 
 /**
  * Who gets the RERA onboarding track. The department list is workspace policy:
@@ -90,10 +95,18 @@ function requireHr(ctx: Ctx) {
 // ── Checklists ─────────────────────────────────────────────────────────────
 
 /** Anchor is the joining date for onboarding, the last working day for an exit. */
-export async function buildChecklist(ctx: Ctx, employeeId: string, phase: ChecklistPhase, anchor: Date, agentTrack: boolean, db: any = prisma) {
-  const template = phase === 'ONBOARDING'
-    ? [...ONBOARDING_TEMPLATE, ...(agentTrack ? ONBOARDING_AGENT_EXTRAS : [])]
-    : OFFBOARDING_TEMPLATE;
+export async function buildChecklist(
+  ctx: Ctx,
+  employeeId: string,
+  phase: ChecklistPhase,
+  anchor: Date,
+  agentTrack: boolean,
+  db: any = prisma,
+) {
+  const template =
+    phase === 'ONBOARDING'
+      ? [...ONBOARDING_TEMPLATE, ...(agentTrack ? ONBOARDING_AGENT_EXTRAS : [])]
+      : OFFBOARDING_TEMPLATE;
 
   // The [tenantId, employeeId, phase, title] unique key is what makes re-running
   // this safe: a second start adds only what is genuinely new.
@@ -143,7 +156,12 @@ export async function completeTask(ctx: Ctx, taskId: string, notes?: string) {
     where: { tenantId: ctx.tenantId, id: task.id },
     data: { completedAt: new Date(), completedById: self?.id ?? null, notes: notes ?? task.notes },
   });
-  await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_checklist_task', recordId: task.id, metadata: { action: 'checklist.completed', title: task.title } });
+  await audit(ctx, {
+    event: 'RECORD_UPDATED',
+    objectType: 'hr_checklist_task',
+    recordId: task.id,
+    metadata: { action: 'checklist.completed', title: task.title },
+  });
   return updated;
 }
 
@@ -158,11 +176,26 @@ export async function reopenTask(ctx: Ctx, taskId: string) {
     where: { tenantId: ctx.tenantId, id: task.id },
     data: { completedAt: null, completedById: null },
   });
-  await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'hr_checklist_task', recordId: task.id, metadata: { action: 'checklist.reopened', title: task.title } });
+  await audit(ctx, {
+    event: 'RECORD_UPDATED',
+    objectType: 'hr_checklist_task',
+    recordId: task.id,
+    metadata: { action: 'checklist.reopened', title: task.title },
+  });
   return updated;
 }
 
-export async function addTask(ctx: Ctx, input: { employeeId: string; phase: ChecklistPhase; title: string; ownerDepartment?: string; dueDate?: Date; blocking?: boolean }) {
+export async function addTask(
+  ctx: Ctx,
+  input: {
+    employeeId: string;
+    phase: ChecklistPhase;
+    title: string;
+    ownerDepartment?: string;
+    dueDate?: Date;
+    blocking?: boolean;
+  },
+) {
   requireHr(ctx);
   await requireEmployee(ctx, input.employeeId);
   const last = await prisma.hrChecklistTask.findFirst({
@@ -196,15 +229,29 @@ export async function startOnboarding(ctx: Ctx, employeeId: string) {
 
   const policy = await getHrPolicy(ctx);
   const agentTrack = isAgent(employee, policy.agentDepartments);
-  const tasksCreated = await buildChecklist(ctx, employee.id, 'ONBOARDING', employee.joinedOn ?? new Date(), agentTrack);
+  const tasksCreated = await buildChecklist(
+    ctx,
+    employee.id,
+    'ONBOARDING',
+    employee.joinedOn ?? new Date(),
+    agentTrack,
+  );
 
   // Someone already working keeps their status — this is a checklist being
   // attached after the fact, not a demotion back into onboarding.
   if (employee.employmentStatus !== 'ACTIVE') {
-    await prisma.employeeProfile.update({ where: { tenantId: ctx.tenantId, id: employee.id }, data: { employmentStatus: 'ONBOARDING' } });
+    await prisma.employeeProfile.update({
+      where: { tenantId: ctx.tenantId, id: employee.id },
+      data: { employmentStatus: 'ONBOARDING' },
+    });
   }
 
-  await audit(ctx, { event: 'RECORD_CREATED', objectType: 'employee', recordId: employee.id, metadata: { action: 'onboarding.started', tasksCreated, agentTrack } });
+  await audit(ctx, {
+    event: 'RECORD_CREATED',
+    objectType: 'employee',
+    recordId: employee.id,
+    metadata: { action: 'onboarding.started', tasksCreated, agentTrack },
+  });
   return { employeeId: employee.id, tasksCreated, agentTrack };
 }
 
@@ -220,14 +267,23 @@ export async function activateEmployee(ctx: Ctx, employeeId: string) {
 
   const blockers = await outstandingBlockers(ctx, employee.id, 'ONBOARDING');
   if (blockers.length) {
-    throw Conflict(`${blockers.length} onboarding steps are still open: ${blockers.map((task: any) => task.title).join(', ')}.`);
+    throw Conflict(
+      `${blockers.length} onboarding steps are still open: ${blockers.map((task: any) => task.title).join(', ')}.`,
+    );
   }
 
   const updated = await prisma.employeeProfile.update({
     where: { tenantId: ctx.tenantId, id: employee.id },
     data: { employmentStatus: 'ACTIVE' },
   });
-  await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'employee', recordId: employee.id, previousValue: { employmentStatus: employee.employmentStatus }, newValue: { employmentStatus: 'ACTIVE' }, metadata: { action: 'employee.activated' } });
+  await audit(ctx, {
+    event: 'RECORD_UPDATED',
+    objectType: 'employee',
+    recordId: employee.id,
+    previousValue: { employmentStatus: employee.employmentStatus },
+    newValue: { employmentStatus: 'ACTIVE' },
+    metadata: { action: 'employee.activated' },
+  });
   return updated;
 }
 
@@ -248,7 +304,7 @@ export async function expiringDocuments(ctx: Ctx, withinDays?: number, employeeI
       ...(employeeId ? { employeeId } : {}),
       employee: { deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
     },
-    include: { employee: { include: { membership: { include: { platformUser: true } } } } },
+    include: { employee: EMPLOYEE_WITH_PERSON },
     orderBy: { expiresAt: 'asc' },
   });
 
@@ -294,7 +350,7 @@ export async function startOffboarding(ctx: Ctx, input: StartOffboardingInput) {
   const served = daysBetween(noticeGivenOn, lastWorkingOn);
   const noticeShortfallDays = Math.max(noticePeriodDays - served, 0);
 
-  const result = await withTx(async (tx) => {
+  const result = await withTx(ctx.tenantId, async (tx) => {
     const offboardingCase = await tx.hrOffboardingCase.create({
       data: {
         tenantId: ctx.tenantId,
@@ -320,7 +376,11 @@ export async function startOffboarding(ctx: Ctx, input: StartOffboardingInput) {
     event: 'RECORD_CREATED',
     objectType: 'hr_offboarding_case',
     recordId: result.offboardingCase.id,
-    metadata: { action: 'offboarding.started', lastWorkingOn: lastWorkingOn.toISOString().slice(0, 10), noticeShortfallDays },
+    metadata: {
+      action: 'offboarding.started',
+      lastWorkingOn: lastWorkingOn.toISOString().slice(0, 10),
+      noticeShortfallDays,
+    },
   });
   return { ...result, noticeDaysServed: served, noticeShortfallDays };
 }
@@ -331,7 +391,10 @@ export async function unusedLeaveDays(ctx: Ctx, employeeId: string, asOf: Date) 
   const balances = await prisma.hrLeaveBalance.findMany({
     where: { tenantId: ctx.tenantId, employeeId, year, leaveType: { accrues: true, paid: true } },
   });
-  const total = balances.reduce((sum, row) => sum + Math.max(row.accruedDays + row.carriedForwardDays - row.takenDays, 0), 0);
+  const total = balances.reduce(
+    (sum, row) => sum + Math.max(row.accruedDays + row.carriedForwardDays - row.takenDays, 0),
+    0,
+  );
   return Math.round(total * 100) / 100;
 }
 
@@ -343,11 +406,15 @@ export async function unusedLeaveDays(ctx: Ctx, employeeId: string, asOf: Date) 
  * defaults to TOTAL remuneration. That asymmetry is deliberate and is what UAE
  * practice expects.
  */
-export async function settlementFor(ctx: Ctx, employeeId: string, options: { noticeShortfallDays?: number; noticeBasis?: NoticeBasis; lastWorkingOn?: Date } = {}) {
+export async function settlementFor(
+  ctx: Ctx,
+  employeeId: string,
+  options: { noticeShortfallDays?: number; noticeBasis?: NoticeBasis; lastWorkingOn?: Date } = {},
+) {
   requireHr(ctx);
   const employee = await prisma.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
-    include: { membership: { include: { platformUser: true } } },
+    include: { membership: MEMBERSHIP_PUBLIC },
   });
   if (!employee) throw NotFound('Employee');
   if (!employee.joinedOn) throw Conflict('This employee has no joining date on record.');
@@ -403,7 +470,7 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
   requireHr(ctx);
   const employee = await prisma.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
-    include: { membership: { include: { platformUser: true } } },
+    include: { membership: MEMBERSHIP_PUBLIC },
   });
   if (!employee) throw NotFound('Employee');
   if (employee.employmentStatus === 'EXITED') throw Conflict('This employee has already left.');
@@ -411,14 +478,16 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
 
   const blockers = await outstandingBlockers(ctx, employee.id, 'OFFBOARDING');
   if (blockers.length) {
-    throw Conflict(`${blockers.length} clearance steps are still open: ${blockers.map((task: any) => task.title).join(', ')}.`);
+    throw Conflict(
+      `${blockers.length} clearance steps are still open: ${blockers.map((task: any) => task.title).join(', ')}.`,
+    );
   }
   if (!confirmSettlementPaid) throw Conflict('Confirm the final settlement has been paid before closing the account.');
 
   const [settlement, settlementPolicy] = await Promise.all([settlementFor(ctx, employee.id), getHrPolicy(ctx)]);
   const exitedOn = employee.exitedOn ?? toDay(new Date());
 
-  const result = await withTx(async (tx) => {
+  const result = await withTx(ctx.tenantId, async (tx) => {
     const openCase = await tx.hrOffboardingCase.findFirst({
       where: { tenantId: ctx.tenantId, employeeId: employee.id, completedAt: null },
       orderBy: { startedAt: 'desc' },
@@ -460,7 +529,10 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
     // Access ends with employment, in the same transaction as the status change.
     await tx.workspaceMembership.update({ where: { id: employee.membershipId }, data: { status: 'REMOVED' } });
     if (employee.membership.salesUserId) {
-      await tx.user.update({ where: { tenantId: ctx.tenantId, id: employee.membership.salesUserId }, data: { status: 'DEACTIVATED' } });
+      await tx.user.update({
+        where: { tenantId: ctx.tenantId, id: employee.membership.salesUserId },
+        data: { status: 'DEACTIVATED' },
+      });
     }
 
     // No lawful basis to keep biometrics after employment ends.
@@ -490,11 +562,21 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
 
 /** What HR needs on a Monday morning. */
 export async function lifecycleDashboard(ctx: Ctx) {
-  const employeeInclude = { membership: { include: { platformUser: true } } } as const;
+  const employeeInclude = { membership: MEMBERSHIP_PUBLIC } as const;
   const [joining, leaving, overdueTasks, documents] = await Promise.all([
-    prisma.employeeProfile.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ONBOARDING' }, include: employeeInclude, orderBy: { joinedOn: 'asc' } }),
-    prisma.employeeProfile.findMany({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE' }, include: employeeInclude, orderBy: { exitedOn: 'asc' } }),
-    prisma.hrChecklistTask.count({ where: { tenantId: ctx.tenantId, completedAt: null, dueDate: { lt: toDay(new Date()) } } }),
+    prisma.employeeProfile.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ONBOARDING' },
+      include: employeeInclude,
+      orderBy: { joinedOn: 'asc' },
+    }),
+    prisma.employeeProfile.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE' },
+      include: employeeInclude,
+      orderBy: { exitedOn: 'asc' },
+    }),
+    prisma.hrChecklistTask.count({
+      where: { tenantId: ctx.tenantId, completedAt: null, dueDate: { lt: toDay(new Date()) } },
+    }),
     expiringDocuments(ctx, 60),
   ]);
 
@@ -513,14 +595,15 @@ export async function lifecycleDashboard(ctx: Ctx) {
   const blockersFor = (employeeId: string, phase: ChecklistPhase) =>
     blockerCounts.find((row) => row.employeeId === employeeId && row.phase === phase)?._count._all ?? 0;
 
-  const withBlockers = (rows: typeof joining, phase: ChecklistPhase) => rows.map((employee) => ({
-    employeeId: employee.id,
-    name: employee.membership.platformUser.fullName,
-    employeeNumber: employee.employeeNumber,
-    joinedOn: employee.joinedOn,
-    exitedOn: employee.exitedOn,
-    openBlockers: blockersFor(employee.id, phase),
-  }));
+  const withBlockers = (rows: typeof joining, phase: ChecklistPhase) =>
+    rows.map((employee) => ({
+      employeeId: employee.id,
+      name: employee.membership.platformUser.fullName,
+      employeeNumber: employee.employeeNumber,
+      joinedOn: employee.joinedOn,
+      exitedOn: employee.exitedOn,
+      openBlockers: blockersFor(employee.id, phase),
+    }));
 
   return {
     joining: withBlockers(joining, 'ONBOARDING'),

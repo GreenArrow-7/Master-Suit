@@ -15,10 +15,7 @@ export default async function Root() {
   let destination = '/login';
 
   try {
-    const ctx = await resolvePlatformCtx(
-      new Request('http://internal/', { headers: await headers() }),
-      ulid(),
-    );
+    const ctx = await resolvePlatformCtx(new Request('http://internal/', { headers: await headers() }), ulid());
     if (ctx.activeTenantId) {
       const workspace = await prisma.tenant.findUnique({
         where: { id: ctx.activeTenantId },

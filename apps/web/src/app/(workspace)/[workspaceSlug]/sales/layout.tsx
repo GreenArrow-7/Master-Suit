@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 
 /**
  * Sales entitlement gate. The workspace layout above already established the
@@ -7,11 +7,18 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
  * HR-only plan cannot reach Sales screens by typing the URL.
  */
 export default async function SalesLayout({
-  children, params,
-}: { children: React.ReactNode; params: Promise<{ workspaceSlug: string }> }) {
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ workspaceSlug: string }>;
+}) {
   const { workspaceSlug } = await params;
   try {
-    await resolveWorkspacePage(workspaceSlug, 'SALES');
+    // Entitlement only. Each page below asserts its own permission; this layout
+    // exists so a workspace on an HR-only plan cannot reach any Sales screen by
+    // typing the URL, whatever permissions its roles happen to carry.
+    await resolveWorkspacePage(workspaceSlug, { module: 'SALES', permission: SELF_SERVICE });
   } catch {
     redirect(`/${workspaceSlug}/dashboard`);
   }

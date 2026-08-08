@@ -1,4 +1,4 @@
-import { prisma, withTenantTx } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 /**
@@ -21,7 +21,7 @@ export async function assignLead(tenantId: string, leadId: string) {
   const lastIndex = rule.lastAssignedUserId ? pool.indexOf(rule.lastAssignedUserId) : -1;
   const nextUserId = pool[(lastIndex + 1) % pool.length]!;
 
-  await withTenantTx(tenantId, async (tx) => {
+  await withTx(tenantId, async (tx) => {
     const lead = await tx.lead.findFirst({ where: { tenantId, id: leadId } });
     if (!lead || lead.ownerId) return; // already assigned since this job was queued
 

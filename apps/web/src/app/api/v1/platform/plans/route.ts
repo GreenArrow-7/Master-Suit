@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withTx } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 
 const planSchema = z.object({
-  code: z.string().min(2).max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  code: z
+    .string()
+    .min(2)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   name: z.string().min(2).max(120),
   modules: z.array(z.enum(['HRMS', 'SALES'])).min(1),
   maxUsers: z.number().int().positive().max(100000),
@@ -36,7 +40,7 @@ export async function POST(req: Request) {
     const exists = await prisma.subscriptionPlan.findUnique({ where: { code: body.code } });
     if (exists) throw Conflict('That plan code is already in use.');
 
-    const plan = await withTx(async (tx) => {
+    const plan = await withPlatformTx(async (tx) => {
       const created = await tx.subscriptionPlan.create({
         data: {
           code: body.code,
@@ -79,10 +83,16 @@ export async function POST(req: Request) {
 
 function problem(error: unknown, requestId: string) {
   if (error instanceof AppError) {
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+    return NextResponse.json(error.toProblem(requestId), {
+      status: error.status,
+      headers: { 'x-request-id': requestId },
+    });
   }
   if (error instanceof z.ZodError) {
-    return NextResponse.json({ status: 422, title: 'Validation failed', requestId, errors: error.flatten() }, { status: 422 });
+    return NextResponse.json(
+      { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
+      { status: 422 },
+    );
   }
   return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

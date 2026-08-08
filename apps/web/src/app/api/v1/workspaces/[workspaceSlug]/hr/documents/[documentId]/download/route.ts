@@ -39,7 +39,10 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
     });
   } catch (error) {
     if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), { status: error.status, headers: { 'x-request-id': requestId } });
+      return NextResponse.json(error.toProblem(requestId), {
+        status: error.status,
+        headers: { 'x-request-id': requestId },
+      });
     }
     logger.error({ err: error, requestId }, 'document download failed');
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });

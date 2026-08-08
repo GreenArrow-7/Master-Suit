@@ -37,7 +37,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     try {
       await api(`/api/v1/calls/${callId}/consent`, 'POST', { consentGiven: true, method });
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -47,7 +49,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     try {
       await api(`/api/v1/calls/${callId}/consent`, 'DELETE');
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -64,7 +68,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
         notes: (fd.get('notes') as string) || undefined,
       });
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -80,7 +86,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       });
       setShowTranscript(false);
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -90,7 +98,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     try {
       await api(`/api/v1/calls/${callId}/analysis`, 'POST');
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -108,7 +118,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       });
       setShowFollowUp(false);
       router.refresh();
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) {
+      setError(e.message);
+    }
     setBusy('');
   }
 
@@ -116,9 +128,17 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-      <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>Actions</div>
+      <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+        Actions
+      </div>
 
-      {error && <div style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-sm)', marginBottom: 'var(--lf-space-3)' }}>{error}</div>}
+      {error && (
+        <div
+          style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-sm)', marginBottom: 'var(--lf-space-3)' }}
+        >
+          {error}
+        </div>
+      )}
 
       {/* Consent */}
       {!hasConsent && isActive && (
@@ -135,7 +155,12 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       )}
       {hasConsent && isActive && (
         <div style={{ marginBottom: 'var(--lf-space-4)' }}>
-          <button className="lf-btn" onClick={withdrawConsent} disabled={!!busy} style={{ color: 'var(--lf-vermillion)' }}>
+          <button
+            className="lf-btn"
+            onClick={withdrawConsent}
+            disabled={!!busy}
+            style={{ color: 'var(--lf-vermillion)' }}
+          >
             {busy === 'withdraw' ? '…' : 'Withdraw Consent'}
           </button>
         </div>
@@ -148,8 +173,21 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
           <div style={{ display: 'grid', gap: 8 }}>
             <select name="outcome" required className="lf-input">
               <option value="">Select outcome…</option>
-              {['CONNECTED', 'NO_ANSWER', 'BUSY', 'VOICEMAIL', 'WRONG_NUMBER', 'CALLBACK_REQUESTED', 'NOT_INTERESTED', 'INTERESTED', 'QUALIFIED', 'CONVERTED'].map((o) => (
-                <option key={o} value={o}>{o.toLowerCase().replace(/_/g, ' ')}</option>
+              {[
+                'CONNECTED',
+                'NO_ANSWER',
+                'BUSY',
+                'VOICEMAIL',
+                'WRONG_NUMBER',
+                'CALLBACK_REQUESTED',
+                'NOT_INTERESTED',
+                'INTERESTED',
+                'QUALIFIED',
+                'CONVERTED',
+              ].map((o) => (
+                <option key={o} value={o}>
+                  {o.toLowerCase().replace(/_/g, ' ')}
+                </option>
               ))}
             </select>
             <textarea name="notes" className="lf-input" rows={2} placeholder="Post-call notes…" />
@@ -162,7 +200,12 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
 
       {/* Transcript upload */}
       {!showTranscript ? (
-        <button className="lf-btn" onClick={() => setShowTranscript(true)} disabled={!!busy} style={{ marginBottom: 8, display: 'block' }}>
+        <button
+          className="lf-btn"
+          onClick={() => setShowTranscript(true)}
+          disabled={!!busy}
+          style={{ marginBottom: 8, display: 'block' }}
+        >
           {hasTranscript ? 'Update Transcript' : 'Upload Transcript'}
         </button>
       ) : (
@@ -174,21 +217,30 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
               {busy === 'transcript' ? 'Saving…' : 'Save Transcript'}
             </button>
-            <button type="button" className="lf-btn" onClick={() => setShowTranscript(false)}>Cancel</button>
+            <button type="button" className="lf-btn" onClick={() => setShowTranscript(false)}>
+              Cancel
+            </button>
           </div>
         </form>
       )}
 
       {/* AI Analysis trigger */}
       {hasTranscript && (
-        <button className="lf-btn lf-btn--primary" onClick={triggerAnalysis} disabled={!!busy} style={{ marginBottom: 8, display: 'block' }}>
+        <button
+          className="lf-btn lf-btn--primary"
+          onClick={triggerAnalysis}
+          disabled={!!busy}
+          style={{ marginBottom: 8, display: 'block' }}
+        >
           {busy === 'analysis' ? 'Analyzing…' : hasAnalysis ? 'Re-run AI Analysis' : 'Run AI Analysis'}
         </button>
       )}
 
       {/* Follow-up */}
       {!showFollowUp ? (
-        <button className="lf-btn" onClick={() => setShowFollowUp(true)}>Create Follow-up</button>
+        <button className="lf-btn" onClick={() => setShowFollowUp(true)}>
+          Create Follow-up
+        </button>
       ) : (
         <form onSubmit={createFollowUp} style={{ display: 'grid', gap: 8 }}>
           <div style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 500 }}>New Follow-up</div>
@@ -204,7 +256,9 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
               {busy === 'followup' ? 'Creating…' : 'Create'}
             </button>
-            <button type="button" className="lf-btn" onClick={() => setShowFollowUp(false)}>Cancel</button>
+            <button type="button" className="lf-btn" onClick={() => setShowFollowUp(false)}>
+              Cancel
+            </button>
           </div>
         </form>
       )}

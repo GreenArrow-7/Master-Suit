@@ -1,6 +1,4 @@
-import { headers } from 'next/headers';
-import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
+import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import DashboardCharts from './DashboardCharts';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -8,7 +6,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 export const metadata = { title: 'Dashboards' };
 
 export default async function DashboardsPage() {
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['dashboards', 'VIEW'] });
   const tid = ctx.tenantId;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -32,10 +30,13 @@ export default async function DashboardsPage() {
     prisma.lead.groupBy({ by: ['stageId'], where: { tenantId: tid }, _count: { id: true } }),
     prisma.lead.groupBy({ by: ['source'], where: { tenantId: tid }, _count: { id: true } }),
     prisma.lead.groupBy({ by: ['slaState'], where: { tenantId: tid }, _count: { id: true } }),
-    prisma.leadStage.findMany({ where: { tenantId: tid }, orderBy: { position: 'asc' }, select: { id: true, name: true } }),
+    prisma.leadStage.findMany({
+      where: { tenantId: tid },
+      orderBy: { position: 'asc' },
+      select: { id: true, name: true },
+    }),
   ]);
 
-  const stageMap = new Map(stages.map((s) => [s.id, s.name]));
   const leadsByStage = stages
     .map((s) => {
       const match = leadsByStageRaw.find((r) => r.stageId === s.id);
@@ -56,10 +57,7 @@ export default async function DashboardsPage() {
 
   return (
     <>
-      <ListHeader
-        title="Dashboard"
-        description="Sales overview for this month"
-      />
+      <ListHeader title="Dashboard" description="Sales overview for this month" />
       <DashboardCharts
         totalLeads={totalLeads}
         newThisMonth={newThisMonth}
