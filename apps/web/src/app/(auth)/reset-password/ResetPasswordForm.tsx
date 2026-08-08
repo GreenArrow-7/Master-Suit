@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 
 export default function ResetPasswordForm({ token }: { token: string }) {
@@ -45,9 +46,9 @@ export default function ResetPasswordForm({ token }: { token: string }) {
         <div className="lf-alert" role="status">
           Your password has been changed and every session has been signed out.
         </div>
-        <a className="lf-btn lf-btn--lg" href="/login">
+        <Link className="lf-btn lf-btn--lg" href="/login">
           Sign in
-        </a>
+        </Link>
       </div>
     );
   }

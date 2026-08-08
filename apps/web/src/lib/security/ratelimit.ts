@@ -35,8 +35,10 @@ export async function consume(limit: Limit): Promise<{ remaining: number; resetA
 
   if (count > limit.max) {
     await redis.decr(redisKey);
-    const err = TooManyRequests();
-    (err as any).retryAfter = Math.max(Math.ceil((resetAt - Date.now()) / 1000), 1);
+    // Carried on the error so the route kernel can set Retry-After. Declared
+    // rather than cast, so the kernel's read of the same field is checked.
+    const err: Error & { retryAfter?: number } = TooManyRequests();
+    err.retryAfter = Math.max(Math.ceil((resetAt - Date.now()) / 1000), 1);
     throw err;
   }
   return { remaining: Math.max(limit.max - count, 0), resetAt };

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect } from 'react';
 
 /** Setup problems are the most likely cause of a 500 in development, so surface
@@ -54,9 +55,9 @@ export default function ErrorBoundary({ error, reset }: { error: Error & { diges
           <button className="lf-btn" onClick={reset}>
             Try again
           </button>
-          <a className="lf-btn lf-btn--secondary" href="/">
+          <Link className="lf-btn lf-btn--secondary" href="/">
             Go home
-          </a>
+          </Link>
         </div>
 
         {error.digest && (

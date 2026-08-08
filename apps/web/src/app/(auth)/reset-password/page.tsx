@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import ResetPasswordForm from './ResetPasswordForm';
 import { PRODUCT_NAME } from '@/lib/branding';
 
@@ -38,9 +39,9 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
           <div className="lf-alert" role="alert" style={{ marginTop: 'var(--lf-space-4)' }}>
             This link is missing its token. Request a new one.
             <div style={{ marginTop: 12 }}>
-              <a className="lf-btn lf-btn--secondary lf-btn--sm" href="/forgot-password">
+              <Link className="lf-btn lf-btn--secondary lf-btn--sm" href="/forgot-password">
                 Request a reset link
-              </a>
+              </Link>
             </div>
           </div>
         )}

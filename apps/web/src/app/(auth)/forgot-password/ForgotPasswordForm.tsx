@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 
 export default function ForgotPasswordForm() {
@@ -39,9 +40,9 @@ export default function ForgotPasswordForm() {
         <div className="lf-alert" role="status">
           If that account exists, a reset link is on its way. Check your inbox and your spam folder.
         </div>
-        <a className="lf-btn lf-btn--secondary" href="/login">
+        <Link className="lf-btn lf-btn--secondary" href="/login">
           Back to sign in
-        </a>
+        </Link>
       </div>
     );
   }
@@ -74,9 +75,9 @@ export default function ForgotPasswordForm() {
         {busy ? 'Sending…' : 'Send reset link'}
       </button>
 
-      <a href="/login" style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
+      <Link href="/login" style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
         Back to sign in
-      </a>
+      </Link>
     </form>
   );
 }

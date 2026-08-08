@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -165,9 +166,9 @@ export default function LoginForm() {
         {busy ? 'Signing in…' : mfaNeeded ? 'Verify and sign in' : 'Sign in'}
       </button>
 
-      <a href="/forgot-password" style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
+      <Link href="/forgot-password" style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center' }}>
         Forgot your password?
-      </a>
+      </Link>
     </form>
   );
 }

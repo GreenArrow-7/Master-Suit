@@ -82,6 +82,25 @@ export default tseslint.config(
 
   {
     /**
+     * Signing out is the one navigation that must not be client-side.
+     *
+     * `@next/next/no-location-assign-relative-destination` is right almost
+     * everywhere: `router.push` is faster and keeps the app alive. That is
+     * exactly what makes it wrong here. Every flagged occurrence is
+     * `window.location.href = '/login'` in a logout or session-expiry handler,
+     * where a full document load is the point — it guarantees no component
+     * state, context or cached RSC payload from the authenticated session
+     * survives in memory. A soft navigation would leave all of it.
+     *
+     * Scoped to the three files that sign a user out; the rule stays on
+     * everywhere else.
+     */
+    files: ['src/components/nav/TopBar.tsx', 'src/components/workspace/SecurityPanel.tsx', 'src/lib/auth/client.ts'],
+    rules: { '@next/next/no-location-assign-relative-destination': 'off' },
+  },
+
+  {
+    /**
      * `react-hooks/purity` is a React Compiler rule about *client* render
      * purity: a value read during render that changes between renders tears the
      * UI, because the compiler may re-run render without re-running effects.

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 export default function NotFound() {
   return (
     <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 'var(--lf-space-6)' }}>
@@ -11,9 +12,9 @@ export default function NotFound() {
         <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', marginTop: 6 }}>
           The record may have been deleted, or it may be outside your access.
         </p>
-        <a className="lf-btn" href="/" style={{ marginTop: 'var(--lf-space-5)' }}>
+        <Link className="lf-btn" href="/" style={{ marginTop: 'var(--lf-space-5)' }}>
           Go home
-        </a>
+        </Link>
       </div>
     </main>
   );

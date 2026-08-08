@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import type { Ctx } from './rbac';
 
@@ -59,10 +60,20 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'signingSecretEnc',
 ]);
 
+/**
+ * What the audit writer needs from its client.
+ *
+ * Both the global client and a transaction client satisfy this, so callers can
+ * pass either. Typing the parameter instead of `any` means a caller that passes
+ * something else is a compile error rather than a runtime one on a path that
+ * only executes when something has already gone wrong.
+ */
+type AuditCapable = Pick<typeof prisma, 'auditLog'>;
+
 /** Values that must never reach the audit table, even as a "previous value". */
 const NEVER_LOG = SECRET_KEYS;
 
-export async function audit(ctx: Ctx, input: AuditInput, tx: any = prisma) {
+export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = prisma) {
   if (input.fieldKey && NEVER_LOG.has(input.fieldKey)) return;
 
   await tx.auditLog.create({
@@ -71,13 +82,13 @@ export async function audit(ctx: Ctx, input: AuditInput, tx: any = prisma) {
       actorUserId: ctx.apiKeyId ? null : ctx.actor.id,
       actorApiKeyId: ctx.apiKeyId ?? null,
       actorType: ctx.apiKeyId ? 'API_KEY' : 'USER',
-      event: input.event as any,
+      event: input.event,
       objectType: input.objectType ?? null,
       recordId: input.recordId ?? null,
       fieldKey: input.fieldKey ?? null,
-      previousValue: redact(input.previousValue) as any,
-      newValue: redact(input.newValue) as any,
-      metadata: (input.metadata ?? {}) as any,
+      previousValue: redact(input.previousValue) as Prisma.InputJsonValue,
+      newValue: redact(input.newValue) as Prisma.InputJsonValue,
+      metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       ipAddress: ctx.ip,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
@@ -95,7 +106,7 @@ export async function auditDiff(
   recordId: string,
   before: Record<string, unknown>,
   after: Record<string, unknown>,
-  tx: any = prisma,
+  tx: AuditCapable = prisma,
 ) {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   const rows: AuditInput[] = [];

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 interface Preview {
@@ -75,9 +76,9 @@ export default function AcceptInviteForm({ token }: { token: string }) {
         <div className="lf-alert" role="status">
           {done.note}
         </div>
-        <a className="lf-btn lf-btn--lg" href="/login">
+        <Link className="lf-btn lf-btn--lg" href="/login">
           Sign in
-        </a>
+        </Link>
       </div>
     );
   }

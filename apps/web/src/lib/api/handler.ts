@@ -118,7 +118,7 @@ export function route<
         await audit(ctx, {
           event: spec.auditEvent,
           objectType: spec.module,
-          recordId: (result as any)?.id,
+          recordId: (result as { id?: string } | null)?.id,
           metadata: { method: req.method, path: url.pathname },
         });
       }
@@ -199,7 +199,9 @@ function toResponse(err: unknown, requestId: string, meta: Record<string, unknow
   }
 
   if (err instanceof AppError) {
-    if ((err as any).retryAfter) headers['retry-after'] = String((err as any).retryAfter);
+    // Set by the rate limiter on the error it throws; not part of AppError.
+    const retryAfter = (err as { retryAfter?: number }).retryAfter;
+    if (retryAfter) headers['retry-after'] = String(retryAfter);
     // RFC 9110: a 405 must say which methods are allowed.
     if (err instanceof MethodNotAllowedError) headers['allow'] = err.allow.join(', ');
     if (err.status >= 500) logger.error({ err, requestId, ...meta }, 'request failed');

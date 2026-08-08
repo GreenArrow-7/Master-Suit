@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -61,9 +62,9 @@ export default function EnrolForm() {
       <div className="lf-alert" role="alert">
         {error}
         <div style={{ marginTop: 12 }}>
-          <a className="lf-btn lf-btn--secondary lf-btn--sm" href="/login">
+          <Link className="lf-btn lf-btn--secondary lf-btn--sm" href="/login">
             Back to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );

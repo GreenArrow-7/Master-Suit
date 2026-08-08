@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from './env';
 
 const globalForPrisma = globalThis as unknown as {
@@ -133,6 +133,35 @@ export class TenantGuardError extends Error {}
  * tenant-isolation suite.
  */
 /**
+ * The parts of a Prisma operation's arguments this guard reads.
+ *
+ * Deliberately narrow rather than `any`: the extension only ever looks at
+ * `where` and `data`, and typing it this way means a typo in either is a
+ * compile error instead of a silently skipped tenant check.
+ */
+interface GuardedArgs {
+  where?: Record<string, unknown> & { tenantId?: unknown };
+  data?: unknown;
+  /**
+   * Caller opt-in to see soft-deleted rows. Stripped before the query reaches
+   * Prisma, which would reject it as an unknown argument.
+   */
+  __includeDeleted?: boolean;
+}
+
+/** A row on its way into the database, as the create-path guard sees it. */
+type IncomingRow = { tenantId?: unknown; tenant?: unknown } | null | undefined;
+
+/**
+ * The next link in the extension chain.
+ *
+ * Returns Prisma's own promise rather than a plain one: the batched
+ * `$transaction` below only accepts `PrismaPromise`, so `Promise<unknown>` here
+ * would not type-check at the call site.
+ */
+type NextQuery = (args: GuardedArgs) => Prisma.PrismaPromise<unknown>;
+
+/**
  * The tenant this operation is pinned to, when it is a single literal id.
  *
  * Returns null for the cases RLS cannot be given a value for: lookups by a
@@ -140,7 +169,7 @@ export class TenantGuardError extends Error {}
  * multi-tenant filters such as `{ tenantId: { in: [...] } }`. Those tables are
  * excluded from RLS in the migration; the guard above still covers them.
  */
-function literalTenantId(model: string, operation: string, args: any): string | null {
+function literalTenantId(model: string, operation: string, args: GuardedArgs | undefined): string | null {
   // On Tenant itself the tenant id is the primary key, not a `tenantId` column.
   //
   // requireWorkspace loads the workspace by id and pulls moduleEntitlements,
@@ -151,8 +180,9 @@ function literalTenantId(model: string, operation: string, args: any): string | 
   if (model === 'Tenant' && typeof args?.where?.id === 'string') return args.where.id;
 
   if (CREATE_OPS.has(operation)) {
-    const rows = operation === 'create' ? [args?.data] : (args?.data ?? []);
-    const ids = (rows as any[]).map((row) => row?.tenantId).filter((id) => typeof id === 'string');
+    const rows: IncomingRow[] =
+      operation === 'create' ? [args?.data as IncomingRow] : ((args?.data ?? []) as IncomingRow[]);
+    const ids = rows.map((row) => row?.tenantId).filter((id): id is string => typeof id === 'string');
     // createMany spanning tenants cannot be pinned to one GUC value.
     return ids.length === rows.length && new Set(ids).size === 1 ? ids[0] : null;
   }
@@ -167,7 +197,10 @@ function literalTenantId(model: string, operation: string, args: any): string | 
   for (const key of Object.keys(where)) {
     if (!key.startsWith('tenantId_')) continue;
     const compound = where[key];
-    if (compound && typeof compound.tenantId === 'string') return compound.tenantId;
+    if (compound && typeof compound === 'object') {
+      const nested = (compound as { tenantId?: unknown }).tenantId;
+      if (typeof nested === 'string') return nested;
+    }
   }
   return null;
 }
@@ -180,7 +213,7 @@ function literalTenantId(model: string, operation: string, args: any): string | 
  * query. Skipped inside withTx/withPlatformTx, which already set it — those own
  * a connection and a second transaction on top would deadlock against it.
  */
-async function runPinned(base: PrismaClient, model: string, operation: string, args: any, query: any) {
+async function runPinned(base: PrismaClient, model: string, operation: string, args: GuardedArgs, query: NextQuery) {
   const tenantId = literalTenantId(model, operation, args);
   if (tenantId && !inTenantTx.getStore()) {
     const [, result] = await base.$transaction([
@@ -197,7 +230,17 @@ function tenantGuard(base: PrismaClient) {
     name: 'tenant-guard',
     query: {
       $allModels: {
-        async $allOperations({ model, operation, args, query }: any) {
+        async $allOperations({
+          model,
+          operation,
+          args,
+          query,
+        }: {
+          model?: string;
+          operation: string;
+          args: GuardedArgs;
+          query: NextQuery;
+        }) {
           if (!model) return query(args);
           if (operation === '$queryRaw' || operation === '$executeRaw') return query(args);
 
@@ -235,7 +278,7 @@ function tenantGuard(base: PrismaClient) {
 
           if (CREATE_OPS.has(operation)) {
             const rows = operation === 'create' ? [args?.data] : (args?.data ?? []);
-            for (const row of rows as any[]) {
+            for (const row of rows as IncomingRow[]) {
               if (row && row.tenantId === undefined && row.tenant === undefined) {
                 throw new TenantGuardError(`${model}.${operation} was issued without a tenantId value.`);
               }
@@ -316,7 +359,7 @@ export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): P
   return inTenantTx.run(
     true,
     () =>
-      prisma.$transaction(async (tx: any) => {
+      prisma.$transaction(async (tx: TxClient) => {
         await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
         return fn(tx);
       }) as Promise<T>,
@@ -339,7 +382,7 @@ export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> 
   return inTenantTx.run(
     true,
     () =>
-      prisma.$transaction(async (tx: any) => {
+      prisma.$transaction(async (tx: TxClient) => {
         await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
         return fn(tx);
       }) as Promise<T>,

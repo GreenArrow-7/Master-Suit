@@ -25,7 +25,7 @@ export async function loadFieldRules(ctx: Ctx, objectType: string): Promise<Map<
   return new Map(rows.map((r) => [r.fieldKey, r as FieldRule]));
 }
 
-export function applyFieldSecurity<T extends Record<string, any>>(
+export function applyFieldSecurity<T extends Record<string, unknown>>(
   ctx: Ctx,
   objectType: string,
   rules: Map<string, FieldRule>,
@@ -33,7 +33,7 @@ export function applyFieldSecurity<T extends Record<string, any>>(
   sensitiveFields: readonly string[] = [],
 ): Partial<T> {
   const bypass = can(ctx, objectType.toLowerCase(), 'VIEW_SENSITIVE_FIELDS');
-  const out: Record<string, any> = {};
+  const out: Record<string, unknown> = {};
 
   for (const [k, v] of Object.entries(record)) {
     const rule = rules.get(k);
@@ -51,8 +51,8 @@ export function applyFieldSecurity<T extends Record<string, any>>(
 }
 
 /** Drops fields the actor may not write, so a crafted payload cannot smuggle them in. */
-export function stripUneditableFields<T extends Record<string, any>>(rules: Map<string, FieldRule>, payload: T): T {
-  const out: Record<string, any> = {};
+export function stripUneditableFields<T extends Record<string, unknown>>(rules: Map<string, FieldRule>, payload: T): T {
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
     const rule = rules.get(k);
     if (rule && !rule.canEdit) continue;
