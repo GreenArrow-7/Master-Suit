@@ -14,11 +14,11 @@ and refuses to start with a plain-English fix if anything is missing.
 
 Sign in at http://localhost:3000
 
-| Field | Value |
-|---|---|
-| Workspace | `meridian` |
-| Email | `amina.alrashid@example.com` |
-| Password | `Meridian!Demo2026` |
+| Field     | Value                        |
+| --------- | ---------------------------- |
+| Workspace | `meridian`                   |
+| Email     | `amina.alrashid@example.com` |
+| Password  | `Meridian!Demo2026`          |
 
 The seed prints eight other accounts covering every role.
 
@@ -39,7 +39,7 @@ exact command to fix whatever is wrong.
 ## `npm install` is not optional
 
 Every other failure follows from skipping it. If `npx prisma generate` says
-*"Need to install the following packages: prisma"*, `node_modules` does not exist
+_"Need to install the following packages: prisma"_, `node_modules` does not exist
 in this folder — run `npm install` first. Extracting a fresh copy of the project
 means installing again; `node_modules` is never shipped in the archive.
 
@@ -91,15 +91,15 @@ from a half-initialised container.
 
 ## Commands
 
-| Command | Does |
-|---|---|
-| `npm run setup` | Full first-time setup |
-| `npm run preflight` | Diagnose what's broken |
-| `npm run dev` | Start the app |
-| `npm run docker:up` / `docker:down` / `docker:logs` | Manage containers |
-| `npm run db:seed -- --reset` | Rebuild the demo workspace |
-| `npm run db:studio` | Browse the database |
-| `npm run secrets` | Regenerate `.env` secrets |
+| Command                                             | Does                       |
+| --------------------------------------------------- | -------------------------- |
+| `npm run setup`                                     | Full first-time setup      |
+| `npm run preflight`                                 | Diagnose what's broken     |
+| `npm run dev`                                       | Start the app              |
+| `npm run docker:up` / `docker:down` / `docker:logs` | Manage containers          |
+| `npm run db:seed -- --reset`                        | Rebuild the demo workspace |
+| `npm run db:studio`                                 | Browse the database        |
+| `npm run secrets`                                   | Regenerate `.env` secrets  |
 
 ## Seeing the UI without any of this
 

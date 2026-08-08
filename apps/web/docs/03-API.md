@@ -24,18 +24,18 @@ request
 
 ## 2. Conventions
 
-| Concern | Rule |
-|---|---|
-| Auth | `Cookie: lf_session` for the app; `Authorization: Bearer lf_live_…` for API keys |
-| Tenant | Never in the URL or a header. Derived from the credential. A request cannot name a tenant. |
-| Pagination | Cursor: `?limit=50&cursor=<opaque>`. Response carries `nextCursor`. Offset is not offered. |
-| Filtering | `?filter=<base64 filter tree>` or repeated `?f.stage=qualified&f.score.gte=70` |
-| Sorting | `?sort=-updatedAt,fullName` |
-| Sparse fields | `?fields=id,fullName,stage,owner` |
-| Idempotency | `Idempotency-Key` on POST/PATCH; stored 24 h, replays return the original response |
-| Concurrency | `If-Match: <version>` on PATCH; mismatch returns 409 |
-| Errors | RFC 9457 problem+json |
-| Versioning | Path-versioned. v1 is additive-only; breaking changes open v2. |
+| Concern       | Rule                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| Auth          | `Cookie: lf_session` for the app; `Authorization: Bearer lf_live_…` for API keys           |
+| Tenant        | Never in the URL or a header. Derived from the credential. A request cannot name a tenant. |
+| Pagination    | Cursor: `?limit=50&cursor=<opaque>`. Response carries `nextCursor`. Offset is not offered. |
+| Filtering     | `?filter=<base64 filter tree>` or repeated `?f.stage=qualified&f.score.gte=70`             |
+| Sorting       | `?sort=-updatedAt,fullName`                                                                |
+| Sparse fields | `?fields=id,fullName,stage,owner`                                                          |
+| Idempotency   | `Idempotency-Key` on POST/PATCH; stored 24 h, replays return the original response         |
+| Concurrency   | `If-Match: <version>` on PATCH; mismatch returns 409                                       |
+| Errors        | RFC 9457 problem+json                                                                      |
+| Versioning    | Path-versioned. v1 is additive-only; breaking changes open v2.                             |
 
 ## 3. Error shape
 
@@ -53,16 +53,16 @@ request
 }
 ```
 
-| Status | When |
-|---|---|
-| 400 | malformed request |
-| 401 | no or invalid credential |
-| 403 | authenticated but lacks permission or scope |
-| 404 | record outside the actor's tenant **or** outside their visibility — the two are indistinguishable to the caller by design |
-| 409 | version conflict, duplicate blocked, illegal stage transition |
-| 422 | validation failed |
-| 429 | rate limited; `Retry-After` set |
-| 503 | provider unavailable, job queue saturated |
+| Status | When                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 400    | malformed request                                                                                                         |
+| 401    | no or invalid credential                                                                                                  |
+| 403    | authenticated but lacks permission or scope                                                                               |
+| 404    | record outside the actor's tenant **or** outside their visibility — the two are indistinguishable to the caller by design |
+| 409    | version conflict, duplicate blocked, illegal stage transition                                                             |
+| 422    | validation failed                                                                                                         |
+| 429    | rate limited; `Retry-After` set                                                                                           |
+| 503    | provider unavailable, job queue saturated                                                                                 |
 
 Returning 404 rather than 403 for out-of-scope records is deliberate: a 403 confirms
 the record exists, which is itself a leak across tenants.
@@ -115,10 +115,13 @@ report filters and distribution rules. Written once, tested once.
   "children": [
     { "field": "stage.key", "cmp": "in", "value": ["qualified", "proposal_sent"] },
     { "field": "score", "cmp": "gte", "value": 70 },
-    { "op": "OR", "children": [
-      { "field": "owner.id", "cmp": "eq", "value": "$currentUser" },
-      { "field": "owner.teamId", "cmp": "in", "value": "$currentUserTeams" }
-    ]},
+    {
+      "op": "OR",
+      "children": [
+        { "field": "owner.id", "cmp": "eq", "value": "$currentUser" },
+        { "field": "owner.teamId", "cmp": "in", "value": "$currentUserTeams" }
+      ]
+    },
     { "field": "createdAt", "cmp": "relative", "value": "last_30_days" },
     { "field": "custom.budget_aed", "cmp": "gte", "value": 500000 }
   ]

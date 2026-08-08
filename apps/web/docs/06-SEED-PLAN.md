@@ -9,31 +9,31 @@ Deterministic generator (`prisma/seed/`) seeded from a fixed PRNG so the same
 domain gives us plausible names, sources, products and stage semantics without
 inventing an industry from nothing.
 
-| Object | Count | Shape |
-|---|---|---|
-| Tenant | 1 | `meridian`, AED, Asia/Dubai, Sun–Thu working week |
-| Regions | 3 | Dubai · Abu Dhabi · Northern Emirates |
-| Branches | 5 | Business Bay · JLT · Downtown · Al Reem · Sharjah |
-| Departments | 4 | Sales · Marketing · Client Services · Operations |
-| Teams | 8 | 2 per sales branch + Marketing + Service |
-| Users | 25 | 1 org admin, 1 director, 2 regional, 5 branch, 4 team managers, 8 reps, 2 field reps, 1 marketing manager, 2 marketing execs, 2 service agents, 1 analyst, 1 read-only |
-| Roles | 14 | the seeded defaults from `01-PERMISSIONS.md` |
-| Permissions | 214 | valid module × action pairs |
-| Leads | 500 | see distribution below |
-| Opportunities | 100 | 60 open across stages, 25 won, 15 lost with reasons |
-| Accounts | 50 | developers, brokerages, corporate clients |
-| Contacts | 100 | 1–4 per account, with decision roles |
-| Activities | 1 000 | weighted to recent 90 days, clustered on active leads |
-| Tasks | 300 | 120 open, 60 overdue, 100 completed, 20 cancelled |
-| Campaigns | 10 | across 6 channels with spend and attribution |
-| Automations | 5 | with 200+ enrollments and real execution logs |
-| Tickets | 50 | 30 open across statuses, 12 breached SLA, 8 resolved with CSAT |
-| Products | 20 | off-plan, ready, mortgage, valuation, property management |
-| Forms | 6 | enquiry, viewing request, mortgage pre-approval, KYC, site-visit report, support |
-| Landing pages | 3 | published, draft, archived |
-| Smart Views | 12 | shipped defaults plus role-specific |
-| Dashboards | 3 | sales, marketing, service |
-| Reports | 12 | the standard library |
+| Object        | Count | Shape                                                                                                                                                                  |
+| ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant        | 1     | `meridian`, AED, Asia/Dubai, Sun–Thu working week                                                                                                                      |
+| Regions       | 3     | Dubai · Abu Dhabi · Northern Emirates                                                                                                                                  |
+| Branches      | 5     | Business Bay · JLT · Downtown · Al Reem · Sharjah                                                                                                                      |
+| Departments   | 4     | Sales · Marketing · Client Services · Operations                                                                                                                       |
+| Teams         | 8     | 2 per sales branch + Marketing + Service                                                                                                                               |
+| Users         | 25    | 1 org admin, 1 director, 2 regional, 5 branch, 4 team managers, 8 reps, 2 field reps, 1 marketing manager, 2 marketing execs, 2 service agents, 1 analyst, 1 read-only |
+| Roles         | 14    | the seeded defaults from `01-PERMISSIONS.md`                                                                                                                           |
+| Permissions   | 214   | valid module × action pairs                                                                                                                                            |
+| Leads         | 500   | see distribution below                                                                                                                                                 |
+| Opportunities | 100   | 60 open across stages, 25 won, 15 lost with reasons                                                                                                                    |
+| Accounts      | 50    | developers, brokerages, corporate clients                                                                                                                              |
+| Contacts      | 100   | 1–4 per account, with decision roles                                                                                                                                   |
+| Activities    | 1 000 | weighted to recent 90 days, clustered on active leads                                                                                                                  |
+| Tasks         | 300   | 120 open, 60 overdue, 100 completed, 20 cancelled                                                                                                                      |
+| Campaigns     | 10    | across 6 channels with spend and attribution                                                                                                                           |
+| Automations   | 5     | with 200+ enrollments and real execution logs                                                                                                                          |
+| Tickets       | 50    | 30 open across statuses, 12 breached SLA, 8 resolved with CSAT                                                                                                         |
+| Products      | 20    | off-plan, ready, mortgage, valuation, property management                                                                                                              |
+| Forms         | 6     | enquiry, viewing request, mortgage pre-approval, KYC, site-visit report, support                                                                                       |
+| Landing pages | 3     | published, draft, archived                                                                                                                                             |
+| Smart Views   | 12    | shipped defaults plus role-specific                                                                                                                                    |
+| Dashboards    | 3     | sales, marketing, service                                                                                                                                              |
+| Reports       | 12    | the standard library                                                                                                                                                   |
 
 ## 2. Realism rules
 
@@ -49,22 +49,22 @@ business-hours SLA maths.
 
 ## 3. Lead distribution
 
-| Stage | Share | Notes |
-|---|---|---|
-| New | 18% | 40 of them unassigned, to exercise the distribution queue |
-| Attempted Contact | 12% | |
-| Contacted | 14% | |
-| Interested | 10% | |
-| Qualified | 9% | most have an opportunity |
-| Application Started | 6% | |
-| Documents Pending | 5% | with pending and rejected documents |
-| Proposal Sent | 5% | |
-| Negotiation | 4% | |
-| Converted | 7% | linked to won opportunities and accounts |
-| Not Interested | 5% | |
-| Disqualified | 3% | |
-| Duplicate | 1% | pointing at a master record, to exercise merge |
-| Invalid | 1% | |
+| Stage               | Share | Notes                                                     |
+| ------------------- | ----- | --------------------------------------------------------- |
+| New                 | 18%   | 40 of them unassigned, to exercise the distribution queue |
+| Attempted Contact   | 12%   |                                                           |
+| Contacted           | 14%   |                                                           |
+| Interested          | 10%   |                                                           |
+| Qualified           | 9%    | most have an opportunity                                  |
+| Application Started | 6%    |                                                           |
+| Documents Pending   | 5%    | with pending and rejected documents                       |
+| Proposal Sent       | 5%    |                                                           |
+| Negotiation         | 4%    |                                                           |
+| Converted           | 7%    | linked to won opportunities and accounts                  |
+| Not Interested      | 5%    |                                                           |
+| Disqualified        | 3%    |                                                           |
+| Duplicate           | 1%    | pointing at a master record, to exercise merge            |
+| Invalid             | 1%    |                                                           |
 
 Sources: public form 24%, landing page 11%, portal marketplace 19%, referral 12%,
 walk-in 8%, ad lead form 10%, telephony 9%, import 7%.

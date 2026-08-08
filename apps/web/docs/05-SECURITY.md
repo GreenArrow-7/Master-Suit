@@ -4,22 +4,22 @@
 
 The realistic attacks against a multi-tenant CRM, and what stops each.
 
-| Threat | Control |
-|---|---|
-| Cross-tenant data access | `Ctx`-derived tenant + Prisma guard extension + Postgres RLS (three independent layers) |
-| Horizontal escalation inside a tenant (rep reads the director's pipeline) | per-permission visibility scope, re-checked on every read *and* write |
-| Vertical escalation (rep grants themselves a permission) | role rank check; a user can only administer roles with a higher rank number, and never their own |
-| Mass extraction via export or report | export is a permission at a scope, runs server-side over the visibility-filtered set, is audited, and produces an expiring link |
-| Sensitive field leakage | field permissions applied in the serialiser, so masking covers API, export, report, webhook and AI paths alike |
-| Credential stuffing | Argon2id, per-account lockout, per-IP rate limit, generic failure message, optional MFA |
-| Session theft | HttpOnly + Secure + SameSite=Lax cookie, hashed server-side, idle + absolute expiry, revocable, bound to a device label |
-| API key leakage | prefix + Argon2id hash storage, scoped, role-bound, IP allow-listable, rotatable with overlap, revocable |
-| SSRF via webhooks and integrations | outbound allow-list, private IP ranges blocked, DNS re-resolution pinned, 5 s timeout, no redirects followed |
-| Malicious upload | type + magic-byte + size checks, AV scan gate before the file is downloadable, served only via short-lived signed URLs, never from the app origin |
-| Injection | Prisma parameterisation; the filter compiler allow-lists field names and never interpolates strings |
-| XSS in user content | React escaping by default; landing-page custom HTML rendered in a sandboxed iframe with a separate origin and its own CSP |
-| CSRF | SameSite cookie + double-submit token on state-changing app routes; API-key routes are cookie-free so are not exposed |
-| Prompt injection into the AI layer | record content is passed as data, never as instructions; AI actions cannot write or send; output is labelled and logged |
+| Threat                                                                    | Control                                                                                                                                           |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cross-tenant data access                                                  | `Ctx`-derived tenant + Prisma guard extension + Postgres RLS (three independent layers)                                                           |
+| Horizontal escalation inside a tenant (rep reads the director's pipeline) | per-permission visibility scope, re-checked on every read _and_ write                                                                             |
+| Vertical escalation (rep grants themselves a permission)                  | role rank check; a user can only administer roles with a higher rank number, and never their own                                                  |
+| Mass extraction via export or report                                      | export is a permission at a scope, runs server-side over the visibility-filtered set, is audited, and produces an expiring link                   |
+| Sensitive field leakage                                                   | field permissions applied in the serialiser, so masking covers API, export, report, webhook and AI paths alike                                    |
+| Credential stuffing                                                       | Argon2id, per-account lockout, per-IP rate limit, generic failure message, optional MFA                                                           |
+| Session theft                                                             | HttpOnly + Secure + SameSite=Lax cookie, hashed server-side, idle + absolute expiry, revocable, bound to a device label                           |
+| API key leakage                                                           | prefix + Argon2id hash storage, scoped, role-bound, IP allow-listable, rotatable with overlap, revocable                                          |
+| SSRF via webhooks and integrations                                        | outbound allow-list, private IP ranges blocked, DNS re-resolution pinned, 5 s timeout, no redirects followed                                      |
+| Malicious upload                                                          | type + magic-byte + size checks, AV scan gate before the file is downloadable, served only via short-lived signed URLs, never from the app origin |
+| Injection                                                                 | Prisma parameterisation; the filter compiler allow-lists field names and never interpolates strings                                               |
+| XSS in user content                                                       | React escaping by default; landing-page custom HTML rendered in a sandboxed iframe with a separate origin and its own CSP                         |
+| CSRF                                                                      | SameSite cookie + double-submit token on state-changing app routes; API-key routes are cookie-free so are not exposed                             |
+| Prompt injection into the AI layer                                        | record content is passed as data, never as instructions; AI actions cannot write or send; output is labelled and logged                           |
 
 ## 2. Authentication
 
@@ -91,15 +91,15 @@ requested only on those routes.
 
 Sliding window in Redis, keyed at four levels. The most restrictive applies.
 
-| Scope | Limit |
-|---|---|
-| Login per IP | 10 / 15 min |
-| Login per account | 5 / 15 min |
-| API key | `rateLimitPerMin`, default 600 |
-| Session user | 1 200 / min |
-| Public form submit | 5 / min per IP, plus CAPTCHA |
-| Export creation | 10 / hour per user |
-| Password reset request | 3 / hour per account |
+| Scope                  | Limit                          |
+| ---------------------- | ------------------------------ |
+| Login per IP           | 10 / 15 min                    |
+| Login per account      | 5 / 15 min                     |
+| API key                | `rateLimitPerMin`, default 600 |
+| Session user           | 1 200 / min                    |
+| Public form submit     | 5 / min per IP, plus CAPTCHA   |
+| Export creation        | 10 / hour per user             |
+| Password reset request | 3 / hour per account           |
 
 ## 7. File security
 

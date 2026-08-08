@@ -7,32 +7,32 @@ and source code — no LeadSquared assets, markup, copy or trademarks are used.
 
 ## What is in this repository right now
 
-| Delivered | Path |
-|---|---|
-| System architecture, module map, navigation, job architecture, repo structure, env vars, phase plan | `docs/00-ARCHITECTURE.md` |
-| 14 roles, full permission matrix, visibility scopes, field-level security, test obligations | `docs/01-PERMISSIONS.md` |
-| ER design, index strategy, partitioning, 1M-lead scaling decisions | `docs/02-DATA-MODEL.md` |
-| API conventions, error model, route surface, filter grammar, webhooks, API keys | `docs/03-API.md` |
-| Automation graph format, trigger bus, execution semantics, retries, test mode | `docs/04-AUTOMATION-ENGINE.md` |
-| Threat model, authn/authz, secrets, headers, rate limits, file security, audit, privacy | `docs/05-SECURITY.md` |
-| Demo tenant plan, distributions, edge states, 1M-row load fixture | `docs/06-SEED-PLAN.md` |
-| **Database schema — 79 models, 25 enums, 119 indexes, validates clean** | `prisma/schema.prisma` |
-| Environment validation (fails at boot, not first use) | `src/lib/env.ts` |
-| Prisma tenant guard + RLS transaction helper | `src/lib/db.ts` |
-| Permission engine, visibility resolver, field security, audit, rate limiting | `src/lib/security/` |
-| Argon2id passwords, sessions, API keys | `src/lib/auth/` |
-| API kernel (authn → limit → authz → validate → handle → mask → audit) | `src/lib/api/handler.ts` |
-| Allow-listed filter compiler, keyset pagination | `src/lib/api/` |
-| Login route with lockout and timing equalisation | `src/app/api/v1/auth/login/route.ts` |
-| Reference module: lead list + create, implementing Workflow 1 end to end | `src/app/api/v1/leads/`, `src/services/leads/` |
-| Tenant-isolation, scope, escalation and field-permission suites | `tests/` |
-| **Burgundy design system** — palette rationale, type, components, a11y, dark mode | `docs/08-DESIGN-SYSTEM.md` |
-| Design tokens — burgundy ramp, pearl neutrals, brass/viridian/vermillion semantics | `src/styles/tokens.css` |
-| Component layer — buttons, inputs, badges, grid, tabs, timeline, alerts, skeletons | `src/app/globals.css` |
-| Signature stage rail, metric cards, badges, empty states, skeletons | `src/components/ui/` |
-| Screens — sign in, app shell, home, leads grid, lead 360 detail | `src/app/(auth)/`, `src/app/(app)/` |
-| Standalone design system preview (no build step) | `leadflow-design-system.html` |
-| Docker Compose stack and hardened image | `infra/` |
+| Delivered                                                                                           | Path                                           |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| System architecture, module map, navigation, job architecture, repo structure, env vars, phase plan | `docs/00-ARCHITECTURE.md`                      |
+| 14 roles, full permission matrix, visibility scopes, field-level security, test obligations         | `docs/01-PERMISSIONS.md`                       |
+| ER design, index strategy, partitioning, 1M-lead scaling decisions                                  | `docs/02-DATA-MODEL.md`                        |
+| API conventions, error model, route surface, filter grammar, webhooks, API keys                     | `docs/03-API.md`                               |
+| Automation graph format, trigger bus, execution semantics, retries, test mode                       | `docs/04-AUTOMATION-ENGINE.md`                 |
+| Threat model, authn/authz, secrets, headers, rate limits, file security, audit, privacy             | `docs/05-SECURITY.md`                          |
+| Demo tenant plan, distributions, edge states, 1M-row load fixture                                   | `docs/06-SEED-PLAN.md`                         |
+| **Database schema — 79 models, 25 enums, 119 indexes, validates clean**                             | `prisma/schema.prisma`                         |
+| Environment validation (fails at boot, not first use)                                               | `src/lib/env.ts`                               |
+| Prisma tenant guard + RLS transaction helper                                                        | `src/lib/db.ts`                                |
+| Permission engine, visibility resolver, field security, audit, rate limiting                        | `src/lib/security/`                            |
+| Argon2id passwords, sessions, API keys                                                              | `src/lib/auth/`                                |
+| API kernel (authn → limit → authz → validate → handle → mask → audit)                               | `src/lib/api/handler.ts`                       |
+| Allow-listed filter compiler, keyset pagination                                                     | `src/lib/api/`                                 |
+| Login route with lockout and timing equalisation                                                    | `src/app/api/v1/auth/login/route.ts`           |
+| Reference module: lead list + create, implementing Workflow 1 end to end                            | `src/app/api/v1/leads/`, `src/services/leads/` |
+| Tenant-isolation, scope, escalation and field-permission suites                                     | `tests/`                                       |
+| **Burgundy design system** — palette rationale, type, components, a11y, dark mode                   | `docs/08-DESIGN-SYSTEM.md`                     |
+| Design tokens — burgundy ramp, pearl neutrals, brass/viridian/vermillion semantics                  | `src/styles/tokens.css`                        |
+| Component layer — buttons, inputs, badges, grid, tabs, timeline, alerts, skeletons                  | `src/app/globals.css`                          |
+| Signature stage rail, metric cards, badges, empty states, skeletons                                 | `src/components/ui/`                           |
+| Screens — sign in, app shell, home, leads grid, lead 360 detail                                     | `src/app/(auth)/`, `src/app/(app)/`            |
+| Standalone design system preview (no build step)                                                    | `leadflow-design-system.html`                  |
+| Docker Compose stack and hardened image                                                             | `infra/`                                       |
 
 ## What is not built yet
 

@@ -86,21 +86,21 @@ count pages.
 Every index leads with `tenantId`. A composite index that does not is a cross-tenant
 sequential scan waiting to happen.
 
-| Access pattern | Index |
-|---|---|
-| Lead grid, default sort | `(tenantId, stageId, updatedAt DESC)` |
-| "My leads" by stage | `(tenantId, ownerId, stageId)` |
-| Duplicate check on email | `(tenantId, email)` |
-| Duplicate check on phone | `(tenantId, phoneNormalized)` — E.164 normalised on write |
-| Follow-up queue | `(tenantId, nextFollowUpAt)` |
-| SLA sweeper | `(tenantId, slaState, slaDueAt)` |
-| High-score triage | `(tenantId, score DESC)` |
-| Kanban column load | `(tenantId, pipelineId, stageId)` |
-| Forecast | `(tenantId, expectedCloseDate)` and `(tenantId, status, actualCloseDate)` |
-| Timeline | `(tenantId, leadId, occurredAt DESC)` |
-| Task inbox | `(tenantId, ownerId, status, dueAt)` |
-| Ticket queue | `(tenantId, status, priority)` and `(tenantId, slaState, resolutionDueAt)` |
-| Audit lookup | `(tenantId, objectType, recordId, occurredAt DESC)` |
+| Access pattern           | Index                                                                      |
+| ------------------------ | -------------------------------------------------------------------------- |
+| Lead grid, default sort  | `(tenantId, stageId, updatedAt DESC)`                                      |
+| "My leads" by stage      | `(tenantId, ownerId, stageId)`                                             |
+| Duplicate check on email | `(tenantId, email)`                                                        |
+| Duplicate check on phone | `(tenantId, phoneNormalized)` — E.164 normalised on write                  |
+| Follow-up queue          | `(tenantId, nextFollowUpAt)`                                               |
+| SLA sweeper              | `(tenantId, slaState, slaDueAt)`                                           |
+| High-score triage        | `(tenantId, score DESC)`                                                   |
+| Kanban column load       | `(tenantId, pipelineId, stageId)`                                          |
+| Forecast                 | `(tenantId, expectedCloseDate)` and `(tenantId, status, actualCloseDate)`  |
+| Timeline                 | `(tenantId, leadId, occurredAt DESC)`                                      |
+| Task inbox               | `(tenantId, ownerId, status, dueAt)`                                       |
+| Ticket queue             | `(tenantId, status, priority)` and `(tenantId, slaState, resolutionDueAt)` |
+| Audit lookup             | `(tenantId, objectType, recordId, occurredAt DESC)`                        |
 
 Raw-SQL additions Prisma cannot express (in `migrations/*/`):
 
@@ -135,11 +135,11 @@ Three tables grow without bound and are append-heavy. All are range-partitioned
 monthly on their time column, with partitions created a month ahead by the
 `maintenance` queue and detached to cold storage per the tenant retention policy.
 
-| Table | Partition key | Retention default |
-|---|---|---|
-| `Activity` | `occurredAt` | 36 months hot |
-| `AuditLog` | `occurredAt` | 24 months hot, then WORM archive |
-| `Communication` | `createdAt` | 24 months hot |
+| Table           | Partition key | Retention default                |
+| --------------- | ------------- | -------------------------------- |
+| `Activity`      | `occurredAt`  | 36 months hot                    |
+| `AuditLog`      | `occurredAt`  | 24 months hot, then WORM archive |
+| `Communication` | `createdAt`   | 24 months hot                    |
 
 `AutomationExecution` and `WebhookDelivery` are pruned rather than partitioned —
 90-day rolling delete.

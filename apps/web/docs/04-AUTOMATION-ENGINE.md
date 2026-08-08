@@ -18,21 +18,37 @@ Automation ──< AutomationVersion (immutable graph + trigger spec)
 ```json
 {
   "nodes": [
-    { "id": "n1", "type": "trigger",   "spec": { "event": "record.created", "object": "LEAD" } },
-    { "id": "n2", "type": "condition", "spec": { "filter": { "op": "AND", "children": [
-        { "field": "source", "cmp": "eq", "value": "PUBLIC_FORM" },
-        { "field": "score",  "cmp": "gte", "value": 50 } ] } },
-      "branches": { "true": "n3", "false": "n7" } },
+    { "id": "n1", "type": "trigger", "spec": { "event": "record.created", "object": "LEAD" } },
+    {
+      "id": "n2",
+      "type": "condition",
+      "spec": {
+        "filter": {
+          "op": "AND",
+          "children": [
+            { "field": "source", "cmp": "eq", "value": "PUBLIC_FORM" },
+            { "field": "score", "cmp": "gte", "value": 50 }
+          ]
+        }
+      },
+      "branches": { "true": "n3", "false": "n7" }
+    },
     { "id": "n3", "type": "action", "spec": { "action": "distribute", "ruleId": "dr_hot" }, "next": "n4" },
-    { "id": "n4", "type": "action", "spec": { "action": "create_task",
-        "taskTypeKey": "call", "title": "First contact", "dueInMinutes": 30 }, "next": "n5" },
-    { "id": "n5", "type": "wait",   "spec": { "durationMinutes": 60 }, "next": "n6" },
-    { "id": "n6", "type": "condition", "spec": { "filter":
-        { "field": "firstContactedAt", "cmp": "is_null" } },
-      "branches": { "true": "n8", "false": "n9" } },
+    {
+      "id": "n4",
+      "type": "action",
+      "spec": { "action": "create_task", "taskTypeKey": "call", "title": "First contact", "dueInMinutes": 30 },
+      "next": "n5"
+    },
+    { "id": "n5", "type": "wait", "spec": { "durationMinutes": 60 }, "next": "n6" },
+    {
+      "id": "n6",
+      "type": "condition",
+      "spec": { "filter": { "field": "firstContactedAt", "cmp": "is_null" } },
+      "branches": { "true": "n8", "false": "n9" }
+    },
     { "id": "n7", "type": "action", "spec": { "action": "add_tag", "tag": "nurture" }, "next": null },
-    { "id": "n8", "type": "action", "spec": { "action": "notify_manager",
-        "template": "sla_warning" }, "next": null },
+    { "id": "n8", "type": "action", "spec": { "action": "notify_manager", "template": "sla_warning" }, "next": null },
     { "id": "n9", "type": "stop", "spec": {} }
   ],
   "entry": "n1"
@@ -45,18 +61,18 @@ and rules exist and belong to the tenant.
 
 ## 3. Triggers
 
-| Trigger | Fired by |
-|---|---|
-| `record.created` `record.updated` `field.changed` | service-layer domain events, after commit |
-| `stage.changed` `owner.changed` | stage/assignment services |
-| `activity.added` `task.created` `task.completed` `task.overdue` | activity/task services + SLA sweeper |
-| `opportunity.won` `opportunity.lost` | close service |
-| `form.submitted` | public form intake |
-| `email.opened` `link.clicked` | messaging provider callbacks |
-| `ticket.created` `sla.warning` | service module + SLA sweeper |
-| `schedule.reached` | maintenance queue, tenant-local cron |
-| `webhook.received` | inbound webhook route |
-| `manual.enrollment` | user action on a grid selection |
+| Trigger                                                         | Fired by                                  |
+| --------------------------------------------------------------- | ----------------------------------------- |
+| `record.created` `record.updated` `field.changed`               | service-layer domain events, after commit |
+| `stage.changed` `owner.changed`                                 | stage/assignment services                 |
+| `activity.added` `task.created` `task.completed` `task.overdue` | activity/task services + SLA sweeper      |
+| `opportunity.won` `opportunity.lost`                            | close service                             |
+| `form.submitted`                                                | public form intake                        |
+| `email.opened` `link.clicked`                                   | messaging provider callbacks              |
+| `ticket.created` `sla.warning`                                  | service module + SLA sweeper              |
+| `schedule.reached`                                              | maintenance queue, tenant-local cron      |
+| `webhook.received`                                              | inbound webhook route                     |
+| `manual.enrollment`                                             | user action on a grid selection           |
 
 Domain events publish **after the transaction commits**, never inside it. An
 automation must never observe a state that was rolled back.
@@ -86,14 +102,14 @@ automation must never observe a state that was rolled back.
 
 ## 5. Actions
 
-| Group | Actions |
-|---|---|
-| Record | update field · change stage · assign owner · distribute · add/remove tag · increase/decrease score |
-| Create | task · activity · opportunity · ticket |
-| Message | send email · SMS · WhatsApp · in-app notification · notify manager |
-| List | add to list · remove from list |
-| Flow | wait duration · wait until date · stop · start another automation |
-| External | call webhook · invoke API |
+| Group    | Actions                                                                                            |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| Record   | update field · change stage · assign owner · distribute · add/remove tag · increase/decrease score |
+| Create   | task · activity · opportunity · ticket                                                             |
+| Message  | send email · SMS · WhatsApp · in-app notification · notify manager                                 |
+| List     | add to list · remove from list                                                                     |
+| Flow     | wait duration · wait until date · stop · start another automation                                  |
+| External | call webhook · invoke API                                                                          |
 
 Every action executes through the **same service functions the UI calls**, with a
 `Ctx` whose actor is the automation's owning user. An automation therefore cannot do

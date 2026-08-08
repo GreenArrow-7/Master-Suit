@@ -72,7 +72,7 @@ Fixed — the app previously had API routes but no pages. `/` now redirects to
 
 npm 12 blocks package install scripts by default. Prisma's postinstall is what runs
 `prisma generate` and writes `node_modules/.prisma/client`. When it is blocked, the
-install *succeeds* — with a warning that is easy to scroll past — and then every
+install _succeeds_ — with a warning that is easy to scroll past — and then every
 command that touches the database fails with an opaque MODULE_NOT_FOUND.
 
 ```powershell
