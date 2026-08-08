@@ -21,12 +21,10 @@ following items still prevent an unconditional commercial-production claim:
   against `/api/v1/leads/export` and `/api/v1/reports/run`, neither of which
   exists, using fabricated fixtures. Field-level permission behaviour
   (`loadFieldRules`/`applyFieldSecurity`) is therefore currently untested.
-- **The Python HRMS service in `apps/hrms` is vestigial.** `start.ps1` no longer
-  launches it; HRMS runs natively in the Next.js app against PostgreSQL. Its
-  SQLite file (`master_saas_hrms.db`, 137 rows, all reference/seed data — no
-  customer records) and pytest caches are still on disk, and its test suite
-  cannot run without a Python environment. It should be removed deliberately
-  rather than left ambiguous.
+- **The Python HRMS has been archived out of the repository.** It ran nothing and
+  was referenced by nothing; HRMS runs natively in the Next.js app against
+  PostgreSQL. All 139 files, including the SQLite database, now live in
+  `../archive/master-saas-apps-hrms/`. See `docs/adr/0001-archive-python-hrms.md`.
 - **The legacy Sales-only shell under `src/app/(app)` has been removed.** Every
   screen it held now lives under the canonical boundary: the CRM screens at
   `/{workspaceSlug}/sales/...` (with the old `home` dashboard as

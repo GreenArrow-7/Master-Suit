@@ -50,8 +50,9 @@ powershell -ExecutionPolicy Bypass -File .\stop.ps1
 ```text
 master-saas/
   apps/web/       Unified web, APIs, workers and Prisma schema
-  apps/hrms/      Preserved legacy source reference; not started for customers
+  apps/face/      Face-recognition service used by HR attendance check-in
   docs/           Architecture, security, acceptance and operations evidence
+  docs/adr/       Decisions worth a paragraph, and why
   setup.ps1       First-time local provisioning
   start.ps1       One-app Windows launcher
 ```
