@@ -421,7 +421,7 @@ model Tenant {
   workspaceUsage        WorkspaceUsage[]
   billingEvents         BillingEvent[]
 
-  invitations           WorkspaceInvitation[]
+  invitations WorkspaceInvitation[]
 
   @@index([status])
 }
@@ -681,13 +681,12 @@ model Department {
   updatedById String?
   deletedAt   DateTime?
 
-  teams     Team[]
-  employees EmployeeProfile[]
+  teams        Team[]
+  employees    EmployeeProfile[]
   requisitions HrRequisition[]
+  invitations  WorkspaceInvitation[]
 
   @@unique([tenantId, code])
-  invitations         WorkspaceInvitation[]
-
   @@index([tenantId])
 }
 
@@ -839,36 +838,38 @@ model PlatformUser {
 ///
 /// The token is stored hashed: a leaked database row must not be redeemable.
 model WorkspaceInvitation {
-  id              String    @id @default(cuid())
-  tenantId        String
+  id             String    @id @default(cuid())
+  tenantId       String
   /// Lower-cased at write time; the unique index below is what stops two open
   /// invitations racing each other into two memberships for one person.
-  email           String
-  fullName        String
-  roleId          String
+  email          String
+  fullName       String
+  roleId         String
   /// Set when the invitation should also create an HR record on acceptance.
-  employeeNumber  String?
-  jobTitle        String?
-  departmentId    String?
+  employeeNumber String?
+  jobTitle       String?
+  departmentId   String?
   /**
    * Set when the invitation came from a hired candidate. Carried onto the
    * employee record at acceptance so the hire stays traceable to the
    * application it came from — §109.
    */
-  candidateId     String?
-  /** Agreed start date from the accepted offer, used instead of "today" on acceptance. */
-  joiningDate     DateTime?
-  tokenHash       String    @unique
-  expiresAt       DateTime
-  acceptedAt      DateTime?
-  revokedAt       DateTime?
-  revokedReason   String?
+  candidateId    String?
+  /**
+   * Agreed start date from the accepted offer, used instead of "today" on acceptance.
+   */
+  joiningDate    DateTime?
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  revokedReason  String?
   /// Bumped by a resend, so the audit trail shows how many were sent.
-  sendCount       Int       @default(1)
-  lastSentAt      DateTime  @default(now())
-  invitedById     String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  sendCount      Int       @default(1)
+  lastSentAt     DateTime  @default(now())
+  invitedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -944,58 +945,60 @@ model EmployeeProfile {
   updatedAt           DateTime  @updatedAt
   deletedAt           DateTime?
 
-  tenant                  Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  membership              WorkspaceMembership            @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  manager                 WorkspaceMembership?           @relation("EmployeeManager", fields: [managerMembershipId], references: [id])
-  department              Department?                    @relation(fields: [departmentId], references: [id])
-  designationRecord       Designation?                   @relation(fields: [designationId], references: [id])
-  attendanceRecords       HrAttendanceRecord[]
-  leaveRequests           HrLeaveRequest[]               @relation("HrLeaveEmployee")
-  leaveApprovals          HrLeaveRequest[]               @relation("HrLeaveApprover")
-  leaveBalances           HrLeaveBalance[]
-  documents               HrEmployeeDocument[]
-  shifts                  HrEmployeeShift[]
-  locationAssignments     HrEmployeeLocationAssignment[] @relation("HrLocationEmployee")
-  assignedLocations       HrEmployeeLocationAssignment[] @relation("HrLocationAssigner")
-  checklistTasks          HrChecklistTask[]              @relation("HrChecklistEmployee")
-  completedChecklistTasks HrChecklistTask[]              @relation("HrChecklistCompleter")
-  offboardingCases        HrOffboardingCase[]            @relation("HrOffboardingEmployee")
-  startedOffboardingCases HrOffboardingCase[]            @relation("HrOffboardingStarter")
-  settlementSnapshots     HrSettlementSnapshot[]
-  biometricConsents       BiometricConsent[]
-  faceTemplates           HrFaceTemplate[]
-  attendancePunches       HrAttendancePunch[]
-  temporaryRequests       HrTemporaryLocationRequest[]   @relation("HrTempRequester")
-  temporaryApprovals      HrTemporaryLocationRequest[]   @relation("HrTempApprover")
-  exceptionRequests       HrAttendanceExceptionRequest[] @relation("HrExceptionEmployee")
-  exceptionManagerActions HrAttendanceExceptionRequest[] @relation("HrExceptionManager")
-  exceptionHrActions      HrAttendanceExceptionRequest[] @relation("HrExceptionHr")
-  overtimeClaims          HrOvertimeRequest[]            @relation("HrOvertimeEmployee")
-  overtimeRaised          HrOvertimeRequest[]            @relation("HrOvertimeRequester")
-  overtimeDecisions       HrOvertimeRequest[]            @relation("HrOvertimeApprover")
-  compensations           HrCompensation[]               @relation("HrCompensationEmployee")
-  payslips                HrPayslip[]                    @relation("HrPayslipEmployee")
-  payrollAdjustments      HrPayrollAdjustment[]          @relation("HrAdjustmentEmployee")
-  payrollRunsPrepared     HrPayrollRun[]                 @relation("HrPayrollPreparer")
-  payrollRunsApproved     HrPayrollRun[]                 @relation("HrPayrollApprover")
-  rosterEntries           HrRosterEntry[]                @relation("HrRosterEmployee")
-  shiftChangesRaised      HrShiftChangeRequest[]         @relation("HrShiftChangeRequester")
-  shiftChangesAsCounterpart HrShiftChangeRequest[]       @relation("HrShiftChangeCounterpart")
-  shiftChangeDecisions    HrShiftChangeRequest[]         @relation("HrShiftChangeApprover")
-  requisitionsManaged     HrRequisition[]                @relation("HrRequisitionHiringManager")
-  requisitionsRecruited   HrRequisition[]                @relation("HrRequisitionRecruiter")
-  requisitionsApproved    HrRequisition[]                @relation("HrRequisitionApprover")
-  interviewFeedbackGiven  HrInterviewFeedback[]          @relation("HrInterviewFeedbackAuthor")
-  offersApproved          HrOffer[]                      @relation("HrOfferApprover")
-  goals                   HrGoal[]                       @relation("HrGoalEmployee")
-  reviews                 HrReview[]                     @relation("HrReviewEmployee")
-  reviewsAsManager        HrReview[]                     @relation("HrReviewManager")
-  reviewsCalibrated       HrReview[]                     @relation("HrReviewCalibrator")
-  pips                    HrPip[]                        @relation("HrPipEmployee")
-  pipsAsManager           HrPip[]                        @relation("HrPipManager")
-  /** The application this employee was hired from, when they came through the ATS — §109. */
-  hiredFromCandidateId    String?
-  hiredFromCandidate      HrCandidate?                   @relation("HrCandidateHire", fields: [hiredFromCandidateId], references: [id])
+  tenant                    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membership                WorkspaceMembership            @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  manager                   WorkspaceMembership?           @relation("EmployeeManager", fields: [managerMembershipId], references: [id])
+  department                Department?                    @relation(fields: [departmentId], references: [id])
+  designationRecord         Designation?                   @relation(fields: [designationId], references: [id])
+  attendanceRecords         HrAttendanceRecord[]
+  leaveRequests             HrLeaveRequest[]               @relation("HrLeaveEmployee")
+  leaveApprovals            HrLeaveRequest[]               @relation("HrLeaveApprover")
+  leaveBalances             HrLeaveBalance[]
+  documents                 HrEmployeeDocument[]
+  shifts                    HrEmployeeShift[]
+  locationAssignments       HrEmployeeLocationAssignment[] @relation("HrLocationEmployee")
+  assignedLocations         HrEmployeeLocationAssignment[] @relation("HrLocationAssigner")
+  checklistTasks            HrChecklistTask[]              @relation("HrChecklistEmployee")
+  completedChecklistTasks   HrChecklistTask[]              @relation("HrChecklistCompleter")
+  offboardingCases          HrOffboardingCase[]            @relation("HrOffboardingEmployee")
+  startedOffboardingCases   HrOffboardingCase[]            @relation("HrOffboardingStarter")
+  settlementSnapshots       HrSettlementSnapshot[]
+  biometricConsents         BiometricConsent[]
+  faceTemplates             HrFaceTemplate[]
+  attendancePunches         HrAttendancePunch[]
+  temporaryRequests         HrTemporaryLocationRequest[]   @relation("HrTempRequester")
+  temporaryApprovals        HrTemporaryLocationRequest[]   @relation("HrTempApprover")
+  exceptionRequests         HrAttendanceExceptionRequest[] @relation("HrExceptionEmployee")
+  exceptionManagerActions   HrAttendanceExceptionRequest[] @relation("HrExceptionManager")
+  exceptionHrActions        HrAttendanceExceptionRequest[] @relation("HrExceptionHr")
+  overtimeClaims            HrOvertimeRequest[]            @relation("HrOvertimeEmployee")
+  overtimeRaised            HrOvertimeRequest[]            @relation("HrOvertimeRequester")
+  overtimeDecisions         HrOvertimeRequest[]            @relation("HrOvertimeApprover")
+  compensations             HrCompensation[]               @relation("HrCompensationEmployee")
+  payslips                  HrPayslip[]                    @relation("HrPayslipEmployee")
+  payrollAdjustments        HrPayrollAdjustment[]          @relation("HrAdjustmentEmployee")
+  payrollRunsPrepared       HrPayrollRun[]                 @relation("HrPayrollPreparer")
+  payrollRunsApproved       HrPayrollRun[]                 @relation("HrPayrollApprover")
+  rosterEntries             HrRosterEntry[]                @relation("HrRosterEmployee")
+  shiftChangesRaised        HrShiftChangeRequest[]         @relation("HrShiftChangeRequester")
+  shiftChangesAsCounterpart HrShiftChangeRequest[]         @relation("HrShiftChangeCounterpart")
+  shiftChangeDecisions      HrShiftChangeRequest[]         @relation("HrShiftChangeApprover")
+  requisitionsManaged       HrRequisition[]                @relation("HrRequisitionHiringManager")
+  requisitionsRecruited     HrRequisition[]                @relation("HrRequisitionRecruiter")
+  requisitionsApproved      HrRequisition[]                @relation("HrRequisitionApprover")
+  interviewFeedbackGiven    HrInterviewFeedback[]          @relation("HrInterviewFeedbackAuthor")
+  offersApproved            HrOffer[]                      @relation("HrOfferApprover")
+  goals                     HrGoal[]                       @relation("HrGoalEmployee")
+  reviews                   HrReview[]                     @relation("HrReviewEmployee")
+  reviewsAsManager          HrReview[]                     @relation("HrReviewManager")
+  reviewsCalibrated         HrReview[]                     @relation("HrReviewCalibrator")
+  pips                      HrPip[]                        @relation("HrPipEmployee")
+  pipsAsManager             HrPip[]                        @relation("HrPipManager")
+  /**
+   * The application this employee was hired from, when they came through the ATS — §109.
+   */
+  hiredFromCandidateId      String?
+  hiredFromCandidate        HrCandidate?                   @relation("HrCandidateHire", fields: [hiredFromCandidateId], references: [id])
 
   @@unique([tenantId, employeeNumber])
   @@index([tenantId, employmentStatus])
@@ -1055,19 +1058,19 @@ model Designation {
 }
 
 model HrShift {
-  id          String            @id @default(cuid())
-  tenantId    String
-  name        String
-  code        String
-  startTime   String
-  endTime     String
-  workingDays Int[]             @default([])
-  isActive    Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employees   HrEmployeeShift[]
-  rosterEntries   HrRosterEntry[]
+  id               String                 @id @default(cuid())
+  tenantId         String
+  name             String
+  code             String
+  startTime        String
+  endTime          String
+  workingDays      Int[]                  @default([])
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employees        HrEmployeeShift[]
+  rosterEntries    HrRosterEntry[]
   requestedInSwaps HrShiftChangeRequest[] @relation("HrShiftChangeRequestedShift")
 
   @@unique([tenantId, code])
@@ -1088,7 +1091,6 @@ model HrEmployeeShift {
 
 /**
  * A claim on paid overtime, whether the server noticed it or a person asked for it.
- *
  * One row per employee per day per source. The unique constraint is the whole
  * idempotency story: re-running detection over a week that was already scanned
  * updates the minutes on the existing DETECTED row instead of stacking a second
@@ -1097,23 +1099,25 @@ model HrEmployeeShift {
  * needs to see both "the clock says 90 minutes" and "he says he worked 120".
  */
 model HrOvertimeRequest {
-  id         String           @id @default(cuid())
-  tenantId   String
-  employeeId String
-  workDate   DateTime
-  minutes    Int
-  kind       HrOvertimeKind
-  source     HrOvertimeSource
-  status     HrOvertimeStatus @default(PENDING)
-  reason     String?
+  id            String           @id @default(cuid())
+  tenantId      String
+  employeeId    String
+  workDate      DateTime
+  minutes       Int
+  kind          HrOvertimeKind
+  source        HrOvertimeSource
+  status        HrOvertimeStatus @default(PENDING)
+  reason        String?
   /**
    * Resolved when the claim is approved, never read live afterwards. A workspace
    * that lowers its weekend rate in March must not restate February's approved
    * overtime — §106. Null while pending, because no rate has been committed yet.
    */
-  multiplier Float?
-  /** Taken as time off in lieu instead of pay, so payroll skips it. */
-  compensatory  Boolean         @default(false)
+  multiplier    Float?
+  /**
+   * Taken as time off in lieu instead of pay, so payroll skips it.
+   */
+  compensatory  Boolean          @default(false)
   requestedById String?
   approverId    String?
   decidedAt     DateTime?
@@ -1123,14 +1127,14 @@ model HrOvertimeRequest {
    * re-decided or cancelled — otherwise a payslip already issued stops
    * reconciling against the hours behind it.
    */
-  lockedAt     DateTime?
-  payrollRunId String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee     EmployeeProfile  @relation("HrOvertimeEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  requestedBy  EmployeeProfile? @relation("HrOvertimeRequester", fields: [requestedById], references: [id])
-  approver     EmployeeProfile? @relation("HrOvertimeApprover", fields: [approverId], references: [id])
+  lockedAt      DateTime?
+  payrollRunId  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      EmployeeProfile  @relation("HrOvertimeEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  requestedBy   EmployeeProfile? @relation("HrOvertimeRequester", fields: [requestedById], references: [id])
+  approver      EmployeeProfile? @relation("HrOvertimeApprover", fields: [approverId], references: [id])
 
   @@unique([tenantId, employeeId, workDate, source])
   @@index([tenantId, status, workDate])
@@ -1139,7 +1143,6 @@ model HrOvertimeRequest {
 
 /**
  * Effective-dated pay. A raise is a new row, never an edit.
- *
  * `EmployeeProfile.basicSalary` already existed and is mutable, which makes it
  * useless for answering "what was this person earning in March" — and payroll,
  * gratuity and any variance report all have to answer exactly that. This table
@@ -1147,20 +1150,20 @@ model HrOvertimeRequest {
  * rest of the app already reads.
  */
 model HrCompensation {
-  id            String          @id @default(cuid())
-  tenantId      String
-  employeeId    String
-  effectiveFrom DateTime
-  basic         Decimal         @db.Decimal(14, 2)
-  housing       Decimal         @default(0) @db.Decimal(14, 2)
-  transport     Decimal         @default(0) @db.Decimal(14, 2)
-  otherAllowance Decimal        @default(0) @db.Decimal(14, 2)
-  currency      String          @default("AED")
-  changeReason  String?
-  createdById   String?
-  createdAt     DateTime        @default(now())
-  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee      EmployeeProfile @relation("HrCompensationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  tenantId       String
+  employeeId     String
+  effectiveFrom  DateTime
+  basic          Decimal         @db.Decimal(14, 2)
+  housing        Decimal         @default(0) @db.Decimal(14, 2)
+  transport      Decimal         @default(0) @db.Decimal(14, 2)
+  otherAllowance Decimal         @default(0) @db.Decimal(14, 2)
+  currency       String          @default("AED")
+  changeReason   String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee       EmployeeProfile @relation("HrCompensationEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   // One salary per person per effective date: two rows starting the same day
   // have no defined winner, and payroll would silently pick one.
@@ -1169,12 +1172,12 @@ model HrCompensation {
 }
 
 model HrPayrollRun {
-  id          String          @id @default(cuid())
-  tenantId    String
-  periodStart DateTime
-  periodEnd   DateTime
-  status      HrPayrollStatus @default(DRAFT)
-  currency    String          @default("AED")
+  id             String           @id @default(cuid())
+  tenantId       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         HrPayrollStatus  @default(DRAFT)
+  currency       String           @default("AED")
   /**
    * The resolved HR policy at calculation time. Stored whole rather than as a
    * version string so a payslip stays re-derivable after someone edits the
@@ -1215,9 +1218,13 @@ model HrPayslip {
   workedDays      Float    @default(0)
   unpaidDays      Float    @default(0)
   overtimeMinutes Int      @default(0)
-  /** Every input the figures came from, so the breakdown survives a recalculation elsewhere. */
+  /**
+   * Every input the figures came from, so the breakdown survives a recalculation elsewhere.
+   */
   inputs          Json
-  /** The IBAN as it stood when the run was calculated; a later bank change must not rewrite a past transfer. */
+  /**
+   * The IBAN as it stood when the run was calculated; a later bank change must not rewrite a past transfer.
+   */
   ibanSnapshot    String?
   createdAt       DateTime @default(now())
 
@@ -1247,27 +1254,28 @@ model HrPayslipLine {
 /**
  * A one-off addition or deduction: bonus, commission, reimbursement, loan
  * instalment, correction.
- *
  * Kept out of the payslip lines it eventually produces so it can be entered and
  * audited before a run exists, and so a run recalculated in DRAFT picks it up
  * without anybody re-keying it.
  */
 model HrPayrollAdjustment {
-  id          String             @id @default(cuid())
-  tenantId    String
-  employeeId  String
-  effectiveOn DateTime
-  code        String
-  label       String
-  kind        HrPayComponentKind
-  amount      Decimal            @db.Decimal(14, 2)
-  reason      String?
-  /** Set once a run has consumed it, so the same bonus cannot be paid in two months. */
+  id              String             @id @default(cuid())
+  tenantId        String
+  employeeId      String
+  effectiveOn     DateTime
+  code            String
+  label           String
+  kind            HrPayComponentKind
+  amount          Decimal            @db.Decimal(14, 2)
+  reason          String?
+  /**
+   * Set once a run has consumed it, so the same bonus cannot be paid in two months.
+   */
   consumedByRunId String?
   createdById     String?
-  createdAt       DateTime        @default(now())
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee        EmployeeProfile @relation("HrAdjustmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        EmployeeProfile    @relation("HrAdjustmentEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, effectiveOn])
   @@index([tenantId, consumedByRunId])
@@ -1275,31 +1283,29 @@ model HrPayrollAdjustment {
 
 /**
  * One person, one shift, one date.
- *
  * Distinct from `HrEmployeeShift`, which is the *standing* assignment — "Amina
  * works the early shift from March" — and cannot express next Tuesday only.
  * Overtime detection reads the standing assignment; a roster entry is what a
  * manager actually publishes, and what a swap moves.
- *
  * The unique key allows two different shifts on one day (a split shift) while
  * refusing the same shift twice. Genuine time overlap between two different
  * shifts is caught in the service, because it needs the shift times to decide.
  */
 model HrRosterEntry {
-  id          String          @id @default(cuid())
-  tenantId    String
-  employeeId  String
-  shiftId     String
-  workDate    DateTime
-  source      HrRosterSource  @default(ROSTER)
-  note        String?
-  createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee    EmployeeProfile @relation("HrRosterEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  shift       HrShift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  changeRequests     HrShiftChangeRequest[] @relation("HrShiftChangeEntry")
+  id                  String                 @id @default(cuid())
+  tenantId            String
+  employeeId          String
+  shiftId             String
+  workDate            DateTime
+  source              HrRosterSource         @default(ROSTER)
+  note                String?
+  createdById         String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee            EmployeeProfile        @relation("HrRosterEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  shift               HrShift                @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  changeRequests      HrShiftChangeRequest[] @relation("HrShiftChangeEntry")
   counterpartRequests HrShiftChangeRequest[] @relation("HrShiftChangeCounterpartEntry")
 
   @@unique([tenantId, employeeId, workDate, shiftId])
@@ -1310,7 +1316,6 @@ model HrRosterEntry {
 /**
  * An employee asking for a rostered day to change: onto a different shift, or
  * swapped with a named colleague.
- *
  * A swap needs both sides recorded before the decision, because approving it
  * moves two entries at once and both must still exist and still be theirs.
  */
@@ -1320,9 +1325,13 @@ model HrShiftChangeRequest {
   kind               HrShiftChangeKind
   requesterId        String
   entryId            String
-  /** CHANGE: the shift being asked for. */
+  /**
+   * CHANGE: the shift being asked for.
+   */
   requestedShiftId   String?
-  /** SWAP: the colleague and the day of theirs being swapped into. */
+  /**
+   * SWAP: the colleague and the day of theirs being swapped into.
+   */
   counterpartId      String?
   counterpartEntryId String?
   reason             String
@@ -1346,21 +1355,21 @@ model HrShiftChangeRequest {
 }
 
 model HrReviewCycle {
-  id                  String        @id @default(cuid())
-  tenantId            String
-  name                String
-  type                HrCycleType   @default(ANNUAL)
-  periodStart         DateTime
-  periodEnd           DateTime
-  selfReviewDueAt     DateTime?
-  managerReviewDueAt  DateTime?
-  status              HrCycleStatus @default(DRAFT)
-  createdById         String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  reviews             HrReview[]
-  goals               HrGoal[]
+  id                 String        @id @default(cuid())
+  tenantId           String
+  name               String
+  type               HrCycleType   @default(ANNUAL)
+  periodStart        DateTime
+  periodEnd          DateTime
+  selfReviewDueAt    DateTime?
+  managerReviewDueAt DateTime?
+  status             HrCycleStatus @default(DRAFT)
+  createdById        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews            HrReview[]
+  goals              HrGoal[]
 
   @@unique([tenantId, name])
   @@index([tenantId, status, periodStart])
@@ -1368,7 +1377,6 @@ model HrReviewCycle {
 
 /**
  * An objective with a weight.
- *
  * Weights are checked against 100 across a cycle rather than stored as a
  * percentage of anything: a goal set carrying 140% of weight is a rating nobody
  * can defend, and it is only detectable by looking at the set.
@@ -1398,49 +1406,53 @@ model HrGoal {
   @@index([tenantId, employeeId, cycleId])
 }
 
-/** A configurable competency framework. Seeded per workspace, editable by HR. */
+/**
+ * A configurable competency framework. Seeded per workspace, editable by HR.
+ */
 model HrCompetency {
-  id          String   @id @default(cuid())
+  id          String                    @id @default(cuid())
   tenantId    String
   name        String
   description String?
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  isActive    Boolean                   @default(true)
+  sortOrder   Int                       @default(0)
+  createdAt   DateTime                  @default(now())
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   scores      HrReviewCompetencyScore[]
 
   @@unique([tenantId, name])
 }
 
 model HrReview {
-  id                 String         @id @default(cuid())
-  tenantId           String
-  cycleId            String
-  employeeId         String
-  managerId          String?
-  status             HrReviewStatus @default(PENDING_SELF)
-  selfComments       String?
-  selfRating         Int?
-  selfSubmittedAt    DateTime?
-  managerComments    String?
-  managerRating      Int?
-  managerSubmittedAt DateTime?
-  /** Set during calibration, which may move a rating away from the manager's. */
-  finalRating        Int?
-  calibratedById     String?
-  calibratedAt       DateTime?
-  calibrationNote    String?
-  acknowledgedAt     DateTime?
+  id                  String         @id @default(cuid())
+  tenantId            String
+  cycleId             String
+  employeeId          String
+  managerId           String?
+  status              HrReviewStatus @default(PENDING_SELF)
+  selfComments        String?
+  selfRating          Int?
+  selfSubmittedAt     DateTime?
+  managerComments     String?
+  managerRating       Int?
+  managerSubmittedAt  DateTime?
+  /**
+   * Set during calibration, which may move a rating away from the manager's.
+   */
+  finalRating         Int?
+  calibratedById      String?
+  calibratedAt        DateTime?
+  calibrationNote     String?
+  acknowledgedAt      DateTime?
   acknowledgementNote String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  cycle        HrReviewCycle    @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  employee     EmployeeProfile  @relation("HrReviewEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  manager      EmployeeProfile? @relation("HrReviewManager", fields: [managerId], references: [id])
-  calibratedBy EmployeeProfile? @relation("HrReviewCalibrator", fields: [calibratedById], references: [id])
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cycle            HrReviewCycle             @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  employee         EmployeeProfile           @relation("HrReviewEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  manager          EmployeeProfile?          @relation("HrReviewManager", fields: [managerId], references: [id])
+  calibratedBy     EmployeeProfile?          @relation("HrReviewCalibrator", fields: [calibratedById], references: [id])
   competencyScores HrReviewCompetencyScore[]
 
   // One review per person per cycle.
@@ -1466,7 +1478,6 @@ model HrReviewCompetencyScore {
 
 /**
  * A performance improvement plan.
- *
  * Modelled with checkpoints rather than a single end date because a PIP whose
  * only evidence is its outcome is not a process anyone can defend at a tribunal.
  */
@@ -1512,34 +1523,40 @@ model HrPipCheckpoint {
   @@index([tenantId, pipId, dueOn])
 }
 
-/** An approved need to hire: the thing a vacancy and its candidates hang off. */
+/**
+ * An approved need to hire: the thing a vacancy and its candidates hang off.
+ */
 model HrRequisition {
-  id               String             @id @default(cuid())
-  tenantId         String
-  title            String
-  departmentId     String?
-  hiringManagerId  String?
-  recruiterId      String?
-  openings         Int                @default(1)
-  employmentType   String?
-  locationId       String?
-  /** Salary band. Reading it needs `recruitment:VIEW_SENSITIVE_FIELDS`, not merely reaching the requisition. */
-  salaryMin        Decimal?           @db.Decimal(14, 2)
-  salaryMax        Decimal?           @db.Decimal(14, 2)
-  currency         String             @default("AED")
-  description      String?
-  skills           String[]           @default([])
-  reason           String?
-  /** Whether the vacancy is advertised outside the company. */
-  isInternal       Boolean            @default(false)
-  status           HrRequisitionStatus @default(DRAFT)
-  approvedById     String?
-  approvedAt       DateTime?
-  decisionNote     String?
-  closedAt         DateTime?
-  createdById      String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id              String              @id @default(cuid())
+  tenantId        String
+  title           String
+  departmentId    String?
+  hiringManagerId String?
+  recruiterId     String?
+  openings        Int                 @default(1)
+  employmentType  String?
+  locationId      String?
+  /**
+   * Salary band. Reading it needs `recruitment:VIEW_SENSITIVE_FIELDS`, not merely reaching the requisition.
+   */
+  salaryMin       Decimal?            @db.Decimal(14, 2)
+  salaryMax       Decimal?            @db.Decimal(14, 2)
+  currency        String              @default("AED")
+  description     String?
+  skills          String[]            @default([])
+  reason          String?
+  /**
+   * Whether the vacancy is advertised outside the company.
+   */
+  isInternal      Boolean             @default(false)
+  status          HrRequisitionStatus @default(DRAFT)
+  approvedById    String?
+  approvedAt      DateTime?
+  decisionNote    String?
+  closedAt        DateTime?
+  createdById     String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   department    Department?      @relation(fields: [departmentId], references: [id])
@@ -1554,7 +1571,6 @@ model HrRequisition {
 
 /**
  * One person's application to one requisition.
- *
  * A person applying to two roles is two rows, which is why the identity fields
  * repeat. The alternative — a person table plus an application table — buys
  * de-duplication the product does not need yet and costs a join on every
@@ -1562,68 +1578,78 @@ model HrRequisition {
  * same requisition twice.
  */
 model HrCandidate {
-  id             String           @id @default(cuid())
-  tenantId       String
-  requisitionId  String
-  fullName       String
-  email          String
-  phone          String?
-  source         String?
-  experienceYears Float?
-  skills         String[]         @default([])
-  /** CV, held in the same secure store as employee documents. */
+  id               String           @id @default(cuid())
+  tenantId         String
+  requisitionId    String
+  fullName         String
+  email            String
+  phone            String?
+  source           String?
+  experienceYears  Float?
+  skills           String[]         @default([])
+  /**
+   * CV, held in the same secure store as employee documents.
+   */
   resumeDocumentId String?
-  notes          String?
-  stage          HrCandidateStage @default(APPLIED)
-  rejectionReason String?
-  /** Set when the hire is actioned; the employee row appears when the invitation is accepted. */
-  invitationId   String?
-  createdById    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  notes            String?
+  stage            HrCandidateStage @default(APPLIED)
+  rejectionReason  String?
+  /**
+   * Set when the hire is actioned; the employee row appears when the invitation is accepted.
+   */
+  invitationId     String?
+  createdById      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requisition HrRequisition          @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requisition HrRequisition           @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
   stageEvents HrCandidateStageEvent[]
   interviews  HrInterview[]
   offers      HrOffer[]
-  /** Back-reference from the employee this candidate became — §109 traceability. */
-  employees   EmployeeProfile[]      @relation("HrCandidateHire")
+  /**
+   * Back-reference from the employee this candidate became — §109 traceability.
+   */
+  employees   EmployeeProfile[]       @relation("HrCandidateHire")
 
   @@unique([tenantId, requisitionId, email])
   @@index([tenantId, stage])
   @@index([tenantId, requisitionId, stage])
 }
 
-/** Every pipeline move, so time-to-hire and stage conversion are derivable. */
+/**
+ * Every pipeline move, so time-to-hire and stage conversion are derivable.
+ */
 model HrCandidateStageEvent {
-  id          String           @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
   candidateId String
   fromStage   HrCandidateStage?
   toStage     HrCandidateStage
   note        String?
   changedById String?
-  createdAt   DateTime         @default(now())
-  candidate   HrCandidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  candidate   HrCandidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, candidateId, createdAt])
 }
 
 model HrInterview {
-  id          String            @id @default(cuid())
-  tenantId    String
-  candidateId String
-  scheduledAt DateTime
-  durationMinutes Int           @default(60)
-  type        HrInterviewType   @default(VIDEO)
-  status      HrInterviewStatus @default(SCHEDULED)
-  location    String?
-  /** Employee ids on the panel. Feedback is one row per interviewer. */
-  panelIds    String[]          @default([])
-  createdById String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  tenantId        String
+  candidateId     String
+  scheduledAt     DateTime
+  durationMinutes Int               @default(60)
+  type            HrInterviewType   @default(VIDEO)
+  status          HrInterviewStatus @default(SCHEDULED)
+  location        String?
+  /**
+   * Employee ids on the panel. Feedback is one row per interviewer.
+   */
+  panelIds        String[]          @default([])
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   candidate HrCandidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
@@ -1633,7 +1659,9 @@ model HrInterview {
   @@index([tenantId, candidateId])
 }
 
-/** One interviewer's scorecard. */
+/**
+ * One interviewer's scorecard.
+ */
 model HrInterviewFeedback {
   id             String           @id @default(cuid())
   tenantId       String
@@ -1641,7 +1669,9 @@ model HrInterviewFeedback {
   interviewerId  String
   rating         Int
   recommendation HrRecommendation
-  /** Per-competency scores, so a scorecard can be reshaped without a migration. */
+  /**
+   * Per-competency scores, so a scorecard can be reshaped without a migration.
+   */
   scores         Json             @default("{}")
   notes          String?
   createdAt      DateTime         @default(now())
@@ -1656,7 +1686,6 @@ model HrInterviewFeedback {
 
 /**
  * An offer, versioned by row.
- *
  * A renegotiated offer is a new version rather than an edit, so what the
  * candidate was actually sent stays readable after the terms move.
  */
@@ -2006,13 +2035,13 @@ model HrFaceTemplate {
 /// Every attempt, accepted or rejected. A rejected punch is exactly when the
 /// evidence matters most: it is the record of who tried and why it failed.
 model HrAttendancePunch {
-  id                String          @id @default(cuid())
+  id                String                         @id @default(cuid())
   tenantId          String
   employeeId        String
   punchType         HrPunchType
   result            HrPunchResult
-  method            String          @default("face")
-  serverTime        DateTime        @default(now())
+  method            String                         @default("face")
+  serverTime        DateTime                       @default(now())
   clientTime        DateTime?
   latitude          Float?
   longitude         Float?
@@ -2021,10 +2050,10 @@ model HrAttendancePunch {
   faceScore         Float?
   livenessScore     Float?
   deviceFingerprint String?
-  mockLocationFlag  Boolean         @default(false)
+  mockLocationFlag  Boolean                        @default(false)
   rejectCode        String?
   rejectReason      String?
-  syncedOffline     Boolean         @default(false)
+  syncedOffline     Boolean                        @default(false)
   clientPunchUid    String?
   requestId         String?
   serverIp          String?
@@ -2033,9 +2062,9 @@ model HrAttendancePunch {
   locLongitude      Float?
   locRadiusM        Int?
   capturePath       String?
-  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee          EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  location          HrWorkLocation? @relation(fields: [locationId], references: [id])
+  tenant            Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee          EmployeeProfile                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  location          HrWorkLocation?                @relation(fields: [locationId], references: [id])
   exceptionRequests HrAttendanceExceptionRequest[]
 
   /// Idempotency for offline replay: the same queued punch synced twice is one row.
@@ -2053,7 +2082,6 @@ enum HrTemporaryRequestStatus {
 
 /**
  * A payroll run's position in the maker-checker chain.
- *
  * DRAFT is the only state that recalculates. Once approved, the numbers are
  * evidence: LOCKED additionally freezes the overtime claims the run consumed, so
  * a payslip already issued keeps reconciling against the hours behind it.
@@ -2067,7 +2095,9 @@ enum HrPayrollStatus {
   CANCELLED
 }
 
-/** Which side of the payslip a line falls on. */
+/**
+ * Which side of the payslip a line falls on.
+ */
 enum HrPayComponentKind {
   EARNING
   DEDUCTION
@@ -2177,7 +2207,9 @@ enum HrOfferStatus {
   WITHDRAWN
 }
 
-/** How a rostered day came to exist. Kept so a swapped shift is distinguishable from a planned one. */
+/**
+ * How a rostered day came to exist. Kept so a swapped shift is distinguishable from a planned one.
+ */
 enum HrRosterSource {
   ROSTER
   OVERRIDE
@@ -2196,7 +2228,9 @@ enum HrShiftChangeStatus {
   CANCELLED
 }
 
-/** Where an overtime claim came from. Detection is advisory; only a decision pays. */
+/**
+ * Where an overtime claim came from. Detection is advisory; only a decision pays.
+ */
 enum HrOvertimeSource {
   DETECTED
   REQUESTED
@@ -2235,7 +2269,7 @@ enum HrExceptionStatus {
 /// assignments — so the geofence still decides every punch, it is just pointed
 /// somewhere new for a fixed window.
 model HrTemporaryLocationRequest {
-  id                String                    @id @default(cuid())
+  id                String                   @id @default(cuid())
   tenantId          String
   name              String
   latitude          Float
@@ -2246,18 +2280,18 @@ model HrTemporaryLocationRequest {
   reason            String
   /// The employees the temporary site should cover. Stored as an array rather
   /// than the original's comma-separated string so it can be queried.
-  employeeIds       String[]                  @default([])
-  status            HrTemporaryRequestStatus  @default(PENDING)
+  employeeIds       String[]                 @default([])
+  status            HrTemporaryRequestStatus @default(PENDING)
   requestedById     String
-  requestedAt       DateTime                  @default(now())
+  requestedAt       DateTime                 @default(now())
   approverId        String?
   decidedAt         DateTime?
   decisionNote      String?
   createdLocationId String?
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requestedBy       EmployeeProfile           @relation("HrTempRequester", fields: [requestedById], references: [id], onDelete: Cascade)
-  approver          EmployeeProfile?          @relation("HrTempApprover", fields: [approverId], references: [id], onDelete: SetNull)
-  createdLocation   HrWorkLocation?           @relation(fields: [createdLocationId], references: [id], onDelete: SetNull)
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy       EmployeeProfile          @relation("HrTempRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  approver          EmployeeProfile?         @relation("HrTempApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  createdLocation   HrWorkLocation?          @relation(fields: [createdLocationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, requestedAt(sort: Desc)])
 }
@@ -4144,7 +4178,9 @@ model Notification {
   priority   Priority  @default(MEDIUM)
   readAt     DateTime?
   channels   String[]  @default([])
-  /** Stamped by the notifications worker, so "sent / failed" is answerable. */
+  /**
+   * Stamped by the notifications worker, so "sent / failed" is answerable.
+   */
   emailedAt  DateTime?
   emailError String?
   createdAt  DateTime  @default(now())
@@ -4295,8 +4331,10 @@ model Call {
   contactId       String?
   accountId       String?
   campaignId      String?
-  /** Set when this call is a meeting held for an Event — the recording, consent,
-   *  transcript and AI summary pipeline is shared with ordinary calls. */
+  /**
+   * Set when this call is a meeting held for an Event — the recording, consent,
+   * transcript and AI summary pipeline is shared with ordinary calls.
+   */
   eventId         String?
   callerId        String
   caller          User                   @relation("CallerUser", fields: [callerId], references: [id])
@@ -4807,6 +4845,7 @@ model Micromarket {
   updatedAt DateTime @updatedAt
 
   projects Project[]
+  listings Listing[]
 
   @@unique([tenantId, city, name])
   @@index([tenantId, isActive, city, name])
@@ -4903,6 +4942,7 @@ model Project {
   unitPlans   UnitPlan[]
   units       UnitInventory[]
   favourites  ProjectFavourite[]
+  listings    Listing[]
 
   @@unique([tenantId, code])
   /// The keyset order. Every list page ends in (updatedAt DESC, id DESC), so the
@@ -4913,6 +4953,15 @@ model Project {
   @@index([tenantId, possessionStatus, possessionAt])
   @@index([tenantId, status, minPrice])
   @@index([tenantId, isPitchable, isPriority])
+  /// Declared here, not only in the migration.
+  ///
+  /// `prisma migrate diff` proposed dropping all three the moment the next
+  /// module was added, because an index the datamodel cannot see is an index
+  /// Prisma believes should not exist — and dropping them turns a 110 ms
+  /// catalogue into a sequential scan with nothing failing to say so.
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "Project_name_trgm_idx", type: Gin)
+  @@index([amenityKeys], map: "Project_amenityKeys_idx", type: Gin)
+  @@index([unitTypes], map: "Project_unitTypes_idx", type: Gin)
 }
 
 model ProjectMedia {
@@ -4993,6 +5042,7 @@ model UnitInventory {
 
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   unitPlan UnitPlan? @relation(fields: [unitPlanId], references: [id], onDelete: SetNull)
+  listings Listing[]
 
   @@unique([projectId, unitNumber])
   @@index([tenantId, projectId, status])
@@ -5010,4 +5060,303 @@ model ProjectFavourite {
 
   @@unique([projectId, userId])
   @@index([tenantId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real-estate inventory — resale and rental listings (M5)
+//
+// Where M4 is developer inventory the whole floor pitches, this is stock the
+// agency holds a mandate on: someone else's property, marketed under an
+// agreement with an expiry date. That agreement is the difference, and it is why
+// Mandate is a table rather than three columns on Listing — a listing outlives
+// the mandates on it, and marketing a property whose mandate has lapsed is a
+// compliance problem rather than an untidy record.
+//
+// `ownerId` is the agent, matching every other record in the platform so
+// `visibilityWhere` works with its defaults. The person who owns the bricks is
+// `propertyOwnerId`, pointing at Owner.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ListingType {
+  SALE
+  RENT
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  UNDER_OFFER
+  SOLD
+  RENTED
+  WITHDRAWN
+  /// The mandate lapsed. Distinct from WITHDRAWN, which is a decision.
+  EXPIRED
+}
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  TOWNHOUSE
+  PENTHOUSE
+  PLOT
+  OFFICE
+  RETAIL
+  WAREHOUSE
+}
+
+enum Furnishing {
+  UNFURNISHED
+  SEMI_FURNISHED
+  FURNISHED
+}
+
+enum RentFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum MandateType {
+  EXCLUSIVE
+  NON_EXCLUSIVE
+  OPEN
+}
+
+enum MandateStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum RequirementPurpose {
+  BUY
+  RENT
+}
+
+enum RequirementStatus {
+  OPEN
+  MATCHED
+  FULFILLED
+  CLOSED
+}
+
+/// The landlord or vendor. Their contact details are the agency's book, so the
+/// read routes mask them unless the caller holds listings:VIEW_SENSITIVE_FIELDS.
+model Owner {
+  id              String    @id @default(cuid())
+  tenantId        String
+  fullName        String
+  phone           String?
+  /// E.164, for duplicate detection — the same normaliser the leads use.
+  phoneNormalized String?
+  email           String?
+  whatsappNumber  String?
+  nationality     String?
+  notes           String?
+  /// The agent who holds the relationship.
+  ownerId         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdById     String?
+  updatedById     String?
+  deletedAt       DateTime?
+
+  listings Listing[]
+  mandates Mandate[]
+
+  @@index([tenantId, phoneNormalized])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, fullName])
+}
+
+model Listing {
+  id        String @id @default(cuid())
+  tenantId  String
+  reference String
+  title     String
+
+  listingType  ListingType
+  status       ListingStatus @default(DRAFT)
+  propertyType PropertyType  @default(APARTMENT)
+
+  propertyOwnerId String?
+  /// The agent. Named `ownerId` because visibilityWhere defaults to it, and a
+  /// listing that is nobody's is a listing nobody chases.
+  ownerId         String?
+
+  /// A resale flat inside a project we already catalogue. Both optional: a villa
+  /// on its own plot belongs to no project, and a listing can name the project
+  /// without anyone having entered that specific unit.
+  projectId       String?
+  unitInventoryId String?
+  micromarketId   String?
+
+  address   String?
+  latitude  Float?
+  longitude Float?
+
+  bedrooms      Int?
+  bathrooms     Int?
+  areaSqft      Int?
+  parkingSpaces Int?
+  furnishing    Furnishing?
+
+  /// The asking price for a SALE, the rent for a RENT. One column because a
+  /// listing is only ever one of the two, and two nullable columns would need a
+  /// constraint to say the same thing in more places.
+  price         Decimal        @db.Decimal(18, 2)
+  currency      String         @default("AED")
+  /// Meaningless on a sale; required on a rental. Enforced in the migration.
+  rentFrequency RentFrequency?
+
+  availableFrom DateTime?
+  amenityKeys   String[]  @default([])
+  highlights    String[]  @default([])
+  description   String?
+
+  /// Denormalised from the live mandate so the list can filter and sort on
+  /// exclusivity without a join, and so an expired mandate is visible on the row
+  /// rather than one click away. Written only by the mandate service.
+  mandateType    MandateType?
+  mandateExpires DateTime?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  propertyOwner Owner?         @relation(fields: [propertyOwnerId], references: [id], onDelete: SetNull)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  unit          UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  micromarket   Micromarket?   @relation(fields: [micromarketId], references: [id], onDelete: SetNull)
+  media         ListingMedia[]
+  mandates      Mandate[]
+
+  @@unique([tenantId, reference])
+  /// The keyset order, matching the project catalogue.
+  @@index([tenantId, deletedAt, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, status, listingType, price])
+  @@index([tenantId, micromarketId, status])
+  @@index([tenantId, propertyType, bedrooms])
+  @@index([tenantId, ownerId, status])
+  @@index([tenantId, propertyOwnerId])
+  /// Finding what lapsed, without scanning the book.
+  @@index([tenantId, status, mandateExpires])
+  @@index([title(ops: raw("gin_trgm_ops"))], map: "Listing_title_trgm_idx", type: Gin)
+  @@index([amenityKeys], map: "Listing_amenityKeys_idx", type: Gin)
+}
+
+model ListingMedia {
+  id          String           @id @default(cuid())
+  tenantId    String
+  listingId   String
+  kind        ProjectMediaKind @default(IMAGE)
+  title       String?
+  storageKey  String?
+  externalUrl String?
+  mimeType    String?
+  sizeBytes   Int?
+  position    Int              @default(0)
+  createdAt   DateTime         @default(now())
+  createdById String?
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, listingId, kind, position])
+}
+
+/// The right to market a property, and the date that right ends.
+///
+/// Its own table rather than columns on Listing because a property is
+/// re-mandated: an exclusive lapses, the owner shops around, and three months
+/// later the same agency takes it back on an open mandate. Flattening that onto
+/// the listing loses the history that says who was allowed to market it, when.
+model Mandate {
+  id        String        @id @default(cuid())
+  tenantId  String
+  listingId String
+  ownerId   String
+  type      MandateType   @default(NON_EXCLUSIVE)
+  status    MandateStatus @default(DRAFT)
+
+  startsAt  DateTime
+  /// Required. A mandate without an end date is not a mandate, it is an
+  /// assumption — and it is the assumption this table exists to stop.
+  expiresAt DateTime
+
+  /// The agency's cut. Percent of the sale price, or of the annual rent.
+  commissionPct Decimal? @db.Decimal(6, 3)
+  currency      String   @default("AED")
+
+  /// The signed agreement in our own bucket.
+  documentKey String?
+  signedAt    DateTime?
+
+  terminatedAt    DateTime?
+  terminationNote String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  owner   Owner   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, listingId, status])
+  /// The expiry sweep reads this.
+  @@index([tenantId, status, expiresAt])
+  @@index([tenantId, ownerId])
+}
+
+/// What a client is looking for.
+///
+/// This is the one table from M3 the demand check needs — budget, locations,
+/// property type, timeline. The rest of client profiling (profession, income
+/// band, education, testimonials, referrals) is not built; matching stock to
+/// demand does not need to know where somebody went to university.
+model ClientRequirement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A buyer is a Lead before they are a Contact and the requirement follows the
+  /// person, so either may be set. The migration enforces at least one.
+  leadId    String?
+  contactId String?
+
+  purpose RequirementPurpose
+  status  RequirementStatus  @default(OPEN)
+
+  propertyTypes  PropertyType[] @default([])
+  micromarketIds String[]       @default([])
+
+  bedroomsMin Int?
+  bedroomsMax Int?
+  areaMinSqft Int?
+
+  budgetMin Decimal? @db.Decimal(18, 2)
+  budgetMax Decimal? @db.Decimal(18, 2)
+  currency  String   @default("AED")
+
+  /// "I need to be in by March." Matched against a listing's availableFrom.
+  possessionBy DateTime?
+  furnishing   Furnishing?
+
+  notes   String?
+  /// The agent working it.
+  ownerId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([tenantId, status, purpose])
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, ownerId, status])
 }

@@ -13,6 +13,7 @@ const PREFIX: Record<string, string> = {
   TICKET: 'TK',
   PRODUCT: 'PR',
   CAMPAIGN: 'CP',
+  LISTING: 'LS',
 };
 
 /** Tables the sequence has to be seeded from. Only those carrying `reference`. */
@@ -21,6 +22,7 @@ const TABLE: Record<string, string> = {
   OPPORTUNITY: 'Opportunity',
   ACCOUNT: 'Account',
   CONTACT: 'Contact',
+  LISTING: 'Listing',
 };
 
 /**

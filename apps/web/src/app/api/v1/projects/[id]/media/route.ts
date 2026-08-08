@@ -1,18 +1,14 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { Invalid, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
+import { MEDIA_KINDS, assertMediaSource } from '@/lib/inventory/media';
 
 const params = z.object({ id: z.string().cuid() });
 
-const KINDS = ['IMAGE', 'FLOOR_PLAN', 'BROCHURE', 'CREATIVE', 'VIDEO', 'VR_TOUR'] as const;
-
-/** Embeds we point at rather than host. Anything else must be an object we hold. */
-const EMBED_KINDS = new Set(['VIDEO', 'VR_TOUR']);
-
 const createBody = z
   .object({
-    kind: z.enum(KINDS),
+    kind: z.enum(MEDIA_KINDS),
     title: z.string().max(200).optional(),
     /** An object already in our bucket. */
     storageKey: z.string().max(500).optional(),
@@ -55,24 +51,9 @@ export const POST = route(
     });
     if (!project) throw NotFound('Project');
 
-    const isEmbed = EMBED_KINDS.has(body.kind);
-    if (isEmbed && !body.externalUrl) {
-      throw Invalid([{ field: 'externalUrl', code: 'required', message: 'A video or tour needs its URL.' }]);
-    }
-    if (!isEmbed && !body.storageKey) {
-      throw Invalid([
-        { field: 'storageKey', code: 'required', message: 'Upload the file first, then register its key.' },
-      ]);
-    }
-    if (body.storageKey && body.externalUrl) {
-      throw Invalid([
-        {
-          field: 'externalUrl',
-          code: 'conflict',
-          message: 'Media is either hosted by us or linked from elsewhere, not both.',
-        },
-      ]);
-    }
+    // Shared with the listing media route: the embed-versus-hosted rule is the
+    // same in both places, and two copies of it is how they come to disagree.
+    assertMediaSource(body);
 
     return prisma.projectMedia.create({
       data: { tenantId: ctx.tenantId, projectId: project.id, createdById: ctx.actor.id, ...body },

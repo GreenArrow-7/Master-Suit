@@ -27,6 +27,7 @@ export const GRID_OBJECTS = [
   'FOLLOWUP',
   'FIELDVISIT',
   'PROJECT',
+  'LISTING',
 ] as const;
 
 export type GridObject = (typeof GRID_OBJECTS)[number];
@@ -192,6 +193,20 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'status', label: 'Status', byDefault: true, hideMobile: true },
     { key: 'unitTypes', label: 'Unit types', hideMobile: true },
     { key: 'flags', label: 'Flags', hideMobile: true },
+    { key: 'updatedAt', label: 'Updated', hideMobile: true },
+  ],
+  LISTING: [
+    { key: 'reference', label: 'Ref', fixed: true },
+    { key: 'title', label: 'Listing', fixed: true },
+    { key: 'listingType', label: 'For', byDefault: true },
+    { key: 'propertyType', label: 'Type', byDefault: true, hideMobile: true },
+    { key: 'priceCell', label: 'Price', byDefault: true, align: 'right' },
+    { key: 'beds', label: 'Beds', byDefault: true, align: 'right', hideMobile: true },
+    { key: 'micromarket', label: 'Micromarket', byDefault: true },
+    { key: 'status', label: 'Status', byDefault: true },
+    { key: 'mandate', label: 'Mandate', byDefault: true, hideMobile: true },
+    { key: 'areaSqft', label: 'Area', align: 'right', hideMobile: true },
+    { key: 'propertyOwner', label: 'Owner', hideMobile: true },
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
 };

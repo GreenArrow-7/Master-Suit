@@ -145,7 +145,11 @@ export default function WorkspaceSidebar({
         // Inventory sits above Engage on purpose: a salesperson opens what they
         // are selling before they open the thing they are selling it with.
         label: 'Inventory',
-        items: [{ label: 'Projects', href: `/${slug}/sales/projects`, icon: 'company', permission: 'projects' }],
+        items: [
+          { label: 'Projects', href: `/${slug}/sales/projects`, icon: 'company', permission: 'projects' },
+          { label: 'Listings', href: `/${slug}/sales/listings`, icon: 'deal', permission: 'listings' },
+          { label: 'Requirements', href: `/${slug}/sales/requirements`, icon: 'lead', permission: 'requirements' },
+        ],
       },
       {
         label: 'Engage',

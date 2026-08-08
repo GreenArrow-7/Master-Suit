@@ -413,6 +413,63 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return dash;
       }
 
+    case 'LISTING':
+      switch (key) {
+        case 'reference':
+          return link(`/listings/${row.id}`, row.reference, true);
+        case 'title':
+          return link(`/listings/${row.id}`, row.title);
+        case 'listingType':
+          return <Badge value={row.listingType} tone={row.listingType === 'RENT' ? 'brass' : 'viridian'} />;
+        case 'propertyType':
+          return muted(
+            String(row.propertyType ?? '')
+              .replace(/_/g, ' ')
+              .toLowerCase(),
+          );
+        case 'priceCell':
+          // Rent carries its frequency; a sale price has none and needs none.
+          return (
+            <span className="lf-num">
+              {money(row.price, row.currency)}
+              {row.rentFrequency ? (
+                <span style={{ color: 'var(--lf-ink-3)' }}>
+                  {' /'}
+                  {String(row.rentFrequency).toLowerCase().slice(0, 2)}
+                </span>
+              ) : null}
+            </span>
+          );
+        case 'beds':
+          return row.bedrooms == null ? dash : <span className="lf-num">{row.bedrooms}</span>;
+        case 'areaSqft':
+          return row.areaSqft == null ? dash : <span className="lf-num">{row.areaSqft.toLocaleString('en-GB')}</span>;
+        case 'micromarket':
+          return row.micromarket ? `${row.micromarket.name}, ${row.micromarket.city}` : dash;
+        case 'status':
+          return <Badge value={row.status} />;
+        case 'mandate':
+          // The expiry is the number that matters, so it sits in the cell rather
+          // than a click away — an exclusive with nine days left needs chasing.
+          if (!row.mandateType) return dash;
+          return (
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'baseline' }}>
+              <Badge value={row.mandateType} tone={row.mandateType === 'EXCLUSIVE' ? 'viridian' : 'slate'} />
+              {row.mandateExpires ? (
+                <span style={{ fontSize: 'var(--lf-text-xs)', color: overdue(row.mandateExpires) }}>
+                  {date(row.mandateExpires)}
+                </span>
+              ) : null}
+            </span>
+          );
+        case 'propertyOwner':
+          return row.propertyOwner ? row.propertyOwner.fullName : dash;
+        case 'updatedAt':
+          return dateTime(row.updatedAt);
+        default:
+          return dash;
+      }
+
     default:
       return dash;
   }
