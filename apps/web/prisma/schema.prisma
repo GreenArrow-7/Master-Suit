@@ -4722,3 +4722,292 @@ model CampaignMember {
   @@index([tenantId, campaignId])
   @@index([tenantId, userId])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real-estate inventory — projects (M4)
+//
+// Inventory is reference data, not owned records. Every RM must see the whole
+// catalogue to pitch it, so there is no `ownerId` here and no visibility scoping
+// on read — only the write actions are permission-gated. That is a deliberate
+// departure from Lead and Opportunity, and the reason `projects` is its own
+// permission module rather than a reuse of `products`.
+//
+// `tenantId` carries no Prisma relation to Tenant, matching Call, Recording,
+// Transcript and the campaign models: the relation buys a cascade this schema
+// gets from the RLS policy and the workspace archive path instead, and adding
+// eight back-relations to Tenant is eight more lines to conflict over.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  PLANNED
+  PRE_LAUNCH
+  LAUNCHED
+  UNDER_CONSTRUCTION
+  READY
+  SOLD_OUT
+  ON_HOLD
+}
+
+/// What a buyer actually asks: can I move in, or am I waiting? Distinct from
+/// ProjectStatus, which is where the developer is in their own process.
+enum PossessionStatus {
+  READY_TO_MOVE
+  UNDER_CONSTRUCTION
+  NEW_LAUNCH
+}
+
+enum UnitStatus {
+  AVAILABLE
+  HELD
+  BOOKED
+  SOLD
+  BLOCKED
+}
+
+enum ProjectMediaKind {
+  IMAGE
+  FLOOR_PLAN
+  BROCHURE
+  CREATIVE
+  VIDEO
+  VR_TOUR
+}
+
+model Developer {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  about           String?
+  logoUrl         String?
+  reraId          String?
+  establishedYear Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String?
+
+  projects Project[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive, name])
+}
+
+/// The unit a buyer thinks in — "Dubai Marina", not "Dubai". Facets hang off it.
+model Micromarket {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  city      String
+  state     String?
+  country   String   @default("AE")
+  latitude  Float?
+  longitude Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[]
+
+  @@unique([tenantId, city, name])
+  @@index([tenantId, isActive, city, name])
+}
+
+/// A controlled vocabulary, so filters do not fragment across "Gym",
+/// "Gymnasium" and "gym". Projects reference it by `key` in an array rather
+/// than through a join table — see Project.amenityKeys.
+model Amenity {
+  id        String   @id @default(cuid())
+  tenantId  String
+  key       String
+  label     String
+  category  String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId, category, position])
+}
+
+model Project {
+  id            String  @id @default(cuid())
+  tenantId      String
+  name          String
+  code          String
+  developerId   String?
+  micromarketId String?
+
+  status           ProjectStatus    @default(LAUNCHED)
+  possessionStatus PossessionStatus @default(UNDER_CONSTRUCTION)
+  possessionAt     DateTime?
+
+  /// Money is Decimal and carries its currency, per the platform rule. The band
+  /// is stored on the project rather than derived from UnitPlan on every read:
+  /// the catalogue filters on price at 100k rows and cannot afford the join.
+  /// Kept in step by recalculateProjectRollups() whenever a plan or unit moves.
+  minPrice     Decimal? @db.Decimal(18, 2)
+  maxPrice     Decimal? @db.Decimal(18, 2)
+  pricePerSqft Decimal? @db.Decimal(18, 2)
+  currency     String   @default("AED")
+
+  minAreaSqft Int?
+  maxAreaSqft Int?
+
+  /// Faceted on directly. Arrays with GIN indexes rather than join tables,
+  /// because every query here is "has any of these" over a small set and a join
+  /// would cost a second index scan per facet.
+  /// ponytail: no referential integrity to Amenity — the admin UI is the only
+  /// writer and it picks from the list. Add a join table if an importer ever
+  /// writes these directly.
+  unitTypes   String[] @default([])
+  amenityKeys String[] @default([])
+  highlights  String[] @default([])
+
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  description String?
+
+  /// RERA, and the equivalent regulator elsewhere. Nullable because a pre-launch
+  /// project has no number yet, and a workspace outside a RERA jurisdiction
+  /// never will.
+  reraNumber     String?
+  reraAuthority  String?
+  reraApprovedAt DateTime?
+  reraExpiresAt  DateTime?
+
+  /// Denormalised counters. "Live availability" on a catalogue row cannot be a
+  /// correlated count at 100k rows, so UnitInventory transitions recompute these
+  /// inside the same transaction that moves the unit.
+  totalUnits     Int @default(0)
+  availableUnits Int @default(0)
+  soldUnits      Int @default(0)
+
+  /// Editorially chosen: what the floor pitches today, and what it may pitch at
+  /// all. Separate flags because "stop featuring this" is not "stop selling it".
+  isPriority  Boolean @default(false)
+  isPitchable Boolean @default(true)
+
+  launchedAt  DateTime?
+  completedAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  developer   Developer?         @relation(fields: [developerId], references: [id], onDelete: SetNull)
+  micromarket Micromarket?       @relation(fields: [micromarketId], references: [id], onDelete: SetNull)
+  media       ProjectMedia[]
+  unitPlans   UnitPlan[]
+  units       UnitInventory[]
+  favourites  ProjectFavourite[]
+
+  @@unique([tenantId, code])
+  /// The keyset order. Every list page ends in (updatedAt DESC, id DESC), so the
+  /// planner gets one index for the sort whichever facet was applied.
+  @@index([tenantId, deletedAt, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, micromarketId, status])
+  @@index([tenantId, developerId, status])
+  @@index([tenantId, possessionStatus, possessionAt])
+  @@index([tenantId, status, minPrice])
+  @@index([tenantId, isPitchable, isPriority])
+}
+
+model ProjectMedia {
+  id          String           @id @default(cuid())
+  tenantId    String
+  projectId   String
+  kind        ProjectMediaKind @default(IMAGE)
+  title       String?
+  /// Object key for anything we host. Mutually exclusive with `externalUrl`,
+  /// which is for embeds we deliberately do not copy — a Matterport tour or a
+  /// developer walkthrough is theirs to host and theirs to take down.
+  storageKey  String?
+  externalUrl String?
+  mimeType    String?
+  sizeBytes   Int?
+  position    Int              @default(0)
+  createdAt   DateTime         @default(now())
+  createdById String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, projectId, kind, position])
+}
+
+/// A typology — "2 BHK Type A" — not a sellable unit. Catalogue pricing comes
+/// from here; availability comes from UnitInventory.
+model UnitPlan {
+  id              String   @id @default(cuid())
+  tenantId        String
+  projectId       String
+  name            String
+  unitType        String
+  bedrooms        Int?
+  bathrooms       Int?
+  carpetAreaSqft  Int?
+  builtUpAreaSqft Int?
+  price           Decimal? @db.Decimal(18, 2)
+  currency        String   @default("AED")
+  floorPlanKey    String?
+  position        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String?
+
+  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  units   UnitInventory[]
+
+  @@index([tenantId, projectId, position])
+  @@index([tenantId, unitType])
+}
+
+/// One sellable unit. The row a booking eventually points at.
+model UnitInventory {
+  id         String     @id @default(cuid())
+  tenantId   String
+  projectId  String
+  unitPlanId String?
+  tower      String?
+  floor      Int?
+  unitNumber String
+  status     UnitStatus @default(AVAILABLE)
+  price      Decimal?   @db.Decimal(18, 2)
+  currency   String     @default("AED")
+  areaSqft   Int?
+  facing     String?
+
+  /// A hold is a promise with an expiry. Without the expiry, held inventory is
+  /// indistinguishable from sold inventory a week later.
+  heldById  String?
+  heldUntil DateTime?
+  /// Set when the unit reaches BOOKED. The Booking record itself is M9.
+  leadId    String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unitPlan UnitPlan? @relation(fields: [unitPlanId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, unitNumber])
+  @@index([tenantId, projectId, status])
+  @@index([tenantId, status, heldUntil])
+}
+
+model ProjectFavourite {
+  id        String   @id @default(cuid())
+  tenantId  String
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([tenantId, userId])
+}

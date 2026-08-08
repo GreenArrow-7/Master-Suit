@@ -367,6 +367,52 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return dash;
       }
 
+    case 'PROJECT':
+      switch (key) {
+        case 'name':
+          return link(`/projects/${row.id}`, row.name);
+        case 'code':
+          return muted(row.code ?? '—');
+        case 'micromarket':
+          return row.micromarket ? `${row.micromarket.name}, ${row.micromarket.city}` : dash;
+        case 'developer':
+          return row.developer ? row.developer.name : dash;
+        case 'priceBand':
+          // One cell, because a buyer reads a band, not two numbers in two columns.
+          return row.minPrice == null && row.maxPrice == null
+            ? dash
+            : money(row.minPrice ?? row.maxPrice, row.currency);
+        case 'pricePerSqft':
+          return money(row.pricePerSqft, row.currency);
+        case 'possession':
+          return <Badge value={row.possessionStatus} />;
+        case 'availability':
+          // The number that decides whether this row is worth opening: what is
+          // still sellable, against what was ever built.
+          return row.totalUnits === 0 ? (
+            dash
+          ) : (
+            <span className="lf-num" style={{ color: row.availableUnits === 0 ? 'var(--lf-ink-3)' : undefined }}>
+              {row.availableUnits} / {row.totalUnits}
+            </span>
+          );
+        case 'status':
+          return <Badge value={row.status} />;
+        case 'unitTypes':
+          return row.unitTypes?.length ? muted(row.unitTypes.join(', ')) : dash;
+        case 'flags':
+          return (
+            <span style={{ display: 'inline-flex', gap: 4 }}>
+              {row.isPriority ? <Badge value="PRIORITY" tone="brass" /> : null}
+              {row.isPitchable ? null : <Badge value="NOT PITCHABLE" tone="slate" />}
+            </span>
+          );
+        case 'updatedAt':
+          return dateTime(row.updatedAt);
+        default:
+          return dash;
+      }
+
     default:
       return dash;
   }

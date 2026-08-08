@@ -111,6 +111,7 @@ const SOFT_DELETE_MODELS = new Set([
   'Call',
   'FollowUpTask',
   'Event',
+  'Project',
   'PlatformUser',
   'EmployeeProfile',
   'Designation',
