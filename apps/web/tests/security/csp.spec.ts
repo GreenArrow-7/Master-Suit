@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
-import { middleware } from '@/middleware';
+import proxy from '@/proxy';
 
 /**
  * The Content-Security-Policy, as the middleware emits it.
@@ -16,7 +16,7 @@ function policy(nodeEnv: 'development' | 'production'): Record<string, string> {
   // `process.env` rejects defineProperty; plain assignment is the way in.
   (process.env as Record<string, string | undefined>).NODE_ENV = nodeEnv;
   try {
-    const response = middleware(new NextRequest('https://example.test/login'));
+    const response = proxy(new NextRequest('https://example.test/login'));
     const header = response.headers.get('content-security-policy') ?? '';
     return Object.fromEntries(
       header.split('; ').map((directive) => {
@@ -30,20 +30,30 @@ function policy(nodeEnv: 'development' | 'production'): Record<string, string> {
 }
 
 describe('Content-Security-Policy', () => {
-  it('carries a script nonce', () => {
-    expect(policy('production')['script-src']).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);
+  /**
+   * No nonce, and no `strict-dynamic`.
+   *
+   * Both were tried. Next 16.2.12 does not stamp nonces onto its script tags in
+   * a production build, and a nonce in the policy makes browsers ignore
+   * `'unsafe-inline'` while `strict-dynamic` disables `'self'` — so every script
+   * on every page was blocked. Asserted here so the combination cannot come back
+   * without someone first proving the framework propagates it.
+   */
+  it('carries no nonce, because the framework does not propagate one', () => {
+    expect(policy('production')['script-src']).not.toMatch(/'nonce-/);
+    expect(policy('production')['script-src']).not.toContain("'strict-dynamic'");
   });
 
-  it('gives every response a different nonce', () => {
-    const first = policy('production')['script-src'];
-    const second = policy('production')['script-src'];
-    expect(first).not.toBe(second);
-  });
-
-  it('does not allow inline or eval scripts in production', () => {
+  it('drops unsafe-eval in production but keeps unsafe-inline', () => {
     const scriptSrc = policy('production')['script-src'];
-    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    // The honest state: weaker than intended, and recorded as such.
     expect(scriptSrc).not.toContain("'unsafe-eval'");
+    expect(scriptSrc).toContain("'unsafe-inline'");
+    expect(scriptSrc).toContain("'self'");
+  });
+
+  it('allows eval in development only, for React Refresh', () => {
+    expect(policy('development')['script-src']).toContain("'unsafe-eval'");
   });
 
   it('upgrades insecure requests in production only', () => {
@@ -63,11 +73,5 @@ describe('Content-Security-Policy', () => {
     // Inline styles are not an execution vector, and this codebase uses the
     // `style` prop throughout.
     expect(production['style-src']).toContain("'unsafe-inline'");
-  });
-
-  it('passes the nonce to the render through the request headers', () => {
-    const response = middleware(new NextRequest('https://example.test/login'));
-    const scriptSrc = response.headers.get('content-security-policy')!.match(/'nonce-([^']+)'/)![1];
-    expect(response.headers.get('x-middleware-request-x-nonce') ?? scriptSrc).toBeTruthy();
   });
 });
