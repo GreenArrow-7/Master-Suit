@@ -320,7 +320,7 @@ describe('detection', () => {
     const summary = await detectOvertime(ctx, range);
     expect(summary.updated).toBe(0);
 
-    const after = await prisma.hrOvertimeRequest.findUniqueOrThrow({ where: { id: claim.id } });
+    const after = await prisma.hrOvertimeRequest.findFirstOrThrow({ where: { tenantId, id: claim.id } });
     expect(after.status).toBe('APPROVED');
     expect(after.minutes).toBe(120);
   });
@@ -424,7 +424,7 @@ describe('decisions', () => {
       create: { tenantId, hrPolicy: { overtimeMultiplierNormal: 1, overtimeMultiplierNight: 1 } },
     });
 
-    const after = await prisma.hrOvertimeRequest.findUniqueOrThrow({ where: { id: claim.id } });
+    const after = await prisma.hrOvertimeRequest.findFirstOrThrow({ where: { tenantId, id: claim.id } });
     expect(after.multiplier).toBe(committed);
   });
 
@@ -444,7 +444,7 @@ describe('decisions', () => {
       minutes: 60,
       reason: 'Month end',
     });
-    await prisma.hrOvertimeRequest.update({ where: { id: claim.id }, data: { lockedAt: new Date() } });
+    await prisma.hrOvertimeRequest.update({ where: { tenantId, id: claim.id }, data: { lockedAt: new Date() } });
 
     await expect(decideOvertime(ctxFor('manager', APPROVER), claim.id, true)).rejects.toMatchObject({ status: 409 });
     await expect(cancelOvertime(ctxFor('worker', STAFF), claim.id)).rejects.toMatchObject({ status: 409 });

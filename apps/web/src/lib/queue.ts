@@ -16,7 +16,9 @@ export type QueueName =
   /** Fetching call recordings out of a vendor and into our own bucket. */
   | 'media'
   /** Transcription, Gemini analysis and the call audit that follows them. */
-  | 'ai';
+  | 'ai'
+  /** Email for in-app notifications that have already been written. */
+  | 'notifications';
 
 const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   automation: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 } },
@@ -36,6 +38,11 @@ const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   // roughly eight minutes; past that the row is left FAILED with the vendor's
   // message on it, which a human can act on, rather than retried forever.
   ai: { attempts: 4, backoff: { type: 'exponential', delay: 30_000 } },
+  // The in-app notification is already written by the time one of these is
+  // queued, so a failure here loses the email and nothing else. Five attempts
+  // over a few minutes covers an SMTP host having a bad moment; past that the
+  // person still has the notification waiting for them in the product.
+  notifications: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
 };
 
 const queues = new Map<QueueName, Queue>();

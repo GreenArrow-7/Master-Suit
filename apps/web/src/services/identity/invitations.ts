@@ -19,6 +19,8 @@ import { audit } from '@/lib/security/audit';
 import { hashPassword, checkPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
 import { passwordPolicy } from './accounts';
+import { buildChecklist, isAgent } from '@/services/hr/lifecycle';
+import { resolvePolicy } from '@/services/hr/settings';
 
 export const INVITE_TTL_HOURS = 72;
 
@@ -32,6 +34,10 @@ export interface InviteInput {
   employeeNumber?: string;
   jobTitle?: string;
   departmentId?: string;
+  /** Set by the ATS when the invitation comes from a hired candidate — §109. */
+  candidateId?: string;
+  /** The agreed start date from the accepted offer, rather than the acceptance date. */
+  joiningDate?: Date;
 }
 
 /**
@@ -88,6 +94,8 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
       employeeNumber: input.employeeNumber,
       jobTitle: input.jobTitle,
       departmentId: input.departmentId || null,
+      candidateId: input.candidateId ?? null,
+      joiningDate: input.joiningDate ?? null,
       tokenHash: sha256(token),
       expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000),
       invitedById: ctx.actor.id,
@@ -264,7 +272,7 @@ export async function acceptInvitation(token: string, input: { password: string;
     // An invitation that named an employee number is an HR hire, so the
     // employee record is created here rather than needing a second step.
     if (invitation.employeeNumber) {
-      await tx.employeeProfile.create({
+      const employee = await tx.employeeProfile.create({
         data: {
           tenantId: invitation.tenantId,
           membershipId: membership.id,
@@ -272,9 +280,46 @@ export async function acceptInvitation(token: string, input: { password: string;
           departmentId: invitation.departmentId,
           designation: invitation.jobTitle,
           employmentStatus: 'ACTIVE',
-          joinedOn: new Date(),
+          // An ATS hire carries the agreed start date from the accepted offer;
+          // acceptance can happen weeks before it, so "today" would be wrong and
+          // would skew every service-length calculation from gratuity down.
+          joinedOn: invitation.joiningDate ?? new Date(),
+          hiredFromCandidateId: invitation.candidateId,
         },
       });
+
+      // An ATS hire arrives with its onboarding already decided, so the checklist
+      // is built here rather than waiting for somebody to remember. This is the
+      // step that used to be a manual click: the employee record does not exist
+      // until this moment, and there is no HR actor on an unauthenticated
+      // acceptance, which is why `buildChecklist` takes only a tenant.
+      if (invitation.candidateId) {
+        const settings = await tx.organizationSetting.findUnique({
+          where: { tenantId: invitation.tenantId },
+          select: { hrPolicy: true },
+        });
+        const policy = resolvePolicy(settings?.hrPolicy);
+        const department = invitation.departmentId
+          ? await tx.department.findFirst({
+              where: { tenantId: invitation.tenantId, id: invitation.departmentId },
+              select: { name: true, code: true },
+            })
+          : null;
+        // The RERA track is a regulatory exposure when it is missed, so it is
+        // derived here rather than left for HR to notice.
+        const agentTrack = isAgent(
+          { reraBrn: null, departmentCode: department?.code ?? null, department },
+          policy.agentDepartments,
+        );
+        await buildChecklist(
+          { tenantId: invitation.tenantId },
+          employee.id,
+          'ONBOARDING',
+          employee.joinedOn ?? new Date(),
+          agentTrack,
+          tx,
+        );
+      }
     }
 
     await tx.workspaceInvitation.update({

@@ -7,7 +7,7 @@ import { authFetch } from '@/lib/auth/client';
 export type FormField = {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'password' | 'date' | 'time' | 'datetime-local' | 'number' | 'select';
+  type?: 'text' | 'email' | 'password' | 'date' | 'time' | 'datetime-local' | 'number' | 'select' | 'multiselect';
   required?: boolean;
   placeholder?: string;
   options?: { value: string; label: string }[];
@@ -31,7 +31,18 @@ export default function WorkspaceRecordForm({
     const form = event.currentTarget;
     setBusy(true);
     setError(null);
-    const body = Object.fromEntries([...new FormData(form).entries()].filter(([, value]) => value !== ''));
+    const data = new FormData(form);
+    const multi = new Set(fields.filter((field) => field.type === 'multiselect').map((field) => field.name));
+    // `Object.fromEntries` keeps only the last value for a repeated key, which
+    // silently reduces a multi-select to one choice. Those names are collected
+    // with getAll instead.
+    const body: Record<string, unknown> = Object.fromEntries(
+      [...data.entries()].filter(([key, value]) => value !== '' && !multi.has(key)),
+    );
+    for (const name of multi) {
+      const values = data.getAll(name).filter((value) => value !== '');
+      if (values.length) body[name] = values;
+    }
     try {
       const response = await authFetch(endpoint, {
         method: 'POST',
@@ -69,7 +80,15 @@ export default function WorkspaceRecordForm({
         {fields.map((field) => (
           <label className="lf-field" key={field.name}>
             <span className="lf-label">{field.label}</span>
-            {field.type === 'select' ? (
+            {field.type === 'multiselect' ? (
+              <select className="lf-input" name={field.name} required={field.required} multiple size={6}>
+                {field.options?.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : field.type === 'select' ? (
               <select className="lf-input" name={field.name} required={field.required}>
                 <option value="">Select…</option>
                 {field.options?.map((option) => (

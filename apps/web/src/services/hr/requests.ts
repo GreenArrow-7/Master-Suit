@@ -21,7 +21,7 @@ import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { haversineM, toDay } from './rules';
 import { isApprover, isHrAdmin } from './access';
-import { myEmployee, requireEmployee } from './leave';
+import { isLineManagerOf, myEmployee, requireEmployee } from './leave';
 import { upsertDay } from './attendance';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
@@ -274,18 +274,6 @@ export async function requestAttendanceException(ctx: Ctx, input: ExceptionReque
     },
   });
   return request;
-}
-
-/** True when the acting user is the line manager of the employee who asked. */
-async function isLineManagerOf(ctx: Ctx, employeeId: string) {
-  const [actor, target] = await Promise.all([
-    myEmployee(ctx),
-    prisma.employeeProfile.findFirst({
-      where: { tenantId: ctx.tenantId, id: employeeId },
-      select: { managerMembershipId: true },
-    }),
-  ]);
-  return Boolean(actor && target?.managerMembershipId && target.managerMembershipId === actor.membershipId);
 }
 
 /**

@@ -32,10 +32,11 @@ import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { dayKey, toDay, zonedParts } from './rules';
-import { isHrAdmin, isOvertimeApprover } from './access';
-import { holidaysFor, myEmployee, requireEmployee } from './leave';
+import { isHrAdmin, isOvertimeAdmin, isOvertimeApprover } from './access';
+import { holidaysFor, isLineManagerOf, myEmployee, reportingLine, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
+import { notifyOvertimeDecided, notifyOvertimeRaised } from './notify';
 
 export type OvertimeKind = 'NORMAL' | 'NIGHT' | 'WEEKEND' | 'HOLIDAY';
 
@@ -411,6 +412,11 @@ export async function requestOvertime(ctx: Ctx, input: OvertimeRequestInput) {
         onBehalf,
       },
     });
+    await notifyOvertimeRaised(ctx, {
+      employeeName: employee.employeeNumber,
+      minutes: input.minutes,
+      recordId: created.id,
+    });
     return created;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
@@ -442,6 +448,20 @@ export async function decideOvertime(ctx: Ctx, id: string, approve: boolean, dec
 
   const actor = await myEmployee(ctx);
   if (actor && actor.id === claim.employeeId) throw Conflict('You cannot decide your own overtime claim.');
+
+  /**
+   * The scope is not decoration.
+   *
+   * `overtime:APPROVE` is backfilled from `attendance:APPROVE` at the same
+   * scope, and that permission is line-manager-constrained where it is spent —
+   * see decideAttendanceException. Checking only that the role holds *some*
+   * grant let a TEAM-scoped manager approve any claim in the workspace, which
+   * is a signing authority nobody gave them: approving stamps the multiplier
+   * and approvedOvertimeMinutes hands the result to payroll.
+   */
+  if (!isOvertimeAdmin(ctx) && !isHrAdmin(ctx) && !(await isLineManagerOf(ctx, claim.employeeId))) {
+    throw Forbidden('You can only decide overtime for the people who report to you.');
+  }
 
   const policy = await getHrPolicy(ctx);
   const compensatory = Boolean(decision.compensatory);
@@ -476,6 +496,7 @@ export async function decideOvertime(ctx: Ctx, id: string, approve: boolean, dec
       previousStatus: claim.status,
     },
   });
+  await notifyOvertimeDecided(ctx, { employeeId: claim.employeeId, approved: approve, recordId: claim.id });
   return updated;
 }
 
@@ -517,18 +538,29 @@ export interface OvertimeFilter {
 /**
  * The claim list, scoped to what the caller may see.
  *
- * An employee without approval rights sees their own claims and nobody else's,
- * regardless of the `employeeId` they ask for — asking for a colleague's is
- * refused rather than quietly re-pointed at their own, so a broken client is
- * visible instead of silently wrong.
+ * Three tiers, matching the three the decision path enforces: HR and an
+ * ORGANIZATION-scoped approver see the workspace, a line manager sees their own
+ * reporting line, and everyone else sees only themselves. Asking for someone
+ * outside the caller's tier is refused rather than quietly re-pointed at their
+ * own, so a broken client is visible instead of silently wrong.
+ *
+ * The queue used to widen to the whole workspace for anyone holding APPROVE at
+ * any scope, which handed a TEAM-scoped manager every employee's claims and the
+ * person record attached to each.
  */
 export async function listOvertime(ctx: Ctx, filter: OvertimeFilter = {}) {
-  const self = await myEmployee(ctx);
-  const approver = isOvertimeApprover(ctx);
-  if (!approver) {
-    if (!self) return { rows: [], nextCursor: null };
-    if (filter.employeeId && filter.employeeId !== self.id)
-      throw Forbidden('You can only see your own overtime claims.');
+  const anyone = isOvertimeAdmin(ctx) || isHrAdmin(ctx);
+  let scoped: string[] = [];
+
+  if (!anyone) {
+    // `reportingLine` is [self, ...reports], or empty when the caller has no
+    // employee record. Someone without approval rights keeps only the first.
+    const line = await reportingLine(ctx);
+    scoped = isOvertimeApprover(ctx) ? line : line.slice(0, 1);
+    if (!scoped.length) return { rows: [], nextCursor: null };
+    if (filter.employeeId && !scoped.includes(filter.employeeId)) {
+      throw Forbidden('You can only see overtime claims for yourself and the people who report to you.');
+    }
   }
 
   const take = Math.min(Math.max(filter.limit ?? 50, 1), 200);
@@ -536,7 +568,7 @@ export async function listOvertime(ctx: Ctx, filter: OvertimeFilter = {}) {
     where: {
       tenantId: ctx.tenantId,
       status: filter.status,
-      employeeId: approver ? filter.employeeId : self!.id,
+      employeeId: anyone ? filter.employeeId : (filter.employeeId ?? { in: scoped }),
       workDate: filter.from || filter.to ? { gte: filter.from, lte: filter.to } : undefined,
     },
     include: {

@@ -100,36 +100,25 @@ WHERE source."module" = 'attendance' AND source."action" = 'APPROVE'
 ON CONFLICT ("roleId", "permissionId") DO NOTHING;
 
 -- ── Row-level security ──────────────────────────────────────────────────────
--- Same catalog-driven block as 20260803230000_rls_full_coverage. Re-running it
--- covers the table created above; without it, HrOvertimeRequest would be the
--- only HR table without a tenant_isolation policy.
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO master_saas_app;
+-- Scoped to the one table this migration creates, on purpose.
+--
+-- The earlier HR migrations re-ran the whole catalog-driven sweep from
+-- 20260803230000_rls_full_coverage, each carrying its own copy of the
+-- "bootstrap" exclusion list. That list is a moving target: `WorkspaceInvitation`
+-- arrived in 20260807010000, two migrations *after* the copy in
+-- 20260805000000. Re-running a stale copy therefore enabled RLS on
+-- WorkspaceInvitation, and the token lookup in `acceptInvitation` is a bootstrap
+-- read with no tenant context — so every invitation link in the product stopped
+-- being redeemable, and tests/tenant/rls.spec.ts failed on the coverage list.
+--
+-- A migration that adds one table only needs a policy on that table. Naming it
+-- explicitly is shorter, cannot drift, and cannot reach anything it did not
+-- create. The sweep stays where it belongs: in the migration whose job is
+-- coverage.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "HrOvertimeRequest" TO master_saas_app;
 
-DO $$
-DECLARE
-  target TEXT;
-  bootstrap CONSTANT TEXT[] := ARRAY[
-    'Session', 'PlatformSession', 'APIKey', 'IntegrationConnection',
-    'PasswordResetToken', 'RateLimitCounter',
-    'RecordingConsent', 'Recording', 'Transcript', 'AIAnalysis', 'CallAudit',
-    'PlatformUser', 'WorkspaceMembership', 'PlatformAuditEvent', 'AuthenticationFactor'
-  ];
-BEGIN
-  FOR target IN
-    SELECT c.table_name
-    FROM information_schema.columns c
-    JOIN pg_tables t ON t.tablename = c.table_name AND t.schemaname = 'public'
-    WHERE c.table_schema = 'public'
-      AND c.column_name = 'tenantId'
-      AND NOT (c.table_name = ANY (bootstrap))
-  LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', target);
-    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', target);
-    EXECUTE format(
-      'CREATE POLICY tenant_isolation ON %I FOR ALL TO master_saas_app '
-      'USING ("tenantId" = nullif(current_setting(''app.tenant_id'', true), '''')) '
-      'WITH CHECK ("tenantId" = nullif(current_setting(''app.tenant_id'', true), ''''))',
-      target
-    );
-  END LOOP;
-END $$;
+ALTER TABLE "HrOvertimeRequest" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "HrOvertimeRequest";
+CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL TO master_saas_app
+  USING ("tenantId" = nullif(current_setting('app.tenant_id', true), ''))
+  WITH CHECK ("tenantId" = nullif(current_setting('app.tenant_id', true), ''));

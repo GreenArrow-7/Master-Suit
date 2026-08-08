@@ -16,6 +16,7 @@ import { annualLeaveAccrued, dayKey, daysBetween, toDay, workingDays } from './r
 import { getHrPolicy, type HrPolicy } from './settings';
 import { isApprover, isHrAdmin } from './access';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
+import { notifyLeaveDecided, notifyLeaveRaised } from './notify';
 
 // Re-exported so the many existing call sites keep one import for HR access.
 export { isApprover, isHrAdmin };
@@ -43,6 +44,40 @@ export async function requireEmployee(ctx: Ctx, employeeId: string, db: Db = pri
   });
   if (!employee) throw NotFound('Employee');
   return employee;
+}
+
+/**
+ * True when the acting user is the line manager of the given employee.
+ *
+ * Lives here rather than in the module that first needed it because it is how
+ * every HR workflow turns a TEAM-scoped permission into an actual answer: the
+ * scope says "your own reports", and this is what "your own reports" means.
+ * Attendance exceptions and overtime both decide on it, and a second private
+ * copy is how the two drifted apart in the first place.
+ */
+export async function isLineManagerOf(ctx: Ctx, employeeId: string, db: Db = prisma) {
+  const [actor, target] = await Promise.all([
+    myEmployee(ctx, db),
+    db.employeeProfile.findFirst({
+      where: { tenantId: ctx.tenantId, id: employeeId },
+      select: { managerMembershipId: true },
+    }),
+  ]);
+  return Boolean(actor && target?.managerMembershipId && target.managerMembershipId === actor.membershipId);
+}
+
+/**
+ * The employees an actor may act on when their authority is their reporting
+ * line: themselves, plus everyone who reports to them.
+ */
+export async function reportingLine(ctx: Ctx, db: Db = prisma): Promise<string[]> {
+  const self = await myEmployee(ctx, db);
+  if (!self) return [];
+  const reports = await db.employeeProfile.findMany({
+    where: { tenantId: ctx.tenantId, deletedAt: null, managerMembershipId: self.membershipId },
+    select: { id: true },
+  });
+  return [self.id, ...reports.map((report) => report.id)];
 }
 
 // ── Calendar ───────────────────────────────────────────────────────────────
@@ -336,6 +371,7 @@ export async function applyForLeave(ctx: Ctx, input: ApplyLeaveInput) {
     recordId: request.id,
     metadata: { action: 'leave.applied', leaveType: leaveType.code, days, from: dayKey(start), to: dayKey(end) },
   });
+  await notifyLeaveRaised(ctx, { employeeName: employee.employeeNumber, days, recordId: request.id });
   return request;
 }
 
@@ -386,6 +422,7 @@ export async function decideLeave(ctx: Ctx, requestId: string, approve: boolean,
     newValue: { status: decided.status },
     metadata: { action: approve ? 'leave.approved' : 'leave.rejected', days: decided.days },
   });
+  await notifyLeaveDecided(ctx, { employeeId: decided.employeeId, approved: approve, recordId: decided.id });
   return decided;
 }
 

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import PageHeader from '@/components/ui/PageHeader';
+import { myEmployee } from '@/services/hr/leave';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -87,7 +88,123 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       ])
     : null;
 
-  const [people, sales] = await Promise.all([peopleQuery, salesQuery]);
+  /**
+   * The self-service panel — §55's employee dashboard.
+   *
+   * Ungated, because everything in it is the viewer's own record. It resolves
+   * the employee first and then reads only rows keyed to them, so a member with
+   * no employee profile (a platform bootstrap account) simply gets nothing
+   * rather than an error.
+   */
+  const mineQuery = modules.has('HRMS')
+    ? myEmployee(ctx).then((self) =>
+        self
+          ? Promise.all([
+              Promise.resolve(self),
+              prisma.hrAttendanceRecord.findFirst({
+                where: { tenantId: ctx.tenantId, employeeId: self.id, workDate: { gte: today, lt: tomorrow } },
+                select: { checkInAt: true, checkOutAt: true, status: true },
+              }),
+              prisma.hrLeaveRequest.count({
+                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
+              }),
+              prisma.hrOvertimeRequest.count({
+                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' },
+              }),
+              prisma.hrReview.count({
+                where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING_SELF' },
+              }),
+              prisma.hrPayslip.count({
+                where: {
+                  tenantId: ctx.tenantId,
+                  employeeId: self.id,
+                  run: { status: { in: ['APPROVED', 'LOCKED', 'PAID'] } },
+                },
+              }),
+            ])
+          : null,
+      )
+    : null;
+
+  /**
+   * What is sitting on this person's desk — §55's manager dashboard.
+   *
+   * Each count is gated on the permission that would let them act on it, so a
+   * manager who approves leave but not overtime sees one number, not two. A
+   * queue you cannot clear is noise.
+   */
+  const approvalsQuery = modules.has('HRMS')
+    ? Promise.all([
+        can(ctx, 'leave', 'APPROVE')
+          ? prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+          : Promise.resolve(null),
+        can(ctx, 'overtime', 'APPROVE')
+          ? prisma.hrOvertimeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+          : Promise.resolve(null),
+        can(ctx, 'attendance', 'APPROVE')
+          ? prisma.hrAttendancePunch.count({ where: { tenantId: ctx.tenantId, result: 'FLAGGED_REVIEW' } })
+          : Promise.resolve(null),
+        can(ctx, 'shifts', 'APPROVE')
+          ? prisma.hrShiftChangeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } })
+          : Promise.resolve(null),
+        can(ctx, 'recruitment', 'APPROVE')
+          ? prisma.hrRequisition.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
+          : Promise.resolve(null),
+        can(ctx, 'payroll', 'APPROVE')
+          ? prisma.hrPayrollRun.count({ where: { tenantId: ctx.tenantId, status: 'PENDING_APPROVAL' } })
+          : Promise.resolve(null),
+        can(ctx, 'performance', 'APPROVE')
+          ? prisma.hrReview.count({ where: { tenantId: ctx.tenantId, status: 'CALIBRATION' } })
+          : Promise.resolve(null),
+      ])
+    : null;
+
+  /**
+   * §55's security panel. Gated on reading the audit log, because that is the
+   * authority these numbers summarise — someone who cannot open the log has no
+   * business being shown the count of failed sign-ins either.
+   *
+   * MFA coverage counts *verified* factors: an enrolment somebody started and
+   * abandoned protects nothing, and counting it would report a workspace as
+   * covered when it is not.
+   */
+  const securityQuery = can(ctx, 'auditlogs', 'VIEW')
+    ? Promise.all([
+        prisma.auditLog.count({
+          where: { tenantId: ctx.tenantId, event: 'LOGIN_FAILED', occurredAt: { gte: today } },
+        }),
+        prisma.user.count({ where: { tenantId: ctx.tenantId, status: { in: ['SUSPENDED', 'DEACTIVATED'] } } }),
+        prisma.user.count({ where: { tenantId: ctx.tenantId, status: 'ACTIVE' } }),
+        prisma.workspaceMembership.count({
+          where: {
+            tenantId: ctx.tenantId,
+            status: 'ACTIVE',
+            platformUser: { authenticationFactors: { some: { verifiedAt: { not: null } } } },
+          },
+        }),
+        prisma.auditLog.count({ where: { tenantId: ctx.tenantId, occurredAt: { gte: today } } }),
+      ])
+    : null;
+
+  const [people, sales, mine, approvals, security] = await Promise.all([
+    peopleQuery,
+    salesQuery,
+    mineQuery,
+    approvalsQuery,
+    securityQuery,
+  ]);
+
+  const approvalItems = approvals
+    ? ([
+        ['Leave to approve', approvals[0]],
+        ['Overtime to approve', approvals[1]],
+        ['Punches flagged', approvals[2]],
+        ['Shift changes', approvals[3]],
+        ['Requisitions', approvals[4]],
+        ['Payroll runs', approvals[5]],
+        ['Ratings to calibrate', approvals[6]],
+      ].filter(([, value]) => value !== null) as [string, number][])
+    : [];
 
   return (
     <div className="lf-page-stack">
@@ -141,7 +258,41 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           ]}
         />
       )}
-      {!people && !sales && !showSubscription && (
+      {mine && (
+        <Summary
+          title="My day"
+          values={[
+            [
+              'Today',
+              mine[1]?.checkInAt
+                ? mine[1].checkOutAt
+                  ? 'Checked out'
+                  : 'Checked in'
+                : 'Not checked in',
+            ],
+            ['My pending leave', mine[2]],
+            ['My pending overtime', mine[3]],
+            ['Self-assessment due', mine[4]],
+            ['Payslips available', mine[5]],
+          ]}
+        />
+      )}
+      {approvalItems.length > 0 && approvalItems.some(([, value]) => value > 0) && (
+        <Summary title="Waiting on me" values={approvalItems} />
+      )}
+      {security && (
+        <Summary
+          title="Security today"
+          values={[
+            ['Failed sign-ins', security[0]],
+            ['Locked or disabled', security[1]],
+            ['Active accounts', security[2]],
+            ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
+            ['Audited events', security[4]],
+          ]}
+        />
+      )}
+      {!people && !sales && !mine && !security && !showSubscription && (
         <p style={{ color: 'var(--lf-ink-3)' }}>
           Nothing to show here yet. Use the navigation to reach the areas you have access to.
         </p>

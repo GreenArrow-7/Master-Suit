@@ -55,6 +55,19 @@ export const isAttendanceApprover = (ctx: Ctx) => atLeast(ctx, 'attendance', 'AP
 export const isOvertimeApprover = (ctx: Ctx) => atLeast(ctx, 'overtime', 'APPROVE', 'TEAM');
 
 /**
+ * Decides overtime for anyone in the workspace, rather than only for their own
+ * reports.
+ *
+ * The distinction the scope was always meant to carry, made explicit because
+ * `isOvertimeApprover` alone reads as "may decide" and was used as if it meant
+ * "may decide anything". ORGANIZATION is HR; everything below it is a line
+ * manager, and a line manager's authority stops at their reporting line — the
+ * same rule `decideAttendanceException` enforces on the permission this one is
+ * backfilled from.
+ */
+export const isOvertimeAdmin = (ctx: Ctx) => atLeast(ctx, 'overtime', 'APPROVE', 'ORGANIZATION');
+
+/**
  * Reads passport scans, visas, labour cards.
  *
  * Deliberately its own permission rather than a consequence of administering HR.

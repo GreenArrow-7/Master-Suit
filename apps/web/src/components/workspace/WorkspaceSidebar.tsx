@@ -86,6 +86,11 @@ export default function WorkspaceSidebar({
               // self-service, the same as checking in. The page shows the
               // approval queue only to someone holding `overtime:APPROVE`.
               { label: 'Overtime', href: `/${slug}/people/overtime`, icon: 'attendance', permission: 'employee' },
+              // Reading your own payslip is self-service; administering payroll
+              // is not. Two entries, two different keys — §90 keeps HR and
+              // payroll separable, so managing people must not reveal salaries.
+              { label: 'My pay', href: `/${slug}/people/payslips`, icon: 'report', permission: 'employee' },
+              { label: 'Payroll', href: `/${slug}/people/payroll`, icon: 'report', permission: 'payroll' },
               { label: 'Lifecycle', href: `/${slug}/people/lifecycle`, icon: 'shield', permission: 'employee' },
               { label: 'Departments', href: `/${slug}/people/departments`, icon: 'org', permission: 'employee' },
               {
@@ -96,8 +101,18 @@ export default function WorkspaceSidebar({
               },
               { label: 'Requests', href: `/${slug}/people/requests`, icon: 'task', permission: 'employee' },
               { label: 'Shifts', href: `/${slug}/people/shifts`, icon: 'calendar', permission: 'employee' },
+              // Unkeyed to `shifts` deliberately: everyone reads their own
+              // roster and can ask to change it. The page shows the planning
+              // tools only to someone holding `shifts:EDIT`.
+              { label: 'Roster', href: `/${slug}/people/roster`, icon: 'calendar', permission: 'employee' },
               { label: 'Holidays', href: `/${slug}/people/holidays`, icon: 'calendar', permission: 'employee' },
               { label: 'Documents', href: `/${slug}/people/documents`, icon: 'document', permission: 'hr_documents' },
+              // Unkeyed to `performance` deliberately: writing your own
+              // self-assessment and acknowledging your own review are
+              // self-service. The page shows the manager and HR sections only to
+              // people the service will actually let write them.
+              { label: 'Performance', href: `/${slug}/people/performance`, icon: 'report', permission: 'employee' },
+              { label: 'Recruitment', href: `/${slug}/people/recruitment`, icon: 'people', permission: 'recruitment' },
               { label: 'People reports', href: `/${slug}/people/reports`, icon: 'report', permission: 'employee' },
               { label: 'HR policy', href: `/${slug}/people/settings`, icon: 'settings', permission: 'employee' },
             ] as Item[]

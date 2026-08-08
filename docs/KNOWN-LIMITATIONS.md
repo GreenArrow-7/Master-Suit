@@ -107,8 +107,64 @@ following items still prevent an unconditional commercial-production claim:
     document uploads are stored unscanned and record `virusScan: skipped` rather
     than pretending to be clean. Wire a real scanner before accepting uploads
     from people outside the company.
-  - **Payroll and WPS export do not exist**, and never did in the original
-    either — they are new product work, not a migration gap.
+  - **Payroll and WPS export now exist** (`20260808160000_hr_payroll`):
+    effective-dated compensation, maker-checker runs, payslips, and a SIF
+    export. Three caveats before it touches a real bank. The **SIF layout is one
+    documented variant** — banks differ on date format and column order, so
+    `SIF_LAYOUTS` in `src/services/hr/wps.ts` is keyed and the record builders
+    are pure; validate the output against the receiving bank's specification
+    before the first live run, because a rejected file is a payroll that did not
+    happen. The **`payroll` permissions are granted to nobody by default** and
+    are deliberately not backfilled, so the screens are invisible until an
+    administrator grants them. And **no payslip PDF is generated** — the payslip
+    renders as a page, which is enough to read and print but is not a document
+    that can be emailed or archived.
+  - **Recruitment now exists** (`20260808180000_hr_recruitment`): requisitions
+    with approval, candidates and a pipeline, interviews with panel-restricted
+    scorecards, versioned offers, and a hire that issues an invitation and links
+    the resulting employee back to the application. Caveats: like `payroll`, the
+    `recruitment` permissions are **granted to nobody by default**, so the
+    screens stay invisible until an administrator grants them; **no careers page
+    or job-board integration exists**, so candidates are entered by a recruiter
+    rather than applying themselves; **no offer-letter document is generated**,
+    only the terms are recorded; and **starting the onboarding checklist after a
+    hire is one manual click**, because the employee record does not exist until
+    the invitation is accepted and acceptance has no HR actor to attribute a
+    checklist to.
+  - **Performance management now exists** (`20260808190000_hr_performance`):
+    review cycles, weighted goals, a self → manager → calibration →
+    acknowledgement sequence that cannot be skipped, a configurable competency
+    framework, and improvement plans with checkpoints. Caveats: the
+    `performance` permissions are **granted to nobody by default**; **there are
+    no reminders** — an overdue self-assessment is visible on the page but
+    nothing chases it, because performance events are not yet wired into the
+    notification service; and **360°/peer review is not implemented**, only
+    self, manager and HR calibration.
+  - **Reporting now exists** (`src/services/hr/reports.ts`): 17 reports across
+    people, attendance, leave, lifecycle, payroll, recruitment and performance,
+    behind one registry. Each report declares the permission for the *data* it
+    returns rather than a generic reporting one, and the list, the run and the
+    CSV export all resolve through a single gate — so an export cannot reach a
+    report the screen would have hidden. `tests/hr/reports.spec.ts` asserts that
+    parity across the whole registry for two different roles, so a future report
+    that guards `run` but not the export fails without anyone adding a case.
+    Caveats: **CSV only** — there is no .xlsx writer and no PDF renderer, though
+    the UTF-8 BOM means Excel opens the CSV correctly rather than mangling
+    Arabic names; and the reports read at workspace scope, so a manager holding
+    a permission at TEAM scope still sees the workspace-wide figure for it.
+  - **The approval queues now notify.** 18 HR events are emitted at their
+    decision points — leave, overtime, shift changes, payroll, requisitions,
+    interviews, offers, reviews and improvement plans — writing an in-app
+    notification synchronously and queueing the email on a new `notifications`
+    queue with a worker behind it. Recipients are resolved through
+    `RolePermission` rather than by role name, so "whoever can approve overtime"
+    stays correct in a workspace that invented its own roles, and the actor is
+    never notified of their own action. A notification failure is swallowed and
+    logged: the decision is the durable thing, and an approval must not roll
+    back because Redis was down. What remains: **no digest and no reminder** —
+    an event fires once, so an approval ignored for a week is never chased
+    again; and **notification preferences are not implemented**, so a user
+    cannot opt out of anything.
   - Session rotation exists at `/api/v1/auth/refresh` but **no client calls it
     automatically**; nothing in the UI refreshes on a timer yet, so in practice
     tokens live until they expire.
@@ -135,6 +191,31 @@ following items still prevent an unconditional commercial-production claim:
   Nothing enforces that the schema and the migrations agree — a CI step running
   `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma
   --exit-code` would catch the next one.
+- **Copying the catalog-driven RLS sweep into a new migration is a live trap, and
+  it has now fired once.** Several HR migrations end by re-running the sweep from
+  `20260803230000_rls_full_coverage`, each carrying its own inline copy of the
+  `bootstrap` exclusion array and of the policy body. Both have moved since:
+  `20260806000000` added `FORCE ROW LEVEL SECURITY` and the
+  `app.platform_admin` branch, and `20260807020000` moved `WorkspaceInvitation`
+  into the bootstrap set. A migration that pastes an older copy therefore
+  silently *downgrades* security across every tenant table — dropping FORCE, so
+  the owner role bypasses RLS again — and enables RLS on `WorkspaceInvitation`,
+  which breaks every invitation link because the token lookup runs before any
+  tenant is known. The first draft of `20260808140000_hr_overtime` did exactly
+  this; it was caught by `tests/tenant/rls.spec.ts` and
+  `tests/integration/invitation-flow.spec.ts` failing together, and the shipped
+  version instead names the single table it creates:
+
+  ```sql
+  ALTER TABLE "HrOvertimeRequest" ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL ...
+  ```
+
+  **A migration that adds tables should write a policy for those tables only.**
+  The sweep belongs in the migration whose job is coverage, not in every
+  migration that follows it. The three places that must stay in step — the
+  `bootstrap` array, `GLOBAL_UNIQUE_FIELDS` in `src/lib/db.ts`, and the expected
+  list in `tests/tenant/rls.spec.ts` — are still only kept in step by hand.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.

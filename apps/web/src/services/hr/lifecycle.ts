@@ -96,7 +96,10 @@ function requireHr(ctx: Ctx) {
 
 /** Anchor is the joining date for onboarding, the last working day for an exit. */
 export async function buildChecklist(
-  ctx: Ctx,
+  // Structurally typed rather than `Ctx`: only the tenant is used, and
+  // `acceptInvitation` needs to call this from an unauthenticated request where
+  // there is no actor to build a Ctx from. A full Ctx still satisfies this.
+  ctx: { tenantId: string },
   employeeId: string,
   phase: ChecklistPhase,
   anchor: Date,

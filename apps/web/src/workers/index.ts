@@ -3,6 +3,7 @@ import { startAiWorker } from './ai';
 import { startAutomationWorker } from './automation';
 import { startDistributionWorker } from './distribution';
 import { startMediaWorker } from './media';
+import { startNotificationsWorker } from './notifications';
 import { startSlaWorker } from './sla';
 
 /**
@@ -24,6 +25,9 @@ const workers = [
   startSlaWorker(),
   startMediaWorker(),
   startAiWorker(),
+  // Without this the HR approval queues go back to being pull-only: the in-app
+  // notification is still written, but nobody is emailed about it.
+  startNotificationsWorker(),
 ];
 
 for (const worker of workers) {

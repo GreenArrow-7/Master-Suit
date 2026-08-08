@@ -12,6 +12,11 @@ import { DEFAULT_POLICY, getHrPolicy, HR_SETTINGS } from '@/services/hr/settings
 import { EXCEPTION_REASONS, listExceptionRequests, listTemporaryRequests } from '@/services/hr/requests';
 import { listDocuments } from '@/services/hr/documents';
 import { listOvertime } from '@/services/hr/overtime';
+import { compensationHistory, listRuns, payslipsFor, runDetail } from '@/services/hr/payroll';
+import { listShiftChanges, rosterFor } from '@/services/hr/roster';
+import { candidateDetail, listCandidates, listRequisitions, pipelineSummary } from '@/services/hr/recruitment';
+import { goalsFor, listCycles, performanceSummary, pipsFor, reviewsFor } from '@/services/hr/performance';
+import { availableReports, runReport } from '@/services/hr/reports';
 import { inviteUser } from '@/services/identity/invitations';
 import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_WITH_ROLE_PUBLIC } from '@/services/hr/publicSelect';
 
@@ -46,6 +51,24 @@ const paramsSchema = z.object({
     'exception-reasons',
     'overtime',
     'overtime-pending',
+    'payroll-runs',
+    'payroll-run',
+    'payslips',
+    'compensation',
+    'roster',
+    'shift-changes',
+    'requisitions',
+    'candidates',
+    'candidate',
+    'pipeline',
+    'review-cycles',
+    'reviews',
+    'goals',
+    'competencies',
+    'pips',
+    'performance-summary',
+    'reports',
+    'report',
   ]),
 });
 
@@ -63,6 +86,28 @@ const querySchema = z
     mine: z.string().optional(),
     status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
     cursor: z.string().max(64).optional(),
+    runId: z.string().max(64).optional(),
+    candidateId: z.string().max(64).optional(),
+    cycleId: z.string().max(64).optional(),
+    reportKey: z.string().max(64).optional(),
+    departmentId: z.string().max(64).optional(),
+    requisitionId: z.string().max(64).optional(),
+    requisitionStatus: z.enum(['DRAFT', 'PENDING_APPROVAL', 'OPEN', 'ON_HOLD', 'CLOSED', 'REJECTED']).optional(),
+    stage: z
+      .enum([
+        'APPLIED',
+        'SCREENING',
+        'SHORTLISTED',
+        'INTERVIEW',
+        'ASSESSMENT',
+        'FINAL_INTERVIEW',
+        'OFFER',
+        'HIRED',
+        'REJECTED',
+        'WITHDRAWN',
+        'ON_HOLD',
+      ])
+      .optional(),
   })
   .passthrough();
 
@@ -84,6 +129,11 @@ const RESOURCE_PERMISSION: Partial<Record<string, [string, 'VIEW' | 'EDIT' | 'AP
   // claims, and `listOvertime` narrows the query to them. Only the approval
   // queue needs the signing authority.
   'overtime-pending': ['overtime', 'APPROVE'],
+  // `payslips` and `compensation` are absent on purpose: both are self-service
+  // for your own record, and the service refuses anyone else's without
+  // `payroll:VIEW`. The run-level reads are never self-service.
+  'payroll-runs': ['payroll', 'VIEW'],
+  'payroll-run': ['payroll', 'VIEW'],
   settings: ['employee', 'EDIT'],
 };
 
@@ -185,6 +235,82 @@ export const GET = route(
 
       case 'overtime-pending':
         return listOvertime(ctx, { status: 'PENDING', limit: query.limit, cursor: query.cursor });
+
+      case 'payroll-runs':
+        return listRuns(ctx, query.limit);
+
+      case 'payroll-run': {
+        if (!query.runId) throw NotFound('Payroll run');
+        return runDetail(ctx, query.runId);
+      }
+
+      case 'payslips':
+        return payslipsFor(ctx, query.employeeId);
+
+      case 'compensation': {
+        const employeeId = await resolveEmployeeId(ctx, query.employeeId);
+        return compensationHistory(ctx, employeeId);
+      }
+
+      // Both scope themselves: without `shifts:EDIT` you see your own roster,
+      // and without `shifts:APPROVE` you see only requests you are party to.
+      case 'roster': {
+        const start = query.start ?? new Date();
+        const end = query.end ?? new Date(start.getTime() + 28 * 86_400_000);
+        return rosterFor(ctx, { from: start, to: end, employeeId: query.employeeId });
+      }
+
+      case 'shift-changes':
+        return listShiftChanges(ctx, { status: query.status });
+
+      // Salary bands inside these are redacted by the service unless the caller
+      // holds `recruitment:VIEW_SENSITIVE_FIELDS`.
+      case 'requisitions':
+        return listRequisitions(ctx, { status: query.requisitionStatus });
+      case 'candidates':
+        return listCandidates(ctx, { requisitionId: query.requisitionId, stage: query.stage });
+      case 'candidate': {
+        if (!query.candidateId) throw NotFound('Candidate');
+        return candidateDetail(ctx, query.candidateId);
+      }
+      case 'pipeline':
+        return pipelineSummary(ctx);
+
+      // Each scopes itself: own record, plus your reporting line, plus the
+      // workspace only with `performance:VIEW` at ORGANIZATION.
+      case 'review-cycles':
+        return listCycles(ctx);
+      case 'reviews':
+        return reviewsFor(ctx, { cycleId: query.cycleId, employeeId: query.employeeId });
+      case 'goals':
+        return goalsFor(ctx, query.employeeId, query.cycleId);
+      case 'competencies':
+        return prisma.hrCompetency.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          orderBy: { sortOrder: 'asc' },
+        });
+      case 'pips':
+        return pipsFor(ctx, query.employeeId);
+      case 'performance-summary':
+        return performanceSummary(ctx, query.cycleId);
+
+      // `reports` returns only the definitions this caller may run, and `report`
+      // re-asserts the same permission — so a key guessed from the list of
+      // another role still refuses.
+      case 'reports':
+        return availableReports(ctx);
+      case 'report': {
+        if (!query.reportKey) throw NotFound('Report');
+        return runReport(ctx, query.reportKey, {
+          from: query.start,
+          to: query.end,
+          departmentId: query.departmentId,
+          locationId: query.locationId,
+          employeeId: query.employeeId,
+          status: query.status,
+          cycleId: query.cycleId,
+        });
+      }
 
       case 'lifecycle':
         return lifecycleDashboard(ctx);

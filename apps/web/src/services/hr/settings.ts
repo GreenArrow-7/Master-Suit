@@ -22,7 +22,16 @@ import { audit } from '@/lib/security/audit';
 import { isHrAdmin } from './access';
 import type { Ctx } from '@/lib/security/rbac';
 
-export type SettingGroup = 'face' | 'liveness' | 'attendance' | 'leave' | 'overtime' | 'gratuity' | 'lifecycle';
+export type SettingGroup =
+  | 'face'
+  | 'liveness'
+  | 'attendance'
+  | 'leave'
+  | 'overtime'
+  | 'roster'
+  | 'payroll'
+  | 'gratuity'
+  | 'lifecycle';
 
 interface BaseDefinition {
   key: string;
@@ -38,7 +47,9 @@ type Definition =
   | (BaseDefinition & { type: 'boolean'; default: boolean })
   | (BaseDefinition & { type: 'select'; default: string; options: { value: string; label: string }[] })
   | (BaseDefinition & { type: 'days'; default: number[] })
-  | (BaseDefinition & { type: 'strings'; default: string[] });
+  | (BaseDefinition & { type: 'strings'; default: string[] })
+  /** A single free-text value — an identifier issued by an outside body, typically. */
+  | (BaseDefinition & { type: 'text'; default: string; maxLength?: number; pattern?: string });
 
 /**
  * Defaults come from the environment where one already existed, so an existing
@@ -414,6 +425,95 @@ export const HR_SETTINGS: Definition[] = [
     help: 'Lets an approver settle a claim with compensatory rest instead of pay. Payroll skips claims settled this way.',
   },
 
+  // ── Roster ───────────────────────────────────────────────────────────────
+  {
+    key: 'rosterMaxConsecutiveDays',
+    group: 'roster',
+    type: 'number',
+    default: 6,
+    min: 1,
+    max: 14,
+    step: 1,
+    unit: 'days',
+    statutory: true,
+    label: 'Maximum consecutive rostered days',
+    help: 'A roster that runs someone past this is refused. UAE law entitles staff to at least one rest day a week; a schedule built by copying last week forward is the usual way that gets breached without anyone noticing.',
+  },
+  {
+    key: 'rosterMinRestHours',
+    group: 'roster',
+    type: 'number',
+    default: 11,
+    min: 0,
+    max: 24,
+    step: 0.5,
+    unit: 'hours',
+    label: 'Minimum rest between shifts',
+    help: 'Refuses a shift starting too soon after the previous one ends — a late close followed by an early open. Set 0 to allow any gap.',
+  },
+  {
+    key: 'rosterBlockOnLeave',
+    group: 'roster',
+    type: 'boolean',
+    default: true,
+    label: 'Refuse rostering someone on approved leave',
+    help: 'On by default: a rostered shift on an approved leave day is almost always a mistake, and it produces an absence the employee cannot avoid. Turn it off only if you roster provisionally and reconcile later.',
+  },
+
+  // ── Payroll ──────────────────────────────────────────────────────────────
+  {
+    key: 'payrollDaysPerMonth',
+    group: 'payroll',
+    type: 'number',
+    default: 30,
+    min: 28,
+    max: 31,
+    step: 1,
+    unit: 'days',
+    statutory: true,
+    label: 'Days per month for daily rate',
+    help: 'The divisor turning a monthly salary into a daily rate, used for unpaid absence. UAE practice is a flat 30 regardless of the calendar month, so February and March deduct the same for one unpaid day. Setting this to the real month length makes an unpaid day cost more in February.',
+  },
+  {
+    key: 'payrollHoursPerDay',
+    group: 'payroll',
+    type: 'number',
+    default: 8,
+    min: 4,
+    max: 12,
+    step: 0.5,
+    unit: 'hours',
+    label: 'Hours per day for hourly rate',
+    help: 'Divides the daily rate into an hourly rate, which is what overtime multiplies. Must match the contracted day, not the rostered shift.',
+  },
+  {
+    key: 'payrollOvertimeOnBasic',
+    group: 'payroll',
+    type: 'boolean',
+    default: true,
+    statutory: true,
+    label: 'Overtime is calculated on basic pay',
+    help: 'UAE law bases the overtime hourly rate on basic wage, not total remuneration. Turning this off pays overtime on the full package, which is more generous and lawful, but costs materially more.',
+  },
+  {
+    key: 'wpsEmployerId',
+    group: 'payroll',
+    type: 'text',
+    default: '',
+    maxLength: 32,
+    label: 'WPS employer (MOL) identifier',
+    help: 'The establishment ID issued by the Ministry of Human Resources and Emiratisation. It goes in the SIF control record; without it a bank will reject the file.',
+  },
+  {
+    key: 'wpsEmployerBankAgentId',
+    group: 'payroll',
+    type: 'text',
+    default: '',
+    maxLength: 32,
+    label: 'WPS employer bank agent identifier',
+    help: 'The routing code of the bank the salaries are paid from, as registered with the WPS.',
+  },
+
   // ── Gratuity and settlement ──────────────────────────────────────────────
   {
     key: 'gratuityMinYears',
@@ -560,6 +660,14 @@ export type HrPolicy = {
   overtimeMultiplierWeekend: number;
   overtimeMultiplierHoliday: number;
   overtimeCompensatoryAllowed: boolean;
+  rosterMaxConsecutiveDays: number;
+  rosterMinRestHours: number;
+  rosterBlockOnLeave: boolean;
+  payrollDaysPerMonth: number;
+  payrollHoursPerDay: number;
+  payrollOvertimeOnBasic: boolean;
+  wpsEmployerId: string;
+  wpsEmployerBankAgentId: string;
   gratuityMinYears: number;
   gratuityDaysFirstPeriod: number;
   gratuityDaysAfterFirstPeriod: number;
@@ -581,6 +689,8 @@ export const GROUP_LABELS: Record<SettingGroup, string> = {
   attendance: 'Attendance and geofence',
   leave: 'Leave and accrual',
   overtime: 'Overtime',
+  roster: 'Roster and scheduling',
+  payroll: 'Payroll and WPS',
   gratuity: 'Gratuity and final settlement',
   lifecycle: 'Employee lifecycle',
 };
@@ -645,6 +755,14 @@ function coerce(setting: Definition, raw: unknown): { ok: true; value: unknown }
     case 'strings': {
       const list = Array.isArray(raw) ? raw.map(String) : String(raw ?? '').split(',');
       return { ok: true, value: list.map((item) => item.trim().toLowerCase()).filter(Boolean) };
+    }
+    case 'text': {
+      const value = String(raw ?? '').trim();
+      if (setting.maxLength && value.length > setting.maxLength)
+        return { ok: false, message: `must be ${setting.maxLength} characters or fewer` };
+      if (setting.pattern && value && !new RegExp(setting.pattern).test(value))
+        return { ok: false, message: `must match ${setting.pattern}` };
+      return { ok: true, value };
     }
   }
 }

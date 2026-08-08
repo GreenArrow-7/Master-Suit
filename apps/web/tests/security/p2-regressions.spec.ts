@@ -243,7 +243,11 @@ describe('P2-2: the dashboard batches its queries', () => {
     // Sales query, rather than the slower of the two.
     expect(source).not.toMatch(/const people = showPeople\s*\?\s*await Promise\.all/);
     expect(source).not.toMatch(/const sales = showSales\s*\?\s*await Promise\.all/);
-    expect(source).toContain('await Promise.all([peopleQuery, salesQuery])');
+    // Matched as "both groups inside one Promise.all" rather than as an exact
+    // string: the dashboard has since grown the self-service and approval-queue
+    // panels, so the array is longer than two. The invariant is one concurrent
+    // round, not a particular number of queries in it.
+    expect(source).toMatch(/await Promise\.all\(\[[^\]]*\bpeopleQuery\b[^\]]*\bsalesQuery\b[^\]]*\]\)/s);
   });
 
   it('does not cache record counts', () => {
