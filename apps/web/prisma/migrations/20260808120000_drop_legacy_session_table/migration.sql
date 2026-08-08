@@ -1,0 +1,15 @@
+-- Drops the legacy per-workspace session table.
+--
+-- Sessions have lived in "PlatformSession" since the single-credential-store
+-- change (20260807000000). Nothing has written a row here since `createSession`
+-- was deleted, and the last reader — the administrator's "active sessions" list
+-- in services/identity/accounts.ts — was showing an empty list for users who
+-- were signed in, because it was reading this table rather than PlatformSession.
+--
+-- DESTRUCTIVE: this drops the table and any rows still in it. Those rows are
+-- revoked or expired legacy sessions; none of them can authenticate a request,
+-- because resolveCtx no longer has a branch that reads this table. Verified 0
+-- rows in the development database before writing this migration.
+--
+-- Reversal is a restore from backup: the rows are not reconstructable.
+DROP TABLE IF EXISTS "Session";

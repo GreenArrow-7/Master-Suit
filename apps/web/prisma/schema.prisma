@@ -17,6 +17,11 @@ generator client {
 
 // Prisma 7: connection URLs live in prisma.config.ts (Migrate) and the driver
 // adapter is passed to the PrismaClient constructor (runtime). See src/lib/db.ts.
+// Prisma 7 keeps the connection URL in prisma.config.ts, not here. The CLI
+// (migrate, studio) connects as MIGRATION_DATABASE_URL — the owning role, which
+// has the DDL rights policies need. The running application never reads this
+// block: it connects through the PrismaPg adapter in src/lib/db.ts using
+// DATABASE_URL, the NOBYPASSRLS application role.
 datasource db {
   provider = "postgresql"
 }
@@ -87,6 +92,10 @@ enum PermissionAction {
   MANAGE_CONFIGURATION
   ACCESS_API
   VIEW_SENSITIVE_FIELDS
+  /// Deciding someone else's request — leave, an attendance exception. Distinct
+  /// from EDIT: a line manager approves their reports' leave without editing
+  /// employee records, and HR edits records without sitting in an approval chain.
+  APPROVE
 }
 
 enum FieldType {
@@ -393,6 +402,8 @@ model Tenant {
   workspaceUsage        WorkspaceUsage[]
   billingEvents         BillingEvent[]
 
+  invitations           WorkspaceInvitation[]
+
   @@index([status])
 }
 
@@ -648,6 +659,8 @@ model Department {
   employees EmployeeProfile[]
 
   @@unique([tenantId, code])
+  invitations         WorkspaceInvitation[]
+
   @@index([tenantId])
 }
 
@@ -681,12 +694,16 @@ model Team {
 // IDENTITY, ROLES & PERMISSIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// A person's membership of one workspace: profile, role, placement, quotas.
+///
+/// Deliberately holds NO credentials. Authentication is PlatformUser's job and
+/// PlatformUser's alone — see the note on that model. This row exists once per
+/// workspace a person belongs to; their password exists once, globally.
 model User {
   id                 String     @id @default(cuid())
   tenantId           String
   email              String
   emailVerifiedAt    DateTime?
-  passwordHash       String?
   fullName           String
   displayName        String?
   phone              String?
@@ -709,13 +726,6 @@ model User {
   weeklyLeadQuota    Int?
   monthlyLeadQuota   Int?
   activeLeadCapacity Int?
-  mfaEnabled         Boolean    @default(false)
-  mfaSecret          String?
-  mfaRecoveryCodes   String[]   @default([])
-  failedLoginCount   Int        @default(0)
-  lockedUntil        DateTime?
-  lastLoginAt        DateTime?
-  passwordChangedAt  DateTime?
   notificationPrefs  Json       @default("{}")
   uiPreferences      Json       @default("{}")
   createdAt          DateTime   @default(now())
@@ -731,7 +741,6 @@ model User {
   reports User[]  @relation("UserHierarchy")
 
   teams               UserTeam[]
-  sessions            Session[]
   passwordResetTokens PasswordResetToken[]
   ownedLeads          Lead[]               @relation("LeadOwner")
   ownedOpps           Opportunity[]        @relation("OpportunityOwner")
@@ -757,6 +766,13 @@ model User {
 /// A person has one platform identity, regardless of how many customer
 /// workspaces they belong to. Tenant-scoped User remains the Sales actor during
 /// the additive migration and is linked through WorkspaceMembership.
+/// The identity. One row per human, across every workspace they belong to, and
+/// the single place a credential is stored.
+///
+/// `User` used to carry a duplicate passwordHash/mfaSecret/lockout set that had
+/// to be kept in step by hand. It was not: the password-reset route wrote only
+/// the User copy while login read only this one, so a reset silently did
+/// nothing and a leaked password stayed valid. The duplicate columns are gone.
 model PlatformUser {
   id                String       @id @default(cuid())
   email             String       @unique
@@ -785,6 +801,52 @@ model PlatformUser {
   authenticationFactors AuthenticationFactor[]
 
   @@index([status, platformRole])
+}
+
+/// A pending invitation to join a workspace.
+///
+/// The only way to create a login. Before this existed, an administrator typed a
+/// plaintext password into a form and communicated it out of band — so every new
+/// account began life with a credential its administrator knew, and `INVITED`
+/// was a status nothing ever set.
+///
+/// The token is stored hashed: a leaked database row must not be redeemable.
+model WorkspaceInvitation {
+  id              String    @id @default(cuid())
+  tenantId        String
+  /// Lower-cased at write time; the unique index below is what stops two open
+  /// invitations racing each other into two memberships for one person.
+  email           String
+  fullName        String
+  roleId          String
+  /// Set when the invitation should also create an HR record on acceptance.
+  employeeNumber  String?
+  jobTitle        String?
+  departmentId    String?
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  revokedReason   String?
+  /// Bumped by a resend, so the audit trail shows how many were sent.
+  sendCount       Int       @default(1)
+  lastSentAt      DateTime  @default(now())
+  invitedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  /// One open invitation per address per workspace. Accepted and revoked rows
+  /// keep their history; `pendingKey` is null once either happens, and Postgres
+  /// does not compare nulls, so the constraint only binds live invitations.
+  pendingKey String?
+
+  @@unique([tenantId, pendingKey])
+  @@index([tenantId, expiresAt])
+  @@index([email])
 }
 
 model WorkspaceMembership {
@@ -1400,6 +1462,12 @@ model PlatformSession {
   userAgent      String?
   deviceLabel    String?
   mfaSatisfied   Boolean   @default(false)
+  /// What this session is allowed to do. FULL is an ordinary signed-in session.
+  /// MFA_ENROLMENT is a short-lived grant that may reach only the enrolment,
+  /// verification and logout endpoints — issued when a workspace mandates 2FA
+  /// and the user has not enrolled yet. Without it, turning on mandatory 2FA
+  /// locked out every user who had not already enrolled, permanently.
+  purpose        String    @default("FULL")
   expiresAt      DateTime
   lastSeenAt     DateTime  @default(now())
   revokedAt      DateTime?
@@ -1453,27 +1521,6 @@ model UserTeam {
   @@index([tenantId, teamId])
 }
 
-model Session {
-  id            String    @id @default(cuid())
-  tenantId      String
-  userId        String
-  tokenHash     String    @unique
-  ipAddress     String?
-  userAgent     String?
-  deviceLabel   String?
-  mfaSatisfied  Boolean   @default(false)
-  expiresAt     DateTime
-  lastSeenAt    DateTime  @default(now())
-  revokedAt     DateTime?
-  revokedReason String?
-  createdAt     DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, userId])
-  @@index([expiresAt])
-}
-
 model PasswordResetToken {
   id        String    @id @default(cuid())
   tenantId  String
@@ -1508,6 +1555,7 @@ model Role {
   users           User[]
   permissions     RolePermission[]
   membershipRoles MembershipRole[]
+  invitations     WorkspaceInvitation[]
 
   @@unique([tenantId, key])
   @@index([tenantId])
