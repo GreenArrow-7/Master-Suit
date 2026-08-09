@@ -189,6 +189,18 @@ export default function WorkspaceSidebar({
         ],
       },
       {
+        label: 'Money',
+        items: [
+          { label: 'Commissions', href: `/${slug}/sales/commissions`, icon: 'report', permission: 'commissions' },
+          {
+            label: 'Slab rules',
+            href: `/${slug}/sales/commissions/slabs`,
+            icon: 'settings',
+            permission: 'commissionslabs',
+          },
+        ],
+      },
+      {
         label: 'Insight',
         items: [
           { label: 'Reports', href: `/${slug}/sales/reports`, icon: 'report', permission: 'reports' },
