@@ -5725,6 +5725,17 @@ model Booking {
   /// The agent credited. Splits between several agents live on Commission.
   ownerId String
 
+  /// Where the agent sat when the sale was confirmed, copied from their record
+  /// at that moment.
+  ///
+  /// A P&L read through the agent's *current* team silently moves last
+  /// quarter's revenue when somebody transfers, which restates a period that
+  /// was closed. The same reasoning as the frozen commission slab: the rollup
+  /// must keep answering what it answered at the time.
+  teamId   String?
+  branchId String?
+  regionId String?
+
   status BookingStatus @default(DRAFT)
 
   /// What the client pays. Money is Decimal and carries its currency.
@@ -5758,6 +5769,8 @@ model Booking {
   commissions Commission[]
 
   @@unique([tenantId, reference])
+  @@index([tenantId, teamId, bookingDate])
+  @@index([tenantId, regionId, bookingDate])
   @@index([tenantId, status, bookingDate])
   @@index([tenantId, ownerId, bookingDate])
   @@index([tenantId, projectId])
