@@ -4959,6 +4959,7 @@ model Project {
   favourites  ProjectFavourite[]
   listings    Listing[]
   siteVisits  SiteVisit[]
+  bookings    Booking[]
 
   @@unique([tenantId, code])
   /// The keyset order. Every list page ends in (updatedAt DESC, id DESC), so the
@@ -5060,6 +5061,7 @@ model UnitInventory {
   unitPlan   UnitPlan?   @relation(fields: [unitPlanId], references: [id], onDelete: SetNull)
   listings   Listing[]
   siteVisits SiteVisit[]
+  bookings   Booking[]
 
   @@unique([projectId, unitNumber])
   @@index([tenantId, projectId, status])
@@ -5252,6 +5254,7 @@ model Listing {
   media         ListingMedia[]
   mandates      Mandate[]
   siteVisits    SiteVisit[]
+  bookings      Booking[]
 
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.
@@ -5638,4 +5641,282 @@ model SiteVisit {
   @@index([tenantId, leadId])
   /// The plausibility check reads a user's punches in time order.
   @@index([tenantId, ownerId, checkInAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bookings, commissions and payouts (M9)
+//
+// The spec gates this module: the commission slab rules must be documented and
+// signed off by finance before any code is written. That constraint is honoured
+// by putting **no rates in the code at all**. A slab is rows — bands, a mode, an
+// effective window and an approver — and `accrueCommission` refuses to run until
+// a workspace has entered one that is signed off. Nothing here knows what 2.5%
+// means; it knows how to apply whatever finance entered and how to prove which
+// version it applied.
+//
+// The other decision worth stating: every commission carries a frozen copy of
+// the rule that produced it. `ratePct`, `mode` and `slabVersion` are resolved at
+// accrual and never re-read. A workspace that renegotiates its rates in March
+// must not restate February's ledger, and a payout already made must stay
+// reconcilable against the number that produced it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum BookingStatus {
+  DRAFT
+  CONFIRMED
+  /// The sale fell through. Commissions already accrued are clawed back, not
+  /// deleted — see CommissionStatus.CLAWED_BACK.
+  CANCELLED
+}
+
+enum SlabMode {
+  /// Each band applies to the portion of the sale that falls inside it, the way
+  /// income tax works.
+  PROGRESSIVE
+  /// The whole sale takes the rate of the band it lands in.
+  FLAT
+}
+
+enum SlabBasis {
+  /// A percentage of what the client paid.
+  PERCENT_OF_SALE
+  /// A percentage of the agency's own fee, when the developer pays the agency
+  /// and the agency shares with the agent.
+  PERCENT_OF_AGENCY_FEE
+  /// A flat amount per booking, regardless of size.
+  FIXED
+}
+
+enum CommissionStatus {
+  /// Earned on paper. The booking exists; nobody has been paid anything.
+  ACCRUED
+  /// A human with the authority has agreed the number is right.
+  CONFIRMED
+  /// The client's money is in. This is the gate before anyone is paid.
+  COLLECTED
+  PAID
+  /// Reversed after the fact. Terminal, and always paired with the row it reverses.
+  CLAWED_BACK
+}
+
+enum PayoutStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+/// A sale. The row every commission traces back to.
+model Booking {
+  id        String @id @default(cuid())
+  tenantId  String
+  reference String
+
+  /// Who bought.
+  leadId    String?
+  contactId String?
+  accountId String?
+
+  /// What was bought. A unit in a project, or a listing.
+  projectId       String?
+  unitInventoryId String?
+  listingId       String?
+
+  /// The agent credited. Splits between several agents live on Commission.
+  ownerId String
+
+  status BookingStatus @default(DRAFT)
+
+  /// What the client pays. Money is Decimal and carries its currency.
+  saleValue Decimal  @db.Decimal(18, 2)
+  /// What the developer or landlord pays the agency, when that differs from a
+  /// simple percentage of the sale. Null means the slab computes from saleValue.
+  agencyFee Decimal? @db.Decimal(18, 2)
+  currency  String   @default("AED")
+
+  bookingDate   DateTime
+  agreementDate DateTime?
+  /// When the client's money actually arrived. Commissions cannot reach
+  /// COLLECTED before this is set.
+  collectedAt   DateTime?
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  /// Soft only. The platform rule is that nothing with a commission attached is
+  /// ever hard-deleted, and by the time a booking exists one usually is.
+  deletedAt   DateTime?
+
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  unit        UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  listing     Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  commissions Commission[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status, bookingDate])
+  @@index([tenantId, ownerId, bookingDate])
+  @@index([tenantId, projectId])
+  @@index([tenantId, leadId])
+}
+
+/// A commission rule, as finance wrote it.
+///
+/// Effective-dated rather than edited in place: a rate that changes in March
+/// must not restate February, so a new rate is a new version and the old one is
+/// closed. `approvedById` is the sign-off the spec requires — a slab without one
+/// cannot be used to accrue anything.
+model CommissionSlab {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+  version  Int    @default(1)
+
+  mode  SlabMode  @default(PROGRESSIVE)
+  basis SlabBasis @default(PERCENT_OF_SALE)
+
+  /// What this slab covers. All null means it is the workspace default; the
+  /// most specific match wins at accrual time.
+  projectId   String?
+  developerId String?
+  listingType String?
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  /// Finance's signature. Nothing accrues against an unapproved slab.
+  approvedById String?
+  approvedAt   DateTime?
+  approvalNote String?
+
+  currency    String   @default("AED")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  bands       CommissionSlabBand[]
+  commissions Commission[]
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, isActive, effectiveFrom])
+  @@index([tenantId, projectId])
+}
+
+/// One band of a slab. "From 0 to 1,000,000 at 2%."
+model CommissionSlabBand {
+  id       String @id @default(cuid())
+  tenantId String
+  slabId   String
+
+  /// Inclusive lower bound, exclusive upper. `toAmount` null means "and above".
+  fromAmount Decimal  @db.Decimal(18, 2)
+  toAmount   Decimal? @db.Decimal(18, 2)
+
+  /// One of the two applies, decided by the slab's basis.
+  ratePct     Decimal? @db.Decimal(9, 4)
+  fixedAmount Decimal? @db.Decimal(18, 2)
+
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slab CommissionSlab @relation(fields: [slabId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, slabId, position])
+}
+
+/// What one person earned on one booking.
+model Commission {
+  id        String @id @default(cuid())
+  tenantId  String
+  bookingId String
+  /// Who earns it. Several rows per booking when the deal is split.
+  userId    String
+
+  status CommissionStatus @default(ACCRUED)
+
+  /// The rule that produced this number, frozen. Read once at accrual and never
+  /// again — a later rate change must not restate a ledger that has been paid.
+  slabId           String?
+  slabVersion      Int?
+  slabMode         SlabMode?
+  slabBasis        SlabBasis?
+  /// The effective rate across the whole base, after the bands were applied.
+  /// Stored so a statement can show one number a human can check.
+  effectiveRatePct Decimal?   @db.Decimal(9, 4)
+  /// Which bands were used and what each contributed. The audit trail for the
+  /// arithmetic, so a disputed payout can be reconstructed without re-running it.
+  calculation      Json       @default("{}")
+
+  /// What the rate applied to.
+  baseAmount Decimal @db.Decimal(18, 2)
+  /// This person's share of the deal, out of 100.
+  sharePct   Decimal @default(100) @db.Decimal(7, 4)
+  /// The money. baseAmount → bands → share → this.
+  amount     Decimal @db.Decimal(18, 2)
+  currency   String  @default("AED")
+
+  confirmedById String?
+  confirmedAt   DateTime?
+  collectedAt   DateTime?
+  payoutId      String?
+  paidAt        DateTime?
+
+  /// A clawback points at the commission it reverses, and carries a negative
+  /// amount. The original is left exactly as it was.
+  reversesId   String?
+  clawbackNote String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  booking Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  slab    CommissionSlab? @relation(fields: [slabId], references: [id], onDelete: SetNull)
+  payout  Payout?         @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, bookingId])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, payoutId])
+}
+
+/// A batch of commissions paid to one person for one period.
+model Payout {
+  id        String @id @default(cuid())
+  tenantId  String
+  reference String
+  userId    String
+
+  status PayoutStatus @default(DRAFT)
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// The sum of the commissions attached, recomputed whenever the set changes.
+  /// Denormalised because a statement is read far more often than it is built.
+  totalAmount Decimal @default(0) @db.Decimal(18, 2)
+  currency    String  @default("AED")
+
+  approvedById String?
+  approvedAt   DateTime?
+  paidAt       DateTime?
+  paymentRef   String?
+  note         String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  commissions Commission[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, userId, status])
+  @@index([tenantId, status, periodEnd])
 }
