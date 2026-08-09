@@ -168,9 +168,29 @@ export async function POST(req: Request) {
       // expired-transaction error and a bare 500. The upsert's `update` was empty,
       // so this is exactly equivalent in one round trip.
       await tx.permission.createMany({ data: permissionPairs as never, skipDuplicates: true });
-      const permissions = await tx.permission.findMany({
-        where: { module: { in: [...new Set(permissionPairs.map((item) => item.module))] } },
-      });
+
+      /**
+       * Everything in the catalogue, not the list above.
+       *
+       * The list is a floor — it guarantees the baseline permissions exist in a
+       * fresh database. Using it as the *grant* set meant a workspace created
+       * through this wizard could only reach the modules somebody had
+       * remembered to add here, and 36 of 61 modules had never been added:
+       * projects, listings, visits, bookings, commissions, events, documents,
+       * products, tickets, payroll, recruitment and the rest were simply
+       * invisible in any new workspace.
+       *
+       * The migrations that shipped those modules backfill grants by deriving
+       * from rows already in RolePermission, so they only ever helped workspaces
+       * that already existed. A workspace created afterwards got the hardcoded
+       * list and nothing else.
+       *
+       * This role is called Company Administrator and describes itself as full
+       * administration inside the workspace. Granting it the catalogue is what
+       * that sentence already claims, and it cannot drift again the next time a
+       * module ships.
+       */
+      const permissions = await tx.permission.findMany({ select: { id: true } });
       const adminRole = await tx.role.create({
         data: {
           tenantId: created.id,
