@@ -202,6 +202,19 @@ export default function WorkspaceSidebar({
         ],
       },
       {
+        label: 'Team',
+        items: [
+          { label: 'Feed', href: `/${slug}/sales/engagement`, icon: 'activity', permission: 'posts' },
+          {
+            label: 'Contests',
+            href: `/${slug}/sales/engagement?view=contests`,
+            icon: 'report',
+            permission: 'contests',
+          },
+          { label: 'Awards', href: `/${slug}/sales/engagement?view=awards`, icon: 'calendar', permission: 'contests' },
+        ],
+      },
+      {
         label: 'Money',
         items: [
           { label: 'Commissions', href: `/${slug}/sales/commissions`, icon: 'report', permission: 'commissions' },

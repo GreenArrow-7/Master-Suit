@@ -247,7 +247,12 @@ export async function performerBoard(
   };
 }
 
-async function rank(
+/**
+ * The ordered standings for one metric. Exported because a contest is the same
+ * question over a different window, and two rankings of "who sold the most"
+ * would eventually disagree.
+ */
+export async function rank(
   tenantId: string,
   userIds: string[],
   range: Range,
