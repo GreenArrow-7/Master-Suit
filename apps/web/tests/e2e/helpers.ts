@@ -20,9 +20,23 @@ import { RUN_TAG } from './run-tag';
 export async function resetLoginThrottle() {
   const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379/0', { maxRetriesPerRequest: 2 });
   try {
-    // `rl:` is the prefix lib/security/ratelimit.ts puts on every bucket.
+    /**
+     * `rl:` is the prefix lib/security/ratelimit.ts puts on every bucket.
+     *
+     * Password reset is cleared alongside login because the suite legitimately
+     * exhausts it: the limit is 20 per IP per hour, every spec runs from
+     * localhost, and password-reset.spec spends two of them per run. Roughly ten
+     * runs into an hour the reset was silently throttled — the endpoint answers
+     * the same either way, deliberately — and the spec failed with "no email
+     * captured", which reads like a mailer fault rather than a spent budget.
+     *
+     * The limiter itself is untouched. tests/security/ratelimit.spec.ts is what
+     * proves it still refuses.
+     */
     const keys = await redis.keys('rl:login:*');
-    if (keys.length > 0) await redis.del(...keys);
+    const resets = await redis.keys('rl:pwreset:*');
+    const all = [...keys, ...resets];
+    if (all.length > 0) await redis.del(...all);
   } finally {
     redis.disconnect();
   }

@@ -121,12 +121,53 @@ that has actually occurred here.
 - Locate by role and label. `[name=...]` is for setup code only, where the thing
   being located is not the thing under test.
 
+## The HR flow
+
+`tests/e2e/hr-modules.spec.ts` is the same idea for the People module: a
+workspace with HRMS enabled, somebody hired through the invitation form, and
+then leave, overtime, attendance and payroll driven end to end.
+
+Payroll is the reason it exists. It is a six-step state machine — create,
+calculate, submit, approve, lock, mark paid — that ends in a payslip with a
+positive net pay, and nothing else in the suite went near it.
+
+Three of the app's own rules shaped the spec rather than being worked around:
+
+- **`approverFor` deliberately excludes the applicant**, so the sole employee of
+  a workspace cannot route their own leave. The spec applies on somebody's
+  behalf, which is a real HR flow and the one that resolves an approver.
+- **Payroll refuses to let one person prepare and approve the same run** — the
+  same four-eyes control the commission payout run has. The spec creates a
+  second administrator to approve, which means it also exercises role creation
+  and the permission matrix.
+- **An administrator cannot mint another administrator** ("You cannot modify
+  your own role"). So the approver gets a new role beneath the admin's own rank,
+  granted exactly `payroll:APPROVE`, `payroll:VIEW`, `employee:VIEW` and
+  `hrms:VIEW`.
+
+It also found a real off-by-a-day: `createRun` normalises `periodEnd` to
+midnight while `joinedOn` carries a time, so **anyone hired on the final day of
+a payroll period was excluded from it** despite having worked it. Fixed in
+`services/hr/payroll.ts`.
+
+Two smaller notes. `createRole` normalises the key it is given — hyphens become
+underscores — so the invitation uses the key the server stored rather than the
+one it was asked for; reconstructing it silently missed and quietly produced a
+default role with none of the permissions. And the leave and overtime pages are
+approval *queues*, so a request is asserted while pending and then asserted to
+have left once decided, rather than being looked for after approval.
+
 ## Not covered
 
-- **HR module flows.** `acceptance.spec.ts` covers the employee invitation path;
-  leave, attendance, payroll and recruitment have no happy path of their own.
+- **Recruitment and performance are read-only** over the API — there is no
+  candidate-create endpoint — so their steps assert the pages render.
 - **The public pages.** The RSVP and testimonial links are driven by unit tests
   and by hand, not by a browser.
 - **Mobile viewports.** One project, Desktop Chrome.
+- **Rate limits are shared across the suite.** Password reset allows 20 per IP
+  per hour and every spec runs from localhost, so `resetLoginThrottle` now
+  clears `rl:pwreset:*` alongside `rl:login:*`. Without it the suite could only
+  be run about ten times an hour before that spec failed with "no email
+  captured", which reads like a mailer fault rather than a spent budget.
 - **The dialer's actual calling.** No vendor has ever placed a real call from
   this codebase; that remains true and is noted in `TELEPHONY-PROVIDERS.md`.

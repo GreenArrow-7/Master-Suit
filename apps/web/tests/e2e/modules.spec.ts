@@ -159,7 +159,8 @@ test.describe('Each module opens and does its job', () => {
       const csv = await page.request.get('/api/v1/reports?report=source-analysis&format=csv');
       expect(csv.status()).toBe(200);
       expect(csv.headers()['content-type']).toContain('text/csv');
-      expect(await csv.text()).toContain('Source,Leads');
+      // Every cell is quoted since the export moved onto the shared encoder.
+      expect(await csv.text()).toContain('"Source","Leads"');
     });
 
     await test.step('M11 — somebody posts to the feed and reacts to it', async () => {

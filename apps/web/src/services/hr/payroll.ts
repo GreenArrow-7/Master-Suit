@@ -34,16 +34,14 @@ import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyPayrollDecided, notifyPayrollSubmitted, notifyPayslipsAvailable } from './notify';
 
 /** Prepares runs and enters compensation. Does not approve them. */
-export const isPayrollOfficer = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'payroll', 'EDIT')] >= SCOPE_RANK.ORGANIZATION;
+export const isPayrollOfficer = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'payroll', 'EDIT')] >= SCOPE_RANK.ORGANIZATION;
 
 /** Signs a run off. Deliberately separate from preparing it — see `approveRun`. */
 export const isPayrollApprover = (ctx: Ctx) =>
   SCOPE_RANK[scopeFor(ctx, 'payroll', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
 
 /** Reads other people's pay. Everyone can read their own without this. */
-export const mayReadPayroll = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'payroll', 'VIEW')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadPayroll = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'payroll', 'VIEW')] >= SCOPE_RANK.ORGANIZATION;
 
 const money = (value: Prisma.Decimal | number | string | null | undefined) => new Prisma.Decimal(value ?? 0);
 
@@ -270,7 +268,8 @@ export async function calculateRun(ctx: Ctx, runId: string) {
   if (!isPayrollOfficer(ctx)) throw Forbidden('Only payroll can calculate a run.');
   const run = await prisma.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, id: runId } });
   if (!run) throw NotFound('Payroll run');
-  if (run.status !== 'DRAFT') throw Conflict(`A ${run.status.toLowerCase().replace('_', ' ')} run cannot be recalculated.`);
+  if (run.status !== 'DRAFT')
+    throw Conflict(`A ${run.status.toLowerCase().replace('_', ' ')} run cannot be recalculated.`);
 
   const policy = await getHrPolicy(ctx);
   const employees = await prisma.employeeProfile.findMany({
@@ -280,7 +279,12 @@ export async function calculateRun(ctx: Ctx, runId: string) {
       employmentStatus: { notIn: ['EXITED'] },
       // Anyone who had not joined by the end of the period has nothing to be
       // paid for; anyone who left before it started is handled by settlement.
-      OR: [{ joinedOn: null }, { joinedOn: { lte: run.periodEnd } }],
+      //
+      // Compared against the *end* of that last day, not its midnight.
+      // `createRun` normalises periodEnd with toDay, while joinedOn carries the
+      // time somebody was hired — so `joinedOn <= periodEnd` excluded anyone
+      // hired on the final day of the period, who had nonetheless worked it.
+      OR: [{ joinedOn: null }, { joinedOn: { lt: new Date(toDay(run.periodEnd).getTime() + 86_400_000) } }],
     },
     select: { id: true, joinedOn: true, iban: true, basicSalary: true, totalSalary: true },
   });
@@ -426,11 +430,29 @@ export function buildPayslip(input: BuildInput): PayslipDraft {
     { code: 'BASIC', label: 'Basic salary', kind: 'EARNING', amount: round2(input.basic), sortOrder: 0 },
   ];
   if (input.housing.greaterThan(0))
-    lines.push({ code: 'HOUSING', label: 'Housing allowance', kind: 'EARNING', amount: round2(input.housing), sortOrder: 1 });
+    lines.push({
+      code: 'HOUSING',
+      label: 'Housing allowance',
+      kind: 'EARNING',
+      amount: round2(input.housing),
+      sortOrder: 1,
+    });
   if (input.transport.greaterThan(0))
-    lines.push({ code: 'TRANSPORT', label: 'Transport allowance', kind: 'EARNING', amount: round2(input.transport), sortOrder: 2 });
+    lines.push({
+      code: 'TRANSPORT',
+      label: 'Transport allowance',
+      kind: 'EARNING',
+      amount: round2(input.transport),
+      sortOrder: 2,
+    });
   if (input.other.greaterThan(0))
-    lines.push({ code: 'OTHER', label: 'Other allowances', kind: 'EARNING', amount: round2(input.other), sortOrder: 3 });
+    lines.push({
+      code: 'OTHER',
+      label: 'Other allowances',
+      kind: 'EARNING',
+      amount: round2(input.other),
+      sortOrder: 3,
+    });
 
   const dailyRate = gross.dividedBy(input.policy.payrollDaysPerMonth);
   const overtimeBase = input.policy.payrollOvertimeOnBasic ? input.basic : gross;
@@ -468,7 +490,13 @@ export function buildPayslip(input: BuildInput): PayslipDraft {
   let sortOrder = 30;
   for (const adjustment of input.adjustments) {
     const amount = round2(money(adjustment.amount));
-    lines.push({ code: adjustment.code, label: adjustment.label, kind: adjustment.kind, amount, sortOrder: sortOrder++ });
+    lines.push({
+      code: adjustment.code,
+      label: adjustment.label,
+      kind: adjustment.kind,
+      amount,
+      sortOrder: sortOrder++,
+    });
     if (adjustment.kind === 'EARNING') earnings = earnings.plus(amount);
     else deductions = deductions.plus(amount);
   }
@@ -532,8 +560,14 @@ async function unpaidLeaveDays(ctx: Ctx, employeeIds: string[], from: Date, to: 
   for (const request of requests) {
     const overlapStart = request.startDate > from ? request.startDate : from;
     const overlapEnd = request.endDate < to ? request.endDate : to;
-    const requestSpan = Math.max(1, Math.round((toDay(request.endDate).getTime() - toDay(request.startDate).getTime()) / 86_400_000) + 1);
-    const overlapSpan = Math.max(0, Math.round((toDay(overlapEnd).getTime() - toDay(overlapStart).getTime()) / 86_400_000) + 1);
+    const requestSpan = Math.max(
+      1,
+      Math.round((toDay(request.endDate).getTime() - toDay(request.startDate).getTime()) / 86_400_000) + 1,
+    );
+    const overlapSpan = Math.max(
+      0,
+      Math.round((toDay(overlapEnd).getTime() - toDay(overlapStart).getTime()) / 86_400_000) + 1,
+    );
     // Pro-rate the working-day count by how much of the request lands inside the
     // period. Exact for the common case of a request wholly inside one month.
     const share = overlapSpan >= requestSpan ? request.days : (request.days * overlapSpan) / requestSpan;
