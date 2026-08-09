@@ -15,7 +15,7 @@ export const POST = route(
   { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body: addBody },
   async ({ ctx, params, body }) => {
     return prisma.campaignMember.upsert({
-      where: { campaignId_userId: { campaignId: params.id, userId: body.userId } },
+      where: { tenantId: ctx.tenantId, campaignId_userId: { campaignId: params.id, userId: body.userId } },
       create: { tenantId: ctx.tenantId, campaignId: params.id, ...body },
       update: { removedAt: null, role: body.role },
     });

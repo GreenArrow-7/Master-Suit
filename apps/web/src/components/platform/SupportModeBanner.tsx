@@ -11,9 +11,12 @@ import { useRouter } from 'next/navigation';
 export default function SupportModeBanner({
   workspaceId,
   workspaceName,
+  readOnly = true,
 }: {
   workspaceId: string;
   workspaceName: string;
+  /** SUPPORT and SECURITY_AUDITOR are read-only; the OWNER has full control. */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -45,8 +48,17 @@ export default function SupportModeBanner({
       }}
     >
       <span>
-        <strong>Platform support view</strong> — viewing {workspaceName} as platform staff. Read-only; sensitive HR
-        fields stay hidden.
+        {readOnly ? (
+          <>
+            <strong>Platform support view</strong> — viewing {workspaceName} as platform staff. Read-only; sensitive HR
+            fields stay hidden.
+          </>
+        ) : (
+          <>
+            <strong>Platform owner view</strong> — administering {workspaceName} with full control. Every change is
+            recorded in the audit log.
+          </>
+        )}
       </span>
       <button type="button" onClick={leave} disabled={busy} className="lf-btn lf-btn--ghost">
         {busy ? 'Leaving…' : 'Exit to platform'}

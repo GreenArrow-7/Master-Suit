@@ -6,7 +6,8 @@
  * required a WorkspaceMembership, platform staff hold none, so every /{slug}/...
  * URL bounced to /login.
  *
- * The support actor must be able to *look* and nothing more.
+ * Authority is tiered: the OWNER administers customer data with full control,
+ * while SUPPORT and SECURITY_AUDITOR may look and nothing more.
  */
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,6 +21,7 @@ const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
 let ownerId = '';
 let memberId = '';
+let supportId = '';
 
 const asRequest = (cookie: string) => new Request('http://internal/', { headers: { cookie } });
 
@@ -35,12 +37,18 @@ beforeAll(async () => {
     ],
   });
 
-  // A VIEW permission must exist for the support actor to pick up.
-  await prisma.permission.upsert({
-    where: { module_action: { module: 'leads', action: 'VIEW' } },
-    update: {},
-    create: { module: 'leads', action: 'VIEW' },
-  });
+  // The permissions these cases assert on must exist in the catalogue — the
+  // support actor grants only rows that are actually there.
+  for (const [module, action] of [
+    ['leads', 'VIEW'], ['leads', 'CREATE'], ['leads', 'EDIT'], ['leads', 'DELETE'], ['leads', 'ASSIGN'],
+    ['employee', 'VIEW_SENSITIVE_FIELDS'], ['hr_documents', 'VIEW_SENSITIVE_FIELDS'],
+  ] as const) {
+    await prisma.permission.upsert({
+      where: { module_action: { module, action } },
+      update: {},
+      create: { module, action },
+    });
+  }
 
   const owner = await prisma.platformUser.create({
     data: {
@@ -65,6 +73,18 @@ beforeAll(async () => {
     },
   });
   memberId = member.id;
+
+  const support = await prisma.platformUser.create({
+    data: {
+      email: `support.${suffix}@platform.test`,
+      normalizedEmail: `support.${suffix}@platform.test`,
+      fullName: 'Support Staff',
+      passwordHash: 'x',
+      status: 'ACTIVE',
+      platformRole: 'SUPPORT',
+    },
+  });
+  supportId = support.id;
 });
 
 afterAll(async () => {
@@ -84,20 +104,30 @@ describe('platform support access', () => {
     const cookie = await createPlatformSessionToken(ownerId, tenantId);
     const ctx = await resolveCtx(asRequest(cookie), 'req-support');
     expect(ctx.tenantId).toBe(tenantId);
-    expect(ctx.actor.roleKey).toBe('platform_support');
+    expect(ctx.actor.roleKey).toBe('platform_owner');
   });
 
-  it('grants read access but never writes', async () => {
+  it('gives the OWNER full control — create, edit, delete, assign', async () => {
     const cookie = await createPlatformSessionToken(ownerId, tenantId);
+    const ctx = await resolveCtx(asRequest(cookie), 'req-owner');
+    for (const action of ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const) {
+      expect(can(ctx, 'leads', action)).toBe(true);
+    }
+    expect(can(ctx, 'employee', 'VIEW_SENSITIVE_FIELDS')).toBe(true);
+  });
+
+  it('keeps SUPPORT read-only', async () => {
+    const cookie = await createPlatformSessionToken(supportId, tenantId);
     const ctx = await resolveCtx(asRequest(cookie), 'req-support');
+    expect(ctx.actor.roleKey).toBe('platform_support');
     expect(can(ctx, 'leads', 'VIEW')).toBe(true);
     for (const action of ['CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const) {
       expect(can(ctx, 'leads', action)).toBe(false);
     }
   });
 
-  it('never exposes sensitive fields, even to the platform owner', async () => {
-    const cookie = await createPlatformSessionToken(ownerId, tenantId);
+  it('never exposes sensitive fields to SUPPORT', async () => {
+    const cookie = await createPlatformSessionToken(supportId, tenantId);
     const ctx = await resolveCtx(asRequest(cookie), 'req-support');
     expect(can(ctx, 'employee', 'VIEW_SENSITIVE_FIELDS')).toBe(false);
     expect(can(ctx, 'hr_documents', 'VIEW_SENSITIVE_FIELDS')).toBe(false);

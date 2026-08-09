@@ -14,25 +14,33 @@ export const isSupportRole = (platformRole: string) => SUPPORT_ROLES.has(platfor
  * every workspace URL is unreachable for them and the People and Sales modules
  * cannot be seen at all from the platform console.
  *
- * It is deliberately read-only:
+ * Authority depends on the platform role:
  *
- *   * every module's VIEW and VIEW_REPORTS, at ORGANIZATION scope, so support can
- *     see what the customer sees and answer questions about it;
- *   * no CREATE/EDIT/DELETE/ASSIGN — support looks, it does not act as the
- *     customer, and a write would be attributed to a user who does not exist here;
- *   * no VIEW_SENSITIVE_FIELDS — salary, identity documents and the rest stay
- *     behind the company's own permission checks even for the platform owner.
+ *   * **OWNER** holds every permission at ORGANIZATION scope — create, edit,
+ *     delete, assign, approve, sensitive fields, the lot. The platform owner
+ *     administers the product; a read-only owner cannot fix a customer's data,
+ *     which is most of what they enter a workspace to do.
+ *   * **SUPPORT** and **SECURITY_AUDITOR** stay read-only: every module's VIEW
+ *     and VIEW_REPORTS, nothing else, and no VIEW_SENSITIVE_FIELDS — salary and
+ *     identity documents stay behind the company's own permission checks.
  *
+ * Writes are attributed to the namespaced actor id below, so an audit row from
+ * platform staff can never be mistaken for one of the customer's own users.
  * Entry is recorded as a PlatformAuditEvent by the route that sets it up.
  */
-export async function buildSupportActor(tenantId: string, platformUserId: string): Promise<Actor> {
-  const readable = await prisma.permission.findMany({
-    where: { action: { in: ['VIEW', 'VIEW_REPORTS'] } },
+export async function buildSupportActor(
+  tenantId: string,
+  platformUserId: string,
+  platformRole: string,
+): Promise<Actor> {
+  const fullControl = platformRole === 'OWNER';
+  const grantable = await prisma.permission.findMany({
+    ...(fullControl ? {} : { where: { action: { in: ['VIEW', 'VIEW_REPORTS'] } } }),
     select: { module: true, action: true },
   });
 
   const permissions = new Map<string, Scope>();
-  for (const permission of readable) {
+  for (const permission of grantable) {
     permissions.set(`${permission.module}:${permission.action}`, 'ORGANIZATION');
   }
 
@@ -41,8 +49,8 @@ export async function buildSupportActor(tenantId: string, platformUserId: string
     // that does slip through to an audit row is obviously platform staff.
     id: `platform:${platformUserId}`,
     tenantId,
-    roleId: 'platform_support',
-    roleKey: 'platform_support',
+    roleId: fullControl ? 'platform_owner' : 'platform_support',
+    roleKey: fullControl ? 'platform_owner' : 'platform_support',
     roleRank: 0,
     branchId: null,
     regionId: null,

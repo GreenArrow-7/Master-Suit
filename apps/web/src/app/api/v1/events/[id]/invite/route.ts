@@ -118,7 +118,7 @@ export const POST = route(
 
       sent += 1;
       await prisma.eventInvitee.update({
-        where: { id: invitee.id },
+        where: { id: invitee.id, tenantId: ctx.tenantId },
         data: {
           inviteSentAt: new Date(),
           inviteDelivered: result.status === 'delivered' || result.status === 'read',

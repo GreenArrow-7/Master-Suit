@@ -22,7 +22,7 @@ export const POST = route(
     if (!invitee) throw NotFound('Invitee');
 
     const updated = await prisma.eventInvitee.update({
-      where: { id: inviteeId },
+      where: { id: inviteeId, tenantId: ctx.tenantId },
       data: { rsvpStatus, rsvpAt: new Date(), rsvpChannel: channel },
     });
 

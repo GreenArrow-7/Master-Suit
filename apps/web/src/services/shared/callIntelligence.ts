@@ -225,7 +225,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
 
   const row = existing
     ? await prisma.callAudit.update({
-        where: { id: existing.id },
+        where: { id: existing.id, tenantId },
         data: { status: 'PROCESSING', errorMessage: null },
       })
     : await prisma.callAudit.create({ data: { tenantId, callId, scorecardId, status: 'PROCESSING' } });
@@ -251,7 +251,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
     });
 
     await prisma.callAudit.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: {
         status: 'COMPLETED',
         overallScore: result.overallScore,
@@ -268,7 +268,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
     return { done: true };
   } catch (err) {
     await prisma.callAudit.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: { status: 'FAILED', errorMessage: (err as Error).message?.slice(0, 500) },
     });
     throw err;

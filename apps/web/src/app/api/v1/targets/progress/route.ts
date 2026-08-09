@@ -19,8 +19,11 @@ export const POST = route(
     });
     if (!target) throw new Error('Target not found');
 
+    // The tenant guard refuses any write without a tenantId filter; the compound
+    // unique alone was tripping it, which left this endpoint returning 500 on
+    // every call — no progress bar ever moved.
     return prisma.targetProgress.upsert({
-      where: { targetId_dateKey: { targetId, dateKey } },
+      where: { tenantId: ctx.tenantId, targetId_dateKey: { targetId, dateKey } },
       create: { tenantId: ctx.tenantId, targetId, userId: ctx.actor.id, dateKey, achieved: increment },
       update: { achieved: { increment } },
     });

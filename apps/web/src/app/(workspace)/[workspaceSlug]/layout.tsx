@@ -77,7 +77,9 @@ export default async function WorkspaceLayout({
         user={shell.user}
       />
       <div className="lf-content-column">
-        {shell.supportMode && <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} />}
+        {shell.supportMode && (
+          <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} readOnly={shell.supportReadOnly} />
+        )}
         <WorkspaceTopBar slug={shell.slug} workspaceName={shell.displayName} plan={shell.plan} />
         <main className="lf-page-main">{children}</main>
       </div>
@@ -104,11 +106,13 @@ async function loadShell(workspaceSlug: string) {
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
-    const supportMode = ctx.actor.roleKey === 'platform_support';
+    const supportMode = ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
+    const supportReadOnly = ctx.actor.roleKey === 'platform_support';
 
     return {
       workspaceId: workspace.id,
       supportMode,
+      supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,

@@ -269,12 +269,12 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
       select: { salesUserId: true },
     });
     // Platform staff have no membership by design. Rather than locking them out
-    // of every workspace URL, give them a read-only support actor — otherwise the
-    // People and Sales modules are unreachable from the platform console.
+    // of every workspace URL, give them a support actor — full control for the
+    // OWNER, read-only for SUPPORT and SECURITY_AUDITOR. See support-actor.ts.
     const actor = membership?.salesUserId
       ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
       : isSupportRole(platformCtx.platformRole)
-        ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId)
+        ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId, platformCtx.platformRole)
         : null;
     if (!actor) throw Unauthorized('Your workspace access is not active.');
     return {

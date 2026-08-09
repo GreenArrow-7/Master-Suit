@@ -48,7 +48,7 @@ export const POST = route(
     // refused now, not deduplicated later by a worker that has already started.
     const row = existing
       ? await prisma.callAudit.update({
-          where: { id: existing.id },
+          where: { id: existing.id, tenantId: ctx.tenantId },
           data: { status: 'PROCESSING', errorMessage: null },
         })
       : await prisma.callAudit.create({
@@ -86,7 +86,7 @@ export const PATCH = route(
     if (!audit) throw NotFound('Call audit');
 
     return prisma.callAudit.update({
-      where: { id: body.auditId },
+      where: { id: body.auditId, tenantId: ctx.tenantId },
       data: { humanReviewed: true, reviewedById: ctx.actor.id, reviewedAt: new Date() },
     });
   },
