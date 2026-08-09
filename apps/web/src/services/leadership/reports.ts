@@ -12,6 +12,7 @@
  */
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { conversion, funnel, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -426,18 +427,19 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
 }
 
 /**
- * RFC 4180 escaping.
+ * A report as a CSV body.
  *
- * A lead source with a comma in it silently shifts every column after it, and
- * that is the kind of export somebody opens in a spreadsheet and believes.
+ * Uses the shared cell encoder rather than a local one. The first version of
+ * this function quoted only cells that looked like they needed it and did not
+ * defend against the spreadsheet formula trick — a value beginning `=`, `+`,
+ * `-` or `@` is executed when the file is opened, so a lead named
+ * `=HYPERLINK("http://…")` becomes a phishing link inside your own export. The
+ * lead export had that covered from the start; this now shares it.
  */
 export function toCsv(report: Report): string {
-  const escape = (value: Cell) => {
-    const s = value === null ? '' : String(value);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-
-  const header = report.columns.map((c) => escape(c.label)).join(',');
-  const body = report.rows.map((row) => report.columns.map((c) => escape(row[c.key] ?? null)).join(','));
-  return [header, ...body].join('\r\n');
+  const columns: CsvColumn<Record<string, Cell>>[] = report.columns.map((c) => ({
+    label: c.label,
+    value: (row) => row[c.key] ?? null,
+  }));
+  return csvHeader(columns) + report.rows.map((row) => csvRow(columns, row)).join('');
 }
