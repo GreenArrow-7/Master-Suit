@@ -42,10 +42,24 @@ export default defineConfig({
    */
   retries: 0,
 
-  // Against the dev server a cold route compiles on first request, which can
-  // take ten seconds or more. These are generous for that reason, not because
-  // anything is expected to be slow once warm.
-  timeout: 180_000,
+  /**
+   * A budget for compilation, not for the application.
+   *
+   * These specs run against `next dev`, where a route is compiled on its first
+   * request. That cost roughly doubled — 13-22s per route, measured — when every
+   * tenant-scoped model gained its `tenant` relation: the generated Prisma
+   * client grew and every route that touches it takes longer to compile.
+   *
+   * The whole-suite specs are single serial tests that walk a dozen pages, so
+   * they were the first to run out of budget: `acceptance` and `hr-modules`
+   * began failing at whatever step the clock happened to reach, which reads like
+   * a broken page rather than a spent timer.
+   *
+   * Raised rather than retried. Nothing here is expected to be slow once warm,
+   * and a production build compiles ahead of time — this is the dev harness
+   * paying for type surface, not the product being slower.
+   */
+  timeout: 420_000,
   expect: { timeout: 20_000 },
 
   forbidOnly: !!process.env.CI,

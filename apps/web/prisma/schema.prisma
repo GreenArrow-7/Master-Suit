@@ -423,6 +423,138 @@ model Tenant {
 
   invitations WorkspaceInvitation[]
 
+  aIAnalysises               AIAnalysis[]
+  aPIKeys                    APIKey[]
+  accounts                   Account[]
+  activities                 Activity[]
+  activityTypes              ActivityType[]
+  allocationRequests         AllocationRequest[]
+  amenities                  Amenity[]
+  auditCriterions            AuditCriterion[]
+  auditLogs                  AuditLog[]
+  auditScorecards            AuditScorecard[]
+  automations                Automation[]
+  automationEnrollments      AutomationEnrollment[]
+  automationExecutions       AutomationExecution[]
+  automationVersions         AutomationVersion[]
+  bookings                   Booking[]
+  calls                      Call[]
+  callAudits                 CallAudit[]
+  campaigns                  Campaign[]
+  campaignContacts           CampaignContact[]
+  campaignMembers            CampaignMember[]
+  campaignQualifications     CampaignQualification[]
+  campaignScripts            CampaignScript[]
+  campaignTalkingPoints      CampaignTalkingPoint[]
+  cannedResponses            CannedResponse[]
+  clientProfiles             ClientProfile[]
+  clientRequirements         ClientRequirement[]
+  commissions                Commission[]
+  commissionSlabs            CommissionSlab[]
+  commissionSlabBands        CommissionSlabBand[]
+  communications             Communication[]
+  communicationProviders     CommunicationProvider[]
+  contacts                   Contact[]
+  contests                   Contest[]
+  contestStandings           ContestStanding[]
+  dashboards                 Dashboard[]
+  dashboardWidgets           DashboardWidget[]
+  departments                Department[]
+  developers                 Developer[]
+  dialerSessions             DialerSession[]
+  distributionRules          DistributionRule[]
+  documents                  Document[]
+  duplicateRules             DuplicateRule[]
+  emailCampaigns             EmailCampaign[]
+  employeeTargets            EmployeeTarget[]
+  events                     Event[]
+  eventInvitees              EventInvitee[]
+  exportJobs                 ExportJob[]
+  fieldAttendances           FieldAttendance[]
+  fieldPermissions           FieldPermission[]
+  fieldVisits                FieldVisit[]
+  followUpTasks              FollowUpTask[]
+  forms                      Form[]
+  formFields                 FormField[]
+  formSubmissions            FormSubmission[]
+  holidayCalendars           HolidayCalendar[]
+  hrCandidateStageEvents     HrCandidateStageEvent[]
+  hrEmployeeShifts           HrEmployeeShift[]
+  hrInterviewFeedbacks       HrInterviewFeedback[]
+  hrPayslipLines             HrPayslipLine[]
+  hrPipCheckpoints           HrPipCheckpoint[]
+  hrReviewCompetencyScores   HrReviewCompetencyScore[]
+  importJobs                 ImportJob[]
+  integrations               Integration[]
+  integrationConnections     IntegrationConnection[]
+  landingPages               LandingPage[]
+  landingPageVersions        LandingPageVersion[]
+  leads                      Lead[]
+  leadAssignmentHistories    LeadAssignmentHistory[]
+  leadCustomFieldDefinitions LeadCustomFieldDefinition[]
+  leadCustomFieldValues      LeadCustomFieldValue[]
+  leadScoreHistories         LeadScoreHistory[]
+  leadStages                 LeadStage[]
+  leadStageHistories         LeadStageHistory[]
+  leadTags                   LeadTag[]
+  listings                   Listing[]
+  listingMedias              ListingMedia[]
+  lossReasons                LossReason[]
+  mandates                   Mandate[]
+  marketingLists             MarketingList[]
+  marketingListMembers       MarketingListMember[]
+  membershipRoles            MembershipRole[]
+  messageTemplates           MessageTemplate[]
+  micromarkets               Micromarket[]
+  nominations                Nomination[]
+  nominationVotes            NominationVote[]
+  notifications              Notification[]
+  opportunities              Opportunity[]
+  opportunityCollaborators   OpportunityCollaborator[]
+  opportunityProducts        OpportunityProduct[]
+  opportunityStageHistories  OpportunityStageHistory[]
+  opportunityTypes           OpportunityType[]
+  owners                     Owner[]
+  passwordResetTokens        PasswordResetToken[]
+  payouts                    Payout[]
+  pipelines                  Pipeline[]
+  pipelineStages             PipelineStage[]
+  posts                      Post[]
+  postReactions              PostReaction[]
+  products                   Product[]
+  projects                   Project[]
+  projectFavourites          ProjectFavourite[]
+  projectMedias              ProjectMedia[]
+  rateLimitCounters          RateLimitCounter[]
+  recordings                 Recording[]
+  recordingConsents          RecordingConsent[]
+  referrals                  Referral[]
+  referralCodes              ReferralCode[]
+  reports                    Report[]
+  roles                      Role[]
+  rolePermissions            RolePermission[]
+  sLAs                       SLA[]
+  savedFilters               SavedFilter[]
+  scoringRules               ScoringRule[]
+  siteVisits                 SiteVisit[]
+  smartViews                 SmartView[]
+  targetProgresses           TargetProgress[]
+  tasks                      Task[]
+  taskTypes                  TaskType[]
+  teams                      Team[]
+  territories                Territory[]
+  testimonials               Testimonial[]
+  tickets                    Ticket[]
+  ticketCategories           TicketCategory[]
+  ticketComments             TicketComment[]
+  transcripts                Transcript[]
+  unitInventories            UnitInventory[]
+  unitPlans                  UnitPlan[]
+  userTeams                  UserTeam[]
+  webhooks                   Webhook[]
+  webhookDeliveries          WebhookDelivery[]
+  webhookEvents              WebhookEvent[]
+
   @@index([status])
 }
 
@@ -681,6 +813,8 @@ model Territory {
   updatedById String?
   deletedAt   DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId])
 }
@@ -700,6 +834,8 @@ model Department {
   employees    EmployeeProfile[]
   requisitions HrRequisition[]
   invitations  WorkspaceInvitation[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -725,6 +861,8 @@ model Team {
   parentTeam Team?       @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
   childTeams Team[]      @relation("TeamHierarchy")
   members    UserTeam[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
@@ -1051,6 +1189,8 @@ model MembershipRole {
   membership       WorkspaceMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   role             Role                @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([membershipId, roleId])
   @@index([tenantId, roleId])
   @@index([tenantId, membershipId, status, effectiveFrom, effectiveTo])
@@ -1100,6 +1240,8 @@ model HrEmployeeShift {
   endsOn      DateTime?
   employee    EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   shift       HrShift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, effectiveOn])
 }
@@ -1262,6 +1404,8 @@ model HrPayslipLine {
   amount    Decimal            @db.Decimal(14, 2)
   sortOrder Int                @default(0)
   payslip   HrPayslip          @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, payslipId])
 }
@@ -1488,6 +1632,8 @@ model HrReviewCompetencyScore {
   review     HrReview     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   competency HrCompetency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reviewId, competencyId])
 }
 
@@ -1534,6 +1680,8 @@ model HrPipCheckpoint {
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
   pip            HrPip     @relation(fields: [pipId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, pipId, dueOn])
 }
@@ -1646,6 +1794,8 @@ model HrCandidateStageEvent {
   createdAt   DateTime          @default(now())
   candidate   HrCandidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, candidateId, createdAt])
 }
 
@@ -1695,6 +1845,9 @@ model HrInterviewFeedback {
   interviewer EmployeeProfile @relation("HrInterviewFeedbackAuthor", fields: [interviewerId], references: [id], onDelete: Cascade)
 
   // One scorecard per interviewer per interview; a second submission edits the first.
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, interviewId, interviewerId])
   @@index([tenantId, interviewId])
 }
@@ -2414,6 +2567,8 @@ model UserTeam {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([userId, teamId])
   @@index([tenantId, teamId])
 }
@@ -2430,6 +2585,8 @@ model PasswordResetToken {
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([expiresAt])
@@ -2453,6 +2610,8 @@ model Role {
   permissions     RolePermission[]
   membershipRoles MembershipRole[]
   invitations     WorkspaceInvitation[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId])
@@ -2484,6 +2643,8 @@ model RolePermission {
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([roleId, permissionId])
   @@index([tenantId, roleId])
 }
@@ -2499,6 +2660,8 @@ model FieldPermission {
   maskStrategy String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, objectType, fieldKey])
   @@index([tenantId, objectType])
@@ -2527,6 +2690,8 @@ model LeadStage {
   deletedAt         DateTime?
 
   leads Lead[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
@@ -2616,6 +2781,8 @@ model Lead {
   tickets        Ticket[]
   submissions    FormSubmission[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
   @@index([tenantId, ownerId, stageId])
@@ -2659,6 +2826,8 @@ model LeadCustomFieldDefinition {
 
   values LeadCustomFieldValue[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, objectType, key])
   @@index([tenantId, objectType, displayOrder])
 }
@@ -2679,6 +2848,8 @@ model LeadCustomFieldValue {
   lead       Lead                      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   definition LeadCustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([leadId, definitionId])
   @@index([tenantId, definitionId, valueText])
   @@index([tenantId, definitionId, valueNumber])
@@ -2698,6 +2869,8 @@ model LeadStageHistory {
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId, createdAt])
   @@index([tenantId, toStageId, createdAt])
 }
@@ -2716,6 +2889,8 @@ model LeadAssignmentHistory {
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId, createdAt])
   @@index([tenantId, toOwnerId, createdAt])
 }
@@ -2732,6 +2907,8 @@ model LeadScoreHistory {
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId, createdAt])
 }
 
@@ -2741,6 +2918,8 @@ model LeadTag {
   name      String
   color     String   @default("#94A3B8")
   createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
 }
@@ -2765,6 +2944,8 @@ model ScoringRule {
   createdById String?
   updatedById String?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, isActive, triggerType])
 }
 
@@ -2779,6 +2960,8 @@ model DuplicateRule {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, objectType, isActive])
 }
@@ -2829,6 +3012,8 @@ model Account {
   tickets       Ticket[]
   documents     Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   @@index([tenantId, ownerId])
   @@index([tenantId, name])
@@ -2866,6 +3051,8 @@ model Contact {
   owner   User?    @relation("ContactOwner", fields: [ownerId], references: [id])
   tickets Ticket[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   @@index([tenantId, accountId])
   @@index([tenantId, email])
@@ -2890,6 +3077,8 @@ model OpportunityType {
   opportunities Opportunity[]
   pipelines     Pipeline[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, key])
   @@index([tenantId])
 }
@@ -2910,6 +3099,8 @@ model Pipeline {
   opportunityType OpportunityType? @relation(fields: [opportunityTypeId], references: [id])
   stages          PipelineStage[]
   opportunities   Opportunity[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId, isActive])
@@ -2933,6 +3124,8 @@ model PipelineStage {
 
   pipeline      Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   opportunities Opportunity[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([pipelineId, key])
   @@index([tenantId, pipelineId, position])
@@ -2991,6 +3184,8 @@ model Opportunity {
   tasks         Task[]
   documents     Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   @@index([tenantId, pipelineId, stageId])
   @@index([tenantId, ownerId, status])
@@ -3013,6 +3208,8 @@ model OpportunityStageHistory {
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, opportunityId, createdAt])
 }
 
@@ -3026,6 +3223,8 @@ model OpportunityCollaborator {
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([opportunityId, userId])
   @@index([tenantId, userId])
 }
@@ -3037,6 +3236,8 @@ model LossReason {
   position  Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
 }
@@ -3070,6 +3271,8 @@ model Product {
   lineItems OpportunityProduct[]
   documents Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId, status, category])
 }
@@ -3089,6 +3292,8 @@ model OpportunityProduct {
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, opportunityId])
 }
@@ -3113,6 +3318,8 @@ model ActivityType {
   updatedAt   DateTime                @updatedAt
 
   activities Activity[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId, isActive])
@@ -3153,6 +3360,8 @@ model Activity {
   owner       User?        @relation("ActivityOwner", fields: [ownerId], references: [id])
   documents   Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId, occurredAt(sort: Desc)])
   @@index([tenantId, ownerId, occurredAt(sort: Desc)])
   @@index([tenantId, typeId, occurredAt(sort: Desc)])
@@ -3172,6 +3381,8 @@ model TaskType {
   updatedAt           DateTime     @updatedAt
 
   tasks Task[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
 }
@@ -3218,6 +3429,8 @@ model Task {
   instances   Task[]       @relation("TaskRecurrence")
   documents   Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, ownerId, status, dueAt])
   @@index([tenantId, dueAt])
   @@index([tenantId, leadId])
@@ -3255,6 +3468,8 @@ model DistributionRule {
   updatedById         String?
   deletedAt           DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, objectType, isActive, position])
 }
 
@@ -3284,6 +3499,8 @@ model Automation {
   versions    AutomationVersion[]
   enrollments AutomationEnrollment[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, objectType, state])
 }
 
@@ -3302,6 +3519,8 @@ model AutomationVersion {
 
   automation  Automation             @relation(fields: [automationId], references: [id], onDelete: Cascade)
   enrollments AutomationEnrollment[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([automationId, versionNumber])
   @@index([tenantId, automationId])
@@ -3327,6 +3546,8 @@ model AutomationEnrollment {
   version    AutomationVersion     @relation(fields: [versionId], references: [id])
   executions AutomationExecution[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([automationId, recordId, idempotencyKey])
   @@index([tenantId, status, resumeAt])
   @@index([tenantId, objectType, recordId])
@@ -3349,6 +3570,8 @@ model AutomationExecution {
   durationMs   Int?
 
   enrollment AutomationEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, enrollmentId, startedAt])
   @@index([tenantId, status, startedAt])
@@ -3390,6 +3613,8 @@ model Campaign {
   opportunities  Opportunity[]
   emailCampaigns EmailCampaign[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId, status, startDate])
   @@index([tenantId, campaignType])
@@ -3413,6 +3638,8 @@ model MarketingList {
 
   members MarketingListMember[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, name])
   @@index([tenantId, listType])
 }
@@ -3426,6 +3653,8 @@ model MarketingListMember {
   createdAt DateTime @default(now())
 
   list MarketingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([listId, recordId])
   @@index([tenantId, listId])
@@ -3464,6 +3693,8 @@ model EmailCampaign {
 
   campaign Campaign? @relation(fields: [campaignId], references: [id])
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status, scheduledAt])
 }
 
@@ -3486,6 +3717,8 @@ model MessageTemplate {
   createdById        String?
   updatedById        String?
   deletedAt          DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId, channel, isActive])
@@ -3534,6 +3767,8 @@ model Communication {
 
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId, createdAt(sort: Desc)])
   @@index([tenantId, channel, status])
   @@index([tenantId, providerMessageId])
@@ -3554,6 +3789,8 @@ model CommunicationProvider {
   lastTestResult  String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, channel, providerKey])
 }
@@ -3588,6 +3825,8 @@ model Form {
   fields      FormField[]
   submissions FormSubmission[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, key])
   @@index([tenantId, state])
 }
@@ -3617,6 +3856,8 @@ model FormField {
 
   form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([formId, key])
   @@index([tenantId, formId, position])
 }
@@ -3641,6 +3882,8 @@ model FormSubmission {
 
   form Form  @relation(fields: [formId], references: [id], onDelete: Cascade)
   lead Lead? @relation(fields: [leadId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, formId, createdAt(sort: Desc)])
   @@index([tenantId, leadId])
@@ -3670,6 +3913,8 @@ model LandingPage {
 
   versions LandingPageVersion[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, slug])
   @@index([tenantId, state])
 }
@@ -3684,6 +3929,8 @@ model LandingPageVersion {
   createdById   String?
 
   landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([landingPageId, versionNumber])
 }
@@ -3719,6 +3966,8 @@ model FieldVisit {
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, userId, plannedAt])
   @@index([tenantId, leadId])
 }
@@ -3736,6 +3985,8 @@ model FieldAttendance {
   distanceMeters Int?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workDate])
   @@index([tenantId, workDate])
@@ -3760,6 +4011,8 @@ model TicketCategory {
   children TicketCategory[] @relation("CategoryTree")
   tickets  Ticket[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, name, parentId])
   @@index([tenantId, isActive])
 }
@@ -3782,6 +4035,8 @@ model SLA {
 
   tickets Ticket[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, name])
 }
 
@@ -3792,6 +4047,8 @@ model HolidayCalendar {
   dates     Json     @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
 }
@@ -3845,6 +4102,8 @@ model Ticket {
   comments     TicketComment[]
   documents    Document[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, number])
   @@index([tenantId, status, priority])
   @@index([tenantId, agentId, status])
@@ -3866,6 +4125,8 @@ model TicketComment {
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, ticketId, createdAt])
 }
 
@@ -3878,6 +4139,8 @@ model CannedResponse {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, title])
 }
@@ -3928,6 +4191,8 @@ model Document {
   activity    Activity?    @relation(fields: [activityId], references: [id])
   product     Product?     @relation(fields: [productId], references: [id])
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId])
   @@index([tenantId, status, expiresAt])
   @@index([tenantId, category])
@@ -3959,6 +4224,8 @@ model SmartView {
   updatedById        String?
   deletedAt          DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, objectType, ownerId])
 }
 
@@ -3972,6 +4239,8 @@ model SavedFilter {
   filterTree Json
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, objectType, ownerId])
 }
@@ -3992,6 +4261,8 @@ model Dashboard {
   deletedAt          DateTime?
 
   widgets DashboardWidget[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, ownerId])
 }
@@ -4015,6 +4286,8 @@ model DashboardWidget {
   updatedAt          DateTime @updatedAt
 
   dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, dashboardId])
 }
@@ -4045,6 +4318,8 @@ model Report {
   updatedById        String?
   deletedAt          DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, dataSource])
 }
 
@@ -4072,6 +4347,8 @@ model ImportJob {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status, createdAt(sort: Desc)])
 }
 
@@ -4091,6 +4368,8 @@ model ExportJob {
   finishedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, createdAt(sort: Desc)])
 }
@@ -4114,6 +4393,8 @@ model Integration {
   createdById      String?
   updatedById      String?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, key])
   @@index([tenantId, category, isActive])
 }
@@ -4136,6 +4417,8 @@ model APIKey {
   createdAt       DateTime  @default(now())
   createdById     String?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, revokedAt])
 }
 
@@ -4157,6 +4440,8 @@ model Webhook {
 
   deliveries WebhookDelivery[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, isActive])
 }
 
@@ -4175,6 +4460,8 @@ model WebhookDelivery {
   createdAt    DateTime  @default(now())
 
   webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, webhookId, createdAt(sort: Desc)])
   @@index([nextRetryAt])
@@ -4202,6 +4489,8 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, userId, readAt, createdAt(sort: Desc)])
   @@index([tenantId, kind, emailedAt])
 }
@@ -4224,6 +4513,8 @@ model AuditLog {
   requestId     String?
   occurredAt    DateTime   @default(now())
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, occurredAt(sort: Desc)])
   @@index([tenantId, objectType, recordId, occurredAt(sort: Desc)])
   @@index([tenantId, actorUserId, occurredAt(sort: Desc)])
@@ -4236,6 +4527,8 @@ model RateLimitCounter {
   bucketKey String   @unique
   count     Int      @default(0)
   windowEnd DateTime
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([windowEnd])
 }
@@ -4278,6 +4571,8 @@ model EmployeeTarget {
   user     User             @relation(fields: [userId], references: [id])
   progress TargetProgress[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, userId, periodStart, periodEnd])
   @@index([tenantId, campaignId])
 }
@@ -4292,6 +4587,8 @@ model TargetProgress {
   updatedAt DateTime @updatedAt
 
   target EmployeeTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([targetId, dateKey])
   @@index([tenantId, userId, dateKey])
@@ -4377,6 +4674,8 @@ model Call {
   analysis   AIAnalysis?
   callAudits CallAudit[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, providerName, externalCallId])
   @@index([tenantId, callerId, createdAt(sort: Desc)])
   @@index([tenantId, leadId, createdAt(sort: Desc)])
@@ -4402,6 +4701,8 @@ model Recording {
 
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, retainUntil])
 }
 
@@ -4419,6 +4720,8 @@ model RecordingConsent {
 
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, callId])
 }
 
@@ -4434,6 +4737,8 @@ model Transcript {
   createdAt  DateTime @default(now())
 
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, callId])
 }
@@ -4469,6 +4774,8 @@ model AIAnalysis {
 
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status])
   @@index([tenantId, callId])
 }
@@ -4489,6 +4796,8 @@ model AuditScorecard {
 
   criteria AuditCriterion[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, campaignId])
 }
 
@@ -4503,6 +4812,8 @@ model AuditCriterion {
   isRequired  Boolean @default(false)
 
   scorecard AuditScorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, scorecardId, position])
 }
@@ -4529,6 +4840,8 @@ model CallAudit {
   updatedAt      DateTime       @updatedAt
 
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, callId])
   @@index([tenantId, scorecardId])
@@ -4557,6 +4870,8 @@ model FollowUpTask {
   createdById String?
   deletedAt   DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, ownerId, status, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, callId])
@@ -4584,6 +4899,8 @@ model IntegrationConnection {
   updatedAt      DateTime  @updatedAt
   createdById    String?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, provider])
   @@index([tenantId])
 }
@@ -4604,6 +4921,8 @@ model WebhookEvent {
   attempts     Int       @default(0)
   errorMessage String?
   createdAt    DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, provider, externalId])
   @@index([provider, processed, createdAt])
@@ -4675,6 +4994,8 @@ model Event {
 
   invitees EventInvitee[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status, startAt])
   @@index([tenantId, campaignId])
   @@index([tenantId, hostId])
@@ -4709,6 +5030,8 @@ model EventInvitee {
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([eventId, leadId])
   @@index([tenantId, eventId, rsvpStatus])
   @@index([tenantId, leadId])
@@ -4732,6 +5055,8 @@ model CampaignScript {
 
   talkingPoints CampaignTalkingPoint[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, campaignId, position])
 }
 
@@ -4747,6 +5072,8 @@ model CampaignTalkingPoint {
 
   script CampaignScript? @relation(fields: [scriptId], references: [id], onDelete: SetNull)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, campaignId, position])
 }
 
@@ -4759,6 +5086,8 @@ model CampaignQualification {
   isRequired     Boolean @default(true)
   position       Int     @default(0)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, campaignId, position])
 }
 
@@ -4770,6 +5099,8 @@ model CampaignMember {
   role       String    @default("CALLER")
   assignedAt DateTime  @default(now())
   removedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, userId])
   @@index([tenantId, campaignId])
@@ -4841,6 +5172,8 @@ model Developer {
 
   projects Project[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, name])
   @@index([tenantId, isActive, name])
 }
@@ -4862,6 +5195,8 @@ model Micromarket {
   projects Project[]
   listings Listing[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, city, name])
   @@index([tenantId, isActive, city, name])
 }
@@ -4878,6 +5213,8 @@ model Amenity {
   position  Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
   @@index([tenantId, category, position])
@@ -4961,6 +5298,8 @@ model Project {
   siteVisits  SiteVisit[]
   bookings    Booking[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   /// The keyset order. Every list page ends in (updatedAt DESC, id DESC), so the
   /// planner gets one index for the sort whichever facet was applied.
@@ -5000,6 +5339,8 @@ model ProjectMedia {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, projectId, kind, position])
 }
 
@@ -5025,6 +5366,8 @@ model UnitPlan {
 
   project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   units   UnitInventory[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, projectId, position])
   @@index([tenantId, unitType])
@@ -5063,6 +5406,8 @@ model UnitInventory {
   siteVisits SiteVisit[]
   bookings   Booking[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, unitNumber])
   @@index([tenantId, projectId, status])
   @@index([tenantId, status, heldUntil])
@@ -5076,6 +5421,8 @@ model ProjectFavourite {
   createdAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
   @@index([tenantId, userId])
@@ -5184,6 +5531,8 @@ model Owner {
   listings Listing[]
   mandates Mandate[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, phoneNormalized])
   @@index([tenantId, ownerId])
   @@index([tenantId, fullName])
@@ -5256,6 +5605,8 @@ model Listing {
   siteVisits    SiteVisit[]
   bookings      Booking[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.
   @@index([tenantId, deletedAt, updatedAt(sort: Desc), id(sort: Desc)])
@@ -5285,6 +5636,8 @@ model ListingMedia {
   createdById String?
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, listingId, kind, position])
 }
@@ -5326,6 +5679,8 @@ model Mandate {
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   owner   Owner   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, listingId, status])
   /// The expiry sweep reads this.
@@ -5375,6 +5730,8 @@ model ClientRequirement {
   createdById String?
   updatedById String?
   deletedAt   DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, purpose])
   @@index([tenantId, leadId])
@@ -5461,6 +5818,9 @@ model CampaignContact {
 
   /// One row per person per campaign. Ringing the same number twice off one
   /// list is the complaint that ends a campaign.
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([campaignId, phoneNormalized])
   @@index([tenantId, campaignId, status, position])
   @@index([tenantId, campaignId, nextAttemptAt])
@@ -5500,6 +5860,8 @@ model DialerSession {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, campaignId, status])
   @@index([tenantId, userId, status])
@@ -5631,6 +5993,8 @@ model SiteVisit {
   project Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   unit    UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
   listing Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, ownerId, scheduledAt])
   @@index([tenantId, status, scheduledAt])
@@ -5768,6 +6132,8 @@ model Booking {
   listing     Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
   commissions Commission[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, reference])
   @@index([tenantId, teamId, bookingDate])
   @@index([tenantId, regionId, bookingDate])
@@ -5815,6 +6181,8 @@ model CommissionSlab {
   bands       CommissionSlabBand[]
   commissions Commission[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, name, version])
   @@index([tenantId, isActive, effectiveFrom])
   @@index([tenantId, projectId])
@@ -5839,6 +6207,8 @@ model CommissionSlabBand {
   updatedAt DateTime @updatedAt
 
   slab CommissionSlab @relation(fields: [slabId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, slabId, position])
 }
@@ -5894,6 +6264,8 @@ model Commission {
   slab    CommissionSlab? @relation(fields: [slabId], references: [id], onDelete: SetNull)
   payout  Payout?         @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, userId, status])
   @@index([tenantId, bookingId])
   @@index([tenantId, status, createdAt])
@@ -5928,6 +6300,8 @@ model Payout {
   createdById String?
 
   commissions Commission[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, reference])
   @@index([tenantId, userId, status])
@@ -6027,6 +6401,8 @@ model ClientProfile {
   updatedById String?
   deletedAt   DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
   @@index([tenantId, purchaseIntent])
@@ -6090,6 +6466,8 @@ model Testimonial {
   updatedById String?
   deletedAt   DateTime?
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status, requestedAt(sort: Desc)])
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
@@ -6137,6 +6515,8 @@ model ReferralCode {
 
   referrals Referral[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, code])
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
@@ -6179,6 +6559,8 @@ model Referral {
   deletedAt   DateTime?
 
   code ReferralCode @relation(fields: [codeId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, createdAt(sort: Desc)])
   @@index([tenantId, codeId])
@@ -6243,6 +6625,8 @@ model Post {
 
   reactions PostReaction[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, isPinned, createdAt(sort: Desc)])
   @@index([tenantId, authorId, createdAt(sort: Desc)])
 }
@@ -6268,6 +6652,8 @@ model PostReaction {
   updatedAt DateTime @updatedAt
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
   @@index([tenantId, postId])
@@ -6316,6 +6702,8 @@ model Contest {
 
   standings ContestStanding[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, status, endAt])
   @@index([tenantId, teamId])
 }
@@ -6339,6 +6727,8 @@ model ContestStanding {
   createdAt DateTime @default(now())
 
   contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([contestId, userId])
   @@index([tenantId, contestId, rank])
@@ -6379,6 +6769,9 @@ model Nomination {
   votes NominationVote[]
 
   /// The same person cannot be put forward twice in one category at one event.
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([eventId, category, nomineeId])
   @@index([tenantId, eventId, category])
   @@index([tenantId, nomineeId])
@@ -6401,6 +6794,8 @@ model NominationVote {
   createdAt DateTime @default(now())
 
   nomination Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, category, voterId])
   @@index([tenantId, nominationId])
@@ -6450,6 +6845,8 @@ model AllocationRequest {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, requesterId, status])

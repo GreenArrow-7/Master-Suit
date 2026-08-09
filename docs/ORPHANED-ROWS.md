@@ -76,18 +76,48 @@ On the development database it removed **317,323 rows in three passes**, leaving
 none. Roles fell from 984 to 33 and role permissions from ~312,000 to 3,596. The
 demo workspace still signs in and every page still renders.
 
-## Not done: the foreign keys
+## The foreign keys, now added
 
-The sweep treats the symptom. The cause is 131 missing constraints, and adding
-them is a real decision rather than a tidy-up:
+`20260809060000_tenant_foreign_keys` closes the cause. Every one of the 177
+tenant-scoped tables now has `FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id")
+ON DELETE CASCADE`, and the Prisma schema declares the matching relation so the
+next `migrate diff` does not try to drop them.
 
-- Each `ALTER TABLE ... ADD CONSTRAINT ... REFERENCES "Tenant"` takes a lock and
-  validates every existing row. On large tables that is not free.
-- Any remaining orphan blocks its constraint, so the sweep has to run first —
-  and stay run, on every environment, before the migration.
-- `ON DELETE CASCADE` on 131 tables makes deleting a workspace a much larger
-  transaction than it is today. That is the correct behaviour, but it should be
-  a deliberate choice with an eye on how workspace deletion is actually invoked.
+**CASCADE is safe here** because no product code hard-deletes a `Tenant`. Every
+path in `src/` soft-deletes by setting `deletedAt`, so the cascade fires only
+when somebody deliberately removes a workspace — a test teardown or an operator
+— which is exactly when its rows should go too. The 46 tables that already had
+the constraint already had CASCADE; this makes the other 131 agree with them.
 
-Until then, deleting a workspace keeps leaving rows behind, and this script is
-how they are collected.
+### Three phases, for lock time
+
+Adding 131 constraints naively validates every row of every table while holding
+an `ACCESS EXCLUSIVE` lock on each. Instead:
+
+1. **Sweep the orphans.** A constraint cannot be validated while a row violates
+   it, and an operator having run the script first is a hope rather than a
+   guarantee.
+2. **`ADD CONSTRAINT … NOT VALID`.** Brief lock, no scan. From that moment no
+   *new* row can be orphaned, which is the part that stops the problem growing.
+3. **`VALIDATE CONSTRAINT`.** Scans under `SHARE UPDATE EXCLUSIVE`, which does
+   not block reads or writes.
+
+All 177 are listed rather than the 131 that were missing, and each is added only
+if absent — so the migration is correct both on a database built by replaying
+every migration, where 46 already exist, and on one that has drifted.
+
+### Two things the test database taught it
+
+**A cascade can break a live row.** Deleting an orphaned `Project` sets
+`Booking.projectId` to null through an existing `ON DELETE SET NULL`, and that
+booking then fails `Booking_subject_check` — which requires a project, listing
+or unit. The sweep catches `check_violation` as well as `foreign_key_violation`
+and leaves such rows alone.
+
+**A deployment should not fail on legacy residue.** Validation is attempted per
+constraint; one that cannot be validated stays `NOT VALID` and is named in a
+warning. It still enforces on every new and updated row. Failing the whole
+migration instead would block a deploy on data that predates the rule.
+
+On both the development and test databases the result is the same: 177
+tenant-scoped tables, full constraint coverage, **zero left unvalidated**.
