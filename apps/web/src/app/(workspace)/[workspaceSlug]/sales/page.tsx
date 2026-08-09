@@ -2,12 +2,135 @@ import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { SCOPE_RANK, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import MetricCard from '@/components/ui/MetricCard';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 
 export const metadata = { title: 'Home' };
+
+/* ── The day brief ──────────────────────────────────────────────────────────
+   The page's signature. Instead of a row of identical metric boxes, the
+   morning's numbers are read out as one composed sentence on the deep wine
+   chrome — in priority order, each figure a link into the queue it counts.
+   Sentence order IS the priority order: what must be cleared first is said
+   first. Everything below the brief stays pearl and quiet. */
+
+function BriefFigure({
+  href,
+  n,
+  label,
+  tone,
+}: {
+  href: string;
+  n: number;
+  label: string;
+  tone: 'vermillion' | 'brass' | 'viridian' | 'neutral';
+}) {
+  const decoration =
+    tone === 'vermillion'
+      ? 'var(--lf-vermillion)'
+      : tone === 'brass'
+        ? 'var(--lf-brass)'
+        : tone === 'viridian'
+          ? 'var(--lf-viridian)'
+          : 'var(--lf-wine-300)';
+  return (
+    <SalesLink
+      href={href}
+      style={{
+        color: 'inherit',
+        textDecoration: 'underline',
+        textDecorationColor: decoration,
+        textDecorationThickness: 2,
+        textUnderlineOffset: 5,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span className="lf-num" style={{ fontWeight: 650 }}>
+        {n}
+      </span>{' '}
+      {label}
+    </SalesLink>
+  );
+}
+
+function DayBrief({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) {
+  return (
+    <header
+      style={{
+        background: 'var(--lf-wine-900)',
+        color: 'var(--lf-wine-050)',
+        borderRadius: 'var(--lf-radius-lg, 12px)',
+        padding: 'var(--lf-space-6) var(--lf-space-6)',
+        marginBottom: 'var(--lf-space-5)',
+      }}
+    >
+      <div
+        className="lf-eyebrow"
+        style={{ color: 'var(--lf-wine-300)', marginBottom: 'var(--lf-space-3)', letterSpacing: '0.08em' }}
+      >
+        {eyebrow}
+      </div>
+      <p
+        style={{
+          margin: 0,
+          font: '400 var(--lf-text-xl)/1.6 var(--lf-font-ui)',
+          maxWidth: '46ch',
+        }}
+      >
+        {children}
+      </p>
+    </header>
+  );
+}
+
+const briefDate = () =>
+  new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+
+/** A priority row in the attention ledger: what to clear, and where to do it. */
+function LedgerRow({
+  href,
+  tone,
+  title,
+  detail,
+}: {
+  href: string;
+  tone: 'vermillion' | 'brass' | 'viridian' | 'wine';
+  title: string;
+  detail: string;
+}) {
+  const rule =
+    tone === 'vermillion'
+      ? 'var(--lf-vermillion)'
+      : tone === 'brass'
+        ? 'var(--lf-brass)'
+        : tone === 'viridian'
+          ? 'var(--lf-viridian)'
+          : 'var(--lf-wine-700)';
+  return (
+    <SalesLink
+      href={href}
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 'var(--lf-space-3)',
+        padding: '11px var(--lf-space-4)',
+        borderLeft: `3px solid ${rule}`,
+        background: 'var(--lf-surface)',
+        borderRadius: 'var(--lf-radius-sm)',
+        textDecoration: 'none',
+        color: 'inherit',
+        boxShadow: 'var(--lf-shadow-1, 0 1px 2px rgba(28,20,24,.06))',
+      }}
+    >
+      <span style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 600 }}>{title}</span>
+      <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>{detail}</span>
+      <span aria-hidden style={{ marginLeft: 'auto', color: 'var(--lf-ink-4)' }}>
+        →
+      </span>
+    </SalesLink>
+  );
+}
 
 export default async function HomePage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
@@ -67,48 +190,51 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
 
   return (
     <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--lf-space-5)',
-        }}
-      >
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
-          My Dashboard
-        </h1>
-        <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{todayKey}</span>
-      </div>
+      <h1 className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+        My day
+      </h1>
+      <DayBrief eyebrow={briefDate()}>
+        {overdueFollowUps > 0 ? (
+          <>
+            Clear <BriefFigure href="/follow-ups?due=overdue" n={overdueFollowUps} label={overdueFollowUps === 1 ? 'overdue follow-up' : 'overdue follow-ups'} tone="vermillion" /> first.
+            Then <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone="brass" />, across{' '}
+            <BriefFigure href="/leads?filter=mine" n={assignedLeads} label={assignedLeads === 1 ? 'open lead' : 'open leads'} tone="neutral" />.
+          </>
+        ) : (
+          <>
+            Nothing overdue. <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone={todayFollowUps ? 'brass' : 'viridian'} />{' '}
+            across <BriefFigure href="/leads?filter=mine" n={assignedLeads} label={assignedLeads === 1 ? 'open lead' : 'open leads'} tone="neutral" />.
+          </>
+        )}
+      </DayBrief>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(196px, 1fr))',
-          gap: 'var(--lf-space-4)',
-        }}
-      >
-        <MetricCard label="Assigned leads" value={assignedLeads} href="/leads?filter=mine" />
-        <MetricCard
-          label="Overdue follow-ups"
-          value={overdueFollowUps}
-          tone={overdueFollowUps ? 'vermillion' : 'viridian'}
-          href="/follow-ups?due=overdue"
-        />
-        <MetricCard
-          label="Due today"
-          value={todayFollowUps}
-          tone={todayFollowUps ? 'brass' : 'slate'}
-          href="/follow-ups?due=today"
-        />
-      </div>
+      {(overdueFollowUps > 0 || todayFollowUps > 0) && (
+        <section aria-label="What to clear first" style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}>
+          {overdueFollowUps > 0 && (
+            <LedgerRow
+              href="/follow-ups?due=overdue"
+              tone="vermillion"
+              title={`${overdueFollowUps} overdue follow-up${overdueFollowUps === 1 ? '' : 's'}`}
+              detail="promised and not yet done — these age worst"
+            />
+          )}
+          {todayFollowUps > 0 && (
+            <LedgerRow
+              href="/follow-ups?due=today"
+              tone="brass"
+              title={`${todayFollowUps} due today`}
+              detail="on time if done before the day ends"
+            />
+          )}
+        </section>
+      )}
 
       {targets.length > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}>
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-            Daily targets
+            Today&apos;s targets
           </div>
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             {targets.map((t) => {
               const achieved = t.progress[0]?.achieved ?? 0;
               const pct = Math.min(100, Math.round((achieved / t.targetValue) * 100));
@@ -117,7 +243,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
                   key={t.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '160px 1fr 80px',
+                    gridTemplateColumns: 'minmax(140px, 190px) 1fr 72px',
                     alignItems: 'center',
                     gap: 'var(--lf-space-3)',
                   }}
@@ -127,9 +253,9 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
                   </span>
                   <div
                     style={{
-                      height: 18,
+                      height: 8,
                       background: 'var(--lf-surface-2)',
-                      borderRadius: 'var(--lf-radius-sm)',
+                      borderRadius: 4,
                       overflow: 'hidden',
                     }}
                   >
@@ -137,18 +263,17 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
                       style={{
                         width: `${pct}%`,
                         height: '100%',
-                        background:
-                          pct >= 100 ? 'var(--lf-viridian)' : pct >= 50 ? 'var(--lf-brass-edge)' : 'var(--lf-wine-700)',
-                        borderRadius: 'var(--lf-radius-sm)',
+                        background: pct >= 100 ? 'var(--lf-viridian)' : 'var(--lf-wine-700)',
+                        borderRadius: 4,
                         transition: 'width 400ms ease',
                       }}
                     />
                   </div>
                   <span
                     className="lf-num"
-                    style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'right', color: 'var(--lf-ink-2)' }}
+                    style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'right', color: pct >= 100 ? 'var(--lf-viridian)' : 'var(--lf-ink-2)' }}
                   >
-                    {achieved}/{t.targetValue} ({pct}%)
+                    {achieved}/{t.targetValue}
                   </span>
                 </div>
               );
@@ -266,49 +391,53 @@ async function ManagerHome({ ctx }: { ctx: any }) {
 
   return (
     <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--lf-space-5)',
-        }}
-      >
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
-          Manager Dashboard
-        </h1>
-        <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-          Scoped to your {ctx.actor.roleKey.replace(/_/g, ' ')} visibility
-        </span>
-      </div>
+      <h1 className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+        The floor
+      </h1>
+      <DayBrief eyebrow={`${briefDate()} · scoped to your ${ctx.actor.roleKey.replace(/_/g, ' ')} visibility`}>
+        <BriefFigure href="/leads" n={total} label="leads in scope" tone="neutral" />
+        {breached > 0 && (
+          <>
+            {' — '}
+            <BriefFigure href="/leads?filter=breached" n={breached} label={breached === 1 ? 'SLA breach' : 'SLA breaches'} tone="vermillion" />
+          </>
+        )}
+        {overdue > 0 && (
+          <>
+            {breached > 0 ? ', ' : ' — '}
+            <BriefFigure href="/leads?filter=overdue" n={overdue} label="overdue" tone="brass" />
+          </>
+        )}
+        {unassigned > 0 && (
+          <>
+            {breached > 0 || overdue > 0 ? ' and ' : ' — '}
+            <BriefFigure href="/leads?filter=unassigned" n={unassigned} label="waiting for an owner" tone="neutral" />
+          </>
+        )}
+        {breached === 0 && overdue === 0 && unassigned === 0 && <>. Every lead is owned and on time.</>}
+        {(breached > 0 || overdue > 0 || unassigned > 0) && <>.</>}
+      </DayBrief>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(196px, 1fr))',
-          gap: 'var(--lf-space-4)',
-        }}
-      >
-        <MetricCard label="Leads in scope" value={total} href="/leads" />
-        <MetricCard
-          label="Unassigned"
-          value={unassigned}
-          tone={unassigned ? 'wine' : 'slate'}
-          href="/leads?filter=unassigned"
-        />
-        <MetricCard
-          label="Overdue follow-up"
-          value={overdue}
-          tone={overdue ? 'brass' : 'slate'}
-          href="/leads?filter=overdue"
-        />
-        <MetricCard
-          label="SLA breached"
-          value={breached}
-          tone={breached ? 'vermillion' : 'viridian'}
-          href="/leads?filter=breached"
-        />
-      </div>
+      {(breached > 0 || unassigned > 0) && (
+        <section aria-label="What to clear first" style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}>
+          {breached > 0 && (
+            <LedgerRow
+              href="/leads?filter=breached"
+              tone="vermillion"
+              title={`${breached} SLA breach${breached === 1 ? '' : 'es'}`}
+              detail="a promised response time has already passed"
+            />
+          )}
+          {unassigned > 0 && (
+            <LedgerRow
+              href="/leads?filter=unassigned"
+              tone="wine"
+              title={`${unassigned} unassigned lead${unassigned === 1 ? '' : 's'}`}
+              detail="nobody is working these yet — hand them out"
+            />
+          )}
+        </section>
+      )}
 
       <div
         style={{
