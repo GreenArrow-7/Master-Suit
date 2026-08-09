@@ -23,6 +23,7 @@ const EMPTY = {
   startDate: '',
   endDate: '',
   budget: '',
+  whatsappTemplate: '',
   schedule: false,
 };
 
@@ -55,6 +56,7 @@ export default function CampaignComposer() {
           ...(form.startDate ? { startDate: form.startDate } : {}),
           ...(form.endDate ? { endDate: form.endDate } : {}),
           ...(form.budget ? { budget: Number(form.budget) } : {}),
+          ...(form.whatsappTemplate ? { whatsappTemplate: form.whatsappTemplate } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -156,13 +158,37 @@ export default function CampaignComposer() {
         </div>
       </div>
 
+      {form.channel === 'WHATSAPP' && (
+        <div className="lf-field">
+          <label className="lf-label" htmlFor="c-template">
+            Approved WhatsApp template
+          </label>
+          <input
+            id="c-template"
+            className="lf-input"
+            value={form.whatsappTemplate}
+            onChange={set('whatsappTemplate')}
+            placeholder="promo_launch_v1"
+          />
+          <p className="lf-hint" style={{ margin: '4px 0 0' }}>
+            {form.schedule
+              ? 'The scheduler sends with this template when the start date arrives.'
+              : 'Optional now — you can also enter one when you press Send on the campaign page.'}
+          </p>
+        </div>
+      )}
+
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
         <input type="checkbox" checked={form.schedule} onChange={set('schedule')} disabled={!form.startDate} />
-        Mark as scheduled from the start date
+        Schedule: start automatically on the start date
       </label>
 
       <div>
-        <button className="lf-btn" type="submit" disabled={busy}>
+        <button
+          className="lf-btn"
+          type="submit"
+          disabled={busy || (form.schedule && form.channel === 'WHATSAPP' && !form.whatsappTemplate)}
+        >
           {busy ? 'Creating…' : 'Create campaign'}
         </button>
       </div>

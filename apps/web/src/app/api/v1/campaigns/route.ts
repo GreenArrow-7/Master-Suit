@@ -21,11 +21,22 @@ const createBody = z
     expectedLeads: z.coerce.number().int().min(0).optional(),
     /** DRAFT builds quietly; SCHEDULED declares intent to run from startDate. */
     status: z.enum(['DRAFT', 'SCHEDULED']).default('DRAFT'),
+    /** The approved Meta template the scheduler sends with when the start date arrives. */
+    whatsappTemplate: z.string().min(1).max(120).optional(),
+    whatsappLanguage: z.string().min(2).max(10).optional(),
   })
   .strict()
   .refine((b) => !(b.startDate && b.endDate) || b.endDate >= b.startDate, {
     message: 'The end date is before the start.',
     path: ['endDate'],
+  })
+  .refine((b) => !(b.status === 'SCHEDULED' && b.channel === 'WHATSAPP') || !!b.whatsappTemplate, {
+    message: 'A scheduled WhatsApp campaign needs the approved template it will send with.',
+    path: ['whatsappTemplate'],
+  })
+  .refine((b) => b.status !== 'SCHEDULED' || !!b.startDate, {
+    message: 'A scheduled campaign needs a start date to fire on.',
+    path: ['startDate'],
   });
 
 const slug = (name: string) =>
@@ -62,6 +73,11 @@ export const POST = route(
         expectedLeads: body.expectedLeads ?? null,
         ownerId: ctx.actor.id,
         createdById: ctx.actor.id,
+        // Read by the scheduler sweep at start time; customData so the schema
+        // does not grow a column per channel-specific setting.
+        ...(body.whatsappTemplate
+          ? { customData: { whatsappTemplate: body.whatsappTemplate, whatsappLanguage: body.whatsappLanguage ?? 'en' } }
+          : {}),
       },
       select: { id: true, name: true, code: true, status: true },
     });

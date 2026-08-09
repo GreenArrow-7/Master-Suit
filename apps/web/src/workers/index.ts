@@ -1,15 +1,16 @@
 import { logger } from '@/lib/logger';
 import { startAiWorker } from './ai';
 import { startAutomationWorker } from './automation';
+import { armCampaignScheduler, startCampaignWorker } from './campaigns';
 import { startDistributionWorker } from './distribution';
 import { startMediaWorker } from './media';
 import { startNotificationsWorker } from './notifications';
 import { startSlaWorker } from './sla';
 
 /**
- * Entry point for `npm run worker` (PROCESS_ROLE=worker). Five of the eleven
- * queues named in docs/00-ARCHITECTURE.md are wired up: automation, distribution,
- * sla, media and ai. messaging/campaign/import/export/webhook/maintenance have no
+ * Entry point for `npm run worker` (PROCESS_ROLE=worker). Wired queues:
+ * automation, distribution, sla, media, ai, notifications and campaign (the
+ * scheduled-send sweep). messaging/import/export/webhook/maintenance have no
  * consumer yet: jobs enqueued to them sit in Redis until a worker is added for
  * them, same as before this file existed.
  *
@@ -28,7 +29,12 @@ const workers = [
   // Without this the HR approval queues go back to being pull-only: the in-app
   // notification is still written, but nobody is emailed about it.
   startNotificationsWorker(),
+  // Without this a SCHEDULED campaign never fires: nothing else reads the clock.
+  startCampaignWorker(),
 ];
+
+// The once-a-minute campaign lifecycle sweep. Idempotent on restart.
+void armCampaignScheduler();
 
 for (const worker of workers) {
   worker.on('failed', (job, err) => logger.error({ err, queue: worker.name, jobId: job?.id }, 'job failed'));
