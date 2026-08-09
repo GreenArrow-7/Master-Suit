@@ -153,6 +153,19 @@ export default function WorkspaceSidebar({
         ],
       },
       {
+        label: 'Clients',
+        items: [
+          { label: 'Profiles', href: `/${slug}/sales/clients`, icon: 'contact', permission: 'clientprofiles' },
+          {
+            label: 'Testimonials',
+            href: `/${slug}/sales/clients?view=testimonials`,
+            icon: 'activity',
+            permission: 'testimonials',
+          },
+          { label: 'Referrals', href: `/${slug}/sales/clients?view=referrals`, icon: 'lead', permission: 'referrals' },
+        ],
+      },
+      {
         label: 'Engage',
         items: [
           { label: 'Calls', href: `/${slug}/sales/calls`, icon: 'call', permission: 'calls' },

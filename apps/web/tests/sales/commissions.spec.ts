@@ -78,13 +78,19 @@ beforeEach(async () => {
   await prisma.commissionSlab.deleteMany({ where: { tenantId: fixture.a.tenantId } });
 });
 
+/**
+ * One tenant at a time. `tenantId: { in: [a, b] }` is not a literal id, so the
+ * tenant guard cannot pin `app.tenant_id` for it — row-level security then
+ * matches nothing and the delete reports success having removed nothing.
+ */
 afterAll(async () => {
-  const t = { in: [fixture.a.tenantId, fixture.b.tenantId] };
-  await prisma.commission.deleteMany({ where: { tenantId: t } });
-  await prisma.booking.deleteMany({ where: { tenantId: t } });
-  await prisma.project.deleteMany({ where: { tenantId: t } });
-  await prisma.commissionSlabBand.deleteMany({ where: { tenantId: t } });
-  await prisma.commissionSlab.deleteMany({ where: { tenantId: t } });
+  for (const tenantId of [fixture.a.tenantId, fixture.b.tenantId]) {
+    await prisma.commission.deleteMany({ where: { tenantId } });
+    await prisma.booking.deleteMany({ where: { tenantId } });
+    await prisma.project.deleteMany({ where: { tenantId } });
+    await prisma.commissionSlabBand.deleteMany({ where: { tenantId } });
+    await prisma.commissionSlab.deleteMany({ where: { tenantId } });
+  }
   await fixture.cleanup();
 });
 
