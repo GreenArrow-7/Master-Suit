@@ -3,23 +3,29 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
-import { isHrAdmin } from '@/services/hr/leave';
+import { isHrAdmin, myEmployee } from '@/services/hr/leave';
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
   const base = `/api/v1/workspaces/${workspaceSlug}/hr`;
   const hr = isHrAdmin(ctx);
+  const self = hr ? null : await myEmployee(ctx);
 
+  // Non-HR viewers see the fence's name and size, never its centre — the
+  // coordinate is what a convincing GPS spoof needs — and only their own
+  // assignments, because who works where is HR data.
   const [locations, employees, assignments] = await Promise.all([
     prisma.hrWorkLocation.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { name: 'asc' } }),
-    prisma.employeeProfile.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
-      include: { membership: { include: { platformUser: true } } },
-      orderBy: { employeeNumber: 'asc' },
-    }),
+    hr
+      ? prisma.employeeProfile.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+          include: { membership: { include: { platformUser: true } } },
+          orderBy: { employeeNumber: 'asc' },
+        })
+      : [],
     prisma.hrEmployeeLocationAssignment.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, ...(hr ? {} : { employeeId: self?.id ?? '' }) },
       include: { location: true, employee: { include: { membership: { include: { platformUser: true } } } } },
       orderBy: { assignedAt: 'desc' },
       take: 200,
@@ -38,6 +44,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         </p>
       </section>
 
+      {hr && (
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Add a location</h2>
         <WorkspaceRecordForm
@@ -76,16 +83,21 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           ]}
         />
       </section>
+      )}
 
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Locations</h2>
         <WorkspaceTable
-          headers={['Location', 'Coordinates', 'Radius', 'Max GPS error', 'Hours', 'Status']}
+          headers={
+            hr
+              ? ['Location', 'Coordinates', 'Radius', 'Max GPS error', 'Hours', 'Status']
+              : ['Location', 'Radius', 'Hours', 'Status']
+          }
           rows={locations.map((location) => [
             location.name,
-            `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`,
+            ...(hr ? [`${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`] : []),
             `${location.radiusMeters} m`,
-            `${location.maxAccuracyMeters} m`,
+            ...(hr ? [`${location.maxAccuracyMeters} m`] : []),
             location.openingTime && location.closingTime ? `${location.openingTime}–${location.closingTime}` : 'Any',
             <span className="lf-badge" key="s">
               {location.status}

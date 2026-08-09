@@ -822,6 +822,10 @@ export async function myPunches(ctx: Ctx, limit = 30) {
   return prisma.hrAttendancePunch.findMany({
     where: { tenantId: ctx.tenantId, employeeId: employee.id },
     include: { location: { select: { name: true } } },
+    // The snapshot columns hold the fence centre in force at punch time — HR
+    // evidence, not the employee's to read. A rejected punch would otherwise
+    // hand back the exact coordinate a spoofed retry needs.
+    omit: { locLatitude: true, locLongitude: true, capturePath: true },
     orderBy: { serverTime: 'desc' },
     take: Math.min(limit, 200),
   });

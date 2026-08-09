@@ -4,6 +4,7 @@ import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
+import { audit } from '@/lib/security/audit';
 import { applyForLeave, balancesFor, myEmployee, teamCalendar } from '@/services/hr/leave';
 import { isApprover, isAttendanceApprover, isHrAdmin, mayReadAllEmployees } from '@/services/hr/access';
 import { checklistFor, expiringDocuments, lifecycleDashboard, settlementFor } from '@/services/hr/lifecycle';
@@ -169,7 +170,10 @@ export const GET = route(
       case 'attendance':
         return prisma.hrAttendanceRecord.findMany({
           where: { tenantId: ctx.tenantId, ...(await attendanceScope(ctx)) },
-          include: { employee: EMPLOYEE_WITH_PERSON, location: true },
+          include: {
+            employee: EMPLOYEE_WITH_PERSON,
+            location: isHrAdmin(ctx) ? true : { select: LOCATION_PUBLIC_SELECT },
+          },
           orderBy: { workDate: 'desc' },
           take: 100,
         });
@@ -189,8 +193,17 @@ export const GET = route(
       // everyone, everyone else sees only their own.
       case 'documents':
         return listDocuments(ctx, query.employeeId);
+      // The centre coordinate is exactly what a convincing GPS spoof needs, so
+      // it never leaves the server for anyone below HR: employees get the
+      // fence's name and size, never where it is.
       case 'work-locations':
-        return prisma.hrWorkLocation.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { name: 'asc' } });
+        return isHrAdmin(ctx)
+          ? prisma.hrWorkLocation.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { name: 'asc' } })
+          : prisma.hrWorkLocation.findMany({
+              where: { tenantId: ctx.tenantId },
+              orderBy: { name: 'asc' },
+              select: LOCATION_PUBLIC_SELECT,
+            });
 
       case 'leave-types':
         return prisma.hrLeaveType.findMany({
@@ -351,19 +364,49 @@ export const GET = route(
       case 'exception-reasons':
         return EXCEPTION_REASONS;
 
-      case 'location-assignments':
+      // Who works where is HR data; everyone else sees only their own
+      // assignments, and never the fence coordinates inside them.
+      case 'location-assignments': {
+        const hr = isHrAdmin(ctx);
+        const employeeId = hr ? query.employeeId : ((await myEmployee(ctx))?.id ?? '');
         return prisma.hrEmployeeLocationAssignment.findMany({
           where: {
             tenantId: ctx.tenantId,
-            ...(query.employeeId ? { employeeId: query.employeeId } : {}),
+            ...(employeeId ? { employeeId } : {}),
             ...(query.locationId ? { locationId: query.locationId } : {}),
           },
-          include: { location: true, employee: EMPLOYEE_WITH_PERSON },
+          include: {
+            location: hr ? true : { select: LOCATION_PUBLIC_SELECT },
+            employee: EMPLOYEE_WITH_PERSON,
+          },
           orderBy: { assignedAt: 'desc' },
         });
+      }
     }
   },
 );
+
+/**
+ * What a non-administrator may see of a work location: the fence's name and
+ * size, never its centre. Latitude, longitude, address and notes stay
+ * server-side — knowing the centre is exactly what a convincing GPS spoof
+ * needs, and the punch flow never needed them client-side to begin with.
+ */
+const LOCATION_PUBLIC_SELECT = {
+  id: true,
+  name: true,
+  code: true,
+  locationType: true,
+  emirate: true,
+  radiusMeters: true,
+  maxAccuracyMeters: true,
+  openingTime: true,
+  closingTime: true,
+  workingDays: true,
+  status: true,
+  effectiveFrom: true,
+  effectiveTo: true,
+} as const;
 
 /** The employee whose record is being read: your own unless you may see others'. */
 async function resolveEmployeeId(ctx: Ctx, requested?: string) {
@@ -788,10 +831,39 @@ export const PATCH = route(
               .optional(),
             workingDays: z.array(z.coerce.number().int().min(0).max(6)).optional(),
             status: z.enum(['DRAFT', 'ACTIVE', 'RETIRED']).optional(),
+            changeReason: z.string().max(240).optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrWorkLocation, ctx.tenantId, id);
-        return prisma.hrWorkLocation.update({ where: { tenantId: ctx.tenantId, id }, data: input });
+        const { changeReason, ...data } = input;
+        const existing = await prisma.hrWorkLocation.findFirst({ where: { tenantId: ctx.tenantId, id } });
+        if (!existing) throw NotFound('Record');
+
+        // Attendance is judged against this fence, so moving or resizing a live
+        // one is a decision someone must own in writing. Punches snapshot the
+        // geometry they were judged against, so history is safe either way —
+        // this is about the next punch, not the last.
+        const geometryChanged =
+          (data.latitude !== undefined && data.latitude !== existing.latitude) ||
+          (data.longitude !== undefined && data.longitude !== existing.longitude) ||
+          (data.radiusMeters !== undefined && data.radiusMeters !== existing.radiusMeters);
+        if (existing.status === 'ACTIVE' && geometryChanged && !changeReason?.trim()) {
+          throw Conflict("Changing an active location's coordinates or radius requires a written reason.");
+        }
+        const updated = await prisma.hrWorkLocation.update({ where: { tenantId: ctx.tenantId, id }, data });
+        if (geometryChanged) {
+          await audit(ctx, {
+            event: 'RECORD_UPDATED',
+            objectType: 'hr_work_location',
+            recordId: id,
+            metadata: {
+              action: 'location.geometry',
+              before: { lat: existing.latitude, lng: existing.longitude, radiusM: existing.radiusMeters },
+              after: { lat: updated.latitude, lng: updated.longitude, radiusM: updated.radiusMeters },
+              reason: changeReason?.trim() || null,
+            },
+          });
+        }
+        return updated;
       }
 
       case 'leave-types': {

@@ -3,22 +3,29 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
-import { isHrAdmin } from '@/services/hr/leave';
+import { isHrAdmin, myEmployee } from '@/services/hr/leave';
+import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access';
 import { reviewQueue } from '@/services/hr/attendance';
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
   const hr = isHrAdmin(ctx);
+  // Same scope the API route enforces: attendance is a record of where a named
+  // person was and when, so without the wider authority you see only your own.
+  const seesAll = mayReadAllEmployees(ctx) || isAttendanceApprover(ctx);
+  const self = seesAll ? null : await myEmployee(ctx);
 
   const [employees, records, review] = await Promise.all([
-    prisma.employeeProfile.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null },
-      include: { membership: { include: { platformUser: true } } },
-      orderBy: { employeeNumber: 'asc' },
-    }),
+    seesAll
+      ? prisma.employeeProfile.findMany({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+          include: { membership: { include: { platformUser: true } } },
+          orderBy: { employeeNumber: 'asc' },
+        })
+      : [],
     prisma.hrAttendanceRecord.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, ...(seesAll ? {} : { employeeId: self?.id ?? '' }) },
       include: { employee: { include: { membership: { include: { platformUser: true } } } }, location: true },
       orderBy: { workDate: 'desc' },
       take: 100,
@@ -62,6 +69,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         </section>
       )}
 
+      {seesAll && (
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Record attendance manually</h2>
         <WorkspaceRecordForm
@@ -92,6 +100,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           ]}
         />
       </section>
+      )}
 
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Daily record</h2>
