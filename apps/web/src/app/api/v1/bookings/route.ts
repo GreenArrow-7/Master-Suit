@@ -156,9 +156,25 @@ export const PATCH = route(
 
       if (body.action === 'CONFIRM') {
         if (booking.status !== 'DRAFT') throw bad(`A ${booking.status.toLowerCase()} booking cannot be confirmed.`);
+
+        // Where the agent sits *now*, copied onto the sale. Read back through
+        // their current team instead and a transfer moves last quarter's
+        // revenue to a team that did not earn it.
+        const owner = await tx.user.findFirst({
+          where: { id: booking.ownerId, tenantId: ctx.tenantId },
+          select: { branchId: true, regionId: true, teams: { select: { teamId: true }, take: 1 } },
+        });
+
         return tx.booking.update({
           where: { id: booking.id, tenantId: ctx.tenantId },
-          data: { status: 'CONFIRMED', agreementDate: body.agreementDate, updatedById: ctx.actor.id },
+          data: {
+            status: 'CONFIRMED',
+            agreementDate: body.agreementDate,
+            teamId: owner?.teams[0]?.teamId ?? null,
+            branchId: owner?.branchId ?? null,
+            regionId: owner?.regionId ?? null,
+            updatedById: ctx.actor.id,
+          },
           select: LIST_SELECT,
         });
       }

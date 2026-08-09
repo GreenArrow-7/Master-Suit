@@ -216,6 +216,7 @@ export default function WorkspaceSidebar({
       {
         label: 'Insight',
         items: [
+          { label: 'Leadership', href: `/${slug}/sales/leadership`, icon: 'report', permission: 'reports' },
           { label: 'Reports', href: `/${slug}/sales/reports`, icon: 'report', permission: 'reports' },
           { label: 'Dashboards', href: `/${slug}/sales/dashboards`, icon: 'report', permission: 'dashboards' },
           { label: 'Call audits', href: `/${slug}/sales/call-audits`, icon: 'shield', permission: 'calls' },
