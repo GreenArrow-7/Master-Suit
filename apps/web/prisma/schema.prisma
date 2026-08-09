@@ -5920,3 +5920,255 @@ model Payout {
   @@index([tenantId, userId, status])
   @@index([tenantId, status, periodEnd])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Client profiling (M3)
+//
+// The requirement — budget, locations, type, timeline — already existed, because
+// the demand check needed it. This is the rest: who the buyer is, what they say
+// about you afterwards, and who they send next.
+//
+// Two decisions worth stating. Income and investment capacity are Decimal pairs
+// with a currency rather than an enum of bands, because a fixed band ladder is
+// wrong in the second market you sell in and an enum cannot be changed without a
+// migration; a pair of numbers expresses any band a workspace wants to offer.
+// And employer, job title and industry are not repeated here — they are already
+// on Lead, and a profile that disagrees with the lead record is worse than one
+// that does not answer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum EmploymentType {
+  SALARIED
+  SELF_EMPLOYED
+  BUSINESS_OWNER
+  PROFESSIONAL
+  RETIRED
+  STUDENT
+  NOT_WORKING
+  UNDISCLOSED
+}
+
+enum EducationLevel {
+  SCHOOL
+  DIPLOMA
+  BACHELORS
+  MASTERS
+  DOCTORATE
+  OTHER
+  UNDISCLOSED
+}
+
+/// Why they are buying. Drives what you show them far more than budget does:
+/// an investor wants yield and exit, an end user wants the school run.
+enum PurchaseIntent {
+  END_USE
+  INVESTMENT
+  BOTH
+  UNDECIDED
+}
+
+/// Who the buyer is.
+///
+/// Every field is optional on purpose: the profile is filled in over several
+/// conversations, not one form, and a wizard that refuses to save until it knows
+/// somebody's education simply does not get filled in. Completeness is derived
+/// from what is answered rather than stored, so it cannot drift from the row.
+model ClientProfile {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A buyer is a Lead before they are a Contact and the profile follows the
+  /// person, exactly as ClientRequirement does. The migration enforces one.
+  leadId    String?
+  contactId String?
+
+  profession     String?
+  employmentType EmploymentType?
+  education      EducationLevel?
+  /// ISO codes, matching User.languages. What you can actually sell them in.
+  languages      String[]        @default([])
+
+  purchaseIntent PurchaseIntent @default(UNDECIDED)
+
+  /// A band, expressed as its edges. Either may stand alone: "over 500k" is a
+  /// minimum with no maximum, and that is a real answer.
+  annualIncomeMin    Decimal? @db.Decimal(18, 2)
+  annualIncomeMax    Decimal? @db.Decimal(18, 2)
+  /// What they can actually put in, which is not their income.
+  investmentCapacity Decimal? @db.Decimal(18, 2)
+  currency           String   @default("AED")
+
+  /// Where the money comes from — mortgage pre-approval changes the timeline.
+  isMortgageRequired  Boolean?
+  mortgagePreApproved Boolean?
+
+  nationality     String?
+  residencyStatus String?
+
+  notes   String?
+  ownerId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, purchaseIntent])
+  @@index([tenantId, ownerId])
+}
+
+enum TestimonialStatus {
+  /// Asked for, not yet written.
+  REQUESTED
+  /// The client wrote it. Nobody has read it yet.
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+  /// They said no, or it was not usable. Kept, because asking again next quarter
+  /// after somebody declined is how you lose a client.
+  DECLINED
+}
+
+/// What a client says about you.
+///
+/// Requested, written by them over a signed link, then read by somebody before
+/// it goes anywhere. Approval and publication are separate states because they
+/// are separate decisions: "this is not embarrassing" is not "put it on the
+/// website under their full name".
+model Testimonial {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leadId    String?
+  contactId String?
+
+  status TestimonialStatus @default(REQUESTED)
+
+  requestedById  String
+  requestedAt    DateTime @default(now())
+  /// What the agent asked for, shown to the client on the public page.
+  requestMessage String?
+
+  /// 1–5. Constrained in the database; a 7-star review is a bug, not an opinion.
+  rating      Int?
+  body        String?
+  submittedAt DateTime?
+
+  /// Their words on a public page carries their name with it. Recorded from the
+  /// public form, never set by staff.
+  consentToPublish Boolean @default(false)
+  /// What they want to be called in public, if not their full name.
+  displayName      String?
+
+  approvedById  String?
+  approvedAt    DateTime?
+  publishedAt   DateTime?
+  declinedAt    DateTime?
+  declineReason String?
+
+  ownerId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([tenantId, status, requestedAt(sort: Desc)])
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, ownerId, status])
+}
+
+enum ReferralStatus {
+  /// The code was used; this is a new lead nobody has worked yet.
+  PENDING
+  QUALIFIED
+  CONVERTED
+  REJECTED
+}
+
+/// A client's referral code.
+///
+/// Issuing one is the referral request: there is no separate "asked" record,
+/// because a code that exists is an ask that happened. Short and typeable
+/// because it gets read aloud and forwarded on WhatsApp, which rules out the
+/// signed token used for testimonial links.
+model ReferralCode {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code String
+
+  leadId    String?
+  contactId String?
+
+  issuedById String
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime?
+  isActive   Boolean   @default(true)
+
+  /// A code somebody can hand to the whole street costs you every commission on
+  /// the street. Null means no ceiling.
+  maxUses Int?
+
+  ownerId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  deletedAt   DateTime?
+
+  referrals Referral[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, isActive, expiresAt])
+}
+
+/// One person, sent by another.
+///
+/// Separate from a column on Lead because a referral outlives the lead's own
+/// status: it has to stay attributable after the lead converts, is merged, or is
+/// rejected, and somebody eventually gets paid on it.
+model Referral {
+  id       String @id @default(cuid())
+  tenantId String
+
+  codeId         String
+  /// The lead the referral produced. One referral per lead — the partial unique
+  /// index says so, because two agents both claiming to have introduced the same
+  /// buyer is a commission dispute.
+  referredLeadId String
+
+  status ReferralStatus @default(PENDING)
+
+  /// Frozen at redemption. The code may later be deactivated or reassigned, and
+  /// that must not restate who introduced whom.
+  referrerLeadId    String?
+  referrerContactId String?
+
+  qualifiedAt  DateTime?
+  convertedAt  DateTime?
+  rejectedAt   DateTime?
+  rejectReason String?
+
+  notes String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  code ReferralCode @relation(fields: [codeId], references: [id])
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@index([tenantId, codeId])
+  @@index([tenantId, referrerLeadId])
+  @@index([tenantId, referrerContactId])
+}
