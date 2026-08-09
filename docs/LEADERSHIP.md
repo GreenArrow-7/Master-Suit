@@ -117,12 +117,21 @@ npx vitest run tests/sales/leadership.spec.ts
 
 - **A Playwright happy path.** §7 asks for one per module; this module has none
   yet.
-- **CSV export of the rollups.** §4 wants every list exportable. The route
-  returns JSON only.
-- **The existing `/sales/reports` page is still a stub** — a menu of a dozen
-  report cards linking to `?report=…`, which nothing handles. It predates this
-  module and was left alone; the real numbers live at `/sales/leadership`.
-  Rewiring those cards is worth doing and is not M10.
+- **CSV export of the leadership rollups.** §4 wants every list exportable. The
+  `/api/v1/leadership` route returns JSON only. The report menu *does* export —
+  see below.
+
+## The report menu
+
+`/sales/reports` was a menu of ten cards linking to `?report=…` with nothing
+handling the parameter, and to a path missing the workspace slug — so it
+advertised ten reports and delivered a 404 twice over. All ten are now answered
+from data these modules already record, in `src/services/leadership/reports.ts`,
+and exported as CSV from `/api/v1/reports?format=csv`.
+
+Every report returns the same `{ columns, rows }` shape deliberately: ten
+bespoke renderers is ten places to get alignment, empty states and CSV escaping
+subtly different.
 - **Region and branch P&L are implemented but unexercised** — the demo workspace
   has no regions or branches configured, so only the team grouping has been run
   against real data.
