@@ -6405,3 +6405,52 @@ model NominationVote {
   @@unique([eventId, category, voterId])
   @@index([tenantId, nominationId])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lead allocation (M7 tail)
+//
+// Allocation itself needs no new table: leads have an owner, User already
+// carries the quota and capacity columns, and LeadAssignmentHistory already
+// records who moved what and why. Those quota columns had never been read by
+// anything — DistributionRule advertises `respectQuotas` and the assigner
+// ignored it — so the work here is enforcement, not schema.
+//
+// The one genuinely new record is an agent asking for more work.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AllocationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Withdrawn by the person who asked.
+  CANCELLED
+}
+
+/// "I have run out of leads."
+///
+/// Approving one allocates immediately, in the same transaction, so a request
+/// cannot sit approved with nothing handed over.
+model AllocationRequest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  requesterId String
+  /// How many they asked for. What they actually got is `allocatedCount`,
+  /// which is smaller whenever the pool or their quota ran out first.
+  requested   Int
+  reason      String?
+
+  status AllocationRequestStatus @default(PENDING)
+
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  allocatedCount Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, requesterId, status])
+}
