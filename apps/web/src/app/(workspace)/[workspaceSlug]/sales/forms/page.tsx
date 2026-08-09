@@ -1,9 +1,11 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/security/rbac';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
+import { FormComposer, FormRowActions } from './FormAdmin';
 
 export const metadata = { title: 'Forms' };
 
@@ -20,9 +22,17 @@ const TABS = [
   ['Archived', 'ARCHIVED'],
 ] as const;
 
-export default async function FormsPage({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
+export default async function FormsPage({
+  params: routeParams,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ state?: string }>;
+}) {
   const params = await searchParams;
+  const { workspaceSlug } = await routeParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['forms', 'VIEW'] });
+  const canEdit = can(ctx, 'forms', 'CREATE') || can(ctx, 'forms', 'MANAGE_CONFIGURATION');
 
   const stateFilter =
     params.state && ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'].includes(params.state)
@@ -51,9 +61,10 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
         title="Forms"
         description={
           <>
-            {rows.length} form{rows.length === 1 ? '' : 's'}
+            {rows.length} form{rows.length === 1 ? '' : 's'} · every submission becomes a lead
           </>
         }
+        actions={canEdit && <FormComposer />}
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="State filter">
@@ -87,6 +98,7 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
                 <th>Public</th>
                 <th>State</th>
                 <th>Created</th>
+                {canEdit && <th aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
@@ -110,6 +122,11 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
                       year: 'numeric',
                     })}
                   </td>
+                  {canEdit && (
+                    <td>
+                      <FormRowActions id={r.id} formKey={r.key} state={r.state} workspaceSlug={workspaceSlug} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

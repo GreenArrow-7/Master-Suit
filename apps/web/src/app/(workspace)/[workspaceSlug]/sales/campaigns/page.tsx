@@ -6,6 +6,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import { columnsFor } from '@/lib/grid/resolve';
+import CampaignComposer from './CampaignComposer';
 
 export const metadata = { title: 'Campaigns' };
 
@@ -39,9 +40,12 @@ export default async function CampaignsPage() {
         title="Campaigns"
         count={rows.length}
         actions={
-          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-            <ColumnEditor object="CAMPAIGN" current={columns.map((c) => c.key)} />
-          )
+          <>
+            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+              <ColumnEditor object="CAMPAIGN" current={columns.map((c) => c.key)} />
+            )}
+            {can(ctx, 'campaigns', 'CREATE') && <CampaignComposer />}
+          </>
         }
       />
 

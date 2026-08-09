@@ -1,9 +1,11 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/security/rbac';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
+import { LandingComposer, LandingRowActions } from './LandingAdmin';
 
 export const metadata = { title: 'Landing Pages' };
 
@@ -19,31 +21,48 @@ const TABS = [
   ['Draft', 'DRAFT'],
 ] as const;
 
-export default async function LandingPagesPage({ searchParams }: { searchParams: Promise<{ state?: string }> }) {
+export default async function LandingPagesPage({
+  params: routeParams,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ state?: string }>;
+}) {
   const params = await searchParams;
+  const { workspaceSlug } = await routeParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['landingpages', 'VIEW'] });
+  const canEdit = can(ctx, 'landingpages', 'CREATE') || can(ctx, 'landingpages', 'MANAGE_CONFIGURATION');
 
   const stateFilter =
     params.state && ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'].includes(params.state)
       ? { state: params.state as any }
       : {};
 
-  const rows = await prisma.landingPage.findMany({
-    where: { tenantId: ctx.tenantId, deletedAt: null, ...stateFilter },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      state: true,
-      customDomain: true,
-      visitCount: true,
-      submissionCount: true,
-      publishedAt: true,
-      createdAt: true,
-    },
-    take: 50,
-  });
+  const [rows, forms] = await Promise.all([
+    prisma.landingPage.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null, ...stateFilter },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        state: true,
+        customDomain: true,
+        visitCount: true,
+        submissionCount: true,
+        publishedAt: true,
+        createdAt: true,
+      },
+      take: 50,
+    }),
+    canEdit
+      ? prisma.form.findMany({
+          where: { tenantId: ctx.tenantId, state: 'PUBLISHED', deletedAt: null },
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <>
@@ -54,6 +73,7 @@ export default async function LandingPagesPage({ searchParams }: { searchParams:
             {rows.length} page{rows.length === 1 ? '' : 's'}
           </>
         }
+        actions={canEdit && <LandingComposer forms={forms} />}
       />
 
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="State filter">
@@ -90,6 +110,7 @@ export default async function LandingPagesPage({ searchParams }: { searchParams:
                 <th>Conv. Rate</th>
                 <th>State</th>
                 <th>Published</th>
+                {canEdit && <th aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
@@ -117,6 +138,11 @@ export default async function LandingPagesPage({ searchParams }: { searchParams:
                           })
                         : '—'}
                     </td>
+                    {canEdit && (
+                      <td>
+                        <LandingRowActions id={r.id} slug={r.slug} state={r.state} workspaceSlug={workspaceSlug} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}

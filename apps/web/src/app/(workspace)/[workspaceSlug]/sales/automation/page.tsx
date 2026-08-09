@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
+import { AutomationComposer, AutomationRowActions } from './AutomationAdmin';
 
 export const metadata = { title: 'Automation' };
 
@@ -19,12 +20,29 @@ export default async function AutomationPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['automation', 'VIEW'] });
   if (!can(ctx, 'automation', 'VIEW')) redirect('/home');
 
-  const rows = await prisma.automation.findMany({
-    where: { tenantId: ctx.tenantId },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, objectType: true, state: true, createdAt: true },
-    take: 100,
-  });
+  const canManage = can(ctx, 'automation', 'MANAGE_AUTOMATION');
+  const [rows, taskTypes] = await Promise.all([
+    prisma.automation.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        objectType: true,
+        state: true,
+        createdAt: true,
+        _count: { select: { enrollments: true } },
+      },
+      take: 100,
+    }),
+    canManage
+      ? prisma.taskType.findMany({
+          where: { tenantId: ctx.tenantId, isActive: true },
+          orderBy: { name: 'asc' },
+          select: { key: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <>
@@ -32,9 +50,10 @@ export default async function AutomationPage() {
         title="Automation"
         description={
           <>
-            {rows.length} rule{rows.length === 1 ? '' : 's'}
+            {rows.length} rule{rows.length === 1 ? '' : 's'} · runs when records are created or updated
           </>
         }
+        actions={canManage && <AutomationComposer taskTypeKeys={taskTypes.map((t) => t.key)} />}
       />
 
       {rows.length === 0 ? (
@@ -51,8 +70,10 @@ export default async function AutomationPage() {
               <tr>
                 <th>Name</th>
                 <th>Object Type</th>
+                <th>Enrolled</th>
                 <th>State</th>
                 <th>Created</th>
+                {canManage && <th aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
@@ -60,6 +81,7 @@ export default async function AutomationPage() {
                 <tr key={r.id}>
                   <td style={{ fontWeight: 500 }}>{r.name}</td>
                   <td style={{ color: 'var(--lf-ink-2)' }}>{r.objectType}</td>
+                  <td style={{ textAlign: 'center' }}>{r._count.enrollments}</td>
                   <td>
                     <Badge tone={STATE_TONE[r.state] ?? 'slate'}>{r.state.toLowerCase()}</Badge>
                   </td>
@@ -70,6 +92,11 @@ export default async function AutomationPage() {
                       year: 'numeric',
                     })}
                   </td>
+                  {canManage && (
+                    <td style={{ textAlign: 'right' }}>
+                      <AutomationRowActions id={r.id} state={r.state} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

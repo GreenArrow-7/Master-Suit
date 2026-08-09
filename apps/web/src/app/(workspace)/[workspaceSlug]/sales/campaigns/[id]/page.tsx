@@ -5,6 +5,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import { can } from '@/lib/security/rbac';
 import SalesLink from '@/components/workspace/SalesLink';
 import CampaignSend from './CampaignSend';
+import AudiencePicker from './AudiencePicker';
 
 export const metadata = { title: 'Campaign Detail' };
 
@@ -47,6 +48,16 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
   ]);
 
   if (!campaign) notFound();
+
+  // What actually reached people, by outcome — the campaign's scoreboard.
+  const deliveryRows = await prisma.communication.groupBy({
+    by: ['status'],
+    where: { tenantId: ctx.tenantId, campaignId: campaign.id },
+    _count: { _all: true },
+  });
+  const delivery = Object.fromEntries(deliveryRows.map((row) => [row.status, row._count._all]));
+  const delivered = (delivery.DELIVERED ?? 0) + (delivery.READ ?? 0);
+  const attempted = deliveryRows.reduce((sum, row) => sum + row._count._all, 0);
 
   // Mirrors the server-side eligibility rule in /api/v1/campaigns/[id]/send so the
   // button never promises to reach leads that consent will exclude.
@@ -91,7 +102,37 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
         </div>
       </div>
 
-      {can(ctx, 'campaigns', 'EDIT') && <CampaignSend campaignId={campaign.id} eligible={eligible} />}
+      {can(ctx, 'campaigns', 'EDIT') && (
+        <div style={{ display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-5)' }}>
+          <CampaignSend campaignId={campaign.id} eligible={eligible} />
+          <AudiencePicker campaignId={campaign.id} />
+        </div>
+      )}
+
+      {attempted > 0 && (
+        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginBottom: 'var(--lf-space-5)' }}>
+          <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+            Delivery
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--lf-space-5)', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}>
+            <span>
+              <strong className="lf-num">{attempted}</strong> attempted
+            </span>
+            <span>
+              <strong className="lf-num">{delivery.SENT ?? 0}</strong> sent
+            </span>
+            <span>
+              <strong className="lf-num">{delivered}</strong> delivered or read
+            </span>
+            <span>
+              <strong className="lf-num">{delivery.REPLIED ?? 0}</strong> replied
+            </span>
+            <span style={{ color: (delivery.FAILED ?? 0) > 0 ? 'var(--lf-vermillion, #b3261e)' : undefined }}>
+              <strong className="lf-num">{delivery.FAILED ?? 0}</strong> failed
+            </span>
+          </div>
+        </section>
+      )}
 
       {/* Metrics row */}
       <div
