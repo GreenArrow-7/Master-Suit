@@ -6185,3 +6185,223 @@ model Referral {
   @@index([tenantId, referrerLeadId])
   @@index([tenantId, referrerContactId])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Engagement (M11)
+//
+// The last module, and the one with the least new machinery under it. RSVP to an
+// offsite already works: `EventInvitee` carries a `userId`, so an event can
+// invite staff and they answer through the same signed link a client does.
+// Contest standings are the ranking M10 already computes. What is genuinely new
+// is a place to post, a contest to freeze the result of, and a way to nominate
+// and vote.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PostKind {
+  UPDATE
+  ANNOUNCEMENT
+  CELEBRATION
+  QUESTION
+}
+
+/// Something somebody said to the whole workspace.
+///
+/// Media is either an object in our bucket or a link, never both. The listings
+/// rule that videos are always linked does not apply here: an internal clip is
+/// filmed on somebody's phone and belongs behind our own access control, not on
+/// a vendor's platform.
+model Post {
+  id       String @id @default(cuid())
+  tenantId String
+
+  authorId String
+  kind     PostKind @default(UPDATE)
+  body     String
+
+  /// Uploaded to our bucket. Exclusive with videoUrl.
+  videoKey  String?
+  /// Linked from wherever it already lives. Exclusive with videoKey.
+  videoUrl  String?
+  /// Still frame, so a feed does not have to load every clip to render.
+  posterKey String?
+
+  /// Kept at the top of the feed. Leadership announcements outlive the hour
+  /// they were posted in.
+  isPinned Boolean @default(false)
+
+  /// Taken down rather than erased: moderation that leaves no trace is
+  /// indistinguishable from a bug, and the author is owed a reason.
+  hiddenAt     DateTime?
+  hiddenById   String?
+  hiddenReason String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  reactions PostReaction[]
+
+  @@index([tenantId, isPinned, createdAt(sort: Desc)])
+  @@index([tenantId, authorId, createdAt(sort: Desc)])
+}
+
+enum ReactionKind {
+  LIKE
+  CELEBRATE
+  SUPPORT
+  INSIGHTFUL
+}
+
+/// One person's reaction to one post. Changing your mind updates the row rather
+/// than adding a second, which the unique index enforces.
+model PostReaction {
+  id       String @id @default(cuid())
+  tenantId String
+
+  postId String
+  userId String
+  kind   ReactionKind @default(LIKE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([tenantId, postId])
+}
+
+enum ContestStatus {
+  DRAFT
+  /// Running. Standings are live and change as the underlying work does.
+  OPEN
+  /// Finished. Standings are frozen and no longer recomputed.
+  CLOSED
+  CANCELLED
+}
+
+/// A time-boxed leaderboard over one metric.
+///
+/// The metric names a rollup that already exists rather than a formula stored
+/// here, because a contest that computes its own numbers is a second answer to
+/// "who sold the most" and the two will disagree.
+model Contest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String
+  description String?
+  /// One of the leaderboard metrics in services/leadership/rollups.
+  metric      String
+  status      ContestStatus @default(DRAFT)
+
+  startAt DateTime
+  endAt   DateTime
+
+  /// Null means the whole workspace competes.
+  teamId String?
+
+  prize String?
+
+  closedAt   DateTime?
+  closedById String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  standings ContestStanding[]
+
+  @@index([tenantId, status, endAt])
+  @@index([tenantId, teamId])
+}
+
+/// The result, written once when the contest closes.
+///
+/// Frozen deliberately. A booking cancelled in March must not silently change
+/// who won February — the same reasoning as the commission snapshot and the
+/// booking's frozen team.
+model ContestStanding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  contestId String
+  userId    String
+  rank      Int
+  /// The metric's value at close, as a string so an integer count and a money
+  /// total can share one column without either being rounded into the other.
+  value     String
+
+  createdAt DateTime @default(now())
+
+  contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+
+  @@unique([contestId, userId])
+  @@index([tenantId, contestId, rank])
+}
+
+enum NominationStatus {
+  /// Put forward, open for votes.
+  OPEN
+  WITHDRAWN
+  /// The category closed and this one had the most votes.
+  WON
+}
+
+/// Somebody put forward for something, usually at an offsite.
+///
+/// Hangs off an Event because that is where the award is given and where the
+/// RSVP already lives. `category` is free text rather than an enum: every
+/// company's awards are different and an enum would need a migration each time
+/// somebody invents "Best Newcomer".
+model Nomination {
+  id       String @id @default(cuid())
+  tenantId String
+
+  eventId  String
+  category String
+
+  nomineeId     String
+  nominatedById String
+  reason        String?
+
+  status NominationStatus @default(OPEN)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedById String?
+  deletedAt   DateTime?
+
+  votes NominationVote[]
+
+  /// The same person cannot be put forward twice in one category at one event.
+  @@unique([eventId, category, nomineeId])
+  @@index([tenantId, eventId, category])
+  @@index([tenantId, nomineeId])
+}
+
+/// One vote. The unique index is per category, not per nomination, so somebody
+/// cannot vote for every nominee in the same category.
+model NominationVote {
+  id       String @id @default(cuid())
+  tenantId String
+
+  nominationId String
+  /// Copied from the nomination so the one-vote-per-category rule can be an
+  /// index rather than a query somebody has to remember to run.
+  eventId      String
+  category     String
+
+  voterId String
+
+  createdAt DateTime @default(now())
+
+  nomination Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, category, voterId])
+  @@index([tenantId, nominationId])
+}
