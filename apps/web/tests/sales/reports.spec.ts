@@ -114,34 +114,49 @@ describe('csv export', () => {
     rows,
   });
 
+  /** Everything is quoted, so a row is predictable regardless of its content. */
+  const BOM = '\ufeff';
+  const HEAD = BOM + '"Source","Leads"\r\n';
+
   it('writes a header and one line per row', () => {
-    const csv = toCsv(report([{ a: 'web', b: 3 }]));
-    expect(csv).toBe('Source,Leads\r\nweb,3');
+    expect(toCsv(report([{ a: 'web', b: 3 }]))).toBe(HEAD + '"web","3"\r\n');
+  });
+
+  it('leads with a byte-order mark so Excel reads UTF-8', () => {
+    // Without it every non-ASCII name arrives mangled in the local codepage.
+    expect(toCsv(report([{ a: 'Dubai', b: 1 }])).startsWith(BOM)).toBe(true);
+  });
+
+  it('neutralises a cell that a spreadsheet would execute', () => {
+    // =HYPERLINK("http://...") in a lead's name is a phishing link that arrives
+    // inside your own export. Excel and Sheets strip the leading apostrophe on
+    // display, so the value still reads correctly.
+    for (const dangerous of ['=HYPERLINK("http://evil")', '@SUM(A1)', '-2+3+cmd']) {
+      expect(toCsv(report([{ a: dangerous, b: 1 }]))).toContain('"\'' + dangerous.replace(/"/g, '""') + '"');
+    }
+    // A plain negative is a number, not an attack — prefixing it would stop a
+    // money column summing in Excel.
+    expect(toCsv(report([{ a: '-82500', b: 1 }]))).toContain('"-82500"');
   });
 
   it('quotes a value containing a comma', () => {
     // Otherwise every column after it shifts one to the left, silently.
-    const csv = toCsv(report([{ a: 'Dubai, Marina', b: 2 }]));
-    expect(csv).toBe('Source,Leads\r\n"Dubai, Marina",2');
+    expect(toCsv(report([{ a: 'Dubai, Marina', b: 2 }]))).toBe(HEAD + '"Dubai, Marina","2"\r\n');
   });
 
   it('doubles an embedded quote', () => {
-    const csv = toCsv(report([{ a: 'the "good" ones', b: 1 }]));
-    expect(csv).toBe('Source,Leads\r\n"the ""good"" ones",1');
+    expect(toCsv(report([{ a: 'the "good" ones', b: 1 }]))).toBe(HEAD + '"the ""good"" ones","1"\r\n');
   });
 
   it('quotes a value containing a newline', () => {
-    const csv = toCsv(report([{ a: 'two\nlines', b: 1 }]));
-    expect(csv).toBe('Source,Leads\r\n"two\nlines",1');
+    expect(toCsv(report([{ a: 'two\nlines', b: 1 }]))).toBe(HEAD + '"two\nlines","1"\r\n');
   });
 
-  it('writes an unknown as empty rather than the word null', () => {
-    const csv = toCsv(report([{ a: 'web', b: null }]));
-    expect(csv).toBe('Source,Leads\r\nweb,');
+  it('writes an unknown as an empty cell rather than the word null', () => {
+    expect(toCsv(report([{ a: 'web', b: null }]))).toBe(HEAD + '"web",""\r\n');
   });
 
   it('emits only the declared columns, in order', () => {
-    const csv = toCsv(report([{ b: 9, a: 'web', ignored: 'x' }]));
-    expect(csv).toBe('Source,Leads\r\nweb,9');
+    expect(toCsv(report([{ b: 9, a: 'web', ignored: 'x' }]))).toBe(HEAD + '"web","9"\r\n');
   });
 });
