@@ -53,6 +53,43 @@ catalogue, which is what the role's own description — "Full administration
 inside this workspace only" — already claims, and which cannot drift again the
 next time a module ships.
 
+## Fixing the workspaces that already exist
+
+The provisioning fix only applies when a workspace is created. Every workspace
+created before it still carries the narrow grant, so there is a one-off script:
+
+```
+node scripts/backfill-admin-permissions.mjs            # dry run
+node scripts/backfill-admin-permissions.mjs --apply    # write
+```
+
+**The part that matters is what it refuses to do.** Revoking a permission
+*deletes* its `RolePermission` row (see `services/identity/roles.ts`), so a
+missing row is ambiguous — it can mean "never granted" or "an administrator
+deliberately took this away". Restoring both would silently undo every
+deliberate revocation in the database, which is a worse bug than the one being
+fixed.
+
+The old hardcoded list is the discriminator, and it is exact:
+
+| Missing permission | Meaning | Action |
+|---|---|---|
+| In the old list | Provisioning granted it, so somebody removed it | **Left alone** |
+| Not in the old list | Never offered — the bug | **Granted** |
+
+Nothing is revoked, downgraded or re-scoped, and an existing row is never
+touched, including one sitting at `granted = false`. It targets only the
+`company_admin` / `org_admin` roles that provisioning creates; roles an
+administrator made themselves are not touched.
+
+Sessions are not revoked: `resolveCtx` reads role permissions from the database
+on every request, so the grants take effect on the next one.
+
+On the development database it granted 121,891 permissions across the older
+workspaces, left 2,880 apparent deliberate revocations alone, and reported
+"already complete" for every workspace the e2e suite had created since the
+provisioning fix — which is the fix confirming itself. A second run grants zero.
+
 ## What the flow covers
 
 | Step | Module | What it does |
