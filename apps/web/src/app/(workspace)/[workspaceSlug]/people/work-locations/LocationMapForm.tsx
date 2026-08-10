@@ -202,7 +202,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
             onChange={(e) => setQ(e.target.value)}
             aria-label="Search address"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') search(e);
+              if (e.key === 'Enter') void search(e);
             }}
           />
           <button type="button" className="lf-btn lf-btn--sm" onClick={search} disabled={searching}>
