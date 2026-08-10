@@ -2,14 +2,39 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
-import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import PermissionMatrix, { type MatrixRow } from '@/components/workspace/PermissionMatrix';
 import { listRoles, permissionMatrix, roleAssignmentHistory } from '@/services/identity/roles';
 
-export const metadata = { title: 'Roles and permissions' };
+export const metadata = { title: 'Roles & permissions' };
 
+const stamp = (value: Date) =>
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Dubai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+    .format(value)
+    .replace(/\//g, '-')
+    .replace(',', '');
+
+const dayOnly = (value: Date | null) =>
+  value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', year: 'numeric' }).format(value) : null;
+
+/**
+ * Roles & permissions, per the reference: the role list on the left with its
+ * default badges, slugs and user counts, the selected role's detail on the
+ * right (or "Select a role."), then Assign a role, the users holding it, and
+ * the assignment history.
+ *
+ * Roles are data, not code. A user may hold several at once, scoped and dated,
+ * and every change here is enforced by the server and written to the audit log.
+ */
 export default async function Page({
   params,
   searchParams,
@@ -37,8 +62,6 @@ export default async function Page({
 
   const selected = roleId ? await permissionMatrix(ctx, roleId).catch(() => null) : null;
 
-  // Who holds the selected role — by their primary role, or through an active,
-  // in-force assignment. v21's per-role user list.
   const now = new Date();
   const holders = selected
     ? await prisma.user.findMany({
@@ -70,156 +93,100 @@ export default async function Page({
       })
     : [];
 
-  // A branch- or region-scoped grant needs a location to name; offered together
-  // so the picker is one list.
   const scopeIdOptions = [
-    ...branches.map((b) => ({ value: b.id, label: `Branch · ${b.name}` })),
-    ...regions.map((r) => ({ value: r.id, label: `Region · ${r.name}` })),
+    ...branches.map((branch) => ({ value: branch.id, label: `Branch · ${branch.name}` })),
+    ...regions.map((region) => ({ value: region.id, label: `Region · ${region.name}` })),
   ];
+  // The list reads alphabetically by display name, as the reference shows.
+  const ordered = [...roles].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
+    <div className="lf-page-stack">
       <section>
         <div className="lf-eyebrow">Administration</div>
-        <h1 style={{ margin: '8px 0 0' }}>Roles and permissions</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
-          A role is a set of permissions, each with a scope: how much of the workspace it reaches. You can only work on
-          roles below your own level, and you can never grant more than you hold yourself — otherwise this screen would
-          be a route to promoting yourself.
+        <h1 style={{ margin: '8px 0 0' }}>Roles &amp; permissions</h1>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '100ch' }}>
+          Roles are data, not code. Users can hold several roles at once, scoped to a department, location, project or
+          their own team, with optional start and end dates. Every change here is enforced by the server and written to
+          the immutable audit log.
         </p>
       </section>
 
-      <section>
-        <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Roles</h2>
-        <WorkspaceTable
-          headers={['Role', 'Key', 'Rank', 'Default scope', 'Accounts', 'Permissions', 'Status', '']}
-          rows={roles.map((role) => [
-            <span key="n">
-              {role.name}
-              {role.isSystem ? (
-                <span className="lf-badge" style={{ marginLeft: 6 }}>
-                  system
-                </span>
-              ) : null}
-            </span>,
-            <code key="k" style={{ fontSize: 'var(--lf-text-xs)' }}>
-              {role.key}
-            </code>,
-            role.rank,
-            role.defaultScope.toLowerCase(),
-            role.users,
-            role.permissions,
-            <span className="lf-badge" key="st" data-tone={role.isActive ? 'ok' : 'muted'}>
-              {role.isActive ? 'active' : 'inactive'}
-            </span>,
-            <span key="a" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Link className="lf-btn lf-btn--ghost" href={`?roleId=${role.id}`}>
-                Permissions
-              </Link>
-              {mayManage && role.editable && !role.isSystem && (
-                <WorkspaceActionButton
-                  endpoint={`${endpoint}/update`}
-                  body={{ roleId: role.id, isActive: !role.isActive }}
-                  label={role.isActive ? 'Deactivate' : 'Reactivate'}
-                  variant="ghost"
-                  confirm={
-                    role.isActive
-                      ? `Deactivate ${role.name}? Everyone holding it — primarily or by assignment — is signed out and loses its access until it is reactivated.`
-                      : undefined
-                  }
-                />
-              )}
-              {mayManage && role.editable && !role.isSystem && role.users === 0 && (
-                <WorkspaceActionButton
-                  endpoint={`${endpoint}/delete`}
-                  body={{ roleId: role.id }}
-                  label="Delete"
-                  variant="danger"
-                  confirm={`Delete the role ${role.name}? A role with assignment history cannot be deleted — deactivate it instead. This cannot be undone.`}
-                />
-              )}
-            </span>,
-          ])}
-        />
-      </section>
-
-      {selected && (
-        <section style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>{selected.role.name} permissions</h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-                {selected.editable
-                  ? 'Scopes above your own level are shown but cannot be selected.'
-                  : 'This role is at or above your own level, so it is read-only for you.'}
-              </p>
-            </div>
-            <Link className="lf-btn lf-btn--ghost" href="?">
-              Close
+      <div className="lf-roles__split">
+        <section className="lf-card lf-roles__list">
+          {ordered.map((role) => (
+            <Link
+              key={role.id}
+              href={`?roleId=${role.id}`}
+              className="lf-roles__row"
+              aria-current={selected?.role.id === role.id ? 'true' : undefined}
+            >
+              <span className="lf-roles__row-head">
+                <strong>{role.name}</strong>
+                {role.isSystem && <span className="lf-roles__default">default</span>}
+                {!role.isActive && <span className="lf-roles__default">inactive</span>}
+              </span>
+              <span className="lf-roles__slug">
+                {role.key} · {role.users} user{role.users === 1 ? '' : 's'}
+              </span>
             </Link>
-          </div>
-          <PermissionMatrix
-            endpoint={endpoint}
-            roleId={selected.role.id}
-            editable={mayManage && selected.editable}
-            rows={selected.permissions as MatrixRow[]}
-          />
-
-          <div>
-            <h3 style={{ fontSize: 'var(--lf-text-base)', margin: '0 0 8px' }}>
-              Accounts with this role ({holders.length})
-            </h3>
-            <WorkspaceTable
-              headers={['Account', 'Email', 'Held as']}
-              empty="Nobody currently holds this role."
-              rows={holders.map((holder) => [
-                holder.fullName,
-                holder.email,
-                <span className="lf-badge" key="via">
-                  {holder.roleId === selected.role.id ? 'primary role' : 'assignment'}
-                </span>,
-              ])}
-            />
-          </div>
+          ))}
+          {mayManage && (
+            <div className="lf-roles__list-actions">
+              <a className="lf-btn lf-btn--sm" href="#new-role">
+                New role
+              </a>
+              <a className="lf-btn lf-btn--secondary lf-btn--sm" href="#clone-role">
+                Clone selected
+              </a>
+            </div>
+          )}
         </section>
-      )}
+
+        <section className="lf-card lf-roles__detail">
+          {!selected ? (
+            <p className="lf-roles__placeholder">Select a role.</p>
+          ) : (
+            <>
+              <div className="lf-roles__detail-head">
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>{selected.role.name}</h2>
+                  <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                    {selected.editable
+                      ? 'Scopes above your own level are shown but cannot be selected.'
+                      : 'This role is at or above your own level, so it is read-only for you.'}
+                  </p>
+                </div>
+                <Link className="lf-btn lf-btn--secondary lf-btn--sm" href="?">
+                  Close
+                </Link>
+              </div>
+              <PermissionMatrix
+                endpoint={endpoint}
+                roleId={selected.role.id}
+                editable={mayManage && selected.editable}
+                rows={selected.permissions as MatrixRow[]}
+              />
+            </>
+          )}
+        </section>
+      </div>
 
       {mayManage && (
-        <section>
-          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Create a role</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-            Rank orders seniority: lower is more senior. You cannot create a role at or above your own rank (
-            {ctx.actor.roleRank}).
-          </p>
+        <section id="new-role">
+          <h2 className="lf-leave__section">New role</h2>
           <WorkspaceRecordForm
             endpoint={`${endpoint}/create`}
             submitLabel="Create role"
             fields={[
               { name: 'name', label: 'Name', required: true },
               { name: 'key', label: 'Key (lowercase, no spaces)', required: true, placeholder: 'branch_supervisor' },
-              {
-                name: 'rank',
-                label: 'Rank',
-                type: 'number',
-                required: true,
-                placeholder: String(ctx.actor.roleRank + 10),
-              },
+              { name: 'rank', label: 'Rank', type: 'number', required: true, placeholder: String(ctx.actor.roleRank + 10) },
               {
                 name: 'defaultScope',
                 label: 'Default scope',
                 type: 'select',
-                options: ['OWN', 'TEAM', 'BRANCH', 'REGION', 'ORGANIZATION'].map((value) => ({
-                  value,
-                  label: value.toLowerCase(),
-                })),
+                options: ['OWN', 'TEAM', 'BRANCH', 'REGION', 'ORGANIZATION'].map((value) => ({ value, label: value.toLowerCase() })),
               },
               { name: 'description', label: 'Description' },
             ]}
@@ -228,20 +195,37 @@ export default async function Page({
       )}
 
       {mayManage && (
+        <section id="clone-role">
+          <h2 className="lf-leave__section">Clone selected</h2>
+          <WorkspaceRecordForm
+            endpoint={`${endpoint}/clone`}
+            submitLabel="Clone role"
+            fields={[
+              {
+                name: 'sourceRoleId',
+                label: 'Copy from',
+                type: 'select',
+                required: true,
+                options: ordered.map((role) => ({ value: role.id, label: `${role.name} (${role.key})` })),
+              },
+              { name: 'name', label: 'New role name', required: true },
+              { name: 'key', label: 'Key (lowercase, no spaces)', required: true },
+              { name: 'rank', label: 'Rank', type: 'number', required: true, placeholder: String(ctx.actor.roleRank + 10) },
+            ]}
+          />
+        </section>
+      )}
+
+      {mayManage && (
         <section>
-          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Assign a role for a period</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-            An additional, time-boxed grant alongside whatever the account already holds — how cover works while someone
-            is on leave. Leave the dates blank for an open-ended grant; a grant with an end date lapses on its own
-            rather than depending on anyone remembering.
-          </p>
+          <h2 className="lf-leave__section">Assign a role</h2>
           <WorkspaceRecordForm
             endpoint={`${endpoint}/assign`}
             submitLabel="Assign role"
             fields={[
               {
                 name: 'membershipId',
-                label: 'Account',
+                label: 'Employee',
                 type: 'select',
                 required: true,
                 options: memberships.map((membership) => ({
@@ -254,16 +238,16 @@ export default async function Page({
                 label: 'Role',
                 type: 'select',
                 required: true,
-                options: roles
+                options: ordered
                   .filter((role) => role.editable && role.isActive)
-                  .map((role) => ({ value: role.id, label: `${role.name} (rank ${role.rank})` })),
+                  .map((role) => ({ value: role.id, label: role.name })),
               },
               {
                 name: 'scopeType',
-                label: 'Scope — how much of the workspace this grant reaches',
+                label: 'Scope',
                 type: 'select',
                 options: [
-                  { value: 'ORGANIZATION', label: 'Whole organisation' },
+                  { value: 'ORGANIZATION', label: 'Entire organisation' },
                   { value: 'REGION', label: 'A region' },
                   { value: 'BRANCH', label: 'A branch' },
                   { value: 'TEAM', label: 'Their team' },
@@ -275,87 +259,100 @@ export default async function Page({
                 ? [
                     {
                       name: 'scopeId',
-                      label: 'Branch or region (only for a region/branch-scoped grant)',
+                      label: 'Scope id / name (if scoped)',
                       type: 'select' as const,
                       options: [{ value: '', label: '—' }, ...scopeIdOptions],
                     },
                   ]
                 : []),
-              { name: 'effectiveFrom', label: 'From', type: 'date' },
-              { name: 'effectiveTo', label: 'Until', type: 'date' },
-            ]}
-          />
-        </section>
-      )}
-
-      {mayManage && (
-        <section>
-          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Clone a role</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-            Start a new role from an existing one, permissions included. Each copied permission is capped at your own
-            level — a clone is never a way to grant more than you already hold.
-          </p>
-          <WorkspaceRecordForm
-            endpoint={`${endpoint}/clone`}
-            submitLabel="Clone role"
-            fields={[
-              {
-                name: 'sourceRoleId',
-                label: 'Copy from',
-                type: 'select',
-                required: true,
-                options: roles.map((role) => ({ value: role.id, label: `${role.name} (rank ${role.rank})` })),
-              },
-              { name: 'name', label: 'New role name', required: true },
-              { name: 'key', label: 'Key (lowercase, no spaces)', required: true, placeholder: 'branch_supervisor' },
-              {
-                name: 'rank',
-                label: 'Rank',
-                type: 'number',
-                required: true,
-                placeholder: String(ctx.actor.roleRank + 10),
-              },
+              { name: 'effectiveFrom', label: 'Start date', type: 'date' },
+              { name: 'effectiveTo', label: 'End date', type: 'date' },
             ]}
           />
         </section>
       )}
 
       <section>
-        <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Assignment history</h2>
-        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-          Every grant and revocation is kept, including expired ones — who held what, and when, is the record that
-          matters after the fact.
-        </p>
-        <WorkspaceTable
-          headers={['Account', 'Role', 'Window', 'State', '']}
-          empty="No additional role assignments."
-          rows={history.map((assignment) => [
-            <span key="h">
-              {assignment.holder}
-              <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>{assignment.email}</div>
-            </span>,
-            assignment.role.name,
-            `${assignment.effectiveFrom ? date(assignment.effectiveFrom) : 'always'} – ${assignment.effectiveTo ? date(assignment.effectiveTo) : 'open'}`,
-            <span className="lf-badge" key="s">
-              {assignment.inForce ? 'in force' : assignment.status.toLowerCase()}
-            </span>,
-            mayManage && assignment.status === 'ACTIVE' ? (
-              <WorkspaceActionButton
-                key="r"
-                endpoint={`${endpoint}/revoke`}
-                body={{ assignmentId: assignment.id }}
-                label="Revoke"
-                variant="ghost"
-                promptFor={{ name: 'reason', label: 'Reason', required: false }}
-              />
-            ) : (
-              (assignment.revocationReason ?? '—')
-            ),
-          ])}
-        />
+        <h2 className="lf-leave__section">Users holding {selected ? selected.role.name : '…'}</h2>
+        {!selected ? (
+          <div className="lf-card lf-leave__empty">Select a role.</div>
+        ) : holders.length === 0 ? (
+          <div className="lf-card lf-leave__empty">Nobody currently holds this role.</div>
+        ) : (
+          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Held as</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holders.map((holder) => (
+                  <tr key={holder.id}>
+                    <td data-label="User">{holder.fullName}</td>
+                    <td data-label="Email">{holder.email}</td>
+                    <td data-label="Held as">
+                      <span className="lf-badge">{holder.roleId === selected.role.id ? 'primary role' : 'assignment'}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="lf-leave__section">Assignment history</h2>
+        {history.length === 0 ? (
+          <div className="lf-card lf-leave__empty">No additional role assignments.</div>
+        ) : (
+          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Scope</th>
+                  <th>Window</th>
+                  <th>Status</th>
+                  <th>When</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((assignment) => (
+                  <tr key={assignment.id}>
+                    <td data-label="User">{assignment.holder}</td>
+                    <td data-label="Role">{assignment.role.key}</td>
+                    <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
+                    <td data-label="Window">
+                      {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
+                    </td>
+                    <td data-label="Status">
+                      <span className="lf-badge">{assignment.inForce ? 'active' : assignment.status.toLowerCase()}</span>
+                    </td>
+                    <td data-label="When">{stamp(assignment.assignedAt)}</td>
+                    <td data-label="">
+                      {mayManage && assignment.status === 'ACTIVE' && (
+                        <WorkspaceActionButton
+                          endpoint={`${endpoint}/revoke`}
+                          body={{ assignmentId: assignment.id }}
+                          label="Revoke"
+                          variant="ghost"
+                          promptFor={{ name: 'reason', label: 'Reason', required: false }}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );
 }
-
-const date = (value: Date) => value.toLocaleDateString('en-AE', { timeZone: 'UTC' });

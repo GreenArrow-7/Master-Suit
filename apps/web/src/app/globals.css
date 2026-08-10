@@ -1911,3 +1911,77 @@ a:hover {
 .lf-users__temp[data-bad] {
   color: var(--lf-vermillion, #b3261e);
 }
+
+/* ── Roles & permissions ─────────────────────────────────────────────────── */
+.lf-roles__split {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.lf-roles__list {
+  padding: 0;
+  overflow: hidden;
+}
+.lf-roles__row {
+  display: grid;
+  gap: 3px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--lf-line-2);
+  text-decoration: none;
+  color: inherit;
+}
+.lf-roles__row:hover {
+  background: var(--lf-surface-2);
+}
+.lf-roles__row[aria-current='true'] {
+  background: var(--lf-wine-050);
+  box-shadow: inset 3px 0 0 var(--lf-wine-700);
+}
+.lf-roles__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lf-roles__row-head strong {
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+}
+.lf-roles__default {
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
+  font-size: 9px;
+  color: var(--lf-ink-3);
+}
+.lf-roles__slug {
+  font: 400 11px/1.4 var(--lf-font-mono);
+  color: var(--lf-ink-3);
+}
+.lf-roles__list-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+}
+.lf-roles__detail {
+  padding: 20px;
+  min-height: 180px;
+}
+.lf-roles__detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.lf-roles__placeholder {
+  margin: 0;
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-sm);
+}
+@media (max-width: 1100px) {
+  .lf-roles__split {
+    grid-template-columns: 1fr;
+  }
+}

@@ -531,6 +531,8 @@ export async function roleAssignmentHistory(
     email: assignment.membership.platformUser.email,
     role: { id: assignment.roleId, key: assignment.role.key, name: assignment.role.name, rank: assignment.role.rank },
     scopeType: assignment.scopeType,
+    /** When the grant was made — the reference's WHEN column. */
+    assignedAt: assignment.createdAt,
     effectiveFrom: assignment.effectiveFrom,
     effectiveTo: assignment.effectiveTo,
     status: assignment.status,
