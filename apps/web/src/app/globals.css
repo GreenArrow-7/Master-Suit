@@ -1245,3 +1245,40 @@ a:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   People / HRMS module skin — HRMS-v21's identity, scoped by [data-lf-module].
+
+   ModuleTheme stamps data-lf-module="people" on <html> while the People module
+   is open. This remaps the burgundy brand ramp to v21's deep-green ramp and
+   warms the canvas to beige, so the whole HR shell — sidebar included — reads
+   as the source HRMS without a single component being rewritten. Brass stays:
+   v21 uses it too. Semantic reds/greens (breach, won) are untouched; they mean
+   the same thing in both modules.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-lf-module='people'] {
+  /* Burgundy ramp → v21 forest ramp. Slot-for-slot, so every token consumer
+     (buttons, focus rings, fills, selection) follows automatically. */
+  --lf-wine-900: #06231b;
+  --lf-wine-800: #0a2e24;
+  --lf-wine-700: #0e3b2e; /* THE brand — primary actions */
+  --lf-wine-600: #14513e;
+  --lf-wine-500: #1c6b52; /* hover, active */
+  --lf-wine-300: #7e9a8f;
+  --lf-wine-200: #cfe0d8; /* selection */
+  --lf-wine-100: #e2efe9;
+  --lf-wine-050: #f2f7f4;
+
+  /* Warm the neutrals to v21's beige canvas; surfaces stay bright. */
+  --lf-canvas: #f5f1e8;
+  --lf-surface-2: #faf7f0;
+  --lf-line: #e7dfce;
+  --lf-line-2: #d8ccb4;
+}
+
+/* The sidebar background and text are hardcoded burgundy near-black rather than
+   tokens, so they need their own override to turn forest. */
+:root[data-lf-module='people'] .lf-workspace-sidebar {
+  background: #06231b;
+  color: #dce7e1;
+}

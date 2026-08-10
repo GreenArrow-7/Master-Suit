@@ -8,6 +8,7 @@ import { can } from '@/lib/security/rbac';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
+import ModuleTheme from '@/components/workspace/ModuleTheme';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,7 @@ export default async function WorkspaceLayout({
 
   return (
     <div className="lf-app-frame">
+      <ModuleTheme />
       <WorkspaceSidebar
         slug={shell.slug}
         name={shell.displayName}
