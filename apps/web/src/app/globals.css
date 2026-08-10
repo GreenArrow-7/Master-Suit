@@ -1556,3 +1556,123 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Security screen ─────────────────────────────────────────────────────────
+   Two-factor and face consent side by side, password beneath — the reference's
+   two-column arrangement. */
+.lf-security {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.lf-security__card {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.lf-security__password {
+  grid-column: 1 / -1;
+  max-width: 640px;
+}
+.lf-security__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lf-security__head h2 {
+  margin: 0;
+  font-size: var(--lf-text-lg);
+}
+.lf-security__pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--lf-vermillion-sub, #fbe9e6);
+  color: var(--lf-vermillion, #b3261e);
+  font-size: var(--lf-text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.lf-security__pill[data-on='true'] {
+  background: var(--lf-viridian-sub, #e0eeeb);
+  color: var(--lf-viridian);
+}
+.lf-security__copy {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+  line-height: 1.6;
+}
+.lf-security__helper,
+.lf-security__note {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
+}
+.lf-security__note[data-bad='true'] {
+  color: var(--lf-vermillion, #b3261e);
+}
+.lf-security__form,
+.lf-security__enrol {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+}
+.lf-security__form .lf-btn,
+.lf-security__enrol .lf-btn {
+  justify-self: start;
+  margin-top: 6px;
+}
+.lf-security__secret {
+  padding: 12px 14px;
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-wine-900);
+  color: var(--lf-brass, #b98f4c);
+  font-family: var(--lf-font-mono);
+  font-size: 13px;
+  word-break: break-all;
+  line-height: 1.8;
+}
+.lf-security__codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.lf-security__codes span {
+  padding: 9px;
+  border: 1px dashed var(--lf-brass, #b98f4c);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
+  font-family: var(--lf-font-mono);
+  font-size: 13px;
+  text-align: center;
+}
+/* Callouts: blue for information, gold for the biometric warning. */
+.lf-callout {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid;
+  border-radius: var(--lf-radius-sm);
+  font-size: var(--lf-text-sm);
+  line-height: 1.6;
+}
+.lf-callout--info {
+  border-color: #2c5578;
+  background: #e8f0f7;
+  color: #26445f;
+}
+.lf-callout--warn {
+  border-color: var(--lf-brass, #b98f4c);
+  background: var(--lf-brass-sub, #f7f0df);
+  color: #6b4c12;
+}
+@media (max-width: 960px) {
+  .lf-security {
+    grid-template-columns: 1fr;
+  }
+  .lf-security__password {
+    grid-column: auto;
+  }
+}

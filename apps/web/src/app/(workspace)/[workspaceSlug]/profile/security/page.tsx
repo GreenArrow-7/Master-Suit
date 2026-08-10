@@ -1,23 +1,34 @@
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
-import SecurityPanel from '@/components/workspace/SecurityPanel';
 import { mustChangePassword } from '@/services/identity/accounts';
 import { twoFactorStatus } from '@/services/identity/twoFactor';
+import { activeConsent } from '@/services/hr/attendance';
+import { myEmployee } from '@/services/hr/leave';
+import SecurityScreen from './SecurityScreen';
 
-export const metadata = { title: 'My security' };
+export const metadata = { title: 'Security' };
 
+/**
+ * The Security screen, per the reference: two-factor authentication, face
+ * check-in consent and password, in that order. Nothing here can reach anyone
+ * else's account — consent in particular is the employee's own to give, which
+ * is why HR has no control that records it for them.
+ */
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
-  const [status, forced] = await Promise.all([twoFactorStatus(ctx), mustChangePassword(ctx)]);
+  const employee = await myEmployee(ctx);
+  const [status, forced, consent] = await Promise.all([
+    twoFactorStatus(ctx),
+    mustChangePassword(ctx),
+    employee ? activeConsent(ctx, employee.id) : Promise.resolve(null),
+  ]);
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
+    <div className="lf-page-stack">
       <section>
-        <div className="lf-eyebrow">My account</div>
+        <div className="lf-eyebrow">Your account</div>
         <h1 style={{ margin: '8px 0 0' }}>Security</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>
-          Your password and your authenticator. Nothing on this page can reach anyone else&apos;s account.
-        </p>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>Two-factor authentication and your password.</p>
       </section>
 
       {forced && (
@@ -30,7 +41,12 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         </section>
       )}
 
-      <SecurityPanel endpoint={`/api/v1/workspaces/${workspaceSlug}/identity/self`} status={status} />
+      <SecurityScreen
+        selfBase={`/api/v1/workspaces/${workspaceSlug}/identity/self`}
+        hrBase={`/api/v1/workspaces/${workspaceSlug}/hr/actions`}
+        mfaEnabled={!!status.enabled}
+        consentGiven={!!consent}
+      />
     </div>
   );
 }
