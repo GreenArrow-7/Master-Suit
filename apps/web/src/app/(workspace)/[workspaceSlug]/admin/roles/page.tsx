@@ -23,7 +23,7 @@ export default async function Page({
   const endpoint = `/api/v1/workspaces/${workspaceSlug}/roles`;
   const mayManage = can(ctx, 'roles', 'MANAGE_CONFIGURATION');
 
-  const [roles, history, memberships] = await Promise.all([
+  const [roles, history, memberships, branches, regions] = await Promise.all([
     listRoles(ctx),
     roleAssignmentHistory(ctx, { limit: 100 }),
     prisma.workspaceMembership.findMany({
@@ -31,9 +31,51 @@ export default async function Page({
       include: { platformUser: { select: { fullName: true, email: true } } },
       orderBy: { joinedAt: 'asc' },
     }),
+    prisma.branch.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.region.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
   const selected = roleId ? await permissionMatrix(ctx, roleId).catch(() => null) : null;
+
+  // Who holds the selected role — by their primary role, or through an active,
+  // in-force assignment. v21's per-role user list.
+  const now = new Date();
+  const holders = selected
+    ? await prisma.user.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          deletedAt: null,
+          OR: [
+            { roleId: selected.role.id },
+            {
+              workspaceMembership: {
+                roles: {
+                  some: {
+                    tenantId: ctx.tenantId,
+                    roleId: selected.role.id,
+                    status: 'ACTIVE',
+                    AND: [
+                      { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }] },
+                      { OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }] },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true, fullName: true, email: true, roleId: true },
+        orderBy: { fullName: 'asc' },
+        take: 200,
+      })
+    : [];
+
+  // A branch- or region-scoped grant needs a location to name; offered together
+  // so the picker is one list.
+  const scopeIdOptions = [
+    ...branches.map((b) => ({ value: b.id, label: `Branch · ${b.name}` })),
+    ...regions.map((r) => ({ value: r.id, label: `Region · ${r.name}` })),
+  ];
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
@@ -50,7 +92,7 @@ export default async function Page({
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Roles</h2>
         <WorkspaceTable
-          headers={['Role', 'Key', 'Rank', 'Default scope', 'Accounts', 'Permissions', '']}
+          headers={['Role', 'Key', 'Rank', 'Default scope', 'Accounts', 'Permissions', 'Status', '']}
           rows={roles.map((role) => [
             <span key="n">
               {role.name}
@@ -67,17 +109,33 @@ export default async function Page({
             role.defaultScope.toLowerCase(),
             role.users,
             role.permissions,
+            <span className="lf-badge" key="st" data-tone={role.isActive ? 'ok' : 'muted'}>
+              {role.isActive ? 'active' : 'inactive'}
+            </span>,
             <span key="a" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Link className="lf-btn lf-btn--ghost" href={`?roleId=${role.id}`}>
                 Permissions
               </Link>
+              {mayManage && role.editable && !role.isSystem && (
+                <WorkspaceActionButton
+                  endpoint={`${endpoint}/update`}
+                  body={{ roleId: role.id, isActive: !role.isActive }}
+                  label={role.isActive ? 'Deactivate' : 'Reactivate'}
+                  variant="ghost"
+                  confirm={
+                    role.isActive
+                      ? `Deactivate ${role.name}? Everyone holding it — primarily or by assignment — is signed out and loses its access until it is reactivated.`
+                      : undefined
+                  }
+                />
+              )}
               {mayManage && role.editable && !role.isSystem && role.users === 0 && (
                 <WorkspaceActionButton
                   endpoint={`${endpoint}/delete`}
                   body={{ roleId: role.id }}
                   label="Delete"
                   variant="danger"
-                  confirm={`Delete the role ${role.name}? This cannot be undone.`}
+                  confirm={`Delete the role ${role.name}? A role with assignment history cannot be deleted — deactivate it instead. This cannot be undone.`}
                 />
               )}
             </span>,
@@ -114,6 +172,23 @@ export default async function Page({
             editable={mayManage && selected.editable}
             rows={selected.permissions as MatrixRow[]}
           />
+
+          <div>
+            <h3 style={{ fontSize: 'var(--lf-text-base)', margin: '0 0 8px' }}>
+              Accounts with this role ({holders.length})
+            </h3>
+            <WorkspaceTable
+              headers={['Account', 'Email', 'Held as']}
+              empty="Nobody currently holds this role."
+              rows={holders.map((holder) => [
+                holder.fullName,
+                holder.email,
+                <span className="lf-badge" key="via">
+                  {holder.roleId === selected.role.id ? 'primary role' : 'assignment'}
+                </span>,
+              ])}
+            />
+          </div>
         </section>
       )}
 
@@ -180,11 +255,66 @@ export default async function Page({
                 type: 'select',
                 required: true,
                 options: roles
-                  .filter((role) => role.editable)
+                  .filter((role) => role.editable && role.isActive)
                   .map((role) => ({ value: role.id, label: `${role.name} (rank ${role.rank})` })),
               },
+              {
+                name: 'scopeType',
+                label: 'Scope — how much of the workspace this grant reaches',
+                type: 'select',
+                options: [
+                  { value: 'ORGANIZATION', label: 'Whole organisation' },
+                  { value: 'REGION', label: 'A region' },
+                  { value: 'BRANCH', label: 'A branch' },
+                  { value: 'TEAM', label: 'Their team' },
+                  { value: 'DIRECT_REPORTS', label: 'Their direct reports' },
+                  { value: 'OWN_RECORD', label: 'Their own record only' },
+                ],
+              },
+              ...(scopeIdOptions.length
+                ? [
+                    {
+                      name: 'scopeId',
+                      label: 'Branch or region (only for a region/branch-scoped grant)',
+                      type: 'select' as const,
+                      options: [{ value: '', label: '—' }, ...scopeIdOptions],
+                    },
+                  ]
+                : []),
               { name: 'effectiveFrom', label: 'From', type: 'date' },
               { name: 'effectiveTo', label: 'Until', type: 'date' },
+            ]}
+          />
+        </section>
+      )}
+
+      {mayManage && (
+        <section>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Clone a role</h2>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            Start a new role from an existing one, permissions included. Each copied permission is capped at your own
+            level — a clone is never a way to grant more than you already hold.
+          </p>
+          <WorkspaceRecordForm
+            endpoint={`${endpoint}/clone`}
+            submitLabel="Clone role"
+            fields={[
+              {
+                name: 'sourceRoleId',
+                label: 'Copy from',
+                type: 'select',
+                required: true,
+                options: roles.map((role) => ({ value: role.id, label: `${role.name} (rank ${role.rank})` })),
+              },
+              { name: 'name', label: 'New role name', required: true },
+              { name: 'key', label: 'Key (lowercase, no spaces)', required: true, placeholder: 'branch_supervisor' },
+              {
+                name: 'rank',
+                label: 'Rank',
+                type: 'number',
+                required: true,
+                placeholder: String(ctx.actor.roleRank + 10),
+              },
             ]}
           />
         </section>
