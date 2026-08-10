@@ -60,7 +60,9 @@ export default function WorkspaceSidebar({
 
   const sections = useMemo<Section[]>(() => {
     const common: Section = {
-      label: 'Work',
+      // "Daily" in the HR module, matching the source HRMS's grouping; "Work"
+      // everywhere else.
+      label: activeModule === 'people' ? 'Daily' : 'Work',
       items: [
         { label: 'Overview', href: `/${slug}/dashboard`, icon: 'home' },
         { label: 'Notifications', href: `/${slug}/notifications`, icon: 'bell' },
@@ -314,7 +316,9 @@ export default function WorkspaceSidebar({
                   ))}
                 </select>
               ) : (
-                <span>{PRODUCT_NAME}</span>
+                /* The HR module names itself HRMS beneath the workspace, as the
+                   source HRMS does; the rest of the product keeps its own name. */
+                <span>{activeModule === 'people' ? 'HRMS' : PRODUCT_NAME}</span>
               )}
             </div>
           )}
@@ -373,15 +377,32 @@ export default function WorkspaceSidebar({
           </section>
         </nav>
 
-        <div className="lf-sidebar-user">
-          <span className="lf-avatar" style={{ background: 'rgb(255 255 255 / .11)', color: '#fff' }}>
-            {initials(user.name)}
-          </span>
+        <div className="lf-sidebar-account">
+          <div className="lf-sidebar-user">
+            <span className="lf-avatar" style={{ background: 'rgb(255 255 255 / .11)', color: '#fff' }}>
+              {initials(user.name)}
+            </span>
+            {!collapsed && (
+              <div className="lf-sidebar-user-copy">
+                <strong>{user.name}</strong>
+                <span>{user.role.replaceAll('_', ' ')}</span>
+              </div>
+            )}
+          </div>
+          {/* Signing out belongs where the account is, as in the source HRMS —
+              previously it lived only in the top bar. */}
           {!collapsed && (
-            <div className="lf-sidebar-user-copy">
-              <strong>{user.name}</strong>
-              <span>{user.role.replaceAll('_', ' ')}</span>
-            </div>
+            <button
+              type="button"
+              className="lf-sidebar-signout"
+              onClick={() => {
+                void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
+                  window.location.href = '/login';
+                });
+              }}
+            >
+              Sign out
+            </button>
           )}
         </div>
       </aside>

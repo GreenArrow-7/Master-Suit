@@ -1,6 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+/**
+ * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
+ * reads as "Work locations". The module root is "Overview".
+ */
+function peoplePageTitle(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  const tail = segments[2] === 'people' ? segments.slice(3) : segments.slice(1);
+  const leaf = tail[tail.length - 1];
+  if (!leaf) return 'Overview';
+  const words = leaf.replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 interface NotificationItem {
   id: string;
@@ -35,6 +49,7 @@ export default function TopBar({
   workspaceName?: string;
   plan?: string;
 } = {}) {
+  const pathname = usePathname();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -155,6 +170,13 @@ export default function TopBar({
 
   return (
     <header className="lf-shell-topbar">
+      {/* The HR module leads with the reference's breadcrumb — "Workspace ·
+          Page" — before the operational controls. */}
+      {module === 'people' && workspaceName && (
+        <div className="lf-shell-crumb">
+          {workspaceName} · <b>{peoplePageTitle(pathname)}</b>
+        </div>
+      )}
       <form
         className="lf-shell-search"
         action={target.href}

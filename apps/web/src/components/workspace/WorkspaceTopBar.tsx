@@ -13,5 +13,5 @@ export default function WorkspaceTopBar({
   plan: string;
 }) {
   const pathname = usePathname();
-  return <TopBar basePath={`/${slug}`} module={pathname.includes('/people') ? 'people' : 'sales'} plan={plan} />;
+  return <TopBar basePath={`/${slug}`} module={pathname.includes("/people") ? "people" : "sales"} workspaceName={_workspaceName} plan={plan} />;
 }

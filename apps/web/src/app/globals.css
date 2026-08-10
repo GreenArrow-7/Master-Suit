@@ -282,13 +282,41 @@ body {
   flex: none;
   opacity: 0.72;
 }
+.lf-sidebar-account {
+  flex: none;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
 .lf-sidebar-user {
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+/* Full-width outlined control beneath the account, as the source HRMS shows. */
+.lf-sidebar-signout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: calc(100% - 28px);
+  margin: 0 14px 12px;
+  padding: 8px 10px;
+  font: 500 12.5px/1 var(--lf-font-ui);
+  color: #dce7e1;
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.13);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.lf-sidebar-signout:hover {
+  background: rgb(185 143 76 / 0.22);
+  border-color: var(--lf-brass, #b98f4c);
+  color: #fff;
+}
+.lf-sidebar-signout:focus-visible {
+  outline: 2px solid var(--lf-brass, #b98f4c);
+  outline-offset: 2px;
 }
 .lf-sidebar-user-copy {
   min-width: 0;
@@ -1257,28 +1285,112 @@ a:hover {
    the same thing in both modules.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root[data-lf-module='people'] {
-  /* Burgundy ramp → v21 forest ramp. Slot-for-slot, so every token consumer
-     (buttons, focus rings, fills, selection) follows automatically. */
+  /* Burgundy ramp → the source HRMS's forest ramp, slot for slot, so every
+     token consumer (buttons, focus rings, fills, selection) follows. Values are
+     the reference stylesheet's own, confirmed against the screenshots: the
+     sidebar samples #0a2e24 and the canvas #f6f4ef in the originals. */
   --lf-wine-900: #06231b;
   --lf-wine-800: #0a2e24;
   --lf-wine-700: #0e3b2e; /* THE brand — primary actions */
   --lf-wine-600: #14513e;
   --lf-wine-500: #1c6b52; /* hover, active */
-  --lf-wine-300: #7e9a8f;
+  --lf-wine-300: #c08a9c;
   --lf-wine-200: #cfe0d8; /* selection */
   --lf-wine-100: #e2efe9;
   --lf-wine-050: #f2f7f4;
 
-  /* Warm the neutrals to v21's beige canvas; surfaces stay bright. */
-  --lf-canvas: #f5f1e8;
-  --lf-surface-2: #faf7f0;
-  --lf-line: #e7dfce;
-  --lf-line-2: #d8ccb4;
+  /* Warm neutrals — the reference values, not an approximation. */
+  --lf-canvas: #f6f4ef;
+  --lf-surface: #ffffff;
+  --lf-surface-2: #fbfaf7;
+  --lf-line: #e6e1d6;
+  --lf-line-2: #f0ece3;
+  --lf-ink: #16150f;
+  --lf-ink-2: #3f3c33;
+  --lf-ink-3: #77726a;
+  --lf-ink-4: #a9a49b;
+
+  /* Brass is the accent on the mark, the active rail and the warning callout. */
+  --lf-brass: #b98f4c;
+  --lf-brass-sub: #f0e4cb;
+
+  /* Fraunces for display, Inter Tight for body, JetBrains Mono for the GPS and
+     geofence diagnostics — the three faces the reference uses. Self-hosted by
+     next/font, because `font-src 'self'` blocks the CDN the original used. */
+  --lf-font-display: var(--lf-font-fraunces), Georgia, serif;
+  --lf-font-ui: var(--lf-font-inter-tight), system-ui, -apple-system, sans-serif;
+  --lf-font-body: var(--lf-font-inter-tight), system-ui, -apple-system, sans-serif;
+  --lf-font-mono: var(--lf-font-jetbrains), ui-monospace, monospace;
+}
+
+/* Headings are the reference's elegant serif, not the operational sans. Page
+   titles sit at regular weight and card titles at semibold, as in the source. */
+:root[data-lf-module='people'] .lf-h1,
+:root[data-lf-module='people'] main h1 {
+  font-family: var(--lf-font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+:root[data-lf-module='people'] main h2,
+:root[data-lf-module='people'] .lf-card h2 {
+  font-family: var(--lf-font-display);
+  font-weight: 600;
+}
+/* The metric numerals are display-face too — that is what gives the KPI cards
+   their character in the references. */
+:root[data-lf-module='people'] .lf-metric-card__value {
+  font-family: var(--lf-font-display);
+  font-weight: 400;
 }
 
 /* The sidebar background and text are hardcoded burgundy near-black rather than
    tokens, so they need their own override to turn forest. */
-:root[data-lf-module='people'] .lf-workspace-sidebar {
-  background: #06231b;
+/* 250px is the reference stylesheet's own --sidebar-w. The screenshots measure
+   ~360px because they were captured at roughly 1.44x scaling (1880 physical px
+   over a ~1305px CSS viewport); 250px is the value that reproduces them. */
+:root[data-lf-module='people'] .lf-workspace-sidebar:not([data-collapsed='true']) {
+  width: 250px;
+  background: #0a2e24;
   color: #dce7e1;
+}
+:root[data-lf-module='people'] .lf-workspace-sidebar[data-collapsed='true'] {
+  background: #0a2e24;
+  color: #dce7e1;
+}
+
+/* The mark is a brass rounded square carrying the workspace initial, and the
+   workspace name is set in the display serif — the reference's brand block. */
+:root[data-lf-module='people'] .lf-brand-mark {
+  background: linear-gradient(145deg, #b98f4c 0%, #8e6c33 100%);
+  color: #06231b;
+  font-family: var(--lf-font-display);
+  font-weight: 600;
+  border-radius: 9px;
+}
+:root[data-lf-module='people'] .lf-brand-copy strong {
+  font-family: var(--lf-font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* The role reads as a small-caps tag under the name, as in the references. */
+:root[data-lf-module='people'] .lf-sidebar-user-copy span {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+/* The active row carries the brass rail the reference uses. */
+:root[data-lf-module='people'] .lf-nav-link[aria-current='page'] {
+  background: rgb(185 143 76 / 0.16);
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b98f4c);
+}
+
+/* The HR breadcrumb, ahead of the operational controls in the top bar. */
+.lf-shell-crumb {
+  flex: none;
+  font: 400 12px/1 var(--lf-font-ui);
+  color: var(--lf-ink-3);
+  white-space: nowrap;
+}
+.lf-shell-crumb b {
+  color: var(--lf-ink);
+  font-weight: 500;
 }
