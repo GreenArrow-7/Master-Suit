@@ -1676,3 +1676,92 @@ a:hover {
     grid-column: auto;
   }
 }
+
+/* ── Leave screen ────────────────────────────────────────────────────────────
+   Balance cards with their progress rules, then Apply, then the two queues. */
+.lf-leave__section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 0;
+  font-size: var(--lf-text-lg);
+}
+.lf-leave__section::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--lf-line);
+}
+.lf-leave__balances {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+.lf-leave__balance {
+  padding: 18px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.lf-leave__balance-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lf-leave__balance-name {
+  font-size: var(--lf-text-sm);
+  font-weight: 500;
+  color: var(--lf-ink);
+}
+.lf-leave__unpaid {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--lf-brass, #b98f4c);
+}
+.lf-leave__balance-value {
+  font: 400 34px/1 var(--lf-font-display);
+  color: var(--lf-ink);
+}
+.lf-leave__balance-sub {
+  font: 400 11px/1.5 var(--lf-font-mono);
+  color: var(--lf-ink-3);
+}
+.lf-leave__rule {
+  margin-top: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--lf-line);
+  overflow: hidden;
+}
+.lf-leave__rule i {
+  display: block;
+  height: 100%;
+  background: var(--lf-wine-700);
+}
+.lf-leave__apply {
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+.lf-leave__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.lf-leave__half {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--lf-text-sm);
+}
+.lf-leave__apply .lf-btn {
+  justify-self: start;
+}
+.lf-leave__empty {
+  padding: 34px;
+  text-align: center;
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-sm);
+}
