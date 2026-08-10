@@ -99,6 +99,8 @@ const schema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
   SMS_PROVIDER: z.string().default('mock'),
+  /** Offer letters, contracts and policy acknowledgements. `mock` is blocked in production. */
+  ESIGNATURE_PROVIDER: z.string().default('mock'),
   WHATSAPP_PROVIDER: z.string().default('mock'),
   TELEPHONY_PROVIDER: z.enum(['mock', 'hmac']).default('mock'),
   /** `clamav` in any deployed environment; `mock` is test-only and blocked in production. */
@@ -136,6 +138,7 @@ const schema = z.object({
 export const PROVIDER_KEYS = [
   'EMAIL_PROVIDER',
   'SMS_PROVIDER',
+  'ESIGNATURE_PROVIDER',
   'WHATSAPP_PROVIDER',
   'TELEPHONY_PROVIDER',
   'ANTIVIRUS_PROVIDER',
