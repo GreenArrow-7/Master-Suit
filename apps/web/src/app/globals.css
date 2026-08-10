@@ -1765,3 +1765,59 @@ a:hover {
   color: var(--lf-ink-3);
   font-size: var(--lf-text-sm);
 }
+
+/* ── People: joining and leaving ─────────────────────────────────────────── */
+.lf-life__modes {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lf-life__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+.lf-life__kpi {
+  padding: 18px;
+}
+.lf-life__kpi[data-accent='true'] {
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b98f4c);
+}
+.lf-life__kpi-value {
+  margin-top: 8px;
+  font: 400 32px/1 var(--lf-font-display);
+}
+.lf-life__form {
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+.lf-life__form h2 {
+  margin: 0;
+  font-size: var(--lf-text-lg);
+}
+.lf-life__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.lf-life__helper {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
+}
+.lf-life__actions {
+  display: flex;
+  gap: 10px;
+}
+.lf-life__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .lf-life__split {
+    grid-template-columns: 1fr;
+  }
+}
