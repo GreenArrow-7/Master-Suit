@@ -107,6 +107,7 @@ export default function WorkspaceSidebar({
               { label: 'Roster', href: `/${slug}/people/roster`, icon: 'calendar', permission: 'employee' },
               { label: 'Holidays', href: `/${slug}/people/holidays`, icon: 'calendar', permission: 'employee' },
               { label: 'Documents', href: `/${slug}/people/documents`, icon: 'document', permission: 'hr_documents' },
+              { label: 'Compliance', href: `/${slug}/people/compliance`, icon: 'shield', permission: 'employee' },
               // Unkeyed to `performance` deliberately: writing your own
               // self-assessment and acknowledging your own review are
               // self-service. The page shows the manager and HR sections only to
