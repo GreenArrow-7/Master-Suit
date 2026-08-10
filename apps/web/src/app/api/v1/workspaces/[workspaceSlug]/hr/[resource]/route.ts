@@ -645,7 +645,10 @@ export const POST = route(
         if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can assign work locations.');
         const input = z
           .object({
-            employeeId: z.string().min(1).max(64),
+            // Single or bulk: v21 assigns several employees to a fence at once.
+            // One employee is the one-element case of the same list.
+            employeeId: z.string().min(1).max(64).optional(),
+            employeeIds: z.array(z.string().min(1).max(64)).min(1).max(500).optional(),
             locationId: z.string().min(1).max(64),
             assignmentType: z.enum(['PRIMARY', 'SECONDARY', 'TEMPORARY']).default('PRIMARY'),
             effectiveFrom: z.coerce.date().optional(),
@@ -664,23 +667,36 @@ export const POST = route(
             checkoutRule: z.enum(['SAME_LOCATION', 'ANY_ASSIGNED', 'EXCEPTION_ONLY']).default('SAME_LOCATION'),
             notes: z.string().max(500).optional(),
           })
+          .refine((body) => body.employeeId || (body.employeeIds && body.employeeIds.length), {
+            message: 'Name at least one employee to assign.',
+          })
           .parse(body);
-        await ensureEmployee(ctx.tenantId, input.employeeId);
+
+        const { employeeId, employeeIds, ...shared } = input;
+        const targets = [...new Set([...(employeeIds ?? []), ...(employeeId ? [employeeId] : [])])];
+
         const location = await prisma.hrWorkLocation.findFirst({
           where: { tenantId: ctx.tenantId, id: input.locationId },
         });
         if (!location) throw NotFound('Work location');
+        for (const target of targets) await ensureEmployee(ctx.tenantId, target);
+
         const assigner = await myEmployee(ctx);
-        return prisma.hrEmployeeLocationAssignment.create({
-          data: {
-            tenantId: ctx.tenantId,
-            ...input,
-            allowedDays: input.allowedDays ?? [],
-            status: 'ACTIVE',
-            assignedById: assigner?.id ?? null,
-          },
-          include: { location: true },
-        });
+        const created = await prisma.$transaction(
+          targets.map((target) =>
+            prisma.hrEmployeeLocationAssignment.create({
+              data: {
+                tenantId: ctx.tenantId,
+                ...shared,
+                employeeId: target,
+                allowedDays: shared.allowedDays ?? [],
+                status: 'ACTIVE',
+                assignedById: assigner?.id ?? null,
+              },
+            }),
+          ),
+        );
+        return { assigned: created.length, assignmentIds: created.map((row) => row.id) };
       }
     }
   },

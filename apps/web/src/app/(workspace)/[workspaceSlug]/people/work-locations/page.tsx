@@ -3,7 +3,12 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
+import LocationMapForm from './LocationMapForm';
+import ExportCsv from '@/components/workspace/ExportCsv';
 import { isHrAdmin, myEmployee } from '@/services/hr/leave';
+
+/** RFC 4180-ish: quote every field and double any embedded quote. */
+const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
@@ -45,44 +50,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       </section>
 
       {hr && (
-      <section>
-        <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Add a location</h2>
-        <WorkspaceRecordForm
-          endpoint={`${base}/work-locations`}
-          submitLabel="Create location"
-          fields={[
-            { name: 'name', label: 'Location name', required: true },
-            { name: 'code', label: 'Code' },
-            {
-              name: 'latitude',
-              label: 'Latitude (stand in the office and read your phone GPS)',
-              type: 'number',
-              required: true,
-            },
-            { name: 'longitude', label: 'Longitude', type: 'number', required: true },
-            { name: 'radiusMeters', label: 'Radius (metres)', type: 'number', required: true, placeholder: '150' },
-            {
-              name: 'maxAccuracyMeters',
-              label: 'Worst acceptable GPS accuracy (metres)',
-              type: 'number',
-              placeholder: '100',
-            },
-            { name: 'openingTime', label: 'Opening time', type: 'time' },
-            { name: 'closingTime', label: 'Closing time', type: 'time' },
-            { name: 'emirate', label: 'Emirate' },
-            {
-              name: 'status',
-              label: 'Status',
-              type: 'select',
-              options: [
-                { value: 'ACTIVE', label: 'Active' },
-                { value: 'DRAFT', label: 'Draft' },
-                { value: 'RETIRED', label: 'Retired' },
-              ],
-            },
-          ]}
-        />
-      </section>
+        <section>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Add a location</h2>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            Search an address or click the map to drop the geofence pin; drag to fine-tune. The circle previews the
+            radius. You can also paste coordinates straight from Google Maps into the latitude and longitude fields.
+          </p>
+          <LocationMapForm endpoint={`${base}/work-locations`} />
+        </section>
       )}
 
       <section>
@@ -117,9 +92,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
             submitLabel="Assign"
             fields={[
               {
-                name: 'employeeId',
-                label: 'Employee',
-                type: 'select',
+                name: 'employeeIds',
+                label: 'Employees (choose one or several)',
+                type: 'multiselect',
                 required: true,
                 options: employees.map((employee) => ({
                   value: employee.id,
@@ -161,7 +136,33 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       )}
 
       <section>
-        <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Assignments</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 10px' }}>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Assignments</h2>
+          {hr && assignments.length > 0 && (
+            <ExportCsv
+              filename={`work-location-assignments-${new Date().toISOString().slice(0, 10)}.csv`}
+              csv={[
+                ['Employee', 'Employee number', 'Location', 'Type', 'Effective from', 'Effective to', 'Check-out rule', 'Status']
+                  .map(csvCell)
+                  .join(','),
+                ...assignments.map((assignment) =>
+                  [
+                    assignment.employee.membership.platformUser.fullName,
+                    assignment.employee.employeeNumber,
+                    assignment.location.name,
+                    assignment.assignmentType,
+                    assignment.effectiveFrom ? date(assignment.effectiveFrom) : '',
+                    assignment.effectiveTo ? date(assignment.effectiveTo) : '',
+                    assignment.checkoutRule,
+                    assignment.status,
+                  ]
+                    .map(csvCell)
+                    .join(','),
+                ),
+              ].join('\r\n')}
+            />
+          )}
+        </div>
         <WorkspaceTable
           headers={['Employee', 'Location', 'Type', 'Window', 'Check-out rule', 'Status', '']}
           empty="Nobody is assigned to a work location yet, so no check-in can succeed."
