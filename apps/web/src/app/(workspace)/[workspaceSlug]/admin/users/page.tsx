@@ -2,132 +2,204 @@ import { redirect } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
-import Badge, { type Tone } from '@/components/ui/Badge';
-import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
+import UserRowActions from './UserRowActions';
 
-export const metadata = { title: 'Administration' };
+export const metadata = { title: 'Users' };
 
-const STATUS_TONE: Record<string, Tone> = {
-  ACTIVE: 'viridian',
-  INVITED: 'brass',
-  SUSPENDED: 'vermillion',
-  DEACTIVATED: 'slate',
-};
-const TABS = [
-  ['All', ''],
-  ['Active', 'ACTIVE'],
-  ['Invited', 'INVITED'],
-  ['Suspended', 'SUSPENDED'],
-] as const;
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 
-function relativeTime(date: Date | null | undefined): string {
-  if (!date) return '—';
-  const ms = Date.now() - new Date(date).getTime();
-  if (ms < 0) return 'just now';
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
-  const params = await searchParams;
+/**
+ * The user directory, per the reference: the filter bar, the "N PERSON" count
+ * pill, and one row per account carrying the avatar, name and email, biometric
+ * consent state, employee code, role, and the two administrator actions.
+ *
+ * You can only administer accounts at or below your own level — the row actions
+ * are hidden for anyone senior, and the server refuses them regardless.
+ */
+export default async function UsersPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ q?: string; role?: string; show?: string }>;
+}) {
+  const { workspaceSlug } = await params;
+  const query = await searchParams;
   const ctx = await requirePageAccess({ permission: ['users', 'VIEW'] });
   if (!can(ctx, 'users', 'VIEW')) redirect('/home');
 
-  const statusFilter =
-    params.status && ['ACTIVE', 'INVITED', 'SUSPENDED', 'DEACTIVATED'].includes(params.status)
-      ? { status: params.status as any }
-      : {};
+  const search = (query.q ?? '').trim();
+  const showAll = query.show === 'all';
 
-  const rows = await prisma.user.findMany({
-    where: { tenantId: ctx.tenantId, ...statusFilter },
-    orderBy: { fullName: 'asc' },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      status: true,
-      role: { select: { name: true } },
-      // Last sign-in belongs to the identity, not the membership.
-      workspaceMembership: { select: { platformUser: { select: { lastLoginAt: true } } } },
-      branch: { select: { name: true } },
-    },
-    take: 100,
-  });
+  const [rows, roles] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        deletedAt: null,
+        ...(showAll ? {} : { status: 'ACTIVE' }),
+        ...(query.role ? { role: { key: query.role } } : {}),
+        ...(search
+          ? {
+              OR: [
+                { fullName: { contains: search, mode: 'insensitive' as const } },
+                { email: { contains: search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { fullName: 'asc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        status: true,
+        roleId: true,
+        role: { select: { key: true, name: true, rank: true } },
+        workspaceMembership: {
+          select: {
+            id: true,
+            employee: { select: { id: true, employeeNumber: true } },
+          },
+        },
+      },
+      take: 200,
+    }),
+    prisma.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: 'asc' }, select: { key: true, name: true } }),
+  ]);
+
+  // Consent is per employee; one query rather than one per row.
+  const employeeIds = rows.map((row) => row.workspaceMembership?.employee?.id).filter((id): id is string => !!id);
+  const consents = employeeIds.length
+    ? await prisma.biometricConsent.findMany({
+        where: { tenantId: ctx.tenantId, employeeId: { in: employeeIds }, grantedAt: { not: null }, withdrawnAt: null },
+        select: { employeeId: true },
+      })
+    : [];
+  const consented = new Set(consents.map((row) => row.employeeId));
+  const mayManage = can(ctx, 'users', 'MANAGE_USERS');
 
   return (
-    <>
-      <header
-        style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
-      >
-        <div>
-          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
-            Administration
-          </h1>
-          <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-            {rows.length} user{rows.length === 1 ? '' : 's'}
-          </p>
-        </div>
-      </header>
+    <div className="lf-page-stack">
+      <section>
+        <div className="lf-eyebrow">Administration</div>
+        <h1 style={{ margin: '8px 0 0' }}>Users</h1>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '90ch' }}>
+          Everyone with an account. Roles decide what each person can reach — you can only administer accounts at or
+          below your own level.
+        </p>
+      </section>
 
-      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Status filter">
-        {TABS.map(([label, key]) => (
-          <SalesLink
-            key={label}
-            className="lf-tab"
-            href={key ? `/admin?status=${key}` : '/admin'}
-            aria-selected={(params.status ?? '') === key}
-            role="tab"
-          >
-            {label}
+      <form className="lf-card lf-users__filters" method="get">
+        <div className="lf-field" style={{ flex: '1 1 280px', margin: 0 }}>
+          <label className="lf-label" htmlFor="u-q">
+            Search
+          </label>
+          <input id="u-q" className="lf-input" name="q" defaultValue={search} placeholder="Name, email or employee code" />
+        </div>
+        <div className="lf-field" style={{ margin: 0 }}>
+          <label className="lf-label" htmlFor="u-role">
+            Role
+          </label>
+          <select id="u-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
+            <option value="">All roles</option>
+            {roles.map((role) => (
+              <option key={role.key} value={role.key}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="lf-field" style={{ margin: 0 }}>
+          <label className="lf-label" htmlFor="u-show">
+            Show
+          </label>
+          <select id="u-show" className="lf-input" name="show" defaultValue={showAll ? 'all' : 'active'}>
+            <option value="active">Active only</option>
+            <option value="all">Everyone</option>
+          </select>
+        </div>
+        <button className="lf-btn lf-btn--secondary" type="submit">
+          Filter
+        </button>
+        {mayManage && (
+          <SalesLink className="lf-btn" href="/users/new">
+            + Add user
           </SalesLink>
-        ))}
-      </nav>
+        )}
+      </form>
+
+      <div className="lf-users__head">
+        <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Directory</h2>
+        <span className="lf-users__count">
+          {rows.length} {rows.length === 1 ? 'PERSON' : 'PEOPLE'}
+        </span>
+      </div>
 
       {rows.length === 0 ? (
-        <div className="lf-card">
-          <EmptyState title="No users match" description="Adjust the filter to see users." />
-        </div>
+        <div className="lf-card lf-leave__empty">Nobody matches those filters.</div>
       ) : (
-        <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
-          <table className="lf-grid">
+        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="lf-table">
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Email</th>
+                <th>Employee code</th>
                 <th>Role</th>
-                <th>Branch</th>
-                <th>Status</th>
-                <th>Last Login</th>
+                <th />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ fontWeight: 500 }}>
-                    <SalesLink href={`/admin/users/${r.id}`}>{r.fullName}</SalesLink>
-                  </td>
-                  <td style={{ color: 'var(--lf-ink-2)' }}>{r.email}</td>
-                  <td>{r.role.name}</td>
-                  <td style={{ color: 'var(--lf-ink-2)' }}>{r.branch?.name ?? '—'}</td>
-                  <td>
-                    <Badge tone={STATUS_TONE[r.status] ?? 'slate'}>{r.status.toLowerCase()}</Badge>
-                  </td>
-                  <td style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-                    {relativeTime(r.workspaceMembership?.platformUser.lastLoginAt ?? null)}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const employee = row.workspaceMembership?.employee;
+                const hasConsent = employee ? consented.has(employee.id) : false;
+                const administrable = mayManage && row.role.rank > ctx.actor.roleRank && row.id !== ctx.actor.id;
+                return (
+                  <tr key={row.id}>
+                    <td data-label="Name">
+                      <span className="lf-users__person">
+                        <span className="lf-avatar">{initials(row.fullName)}</span>
+                        <span>
+                          <SalesLink href={`/users/${row.id}`} className="lf-users__name">
+                            {row.fullName}
+                          </SalesLink>
+                          <span className="lf-users__email">{row.email}</span>
+                          {employee && (
+                            <span className="lf-users__consent" data-on={hasConsent}>
+                              {hasConsent ? 'CONSENTED' : 'NO CONSENT'}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </td>
+                    <td data-label="Employee code">{employee?.employeeNumber ?? '—'}</td>
+                    <td data-label="Role">
+                      <span className="lf-users__role">{row.role.name.toUpperCase()}</span>
+                    </td>
+                    <td data-label="">
+                      {administrable && (
+                        <UserRowActions
+                          endpoint={`/api/v1/workspaces/${workspaceSlug}/identity`}
+                          userId={row.id}
+                          employeeId={employee?.id ?? null}
+                          workspaceSlug={workspaceSlug}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-    </>
+    </div>
   );
 }
