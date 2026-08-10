@@ -30,9 +30,13 @@ describe('geofence', () => {
     expect(insideGeofence(200, 150)).toBe(false);
   });
 
-  it('subtracts GPS accuracy so a genuine employee at the edge is not refused by sensor noise', () => {
-    expect(insideGeofence(180, 150, 0)).toBe(false);
-    expect(insideGeofence(180, 150, 40)).toBe(true);
+  it('compares distance strictly against the radius — no accuracy grace (v21)', () => {
+    // The old grace let a 40 m error margin pull someone 180 m out "inside" a
+    // 150 m fence. v21 removed it: accuracy is a separate gate, not a discount
+    // on distance, so 180 m is outside 150 m regardless of the reported margin.
+    expect(insideGeofence(180, 150)).toBe(false);
+    expect(insideGeofence(150, 150)).toBe(true);
+    expect(insideGeofence(151, 150)).toBe(false);
   });
 });
 

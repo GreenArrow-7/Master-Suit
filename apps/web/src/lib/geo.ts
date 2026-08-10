@@ -20,10 +20,16 @@ export function haversineM(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * GPS accuracy is subtracted so someone genuinely standing at the edge of the
- * fence is not rejected by sensor noise. A client-reported "I am inside" flag is
- * never trusted — only the coordinates, measured here.
+ * Whether the measured position is inside the fence: distance compared strictly
+ * against the radius, nothing subtracted.
+ *
+ * HRMS-v21 removed the old GPS-accuracy "grace" on purpose. Accuracy is a
+ * separate gate — a punch with a coarse fix is refused before this is reached —
+ * so subtracting it here as well penalised it twice and let a phone reporting a
+ * large error margin claim to be inside a fence it was demonstrably outside. A
+ * client-reported "I am inside" flag is never trusted; only the coordinates,
+ * measured here.
  */
-export function insideGeofence(distanceM: number, radiusM: number, gpsAccuracyM = 0): boolean {
-  return distanceM - Math.max(gpsAccuracyM, 0) <= radiusM;
+export function insideGeofence(distanceM: number, radiusM: number): boolean {
+  return distanceM <= radiusM;
 }

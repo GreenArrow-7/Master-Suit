@@ -206,7 +206,7 @@ export async function punch(input: PunchInput) {
     const distanceM = destination
       ? Math.round(haversineM(destination.latitude, destination.longitude, coordinates.latitude, coordinates.longitude))
       : null;
-    const geofenceOk = distanceM == null ? null : insideGeofence(distanceM, policy.radiusM, coordinates.accuracyM ?? 0);
+    const geofenceOk = distanceM == null ? null : insideGeofence(distanceM, policy.radiusM);
 
     const updated = await tx.siteVisit.update({
       where: { id: visit.id, tenantId: ctx.tenantId },

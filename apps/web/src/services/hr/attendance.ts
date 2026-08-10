@@ -228,7 +228,7 @@ export async function validatePunch(
   }
 
   const within = measured.find(({ assignment, distanceM }) =>
-    insideGeofence(distanceM, assignment.location.radiusMeters, position.gpsAccuracyM),
+    insideGeofence(distanceM, assignment.location.radiusMeters),
   );
 
   if (!within) {
@@ -312,7 +312,7 @@ export async function preflight(
         name: assignment.location.name,
         distanceM: Math.round(distanceM * 10) / 10,
         radiusM: assignment.location.radiusMeters,
-        inside: insideGeofence(distanceM, assignment.location.radiusMeters, position.gpsAccuracyM),
+        inside: insideGeofence(distanceM, assignment.location.radiusMeters),
         maxAccuracyM,
         accuracyOk: position.gpsAccuracyM <= maxAccuracyM,
         checkoutRule: assignment.checkoutRule,
