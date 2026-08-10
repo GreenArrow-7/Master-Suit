@@ -1821,3 +1821,15 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Attendance report filter bar: From, To, Apply, Export CSV in one row. */
+.lf-att__filters {
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lf-att__filters .lf-field {
+  margin: 0;
+}
