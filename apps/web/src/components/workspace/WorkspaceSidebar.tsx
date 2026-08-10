@@ -331,7 +331,10 @@ export default function WorkspaceSidebar({
           </button>
         </div>
 
-        {!collapsed && (
+        {/* The HR module's own navigation carries no product switcher — the
+            reference has none. "Overview" still reaches the workspace root,
+            which is where both modules are listed, so nobody is stranded. */}
+        {!collapsed && activeModule !== 'people' && (
           <div className="lf-module-switch" aria-label="Product modules">
             {modules.includes('SALES') && (
               <Link href={`/${slug}/sales`} aria-current={activeModule === 'sales' ? 'page' : undefined}>
@@ -339,8 +342,10 @@ export default function WorkspaceSidebar({
                 Sales
               </Link>
             )}
+            {/* Never the current tab here: this switcher renders only outside
+                the HR module, which has no switcher of its own. */}
             {modules.includes('HRMS') && (
-              <Link href={`/${slug}/people`} aria-current={activeModule === 'people' ? 'page' : undefined}>
+              <Link href={`/${slug}/people`}>
                 <Icon name="people" />
                 People
               </Link>

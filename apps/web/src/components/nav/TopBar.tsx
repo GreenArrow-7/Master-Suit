@@ -177,6 +177,7 @@ export default function TopBar({
           {workspaceName} · <b>{peoplePageTitle(pathname)}</b>
         </div>
       )}
+      {module !== 'people' && (
       <form
         className="lf-shell-search"
         action={target.href}
@@ -215,8 +216,9 @@ export default function TopBar({
           ⌘K
         </kbd>
       </form>
+      )}
 
-      <div className="lf-shell-actions">
+      <div className="lf-shell-actions" hidden={module === 'people'}>
         {workspaceName && (
           <span className="lf-topbar-optional" style={{ color: 'var(--lf-ink-2)', fontSize: 11, fontWeight: 600 }}>
             {workspaceName}

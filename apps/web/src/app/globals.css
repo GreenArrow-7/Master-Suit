@@ -1394,3 +1394,165 @@ a:hover {
   color: var(--lf-ink);
   font-weight: 500;
 }
+
+/* ── Attendance console (People › Check in) ───────────────────────────────────
+   Built to the reference screen: a live GST clock over a circular camera
+   viewport ringed in ivory with brass ticks, three verdict cells beneath, and
+   the record panel beside it. */
+.lf-checkin {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.lf-checkin__recent {
+  grid-column: 1 / -1;
+  padding: 20px 22px;
+}
+.lf-checkin__stage {
+  padding: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+.lf-checkin__clock {
+  font: 400 22px/1 var(--lf-font-mono);
+  letter-spacing: 0.04em;
+  color: var(--lf-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.lf-checkin__lens {
+  position: relative;
+  width: min(300px, 70vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #05060a;
+  border: 10px solid var(--lf-canvas);
+  box-shadow: 0 0 0 1px var(--lf-line);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.lf-checkin__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* a mirror is what someone expects of their own face */
+  opacity: 0;
+}
+.lf-checkin__video[data-on='true'] {
+  opacity: 1;
+}
+.lf-checkin__lens-hint {
+  position: absolute;
+  color: rgb(255 255 255 / 0.34);
+  font-size: var(--lf-text-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+/* The four brass registration ticks on the ring. */
+.lf-checkin__tick {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--lf-brass, #b98f4c);
+  border-radius: 1px;
+}
+.lf-checkin__tick[data-at='n'] { top: -3px; left: 50%; transform: translateX(-50%); }
+.lf-checkin__tick[data-at='s'] { bottom: -3px; left: 50%; transform: translateX(-50%); }
+.lf-checkin__tick[data-at='e'] { right: -3px; top: 50%; transform: translateY(-50%); }
+.lf-checkin__tick[data-at='w'] { left: -3px; top: 50%; transform: translateY(-50%); }
+
+.lf-checkin__verdicts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  border-top: 1px solid var(--lf-line);
+}
+.lf-checkin__verdict {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 14px 6px 4px;
+}
+.lf-checkin__verdict + .lf-checkin__verdict {
+  border-left: 1px solid var(--lf-line);
+}
+.lf-checkin__verdict strong {
+  font: 400 20px/1 var(--lf-font-display);
+  color: var(--lf-ink-3);
+}
+.lf-checkin__verdict strong[data-state='PASS'] { color: var(--lf-viridian); }
+.lf-checkin__verdict strong[data-state='FAIL'] { color: var(--lf-vermillion, #b3261e); }
+
+.lf-checkin__panel {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.lf-checkin__assigned {
+  display: grid;
+  gap: 6px;
+}
+.lf-checkin__location,
+.lf-checkin__none {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-checkin__none {
+  color: var(--lf-ink-3);
+}
+/* The GPS/geofence read-out, in the reference's monospace. */
+.lf-checkin__diagnostic {
+  margin: 0;
+  font: 400 12px/1.6 var(--lf-font-mono);
+  color: var(--lf-viridian);
+  overflow-wrap: anywhere;
+}
+.lf-checkin__diagnostic[data-bad='true'] {
+  color: var(--lf-vermillion, #b3261e);
+}
+.lf-checkin__blocked {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--lf-brass, #b98f4c);
+  background: var(--lf-brass-sub, #f7f0df);
+  color: #6b4c12;
+  font-size: var(--lf-text-sm);
+  border-radius: var(--lf-radius-sm);
+}
+.lf-checkin__camera {
+  width: 100%;
+  justify-content: center;
+}
+.lf-checkin__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.lf-checkin__actions .lf-btn {
+  justify-content: center;
+}
+.lf-checkin__status {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink);
+}
+.lf-checkin__hint {
+  margin: 0;
+  font: 400 12px/1.5 var(--lf-font-mono);
+  color: var(--lf-ink-3);
+}
+.lf-checkin__recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+@media (max-width: 960px) {
+  .lf-checkin {
+    grid-template-columns: 1fr;
+  }
+}
