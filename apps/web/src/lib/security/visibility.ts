@@ -78,18 +78,27 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb =
     }
 
     case 'BRANCH': {
-      if (!ctx.actor.branchId) return [self];
+      // The actor's own branch, plus any branch a BRANCH-scoped role
+      // assignment names — a manager covering a second branch sees it without
+      // being moved there.
+      const branchIds = unique(
+        [ctx.actor.branchId, ...ctx.actor.grantedBranchIds].filter((id): id is string => !!id),
+      );
+      if (branchIds.length === 0) return [self];
       const rows = await db.user.findMany({
-        where: { tenantId: ctx.tenantId, branchId: ctx.actor.branchId },
+        where: { tenantId: ctx.tenantId, branchId: { in: branchIds } },
         select: { id: true },
       });
       return unique([self, ...rows.map((r) => r.id)]);
     }
 
     case 'REGION': {
-      if (!ctx.actor.regionId) return [self];
+      const regionIds = unique(
+        [ctx.actor.regionId, ...ctx.actor.grantedRegionIds].filter((id): id is string => !!id),
+      );
+      if (regionIds.length === 0) return [self];
       const branches = await db.branch.findMany({
-        where: { tenantId: ctx.tenantId, regionId: ctx.actor.regionId },
+        where: { tenantId: ctx.tenantId, regionId: { in: regionIds } },
         select: { id: true },
       });
       const rows = await db.user.findMany({

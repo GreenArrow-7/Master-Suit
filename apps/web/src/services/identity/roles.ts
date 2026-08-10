@@ -27,6 +27,39 @@ function assertMayEditRole(ctx: Ctx, role: { id: string; rank: number }) {
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot edit a role at or above your own level.');
 }
 
+/**
+ * v21 §1: who may grant or revoke which role.
+ *
+ * The base rule stays "strictly below your own level" — but applied literally
+ * it means the top role could never be granted by anyone, because nobody
+ * outranks it. v21's answer is that Super Administrators grant Super
+ * Administrator, and this is its translation: a peer-level grant is allowed
+ * exactly when that level is the workspace's top tier.
+ */
+async function assertMayGrantRole(ctx: Ctx, role: { rank: number }) {
+  if (role.rank > ctx.actor.roleRank) return;
+  if (role.rank < ctx.actor.roleRank) throw Forbidden('You cannot assign a role above your own level.');
+  const top = await prisma.role.aggregate({ where: { tenantId: ctx.tenantId }, _min: { rank: true } });
+  if (role.rank !== top._min.rank) {
+    throw Forbidden('You cannot assign a role at your own level.');
+  }
+}
+
+/** Whether a role can administer roles — the capability the lock-out guard protects. */
+async function isAdminCapable(tenantId: string, roleId: string) {
+  const grant = await prisma.rolePermission.findFirst({
+    where: {
+      tenantId,
+      roleId,
+      granted: true,
+      scope: { not: 'NONE' },
+      permission: { module: 'roles', action: 'MANAGE_CONFIGURATION' },
+    },
+    select: { id: true },
+  });
+  return !!grant;
+}
+
 // ── H05: roles and the permission matrix ───────────────────────────────────
 
 export async function listRoles(ctx: Ctx) {
@@ -43,6 +76,7 @@ export async function listRoles(ctx: Ctx) {
     rank: role.rank,
     defaultScope: role.defaultScope,
     isSystem: role.isSystem,
+    isActive: role.isActive,
     users: role._count.users,
     permissions: role._count.permissions,
     /** Whether the signed-in administrator may act on this role at all. */
@@ -122,34 +156,106 @@ export async function createRole(
 export async function updateRole(
   ctx: Ctx,
   roleId: string,
-  input: { name?: string; description?: string; rank?: number; defaultScope?: Scope },
+  input: { name?: string; description?: string; rank?: number; defaultScope?: Scope; isActive?: boolean },
 ) {
   const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: roleId } });
   if (!role) throw NotFound('Role');
   assertMayEditRole(ctx, role);
   if (input.rank !== undefined && input.rank <= ctx.actor.roleRank)
     throw Forbidden('You cannot raise a role to or above your own level.');
+  if (input.isActive === false && isSystemRole(role))
+    throw Conflict('System roles cannot be deactivated. The workspace bootstrap depends on them.');
 
   const updated = await prisma.role.update({
     where: { tenantId: ctx.tenantId, id: role.id },
     data: { ...input, updatedById: ctx.actor.id },
   });
+
+  // Deactivation is an off-switch: everyone holding the role — primarily or by
+  // assignment — is signed out so no live session keeps its permissions.
+  if (input.isActive === false && role.isActive) {
+    const holders = await prisma.user.findMany({
+      where: { tenantId: ctx.tenantId, roleId: role.id, deletedAt: null },
+      select: { id: true },
+    });
+    const assigned = await prisma.membershipRole.findMany({
+      where: { tenantId: ctx.tenantId, roleId: role.id, status: 'ACTIVE' },
+      include: { membership: { select: { salesUserId: true } } },
+    });
+    const userIds = new Set([
+      ...holders.map((holder) => holder.id),
+      ...assigned.map((row) => row.membership.salesUserId).filter((id): id is string => !!id),
+    ]);
+    for (const userId of userIds) await revokeAllSessions(ctx.tenantId, userId, undefined, 'PERMISSIONS_CHANGED');
+  }
+
   await audit(ctx, {
     event: 'PERMISSION_CHANGED',
     objectType: 'role',
     recordId: role.id,
-    previousValue: { name: role.name, rank: role.rank },
-    newValue: { name: updated.name, rank: updated.rank },
+    previousValue: { name: role.name, rank: role.rank, isActive: role.isActive },
+    newValue: { name: updated.name, rank: updated.rank, isActive: updated.isActive },
     metadata: { action: 'role.updated' },
   });
   return updated;
 }
 
-/** A role still holding users cannot be deleted — those accounts would lose all access. */
+/**
+ * v21 §1: create a role as a copy of another, permissions included. Each copied
+ * grant is capped at the administrator's own scope for that permission — the
+ * same "you may never grant more than you hold" rule the matrix enforces, so a
+ * clone is never a way to mint rights the cloner does not have.
+ */
+export async function cloneRole(
+  ctx: Ctx,
+  sourceRoleId: string,
+  input: { key: string; name: string; description?: string; rank: number },
+) {
+  const source = await prisma.role.findFirst({
+    where: { tenantId: ctx.tenantId, id: sourceRoleId },
+    include: { permissions: { include: { permission: true } } },
+  });
+  if (!source) throw NotFound('Role');
+
+  const role = await createRole(ctx, {
+    key: input.key,
+    name: input.name,
+    description: input.description ?? `Copy of ${source.name}`,
+    rank: input.rank,
+    defaultScope: source.defaultScope as Scope,
+  });
+
+  await withTx(ctx.tenantId, async (tx) => {
+    for (const rp of source.permissions) {
+      if (!rp.granted) continue;
+      const ceiling = scopeFor(ctx, rp.permission.module, rp.permission.action as Action);
+      const scope = SCOPE_RANK[rp.scope as Scope] > SCOPE_RANK[ceiling] ? ceiling : (rp.scope as Scope);
+      if (scope === 'NONE') continue;
+      await tx.rolePermission.create({
+        data: { tenantId: ctx.tenantId, roleId: role.id, permissionId: rp.permissionId, granted: true, scope },
+      });
+    }
+  });
+
+  await audit(ctx, {
+    event: 'PERMISSION_CHANGED',
+    objectType: 'role',
+    recordId: role.id,
+    newValue: { clonedFrom: source.key },
+    metadata: { action: 'role.cloned' },
+  });
+  return role;
+}
+
+/**
+ * A role still holding users cannot be deleted — those accounts would lose all
+ * access — and neither can one with assignment history: the audit trail of who
+ * held what, and when, must keep resolving. Deactivate those instead (v21 §1).
+ */
 export async function deleteRole(ctx: Ctx, roleId: string) {
   const role = await prisma.role.findFirst({
     where: { tenantId: ctx.tenantId, id: roleId },
-    include: { _count: { select: { users: true } } },
+    include: { _count: { select: { users: true, membershipRoles: true } } },
   });
   if (!role) throw NotFound('Role');
   assertMayEditRole(ctx, role);
@@ -158,6 +264,11 @@ export async function deleteRole(ctx: Ctx, roleId: string) {
     throw Conflict(
       `${role._count.users} account${role._count.users === 1 ? ' is' : 's are'} still on this role. Move them to another role first.`,
     );
+  if (role._count.membershipRoles > 0) {
+    throw Conflict(
+      'This role has assignment history. Deactivate it instead, so the record of who held it keeps resolving.',
+    );
+  }
 
   await prisma.role.delete({ where: { tenantId: ctx.tenantId, id: role.id } });
   await audit(ctx, {
@@ -273,7 +384,8 @@ export async function assignRole(
 ) {
   const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: input.roleId } });
   if (!role) throw NotFound('Role');
-  if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot assign a role at or above your own level.');
+  await assertMayGrantRole(ctx, role);
+  if (!role.isActive) throw Conflict('That role is deactivated. Reactivate it before assigning it.');
   if (input.effectiveTo && input.effectiveFrom && input.effectiveTo <= input.effectiveFrom) {
     throw Conflict('The end of the window must be after its start.');
   }
@@ -333,9 +445,25 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
     include: { role: true, membership: true },
   });
   if (!assignment) throw NotFound('Role assignment');
-  if (assignment.role.rank <= ctx.actor.roleRank)
-    throw Forbidden('You cannot revoke a role at or above your own level.');
   if (assignment.status !== 'ACTIVE') throw Conflict('That assignment is already revoked.');
+
+  const isSelf = assignment.membership.salesUserId === ctx.actor.id;
+  if (isSelf) {
+    // Relinquishing what you hold needs no rank — stepping down is normal —
+    // with one v21 exception: you cannot revoke your own last administrative
+    // role. Without it, the sole administrator locks the whole workspace out
+    // of role management with one click, and nobody left inside can undo it.
+    if (await isAdminCapable(ctx.tenantId, assignment.roleId)) {
+      const keepsAdmin =
+        (assignment.roleId !== ctx.actor.roleId && (await isAdminCapable(ctx.tenantId, ctx.actor.roleId))) ||
+        (await hasOtherAdminAssignment(ctx, assignment.id));
+      if (!keepsAdmin) {
+        throw Conflict('This is your last administrative role. Hand administration to someone else before revoking it.');
+      }
+    }
+  } else {
+    await assertMayGrantRole(ctx, assignment.role);
+  }
 
   const revoked = await prisma.membershipRole.update({
     where: { tenantId: ctx.tenantId, id: assignment.id },
@@ -354,6 +482,29 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
     metadata: { action: 'role.revoked', reason },
   });
   return revoked;
+}
+
+/** Whether any *other* in-force assignment of the actor still carries role administration. */
+async function hasOtherAdminAssignment(ctx: Ctx, excludingAssignmentId: string) {
+  const now = new Date();
+  const others = await prisma.membershipRole.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      id: { not: excludingAssignmentId },
+      status: 'ACTIVE',
+      membership: { salesUserId: ctx.actor.id },
+      role: { isActive: true },
+      AND: [
+        { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }] },
+        { OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }] },
+      ],
+    },
+    select: { roleId: true },
+  });
+  for (const other of others) {
+    if (await isAdminCapable(ctx.tenantId, other.roleId)) return true;
+  }
+  return false;
 }
 
 /** Every grant and revocation, current and past. */

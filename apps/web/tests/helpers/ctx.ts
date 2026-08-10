@@ -15,6 +15,8 @@ export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: s
     roleRank: 0,
     branchId: null,
     regionId: null,
+    grantedBranchIds: [],
+    grantedRegionIds: [],
     teamIds: [],
     managedUserIds: [],
     permissions: new Map() as PermissionMap,

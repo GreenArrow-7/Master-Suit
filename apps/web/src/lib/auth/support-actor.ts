@@ -54,6 +54,8 @@ export async function buildSupportActor(
     roleRank: 0,
     branchId: null,
     regionId: null,
+    grantedBranchIds: [],
+    grantedRegionIds: [],
     teamIds: [],
     managedUserIds: [],
     permissions,

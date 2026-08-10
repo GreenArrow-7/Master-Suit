@@ -70,6 +70,8 @@ export async function authenticateApiKey(raw: string, req: Request, requestId: s
     roleRank: role.rank,
     branchId: null,
     regionId: null,
+    grantedBranchIds: [],
+    grantedRegionIds: [],
     teamIds: [],
     managedUserIds: [],
     permissions,

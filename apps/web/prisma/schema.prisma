@@ -2599,6 +2599,8 @@ model Role {
   name         String
   description  String?
   isSystem     Boolean         @default(false)
+  /** A deactivated role grants nothing and cannot be assigned, but keeps its history. */
+  isActive     Boolean         @default(true)
   rank         Int             @default(100)
   defaultScope VisibilityScope @default(OWN)
   createdAt    DateTime        @default(now())

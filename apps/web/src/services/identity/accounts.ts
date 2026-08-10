@@ -283,7 +283,7 @@ export async function revokeUserSessions(ctx: Ctx, userId: string) {
 /** Everything an administrator needs to judge one account, in one call. */
 export async function accountDetail(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
-  const [sessions, employee] = await Promise.all([
+  const [sessions, employee, loginHistory] = await Promise.all([
     /**
      * Read from PlatformSession, which is where sessions actually live.
      *
@@ -305,6 +305,15 @@ export async function accountDetail(ctx: Ctx, userId: string) {
       where: { tenantId: ctx.tenantId, membershipId: target.workspaceMembership!.id, deletedAt: null },
       select: { id: true, employeeNumber: true, employmentStatus: true, managerMembershipId: true },
     }),
+    // v21 §1 access panel: the account's recent sign-ins, successful and
+    // failed, so an administrator judging a suspected compromise sees the
+    // pattern rather than just the last-login timestamp.
+    prisma.auditLog.findMany({
+      where: { tenantId: ctx.tenantId, actorUserId: target.id, event: { in: ['LOGIN', 'LOGIN_FAILED', 'LOGOUT'] } },
+      select: { event: true, ipAddress: true, occurredAt: true },
+      orderBy: { occurredAt: 'desc' },
+      take: 20,
+    }),
   ]);
 
   const platformUser = target.workspaceMembership!.platformUser;
@@ -323,6 +332,11 @@ export async function accountDetail(ctx: Ctx, userId: string) {
     /** Null means the account is still on an administrator-issued temporary password. */
     passwordChangedAt: platformUser.passwordChangedAt,
     activeSessions: sessions,
+    loginHistory: loginHistory.map((row) => ({
+      event: row.event,
+      ipAddress: row.ipAddress,
+      at: row.occurredAt,
+    })),
     employee,
   };
 }

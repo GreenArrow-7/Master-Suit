@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '../db';
 import { env } from '../env';
 import { Forbidden, Unauthorized } from '../errors';
-import type { Actor, Ctx, Scope } from '../security/rbac';
+import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
 import { buildSupportActor, isSupportRole } from './support-actor';
 import { isPrivilegedPlatformRole } from './platform-policy';
 import { isInAny, parseCidrList, parseIp, type Cidr } from '../security/cidr';
@@ -310,6 +310,26 @@ export async function ctxForUser(userId: string, tenantId: string, requestId: st
   return { tenantId, actor, requestId, ip: null, userAgent: null };
 }
 
+/**
+ * What an additional role assignment's scope caps its permissions at.
+ *
+ * The assignment scope answers "where does this role apply", the role's own
+ * permission rows answer "what may it do there" — a Branch Manager role
+ * assigned for one branch must not confer its ORGANIZATION-scoped reads
+ * everywhere. Unknown values cap at ORGANIZATION because that is the column
+ * default the assign flow writes.
+ */
+const ASSIGNMENT_SCOPE_CAP: Record<string, Scope> = {
+  ORGANIZATION: 'ORGANIZATION',
+  REGION: 'REGION',
+  BRANCH: 'BRANCH',
+  TEAM: 'TEAM',
+  DEPARTMENT: 'TEAM',
+  DIRECT_REPORTS: 'TEAM',
+  OWN: 'OWN',
+  OWN_RECORD: 'OWN',
+};
+
 async function buildActor(userId: string, tenantId: string): Promise<Actor> {
   const user = await prisma.user.findFirst({
     where: { id: userId, tenantId },
@@ -321,9 +341,61 @@ async function buildActor(userId: string, tenantId: string): Promise<Actor> {
   if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
 
   const permissions = new Map<string, Scope>();
-  for (const rp of user.role.permissions) {
-    if (!rp.granted) continue;
-    permissions.set(`${rp.permission.module}:${rp.permission.action}`, rp.scope as Scope);
+  const grant = (key: string, scope: Scope) => {
+    const held = permissions.get(key);
+    if (!held || SCOPE_RANK[scope] > SCOPE_RANK[held]) permissions.set(key, scope);
+  };
+  // A deactivated role grants nothing, wherever it is held — the v21 rule that
+  // makes deactivation a real off-switch rather than a display state.
+  if (user.role.isActive) {
+    for (const rp of user.role.permissions) {
+      if (!rp.granted) continue;
+      grant(`${rp.permission.module}:${rp.permission.action}`, rp.scope as Scope);
+    }
+  }
+
+  /**
+   * Effective permissions are the union of the primary role and every ACTIVE,
+   * in-window role assignment — recomputed here on every request, so a revoked
+   * or expired assignment stops working on the next call, not the next login.
+   * Each assignment contributes its role's permissions capped at the
+   * assignment's own scope, and a BRANCH/REGION assignment that names a
+   * location widens visibility to it (see resolveOwnerIds).
+   */
+  const now = new Date();
+  const assignments = await prisma.membershipRole.findMany({
+    where: {
+      tenantId,
+      status: 'ACTIVE',
+      membership: { salesUserId: userId },
+      AND: [
+        { OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }] },
+        { OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }] },
+      ],
+    },
+    include: { role: { include: { permissions: { include: { permission: true } } } } },
+  });
+
+  let rank = user.role.rank;
+  const grantedBranchIds = new Set<string>();
+  const grantedRegionIds = new Set<string>();
+  // ponytail: the location grants are pooled across assignments rather than
+  // tracked per permission — a user holding two branch-scoped roles can see
+  // either branch at any BRANCH-scoped permission they hold. Split the pool
+  // per permission if a customer ever needs that separation.
+  for (const assignment of assignments) {
+    if (!assignment.role.isActive) continue;
+    const cap = ASSIGNMENT_SCOPE_CAP[assignment.scopeType] ?? 'ORGANIZATION';
+    for (const rp of assignment.role.permissions) {
+      if (!rp.granted) continue;
+      const scope = SCOPE_RANK[rp.scope as Scope] < SCOPE_RANK[cap] ? (rp.scope as Scope) : cap;
+      grant(`${rp.permission.module}:${rp.permission.action}`, scope);
+    }
+    // Authority is the strongest role held: the escalation guards compare
+    // against this, so a deputy with an assigned admin role is treated as one.
+    if (assignment.role.rank < rank) rank = assignment.role.rank;
+    if (assignment.scopeType === 'BRANCH' && assignment.scopeId) grantedBranchIds.add(assignment.scopeId);
+    if (assignment.scopeType === 'REGION' && assignment.scopeId) grantedRegionIds.add(assignment.scopeId);
   }
 
   const managed = await prisma.user.findMany({
@@ -336,9 +408,11 @@ async function buildActor(userId: string, tenantId: string): Promise<Actor> {
     tenantId: user.tenantId,
     roleId: user.roleId,
     roleKey: user.role.key,
-    roleRank: user.role.rank,
+    roleRank: rank,
     branchId: user.branchId,
     regionId: user.regionId,
+    grantedBranchIds: [...grantedBranchIds],
+    grantedRegionIds: [...grantedRegionIds],
     teamIds: user.teams.map((t) => t.teamId),
     managedUserIds: managed.map((m) => m.id),
     permissions,

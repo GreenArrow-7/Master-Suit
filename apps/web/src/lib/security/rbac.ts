@@ -43,9 +43,13 @@ export interface Actor {
   tenantId: string;
   roleId: string;
   roleKey: string;
+  /** The strongest (lowest) rank across the primary role and active assignments. */
   roleRank: number;
   branchId: string | null;
   regionId: string | null;
+  /** Locations granted by BRANCH/REGION-scoped role assignments, beyond the actor's own. */
+  grantedBranchIds: readonly string[];
+  grantedRegionIds: readonly string[];
   teamIds: readonly string[];
   managedUserIds: readonly string[];
   permissions: PermissionMap;

@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import {
   assignRole,
+  cloneRole,
   createRole,
   deleteRole,
   listRoles,
@@ -24,7 +25,7 @@ import {
  */
 const paramsSchema = z.object({
   workspaceSlug: z.string().min(2).max(64),
-  action: z.enum(['roles', 'matrix', 'history', 'create', 'update', 'delete', 'matrix-update', 'assign', 'revoke']),
+  action: z.enum(['roles', 'matrix', 'history', 'create', 'clone', 'update', 'delete', 'matrix-update', 'assign', 'revoke']),
 });
 
 const id = z.string().min(1).max(64);
@@ -82,6 +83,19 @@ export const POST = route(
           .parse(body);
         return createRole(ctx, input);
       }
+      case 'clone': {
+        const input = z
+          .object({
+            sourceRoleId: id,
+            key: z.string().min(2).max(50),
+            name: z.string().min(2).max(80),
+            description: z.string().max(300).optional(),
+            rank: z.coerce.number().int().min(0).max(1000),
+          })
+          .parse(body);
+        const { sourceRoleId, ...rest } = input;
+        return cloneRole(ctx, sourceRoleId, rest);
+      }
       case 'update': {
         const input = z
           .object({
@@ -90,6 +104,8 @@ export const POST = route(
             description: z.string().max(300).optional(),
             rank: z.coerce.number().int().min(0).max(1000).optional(),
             defaultScope: scope.optional(),
+            /** false deactivates: the role grants nothing and cannot be assigned until reactivated. */
+            isActive: z.coerce.boolean().optional(),
           })
           .parse(body);
         const { roleId, ...changes } = input;
