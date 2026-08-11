@@ -15,15 +15,16 @@ import { usePathname } from 'next/navigation';
  */
 export default function ModuleTheme() {
   const pathname = usePathname();
-  const module = pathname.split('/')[2] === 'people' ? 'people' : 'sales';
+  // Not named `module`: Next reserves that identifier in client bundles.
+  const activeModule = pathname.split('/')[2] === 'people' ? 'people' : 'sales';
 
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.lfModule = module;
+    root.dataset.lfModule = activeModule;
     return () => {
       delete root.dataset.lfModule;
     };
-  }, [module]);
+  }, [activeModule]);
 
   return null;
 }
