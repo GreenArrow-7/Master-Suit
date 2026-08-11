@@ -14,7 +14,15 @@ import {
   startOffboarding,
   startOnboarding,
 } from '@/services/hr/lifecycle';
-import { enrolFace, grantConsent, preflight, punch, requestChallenge, withdrawConsent } from '@/services/hr/attendance';
+import {
+  enrolFace,
+  grantConsent,
+  preflight,
+  punch,
+  requestChallenge,
+  resetFaceEnrolment,
+  withdrawConsent,
+} from '@/services/hr/attendance';
 import { updateHrPolicy } from '@/services/hr/settings';
 import { cancelOvertime, decideOvertime, detectOvertime, requestOvertime } from '@/services/hr/overtime';
 import {
@@ -104,6 +112,7 @@ const paramsSchema = z.object({
     'consent-grant',
     'consent-withdraw',
     'face-enrol',
+    'face-reset',
     'attendance-preflight',
     'attendance-challenge',
     'attendance-punch',
@@ -232,6 +241,7 @@ const ACTION_PERMISSION: Partial<Record<string, [string, 'CREATE' | 'EDIT' | 'AP
   'employee-exit': ['employee', 'EDIT'],
   'checklist-add': ['employee', 'EDIT'],
   'face-enrol': ['employee', 'EDIT'],
+  'face-reset': ['employee', 'EDIT'],
   'location-revoke': ['employee', 'EDIT'],
   'document-delete': ['employee', 'EDIT'],
   'settings-update': ['employee', 'EDIT'],
@@ -810,6 +820,15 @@ export const POST = route(
       case 'face-enrol': {
         const input = z.object({ employeeId: id, frames: z.array(z.string().min(16)).min(1).max(10) }).parse(body);
         return enrolFace(ctx, input.employeeId, input.frames);
+      }
+
+      // A reset is not a consent withdrawal: it says the samples on file are no
+      // longer good, not that the employee has revoked their permission. The
+      // reason is required because an administrator who can silently erase
+      // attendance evidence can erase their reason for doing so.
+      case 'face-reset': {
+        const input = z.object({ employeeId: id, reason: z.string().min(5).max(300) }).parse(body);
+        return resetFaceEnrolment(ctx, input.employeeId, input.reason);
       }
 
       case 'attendance-preflight': {

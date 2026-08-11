@@ -451,3 +451,195 @@ export async function setManager(ctx: Ctx, employeeId: string, managerEmployeeId
   });
   return updated;
 }
+
+// ── Creating a staff account ───────────────────────────────────────────────
+
+export interface NewStaffAccount {
+  fullName: string;
+  employeeNumber: string;
+  email: string;
+  phone?: string;
+  roleId: string;
+  departmentId?: string;
+  designationId?: string;
+  branchId?: string;
+  managerEmployeeId?: string;
+  joinedOn: string;
+  employmentType?: string;
+  status: 'ACTIVE' | 'INVITED' | 'SUSPENDED';
+  attendanceEligible: boolean;
+  workLocationId?: string;
+}
+
+/**
+ * Creates an employee and their login in one step, for the hire who is already
+ * standing at the desk. The invitation flow is still the better route when the
+ * person can be emailed — there the password is chosen by its owner and nobody
+ * else ever knows it. This path exists because an administrator sometimes has
+ * to hand over a credential in person, so it issues a temporary one, shows it
+ * exactly once, and marks the account as owing a change before anything opens.
+ *
+ * The rank guard from the rest of this file applies to the role being granted:
+ * creating an account is granting a role, and an administrator who could mint a
+ * peer could promote themselves by proxy.
+ */
+export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
+  const email = input.email.trim().toLowerCase();
+  const fullName = input.fullName.trim();
+  const employeeNumber = input.employeeNumber.trim();
+
+  const role = await prisma.role.findFirst({ where: { tenantId: ctx.tenantId, id: input.roleId } });
+  if (!role) throw NotFound('Role');
+  if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot grant a role at or above your own level.');
+
+  if (await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, email, deletedAt: null }, select: { id: true } })) {
+    throw Conflict('Somebody in this workspace already uses that work email.');
+  }
+  if (
+    await prisma.employeeProfile.findFirst({
+      where: { tenantId: ctx.tenantId, employeeNumber, deletedAt: null },
+      select: { id: true },
+    })
+  ) {
+    throw Conflict('That employee code is already taken.');
+  }
+
+  // An attendance-eligible hire without a location could never check in, and
+  // would look like a broken account rather than an unfinished form.
+  let location: { id: string; name: string } | null = null;
+  if (input.attendanceEligible) {
+    if (!input.workLocationId) throw Conflict('Choose the attendance location this employee checks in at.');
+    location = await prisma.hrWorkLocation.findFirst({
+      where: { tenantId: ctx.tenantId, id: input.workLocationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!location) throw NotFound('Attendance location');
+  }
+
+  const manager = input.managerEmployeeId
+    ? await prisma.employeeProfile.findFirst({
+        where: { tenantId: ctx.tenantId, id: input.managerEmployeeId, deletedAt: null },
+        select: { membershipId: true },
+      })
+    : null;
+  if (input.managerEmployeeId && !manager) throw NotFound('Reporting manager');
+
+  const temporaryPassword = generateTemporaryPassword();
+  assertPolicy(temporaryPassword, await passwordPolicy(ctx.tenantId));
+  const passwordHash = await hashPassword(temporaryPassword);
+  const actingEmployee = await prisma.employeeProfile.findFirst({
+    where: { tenantId: ctx.tenantId, membership: { salesUserId: ctx.actor.id } },
+    select: { id: true },
+  });
+
+  const created = await withTx(ctx.tenantId, async (tx) => {
+    // A person who already signs in elsewhere keeps their own password: being
+    // added to a second workspace is not authority to reset the credential
+    // guarding the first.
+    const existing = await tx.platformUser.findUnique({
+      where: { normalizedEmail: email },
+      select: { id: true, deletedAt: true },
+    });
+    if (existing?.deletedAt) throw Conflict('That email belonged to a removed account. Use a different address.');
+
+    const platformUser = existing
+      ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
+      : await tx.platformUser.create({
+          data: {
+            email,
+            normalizedEmail: email,
+            fullName,
+            passwordHash,
+            status: 'ACTIVE',
+            emailVerifiedAt: new Date(),
+            // Null, not a date: this is what makes the first sign-in demand a
+            // password of the user's own choosing.
+            passwordChangedAt: null,
+          },
+        });
+
+    const user = await tx.user.create({
+      data: {
+        tenantId: ctx.tenantId,
+        email,
+        fullName,
+        phone: input.phone || null,
+        employeeCode: employeeNumber,
+        branchId: input.branchId || null,
+        status: input.status,
+        roleId: role.id,
+        createdById: ctx.actor.id,
+      },
+    });
+
+    const membership = await tx.workspaceMembership.create({
+      data: {
+        tenantId: ctx.tenantId,
+        platformUserId: platformUser.id,
+        salesUserId: user.id,
+        status: input.status === 'ACTIVE' ? 'ACTIVE' : 'INVITED',
+        roleSnapshot: role.key,
+        joinedAt: input.status === 'ACTIVE' ? new Date() : null,
+      },
+    });
+    await tx.membershipRole.create({
+      data: { tenantId: ctx.tenantId, membershipId: membership.id, roleId: role.id },
+    });
+
+    const employee = await tx.employeeProfile.create({
+      data: {
+        tenantId: ctx.tenantId,
+        membershipId: membership.id,
+        employeeNumber,
+        departmentId: input.departmentId || null,
+        designationId: input.designationId || null,
+        managerMembershipId: manager?.membershipId ?? null,
+        employmentType: input.employmentType || null,
+        employmentStatus: input.status === 'ACTIVE' ? 'ACTIVE' : 'PROBATION',
+        joinedOn: new Date(input.joinedOn),
+      },
+    });
+
+    if (location) {
+      await tx.hrEmployeeLocationAssignment.create({
+        data: {
+          tenantId: ctx.tenantId,
+          employeeId: employee.id,
+          locationId: location.id,
+          assignmentType: 'PRIMARY',
+          effectiveFrom: new Date(input.joinedOn),
+          assignedById: actingEmployee?.id ?? null,
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    return { user, employee };
+  });
+
+  await audit(ctx, {
+    event: 'RECORD_CREATED',
+    objectType: 'user',
+    recordId: created.user.id,
+    metadata: {
+      action: 'account.created',
+      employeeNumber,
+      role: role.key,
+      attendanceLocation: location?.name ?? null,
+      // The password itself is never written here, or anywhere else.
+      credential: 'temporary-password-issued',
+    },
+  });
+
+  return {
+    userId: created.user.id,
+    employeeId: created.employee.id,
+    employeeNumber,
+    fullName,
+    email,
+    role: role.name,
+    attendanceLocation: location?.name ?? null,
+    temporaryPassword,
+    note: 'Shown once. Hand it over in person or by phone — not by email or chat. The account must set its own password before anything else opens.',
+  };
+}

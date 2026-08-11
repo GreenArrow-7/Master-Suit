@@ -1985,3 +1985,215 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Add user, reset password, face enrolment ─────────────────────────────── */
+
+.lf-users__form,
+.lf-users__created {
+  display: grid;
+  gap: 18px;
+}
+.lf-users__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 4px 20px;
+}
+.lf-users__grid .lf-field {
+  margin: 0;
+}
+.lf-users__check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--lf-text-sm);
+}
+.lf-users__once {
+  margin: 4px 0 0;
+  font-size: var(--lf-text-2xs);
+  color: var(--lf-ink-3);
+}
+.lf-users__once[data-bad] {
+  color: var(--lf-vermillion, #b3261e);
+}
+.lf-users__created dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+.lf-users__created dt {
+  font-size: var(--lf-text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lf-ink-3);
+}
+.lf-users__created dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.lf-users__reset {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 16px;
+  max-width: 420px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius, 8px);
+  background: var(--lf-surface, #fff);
+}
+.lf-users__reset p {
+  margin: 0;
+  font-size: var(--lf-text-2xs);
+  color: var(--lf-ink-3);
+}
+.lf-users__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--lf-text-sm);
+}
+
+.lf-face__facts {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+.lf-face__facts dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+  width: 100%;
+}
+.lf-face__facts dt {
+  font-size: var(--lf-text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lf-ink-3);
+}
+.lf-face__facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.lf-face__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.lf-face__warn {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--brass, #b98f4c);
+  background: color-mix(in srgb, var(--brass, #b98f4c) 10%, transparent);
+  font-size: var(--lf-text-sm);
+}
+.lf-face__reset {
+  display: grid;
+  gap: 12px;
+  max-width: 620px;
+}
+.lf-face__reset h2 {
+  margin: 0;
+  font-size: var(--lf-text-lg);
+}
+.lf-face__reset p {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-face__stage {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.lf-face__viewport {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--green-800, #0a2e24);
+  border: 2px solid var(--brass, #b98f4c);
+}
+.lf-face__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  display: none;
+}
+.lf-face__video[data-on='true'] {
+  display: block;
+}
+.lf-face__off {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: var(--lf-text-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lf-face__steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-face__steps li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius, 8px);
+}
+.lf-face__steps li[data-state='done'] {
+  border-color: var(--brass, #b98f4c);
+}
+.lf-face__steps li[data-state='now'] {
+  border-color: var(--green-800, #0a2e24);
+  box-shadow: inset 3px 0 0 var(--green-800, #0a2e24);
+}
+.lf-face__steps li[data-state='todo'] {
+  opacity: 0.62;
+}
+.lf-face__step-n {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--lf-canvas, #f6f4ef);
+  font-size: var(--lf-text-2xs);
+  font-weight: 700;
+}
+.lf-face__steps li[data-state='done'] .lf-face__step-n {
+  background: var(--brass, #b98f4c);
+  color: #fff;
+}
+.lf-face__steps em {
+  display: block;
+  font-style: normal;
+  font-size: var(--lf-text-2xs);
+  color: var(--lf-ink-3);
+}
+.lf-face__meta {
+  margin: 0;
+  font-size: var(--lf-text-2xs);
+  color: var(--lf-ink-3);
+  max-width: 92ch;
+}
+
+@media (max-width: 860px) {
+  .lf-face__stage {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .lf-face__steps {
+    width: 100%;
+  }
+}

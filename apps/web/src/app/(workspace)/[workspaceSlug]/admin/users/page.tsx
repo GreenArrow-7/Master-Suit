@@ -188,6 +188,7 @@ export default async function UsersPage({
                         <UserRowActions
                           endpoint={`/api/v1/workspaces/${workspaceSlug}/identity`}
                           userId={row.id}
+                          userName={row.fullName}
                           employeeId={employee?.id ?? null}
                           workspaceSlug={workspaceSlug}
                         />

@@ -448,6 +448,41 @@ export async function enrolFace(ctx: Ctx, employeeId: string, frames: string[]) 
   return { employeeId: employee.id, samples: embeddings.length, sampleSpread: Math.round(spread * 10_000) / 10_000 };
 }
 
+/**
+ * Wipes an employee's face templates without touching their consent — the
+ * remedy for a bad enrolment, a changed appearance, or a suspected misuse.
+ *
+ * Deliberately separate from consent withdrawal. Withdrawal is the employee's
+ * decision and ends the lawful basis for holding biometrics at all; a reset is
+ * HR's decision and only says the samples on file are no longer good. Both
+ * delete the templates, but only one of them may be done on somebody's behalf,
+ * so conflating them would let HR record a withdrawal the employee never made.
+ *
+ * The reason is required and recorded: an administrator who can silently erase
+ * the evidence of who checked in can erase the evidence of their own reason for
+ * doing it. Check-in stops working the moment this returns, because
+ * `requestChallenge` refuses an employee with fewer templates than the policy
+ * requires — there is no separate flag to keep in step.
+ */
+export async function resetFaceEnrolment(ctx: Ctx, employeeId: string, reason: string) {
+  if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can reset a face enrolment.');
+  const trimmed = reason.trim();
+  if (trimmed.length < 5) throw Conflict('Give a reason for resetting this enrolment.');
+  const employee = await requireEmployee(ctx, employeeId);
+
+  const removed = await prisma.hrFaceTemplate.deleteMany({
+    where: { tenantId: ctx.tenantId, employeeId: employee.id },
+  });
+
+  await audit(ctx, {
+    event: 'RECORD_DELETED',
+    objectType: 'hr_face_template',
+    recordId: employee.id,
+    metadata: { action: 'face.enrolment.reset', templatesDeleted: removed.count, reason: trimmed },
+  });
+  return { employeeId: employee.id, templatesDeleted: removed.count, reason: trimmed };
+}
+
 // ── Challenge ──────────────────────────────────────────────────────────────
 
 export async function requestChallenge(ctx: Ctx) {

@@ -5,6 +5,7 @@ import { requireWorkspace } from '@/lib/workspace';
 import {
   accountDetail,
   changeUserRole,
+  createStaffAccount,
   listAccounts,
   resetUserPassword,
   revokeUserSessions,
@@ -41,6 +42,7 @@ const paramsSchema = z.object({
     'invite',
     'invitation-resend',
     'invitation-revoke',
+    'account-create',
   ]),
 });
 
@@ -77,6 +79,37 @@ export const POST = route(
       case 'password-reset': {
         const input = z.object({ userId: id, temporaryPassword: z.string().min(8).max(200).optional() }).parse(body);
         return resetUserPassword(ctx, input.userId, input.temporaryPassword);
+      }
+      // Creating an employee and their login in one step, for the hire who is
+      // already on site. `invite` remains the better route whenever the person
+      // can be emailed — there nobody but its owner ever knows the password.
+      case 'account-create': {
+        const input = z
+          .object({
+            fullName: z.string().min(2).max(160),
+            employeeNumber: z.string().min(1).max(40),
+            email: z.string().email().max(254),
+            phone: z.string().max(32).optional(),
+            roleId: id,
+            departmentId: id.optional().or(z.literal('')),
+            designationId: id.optional().or(z.literal('')),
+            branchId: id.optional().or(z.literal('')),
+            managerEmployeeId: id.optional().or(z.literal('')),
+            joinedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            employmentType: z.string().max(40).optional(),
+            status: z.enum(['ACTIVE', 'INVITED', 'SUSPENDED']).default('ACTIVE'),
+            attendanceEligible: z.coerce.boolean().default(true),
+            workLocationId: id.optional().or(z.literal('')),
+          })
+          .parse(body);
+        return createStaffAccount(ctx, {
+          ...input,
+          departmentId: input.departmentId || undefined,
+          designationId: input.designationId || undefined,
+          branchId: input.branchId || undefined,
+          managerEmployeeId: input.managerEmployeeId || undefined,
+          workLocationId: input.workLocationId || undefined,
+        });
       }
       case 'account-unlock': {
         const input = z.object({ userId: id }).parse(body);
