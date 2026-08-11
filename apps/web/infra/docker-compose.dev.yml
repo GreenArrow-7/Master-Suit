@@ -1,0 +1,73 @@
+# Development overlay: local Postgres and local Redis, hot reload.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up web
+#
+# ── Why the volumes look like this ─────────────────────────────────────────
+#
+# The repository lives on a Windows path (C:\Users\...). Bind-mounting it into
+# Linux containers crosses a filesystem boundary, and every stat() pays for the
+# crossing. Next's dev server stats tens of thousands of files per compile, so a
+# naive bind mount of the whole tree makes `next dev` several times slower than
+# the same code on a native Linux filesystem.
+#
+# The source tree is still bind-mounted, because that is what hot reload needs.
+# The two directories that are pure build output — node_modules and .next — are
+# Docker-managed named volumes instead. They are the ones with the file counts,
+# they are never edited by hand, and keeping them inside the VM's own filesystem
+# is what makes the difference. The named volumes also stop the host's Windows
+# node_modules (with its win32 binaries) from shadowing the container's Linux
+# ones, which is a correctness problem as much as a speed one.
+#
+# See docs/PERFORMANCE.md for the measured numbers.
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: development
+    command: ['npm', 'run', 'dev']
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: web
+      # Named explicitly here as well as in the base file. `environment:`
+      # outranks `env_file:` in Compose regardless of order, so the host .env —
+      # which necessarily says localhost, because local development also runs
+      # the app straight on the host — can never reach into the container and
+      # point it at a port that means something different there.
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      REDIS_URL: redis://redis:6379
+      # Turbopack polls when inotify events do not cross the bind mount, which
+      # they often do not on Windows and macOS.
+      # Migrations and the shadow database run from inside the container too,
+      # and .env necessarily points both at localhost for the host workflow.
+      MIGRATION_DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&sslmode=disable
+      SHADOW_DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow_shadow?schema=public&sslmode=disable
+      WATCHPACK_POLLING: 'true'
+      CHOKIDAR_USEPOLLING: 'true'
+    volumes:
+      - ..:/app
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+    ports: ['3000:3000']
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: development
+    command: ['npm', 'run', 'worker']
+    environment:
+      NODE_ENV: development
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ..:/app
+      - worker_node_modules:/app/node_modules
+    deploy:
+      replicas: 1
+
+volumes:
+  web_node_modules: {}
+  web_next_cache: {}
+  worker_node_modules: {}

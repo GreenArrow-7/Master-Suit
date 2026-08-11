@@ -1,0 +1,52 @@
+# Production overlay: built image, no dev server, no source mount.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# The image is built with `next build` and served by the standalone server —
+# `next start` refuses to run against `output: 'standalone'`, which is what
+# next.config sets. There is no bind mount: the container serves the artefact it
+# was built with, so what runs is what was tested.
+#
+# Measured against the same database, the production build answers the HR pages
+# 4-8x faster than `next dev` does (docs/PERFORMANCE.md). That gap is compiler
+# and instrumentation overhead in the dev server, not query time, which is why
+# no production number should ever be quoted from a dev server.
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: production
+    command: ['node', 'server.js']
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: web
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      REDIS_URL: redis://redis:6379
+      # Migrations and the shadow database run from inside the container too,
+      # and .env necessarily points both at localhost for the host workflow.
+      MIGRATION_DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&sslmode=disable
+      SHADOW_DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow_shadow?schema=public&sslmode=disable
+    restart: unless-stopped
+    ports: ['3000:3000']
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: production
+    command: ['node', 'dist/workers/index.js']
+    environment:
+      NODE_ENV: production
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      REDIS_URL: redis://redis:6379
+    restart: unless-stopped
+    deploy:
+      replicas: 2
