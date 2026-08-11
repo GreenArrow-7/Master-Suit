@@ -12,7 +12,7 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { ROLES, A, R, B, T, O, type RoleSpec } from './roles';
+import { ROLES } from './roles';
 import { hash } from '@node-rs/argon2';
 
 /**
@@ -285,8 +285,6 @@ const RECORD_MODULES = new Set([
   'calls',
   'events',
 ]);
-
-type Scope = 'NONE' | 'OWN' | 'TEAM' | 'BRANCH' | 'REGION' | 'ORGANIZATION';
 
 // "calls" and "events" mirror each role's "leads" grants: whoever may work a lead may
 // call it and invite it to an event, at the same scope. Roles granted '*' pick these up
