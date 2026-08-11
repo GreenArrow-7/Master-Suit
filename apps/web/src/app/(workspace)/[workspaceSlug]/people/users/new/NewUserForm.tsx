@@ -33,6 +33,7 @@ export default function NewUserForm({
   endpoint,
   usersHref,
   workspaceSlug,
+  defaultRoleId,
   roles,
   departments,
   designations,
@@ -43,6 +44,8 @@ export default function NewUserForm({
   endpoint: string;
   usersHref: string;
   workspaceSlug: string;
+  /** Employee, resolved by key on the server — never the most senior grantable role. */
+  defaultRoleId: string;
   roles: Option[];
   departments: Option[];
   designations: Option[];
@@ -59,7 +62,7 @@ export default function NewUserForm({
     employeeNumber: '',
     email: '',
     phone: '',
-    roleId: roles[0]?.id ?? '',
+    roleId: defaultRoleId,
     departmentId: '',
     designationId: '',
     branchId: '',

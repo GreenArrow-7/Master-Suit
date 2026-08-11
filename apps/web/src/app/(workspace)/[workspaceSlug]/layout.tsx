@@ -67,6 +67,29 @@ export default async function WorkspaceLayout({
   const shell = await loadShell(workspaceSlug);
   if (!shell) redirect('/login');
 
+  /**
+   * One central gate for an account still on an administrator-issued password.
+   *
+   * The login response reported `mustChangePassword` and sent the browser to
+   * the security screen, but that was the whole enforcement: typing any other
+   * URL walked straight past it. A temporary password is handed over by voice
+   * or on paper and is the weakest credential the system ever issues, so the
+   * server has to decide this, on every page, not the client's redirect.
+   *
+   * Here rather than in each page's access check, because this layout is the
+   * one thing Next runs for every screen beneath it — and outside `loadShell`,
+   * because `redirect()` signals by throwing and that function's catch would
+   * swallow it, which is the same trap its own comment warns about.
+   *
+   * `passwordChangedAt` is null only while an issued password is still in
+   * force, so this clears itself the moment the account does what it is asked.
+   */
+  if (shell.mustChangePassword) {
+    const security = `/${shell.slug}/profile/security`;
+    const here = (await headers()).get('x-pathname') ?? '';
+    if (!here.endsWith('/profile/security') && !here.endsWith('/people/security')) redirect(security);
+  }
+
   return (
     <div className="lf-app-frame">
       <ModuleTheme />
@@ -96,7 +119,12 @@ async function loadShell(workspaceSlug: string) {
     const workspace = await requireWorkspace(ctx, workspaceSlug);
     const signedInAs = await prisma.user.findFirst({
       where: { tenantId: ctx.tenantId, id: ctx.actor.id },
-      select: { fullName: true, email: true },
+      select: {
+        fullName: true,
+        email: true,
+        // Read through to the identity that actually holds the credential.
+        workspaceMembership: { select: { platformUser: { select: { passwordChangedAt: true } } } },
+      },
     });
     const now = new Date();
     const modules = workspace.moduleEntitlements
@@ -117,6 +145,8 @@ async function loadShell(workspaceSlug: string) {
       supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
+      // Null means the account has not yet replaced the password it was issued.
+      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt == null,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:

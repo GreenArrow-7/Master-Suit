@@ -20,10 +20,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   if (!can(ctx, 'users', 'MANAGE_USERS')) throw Forbidden('You cannot add users to this workspace.');
 
   const [roles, departments, designations, branches, locations, managers] = await Promise.all([
+    // Least senior first. The list used to be ordered most-senior-first, so the
+    // form defaulted to whatever the operator could grant nearest their own
+    // level — an administrator adding a receptionist got HR Administrator
+    // preselected. A new hire's default has to be the least authority that
+    // exists, never the most, because the failure is silent: nobody reviews a
+    // role they did not knowingly choose.
     prisma.role.findMany({
       where: { tenantId: ctx.tenantId, rank: { gt: ctx.actor.roleRank } },
-      orderBy: { rank: 'asc' },
-      select: { id: true, name: true },
+      orderBy: { rank: 'desc' },
+      select: { id: true, name: true, key: true },
     }),
     prisma.department.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
@@ -69,6 +75,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
       <NewUserForm
         endpoint={`/api/v1/workspaces/${workspaceSlug}/identity`}
+        defaultRoleId={roles.find((role) => role.key === 'employee')?.id ?? roles[0]?.id ?? ''}
         usersHref={`/${workspaceSlug}/people/users`}
         workspaceSlug={workspaceSlug}
         roles={roles}

@@ -54,6 +54,10 @@ export default function proxy(request: NextRequest) {
   ].join('; ');
 
   const headers = new Headers(request.headers);
+  // Server components cannot read the request URL. The workspace layout needs
+  // it to know whether the viewer is already on the screen it would send them
+  // to, so stamp it here where the URL is still in hand.
+  headers.set('x-pathname', request.nextUrl.pathname);
 
   const response = NextResponse.next({ request: { headers } });
   response.headers.set('Content-Security-Policy', csp);
