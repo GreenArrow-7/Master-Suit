@@ -1,9 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
 import { prisma } from '@/lib/db';
-import { resolveCtx } from '@/lib/auth/session';
-import { requireWorkspace } from '@/lib/workspace';
+import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
@@ -115,8 +113,10 @@ export default async function WorkspaceLayout({
 /** Null means "not signed in, or no access to this workspace". */
 async function loadShell(workspaceSlug: string) {
   try {
-    const ctx = await resolveCtx(new Request(`http://internal/${workspaceSlug}`, { headers: await headers() }), ulid());
-    const workspace = await requireWorkspace(ctx, workspaceSlug);
+    // Shared with the page beneath: one session lookup and one workspace read
+    // per navigation instead of two of each.
+    const ctx = await requestCtx();
+    const workspace = await requestWorkspace(ctx, workspaceSlug);
     const signedInAs = await prisma.user.findFirst({
       where: { tenantId: ctx.tenantId, id: ctx.actor.id },
       select: {

@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { forbidden } from 'next/navigation';
 import { ulid } from 'ulid';
@@ -35,9 +36,31 @@ export interface WorkspacePageOptions {
  */
 export const SELF_SERVICE = Symbol('self-service');
 
+/**
+ * The signed-in actor, resolved once per request.
+ *
+ * The layout and the page it wraps both need it, and both used to resolve it
+ * from scratch: two session lookups, two membership lookups and two permission
+ * builds for a single navigation, which is most of what a tab click was paying
+ * for. `resolveCtx` reads nothing from the request but the cookie header — the
+ * URL it is handed is decorative — so within one render the answer cannot
+ * differ, and React's `cache` collapses the pair into one.
+ *
+ * Per-request by construction: `cache` is scoped to a single render pass, so a
+ * context can never survive into another user's request.
+ */
+export const requestCtx = cache(async (): Promise<Ctx> =>
+  resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid()),
+);
+
+/** Same reasoning for the workspace record, which both callers also load. */
+export const requestWorkspace = cache(async (ctx: Ctx, slug: string, module?: ProductModule) =>
+  requireWorkspace(ctx, slug, module),
+);
+
 export async function resolveWorkspacePage(workspaceSlug: string, options: WorkspacePageOptions) {
-  const ctx = await resolveCtx(new Request(`http://internal/${workspaceSlug}`, { headers: await headers() }), ulid());
-  const workspace = await requireWorkspace(ctx, workspaceSlug, options.module);
+  const ctx = await requestCtx();
+  const workspace = await requestWorkspace(ctx, workspaceSlug, options.module);
   assertPageAccess(ctx, options);
   return { ctx, workspace };
 }
@@ -56,7 +79,7 @@ export async function resolveWorkspacePage(workspaceSlug: string, options: Works
  * outside that layout must use `resolveWorkspacePage` instead.
  */
 export async function requirePageAccess(options: WorkspacePageOptions) {
-  const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+  const ctx = await requestCtx();
   if (options.module) await assertModuleEntitlement(ctx.tenantId, options.module);
   assertPageAccess(ctx, options);
   return ctx;
