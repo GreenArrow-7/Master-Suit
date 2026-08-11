@@ -911,6 +911,7 @@ async function main() {
       platformRole: 'OWNER',
       status: 'ACTIVE',
       passwordHash: await hash(ownerPassword, { memoryCost: 19456, timeCost: 2, parallelism: 1 }),
+      passwordChangedAt: new Date(),
     },
     create: {
       email: ownerEmail,
@@ -920,6 +921,11 @@ async function main() {
       emailVerifiedAt: new Date(),
       status: 'ACTIVE',
       platformRole: 'OWNER',
+      // Stamped, not left null. Null means "still on a password an
+      // administrator issued", which every page now refuses to look past — and
+      // a seeded credential is the account's own from the first minute, not a
+      // temporary one somebody read out over the phone.
+      passwordChangedAt: new Date(),
       mfaEnabled: Boolean(ownerMfaSecret),
       mfaSecret: ownerMfaSecret,
     },
@@ -986,7 +992,7 @@ async function main() {
     const normalizedEmail = addr.trim().toLowerCase();
     const platformUser = await db.platformUser.upsert({
       where: { normalizedEmail },
-      update: { fullName: `${first} ${last}`, status: u.status, passwordHash },
+      update: { fullName: `${first} ${last}`, status: u.status, passwordHash, passwordChangedAt: new Date() },
       create: {
         email: normalizedEmail,
         normalizedEmail,
@@ -994,6 +1000,9 @@ async function main() {
         passwordHash,
         emailVerifiedAt: u.emailVerifiedAt,
         status: u.status,
+        // See the owner above: a seeded password belongs to its account, so it
+        // must not read as an administrator-issued temporary one.
+        passwordChangedAt: new Date(),
       },
     });
     const membership = await db.workspaceMembership.upsert({
