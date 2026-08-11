@@ -48,6 +48,7 @@ export default function LifecycleScreen({
   checklist,
   selected,
   canManage,
+  initialMode = null,
 }: {
   actionsBase: string;
   people: Person[];
@@ -56,9 +57,11 @@ export default function LifecycleScreen({
   checklist: ChecklistTask[];
   selected: string | null;
   canManage: boolean;
+  /** Opened straight into a mode by the Onboarding / Offboarding nav items. */
+  initialMode?: Mode;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>(null);
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
 

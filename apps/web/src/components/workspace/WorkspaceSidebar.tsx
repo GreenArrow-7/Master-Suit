@@ -80,47 +80,48 @@ export default function WorkspaceSidebar({
           items: (
             [
               { label: 'People overview', href: `/${slug}/people`, icon: 'people', permission: 'employee' },
-              { label: 'Employees', href: `/${slug}/people/employees`, icon: 'people', permission: 'employee' },
               { label: 'Check in', href: `/${slug}/people/check-in`, icon: 'attendance' },
               { label: 'Attendance', href: `/${slug}/people/attendance`, icon: 'attendance', permission: 'employee' },
-              { label: 'Leave', href: `/${slug}/people/leave`, icon: 'leave', permission: 'employee' },
-              // Unkeyed to `overtime` deliberately: claiming your own overtime is
-              // self-service, the same as checking in. The page shows the
-              // approval queue only to someone holding `overtime:APPROVE`.
+              { label: 'Leave', href: `/${slug}/people/leave`, icon: 'leave' },
+              { label: 'People', href: `/${slug}/people/lifecycle`, icon: 'people', permission: 'employee' },
+              { label: 'Onboarding', href: `/${slug}/people/onboarding`, icon: 'people', permission: 'employee' },
+              { label: 'Offboarding', href: `/${slug}/people/offboarding`, icon: 'people', permission: 'employee' },
+              { label: 'Employees', href: `/${slug}/people/employees`, icon: 'people', permission: 'employee' },
               { label: 'Overtime', href: `/${slug}/people/overtime`, icon: 'attendance', permission: 'employee' },
-              // Reading your own payslip is self-service; administering payroll
-              // is not. Two entries, two different keys — §90 keeps HR and
-              // payroll separable, so managing people must not reveal salaries.
               { label: 'My pay', href: `/${slug}/people/payslips`, icon: 'report', permission: 'employee' },
               { label: 'Payroll', href: `/${slug}/people/payroll`, icon: 'report', permission: 'payroll' },
-              { label: 'Lifecycle', href: `/${slug}/people/lifecycle`, icon: 'shield', permission: 'employee' },
               { label: 'Departments', href: `/${slug}/people/departments`, icon: 'org', permission: 'employee' },
-              {
-                label: 'Work locations',
-                href: `/${slug}/people/work-locations`,
-                icon: 'company',
-                permission: 'employee',
-              },
               { label: 'Requests', href: `/${slug}/people/requests`, icon: 'task', permission: 'employee' },
               { label: 'Shifts', href: `/${slug}/people/shifts`, icon: 'calendar', permission: 'employee' },
-              // Unkeyed to `shifts` deliberately: everyone reads their own
-              // roster and can ask to change it. The page shows the planning
-              // tools only to someone holding `shifts:EDIT`.
               { label: 'Roster', href: `/${slug}/people/roster`, icon: 'calendar', permission: 'employee' },
               { label: 'Holidays', href: `/${slug}/people/holidays`, icon: 'calendar', permission: 'employee' },
               { label: 'Documents', href: `/${slug}/people/documents`, icon: 'document', permission: 'hr_documents' },
               { label: 'Compliance', href: `/${slug}/people/compliance`, icon: 'shield', permission: 'employee' },
-              // Unkeyed to `performance` deliberately: writing your own
-              // self-assessment and acknowledging your own review are
-              // self-service. The page shows the manager and HR sections only to
-              // people the service will actually let write them.
               { label: 'Performance', href: `/${slug}/people/performance`, icon: 'report', permission: 'employee' },
-              { label: 'Recruitment', href: `/${slug}/people/recruitment`, icon: 'people', permission: 'recruitment' },
               { label: 'People reports', href: `/${slug}/people/reports`, icon: 'report', permission: 'employee' },
+            ] as Item[]
+          ).filter((item) => !item.permission || permitted.includes(item.permission)),
+        },
+        {
+          /**
+           * The HR module's own administration. These pages used to be reached
+           * only at /admin/* and /profile/*, where `activeModule` resolves to
+           * sales — clicking one from here swapped the whole shell to the Sales
+           * navigation and theme, which is why the HR screens looked missing.
+           * Every entry now stays inside /people/*.
+           */
+          label: 'Administration',
+          items: (
+            [
+              { label: 'Attendance locations', href: `/${slug}/people/work-locations`, icon: 'company', permission: 'employee' },
+              { label: 'Users', href: `/${slug}/people/users`, icon: 'people', permission: 'users' },
+              { label: 'Face recognition activity', href: `/${slug}/people/face-activity`, icon: 'shield', permission: 'employee' },
+              { label: 'Roles & permissions', href: `/${slug}/people/roles`, icon: 'shield', permission: 'roles' },
               { label: 'HR policy', href: `/${slug}/people/settings`, icon: 'settings', permission: 'employee' },
             ] as Item[]
           ).filter((item) => !item.permission || permitted.includes(item.permission)),
         },
+        { label: 'Account', items: [{ label: 'Security', href: `/${slug}/people/security`, icon: 'shield' }] },
       ];
     const sales: Section[] = [
       {
@@ -368,6 +369,7 @@ export default function WorkspaceSidebar({
               ))}
             </section>
           ))}
+          {activeModule !== 'people' && (
           <section className="lf-nav-section">
             {!collapsed && <div className="lf-nav-label">Administration</div>}
             {administration.map((item) => (
@@ -380,6 +382,7 @@ export default function WorkspaceSidebar({
               />
             ))}
           </section>
+          )}
         </nav>
 
         <div className="lf-sidebar-account">

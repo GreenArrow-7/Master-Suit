@@ -23,10 +23,10 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
-  searchParams: Promise<{ employee?: string }>;
+  searchParams: Promise<{ employee?: string; mode?: string }>;
 }) {
   const { workspaceSlug } = await params;
-  const { employee: selected } = await searchParams;
+  const { employee: selected, mode } = await searchParams;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
   const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
   const canManage = isHrAdmin(ctx);
@@ -90,6 +90,7 @@ export default async function Page({
         actionsBase={actions}
         canManage={canManage}
         selected={selected ?? null}
+        initialMode={mode === 'onboarding' || mode === 'offboarding' ? mode : null}
         people={staff.map(
           (person): Person => ({
             employeeId: person.id,
