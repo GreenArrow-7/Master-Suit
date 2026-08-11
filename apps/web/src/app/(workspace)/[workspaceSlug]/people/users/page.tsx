@@ -1,3 +1,4 @@
+import { requirePageAccess } from '@/lib/workspace-page';
 import UsersDirectory from '../../admin/users/page';
 
 /**
@@ -18,5 +19,6 @@ export default async function Page(props: {
   params: Promise<{ workspaceSlug: string }>;
   searchParams: Promise<{ q?: string; role?: string; show?: string }>;
 }) {
+  await requirePageAccess({ permission: ['users', 'VIEW'] });
   return UsersDirectory(props);
 }
