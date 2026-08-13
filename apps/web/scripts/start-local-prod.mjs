@@ -13,13 +13,17 @@
  * variable inline is not portable — cmd.exe does not take `VAR=value cmd` — so
  * it happens here instead, once, where it can carry an explanation.
  *
- *   npm run start:local            # port 3100
+ * The port is the dev server's, deliberately. Both read `.next`, so a build
+ * overwrites what `next dev` is serving and the two cannot run at once anyway —
+ * giving them separate ports only invited the mistake of leaving the slow one up.
+ *
+ *   npm run start:local            # port 3000
  *   npm run start:local -- -p 4000
  */
 import { spawn } from 'node:child_process';
 
 const args = process.argv.slice(2);
-if (!args.includes('-p') && !args.includes('--port')) args.push('-p', '3100');
+if (!args.includes('-p') && !args.includes('--port')) args.push('-p', '3000');
 
 console.log(`Serving the production build with NODE_ENV=development on port ${args[args.indexOf('-p') + 1]}.`);
 console.log('Real deployments must set real provider credentials; see lib/startup-check.ts.\n');

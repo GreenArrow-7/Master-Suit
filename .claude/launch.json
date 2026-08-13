@@ -6,7 +6,7 @@
       "cwd": "apps/web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start:local"],
-      "port": 3100
+      "port": 3000
     },
     {
       "name": "web",
