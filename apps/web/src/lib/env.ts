@@ -102,7 +102,6 @@ const schema = z.object({
   /** Offer letters, contracts and policy acknowledgements. `mock` is blocked in production. */
   ESIGNATURE_PROVIDER: z.string().default('mock'),
   WHATSAPP_PROVIDER: z.string().default('mock'),
-  TELEPHONY_PROVIDER: z.enum(['mock', 'hmac']).default('mock'),
   /** `clamav` in any deployed environment; `mock` is test-only and blocked in production. */
   ANTIVIRUS_PROVIDER: z.string().default('mock'),
   CLAMAV_HOST: z.string().default('127.0.0.1'),
@@ -140,7 +139,6 @@ export const PROVIDER_KEYS = [
   'SMS_PROVIDER',
   'ESIGNATURE_PROVIDER',
   'WHATSAPP_PROVIDER',
-  'TELEPHONY_PROVIDER',
   'ANTIVIRUS_PROVIDER',
   'AI_PROVIDER',
 ] as const;

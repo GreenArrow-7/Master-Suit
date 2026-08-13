@@ -70,6 +70,11 @@ export function telephonyProvider(
     case 'knowlarity':
       return new KnowlarityProvider(credentials.srNumber, credentials.apiKey, credentials.authToken, urlToken);
     case 'mock':
+      // The only guard telephony needs, and it belongs here rather than in the
+      // startup check: which vendor a tenant calls with is a per-tenant choice
+      // recorded in organizationSetting.telephonyProvider, so no process-wide
+      // setting can decide it and no boot-time check can see it. A tenant that
+      // configures the mock is refused at the moment it would place a call.
       if (env.NODE_ENV === 'production') throw new TelephonyConfigError('Mock telephony is forbidden in production.');
       return new MockTelephonyProvider();
     default:

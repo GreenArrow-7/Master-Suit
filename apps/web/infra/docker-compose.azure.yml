@@ -1,0 +1,165 @@
+# Azure single-VM overlay. Layer it last, over the base file and the production
+# overlay:
+#
+#   cd apps/web/infra
+#   docker compose --env-file ../.env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.azure.yml \
+#     up -d
+#
+# ── What this changes about the two files beneath it ─────────────────────────
+#
+# Each of these is a local-development convenience that becomes a defect the
+# moment the host has a public IP:
+#
+#   1. Only Caddy binds a public interface. The base file publishes Postgres,
+#      Redis and MinIO on 0.0.0.0 so a Windows host can reach them; on an Azure
+#      VM that is an internet-facing database.
+#
+#   2. Postgres stops trusting every connection. The base file sets
+#      POSTGRES_HOST_AUTH_METHOD=trust, which accepts *any* password from any
+#      host that can open the port.
+#
+#   3. The application connects as master_saas_app, not the owning role. The
+#      production overlay points DATABASE_URL at `leadflow`, the container
+#      superuser — and lib/startup-check refuses to boot on a superuser,
+#      correctly, because a superuser bypasses every row-level-security policy
+#      in the schema. That refusal is the single most likely reason a first
+#      deployment does not come up.
+#
+#   4. The web container never holds MIGRATION_DATABASE_URL. Migrations run from
+#      the one-off `migrate` service below, which is the only thing that needs
+#      the owning credential.
+#
+# ── The two merge tags, which are not interchangeable ────────────────────────
+#
+# Compose 2.24+ has both, and picking the wrong one fails quietly:
+#
+#   !reset      empties the key and IGNORES any value written beside it.
+#   !override   replaces the value underneath instead of merging with it.
+#
+# So `!reset ['127.0.0.1:5432:5432']` publishes nothing — the list is discarded.
+# Use `!reset []` to mean "publish nothing", and `!override [...]` to mean
+# "publish exactly this instead". Both are needed here because lists like
+# `ports` and `env_file` are otherwise *appended* to the ones beneath, and an
+# appended 0.0.0.0:5432 would leave the exposure exactly as it was.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in apps/web/.env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in apps/web/.env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [web]
+
+  web:
+    # One file holds the deployment's configuration, and it is read at start
+    # rather than copied into the image. `!override` replaces the base file's
+    # `../.env` — the developer's local file, which does not exist on a server
+    # and would abort the whole command as a missing env_file.
+    env_file: !override ['../.env.production']
+    # Not published at all. Caddy reaches it over the compose network, and
+    # startup-check's proxy rule assumes exactly this: a direct route to the
+    # application would let a caller forge X-Forwarded-For and pick its own
+    # rate-limit identity.
+    ports: !reset []
+    environment:
+      # Restated because `environment:` outranks `env_file:` regardless of order,
+      # so the production overlay's superuser DATABASE_URL would otherwise win
+      # over the correct value in .env.production.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      # Deliberately blank. lib/env.ts accepts empty, and startup-check skips its
+      # "same connection" comparison — the runtime has no business holding the
+      # role that can drop a policy.
+      MIGRATION_DATABASE_URL: ''
+      SHADOW_DATABASE_URL: ''
+    volumes:
+      - attendance:/app/storage/attendance
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    env_file: !override ['../.env.production']
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      MIGRATION_DATABASE_URL: ''
+      SHADOW_DATABASE_URL: ''
+    volumes:
+      - attendance:/app/storage/attendance
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # One-off, never started by `up`. The production image contains only the
+  # standalone build output — no Prisma CLI, no migrations runner — so the
+  # `build` stage is reused here because it already has the full source tree and
+  # node_modules. Run it before every rollout:
+  #
+  #   docker compose ... run --rm migrate
+  #
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: build
+    profiles: ['tools']
+    # Plain, not tagged: this service exists only in this file, so there is
+    # nothing underneath to merge with or replace.
+    env_file: ['../.env.production']
+    environment:
+      NODE_ENV: production
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    # Not published at all. `docker compose exec postgres psql -U leadflow
+    # leadflow` reaches it for administration, which is every reason the base
+    # file had for publishing it, without a listening socket on the host.
+    ports: !reset []
+    environment:
+      # Only read on first initialisation, when the pgdata volume is empty.
+      # Changing it later needs ALTER ROLE — see docs/DEPLOY-AZURE.md.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in apps/web/.env.production}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
+
+  redis:
+    ports: !reset []
+
+  minio:
+    # No presigned URLs are handed to browsers anywhere in the application — the
+    # web process streams objects itself — so MinIO needs no route from outside.
+    # The console stays on loopback, reachable over an SSH tunnel when needed:
+    #   ssh -L 9001:127.0.0.1:9001 azureuser@<vm>
+    #
+    # `!override` rather than `!reset`, because the two tags do different things:
+    # `!reset` empties a key and ignores any value given with it, so
+    # `!reset ['127.0.0.1:9001:9001']` would publish nothing at all.
+    ports: !override ['127.0.0.1:9001:9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in apps/web/.env.production}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in apps/web/.env.production}
+    restart: unless-stopped
+
+  clamav:
+    restart: unless-stopped
+
+  face:
+    # The base file publishes this on loopback because local development runs the
+    # web app on the host. Here web is inside the compose network, so the mapping
+    # is dropped: a service that turns camera frames into biometric vectors
+    # should have no route from the host at all.
+    ports: !reset []
+    restart: unless-stopped
+
+volumes:
+  caddydata: {}
+  caddyconfig: {}
+  attendance: {}

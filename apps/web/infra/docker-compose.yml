@@ -42,6 +42,21 @@ services:
     ports: ['9000:9000', '9001:9001']
     volumes: ['miniodata:/data']
 
+  # A local mailbox, so EMAIL_PROVIDER can be a real `smtp` rather than `mock`.
+  # Mailpit accepts on 1025 and shows what was sent at http://localhost:8025;
+  # nothing leaves the machine, which is the point — a local run that can post
+  # real mail to real addresses is a worse accident than one that cannot send.
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      retries: 10
+
   # Malware scanning for uploaded documents. clamd exposes its INSTREAM protocol
   # on 3310; the app speaks it directly. The image ships signature definitions and
   # freshclam keeps them current, which is why the healthcheck allows a long start:

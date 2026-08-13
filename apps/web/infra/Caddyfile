@@ -1,0 +1,25 @@
+{
+	# ACME registration address. Let's Encrypt mails expiry warnings here if a
+	# renewal ever stops working, which is the one notification worth having.
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Certificates are obtained and renewed automatically over HTTP-01, which is
+	# why ports 80 and 443 both have to reach this container. Port 80 also serves
+	# the redirect to HTTPS; nothing is answered in plaintext beyond that.
+	reverse_proxy web:3000 {
+		# The application reads X-Forwarded-For right to left and skips hops
+		# inside TRUSTED_PROXY_CIDRS, so this container's own address must be
+		# covered by that setting or it would be mistaken for the client.
+		header_up X-Real-IP {remote_host}
+	}
+
+	# HR document uploads are capped at UPLOAD_MAX_MB (25 by default). Rejecting
+	# oversize bodies here means the application never buffers them.
+	request_body {
+		max_size 32MB
+	}
+}
