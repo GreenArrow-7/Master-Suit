@@ -13,6 +13,14 @@ const securityHeaders = [
 const config: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
+  /**
+   * Next shows its route/bundler indicator whenever NODE_ENV is not production,
+   * which scripts/start-local-prod.mjs deliberately arranges so the startup
+   * check does not treat a local run as a deployment. The panel it opens sits
+   * bottom-left, on top of the workspace sidebar's own controls — it covers the
+   * navigation and the sign-out button rather than floating clear of them.
+   */
+  devIndicators: false,
   // This repository intentionally lives inside a directory whose parent also
   // contains Node projects. Pinning the root prevents Turbopack from inferring
   // src/app (or a sibling application's lockfile) as the workspace root.
