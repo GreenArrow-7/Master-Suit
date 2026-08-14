@@ -25,7 +25,7 @@ export const POST = route(
 
 const listQuery = z
   .object({
-    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED']).optional(),
     due: z.enum(['overdue', 'today', 'upcoming']).optional(),
   })
   .strict();
@@ -42,7 +42,7 @@ export const GET = route(
     };
 
     if (query.status) where.status = query.status;
-    else where.status = { in: ['OPEN', 'IN_PROGRESS'] };
+    else where.status = { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] };
 
     if (query.due === 'overdue') where.dueAt = { lt: now };
     else if (query.due === 'today') where.dueAt = { gte: now, lte: todayEnd };

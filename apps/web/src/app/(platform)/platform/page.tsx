@@ -1,8 +1,18 @@
 import Link from 'next/link';
 import { withPlatformTx } from '@/lib/db';
-import PageHeader from '@/components/ui/PageHeader';
-import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import { PRODUCT_NAME } from '@/lib/branding';
 
+/**
+ * The owner's control room.
+ *
+ * The masthead is the one dark brand surface in the console — the same wine the
+ * login door uses — and its headline is a live sentence about the customer
+ * base, with the figure set in the display serif the product reserves for hero
+ * metrics. Below it, each product module gets a panel in its own identity
+ * color (viridian is People everywhere in the product, wine is Sales), showing
+ * adoption as a share of the base. The ledger closes the page in the audit
+ * voice: tone dots and monospace timestamps.
+ */
 export default async function PlatformOverviewPage() {
   const [
     workspaceCount,
@@ -32,64 +42,178 @@ export default async function PlatformOverviewPage() {
           where: { tenantId: { not: '' }, module: 'SALES', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
         }),
         tx.platformAuditEvent.findMany({
-          take: 8,
+          take: 9,
           orderBy: { occurredAt: 'desc' },
           include: { actor: true, tenant: true },
         }),
       ]),
     );
 
+  const modules = [
+    {
+      key: 'people',
+      title: 'People / HRMS',
+      accent: 'var(--lf-viridian)',
+      count: hrmsCount,
+      blurb: 'Employees, attendance, leave and payroll.',
+      href: '/platform/workspaces',
+      linkLabel: 'Workspaces →',
+    },
+    {
+      key: 'sales',
+      title: 'Sales CRM',
+      accent: 'var(--lf-wine-700)',
+      count: salesCount,
+      blurb: 'Leads, pipeline, calls and campaigns.',
+      href: '/platform/subscriptions',
+      linkLabel: 'Subscriptions →',
+    },
+  ];
+
+  const eventTone = (event: string) =>
+    event.includes('DELETED') || event.includes('CANCELED')
+      ? 'var(--lf-vermillion)'
+      : event.includes('CREATED')
+        ? 'var(--lf-viridian)'
+        : event.includes('LOGIN')
+          ? 'var(--lf-brass)'
+          : 'var(--lf-slate)';
+
   return (
     <div className="lf-page-stack">
-      <PageHeader
-        eyebrow="Commercial operations"
-        title="Platform overview"
-        description="Monitor every workspace, subscription and security boundary from one control centre."
-        breadcrumbs={[{ label: 'Platform' }]}
-        actions={
-          <>
-            <Link className="lf-btn lf-btn--secondary" href="/platform/subscriptions">
-              View subscriptions
-            </Link>
-            <Link className="lf-btn" href="/platform/workspaces/new">
-              Create workspace
-            </Link>
-          </>
-        }
-      />
+      {/* Masthead */}
+      <section className="lf-command-band">
+        <div
+          className="lf-command-band__row"
+          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 28, flexWrap: 'wrap' }}
+        >
+          <div>
+            <div className="lf-eyebrow">Commercial operations</div>
+            <h1 className="lf-command-band__headline">
+              <strong>{activeCount}</strong> {activeCount === 1 ? 'company runs' : 'companies run'} on {PRODUCT_NAME}.
+            </h1>
+            <p className="lf-command-band__sub">
+              {userCount} platform users · {employeeCount} employee records under management
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <Link className="lf-btn lf-btn--brass" href="/platform/workspaces/new">
+                Create workspace
+              </Link>
+              <Link className="lf-btn lf-btn--onband" href="/platform/subscriptions">
+                View subscriptions
+              </Link>
+            </div>
+          </div>
 
-      <section className="lf-metric-grid">
-        {[
-          ['Workspaces', workspaceCount],
-          ['Active', activeCount],
-          ['Trials', trialCount],
-          ['Suspended', suspendedCount],
-          ['Platform users', userCount],
-          ['Employees', employeeCount],
-          ['HRMS adoption', hrmsCount],
-          ['Sales adoption', salesCount],
-        ].map(([label, value]) => (
-          <article key={label} className="lf-metric-card">
-            <div className="lf-eyebrow">{label}</div>
-            <div className="lf-metric-card__value">{value}</div>
-          </article>
-        ))}
+          <div className="lf-stat-strip">
+            {[
+              { label: 'Workspaces', value: workspaceCount, href: '/platform/workspaces' },
+              { label: 'Active', value: activeCount, href: '/platform/workspaces' },
+              { label: 'In trial', value: trialCount, href: '/platform/subscriptions' },
+              { label: 'Suspended', value: suspendedCount, href: '/platform/workspaces' },
+            ].map((stat) => (
+              <Link key={stat.label} href={stat.href}>
+                <span className="lf-figure" style={{ color: '#fff' }}>
+                  {stat.value}
+                </span>
+                <span className="lf-eyebrow">{stat.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
       </section>
 
+      {/* Module adoption */}
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        {modules.map((module) => {
+          const share = workspaceCount ? Math.round((module.count / workspaceCount) * 100) : 0;
+          return (
+            <article key={module.key} className="lf-module-panel" style={{ ['--panel-accent' as string]: module.accent }}>
+              <div className="lf-module-panel__head">
+                <h2 className="lf-module-panel__title">{module.title}</h2>
+                <Link className="lf-module-panel__link" href={module.href}>
+                  {module.linkLabel}
+                </Link>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                <span className="lf-figure lf-figure--lg">{module.count}</span>
+                <span style={{ color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+                  of {workspaceCount} workspaces · {share}%
+                </span>
+              </div>
+              <div
+                className="lf-meter"
+                style={{ marginTop: 10 }}
+                role="img"
+                aria-label={`${module.title} enabled in ${module.count} of ${workspaceCount} workspaces`}
+              >
+                <span style={{ width: `${share}%` }} />
+              </div>
+              <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                {module.blurb}
+              </p>
+            </article>
+          );
+        })}
+
+        {/* Directory */}
+        <article className="lf-module-panel">
+          <div className="lf-module-panel__head">
+            <h2 className="lf-module-panel__title">Directory</h2>
+            <Link className="lf-module-panel__link" href="/platform/users">
+              Platform users →
+            </Link>
+          </div>
+          <div style={{ display: 'flex', gap: 34 }}>
+            <div>
+              <span className="lf-figure lf-figure--lg">{userCount}</span>
+              <div className="lf-eyebrow" style={{ marginTop: 4 }}>
+                Logins
+              </div>
+            </div>
+            <div>
+              <span className="lf-figure lf-figure--lg">{employeeCount}</span>
+              <div className="lf-eyebrow" style={{ marginTop: 4 }}>
+                Employees
+              </div>
+            </div>
+          </div>
+          <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+            One account per person, however many workspaces they belong to.
+          </p>
+        </article>
+      </section>
+
+      {/* Ledger */}
       <section>
-        <h2 className="lf-h2" style={{ marginBottom: 10 }}>
-          Recent platform activity
-        </h2>
-        <WorkspaceTable
-          empty="No platform events yet."
-          headers={['Event', 'Workspace', 'Actor', 'Time']}
-          rows={recentEvents.map((event) => [
-            event.event.replaceAll('_', ' '),
-            event.tenant?.displayName ?? 'Global',
-            event.actor?.email ?? 'System',
-            event.occurredAt.toLocaleString('en-AE'),
-          ])}
-        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <h2 className="lf-h2" style={{ margin: 0 }}>
+            Recent platform activity
+          </h2>
+          <Link href="/platform/audit" style={{ fontSize: 'var(--lf-text-sm)' }}>
+            Full audit log →
+          </Link>
+        </div>
+        <div className="lf-ledger">
+          {recentEvents.length === 0 ? (
+            <div className="lf-empty">
+              <strong>No platform events yet</strong>
+              <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-3)' }}>
+                Provisioning, sign-ins and subscription changes will appear here as they happen.
+              </p>
+            </div>
+          ) : (
+            recentEvents.map((event) => (
+              <div key={event.id} className="lf-ledger__row">
+                <span className="lf-ledger__dot" style={{ background: eventTone(event.event) }} aria-hidden="true" />
+                <span className="lf-ledger__event">{event.event.replaceAll('_', ' ')}</span>
+                <span className="lf-ledger__meta">{event.tenant?.displayName ?? 'Global'}</span>
+                <span className="lf-ledger__meta">{event.actor?.email ?? 'System'}</span>
+                <span className="lf-ledger__time">{event.occurredAt.toLocaleString('en-AE')}</span>
+              </div>
+            ))
+          )}
+        </div>
       </section>
     </div>
   );

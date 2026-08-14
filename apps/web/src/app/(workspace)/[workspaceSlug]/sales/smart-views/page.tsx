@@ -164,7 +164,7 @@ export default async function SmartViewsPage({
   const activeName = activeSystem?.name ?? activeSaved?.name ?? 'All Leads';
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--lf-space-5)', minHeight: 0 }}>
+    <div className="lf-smartviews" style={{ display: 'flex', gap: 'var(--lf-space-5)', minHeight: 0 }}>
       <ViewSidebar
         systemViews={SYSTEM_VIEWS.map((v) => ({ key: v.key, name: v.name, icon: v.icon }))}
         savedViews={savedViews.map((v) => ({ id: v.id, name: v.name, mine: v.ownerId === ctx.actor.id }))}

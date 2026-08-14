@@ -1,21 +1,25 @@
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PageHeader from '@/components/ui/PageHeader';
+import SettingEditor from '@/components/platform/SettingEditor';
 import { env } from '@/lib/env';
+import { getUploadMaxMb } from '@/lib/platform-settings';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Read from configuration, not written into the markup.
+ * Two kinds of rows, visibly different on purpose.
  *
- * Every row here used to be a string literal. "Public application URL:
- * http://localhost:3000" was shown to operators of a deployed platform, and
- * "Data isolation: PostgreSQL tenant policies" asserted row-level security was
- * in force at a time when it was not enforced at all — a settings page that
- * describes a system other than the one running is worse than no page, because
- * it is consulted precisely when someone is trying to find out what is true.
+ * Operator settings (the upload limit) are editable here and take effect
+ * immediately — they live in the database and override the environment default.
+ * Deployment configuration (URLs, providers, proxies) is shown read-only from
+ * the environment the server actually booted with: editing those at runtime
+ * would produce a page that disagrees with the running process, which is worse
+ * than making the operator restart.
  */
-export default function PlatformSettingsPage() {
-  const rows: [string, string, string][] = [
+export default async function PlatformSettingsPage() {
+  const uploadMaxMb = await getUploadMaxMb();
+
+  const readOnlyRows: [string, string, string][] = [
     ['Public application URL', env.APP_URL, 'Platform'],
     ['Environment', env.NODE_ENV, 'Platform'],
     ['Session lifetime', `${env.SESSION_TTL_MINUTES} minutes`, 'All users'],
@@ -27,7 +31,6 @@ export default function PlatformSettingsPage() {
       'Platform',
     ],
     ['Antivirus scanning', env.ANTIVIRUS_PROVIDER, 'Uploads'],
-    ['Upload limit', `${env.UPLOAD_MAX_MB} MB`, 'All workspaces'],
     ['Trusted proxies', env.TRUSTED_PROXY_CIDRS || 'not configured', 'Platform'],
     ['Object storage', `${env.S3_BUCKET} · ${env.S3_REGION}`, 'All workspaces'],
   ];
@@ -37,10 +40,40 @@ export default function PlatformSettingsPage() {
       <PageHeader
         eyebrow="Platform"
         title="Platform settings"
-        description="The configuration this server is actually running with. Change it in the environment, then restart."
+        description="Operator settings apply immediately. Deployment configuration is read from the environment and needs a restart to change."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Settings' }]}
       />
-      <WorkspaceTable headers={['Setting', 'Current value', 'Scope']} rows={rows.map((row) => [...row])} />
+
+      <section>
+        <h2 className="lf-h2" style={{ marginBottom: 10 }}>
+          Operator settings
+        </h2>
+        <WorkspaceTable
+          headers={['Setting', 'Current value', 'Scope']}
+          rows={[
+            [
+              'Upload limit',
+              <SettingEditor
+                key="uploadMaxMb"
+                settingKey="uploadMaxMb"
+                value={`${uploadMaxMb}`}
+                hint="Whole number of megabytes, 1–500. Applies to every workspace immediately."
+              />,
+              'All workspaces',
+            ],
+          ]}
+        />
+      </section>
+
+      <section>
+        <h2 className="lf-h2" style={{ marginBottom: 10 }}>
+          Deployment configuration
+        </h2>
+        <WorkspaceTable
+          headers={['Setting', 'Current value', 'Scope']}
+          rows={readOnlyRows.map((row) => [...row])}
+        />
+      </section>
     </div>
   );
 }

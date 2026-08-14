@@ -55,6 +55,17 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         }
         actions={
           <>
+            <form method="get" role="search">
+              <input
+                name="q"
+                type="search"
+                className="lf-input"
+                defaultValue={params.q ?? ''}
+                placeholder="Search contacts"
+                aria-label="Search contacts"
+                style={{ height: 28, width: 180, fontSize: 'var(--lf-text-xs)' }}
+              />
+            </form>
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="CONTACT" current={columns.map((c) => c.key)} />
             )}

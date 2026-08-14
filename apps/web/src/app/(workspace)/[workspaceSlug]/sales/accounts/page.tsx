@@ -56,6 +56,17 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         }
         actions={
           <>
+            <form method="get" role="search">
+              <input
+                name="q"
+                type="search"
+                className="lf-input"
+                defaultValue={params.q ?? ''}
+                placeholder="Search accounts"
+                aria-label="Search accounts"
+                style={{ height: 28, width: 180, fontSize: 'var(--lf-text-xs)' }}
+              />
+            </form>
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="ACCOUNT" current={columns.map((c) => c.key)} />
             )}

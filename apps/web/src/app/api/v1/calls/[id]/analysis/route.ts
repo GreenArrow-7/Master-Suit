@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { NotFound, Conflict } from '@/lib/errors';
-import { enqueue } from '@/lib/queue';
-import { claimAnalysis } from '@/services/shared/callIntelligence';
+import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { claimAnalysis, analyseAndAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -33,7 +34,18 @@ export const POST = route(
       throw Conflict('Analysis is already in progress for this call.');
     }
 
-    await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
+    if (await queueHasWorkers('ai')) {
+      await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
+    } else {
+      // No worker is draining the queue (dev/demo box). Run the chain in the
+      // background of this request; the claim above still guards double-runs
+      // and the row records FAILED on error, exactly as the worker path does.
+      const tenantId = ctx.tenantId;
+      const callId = params.id;
+      void analyseAndAudit(tenantId, callId).catch((err) =>
+        logger.error({ err: (err as Error).message, callId }, 'inline analysis chain failed'),
+      );
+    }
 
     return prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } });
   },

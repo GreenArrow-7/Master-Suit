@@ -6,6 +6,7 @@ import { can } from '@/lib/security/rbac';
 import SalesLink from '@/components/workspace/SalesLink';
 import CampaignSend from './CampaignSend';
 import AudiencePicker from './AudiencePicker';
+import CampaignStatusActions from './CampaignStatusActions';
 
 export const metadata = { title: 'Campaign Detail' };
 
@@ -90,7 +91,7 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
             {campaign.owner && ` · Owned by ${campaign.owner.fullName}`}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* The dial queue lives here rather than under Calls: a queue belongs
               to the campaign that decided who is in it. */}
           {can(ctx, 'dialer', 'VIEW') && (
@@ -98,6 +99,7 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
               Open dialer
             </SalesLink>
           )}
+          {can(ctx, 'campaigns', 'EDIT') && <CampaignStatusActions id={campaign.id} status={campaign.status} />}
           <Badge tone={STATUS_TONE[campaign.status]}>{campaign.status.toLowerCase()}</Badge>
         </div>
       </div>

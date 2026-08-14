@@ -341,6 +341,25 @@ body {
 .lf-mobile-nav-button {
   display: none;
 }
+.lf-mobile-scrim {
+  display: none;
+}
+/* Two-card row that stacks on small screens; children may shrink below their
+   content width, so a long lead name cannot push the page wider than the
+   viewport. */
+.lf-cols-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--lf-space-4);
+}
+.lf-cols-2 > * {
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .lf-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 .lf-page-header {
   display: flex;
@@ -590,6 +609,13 @@ body {
   .lf-workspace-sidebar[data-mobile-open='true'] {
     transform: translateX(0);
   }
+  .lf-mobile-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39; /* under the sidebar (fixed, above content), over the page */
+    background: rgb(15 10 12 / 0.45);
+  }
   .lf-mobile-nav-button {
     display: grid;
     place-items: center;
@@ -630,6 +656,20 @@ body {
   }
   .lf-metric-grid {
     grid-template-columns: 1fr 1fr;
+  }
+  .lf-live-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  /* Smart views: the fixed 220px view rail stacks above the grid on phones. */
+  .lf-smartviews {
+    flex-direction: column;
+  }
+  .lf-smartviews-sidebar {
+    width: 100% !important;
+    border-right: 0 !important;
+    padding-right: 0 !important;
+    border-bottom: 1px solid var(--lf-line);
+    padding-bottom: var(--lf-space-3);
   }
   .lf-form-grid {
     grid-template-columns: 1fr;
@@ -1181,23 +1221,49 @@ a:hover {
   font: 600 var(--lf-text-sm)/1 var(--lf-font-ui);
 }
 
-/* ── Responsive: the grid becomes cards below 860px ──────────────────────── */
+/* ── Responsive: the grid becomes labelled cards below 860px ─────────────────
+   Same treatment as .lf-table: each cell shows its column header via
+   data-label, so a phone user sees "Stage · Qualified" instead of a bare
+   unexplained value. */
 @media (max-width: 860px) {
   .lf-grid thead {
     display: none;
   }
   .lf-grid tbody tr {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 2px var(--lf-space-3);
-    padding: var(--lf-space-3);
+    display: block;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--lf-line);
   }
+  .lf-grid tbody tr:last-child {
+    border-bottom: 0;
+  }
   .lf-grid tbody td {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
     height: auto;
-    padding: 0;
+    padding: 4px 0;
     border: 0;
     white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left !important;
+  }
+  .lf-grid tbody td::before {
+    content: attr(data-label);
+    color: var(--lf-ink-3);
+    font: 650 9px/1.5 var(--lf-font-ui);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+  /* Blank header = selection or actions cell: full width, no label. */
+  .lf-grid tbody td[data-label='']::before,
+  .lf-grid tbody td:not([data-label])::before {
+    display: none;
+  }
+  .lf-grid tbody td[data-label=''],
+  .lf-grid tbody td:not([data-label]) {
+    grid-template-columns: 1fr;
   }
   .lf-grid .lf-sticky {
     position: static;
@@ -2195,5 +2261,239 @@ a:hover {
   }
   .lf-face__steps {
     width: 100%;
+  }
+}
+
+/* ── Console dashboards: command band, module panels, ledger ──────────────
+   The login screen establishes the brand contract — burgundy once at the door,
+   serif for hero figures — and these classes carry it into the two dashboards.
+   Accents are the module identity colors used product-wide: viridian is People,
+   wine is Sales. Everything else stays quiet. */
+
+.lf-command-band {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 30px 24px;
+  border-radius: 12px;
+  background: linear-gradient(150deg, var(--lf-wine-900) 0%, var(--lf-wine-800) 55%, #4a1526 100%);
+  color: #f3e9ec;
+  border-bottom: 2px solid transparent;
+  border-image: var(--lf-brass-edge) 1;
+}
+.lf-command-band::after {
+  /* The login door's radial glow, quoted smaller. */
+  content: '';
+  position: absolute;
+  inset: auto -14% -55% auto;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.07), transparent 60%);
+  pointer-events: none;
+}
+.lf-command-band .lf-eyebrow {
+  color: rgb(243 233 236 / 0.55);
+}
+.lf-command-band__headline {
+  margin: 10px 0 4px;
+  font-family: var(--lf-font-display);
+  font-weight: 400;
+  font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  color: #fff;
+  max-width: 30ch;
+}
+.lf-command-band__headline strong {
+  font-weight: 500;
+  color: var(--lf-brass, #d9b25e);
+}
+.lf-command-band__sub {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: rgb(243 233 236 / 0.68);
+}
+
+/* Inline fact family: one row of figures separated by hairlines, not a grid of
+   identical cards — these four numbers are a single sentence about the base. */
+.lf-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  align-items: stretch;
+}
+.lf-stat-strip > a,
+.lf-stat-strip > div {
+  display: block;
+  padding: 4px 22px;
+  border-left: 1px solid rgb(255 255 255 / 0.16);
+  text-decoration: none;
+  color: inherit;
+}
+.lf-stat-strip > :first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.lf-stat-strip .lf-figure {
+  display: block;
+}
+.lf-stat-strip .lf-eyebrow {
+  margin-top: 2px;
+}
+
+/* Fraunces numeral — the product's stated voice for hero metrics. */
+.lf-figure {
+  font-family: var(--lf-font-display);
+  font-weight: 400;
+  font-size: 1.9rem;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums;
+}
+.lf-figure--lg {
+  font-size: 2.4rem;
+}
+
+/* A module's panel: identity keyline on the left, quiet body. Set the accent
+   with `--panel-accent` inline; neutral panels simply omit it. */
+.lf-module-panel {
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-left: 3px solid var(--panel-accent, var(--lf-line-2));
+  border-radius: 10px;
+  box-shadow: var(--lf-shadow-1);
+  padding: 18px 20px;
+}
+.lf-module-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.lf-module-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--lf-text-md, 1rem);
+  font-weight: 650;
+}
+.lf-module-panel__title::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--panel-accent, var(--lf-ink-4));
+  flex: none;
+}
+.lf-module-panel__link {
+  font-size: var(--lf-text-sm);
+  white-space: nowrap;
+}
+.lf-module-panel .lf-metric-grid {
+  gap: 8px;
+}
+.lf-module-panel .lf-metric-card {
+  box-shadow: none;
+  background: var(--lf-surface-2);
+  padding: 12px 14px;
+}
+.lf-module-panel .lf-metric-card__value {
+  font-family: var(--lf-font-display);
+  font-weight: 400;
+  font-size: 24px;
+}
+
+/* Adoption / capacity meter. */
+.lf-meter {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--lf-slate-sub);
+  overflow: hidden;
+}
+.lf-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--panel-accent, var(--lf-wine-700));
+}
+
+/* Activity ledger: tone dot, quiet prose, mono time — the audit voice. */
+.lf-ledger {
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  box-shadow: var(--lf-shadow-1);
+  overflow: hidden;
+}
+.lf-ledger__row {
+  display: grid;
+  grid-template-columns: 14px minmax(160px, 1.2fr) 1fr 1.4fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 18px;
+  border-top: 1px solid var(--lf-line);
+  font-size: var(--lf-text-sm);
+}
+.lf-ledger__row:first-child {
+  border-top: 0;
+}
+.lf-ledger__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lf-slate);
+}
+.lf-ledger__event {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.lf-ledger__meta {
+  color: var(--lf-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-ledger__time {
+  font-family: var(--lf-font-mono);
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+  white-space: nowrap;
+}
+
+/* Brass action for dark band surfaces, where the wine button disappears. */
+.lf-btn--brass {
+  background: var(--lf-brass, #a87a22);
+  border-color: transparent;
+  color: #1b1206;
+}
+.lf-btn--brass:hover {
+  filter: brightness(1.06);
+}
+.lf-btn--onband {
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  color: #fff;
+}
+.lf-btn--onband:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+@media (max-width: 900px) {
+  .lf-command-band__row {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 18px;
+  }
+  .lf-stat-strip > a,
+  .lf-stat-strip > div {
+    padding: 4px 16px;
+  }
+  .lf-ledger__row {
+    grid-template-columns: 10px 1fr auto;
+  }
+  .lf-ledger__row > .lf-ledger__meta {
+    display: none;
   }
 }

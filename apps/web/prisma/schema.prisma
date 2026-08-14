@@ -6853,3 +6853,15 @@ model AllocationRequest {
   @@index([tenantId, status, createdAt])
   @@index([tenantId, requesterId, status])
 }
+
+/// Platform-wide operator settings, editable from the console.
+///
+/// Environment variables stay the source of *defaults*; a row here overrides
+/// one at runtime without a redeploy. Keys are namespaced strings so adding a
+/// setting is a data change, not a schema change.
+model PlatformSetting {
+  key       String   @id
+  value     String
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}

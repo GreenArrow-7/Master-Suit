@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { ROLES } from './roles';
+import { seedCrm } from './crm';
 import { hash } from '@node-rs/argon2';
 
 /**
@@ -51,9 +52,11 @@ const RESET = process.argv.includes('--reset');
 /**
  * Generated per run and printed once, never committed. The previous value was a
  * constant in this file, so every deployment that had ever run the seed shared
- * one publicly-known password across every demo account.
+ * one publicly-known password across every demo account. DEMO_PASSWORD in the
+ * environment pins it for demo installs that need a stable credential.
  */
-const DEMO_PASSWORD = `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+const DEMO_PASSWORD =
+  process.env.DEMO_PASSWORD || `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
 
 /** Host only — a connection string carries the password. */
 function safeHost(url: string | undefined): string {
@@ -364,6 +367,28 @@ async function main() {
       const t = { tenantId: existing.id };
       // Child-first: tenantId is a plain column on most tables, so the Tenant
       // cascade does not reach them. Order matters where FKs do exist.
+      await db.callAudit.deleteMany({ where: t });
+      await db.aIAnalysis.deleteMany({ where: t });
+      await db.transcript.deleteMany({ where: t });
+      await db.recordingConsent.deleteMany({ where: t });
+      await db.recording.deleteMany({ where: t });
+      await db.call.deleteMany({ where: t });
+      await db.followUpTask.deleteMany({ where: t });
+      await db.targetProgress.deleteMany({ where: t });
+      await db.employeeTarget.deleteMany({ where: t });
+      await db.notification.deleteMany({ where: t });
+      await db.eventInvitee.deleteMany({ where: t });
+      await db.event.deleteMany({ where: t });
+      await db.campaignTalkingPoint.deleteMany({ where: t });
+      await db.campaignScript.deleteMany({ where: t });
+      await db.campaignQualification.deleteMany({ where: t });
+      await db.campaignMember.deleteMany({ where: t });
+      await db.formSubmission.deleteMany({ where: t });
+      await db.formField.deleteMany({ where: t });
+      await db.form.deleteMany({ where: t });
+      await db.landingPageVersion.deleteMany({ where: t });
+      await db.landingPage.deleteMany({ where: t });
+      await db.opportunityProduct.deleteMany({ where: t });
       await db.auditLog.deleteMany({ where: t });
       await db.leadScoreHistory.deleteMany({ where: t });
       await db.leadAssignmentHistory.deleteMany({ where: t });
@@ -374,7 +399,11 @@ async function main() {
       await db.communication.deleteMany({ where: t });
       await db.document.deleteMany({ where: t });
       await db.opportunity.deleteMany({ where: t });
+      await db.lossReason.deleteMany({ where: t });
+      await db.pipelineStage.deleteMany({ where: t });
+      await db.pipeline.deleteMany({ where: t });
       await db.lead.deleteMany({ where: t });
+      await db.campaign.deleteMany({ where: t }); // after leads/opportunities, which reference it
       await db.contact.deleteMany({ where: t });
       await db.account.deleteMany({ where: t });
       await db.duplicateRule.deleteMany({ where: t });
@@ -634,7 +663,8 @@ async function main() {
     },
   });
 
-  const userSpecs: [string, string, string, string | null, string | null][] = [
+  // [first, last, role, branch, region, fixed email (optional)]
+  const userSpecs: [string, string, string, string | null, string | null, string?][] = [
     ['Amina', 'Al Rashid', 'org_admin', null, null],
     ['Dhruv', 'Menon', 'sales_director', null, null],
     ['Elena', 'Petrova', 'regional_manager', 'BB', 'DXB'],
@@ -666,12 +696,15 @@ async function main() {
     ['Hamdan', 'Pereira', 'service_agent', 'BB', 'DXB'],
     ['Reem', 'Silva', 'analyst', null, null],
     ['Auditor', 'Account', 'read_only', null, null],
+    // Last on purpose: picks up the next employee code (MH-032) without
+    // renumbering anyone, and demos always sign in with a memorable address.
+    ['Demo', 'Presenter', 'org_admin', null, null, 'demo@manathhomes.com'],
   ];
 
-  const users: { id: string; role: string; branch: string | null; teamCode: string | null }[] = [];
+  const users: { id: string; role: string; name: string; branch: string | null; teamCode: string | null }[] = [];
   let n = 0;
-  for (const [first, last, roleKey, branchCode, regionCode] of userSpecs) {
-    const addr = roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0);
+  for (const [first, last, roleKey, branchCode, regionCode, fixedEmail] of userSpecs) {
+    const addr = fixedEmail ?? (roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0));
     const u = await db.user.upsert({
       where: { tenantId_email: { tenantId, email: addr } },
       update: {},
@@ -719,7 +752,8 @@ async function main() {
         platformUserId: platformUser.id,
         salesUserId: u.id,
         status: u.status === 'ACTIVE' ? 'ACTIVE' : u.status === 'SUSPENDED' ? 'SUSPENDED' : 'INVITED',
-        isPrimaryAdmin: roleKey === 'org_admin',
+        // The demo presenter is an org_admin but not *the* primary admin.
+        isPrimaryAdmin: roleKey === 'org_admin' && !fixedEmail,
         roleSnapshot: roleKey,
         joinedAt: u.status === 'ACTIVE' ? new Date() : null,
       },
@@ -754,7 +788,7 @@ async function main() {
         create: { tenantId, userId: u.id, teamId: teams.get(teamCode)!, isManager: roleKey.includes('manager') },
       });
     }
-    users.push({ id: u.id, role: roleKey, branch: branchCode, teamCode });
+    users.push({ id: u.id, role: roleKey, name: `${first} ${last}`, branch: branchCode, teamCode });
   }
 
   // two on leave, one suspended — exercises distribution eligibility and lockout
@@ -1028,6 +1062,11 @@ async function main() {
     console.log(`  ${taskRows.length} tasks (${60} overdue)`);
   }
 
+  // 8. CRM chain — accounts → opportunities → calls → coaching ──────────────
+  // Runs even when the lead guard above skipped, so a top-up over an existing
+  // database still gains the chain; crm.ts re-reads leads and guards itself.
+  await seedCrm(db, { tenantId, users, rnd, pick, int, chance, businessDate });
+
   // ── second workspace ──────────────────────────────────────────────────────
   // Leadersfort exists so cross-workspace isolation is demonstrable in the UI,
   // and so the Platform Owner sees more than one company. It is deliberately
@@ -1176,6 +1215,7 @@ async function main() {
     const addr = key === 'read_only' ? 'auditor@example.com' : email(spec[0], spec[1], 0);
     console.log(` ${key.padEnd(16)} ${addr}`);
   }
+  console.log(` ${'demo'.padEnd(16)} demo@manathhomes.com`);
   console.log(` ${SECOND_WORKSPACE.slug.padEnd(16)} ${SECOND_WORKSPACE.adminEmail}`);
   console.log('─────────────────────────────────────────────\n');
 }

@@ -20,6 +20,7 @@ export default async function CampaignsPage() {
   const rows = await prisma.campaign.findMany({
     where: { tenantId: ctx.tenantId },
     orderBy: { createdAt: 'desc' },
+    take: 100,
     select: {
       id: true,
       name: true,

@@ -3,6 +3,7 @@ import { ulid } from 'ulid';
 import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
+import { getUploadMaxMb } from '@/lib/platform-settings';
 import { logger } from '@/lib/logger';
 import { assertPermission } from '@/lib/security/rbac';
 import { assertModuleEntitlement } from '@/lib/security/entitlements';
@@ -36,8 +37,9 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
      * Three checks, cheapest first: the declared length, then the part's own
      * size, then the real byte count in the service (a Content-Length can lie).
      */
-    const maxBytes = env.UPLOAD_MAX_MB * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${env.UPLOAD_MAX_MB} MB.`);
+    const uploadMaxMb = await getUploadMaxMb();
+    const maxBytes = uploadMaxMb * 1024 * 1024;
+    const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
 
     const declared = Number(req.headers.get('content-length') ?? 0);
     // Multipart framing adds headers and boundaries around the file itself, so

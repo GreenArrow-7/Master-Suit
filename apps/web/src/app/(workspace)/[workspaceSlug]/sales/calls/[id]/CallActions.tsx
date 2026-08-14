@@ -97,6 +97,15 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     setError('');
     try {
       await api(`/api/v1/calls/${callId}/analysis`, 'POST');
+      // The analysis runs in the background; poll until it leaves PROCESSING so
+      // the panel updates without a manual reload.
+      for (let attempt = 0; attempt < 16; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const res = await fetch(`/api/v1/calls/${callId}/analysis`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.status && data.status !== 'PROCESSING') break;
+      }
       router.refresh();
     } catch (e: any) {
       setError(e.message);

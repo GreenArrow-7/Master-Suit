@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import FollowUpRowActions from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions';
 import type { GridObject } from '@/lib/grid/columns';
 
 /** Rows arrive shaped by each page's own query, so access is deliberately loose. */
@@ -204,6 +205,10 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
       switch (key) {
         case 'createdAt':
           return link(`/calls/${row.id}`, dateTime(row.createdAt));
+        case 'lead':
+          return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
+        case 'caller':
+          return row.caller?.fullName ?? dash;
         case 'recipientNumber':
           return <span style={{ fontFamily: 'var(--lf-font-mono)' }}>{row.recipientNumber ?? '—'}</span>;
         case 'direction':
@@ -320,6 +325,8 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
       switch (key) {
         case 'title':
           return <span style={{ fontWeight: 500 }}>{row.title}</span>;
+        case 'actions':
+          return <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
         case 'dueAt':

@@ -1,28 +1,57 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import SalesLink from '@/components/workspace/SalesLink';
 
 interface CalendarItem {
   id: string;
   date: string; // ISO
   label: string;
-  kind: 'task' | 'activity';
+  kind: 'task' | 'activity' | 'follow-up' | 'call' | 'event';
   completed?: boolean;
+  href?: string;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function CalendarView({ items }: { items: CalendarItem[] }) {
-  const [offset, setOffset] = useState(0);
+const KIND_COLOR: Record<CalendarItem['kind'], string> = {
+  task: 'var(--lf-brass, #ca8a04)',
+  activity: 'var(--lf-wine-700, #7f1d4e)',
+  'follow-up': 'var(--lf-teal, #0d9488)',
+  call: 'var(--lf-plum, #7c3aed)',
+  event: 'var(--lf-sky, #0369a1)',
+};
+
+function dotColor(item: CalendarItem): string {
+  if (item.completed) return 'var(--lf-viridian, #16a34a)';
+  return KIND_COLOR[item.kind];
+}
+
+/**
+ * Month grid over the items the server fetched for `year`/`month`. Month
+ * navigation is URL-driven (`?month=YYYY-MM`) so each arrow re-queries the
+ * server, survives refresh and supports direct links; only the day-detail
+ * selection lives client-side.
+ */
+export default function CalendarView({
+  items,
+  year,
+  month,
+  prevHref,
+  nextHref,
+  todayHref,
+}: {
+  items: CalendarItem[];
+  year: number;
+  month: number;
+  prevHref: string;
+  nextHref: string;
+  todayHref: string | null;
+}) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-
-  // Read once at mount, not on every render. `new Date()` in the render body is
-  // impure, which made `year`/`month` unstable and cost `byDay` its memoization.
   const [today] = useState(() => new Date());
-  const viewDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
 
+  const viewDate = new Date(year, month, 1);
   const monthLabel = viewDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startDow = new Date(year, month, 1).getDay();
@@ -51,29 +80,27 @@ export default function CalendarView({ items }: { items: CalendarItem[] }) {
   return (
     <div>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)', marginBottom: 'var(--lf-space-4)' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--lf-space-3)',
+          marginBottom: 'var(--lf-space-4)',
+          flexWrap: 'wrap',
+        }}
       >
-        <button
-          className="lf-btn lf-btn--sm lf-btn--secondary"
-          onClick={() => setOffset((o) => o - 1)}
-          aria-label="Previous month"
-        >
+        <SalesLink className="lf-btn lf-btn--sm lf-btn--secondary" href={prevHref} aria-label="Previous month">
           &larr;
-        </button>
+        </SalesLink>
         <h2 className="lf-h2" style={{ margin: 0, minWidth: 200, textAlign: 'center' }}>
           {monthLabel}
         </h2>
-        <button
-          className="lf-btn lf-btn--sm lf-btn--secondary"
-          onClick={() => setOffset((o) => o + 1)}
-          aria-label="Next month"
-        >
+        <SalesLink className="lf-btn lf-btn--sm lf-btn--secondary" href={nextHref} aria-label="Next month">
           &rarr;
-        </button>
-        {offset !== 0 && (
-          <button className="lf-btn lf-btn--sm lf-btn--secondary" onClick={() => setOffset(0)}>
+        </SalesLink>
+        {todayHref && (
+          <SalesLink className="lf-btn lf-btn--sm lf-btn--secondary" href={todayHref}>
             Today
-          </button>
+          </SalesLink>
         )}
       </div>
 
@@ -104,11 +131,9 @@ export default function CalendarView({ items }: { items: CalendarItem[] }) {
           </div>
         ))}
         {cells.map((day, i) => {
-          const dayItems = day ? byDay.get(day) : undefined;
+          const dayItems = day ? (byDay.get(day) ?? []) : [];
           const isToday = day === todayKey;
           const isSelected = day != null && String(day) === selectedDay;
-          const tasks = dayItems?.filter((x) => x.kind === 'task') ?? [];
-          const activities = dayItems?.filter((x) => x.kind === 'activity') ?? [];
 
           return (
             <div
@@ -139,26 +164,11 @@ export default function CalendarView({ items }: { items: CalendarItem[] }) {
                     {day}
                   </div>
                   <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginTop: 2 }}>
-                    {tasks.map((t) => (
+                    {dayItems.map((item) => (
                       <span
-                        key={t.id}
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: '50%',
-                          background: t.completed ? 'var(--lf-viridian, #16a34a)' : 'var(--lf-brass, #ca8a04)',
-                        }}
-                      />
-                    ))}
-                    {activities.map((a) => (
-                      <span
-                        key={a.id}
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: '50%',
-                          background: 'var(--lf-wine-700, #7f1d4e)',
-                        }}
+                        key={item.id}
+                        title={item.label}
+                        style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor(item) }}
                       />
                     ))}
                   </div>
@@ -167,6 +177,28 @@ export default function CalendarView({ items }: { items: CalendarItem[] }) {
             </div>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--lf-space-4)',
+          flexWrap: 'wrap',
+          marginTop: 'var(--lf-space-3)',
+          fontSize: 'var(--lf-text-xs)',
+          color: 'var(--lf-ink-3)',
+        }}
+      >
+        {(Object.keys(KIND_COLOR) as CalendarItem['kind'][]).map((kind) => (
+          <span key={kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: KIND_COLOR[kind] }} />
+            {kind === 'follow-up' ? 'Follow-up' : kind[0].toUpperCase() + kind.slice(1)}
+          </span>
+        ))}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--lf-viridian, #16a34a)' }} />
+          Completed
+        </span>
       </div>
 
       {selectedDay != null && (
@@ -191,44 +223,49 @@ export default function CalendarView({ items }: { items: CalendarItem[] }) {
                 gap: 'var(--lf-space-2)',
               }}
             >
-              {selectedItems.map((item) => (
-                <li
-                  key={item.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--lf-space-2)',
-                    fontSize: 'var(--lf-text-sm)',
-                    color: 'var(--lf-ink)',
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      flexShrink: 0,
-                      background:
-                        item.kind === 'activity'
-                          ? 'var(--lf-wine-700, #7f1d4e)'
-                          : item.completed
-                            ? 'var(--lf-viridian, #16a34a)'
-                            : 'var(--lf-brass, #ca8a04)',
-                    }}
-                  />
-                  <span
-                    style={{
-                      textTransform: 'uppercase',
-                      fontSize: 'var(--lf-text-xs)',
-                      color: 'var(--lf-ink-3)',
-                      width: 60,
-                    }}
-                  >
-                    {item.kind}
-                  </span>
-                  {item.label}
-                </li>
-              ))}
+              {selectedItems.map((item) => {
+                const row = (
+                  <>
+                    <span
+                      style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: dotColor(item) }}
+                    />
+                    <span
+                      style={{
+                        textTransform: 'uppercase',
+                        fontSize: 'var(--lf-text-xs)',
+                        color: 'var(--lf-ink-3)',
+                        width: 76,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.kind}
+                    </span>
+                    <span>
+                      {new Date(item.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      {' · '}
+                      {item.label}
+                    </span>
+                  </>
+                );
+                const rowStyle = {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--lf-space-2)',
+                  fontSize: 'var(--lf-text-sm)',
+                  color: 'var(--lf-ink)',
+                } as const;
+                return (
+                  <li key={item.id}>
+                    {item.href ? (
+                      <SalesLink href={item.href} style={{ ...rowStyle, textDecoration: 'none' }}>
+                        {row}
+                      </SalesLink>
+                    ) : (
+                      <span style={rowStyle}>{row}</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

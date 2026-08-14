@@ -57,8 +57,9 @@ npm run db:seed
 npm run dev
 ```
 
-Sign in at http://localhost:3000 with workspace `meridian` and any account the seed
-prints — for example `amina.alrashid@example.com`.
+Sign in at http://localhost:3000 with workspace `manath-homes` and any account the
+seed prints — for example `amina.alrashid@example.com` or `demo@manathhomes.com`.
+See `../../docs/DEMO.md` for the full demo walkthrough.
 
 To see the interface without running the stack, open `leadflow-design-system.html`
 in any browser — it inlines the real token and component CSS, so it cannot drift

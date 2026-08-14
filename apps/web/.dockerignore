@@ -3,3 +3,9 @@ node_modules
 .next-prod
 .git
 *.log
+
+# Never copy a real secret into an image layer. The build stage supplies its own
+# throwaway values on the `npm run build` line; runtime configuration arrives by
+# env_file, which is read when the container starts and is not part of the image.
+.env
+.env.*

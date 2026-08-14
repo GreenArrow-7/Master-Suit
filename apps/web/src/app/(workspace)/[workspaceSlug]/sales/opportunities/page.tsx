@@ -43,7 +43,13 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   });
 
   const data = rows.map((r) => applyFieldSecurity(ctx, 'OPPORTUNITY', rules, r));
-  const pipelineTotal = rows.filter((r) => r.status === 'OPEN').reduce((sum, r) => sum + Number(r.amount), 0);
+
+  // The header figure covers the whole filtered set, not just the 50 rows on screen.
+  const openPipeline = await prisma.opportunity.aggregate({
+    where: { ...where, status: 'OPEN' },
+    _sum: { amount: true },
+  });
+  const pipelineTotal = Number(openPipeline._sum.amount ?? 0);
 
   const columns = await columnsFor(ctx.tenantId, 'OPPORTUNITY');
 
@@ -60,6 +66,17 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         }
         actions={
           <>
+            <form method="get" role="search">
+              <input
+                name="q"
+                type="search"
+                className="lf-input"
+                defaultValue={params.q ?? ''}
+                placeholder="Search opportunities"
+                aria-label="Search opportunities"
+                style={{ height: 28, width: 180, fontSize: 'var(--lf-text-xs)' }}
+              />
+            </form>
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="OPPORTUNITY" current={columns.map((c) => c.key)} />
             )}

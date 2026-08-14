@@ -2,9 +2,11 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
+import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import EntityDelete from '@/components/sales/EntityDelete';
 
 export default async function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -68,6 +70,16 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
               {account.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>}
             </span>
           </div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--lf-space-2)' }}>
+          {can(ctx, 'accounts', 'EDIT') && (
+            <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={`/accounts/${account.id}/edit`}>
+              Edit
+            </SalesLink>
+          )}
+          {can(ctx, 'accounts', 'DELETE') && (
+            <EntityDelete endpoint={`/api/v1/accounts/${account.id}`} backHref="/accounts" label="account" />
+          )}
         </div>
       </header>
 

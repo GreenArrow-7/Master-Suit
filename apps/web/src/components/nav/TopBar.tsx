@@ -244,12 +244,40 @@ export default function TopBar({
           {theme === 'dark' ? '☾' : '☀'}
         </button>
 
-        <button
-          className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
-          onClick={() => (window.location.href = basePath ? `${basePath}/admin/integrations` : '/settings')}
-        >
-          Help
-        </button>
+        {/* Native disclosure: no state, closes on outside click via the browser. */}
+        <details className="lf-topbar-optional" style={{ position: 'relative' }}>
+          <summary className="lf-btn lf-btn--ghost lf-btn--sm" style={{ listStyle: 'none', cursor: 'pointer' }}>
+            Help
+          </summary>
+          <div
+            className="lf-card"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 'calc(100% + 6px)',
+              width: 260,
+              padding: 'var(--lf-space-4)',
+              zIndex: 50,
+              fontSize: 'var(--lf-text-sm)',
+              display: 'grid',
+              gap: 'var(--lf-space-2)',
+            }}
+          >
+            <strong>Quick help</strong>
+            <span style={{ color: 'var(--lf-ink-2)' }}>
+              Press <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> to jump to search.
+            </span>
+            <span style={{ color: 'var(--lf-ink-2)' }}>
+              Use <em>+ Create</em> for new leads, tasks and calls.
+            </span>
+            <span style={{ color: 'var(--lf-ink-2)' }}>
+              Manage columns on any list via <em>Columns</em>.
+            </span>
+            <span style={{ color: 'var(--lf-ink-2)' }}>
+              Need access or a password reset? Contact your workspace administrator.
+            </span>
+          </div>
+        </details>
 
         {/* Notifications */}
         {module !== 'platform' && (

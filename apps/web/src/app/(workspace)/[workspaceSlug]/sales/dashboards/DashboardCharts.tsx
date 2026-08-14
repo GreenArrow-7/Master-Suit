@@ -34,6 +34,7 @@ export default function DashboardCharts({
   newThisMonth,
   openTasks,
   overdueTasks,
+  activitiesThisMonth,
   leadsByStage,
   leadsBySource,
   slaStats,
@@ -52,6 +53,7 @@ export default function DashboardCharts({
         <MetricCard label="New This Month" value={newThisMonth} tone="brass" />
         <MetricCard label="Open Tasks" value={openTasks} tone="slate" />
         <MetricCard label="Overdue Tasks" value={overdueTasks} tone={overdueTasks > 0 ? 'vermillion' : 'viridian'} />
+        <MetricCard label="Activities This Month" value={activitiesThisMonth} tone="slate" />
       </div>
 
       {/* Pipeline funnel */}

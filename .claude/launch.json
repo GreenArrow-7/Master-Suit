@@ -14,6 +14,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "web-dev-3005",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3005"],
+      "port": 3005
     }
   ]
 }

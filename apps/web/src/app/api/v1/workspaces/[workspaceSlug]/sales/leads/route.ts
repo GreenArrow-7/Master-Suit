@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { visibilityWhere } from '@/lib/security/visibility';
 
 const paramsSchema = z.object({ workspaceSlug: z.string().min(2).max(64) });
 
@@ -10,9 +11,12 @@ export const GET = route(
   { module: 'leads', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
     await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    // Same row filter as /api/v1/leads — this legacy path previously returned
+    // every lead in the tenant regardless of the caller's scope.
+    const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
     return prisma.lead.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null },
-      include: { stage: true, owner: true },
+      where: { ...scope, deletedAt: null },
+      include: { stage: true, owner: { select: { id: true, fullName: true, email: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -48,11 +52,15 @@ export const POST = route(
       });
       if (!owner) throw NotFound('Lead owner');
     }
-    const count = await prisma.lead.count({ where: { tenantId: ctx.tenantId } });
+    // Timestamp-based reference: the previous count+1 raced under concurrent
+    // creates against the unique index.
     return prisma.lead.create({
       data: {
         tenantId: ctx.tenantId,
-        reference: `LEAD-${String(count + 1).padStart(6, '0')}`,
+        reference: `LEAD-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 36 ** 2)
+          .toString(36)
+          .toUpperCase()
+          .padStart(2, '0')}`,
         fullName: body.fullName,
         email: body.email || null,
         phone: body.phone,

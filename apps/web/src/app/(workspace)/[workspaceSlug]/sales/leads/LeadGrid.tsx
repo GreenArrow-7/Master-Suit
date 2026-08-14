@@ -325,6 +325,7 @@ export default function LeadGrid({
                     key={column.key}
                     className={column.key === 'reference' ? 'lf-sticky' : undefined}
                     data-hide-mobile={column.hideMobile ? '' : undefined}
+                    data-label={column.label}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
                     {cell(column.key, row)}

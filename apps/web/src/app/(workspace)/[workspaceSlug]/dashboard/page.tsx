@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
@@ -216,6 +217,8 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       />
       {people && (
         <Summary
+          accent="var(--lf-viridian)"
+          link={{ href: `/${workspace.slug}/people`, label: 'Open People →' }}
           title="People summary"
           values={[
             ['Total employees', people[0]],
@@ -229,6 +232,8 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       )}
       {sales && (
         <Summary
+          accent="var(--lf-wine-700)"
+          link={{ href: `/${workspace.slug}/sales`, label: 'Open Sales →' }}
           title="Sales summary"
           values={[
             ['Total leads', sales[0]],
@@ -278,7 +283,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         />
       )}
       {approvalItems.length > 0 && approvalItems.some(([, value]) => value > 0) && (
-        <Summary title="Waiting on me" values={approvalItems} />
+        <Summary accent="var(--lf-brass)" title="Waiting on me" values={approvalItems} />
       )}
       {security && (
         <Summary
@@ -301,12 +306,33 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   );
 }
 
-function Summary({ title, values }: { title: string; values: [string, string | number][] }) {
+/**
+ * One dashboard panel. The two product modules carry their identity color as a
+ * keyline and dot — viridian is People across the product, wine is Sales — and
+ * everything else stays neutral, so color on this page always means "module"
+ * except brass, which marks work waiting on the viewer.
+ */
+function Summary({
+  title,
+  values,
+  accent,
+  link,
+}: {
+  title: string;
+  values: [string, string | number][];
+  accent?: string;
+  link?: { href: string; label: string };
+}) {
   return (
-    <section>
-      <h2 className="lf-h2" style={{ marginBottom: 10 }}>
-        {title}
-      </h2>
+    <section className="lf-module-panel" style={accent ? ({ ['--panel-accent' as string]: accent } as React.CSSProperties) : undefined}>
+      <div className="lf-module-panel__head">
+        <h2 className="lf-module-panel__title">{title}</h2>
+        {link && (
+          <Link className="lf-module-panel__link" href={link.href}>
+            {link.label}
+          </Link>
+        )}
+      </div>
       <div className="lf-metric-grid">
         {values.map(([label, value]) => (
           <article className="lf-metric-card" key={label}>

@@ -19,6 +19,8 @@ const TABS = [
   ['All', ''],
   ['Published', 'PUBLISHED'],
   ['Draft', 'DRAFT'],
+  ['Paused', 'PAUSED'],
+  ['Archived', 'ARCHIVED'],
 ] as const;
 
 export default async function LandingPagesPage({

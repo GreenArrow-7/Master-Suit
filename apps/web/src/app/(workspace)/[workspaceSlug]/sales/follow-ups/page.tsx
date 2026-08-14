@@ -5,6 +5,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
+import FollowUpComposer from './FollowUpComposer';
 import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
 
@@ -15,6 +16,7 @@ const TABS = [
   ['Overdue', 'overdue'],
   ['Today', 'today'],
   ['Upcoming', 'upcoming'],
+  ['Completed', 'completed'],
 ] as const;
 
 export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ due?: string }> }) {
@@ -26,13 +28,14 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   const where: Record<string, unknown> = {
     tenantId: ctx.tenantId,
     ownerId: ctx.actor.id,
-    status: { in: ['OPEN', 'IN_PROGRESS'] },
+    status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
     deletedAt: null,
   };
 
   if (params.due === 'overdue') where.dueAt = { lt: now };
   else if (params.due === 'today') where.dueAt = { gte: now, lte: todayEnd };
   else if (params.due === 'upcoming') where.dueAt = { gt: todayEnd };
+  else if (params.due === 'completed') where.status = { in: ['COMPLETED', 'CANCELLED'] };
 
   const rows = await prisma.followUpTask.findMany({ where, orderBy: { dueAt: 'asc' }, take: 100 });
 
@@ -62,9 +65,12 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
         count={rows.length}
         capped={rows.length === 100}
         actions={
-          can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-            <ColumnEditor object="FOLLOWUP" current={columns.map((c) => c.key)} />
-          )
+          <>
+            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
+              <ColumnEditor object="FOLLOWUP" current={columns.map((c) => c.key)} />
+            )}
+            {can(ctx, 'leads', 'EDIT') && <FollowUpComposer />}
+          </>
         }
       />
 

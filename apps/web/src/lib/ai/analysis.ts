@@ -109,7 +109,15 @@ export async function analyzeTranscript(
   input: AnalysisInput,
 ): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  if (!apiKey) {
+    // Demo fallback: a deterministic keyword pass, stamped as simulation so the
+    // stored row can never masquerade as a model verdict.
+    const { simulateAnalysis, SIMULATED_MODEL_ID } = await import('./simulated');
+    const started = Date.now();
+    const result = simulateAnalysis(input);
+    logger.info('GEMINI_API_KEY not set — returning simulated analysis');
+    return { result, modelId: SIMULATED_MODEL_ID, processingMs: Date.now() - started };
+  }
 
   const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

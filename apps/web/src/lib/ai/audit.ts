@@ -88,7 +88,12 @@ const AUDIT_SCHEMA = {
 
 export async function auditCall(input: AuditInput): Promise<AuditResult> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  if (!apiKey) {
+    // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
+    const { simulateAudit } = await import('./simulated');
+    logger.info('GEMINI_API_KEY not set — returning simulated audit');
+    return simulateAudit(input);
+  }
 
   const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

@@ -40,6 +40,7 @@ export default function ConfigurableGrid({
                 <td
                   key={column.key}
                   data-hide-mobile={column.hideMobile ? '' : undefined}
+                  data-label={column.label}
                   style={{ textAlign: column.align ?? 'left' }}
                 >
                   {renderCell(object, column.key, row) ?? emptyLabel}

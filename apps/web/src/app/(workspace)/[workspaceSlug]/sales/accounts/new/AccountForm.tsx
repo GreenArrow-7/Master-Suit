@@ -5,25 +5,41 @@ import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 
-export default function AccountForm() {
+export default function AccountForm({
+  accountId,
+  initial,
+}: {
+  /** Present when editing — the form PATCHes this account instead of creating one. */
+  accountId?: string;
+  initial?: {
+    name: string;
+    accountType: string | null;
+    industry: string | null;
+    website: string | null;
+    mainPhone: string | null;
+    mainEmail: string | null;
+  };
+}) {
   const router = useRouter();
   const base = useModuleBase();
-  const [name, setName] = useState('');
-  const [accountType, setAccountType] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [website, setWebsite] = useState('');
-  const [mainPhone, setMainPhone] = useState('');
-  const [mainEmail, setMainEmail] = useState('');
+  const [name, setName] = useState(initial?.name ?? '');
+  const [accountType, setAccountType] = useState(initial?.accountType ?? '');
+  const [industry, setIndustry] = useState(initial?.industry ?? '');
+  const [website, setWebsite] = useState(initial?.website ?? '');
+  const [mainPhone, setMainPhone] = useState(initial?.mainPhone ?? '');
+  const [mainEmail, setMainEmail] = useState(initial?.mainEmail ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const editing = Boolean(accountId);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/accounts', {
-        method: 'POST',
+      const res = await fetch(editing ? `/api/v1/accounts/${accountId}` : '/api/v1/accounts', {
+        method: editing ? 'PATCH' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name,
@@ -36,10 +52,10 @@ export default function AccountForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail ?? 'Could not create this account.');
+        setError(data.detail ?? (editing ? 'Could not save this account.' : 'Could not create this account.'));
         return;
       }
-      router.push(`${base}/accounts/${data.id}`);
+      router.push(`${base}/accounts/${accountId ?? data.id}`);
       router.refresh();
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -126,9 +142,9 @@ export default function AccountForm() {
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>
-          {busy ? 'Creating…' : 'Create account'}
+          {busy ? 'Saving…' : editing ? 'Save changes' : 'Create account'}
         </button>
-        <SalesLink className="lf-btn lf-btn--secondary" href="/accounts">
+        <SalesLink className="lf-btn lf-btn--secondary" href={editing ? `/accounts/${accountId}` : '/accounts'}>
           Cancel
         </SalesLink>
       </div>

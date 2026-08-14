@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
+import SalesLink from '@/components/workspace/SalesLink';
 import CallActions from './CallActions';
 import AnalysisPanel from './AnalysisPanel';
 
@@ -83,9 +84,16 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               ` · ${call.startedAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
           </p>
         </div>
-        <Badge tone={call.outcome ? OUTCOME_TONE[call.outcome] : 'slate'}>
-          {call.outcome?.toLowerCase().replace(/_/g, ' ') ?? call.status.toLowerCase()}
-        </Badge>
+        <div style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+          {['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
+            <SalesLink className="lf-btn lf-btn--sm" href={`/calls/${call.id}/live`}>
+              Open live workspace
+            </SalesLink>
+          )}
+          <Badge tone={call.outcome ? OUTCOME_TONE[call.outcome] : 'slate'}>
+            {call.outcome?.toLowerCase().replace(/_/g, ' ') ?? call.status.toLowerCase()}
+          </Badge>
+        </div>
       </div>
 
       <div

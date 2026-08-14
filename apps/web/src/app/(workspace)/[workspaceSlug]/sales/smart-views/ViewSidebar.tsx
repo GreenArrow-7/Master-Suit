@@ -1,5 +1,7 @@
 'use client';
 
+import SalesLink from '@/components/workspace/SalesLink';
+
 interface Props {
   systemViews: { key: string; name: string; icon: string }[];
   savedViews: { id: string; name: string; mine: boolean }[];
@@ -10,6 +12,7 @@ interface Props {
 export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, activeSavedId }: Props) {
   return (
     <aside
+      className="lf-smartviews-sidebar"
       style={{
         width: 220,
         flex: 'none',
@@ -26,7 +29,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
           const active = activeSystemKey === v.key;
           return (
             <li key={v.key}>
-              <a
+              <SalesLink
                 href={v.key === 'all' ? '/smart-views' : `/smart-views?view=${v.key}`}
                 style={{
                   display: 'flex',
@@ -44,7 +47,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
               >
                 <span style={{ width: 16, textAlign: 'center', fontSize: 10, opacity: 0.7 }}>{v.icon}</span>
                 {v.name}
-              </a>
+              </SalesLink>
             </li>
           );
         })}
@@ -60,7 +63,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
               const active = activeSavedId === v.id;
               return (
                 <li key={v.id}>
-                  <a
+                  <SalesLink
                     href={`/smart-views?id=${v.id}`}
                     style={{
                       display: 'flex',
@@ -83,7 +86,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
                         shared
                       </span>
                     )}
-                  </a>
+                  </SalesLink>
                 </li>
               );
             })}

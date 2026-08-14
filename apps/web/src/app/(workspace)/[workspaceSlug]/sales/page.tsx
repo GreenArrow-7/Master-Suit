@@ -243,7 +243,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
                   key={t.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(140px, 190px) 1fr 72px',
+                    gridTemplateColumns: 'minmax(100px, 190px) minmax(0, 1fr) 72px',
                     alignItems: 'center',
                     gap: 'var(--lf-space-3)',
                   }}
@@ -439,14 +439,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
         </section>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)',
-          gap: 'var(--lf-space-4)',
-          marginTop: 'var(--lf-space-4)',
-        }}
-      >
+      <div className="lf-cols-2" style={{ marginTop: 'var(--lf-space-4)' }}>
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
             Pipeline by stage
@@ -457,7 +450,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
                 key={row.name}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '132px 1fr 48px',
+                  gridTemplateColumns: 'minmax(90px, 132px) minmax(0, 1fr) 48px',
                   alignItems: 'center',
                   gap: 'var(--lf-space-3)',
                 }}

@@ -38,6 +38,8 @@ const GLOBAL_MODELS = new Set([
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
+  // Operator key-value settings; carries no tenantId at all.
+  'PlatformSetting',
 ]);
 
 /**
@@ -59,6 +61,9 @@ const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
   // prisma/migrations/20260807020000_invitation_bootstrap_lookup.
   WorkspaceInvitation: ['tokenHash'],
   APIKey: ['prefix', 'keyHash'],
+  // The console edits a subscription by its primary key; the cuid pins exactly
+  // one row, and the platform routes run under app.platform_admin for RLS.
+  TenantSubscription: ['id'],
   // A telephony vendor posts to a URL and knows nothing about workspaces, so the
   // key in that URL is the only thing that can identify the tenant. This is the
   // last genuine bootstrap lookup among the engagement tables.

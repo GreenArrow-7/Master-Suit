@@ -5,39 +5,57 @@ import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 
-export default function ContactForm({ accounts }: { accounts: { id: string; name: string }[] }) {
+export default function ContactForm({
+  accounts,
+  contactId,
+  initial,
+}: {
+  accounts: { id: string; name: string }[];
+  /** Present when editing — the form PATCHes this contact instead of creating one. */
+  contactId?: string;
+  initial?: {
+    fullName: string;
+    jobTitle: string | null;
+    email: string | null;
+    phone: string | null;
+    accountId: string | null;
+  };
+}) {
   const router = useRouter();
   const base = useModuleBase();
-  const [fullName, setFullName] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [accountId, setAccountId] = useState('');
+  const [fullName, setFullName] = useState(initial?.fullName ?? '');
+  const [jobTitle, setJobTitle] = useState(initial?.jobTitle ?? '');
+  const [email, setEmail] = useState(initial?.email ?? '');
+  const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [accountId, setAccountId] = useState(initial?.accountId ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const editing = Boolean(contactId);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/contacts', {
-        method: 'POST',
+      const res = await fetch(editing ? `/api/v1/contacts/${contactId}` : '/api/v1/contacts', {
+        method: editing ? 'PATCH' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           fullName,
           ...(jobTitle ? { jobTitle } : {}),
           ...(email ? { email } : {}),
           ...(phone ? { phone } : {}),
-          ...(accountId ? { accountId } : {}),
+          // PATCH accepts null to unlink the account; POST only takes a real id.
+          ...(editing ? { accountId: accountId || null } : accountId ? { accountId } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail ?? 'Could not create this contact.');
+        setError(data.detail ?? (editing ? 'Could not save this contact.' : 'Could not create this contact.'));
         return;
       }
-      router.push(`${base}/contacts/${data.id}`);
+      router.push(`${base}/contacts/${contactId ?? data.id}`);
       router.refresh();
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -105,9 +123,9 @@ export default function ContactForm({ accounts }: { accounts: { id: string; name
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>
-          {busy ? 'Creating…' : 'Create contact'}
+          {busy ? 'Saving…' : editing ? 'Save changes' : 'Create contact'}
         </button>
-        <SalesLink className="lf-btn lf-btn--secondary" href="/contacts">
+        <SalesLink className="lf-btn lf-btn--secondary" href={editing ? `/contacts/${contactId}` : '/contacts'}>
           Cancel
         </SalesLink>
       </div>

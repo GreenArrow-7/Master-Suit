@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import DashboardCharts from './DashboardCharts';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -7,9 +8,16 @@ export const metadata = { title: 'Dashboards' };
 
 export default async function DashboardsPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['dashboards', 'VIEW'] });
-  const tid = ctx.tenantId;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Figures follow the viewer's role scope, like every list page: a SELF-scoped
+  // rep sees their own numbers, a manager the team's, an admin the org's.
+  const [leadScope, taskScope, activityScope] = await Promise.all([
+    visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
+    visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
+    visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }),
+  ]);
 
   const [
     totalLeads,
@@ -22,16 +30,16 @@ export default async function DashboardsPage() {
     slaRaw,
     stages,
   ] = await Promise.all([
-    prisma.lead.count({ where: { tenantId: tid } }),
-    prisma.lead.count({ where: { tenantId: tid, createdAt: { gte: monthStart } } }),
-    prisma.task.count({ where: { tenantId: tid, status: 'OPEN' } }),
-    prisma.task.count({ where: { tenantId: tid, status: 'OPEN', dueAt: { lt: now } } }),
-    prisma.activity.count({ where: { tenantId: tid, createdAt: { gte: monthStart } } }),
-    prisma.lead.groupBy({ by: ['stageId'], where: { tenantId: tid }, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['source'], where: { tenantId: tid }, _count: { id: true } }),
-    prisma.lead.groupBy({ by: ['slaState'], where: { tenantId: tid }, _count: { id: true } }),
+    prisma.lead.count({ where: leadScope }),
+    prisma.lead.count({ where: { ...leadScope, createdAt: { gte: monthStart } } }),
+    prisma.task.count({ where: { ...taskScope, status: 'OPEN' } }),
+    prisma.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }),
+    prisma.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }),
+    prisma.lead.groupBy({ by: ['stageId'], where: leadScope, _count: { id: true } }),
+    prisma.lead.groupBy({ by: ['source'], where: leadScope, _count: { id: true } }),
+    prisma.lead.groupBy({ by: ['slaState'], where: leadScope, _count: { id: true } }),
     prisma.leadStage.findMany({
-      where: { tenantId: tid },
+      where: { tenantId: ctx.tenantId },
       orderBy: { position: 'asc' },
       select: { id: true, name: true },
     }),

@@ -46,8 +46,12 @@ if (!slug || !email) {
   process.exit(2);
 }
 
-// Same shape as services/identity/accounts.ts generateTemporaryPassword.
-const temporaryPassword = `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+/**
+ * 23 characters from 15 bytes of CSPRNG entropy — longer than the in-app
+ * generator, because this one recovers the account that can reach everything
+ * and it may sit in a person's hands longer than a routine reset does.
+ */
+const temporaryPassword = `${randomBytes(12).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
 
 /**
  * Every table here is RLS-forced, so a plain client sees nothing: the same
@@ -91,6 +95,7 @@ async function main() {
 
   let userId;
   let employeeId;
+  let revocations = { sessions: 0, resetTokens: 0 };
 
   if (existingUser?.workspaceMembership) {
     // passwordChangedAt: null is what makes the next sign-in demand a password
@@ -105,10 +110,17 @@ async function main() {
     });
     // Every live session dies with the old password: a reset that leaves the
     // refresh tokens alive is pointless in the one case it matters.
-    await client.platformSession.updateMany({
+    const revoked = await client.platformSession.updateMany({
       where: { platformUserId: existingUser.workspaceMembership.platformUserId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' },
     });
+    // Any reset link still in flight would let its holder set a password of
+    // their own choosing, which would silently undo this one.
+    const burned = await client.passwordResetToken.updateMany({
+      where: { tenantId: tenant.id, userId: existingUser.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    revocations = { sessions: revoked.count, resetTokens: burned.count };
     userId = existingUser.id;
     employeeId = existingUser.workspaceMembership.employee?.id ?? null;
     console.log(`Reset the existing account ${email}.`);
@@ -172,7 +184,14 @@ async function main() {
         event: 'PASSWORD_CHANGED',
         objectType: 'user',
         recordId: userId,
-        metadata: { action: 'account.admin_bootstrap', script: 'ensure-workspace-admin', employeeNumber },
+        // The password is not in here, and there is no field it could be in.
+        metadata: {
+          action: 'account.admin_bootstrap',
+          script: 'ensure-workspace-admin',
+          employeeNumber,
+          sessionsRevoked: revocations.sessions,
+          resetTokensBurned: revocations.resetTokens,
+        },
       },
     })
     .catch((error) => console.warn(`Audit row not written: ${error.message}`));
@@ -184,6 +203,8 @@ async function main() {
   console.log(`  Employee code      ${employeeNumber}`);
   console.log(`  Role               ${role.name} (${role.key}, rank ${role.rank})`);
   console.log(`  Employee record    ${employeeId ?? 'none'}`);
+  console.log(`  Sessions revoked   ${revocations.sessions}`);
+  console.log(`  Reset links burned ${revocations.resetTokens}`);
   console.log('');
   console.log(`  Temporary password ${temporaryPassword}`);
   console.log('');

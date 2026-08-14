@@ -302,6 +302,23 @@ async function campaignContext(tenantId: string, campaignId: string | null) {
   };
 }
 
+/**
+ * The whole analyse → audit chain, run inline. For callers that prefer the `ai`
+ * queue but discovered nothing is draining it (dev/demo without a worker), and
+ * for the live demo session that finalises a call synchronously. Both steps
+ * claim their rows, so racing a worker cannot double-run either.
+ */
+export async function analyseAndAudit(tenantId: string, callId: string): Promise<void> {
+  await analyseCall({ tenantId, callId });
+  const call = await prisma.call.findFirst({ where: { id: callId, tenantId }, select: { campaignId: true } });
+  const scorecard = await prisma.auditScorecard.findFirst({
+    where: { tenantId, isActive: true, OR: [{ campaignId: call?.campaignId ?? null }, { campaignId: null }] },
+    orderBy: { campaignId: 'desc' },
+    select: { id: true },
+  });
+  if (scorecard) await runCallAudit({ tenantId, callId, scorecardId: scorecard.id });
+}
+
 /** Best effort: a notification that cannot be written must not fail the analysis. */
 async function notify(
   tenantId: string,

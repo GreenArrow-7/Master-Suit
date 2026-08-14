@@ -79,6 +79,7 @@ const row = {
   account: { id: 'c000000000000000000000003', name: 'Falcon Ridge' },
   owner: { fullName: 'Clara Lindqvist' },
   agent: { fullName: 'Rohan Mehta' },
+  caller: { fullName: 'Rashid Al Suwaidi' },
   occurredAt: new Date('2026-08-01T09:00:00Z'),
   createdAt: new Date('2026-08-01T09:00:00Z'),
   updatedAt: new Date('2026-08-02T09:00:00Z'),

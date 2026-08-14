@@ -26,7 +26,9 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
     return <EmptyState title="Access denied" description="You do not have permission to view communications." />;
   }
 
-  const channelFilter = params.channel ? { channel: params.channel as any } : {};
+  const allowed = CHANNELS.map(([, key]) => key).filter(Boolean) as string[];
+  const channelFilter =
+    params.channel && allowed.includes(params.channel) ? { channel: params.channel as never } : {};
   const rows = await prisma.communication.findMany({
     where: { tenantId: ctx.tenantId, ...channelFilter },
     orderBy: { createdAt: 'desc' },

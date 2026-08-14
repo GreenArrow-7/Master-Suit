@@ -55,6 +55,6 @@ export const PATCH = route(
     });
     if (!existing) throw NotFound('Call');
 
-    return prisma.call.update({ where: { id: params.id }, data: body });
+    return prisma.call.update({ where: { id: params.id, tenantId: ctx.tenantId }, data: body });
   },
 );

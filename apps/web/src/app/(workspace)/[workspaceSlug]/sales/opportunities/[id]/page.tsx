@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db';
 import StageRail from '@/components/ui/StageRail';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import EntityDelete from '@/components/sales/EntityDelete';
 import OutcomeActions from './OutcomeActions';
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -74,7 +75,19 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--lf-space-2)' }}>
           {can(ctx, 'opportunities', 'EDIT') && opportunity.status === 'OPEN' && (
+            <SalesLink className="lf-btn lf-btn--secondary lf-btn--sm" href={`/opportunities/${opportunity.id}/edit`}>
+              Edit
+            </SalesLink>
+          )}
+          {can(ctx, 'opportunities', 'EDIT') && opportunity.status === 'OPEN' && (
             <OutcomeActions opportunityId={opportunity.id} lossReasons={lossReasons} />
+          )}
+          {can(ctx, 'opportunities', 'DELETE') && (
+            <EntityDelete
+              endpoint={`/api/v1/opportunities/${opportunity.id}`}
+              backHref="/opportunities"
+              label="opportunity"
+            />
           )}
         </div>
       </header>

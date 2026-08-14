@@ -18,7 +18,11 @@ interface TestResponse {
  * arguments — so a helper called with a mismatched handler compiled fine and
  * failed at run time.
  */
-type RouteHandler = (req: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
+// `params` is `any`, not `Record<string, string>`: each route declares its own
+// literal shape (`{ userId: string }`, …) and a Record is not assignable *to*
+// those, which would force a cast at every call site for zero extra safety —
+// arity and the Response type are what this alias is here to check.
+type RouteHandler = (req: Request, context: { params: Promise<any> }) => Promise<Response>;
 
 /** A caller: either a session cookie header value, or an API key. */
 export type As = string | { apiKey: string };

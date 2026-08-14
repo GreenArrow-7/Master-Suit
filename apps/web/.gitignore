@@ -3,4 +3,10 @@ node_modules/
 .next-prod/
 .env
 .env.local
+# Deployment secrets: database passwords, SMTP credentials and the field
+# encryption key. `.env.production.example` beside it is the template, and is
+# the only one of the two that belongs in the repository.
+.env.production
 *.log
+# Scratch verification scripts and logs from local test runs
+.verify/

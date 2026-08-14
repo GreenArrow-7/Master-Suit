@@ -168,3 +168,67 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
   }
 }
+
+/**
+ * Deletes a workspace — as a soft delete, deliberately.
+ *
+ * A hard DELETE would cascade through every employee, lead, call recording and
+ * audit row the customer ever produced, with no way back from a mis-click. The
+ * row keeps existing with `deletedAt` set: every list in the product already
+ * filters on it, sessions are revoked so nobody stays signed in, and the
+ * subscription is cancelled so billing stops. Restoring is a support operation
+ * (clear deletedAt) rather than a data-recovery incident.
+ */
+export async function DELETE(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
+  const requestId = req.headers.get('x-request-id') ?? ulid();
+  try {
+    const ctx = await requirePlatformOwner(req, requestId);
+    const { workspaceId } = await params;
+    const current = await prisma.tenant.findFirst({ where: { id: workspaceId, deletedAt: null } });
+    if (!current) throw NotFound('Workspace');
+
+    const now = new Date();
+    await withPlatformTx(async (tx) => {
+      await tx.tenant.update({
+        where: { id: current.id },
+        data: { deletedAt: now, archivedAt: now, status: 'ARCHIVED' },
+      });
+      await tx.tenantSubscription.updateMany({
+        where: { tenantId: current.id },
+        data: { state: 'CANCELED', canceledAt: now },
+      });
+      await tx.moduleEntitlement.updateMany({
+        where: { tenantId: current.id },
+        data: { state: 'CANCELED', endsAt: now },
+      });
+      await tx.platformSession.updateMany({
+        where: { activeTenantId: current.id, revokedAt: null },
+        data: { revokedAt: now, revokedReason: 'WORKSPACE_DELETED' },
+      });
+      await tx.platformAuditEvent.create({
+        data: {
+          tenantId: current.id,
+          actorUserId: ctx.platformUserId,
+          event: 'WORKSPACE_DELETED',
+          objectType: 'workspace',
+          objectId: current.id,
+          requestId,
+          ipAddress: ctx.ip,
+          userAgent: ctx.userAgent,
+          metadata: { slug: current.slug, displayName: current.displayName },
+        },
+      });
+    });
+    await invalidateEntitlements(current.id);
+
+    return NextResponse.json({ deleted: true, id: current.id }, { headers: { 'x-request-id': requestId } });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return NextResponse.json(error.toProblem(requestId), {
+        status: error.status,
+        headers: { 'x-request-id': requestId },
+      });
+    }
+    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+  }
+}

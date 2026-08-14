@@ -58,6 +58,16 @@ export default function WorkspaceSidebar({
     window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
   }, [activeModule, slug]);
 
+  // The open drawer closes on Escape, like any dismissible surface.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
+
   const sections = useMemo<Section[]>(() => {
     const common: Section = {
       // "Daily" in the HR module, matching the source HRMS's grouping; "Work"
@@ -287,6 +297,9 @@ export default function WorkspaceSidebar({
       >
         ☰
       </button>
+      {mobileOpen && (
+        <div className="lf-mobile-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+      )}
       <aside className="lf-workspace-sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen}>
         <div className="lf-sidebar-brand">
           <Link href={`/${slug}/dashboard`} className="lf-brand-mark" aria-label={`${name} dashboard`}>
@@ -429,7 +442,11 @@ function NavLink({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  // Module roots (`/{slug}/sales`, `/{slug}/people`, `/{slug}/dashboard`) match
+  // exactly — prefix matching would light "Sales overview" on every sales page
+  // alongside the real item.
+  const moduleRoot = item.href.split('/').filter(Boolean).length <= 2;
+  const active = pathname === item.href || (!moduleRoot && pathname.startsWith(`${item.href}/`));
   return (
     <Link
       className="lf-nav-link"

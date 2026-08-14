@@ -3,6 +3,7 @@ import { withPlatformTx } from '@/lib/db';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import OpenWorkspaceButton from '@/components/platform/OpenWorkspaceButton';
+import PlatformRowActions from '@/components/platform/PlatformRowActions';
 
 export default async function WorkspacesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -70,7 +71,7 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
                 <th>Members</th>
                 <th>Employees</th>
                 <th>Created</th>
-                <th>Open</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -91,7 +92,18 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
                   <td className="lf-num">{workspace._count.employeeProfiles}</td>
                   <td>{workspace.createdAt.toLocaleDateString('en-AE')}</td>
                   <td>
-                    <OpenWorkspaceButton workspaceId={workspace.id} />
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                      <OpenWorkspaceButton workspaceId={workspace.id} />
+                      <Link className="lf-btn lf-btn--secondary" href={`/platform/workspaces/${workspace.id}`}>
+                        Edit
+                      </Link>
+                      <PlatformRowActions
+                        endpoint={`/api/v1/platform/workspaces/${workspace.id}`}
+                        fields={[]}
+                        deleteLabel="Delete"
+                        deleteWarning={`Deletes ${workspace.displayName}: access stops, sessions are revoked and the subscription is cancelled. Data is retained for restore by support.`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

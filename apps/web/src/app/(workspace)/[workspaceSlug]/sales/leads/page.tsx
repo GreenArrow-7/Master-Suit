@@ -10,24 +10,43 @@ import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import LeadImport from './LeadImport';
+import Pager from '@/components/workspace/Pager';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 
 export const metadata = { title: 'Leads' };
 
-const FILTERS: Record<string, (now: Date) => Record<string, unknown>> = {
+const PAGE_SIZE = 50;
+
+const FILTERS: Record<string, (now: Date, actorId: string) => Record<string, unknown>> = {
   unassigned: () => ({ ownerId: null }),
   overdue: (now) => ({ nextFollowUpAt: { lt: now } }),
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
+  mine: (_now, actorId) => ({ ownerId: actorId }),
 };
 
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ filter?: string; q?: string }> }) {
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string; q?: string; page?: string }>;
+}) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
+  const page = Math.max(1, Number(params.page) || 1);
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-  const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date()) : {};
-  const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
+  const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date(), ctx.actor.id) : {};
+  const search = params.q
+    ? {
+        OR: [
+          { fullName: { contains: params.q, mode: 'insensitive' as const } },
+          { company: { contains: params.q, mode: 'insensitive' as const } },
+          { email: { contains: params.q, mode: 'insensitive' as const } },
+          { phone: { contains: params.q } },
+          { reference: { contains: params.q, mode: 'insensitive' as const } },
+        ],
+      }
+    : {};
   const where = { ...scope, ...extra, ...search };
 
   const rules = await loadFieldRules(ctx, 'LEAD');
@@ -36,7 +55,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: 50,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE + 1,
       select: {
         id: true,
         reference: true,
@@ -78,17 +98,20 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
 
+  const hasMore = rows.length > PAGE_SIZE;
+  const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+
   // Masking happens here, in the serialiser, so it covers the grid, exports and
   // every other egress path identically.
-  const data = rows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
+  const data = pageRows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
   return (
     <>
       <ListHeader
         title="Leads"
-        count={rows.length}
+        count={pageRows.length}
 
-        capped={rows.length === 50}
+        capped={hasMore}
         actions={
           <span style={{ position: 'relative', display: 'flex', gap: 'var(--lf-space-2)' }}>
             {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
@@ -115,6 +138,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Saved views">
         {[
           ['All leads', ''],
+          ['My leads', 'mine'],
           ['Unassigned', 'unassigned'],
           ['Overdue follow-up', 'overdue'],
           ['SLA breached', 'breached'],
@@ -152,6 +176,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           canEdit={can(ctx, 'leads', 'EDIT')}
         />
       )}
+
+      <Pager page={page} hasMore={hasMore} basePath="/leads" params={{ filter: params.filter, q: params.q }} />
     </>
   );
 }

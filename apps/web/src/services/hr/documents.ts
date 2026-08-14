@@ -18,6 +18,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
+import { getUploadMaxMb } from '@/lib/platform-settings';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
@@ -64,9 +65,10 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   const employee = await requireEmployee(ctx, input.employeeId);
 
   if (!input.bytes.length) throw Conflict('That file is empty.');
-  const maxBytes = env.UPLOAD_MAX_MB * 1024 * 1024;
+  const uploadMaxMb = await getUploadMaxMb();
+  const maxBytes = uploadMaxMb * 1024 * 1024;
   if (input.bytes.length > maxBytes)
-    throw new AppError(413, 'file-too-large', `Files must be under ${env.UPLOAD_MAX_MB} MB.`);
+    throw new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
   if (input.expiresAt && input.issuedAt && input.expiresAt < input.issuedAt) {
     throw Conflict('The expiry date cannot be before the issue date.');
   }

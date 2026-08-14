@@ -13,7 +13,7 @@ const patchBody = z
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     description: z.string().max(2000).nullable().optional(),
     ownerId: z.string().cuid().optional(),
-    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    status: z.enum(['OPEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED']).optional(),
     completedAt: z.coerce.date().nullable().optional(),
     completionNotes: z.string().max(2000).nullable().optional(),
   })

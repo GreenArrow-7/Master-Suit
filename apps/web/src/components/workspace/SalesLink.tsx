@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 /**
@@ -22,6 +23,10 @@ type Props = Omit<React.ComponentPropsWithoutRef<'a'>, 'href'> & { href: string 
  */
 export default function SalesLink({ href, ...rest }: Props) {
   const base = useModuleBase();
-  const external = /^([a-z]+:|\/\/|#|\?)/i.test(href) || href.startsWith(`${base}/`) || href === base;
-  return <a href={external ? href : `${base}${href}`} {...rest} />;
+  // True externals (mailto:, https://, #anchor) stay plain anchors; everything
+  // else goes through next/link so navigation is client-side instead of a full
+  // document load on every click.
+  if (/^([a-z]+:|\/\/|#)/i.test(href)) return <a href={href} {...rest} />;
+  const prefixed = /^\?/.test(href) || href.startsWith(`${base}/`) || href === base;
+  return <Link href={prefixed ? href : `${base}${href}`} {...rest} />;
 }

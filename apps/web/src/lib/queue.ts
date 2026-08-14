@@ -66,6 +66,22 @@ export interface EnqueueOptions {
 }
 
 /**
+ * Whether any worker process is currently attached to a queue. Used by routes
+ * that prefer the queue but can run the work inline when nothing would ever
+ * drain it (a dev box or demo without `npm run worker`). Errs on the side of
+ * "a worker exists" so a Redis hiccup never triggers double execution.
+ */
+export async function queueHasWorkers(name: QueueName): Promise<boolean> {
+  try {
+    const workers = await queue(name).getWorkers();
+    return workers.length > 0;
+  } catch (err) {
+    logger.warn({ err, queue: name }, 'could not inspect queue workers; assuming present');
+    return true;
+  }
+}
+
+/**
  * Idempotent by construction: jobId is a hash of the payload, so a retry or a
  * duplicate trigger converges on one side effect rather than two.
  */

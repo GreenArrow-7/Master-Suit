@@ -113,7 +113,9 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   CALL: [
     { key: 'createdAt', label: 'Date', fixed: true },
-    { key: 'recipientNumber', label: 'Number', byDefault: true },
+    { key: 'lead', label: 'Lead', byDefault: true },
+    { key: 'caller', label: 'Owner', byDefault: true, hideMobile: true },
+    { key: 'recipientNumber', label: 'Number', byDefault: true, hideMobile: true },
     { key: 'direction', label: 'Direction', byDefault: true, hideMobile: true },
     { key: 'durationSecs', label: 'Duration', byDefault: true, align: 'right', hideMobile: true },
     { key: 'outcome', label: 'Outcome', byDefault: true },
@@ -169,6 +171,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'dueAt', label: 'Due', byDefault: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
     { key: 'status', label: 'Status', byDefault: true },
+    { key: 'actions', label: '', byDefault: true, align: 'right' },
   ],
   FIELDVISIT: [
     { key: 'rep', label: 'Rep', fixed: true },

@@ -109,6 +109,13 @@ const schema = z.object({
   ANTIVIRUS_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   AI_PROVIDER: z.string().default('mock'),
   AI_API_KEY: z.string().optional(),
+  /**
+   * The key call analysis, call audits and live coaching actually read. Unset
+   * means those features run in clearly-labelled simulation mode — fine for a
+   * demo, not for production analysis.
+   */
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
 
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.

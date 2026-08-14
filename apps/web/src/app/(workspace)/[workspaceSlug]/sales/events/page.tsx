@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -19,6 +20,7 @@ const TABS = [
   ['Upcoming', 'upcoming'],
   ['Draft', 'DRAFT'],
   ['Completed', 'COMPLETED'],
+  ['Cancelled', 'CANCELLED'],
 ] as const;
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -27,7 +29,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };
-  else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED') where.status = params.tab;
+  else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED' || params.tab === 'CANCELLED') where.status = params.tab;
 
   const events = await prisma.event.findMany({
     where,
@@ -43,9 +45,11 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         count={events.length}
         capped={events.length === 50}
         actions={
-          <SalesLink href="/events/new" className="lf-btn lf-btn--sm">
-            + New Event
-          </SalesLink>
+          can(ctx, 'events', 'CREATE') && (
+            <SalesLink href="/events/new" className="lf-btn lf-btn--sm">
+              + New Event
+            </SalesLink>
+          )
         }
       />
 
