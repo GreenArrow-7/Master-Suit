@@ -14,6 +14,14 @@ const config: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   /**
+   * `next dev` and the local production build used to share `.next` and wipe
+   * each other's cache, so serving the build after a dev session — or after
+   * this one — meant a full rebuild, measured at 150s and 352s on this tree.
+   * scripts/start-local-prod.mjs points the build at its own directory, which
+   * leaves both intact and makes switching a restart rather than a rebuild.
+   */
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
+  /**
    * Next shows its route/bundler indicator whenever NODE_ENV is not production,
    * which scripts/start-local-prod.mjs deliberately arranges so the startup
    * check does not treat a local run as a deployment. The panel it opens sits

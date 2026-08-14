@@ -17,19 +17,64 @@
  * overwrites what `next dev` is serving and the two cannot run at once anyway —
  * giving them separate ports only invited the mistake of leaving the slow one up.
  *
- *   npm run start:local            # port 3000
+ * The build lands in `.next-prod`, not `.next`, so `next dev` cannot wipe it and
+ * it cannot wipe `next dev`. They shared a directory until they didn't, and a
+ * rebuild on this tree costs between two and six minutes — long enough that
+ * losing one to a dev session is the whole reason the fast build went unused.
+ *
+ *   npm run start:local            # port 3000; builds only if .next-prod is absent
+ *   npm run start:local -- --build # rebuild first, after changing source
  *   npm run start:local -- -p 4000
  */
 import { spawn } from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
+
+const DIST = '.next-prod';
+const STAMP = `${DIST}/BUILD_ID`;
+const NEXT = 'node_modules/next/dist/bin/next';
 
 const args = process.argv.slice(2);
-if (!args.includes('-p') && !args.includes('--port')) args.push('-p', '3000');
+const forceBuild = args.includes('--build');
+const passthrough = args.filter((arg) => arg !== '--build');
+if (!passthrough.includes('-p') && !passthrough.includes('--port')) passthrough.push('-p', '3000');
 
-console.log(`Serving the production build with NODE_ENV=development on port ${args[args.indexOf('-p') + 1]}.`);
+/**
+ * Only the server gets NODE_ENV=development. The build must not.
+ *
+ * `next build` under a development NODE_ENV mixes the development and
+ * production React builds and prerendering dies on the first page it reaches —
+ * `Cannot read properties of null (reading 'useContext')` on /_not-found. The
+ * escape the startup check names is for running the artefact, not producing it.
+ *
+ * Both commands read next.config.ts, so both need NEXT_DIST_DIR or the server
+ * looks for a build that is not there.
+ */
+const run = (argv, extraEnv) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [NEXT, ...argv], {
+      stdio: 'inherit',
+      env: { ...process.env, NEXT_DIST_DIR: DIST, ...extraEnv },
+    });
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`next ${argv[0]} exited with ${code}`))));
+  });
+
+if (forceBuild || !existsSync(STAMP)) {
+  console.log(`Building into ${DIST}. This takes a few minutes; it is skipped next time.\n`);
+  await run(['build']).catch((error) => {
+    // A failed build still leaves BUILD_ID behind, and the check above would
+    // then read it as a finished one and serve the wreckage.
+    rmSync(STAMP, { force: true });
+    console.error(`\n${error.message}`);
+    process.exit(1);
+  });
+} else {
+  console.log(`Serving the existing ${DIST} build. Pass --build after changing source.\n`);
+}
+
+console.log(`Serving with NODE_ENV=development on port ${passthrough[passthrough.indexOf('-p') + 1]}.`);
 console.log('Real deployments must set real provider credentials; see lib/startup-check.ts.\n');
 
-const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', ...args], {
-  stdio: 'inherit',
-  env: { ...process.env, NODE_ENV: 'development' },
+await run(['start', ...passthrough], { NODE_ENV: 'development' }).catch((error) => {
+  console.error(error.message);
+  process.exit(1);
 });
-child.on('exit', (code) => process.exit(code ?? 0));
