@@ -314,7 +314,11 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   for (const [label, value, href] of approvalItems) {
     if (value > 0) attention.push({ label, hint: 'Waiting on your approval', count: value, tone: 'brass', href });
   }
-  if (calls && calls[1] > 0)
+  // The review queue is a reviewer's work item, not ambient news: `calls EDIT`
+  // is what the audit-review action itself requires, so a representative who
+  // can only view their calls no longer carries the whole organisation's
+  // backlog in their attention row.
+  if (calls && calls[1] > 0 && can(ctx, 'calls', 'EDIT'))
     attention.push({
       label: 'Audits awaiting review',
       hint: 'AI-scored, needs a human',
