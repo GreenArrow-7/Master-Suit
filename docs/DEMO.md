@@ -16,14 +16,18 @@ stops the web app only. After changing source, rebuild with
 
 ## Signing in
 
-1. Open `/login`.
-2. Workspace: `manath-homes`.
-3. Email: `demo@manathhomes.com` (Demo Presenter, org admin, employee code MH-032).
-4. Password: printed by the seed in its closing summary box. It is generated per
+1. Open `/login` (local install: <http://localhost:3000/login>).
+2. Email: **`demo@manathhomes.ae`** — the customer-facing demo login
+   (`admin@manathhomes.ae` and `demo@manathhomes.com` work identically).
+3. Password: printed by the seed in its closing summary box. It is generated per
    run and never committed; to pin a stable one for a demo install, set the
    `DEMO_PASSWORD` environment variable before seeding.
+4. No authentication code: the demo accounts are ordinary workspace users, so
+   the mandatory-MFA rule for platform staff does not apply to them.
 
-All demo accounts share the same password.
+All demo accounts share the same password and land in the `manath-homes`
+workspace as org admins with their own populated queues (owned leads,
+follow-ups, a target, today's calls, notifications).
 
 ## Role logins
 
