@@ -9,6 +9,7 @@ import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
 import { encryptSecret, decryptSecret } from '@/services/identity/secrets';
 import { resolvePlatformCtx, createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
+import { readJsonBody } from '@/lib/api/read-body';
 
 /**
  * First-run two-factor enrolment, reachable with an MFA_ENROLMENT grant.
@@ -28,12 +29,13 @@ export async function POST(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const ctx = await resolvePlatformCtx(req, requestId, ALLOWED);
-    const body = z
-      .object({
+    const body = await readJsonBody(
+      req,
+      z.object({
         step: z.enum(['begin', 'confirm']),
         code: z.string().length(6).optional(),
-      })
-      .parse(await req.json());
+      }),
+    );
 
     const user = await prisma.platformUser.findUnique({
       where: { id: ctx.platformUserId },

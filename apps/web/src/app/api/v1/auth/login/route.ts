@@ -10,6 +10,7 @@ import { verifyPassword, burnTiming } from '@/lib/auth/password';
 import { createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { isActiveWorkspaceMembership } from '@/lib/auth/platform-policy';
+import { readJsonBody } from '@/lib/api/read-body';
 
 const bodySchema = z.object({
   email: z.string().email().max(254),
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
   const ua = req.headers.get('user-agent');
 
   try {
-    const body = bodySchema.parse(await req.json());
+    const body = await readJsonBody(req, bodySchema);
     // A throttled login must not read as wrong credentials: rethrow with a
     // message the form shows verbatim.
     try {
