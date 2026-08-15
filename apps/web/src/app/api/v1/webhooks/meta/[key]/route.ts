@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { enqueue } from '@/lib/queue';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { decryptCredentials } from '@/lib/integrations/connection';
 import { MetaWhatsAppProvider } from '@/lib/integrations/whatsapp';
@@ -92,6 +93,7 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
     return NextResponse.json({ ok: true, ignored: true });
   }
 
+  const providerKey = `meta:${connection.id}`;
   let stored = 0;
   let duplicate = 0;
   for (const event of events) {
@@ -102,7 +104,7 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
       await prisma.webhookEvent.create({
         data: {
           tenantId: connection.tenantId,
-          provider: `meta:${connection.id}`,
+          provider: providerKey,
           externalId: event.externalId,
           eventType: event.kind,
           // Truncated, and only the normalised event: §57 says not to keep raw
@@ -113,11 +115,23 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
       stored += 1;
     } catch (e) {
       if ((e as { code?: string })?.code === 'P2002') {
+        // Already seen. Not re-enqueued: the first delivery owns the CRM write,
+        // and queuing it again is how one retried callback becomes two leads.
         duplicate += 1;
         continue;
       }
       throw e;
     }
+
+    // Enqueued only after the row is committed, so the worker can always find
+    // the event it is asked to stamp.
+    await enqueue('webhook', 'meta.event', {
+      tenantId: connection.tenantId,
+      connectionId: connection.id,
+      provider: providerKey,
+      externalId: event.externalId,
+      event,
+    });
   }
 
   logger.info(
@@ -125,9 +139,9 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
     'meta webhook accepted',
   );
 
-  // Accepted, not processed. Applying these to the CRM belongs on the queue —
-  // §52 and §63: a provider must never wait on our database work, and a failure
-  // has to be retryable rather than lost inside this request.
+  // Accepted and queued, not applied. §52 and §63: a provider must never wait on
+  // our database work, and a failure has to be retryable rather than lost inside
+  // this request.
   return NextResponse.json({ ok: true, received: events.length, stored, duplicate });
 }
 
