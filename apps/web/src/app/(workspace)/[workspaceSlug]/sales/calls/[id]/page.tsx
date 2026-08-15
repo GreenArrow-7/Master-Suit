@@ -64,6 +64,15 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
 
   if (!call) notFound();
 
+  // The Call row stores leadId without a Prisma relation; one scoped lookup
+  // names the customer, which is what a call detail is about.
+  const lead = call.leadId
+    ? await prisma.lead.findFirst({
+        where: { id: call.leadId, tenantId: ctx.tenantId },
+        select: { id: true, fullName: true, company: true },
+      })
+    : null;
+
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
 
   return (
@@ -73,13 +82,25 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
+          gap: 'var(--lf-space-3)',
+          flexWrap: 'wrap',
           marginBottom: 'var(--lf-space-5)',
         }}
       >
         <div>
-          <h1 className="lf-h1">Call: {call.recipientNumber ?? 'Unknown'}</h1>
+          <h1 className="lf-h1">
+            {lead ? (
+              <SalesLink href={`/leads/${lead.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                {lead.fullName}
+              </SalesLink>
+            ) : (
+              (call.recipientNumber ?? 'Unknown number')
+            )}
+          </h1>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-            {call.direction.toLowerCase()} · {call.caller?.fullName ?? 'Unknown caller'}
+            {call.direction.toLowerCase()} call
+            {call.recipientNumber && lead ? ` · ${call.recipientNumber}` : ''} ·{' '}
+            {call.caller?.fullName ?? 'Unknown caller'}
             {call.startedAt &&
               ` · ${call.startedAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
           </p>
@@ -96,55 +117,66 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
         </div>
       </div>
 
+      {/* One sentence about the call — hairline facts, not five centred boxes. */}
+      <section
+        className="lf-card"
+        style={{ padding: 'var(--lf-space-4) var(--lf-space-5)', marginBottom: 'var(--lf-space-5)' }}
+      >
+        <div className="lf-stat-strip lf-stat-strip--light">
+          <div>
+            <span className="lf-figure lf-num" style={{ fontSize: '1.4rem' }}>
+              {fmtDuration(call.durationSecs)}
+            </span>
+            <span className="lf-eyebrow">Duration</span>
+          </div>
+          <div>
+            <span className="lf-figure" style={{ fontSize: '1.4rem', textTransform: 'capitalize' }}>
+              {call.status.toLowerCase().replace(/_/g, ' ')}
+            </span>
+            <span className="lf-eyebrow">Status</span>
+          </div>
+          <div>
+            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
+              <Badge tone={hasConsent ? 'viridian' : 'vermillion'}>{hasConsent ? 'given' : 'none'}</Badge>
+            </span>
+            <span className="lf-eyebrow" style={{ display: 'block' }}>
+              Consent
+            </span>
+          </div>
+          <div>
+            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
+              <Badge tone={call.transcript ? 'viridian' : 'slate'}>
+                {call.transcript ? `${call.transcript.wordCount} words` : 'none'}
+              </Badge>
+            </span>
+            <span className="lf-eyebrow" style={{ display: 'block' }}>
+              Transcript
+            </span>
+          </div>
+          <div>
+            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
+              <Badge
+                tone={
+                  analysis?.status === 'COMPLETED' ? 'viridian' : analysis?.status === 'FAILED' ? 'vermillion' : 'slate'
+                }
+              >
+                {analysis?.status?.toLowerCase() ?? 'none'}
+              </Badge>
+            </span>
+            <span className="lf-eyebrow" style={{ display: 'block' }}>
+              AI analysis
+            </span>
+          </div>
+        </div>
+      </section>
+
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
           gap: 'var(--lf-space-4)',
-          marginBottom: 'var(--lf-space-5)',
         }}
       >
-        <div className="lf-card" style={{ padding: 'var(--lf-space-4)', textAlign: 'center' }}>
-          <div className="lf-eyebrow">Duration</div>
-          <div className="lf-num" style={{ fontSize: 'var(--lf-text-2xl)', fontWeight: 700, marginTop: 4 }}>
-            {fmtDuration(call.durationSecs)}
-          </div>
-        </div>
-        <div className="lf-card" style={{ padding: 'var(--lf-space-4)', textAlign: 'center' }}>
-          <div className="lf-eyebrow">Status</div>
-          <div style={{ fontSize: 'var(--lf-text-xl)', fontWeight: 700, marginTop: 4 }}>
-            {call.status.toLowerCase()}
-          </div>
-        </div>
-        <div className="lf-card" style={{ padding: 'var(--lf-space-4)', textAlign: 'center' }}>
-          <div className="lf-eyebrow">Consent</div>
-          <div style={{ marginTop: 4 }}>
-            <Badge tone={hasConsent ? 'viridian' : 'vermillion'}>{hasConsent ? 'given' : 'none'}</Badge>
-          </div>
-        </div>
-        <div className="lf-card" style={{ padding: 'var(--lf-space-4)', textAlign: 'center' }}>
-          <div className="lf-eyebrow">Transcript</div>
-          <div style={{ marginTop: 4 }}>
-            <Badge tone={call.transcript ? 'viridian' : 'slate'}>
-              {call.transcript ? `${call.transcript.wordCount} words` : 'none'}
-            </Badge>
-          </div>
-        </div>
-        <div className="lf-card" style={{ padding: 'var(--lf-space-4)', textAlign: 'center' }}>
-          <div className="lf-eyebrow">AI Analysis</div>
-          <div style={{ marginTop: 4 }}>
-            <Badge
-              tone={
-                analysis?.status === 'COMPLETED' ? 'viridian' : analysis?.status === 'FAILED' ? 'vermillion' : 'slate'
-              }
-            >
-              {analysis?.status?.toLowerCase() ?? 'none'}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 'var(--lf-space-4)' }}>
         {/* Left column */}
         <div style={{ display: 'grid', gap: 'var(--lf-space-4)', alignContent: 'start' }}>
           <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>

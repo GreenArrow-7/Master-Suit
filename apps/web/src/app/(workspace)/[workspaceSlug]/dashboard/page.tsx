@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
-import PageHeader from '@/components/ui/PageHeader';
 import { myEmployee } from '@/services/hr/leave';
 
 /**
@@ -187,34 +186,264 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       ])
     : null;
 
-  const [people, sales, mine, approvals, security] = await Promise.all([
+  /**
+   * Call quality — the QA persona's dashboard, by permission rather than by
+   * role name. A Call QA Manager holds calls VIEW but not leads VIEW, so the
+   * Sales panel is absent and this one leads their page automatically; for a
+   * seller or administrator it is one more module panel.
+   */
+  const callsQuery =
+    modules.has('SALES') && can(ctx, 'calls', 'VIEW')
+      ? Promise.all([
+          prisma.call.count({
+            where: { tenantId: ctx.tenantId, deletedAt: null, startedAt: { gte: today, lt: tomorrow } },
+          }),
+          prisma.callAudit.count({ where: { tenantId: ctx.tenantId, status: 'COMPLETED', humanReviewed: false } }),
+          prisma.callAudit.count({ where: { tenantId: ctx.tenantId, humanReviewed: true } }),
+          prisma.callAudit.aggregate({
+            where: { tenantId: ctx.tenantId, status: 'COMPLETED' },
+            _avg: { overallScore: true, maxScore: true },
+          }),
+        ])
+      : null;
+
+  const [people, sales, mine, approvals, security, calls, viewer] = await Promise.all([
     peopleQuery,
     salesQuery,
     mineQuery,
     approvalsQuery,
     securityQuery,
+    callsQuery,
+    prisma.user.findFirst({ where: { id: ctx.actor.id, tenantId: ctx.tenantId }, select: { fullName: true } }),
   ]);
+
+  // ponytail: ratio of averages, not average of per-call ratios — exact only
+  // while every audit shares one rubric; per-row aggregation if rubrics diverge.
+  const avgScore =
+    calls && calls[3]._avg.maxScore
+      ? `${Math.round(((calls[3]._avg.overallScore ?? 0) / calls[3]._avg.maxScore) * 100)}%`
+      : '—';
 
   const approvalItems = approvals
     ? ([
-        ['Leave to approve', approvals[0]],
-        ['Overtime to approve', approvals[1]],
-        ['Punches flagged', approvals[2]],
-        ['Shift changes', approvals[3]],
-        ['Requisitions', approvals[4]],
-        ['Payroll runs', approvals[5]],
-        ['Ratings to calibrate', approvals[6]],
-      ].filter(([, value]) => value !== null) as [string, number][])
+        ['Leave to approve', approvals[0], `/${workspace.slug}/people/leave`],
+        ['Overtime to approve', approvals[1], `/${workspace.slug}/people/overtime`],
+        ['Punches flagged', approvals[2], `/${workspace.slug}/people/attendance`],
+        ['Shift changes', approvals[3], `/${workspace.slug}/people/shifts`],
+        ['Requisitions', approvals[4], `/${workspace.slug}/people/recruitment`],
+        ['Payroll runs', approvals[5], `/${workspace.slug}/people/payroll`],
+        ['Ratings to calibrate', approvals[6], `/${workspace.slug}/people/performance`],
+      ].filter(([, value]) => value !== null) as [string, number, string][])
     : [];
+
+  // Money reads as "AED 21.3M", not a digit wall; counts stay exact.
+  const money = (value: number) =>
+    `${workspace.currency} ${new Intl.NumberFormat('en-AE', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}`;
+
+  const hour = Number(
+    new Intl.DateTimeFormat('en-AE', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dubai' }).format(new Date()),
+  );
+  const daypart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const firstName = viewer?.fullName?.split(/\s+/)[0];
+
+  /**
+   * The attention row: every queue that is somebody's overdue work, one chip
+   * each, rendered only when non-zero. Vermillion means already late; brass
+   * means waiting on you. A quiet day renders no row at all.
+   */
+  const attention: { label: string; hint: string; count: number; tone: 'vermillion' | 'brass'; href: string }[] = [];
+  if (sales) {
+    if (sales[3] > 0)
+      attention.push({
+        label: 'Overdue follow-ups',
+        hint: 'Promised and past due',
+        count: sales[3],
+        tone: 'vermillion',
+        href: `/${workspace.slug}/sales/follow-ups`,
+      });
+    if (sales[5] > 0)
+      attention.push({
+        label: 'Tasks due',
+        hint: 'Due today or earlier',
+        count: sales[5],
+        tone: 'brass',
+        href: `/${workspace.slug}/sales/tasks`,
+      });
+    if (sales[1] > 0)
+      attention.push({
+        label: 'Unassigned leads',
+        hint: 'Nobody owns these yet',
+        count: sales[1],
+        tone: 'brass',
+        href: `/${workspace.slug}/sales/leads`,
+      });
+  }
+  for (const [label, value, href] of approvalItems) {
+    if (value > 0) attention.push({ label, hint: 'Waiting on your approval', count: value, tone: 'brass', href });
+  }
+  if (calls && calls[1] > 0)
+    attention.push({
+      label: 'Audits awaiting review',
+      hint: 'AI-scored, needs a human',
+      count: calls[1],
+      tone: 'brass',
+      href: `/${workspace.slug}/sales/call-audits`,
+    });
+  if (security) {
+    if (security[0] > 0)
+      attention.push({
+        label: 'Failed sign-ins today',
+        hint: 'Review the audit log',
+        count: security[0],
+        tone: 'vermillion',
+        href: `/${workspace.slug}/admin/audit`,
+      });
+    if (security[1] > 0)
+      attention.push({
+        label: 'Locked or disabled accounts',
+        hint: 'People who cannot sign in',
+        count: security[1],
+        tone: 'brass',
+        href: `/${workspace.slug}/admin/users`,
+      });
+  }
+
+  // The band's figures: the three or four numbers that describe the operation.
+  const bandStats: { label: string; value: string; href: string }[] = [];
+  if (sales) {
+    bandStats.push(
+      { label: 'Pipeline value', value: money(Number(sales[4]._sum.amount ?? 0)), href: `/${workspace.slug}/sales/opportunities` },
+      { label: 'Open opportunities', value: String(sales[2]), href: `/${workspace.slug}/sales/opportunities` },
+      { label: 'Active leads', value: String(sales[0]), href: `/${workspace.slug}/sales/leads` },
+    );
+  }
+  if (!sales && calls) {
+    // The QA landing: no pipeline to report, so the band speaks call quality.
+    bandStats.push(
+      { label: 'Calls today', value: String(calls[0]), href: `/${workspace.slug}/sales/calls` },
+      { label: 'Awaiting review', value: String(calls[1]), href: `/${workspace.slug}/sales/call-audits` },
+      { label: 'Average score', value: avgScore, href: `/${workspace.slug}/sales/call-audits` },
+    );
+  }
+  if (people) {
+    bandStats.push({
+      label: 'Present today',
+      value: `${people[1]} / ${people[0]}`,
+      href: `/${workspace.slug}/people/attendance`,
+    });
+  }
+  const isAdminView = showSubscription;
+  // A seller's day leads with their own queue; an analyst or executive reads
+  // the operation first. Permission (leads EDIT) is the honest proxy.
+  const workerView = !isAdminView && can(ctx, 'leads', 'EDIT');
+
+  const myDayPanel = mine ? (
+    <Summary
+      accent="var(--lf-brass)"
+      link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
+      title="My day"
+      values={[
+        [
+          'Today',
+          mine[1]?.checkInAt
+            ? mine[1].checkOutAt
+              ? 'Checked out'
+              : 'Checked in'
+            : 'Not checked in',
+        ],
+        ['My pending leave', mine[2]],
+        ['My pending overtime', mine[3]],
+        ['Self-assessment due', mine[4]],
+        ['Payslips available', mine[5]],
+      ]}
+    />
+  ) : null;
 
   return (
     <div className="lf-page-stack">
-      <PageHeader
-        eyebrow={workspace.displayName}
-        title="Business overview"
-        description="People, Sales and subscription health for this workspace."
-        breadcrumbs={[{ label: workspace.displayName }, { label: 'Overview' }]}
-      />
+      {/* The greeting band: where you are, how the operation stands, in one
+          glance. The same band the platform console leads with, so the product
+          opens the same way on both sides of the door. */}
+      <section className="lf-command-band">
+        <div
+          className="lf-command-band__row"
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: 24,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div className="lf-eyebrow">
+              {workspace.displayName} · Overview
+            </div>
+            <h1 className="lf-command-band__headline">
+              Good {daypart}
+              {firstName ? (
+                <>
+                  , <strong>{firstName}</strong>
+                </>
+              ) : null}
+              .
+            </h1>
+            <p className="lf-command-band__sub">
+              {attention.length > 0
+                ? `${attention.length} ${attention.length === 1 ? 'queue needs' : 'queues need'} your attention today.`
+                : 'All clear — nothing is waiting on you right now.'}
+            </p>
+          </div>
+          {bandStats.length > 0 && (
+            <div className="lf-stat-strip">
+              {bandStats.map((stat) => (
+                <Link key={stat.label} href={stat.href}>
+                  <span className="lf-figure">{stat.value}</span>
+                  <span className="lf-eyebrow" style={{ color: 'rgb(243 233 236 / 0.55)' }}>
+                    {stat.label}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {attention.length > 0 && (
+        <div className="lf-attention">
+          {attention.map((item) => (
+            <Link key={item.label} className="lf-attention__item" data-tone={item.tone} href={item.href}>
+              <span className="lf-attention__count">{item.count}</span>
+              <span>
+                <span className="lf-attention__label">{item.label}</span>
+                <span className="lf-attention__hint">{item.hint}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* A representative's day leads with their own work; an administrator's
+          or analyst's with the business. Same panels, different order. */}
+      {workerView && myDayPanel}
+
+      {sales && (
+        <Summary
+          accent="var(--lf-wine-700)"
+          link={{ href: `/${workspace.slug}/sales`, label: 'Open Sales →' }}
+          title="Sales summary"
+          values={[
+            ['Total leads', sales[0]],
+            ['Unassigned leads', sales[1]],
+            ['Open opportunities', sales[2]],
+            ['Overdue follow-ups', sales[3]],
+            ['Pipeline value', money(Number(sales[4]._sum.amount ?? 0))],
+            ['Tasks due', sales[5]],
+          ]}
+        />
+      )}
       {people && (
         <Summary
           accent="var(--lf-viridian)"
@@ -230,73 +459,57 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           ]}
         />
       )}
-      {sales && (
+      {calls && (
         <Summary
           accent="var(--lf-wine-700)"
-          link={{ href: `/${workspace.slug}/sales`, label: 'Open Sales →' }}
-          title="Sales summary"
+          link={{ href: `/${workspace.slug}/sales/call-audits`, label: 'Open call audits →' }}
+          title="Call quality"
           values={[
-            ['Total leads', sales[0]],
-            ['Unassigned leads', sales[1]],
-            ['Open opportunities', sales[2]],
-            ['Overdue follow-ups', sales[3]],
-            ['Pipeline value', `${workspace.currency} ${sales[4]._sum.amount ?? 0}`],
-            ['Tasks due', sales[5]],
+            ['Calls today', calls[0]],
+            ['Audits awaiting review', calls[1]],
+            ['Reviewed audits', calls[2]],
+            ['Average audit score', avgScore],
           ]}
         />
       )}
-      {showSubscription && (
-        <Summary
-          title="Subscription"
-          values={[
-            ['Current plan', workspace.subscription?.plan.name ?? workspace.planCode],
-            ['Enabled modules', [...modules].join(' + ')],
-            ['Users', `${workspace._count.memberships} / ${workspace.maxUsers ?? '∞'}`],
-            ['Employees', `${workspace._count.employeeProfiles} / ${workspace.maxEmployees ?? '∞'}`],
-            ['Status', workspace.subscription?.state ?? 'NONE'],
-            [
-              'Trial / renewal',
-              workspace.trialEndsAt?.toLocaleDateString('en-AE') ??
-                workspace.subscription?.currentPeriodEnd?.toLocaleDateString('en-AE') ??
-                'Not set',
-            ],
-          ]}
-        />
+      {!workerView && myDayPanel}
+
+      {(showSubscription || security) && (
+        <div className="lf-panel-duo">
+          {showSubscription && (
+            <Summary
+              title="Subscription"
+              values={[
+                ['Current plan', workspace.subscription?.plan.name ?? workspace.planCode],
+                ['Enabled modules', [...modules].join(' + ')],
+                ['Users', `${workspace._count.memberships} / ${workspace.maxUsers ?? '∞'}`],
+                ['Employees', `${workspace._count.employeeProfiles} / ${workspace.maxEmployees ?? '∞'}`],
+                ['Status', workspace.subscription?.state ?? 'NONE'],
+                [
+                  'Trial / renewal',
+                  workspace.trialEndsAt?.toLocaleDateString('en-AE') ??
+                    workspace.subscription?.currentPeriodEnd?.toLocaleDateString('en-AE') ??
+                    'Not set',
+                ],
+              ]}
+            />
+          )}
+          {security && (
+            <Summary
+              title="Security today"
+              link={{ href: `/${workspace.slug}/admin/audit`, label: 'Open audit log →' }}
+              values={[
+                ['Failed sign-ins', security[0]],
+                ['Locked or disabled', security[1]],
+                ['Active accounts', security[2]],
+                ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
+                ['Audited events', security[4]],
+              ]}
+            />
+          )}
+        </div>
       )}
-      {mine && (
-        <Summary
-          title="My day"
-          values={[
-            [
-              'Today',
-              mine[1]?.checkInAt
-                ? mine[1].checkOutAt
-                  ? 'Checked out'
-                  : 'Checked in'
-                : 'Not checked in',
-            ],
-            ['My pending leave', mine[2]],
-            ['My pending overtime', mine[3]],
-            ['Self-assessment due', mine[4]],
-            ['Payslips available', mine[5]],
-          ]}
-        />
-      )}
-      {approvalItems.length > 0 && approvalItems.some(([, value]) => value > 0) && (
-        <Summary accent="var(--lf-brass)" title="Waiting on me" values={approvalItems} />
-      )}
-      {security && (
-        <Summary
-          title="Security today"
-          values={[
-            ['Failed sign-ins', security[0]],
-            ['Locked or disabled', security[1]],
-            ['Active accounts', security[2]],
-            ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
-            ['Audited events', security[4]],
-          ]}
-        />
-      )}
+
       {!people && !sales && !mine && !security && !showSubscription && (
         <p style={{ color: 'var(--lf-ink-3)' }}>
           Nothing to show here yet. Use the navigation to reach the areas you have access to.

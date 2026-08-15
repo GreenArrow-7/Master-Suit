@@ -139,7 +139,7 @@ export default async function UsersPage({
       <div className="lf-users__head">
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Directory</h2>
         <span className="lf-users__count">
-          {rows.length} {rows.length === 1 ? 'PERSON' : 'PEOPLE'}
+          {rows.length} {rows.length === 1 ? 'person' : 'people'}
         </span>
       </div>
 
@@ -173,7 +173,7 @@ export default async function UsersPage({
                           <span className="lf-users__email">{row.email}</span>
                           {employee && (
                             <span className="lf-users__consent" data-on={hasConsent}>
-                              {hasConsent ? 'CONSENTED' : 'NO CONSENT'}
+                              {hasConsent ? 'Face consent' : 'No face consent'}
                             </span>
                           )}
                         </span>
@@ -181,7 +181,7 @@ export default async function UsersPage({
                     </td>
                     <td data-label="Employee code">{employee?.employeeNumber ?? '—'}</td>
                     <td data-label="Role">
-                      <span className="lf-users__role">{row.role.name.toUpperCase()}</span>
+                      <span className="lf-users__role">{row.role.name}</span>
                     </td>
                     <td data-label="">
                       {administrable && (
