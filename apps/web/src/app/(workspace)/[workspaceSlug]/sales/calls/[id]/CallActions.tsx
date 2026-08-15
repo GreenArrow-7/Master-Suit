@@ -155,7 +155,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
           <div style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 500, marginBottom: 8 }}>Record Consent</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {['VERBAL', 'ELECTRONIC', 'PRE_AUTHORIZED'].map((m) => (
-              <button key={m} className="lf-btn" onClick={() => recordConsent(m)} disabled={!!busy}>
+              <button key={m} className="lf-btn lf-btn--secondary" onClick={() => recordConsent(m)} disabled={!!busy}>
                 {busy === 'consent' ? '…' : m.toLowerCase().replace(/_/g, ' ')}
               </button>
             ))}
@@ -165,7 +165,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       {hasConsent && isActive && (
         <div style={{ marginBottom: 'var(--lf-space-4)' }}>
           <button
-            className="lf-btn"
+            className="lf-btn lf-btn--secondary"
             onClick={withdrawConsent}
             disabled={!!busy}
             style={{ color: 'var(--lf-vermillion)' }}
@@ -210,7 +210,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       {/* Transcript upload */}
       {!showTranscript ? (
         <button
-          className="lf-btn"
+          className="lf-btn lf-btn--secondary"
           onClick={() => setShowTranscript(true)}
           disabled={!!busy}
           style={{ marginBottom: 8, display: 'block' }}
@@ -226,7 +226,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
               {busy === 'transcript' ? 'Saving…' : 'Save Transcript'}
             </button>
-            <button type="button" className="lf-btn" onClick={() => setShowTranscript(false)}>
+            <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setShowTranscript(false)}>
               Cancel
             </button>
           </div>
@@ -247,7 +247,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
 
       {/* Follow-up */}
       {!showFollowUp ? (
-        <button className="lf-btn" onClick={() => setShowFollowUp(true)}>
+        <button className="lf-btn lf-btn--secondary" onClick={() => setShowFollowUp(true)}>
           Create Follow-up
         </button>
       ) : (
@@ -265,7 +265,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
               {busy === 'followup' ? 'Creating…' : 'Create'}
             </button>
-            <button type="button" className="lf-btn" onClick={() => setShowFollowUp(false)}>
+            <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setShowFollowUp(false)}>
               Cancel
             </button>
           </div>

@@ -130,6 +130,9 @@ export default function LeadDetail({
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
 
+  // -- More menu (edit / delete) --
+  const [showMore, setShowMore] = useState(false);
+
   function withBusy(fn: () => Promise<void>) {
     return async () => {
       if (busy) return;
@@ -199,8 +202,13 @@ export default function LeadDetail({
           <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
             {lead.fullName}
           </h1>
+          {(lead.company || lead.jobTitle) && (
+            <div style={{ marginTop: 2, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+              {[lead.jobTitle, lead.company].filter(Boolean).join(' · ')}
+            </div>
+          )}
           <div
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)', marginTop: 4, flexWrap: 'wrap' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)', marginTop: 6, flexWrap: 'wrap' }}
           >
             <span className="lf-num" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
               {lead.reference}
@@ -208,13 +216,14 @@ export default function LeadDetail({
             <Badge value={lead.priority} />
             <Badge value={lead.slaState} />
             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              {lead.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>}
+              Owner:{' '}
+              {lead.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)', fontStyle: 'normal' }}>Unassigned</em>}
             </span>
-            <span className="lf-score">
+            <span className="lf-score" title={`Lead score ${lead.score} of 100`}>
               <span className="lf-score__bar">
                 <span className="lf-score__fill" style={{ width: `${lead.score}%` }} />
               </span>
-              {lead.score}
+              Score {lead.score}
               {lead.grade ? ` · ${lead.grade}` : ''}
             </span>
           </div>
@@ -229,9 +238,9 @@ export default function LeadDetail({
             position: 'relative',
           }}
         >
-          {/* Call */}
+          {/* Call — the one primary action on a lead. */}
           <button
-            className="lf-btn lf-btn--secondary lf-btn--sm"
+            className="lf-btn lf-btn--sm"
             disabled={!lead.phone}
             title={lead.phone ? `Call ${lead.phone}` : 'No phone number'}
             onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
@@ -310,23 +319,47 @@ export default function LeadDetail({
             </div>
           )}
 
-          {/* Edit */}
-          {canEdit && (
-            <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setEditing((v) => !v)}>
-              {editing ? 'Cancel edit' : 'Edit'}
-            </button>
-          )}
-
-          {/* Delete */}
-          {canDelete && (
-            <button
-              className="lf-btn lf-btn--sm"
-              style={{ background: 'var(--lf-vermillion)', color: '#fff' }}
-              disabled={busy}
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
+          {/* Edit and Delete live behind More: neither is a moment-to-moment
+              action, and a permanently red Delete outshouted every real one. */}
+          {(canEdit || canDelete) && (
+            <div style={{ position: 'relative' }}>
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                aria-haspopup="menu"
+                onClick={() => setShowMore((v) => !v)}
+              >
+                More &#9662;
+              </button>
+              {showMore && (
+                <Dropdown onClose={() => setShowMore(false)}>
+                  {canEdit && (
+                    <button
+                      className="lf-btn lf-btn--ghost lf-btn--sm"
+                      style={{ width: '100%', textAlign: 'left' }}
+                      onClick={() => {
+                        setShowMore(false);
+                        setEditing(!editing);
+                      }}
+                    >
+                      {editing ? 'Cancel edit' : 'Edit details'}
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      className="lf-btn lf-btn--ghost lf-btn--sm"
+                      style={{ width: '100%', textAlign: 'left', color: 'var(--lf-vermillion)' }}
+                      disabled={busy}
+                      onClick={() => {
+                        setShowMore(false);
+                        void handleDelete();
+                      }}
+                    >
+                      Delete lead…
+                    </button>
+                  )}
+                </Dropdown>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -432,32 +465,51 @@ function OverviewTab({
   };
 
   const openTasks = lead.tasks.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
-  const lastActivity = lead.lastActivityAt ? fmtDate(lead.lastActivityAt) : '--';
+  const lastActivity = lead.lastActivityAt ? fmtDate(lead.lastActivityAt) : '—';
   const nextFollowUp = lead.nextFollowUpAt;
   const isOverdue = nextFollowUp ? new Date(nextFollowUp) < new Date() : false;
 
   const fields: [string, string, keyof typeof form | null][] = [
-    ['Email', lead.email ?? '--', 'email'],
-    ['Phone', lead.phone ?? '--', 'phone'],
-    ['Company', lead.company ?? '--', 'company'],
-    ['Job title', lead.jobTitle ?? '--', 'jobTitle'],
-    ['City', lead.city ?? '--', 'city'],
-    ['Country', lead.country ?? '--', 'country'],
-    ['Industry', lead.industry ?? '--', null],
+    ['Email', lead.email ?? '—', 'email'],
+    ['Phone', lead.phone ?? '—', 'phone'],
+    ['Company', lead.company ?? '—', 'company'],
+    ['Job title', lead.jobTitle ?? '—', 'jobTitle'],
+    ['City', lead.city ?? '—', 'city'],
+    ['Country', lead.country ?? '—', 'country'],
+    ['Industry', lead.industry ?? '—', null],
     ['Source', lead.source.replace(/_/g, ' ').toLowerCase(), null],
     ['Consent', lead.consentStatus.toLowerCase(), null],
     ['Created', fmtDate(lead.createdAt), null],
   ];
 
+  const pulse: { label: string; value: string; color?: string }[] = [
+    { label: 'Open tasks', value: String(openTasks) },
+    { label: 'Activities', value: String(lead.activities.length) },
+    { label: 'Last activity', value: lastActivity },
+    {
+      label: isOverdue ? 'Follow-up overdue' : 'Next follow-up',
+      value: nextFollowUp ? fmtDate(nextFollowUp) : '—',
+      color: isOverdue ? 'var(--lf-vermillion)' : undefined,
+    },
+  ];
+
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)',
-        gap: 'var(--lf-space-4)',
-        alignItems: 'start',
-      }}
-    >
+    <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
+      {/* One sentence about the lead, not four boxes: hairline-separated
+          figures, the same fact-family the dashboards speak. */}
+      <section className="lf-card" style={{ padding: 'var(--lf-space-4) var(--lf-space-5)' }}>
+        <div className="lf-stat-strip lf-stat-strip--light">
+          {pulse.map((item) => (
+            <div key={item.label}>
+              <span className="lf-figure" style={{ fontSize: '1.4rem', color: item.color }}>
+                {item.value}
+              </span>
+              <span className="lf-eyebrow">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
         <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
           Details
@@ -467,11 +519,11 @@ function OverviewTab({
             {err}
           </div>
         )}
-        <dl style={{ display: 'grid', gap: 'var(--lf-space-3)', margin: 0 }}>
+        <dl className="lf-facts" style={{ margin: 0 }}>
           {fields.map(([label, value, key]) => (
             <div key={label}>
               <dt className="lf-label">{label}</dt>
-              <dd style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', wordBreak: 'break-word' }}>
+              <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
                 {editing && key ? (
                   <input
                     className="lf-input"
@@ -488,7 +540,7 @@ function OverviewTab({
           {lead.tags.length > 0 && (
             <div>
               <dt className="lf-label">Tags</dt>
-              <dd style={{ margin: '2px 0 0', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <dd style={{ margin: '3px 0 0', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {lead.tags.map((t) => (
                   <Badge key={t} tone="slate">
                     {t}
@@ -501,7 +553,7 @@ function OverviewTab({
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
             <button className="lf-btn lf-btn--sm" disabled={saving} onClick={handleSave}>
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving…' : 'Save'}
             </button>
             <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setEditing(false)}>
               Cancel
@@ -509,28 +561,6 @@ function OverviewTab({
           </div>
         )}
       </section>
-
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
-        <SummaryCard label="Open tasks" value={String(openTasks)} />
-        <SummaryCard label="Activities" value={String(lead.activities.length)} />
-        <SummaryCard label="Last activity" value={lastActivity} />
-        <SummaryCard
-          label="Next follow-up"
-          value={nextFollowUp ? fmtDate(nextFollowUp) : '--'}
-          color={isOverdue ? 'var(--lf-vermillion)' : undefined}
-        />
-      </section>
-    </div>
-  );
-}
-
-function SummaryCard({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="lf-card" style={{ padding: 'var(--lf-space-4)' }}>
-      <div className="lf-label">{label}</div>
-      <div className="lf-num" style={{ fontSize: 'var(--lf-text-xl)', marginTop: 4, color }}>
-        {value}
-      </div>
     </div>
   );
 }

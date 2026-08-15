@@ -22,12 +22,15 @@ import next from 'eslint-config-next';
 export default tseslint.config(
   {
     // `.next-prod` is the local production build (scripts/start-local-prod.mjs).
-    // Unignored, it puts minified vendor chunks in front of the linter and buries
-    // every real finding — the same omission that made `npm test` collect pino's
-    // bundled Jest suite out of the same directory.
+    // It was not ignored, so once anyone had run a production build `npm run
+    // lint` reported ~36 500 errors in minified vendor chunks and became
+    // unusable — the same omission that made `npm test` collect pino's Jest
+    // suite out of the same directory.
     ignores: [
       '.next/**',
       '.next-prod/**',
+      // Scratch verification scripts, already git-ignored.
+      '.verify/**',
       'node_modules/**',
       'coverage/**',
       'src/generated/**',

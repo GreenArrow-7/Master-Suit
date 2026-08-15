@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { withPlatformTx } from '@/lib/db';
 import { PRODUCT_NAME } from '@/lib/branding';
 import { buildId } from '@/lib/build';
+import { platformSecuritySnapshot } from '@/services/platform/identity';
 
 /**
  * The owner's control room.
@@ -49,6 +50,10 @@ export default async function PlatformOverviewPage() {
         }),
       ]),
     );
+
+  // The counters an operator acts on, kept separate from the commercial ones
+  // above: a locked account is a support call already in progress.
+  const security = await platformSecuritySnapshot();
 
   const modules = [
     {
@@ -184,6 +189,84 @@ export default async function PlatformOverviewPage() {
             One account per person, however many workspaces they belong to.
           </p>
         </article>
+      </section>
+
+      {/* Accounts needing attention.
+          Deliberately above the ledger: the ledger says what happened, this says
+          what is still wrong and links straight to the screen that fixes it. */}
+      <section>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <h2 className="lf-h2" style={{ margin: 0 }}>
+            Accounts needing attention
+          </h2>
+          <Link href="/platform/users" style={{ fontSize: 'var(--lf-text-sm)' }}>
+            Platform users →
+          </Link>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+          <article className="lf-module-panel" style={{ ['--panel-accent' as string]: 'var(--lf-vermillion)' }}>
+            <div className="lf-module-panel__head">
+              <h3 className="lf-module-panel__title">Locked accounts</h3>
+              <Link className="lf-module-panel__link" href="/platform/users?lock=LOCKED">
+                Review →
+              </Link>
+            </div>
+            <span className="lf-figure lf-figure--lg">{security.locked.length}</span>
+            {security.locked.length === 0 ? (
+              <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                Nobody is locked out right now.
+              </p>
+            ) : (
+              <ul className="lf-eventlist" style={{ marginTop: 10 }}>
+                {security.locked.map((row) => (
+                  <li key={row.id}>
+                    <Link href={`/platform/users?user=${row.id}`}>{row.email}</Link>
+                    <time>locked after repeated attempts</time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+
+          <article className="lf-module-panel" style={{ ['--panel-accent' as string]: 'var(--lf-brass)' }}>
+            <div className="lf-module-panel__head">
+              <h3 className="lf-module-panel__title">Privileged without MFA</h3>
+              <Link className="lf-module-panel__link" href="/platform/users?mfa=ENROLMENT_REQUIRED">
+                Review →
+              </Link>
+            </div>
+            <span className="lf-figure lf-figure--lg">{security.privilegedWithoutMfa.length}</span>
+            <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+              {security.privilegedWithoutMfa.length === 0
+                ? 'Every platform role that can cross a tenant boundary has a second factor.'
+                : 'These accounts reach customer data. Login routes them to enrolment before it issues a session.'}
+            </p>
+            {security.privilegedWithoutMfa.length > 0 && (
+              <ul className="lf-eventlist" style={{ marginTop: 10 }}>
+                {security.privilegedWithoutMfa.map((row) => (
+                  <li key={row.id}>
+                    <Link href={`/platform/users?user=${row.id}`}>{row.email}</Link>
+                    <time>{row.platformRole.replaceAll('_', ' ').toLowerCase()}</time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+
+          <article className="lf-module-panel">
+            <div className="lf-module-panel__head">
+              <h3 className="lf-module-panel__title">Sign-in failures</h3>
+              <Link className="lf-module-panel__link" href="/platform/audit">
+                Audit log →
+              </Link>
+            </div>
+            <span className="lf-figure lf-figure--lg">{security.failures}</span>
+            <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+              Refused sign-ins in the last 24 hours, across every workspace. The form tells the visitor nothing; the
+              reason is recorded here and shown per account in Platform users.
+            </p>
+          </article>
+        </div>
       </section>
 
       {/* Ledger */}

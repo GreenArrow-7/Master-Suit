@@ -125,8 +125,8 @@ export default async function LandingPagesPage({
                       /{r.slug}
                     </td>
                     <td style={{ color: 'var(--lf-ink-2)' }}>{r.customDomain ?? '—'}</td>
-                    <td style={{ textAlign: 'center' }}>{r.visitCount.toLocaleString()}</td>
-                    <td style={{ textAlign: 'center' }}>{r.submissionCount.toLocaleString()}</td>
+                    <td style={{ textAlign: 'center' }}>{r.visitCount.toLocaleString('en-AE')}</td>
+                    <td style={{ textAlign: 'center' }}>{r.submissionCount.toLocaleString('en-AE')}</td>
                     <td style={{ textAlign: 'center' }}>{rate === '—' ? '—' : `${rate}%`}</td>
                     <td>
                       <Badge tone={STATE_TONE[r.state] ?? 'slate'}>{r.state.toLowerCase()}</Badge>

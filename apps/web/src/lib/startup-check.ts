@@ -10,6 +10,7 @@ import { parseCidrList } from './security/cidr';
  * import keeps the check where it belongs and the build warning-free.
  */
 export async function assertProductionConfiguration() {
+  assertEnvironmentSeparation();
   if (env.NODE_ENV !== 'production') return;
 
   const mocked = mockProviders(process.env as Record<string, string>);
@@ -24,6 +25,67 @@ export async function assertProductionConfiguration() {
 
   assertProxyConfiguration();
   await assertRowLevelSecurityApplies();
+}
+
+/**
+ * The demo/staging/production axis, cross-checked against the database.
+ *
+ * APP_ENV declares which environment this deployment IS; the database name is
+ * physical evidence of which environment it is wired TO. When they disagree,
+ * someone has pasted the wrong connection string, and the cheapest possible
+ * moment to say so is before the process serves a request — after that, the
+ * mistake looks like customer data in the demo or demo personas in production.
+ *
+ * The convention checked is a suffix marker in the database name
+ * (`master_suite_demo`, `leadflow_staging`, …). A name carrying no marker is
+ * allowed anywhere except production, where an unmarked name is only accepted
+ * alongside an explicit APP_ENV=production — production is declared, never
+ * inferred.
+ */
+function assertEnvironmentSeparation() {
+  const dbName = databaseName(env.DATABASE_URL);
+  const markers: Record<string, RegExp> = {
+    test: /[_-]test\d*$/i,
+    demo: /[_-]demo\d*$/i,
+    staging: /[_-](staging|stage)\d*$/i,
+    production: /[_-](prod|production)\d*$/i,
+  };
+
+  // A production build must say which environment it is. The default exists so
+  // a laptop needs no ceremony; a deployment gets no such pass.
+  if (env.NODE_ENV === 'production' && process.env.APP_ENV === undefined) {
+    fatal(
+      'Refusing to start: this is a production build but APP_ENV is not set.\n' +
+        '  Declare which environment this deployment is:\n' +
+        '    APP_ENV=production | staging | demo\n' +
+        '  Environment separation (demo data never in production, separate secrets per\n' +
+        '  environment) hangs off this declaration. See docs/ENVIRONMENTS.md.',
+    );
+  }
+
+  // The database wired to this process must not belong to a different
+  // environment. Both directions matter: production pointed at the demo
+  // database serves fake customers, and demo pointed at production leaks and
+  // mutates real ones.
+  for (const [environment, marker] of Object.entries(markers)) {
+    if (marker.test(dbName) && env.APP_ENV !== environment) {
+      fatal(
+        `Refusing to start: APP_ENV is "${env.APP_ENV}" but DATABASE_URL points at "${dbName}",\n` +
+          `  which is named as a ${environment} database. One of the two is wrong.\n` +
+          '  Fix the connection string or the declaration — never run one environment\n' +
+          "  against another's database. See docs/ENVIRONMENTS.md.",
+      );
+    }
+  }
+}
+
+/** The database name out of a postgres URL, without believing the URL parses. */
+function databaseName(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.replace(/^\//, '').split('?')[0] ?? '');
+  } catch {
+    return '';
+  }
 }
 
 /**

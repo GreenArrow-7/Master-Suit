@@ -7,6 +7,7 @@ import { AppError, Invalid, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { hashPassword, checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
+import { readJsonBody } from '@/lib/api/read-body';
 
 /**
  * No `tenantSlug`. The token names the workspace it was issued for; asking the
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
 
   try {
-    const body = bodySchema.parse(await req.json());
+    const body = await readJsonBody(req, bodySchema);
 
     const problems = checkPolicy(body.newPassword, DEFAULT_POLICY);
     if (problems.length) {

@@ -22,9 +22,9 @@ export default defineConfig(({ mode }) => {
       // has its own config (vitest.server.mts) that starts one.
       //
       // `.next-prod` is the local production build's output directory (see
-      // scripts/start-local-prod.mjs). Standalone output vendors dependencies
-      // with their own test suites — pino's Jest specs among them — so once
-      // anyone had run a production build, `npm test` collected 140 files that
+      // scripts/start-local-prod.mjs). It vendors dependencies with their own
+      // test suites — pino's Jest specs among them — and once anyone had run a
+      // production build, `npm test` reported fifty-odd failing files that
       // belong to third-party packages.
       exclude: ['node_modules/**', 'dist/**', '.next/**', '.next-prod/**', 'tests/e2e/**', 'tests/server/**'],
     },

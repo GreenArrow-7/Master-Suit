@@ -25,11 +25,19 @@ export default function NewCallForm() {
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * Which results the dropdown may show, computed rather than stored.
+   *
+   * The effect below used to call `setLeadOptions([])` synchronously to discard
+   * results once a lead was picked or the query got too short. That is a state
+   * write during an effect for a value render can derive, and the React
+   * Compiler flags it as a cascading render. Deriving it also closes the window
+   * where results from a previous query were briefly still on screen.
+   */
+  const visibleOptions = lead || leadQuery.trim().length < 2 ? [] : leadOptions;
+
   useEffect(() => {
-    if (lead || leadQuery.trim().length < 2) {
-      setLeadOptions([]);
-      return;
-    }
+    if (lead || leadQuery.trim().length < 2) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
@@ -127,7 +135,7 @@ export default function NewCallForm() {
                 aria-label="Search leads"
                 autoComplete="off"
               />
-              {(leadOptions.length > 0 || searching) && leadQuery.trim().length >= 2 && (
+              {(visibleOptions.length > 0 || searching) && leadQuery.trim().length >= 2 && (
                 <ul
                   className="lf-card"
                   style={{
@@ -144,12 +152,12 @@ export default function NewCallForm() {
                     boxShadow: 'var(--lf-shadow-2)',
                   }}
                 >
-                  {searching && leadOptions.length === 0 && (
+                  {searching && visibleOptions.length === 0 && (
                     <li style={{ padding: '6px 10px', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
                       Searching…
                     </li>
                   )}
-                  {leadOptions.map((option) => (
+                  {visibleOptions.map((option) => (
                     <li key={option.id}>
                       <button
                         type="button"

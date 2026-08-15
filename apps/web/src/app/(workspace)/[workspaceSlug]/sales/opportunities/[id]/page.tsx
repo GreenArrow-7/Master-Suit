@@ -65,11 +65,11 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
             {opportunity.account && (
               <SalesLink href={`/accounts/${opportunity.account.id}`}>{opportunity.account.name}</SalesLink>
             )}
-            <span style={{ fontFamily: 'var(--lf-font-mono)', fontSize: 'var(--lf-text-sm)' }}>
-              {opportunity.currency} {Number(opportunity.amount).toLocaleString()}
-            </span>
             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              {opportunity.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>}
+              Owner:{' '}
+              {opportunity.owner?.fullName ?? (
+                <em style={{ color: 'var(--lf-wine-700)', fontStyle: 'normal' }}>Unassigned</em>
+              )}
             </span>
           </div>
         </div>
@@ -94,47 +94,66 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
 
       <StageRail stages={opportunity.pipeline.stages as any} currentKey={opportunity.stage.key} compact />
 
+      {/* The deal in one sentence — value, odds, dates — then the quieter
+          facts. Same fact-strip family as the lead and call pages. */}
       <section
         className="lf-card"
-        style={{ padding: 'var(--lf-space-5)', maxWidth: 420, marginTop: 'var(--lf-space-4)' }}
+        style={{ padding: 'var(--lf-space-4) var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}
       >
-        <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-          Details
+        <div className="lf-stat-strip lf-stat-strip--light">
+          <div>
+            <span className="lf-figure lf-num" style={{ fontSize: '1.4rem' }}>
+              {opportunity.currency} {Number(opportunity.amount).toLocaleString('en-AE')}
+            </span>
+            <span className="lf-eyebrow">Amount</span>
+          </div>
+          <div>
+            <span className="lf-figure" style={{ fontSize: '1.4rem' }}>
+              {opportunity.probability}%
+            </span>
+            <span className="lf-eyebrow">Probability</span>
+          </div>
+          <div>
+            <span className="lf-figure" style={{ fontSize: '1.4rem' }}>
+              {opportunity.expectedCloseDate?.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              }) ?? '—'}
+            </span>
+            <span className="lf-eyebrow">Expected close</span>
+          </div>
+          <div>
+            <span className="lf-figure" style={{ fontSize: '1.4rem' }}>
+              {opportunity.actualCloseDate?.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              }) ??
+                opportunity.createdAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+            <span className="lf-eyebrow">{opportunity.actualCloseDate ? 'Actual close' : 'Created'}</span>
+          </div>
         </div>
-        <dl style={{ display: 'grid', gap: 'var(--lf-space-3)', margin: 0 }}>
-          {(
-            [
-              ['Probability', `${opportunity.probability}%`],
-              [
-                'Expected close',
-                opportunity.expectedCloseDate?.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                }) ?? '—',
-              ],
-              [
-                'Actual close',
-                opportunity.actualCloseDate?.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                }) ?? '—',
-              ],
-              ['Competitor', opportunity.competitor ?? '—'],
-              ...(opportunity.status === 'LOST' ? ([['Loss notes', safe.lossNotes ?? '—']] as const) : []),
-              [
-                'Created',
-                opportunity.createdAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-              ],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label}>
-              <dt className="lf-label">{label}</dt>
-              <dd style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', wordBreak: 'break-word' }}>{value}</dd>
-            </div>
-          ))}
-        </dl>
+
+        {(opportunity.competitor || opportunity.status === 'LOST') && (
+          <dl className="lf-facts" style={{ margin: 'var(--lf-space-4) 0 0' }}>
+            {opportunity.competitor && (
+              <div>
+                <dt className="lf-label">Competitor</dt>
+                <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)' }}>{opportunity.competitor}</dd>
+              </div>
+            )}
+            {opportunity.status === 'LOST' && (
+              <div>
+                <dt className="lf-label">Loss notes</dt>
+                <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+                  {safe.lossNotes ?? '—'}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
       </section>
     </>
   );

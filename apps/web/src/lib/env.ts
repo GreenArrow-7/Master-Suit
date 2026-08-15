@@ -43,6 +43,22 @@ export const b64 = z.string().superRefine((value, ctx) => {
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Which environment this deployment IS, as distinct from how Node was built.
+   *
+   * NODE_ENV cannot carry this: staging and production both run production
+   * builds, and the demo showcase runs one too. Environment separation —
+   * separate databases, separate secrets, and above all "the demo seed must
+   * never touch production" — needs a name for the environment itself, declared
+   * by the operator rather than inferred from build flags.
+   *
+   * The default is development, so a laptop needs no ceremony. Anything built
+   * with NODE_ENV=production must declare itself: the startup check refuses a
+   * production build whose APP_ENV is still the default, and refuses APP_ENV
+   * values that contradict the database it is pointed at (a database named
+   * `*_demo` under APP_ENV=production is a wiring mistake, not a choice).
+   */
+  APP_ENV: z.enum(['development', 'test', 'demo', 'staging', 'production']).default('development'),
   PROCESS_ROLE: z.enum(['web', 'worker']).default('web'),
   APP_URL: z.string().url(),
 

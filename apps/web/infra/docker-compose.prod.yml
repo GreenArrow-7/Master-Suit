@@ -38,7 +38,7 @@ services:
       mailpit: { condition: service_healthy }
     ports: ['3000:3000']
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/api/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      test: ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/api/health/live'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
       interval: 15s
       timeout: 5s
       retries: 5

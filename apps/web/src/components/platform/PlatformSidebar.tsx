@@ -5,15 +5,31 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { PRODUCT_NAME } from '@/lib/branding';
 
-const items = [
-  ['Overview', '/platform'],
-  ['Workspaces', '/platform/workspaces'],
-  ['Subscriptions', '/platform/subscriptions'],
-  ['Plans', '/platform/plans'],
-  ['Users', '/platform/users'],
-  ['Audit logs', '/platform/audit'],
-  ['System health', '/platform/system-health'],
-  ['Platform settings', '/platform/settings'],
+/**
+ * Two groups, because the console has two jobs and an operator arrives knowing
+ * which one they are here for: commercial administration of the tenants, or
+ * recovery and security of the logins inside them. Platform users sits in the
+ * second group and is the entry point for "a customer cannot sign in".
+ */
+const sections = [
+  [
+    'Control centre',
+    [
+      ['Overview', '/platform'],
+      ['Workspaces', '/platform/workspaces'],
+      ['Subscriptions', '/platform/subscriptions'],
+      ['Plans', '/platform/plans'],
+    ],
+  ],
+  [
+    'Identity & security',
+    [
+      ['Platform users', '/platform/users'],
+      ['Audit logs', '/platform/audit'],
+      ['System health', '/platform/system-health'],
+      ['Platform settings', '/platform/settings'],
+    ],
+  ],
 ] as const;
 
 export default function PlatformSidebar({ email }: { email: string }) {
@@ -63,31 +79,33 @@ export default function PlatformSidebar({ email }: { email: string }) {
           </div>
         )}
         <nav className="lf-sidebar-nav" aria-label="Platform">
-          <section className="lf-nav-section">
-            {!collapsed && <div className="lf-nav-label">Control centre</div>}
-            {items.map(([label, href]) => {
-              const active =
-                href === '/platform' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
-              return (
-                <Link
-                  key={href}
-                  className="lf-nav-link"
-                  href={href}
-                  aria-current={active ? 'page' : undefined}
-                  title={collapsed ? label : undefined}
-                >
-                  <span
-                    className="lf-nav-icon"
-                    style={{ display: 'grid', placeItems: 'center', fontSize: 11 }}
-                    aria-hidden="true"
+          {sections.map(([group, items]) => (
+            <section key={group} className="lf-nav-section">
+              {!collapsed && <div className="lf-nav-label">{group}</div>}
+              {items.map(([label, href]) => {
+                const active =
+                  href === '/platform' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+                return (
+                  <Link
+                    key={href}
+                    className="lf-nav-link"
+                    href={href}
+                    aria-current={active ? 'page' : undefined}
+                    title={collapsed ? label : undefined}
                   >
-                    {label.slice(0, 1)}
-                  </span>
-                  {!collapsed && label}
-                </Link>
-              );
-            })}
-          </section>
+                    <span
+                      className="lf-nav-icon"
+                      style={{ display: 'grid', placeItems: 'center', fontSize: 11 }}
+                      aria-hidden="true"
+                    >
+                      {label.slice(0, 1)}
+                    </span>
+                    {!collapsed && label}
+                  </Link>
+                );
+              })}
+            </section>
+          ))}
         </nav>
         <div className="lf-sidebar-user">
           <span className="lf-avatar" style={{ background: 'rgb(255 255 255 / .11)', color: '#fff' }}>

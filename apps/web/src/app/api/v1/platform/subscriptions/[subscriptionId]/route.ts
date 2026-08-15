@@ -64,21 +64,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ subscr
         await tx.moduleEntitlement.deleteMany({
           where: { tenantId: current.tenantId, module: { notIn: planModules } },
         });
-        for (const module of planModules) {
+        for (const moduleKey of planModules) {
           await tx.moduleEntitlement.upsert({
-            where: { tenantId_module: { tenantId: current.tenantId, module } },
+            where: { tenantId_module: { tenantId: current.tenantId, module: moduleKey } },
             update: { state: body.state ?? updated.state, endsAt: null },
-            create: { tenantId: current.tenantId, module, state: body.state ?? updated.state },
+            create: { tenantId: current.tenantId, module: moduleKey, state: body.state ?? updated.state },
           });
         }
         await tx.subscriptionModule.deleteMany({
           where: { subscriptionId: current.id, module: { notIn: planModules } },
         });
-        for (const module of planModules) {
+        for (const moduleKey of planModules) {
           await tx.subscriptionModule.upsert({
-            where: { subscriptionId_module: { subscriptionId: current.id, module } },
+            where: { subscriptionId_module: { subscriptionId: current.id, module: moduleKey } },
             update: { state: body.state ?? updated.state },
-            create: { subscriptionId: current.id, module, state: body.state ?? updated.state },
+            create: { subscriptionId: current.id, module: moduleKey, state: body.state ?? updated.state },
           });
         }
       } else if (body.state) {

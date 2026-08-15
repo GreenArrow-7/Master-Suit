@@ -66,8 +66,14 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
               {account.reference}
             </span>
             <Badge value={account.status} />
+            {account.industry && (
+              <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>{account.industry}</span>
+            )}
             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              {account.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>}
+              Owner:{' '}
+              {account.owner?.fullName ?? (
+                <em style={{ color: 'var(--lf-wine-700)', fontStyle: 'normal' }}>Unassigned</em>
+              )}
             </span>
           </div>
         </div>
@@ -168,7 +174,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                   <span
                     style={{ marginLeft: 'auto', fontFamily: 'var(--lf-font-mono)', fontSize: 'var(--lf-text-sm)' }}
                   >
-                    {o.currency} {Number(o.amount).toLocaleString()}
+                    {o.currency} {Number(o.amount).toLocaleString('en-AE')}
                   </span>
                 </div>
               ))

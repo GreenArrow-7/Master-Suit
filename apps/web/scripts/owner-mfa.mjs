@@ -18,17 +18,16 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import fs from 'node:fs';
+import dotenv from 'dotenv';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, '..');
 
-// Minimal .env loader, same approach as the sibling scripts: only the vars we
-// need, never overriding anything already exported.
-for (const line of fs.readFileSync(path.join(appRoot, '.env'), 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
-}
+// dotenv, not a hand-rolled reader: the previous loop split on '\n' and kept the
+// trailing '\r' from this repo's CRLF .env, so DATABASE_URL/MIGRATION_DATABASE_URL
+// arrived with a stray carriage return and every Prisma query threw. dotenv strips
+// line endings and, like the old loop, does not override anything already exported.
+dotenv.config({ path: path.join(appRoot, '.env') });
 
 if (process.env.NODE_ENV === 'production') {
   console.error('Refusing to run against production. Enroll through /enroll-2fa.');
@@ -99,7 +98,9 @@ if (process.argv.includes('--reset')) {
   // setup key and issues new recovery codes. Old secret and codes die here.
   await db.platformUser.update({
     where: { id: owner.id },
-    data: { mfaSecret: null, mfaEnabled: false },
+    // Old recovery codes die with the secret: a captured one must not survive a
+    // reset. Fresh codes are minted when the account re-enrols through /enroll-2fa.
+    data: { mfaSecret: null, mfaEnabled: false, mfaRecoveryCodes: [] },
   });
   await db.authenticationFactor.deleteMany({ where: { platformUserId: owner.id } }).catch(() => {});
   await db.platformSession.updateMany({
