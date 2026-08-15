@@ -42,9 +42,32 @@ export interface WhatsAppStatusUpdate {
   errorCode?: string;
 }
 
+/**
+ * How long after the customer's last inbound message a free-form reply is
+ * permitted (§32).
+ *
+ * Meta calls this the customer service window: it opens when a WhatsApp user
+ * messages or calls the business, lasts 24 hours, and resets each time they make
+ * contact again. Outside it, only an approved template may be sent — so this is
+ * a provider rule the product must enforce, not a nicety. Sending free-form
+ * outside the window is rejected by Meta, and pretending otherwise would show an
+ * agent a sent message the customer never receives.
+ *
+ * Verified against developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages.
+ */
+export const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** True when a free-form reply is allowed, given the customer's last inbound message. */
+export function serviceWindowOpen(lastInboundAt: Date | null | undefined, now = new Date()): boolean {
+  if (!lastInboundAt) return false;
+  return now.getTime() - lastInboundAt.getTime() < SERVICE_WINDOW_MS;
+}
+
 export interface WhatsAppProvider {
   name: string;
   sendTemplate(message: WhatsAppMessage): Promise<WhatsAppResult>;
+  /** Free-form service message. Only legal inside the customer service window. */
+  sendText(to: string, body: string): Promise<WhatsAppResult>;
   getMessageStatus(externalId: string): Promise<WhatsAppResult | null>;
   /** Authenticates an event POST. Keyed with the app secret — see the class below. */
   verifyWebhookSignature(payload: string, signature: string): boolean;
@@ -70,6 +93,11 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
       'whatsapp mock',
     );
     return { externalMessageId: id, status: 'queued' };
+  }
+
+  async sendText(to: string, body: string): Promise<WhatsAppResult> {
+    logger.info({ provider: 'mock', action: 'sendText', to, length: body.length }, 'whatsapp mock');
+    return { externalMessageId: `mock_wa_${to}_${body.length}`, status: 'queued' };
   }
 
   async getMessageStatus(externalId: string): Promise<WhatsAppResult | null> {
@@ -135,6 +163,26 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
       },
     };
 
+    return this.post(body);
+  }
+
+  /**
+   * Free-form text. The caller is responsible for the service window — this
+   * cannot check it, because only the conversation knows when the customer last
+   * wrote. Meta rejects a free-form message sent outside the window, so calling
+   * this without checking produces a failed send, not a silent one.
+   */
+  async sendText(to: string, body: string): Promise<WhatsAppResult> {
+    return this.post({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'text',
+      text: { preview_url: true, body },
+    });
+  }
+
+  private async post(body: unknown): Promise<WhatsAppResult> {
     const res = await fetch(`${this.baseUrl}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.config.accessToken}`, 'Content-Type': 'application/json' },
@@ -143,6 +191,8 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      // The vendor's message is kept, not replaced with a generic one: §33 asks
+      // for the failure reason where the provider gives a usable one.
       logger.error({ provider: 'meta', status: res.status, err }, 'WhatsApp API error');
       return {
         externalMessageId: '',
@@ -153,10 +203,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     }
 
     const data = await res.json();
-    return {
-      externalMessageId: data.messages?.[0]?.id ?? '',
-      status: 'queued',
-    };
+    return { externalMessageId: data.messages?.[0]?.id ?? '', status: 'queued' };
   }
 
   async getMessageStatus(externalId: string): Promise<WhatsAppResult | null> {

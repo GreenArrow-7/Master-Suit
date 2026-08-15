@@ -335,6 +335,9 @@ enum AuditEvent {
   CONSENT_WITHDRAWN
   AI_ANALYSIS_COMPLETED
   CALL_AUDIT_COMPLETED
+  /// That an agent replied to a customer — never what they said. See the note on
+  /// AuditEventName in lib/security/audit.ts.
+  MESSAGE_SENT
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
