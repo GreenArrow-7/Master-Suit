@@ -20,7 +20,13 @@ export default defineConfig(({ mode }) => {
       globalSetup: ['tests/globalSetup.ts'],
       // tests/e2e is Playwright's; tests/server needs a running application and
       // has its own config (vitest.server.mts) that starts one.
-      exclude: ['node_modules/**', 'dist/**', '.next/**', 'tests/e2e/**', 'tests/server/**'],
+      //
+      // `.next-prod` is the local production build's output directory (see
+      // scripts/start-local-prod.mjs). It vendors dependencies with their own
+      // test suites — pino's Jest specs among them — and once anyone had run a
+      // production build, `npm test` reported fifty-odd failing files that
+      // belong to third-party packages.
+      exclude: ['node_modules/**', 'dist/**', '.next/**', '.next-prod/**', 'tests/e2e/**', 'tests/server/**'],
     },
   };
 });

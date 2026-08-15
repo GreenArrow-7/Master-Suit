@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
-import { env } from '@/lib/env';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { logger } from '@/lib/logger';
 import { assertPermission } from '@/lib/security/rbac';
