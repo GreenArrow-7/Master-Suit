@@ -192,9 +192,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
    */
   verifyWebhookSignature(payload: string, signature: string): boolean {
     if (!this.config.appSecret) return false;
-    const expected = Buffer.from(
-      `sha256=${createHmac('sha256', this.config.appSecret).update(payload).digest('hex')}`,
-    );
+    const expected = Buffer.from(`sha256=${createHmac('sha256', this.config.appSecret).update(payload).digest('hex')}`);
     const supplied = Buffer.from(signature);
     // timingSafeEqual throws RangeError when the lengths differ, so a malformed
     // signature raised a 500 instead of being rejected. Compare lengths first —
@@ -214,12 +212,13 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 // Factory
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getWhatsAppProvider(
-  provider: string,
-  config?: Partial<MetaWhatsAppConfig>,
-): WhatsAppProvider {
+export function getWhatsAppProvider(provider: string, config?: Partial<MetaWhatsAppConfig>): WhatsAppProvider {
   if (provider === 'meta' && config?.accessToken && config?.phoneNumberId) {
-    return new MetaWhatsAppProvider({ ...config, accessToken: config.accessToken, phoneNumberId: config.phoneNumberId });
+    return new MetaWhatsAppProvider({
+      ...config,
+      accessToken: config.accessToken,
+      phoneNumberId: config.phoneNumberId,
+    });
   }
   return new MockWhatsAppProvider();
 }
