@@ -21,7 +21,19 @@ import next from 'eslint-config-next';
  */
 export default tseslint.config(
   {
-    ignores: ['.next/**', 'node_modules/**', 'coverage/**', 'src/generated/**', 'next-env.d.ts', 'eslint.config.mjs'],
+    // `.next-prod` is the local production build (scripts/start-local-prod.mjs).
+    // Unignored, it puts minified vendor chunks in front of the linter and buries
+    // every real finding — the same omission that made `npm test` collect pino's
+    // bundled Jest suite out of the same directory.
+    ignores: [
+      '.next/**',
+      '.next-prod/**',
+      'node_modules/**',
+      'coverage/**',
+      'src/generated/**',
+      'next-env.d.ts',
+      'eslint.config.mjs',
+    ],
   },
 
   js.configs.recommended,
