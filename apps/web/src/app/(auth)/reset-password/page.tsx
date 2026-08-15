@@ -1,6 +1,6 @@
 import Link from 'next/link';
+import AuthShell from '@/components/auth/AuthShell';
 import ResetPasswordForm from './ResetPasswordForm';
-import { PRODUCT_NAME } from '@/lib/branding';
 
 export const metadata = { title: 'Choose a new password' };
 
@@ -14,38 +14,23 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   const { token } = await searchParams;
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 'var(--lf-space-8)',
-        background: 'var(--lf-canvas)',
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <div className="lf-eyebrow">{PRODUCT_NAME}</div>
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)', marginTop: 4 }}>
-          Choose a new password
-        </h1>
-        {token ? (
-          <>
-            <p style={{ margin: '4px 0 var(--lf-space-6)', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-              Signing you out of every device at the same time.
-            </p>
-            <ResetPasswordForm token={token} />
-          </>
-        ) : (
-          <div className="lf-alert" role="alert" style={{ marginTop: 'var(--lf-space-4)' }}>
-            This link is missing its token. Request a new one.
-            <div style={{ marginTop: 12 }}>
-              <Link className="lf-btn lf-btn--secondary lf-btn--sm" href="/forgot-password">
-                Request a reset link
-              </Link>
-            </div>
+    <AuthShell>
+      <h1 className="lf-auth-title">Choose a new password</h1>
+      {token ? (
+        <>
+          <p className="lf-auth-lede">This signs you out of every device at the same time.</p>
+          <ResetPasswordForm token={token} />
+        </>
+      ) : (
+        <div className="lf-auth-alert" role="alert" style={{ marginTop: 'var(--lf-space-4)' }}>
+          This link is missing its token. Request a new one.
+          <div style={{ marginTop: 12 }}>
+            <Link className="lf-btn lf-btn--secondary lf-btn--sm" href="/forgot-password">
+              Request a reset link
+            </Link>
           </div>
-        )}
-      </div>
-    </main>
+        </div>
+      )}
+    </AuthShell>
   );
 }

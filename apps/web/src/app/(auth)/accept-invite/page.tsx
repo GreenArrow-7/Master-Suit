@@ -1,5 +1,5 @@
+import AuthShell from '@/components/auth/AuthShell';
 import AcceptInviteForm from './AcceptInviteForm';
-import { PRODUCT_NAME } from '@/lib/branding';
 
 export const metadata = { title: 'Accept your invitation' };
 
@@ -15,30 +15,17 @@ export default async function AcceptInvitePage({ searchParams }: { searchParams:
   const { token } = await searchParams;
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 'var(--lf-space-8)',
-        background: 'var(--lf-canvas)',
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 420 }}>
-        <div className="lf-eyebrow">{PRODUCT_NAME}</div>
-        {token ? (
-          <AcceptInviteForm token={token} />
-        ) : (
-          <>
-            <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)', marginTop: 4 }}>
-              Invitation link
-            </h1>
-            <div className="lf-alert" role="alert" style={{ marginTop: 'var(--lf-space-4)' }}>
-              This link is missing its token. Ask whoever invited you to send it again.
-            </div>
-          </>
-        )}
-      </div>
-    </main>
+    <AuthShell>
+      {token ? (
+        <AcceptInviteForm token={token} />
+      ) : (
+        <>
+          <h1 className="lf-auth-title">Invitation link</h1>
+          <div className="lf-auth-alert" role="alert" style={{ marginTop: 'var(--lf-space-4)' }}>
+            This link is missing its token. Ask whoever invited you to send it again.
+          </div>
+        </>
+      )}
+    </AuthShell>
   );
 }

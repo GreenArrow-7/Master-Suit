@@ -49,7 +49,6 @@ const dbId = (() => {
 
 const loginPage = await fetch(`${BASE}/login`).catch(() => null);
 if (!loginPage?.ok) fail(`login page unreachable at ${BASE}/login`);
-const build = (await loginPage.text()).match(/Build ([0-9a-f]{6,12})/)?.[1] ?? 'unknown';
 
 const res = await fetch(`${BASE}/api/v1/auth/login`, {
   method: 'POST',
@@ -69,4 +68,4 @@ const page = await fetch(`${BASE}${body.destination}`, { headers: { cookie }, re
 if (page.status !== 200) fail(`protected route ${body.destination} returned HTTP ${page.status}`);
 
 console.log(`PASS  ${EMAIL} → HTTP 200 → ${body.destination}`);
-console.log(`      target: ${BASE} · build: ${build} · database (local .env): ${dbId}`);
+console.log(`      target: ${BASE} · database (local .env): ${dbId}`);

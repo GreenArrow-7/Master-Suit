@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { withPlatformTx } from '@/lib/db';
 import { PRODUCT_NAME } from '@/lib/branding';
+import { buildId } from '@/lib/build';
 
 /**
  * The owner's control room.
@@ -93,7 +94,8 @@ export default async function PlatformOverviewPage() {
               <strong>{activeCount}</strong> {activeCount === 1 ? 'company runs' : 'companies run'} on {PRODUCT_NAME}.
             </h1>
             <p className="lf-command-band__sub">
-              {userCount} platform users · {employeeCount} employee records under management
+              {userCount} platform users · {employeeCount} employee records under management ·{' '}
+              <span title="Running build">build {buildId()}</span>
             </p>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <Link className="lf-btn lf-btn--brass" href="/platform/workspaces/new">

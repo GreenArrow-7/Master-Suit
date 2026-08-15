@@ -1,7 +1,7 @@
+import AuthShell from '@/components/auth/AuthShell';
 import EnrolForm from './EnrolForm';
-import { PRODUCT_NAME } from '@/lib/branding';
 
-export const metadata = { title: 'Set up two-factor authentication' };
+export const metadata = { title: 'Set up your authenticator' };
 
 /**
  * First-run enrolment.
@@ -13,25 +13,10 @@ export const metadata = { title: 'Set up two-factor authentication' };
  */
 export default function EnrolTwoFactorPage() {
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 'var(--lf-space-8)',
-        background: 'var(--lf-canvas)',
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 460 }}>
-        <div className="lf-eyebrow">{PRODUCT_NAME}</div>
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)', marginTop: 4 }}>
-          Set up two-factor authentication
-        </h1>
-        <p style={{ margin: '4px 0 var(--lf-space-6)', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-          Your workspace requires it. This takes about a minute and you will not be asked again on this account.
-        </p>
-        <EnrolForm />
-      </div>
-    </main>
+    <AuthShell>
+      <h1 className="lf-auth-title">Set up your authenticator</h1>
+      <p className="lf-auth-lede">Takes about a minute. You won&rsquo;t be asked to do this again.</p>
+      <EnrolForm />
+    </AuthShell>
   );
 }
