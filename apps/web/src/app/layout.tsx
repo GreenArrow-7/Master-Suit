@@ -36,7 +36,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: { default: PRODUCT_NAME, template: `%s · ${PRODUCT_NAME}` },
-  description: 'Unified HRMS and Sales workspace platform.',
+  description:
+    'A modular business platform: Sales CRM, People & HR, and multi-tenant platform administration on one login, one permission model and one audit trail.',
 };
 
 export const viewport = { themeColor: '#2E0B16' };
