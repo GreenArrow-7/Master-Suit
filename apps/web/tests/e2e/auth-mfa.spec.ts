@@ -47,7 +47,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
   test('a wrong password is refused, and says so without naming the account', async ({ page }) => {
     await page.goto('/login');
     await page.getByLabel('Email').fill(workspace.adminEmail);
-    await page.getByLabel('Password').fill('definitely-not-the-password');
+    await page.getByLabel('Password', { exact: true }).fill('definitely-not-the-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // `.lf-alert` and not role=alert: Next's dev overlay renders its own empty
@@ -91,7 +91,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await logout(page);
     await page.goto('/login');
     await page.getByLabel('Email').fill(workspace.adminEmail);
-    await page.getByLabel('Password').fill(workspace.adminPassword);
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // The password alone must no longer be enough.
@@ -115,7 +115,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await logout(page);
     await page.goto('/login');
     await page.getByLabel('Email').fill(workspace.adminEmail);
-    await page.getByLabel('Password').fill(workspace.adminPassword);
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByLabel('Authentication code')).toBeVisible();
 
@@ -136,7 +136,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await logout(page);
     await page.goto('/login');
     await page.getByLabel('Email').fill(workspace.adminEmail);
-    await page.getByLabel('Password').fill(workspace.adminPassword);
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await page.getByRole('button', { name: /Lost your authenticator/ }).click();
     await page.getByLabel('Recovery code').fill(code);

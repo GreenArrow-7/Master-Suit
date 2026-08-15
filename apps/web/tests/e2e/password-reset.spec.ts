@@ -88,7 +88,7 @@ test.describe('Password reset', () => {
     await logout(page);
     await page.goto('/login');
     await page.getByLabel('Email').fill(workspace.adminEmail);
-    await page.getByLabel('Password').fill(workspace.adminPassword);
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.locator('.lf-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
