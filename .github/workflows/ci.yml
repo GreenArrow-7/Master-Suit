@@ -56,6 +56,11 @@ jobs:
       # the seed reads the default `development` from lib/env.ts, and the build
       # gets production from Next itself.
       CI: 'true'
+      # tsc over this codebase (a 6 800-line Prisma schema and its generated
+      # client types) needs ~3 GB of heap; Node's default on the runner is ~2 GB
+      # and the typecheck gate died OOM-killed mid-mark-compact. Job-wide, so
+      # the vitest and next-build steps — the next-largest heaps — get it too.
+      NODE_OPTIONS: '--max-old-space-size=6144'
 
     steps:
       - uses: actions/checkout@v4
