@@ -42,6 +42,14 @@ interface Message {
   errorMessage: string | null;
 }
 
+interface Template {
+  key: string;
+  name: string;
+  body: string;
+  language: string;
+  mergeFields: string[];
+}
+
 interface WindowState {
   open: boolean;
   lastInboundAt: string | null;
@@ -85,6 +93,9 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
   const [error, setError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [showContext, setShowContext] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateKey, setTemplateKey] = useState('');
+  const [variables, setVariables] = useState<string[]>([]);
 
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -134,20 +145,48 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages]);
 
+  /**
+   * Approved templates, fetched only once the window has actually closed.
+   *
+   * Inside the window a free-form reply is the right answer and a template list
+   * is noise; outside it, it is the only answer — which is why the composer
+   * cannot simply be disabled with an apology (Â§31).
+   */
+  useEffect(() => {
+    if (!canSend || windowState?.open !== false) return;
+    void fetch('/api/v1/whatsapp/templates', { headers: { accept: 'application/json' } })
+      .then((res) => (res.ok ? res.json() : { templates: [] }))
+      .then((data) => setTemplates(data.templates ?? []))
+      .catch(() => setTemplates([]));
+  }, [canSend, windowState?.open]);
+
+  const chosen = useMemo(() => templates.find((t) => t.key === templateKey) ?? null, [templates, templateKey]);
+
+  /** What the customer will actually receive, placeholders filled in. */
+  const fill = (text: string, values: string[]) =>
+    text.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (match, token) => {
+      const index = Number(token);
+      return Number.isInteger(index) && index >= 1 ? values[index - 1] || match : match;
+    });
+
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    if (!activeId || !draft.trim() || sending) return;
+    const usingTemplate = windowState?.open === false;
+    if (!activeId || sending) return;
+    if (usingTemplate ? !templateKey : !draft.trim()) return;
     setSending(true);
     setError(null);
     try {
       const res = await fetch(`/api/v1/conversations/${activeId}/messages`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ body: draft.trim() }),
+        body: JSON.stringify(usingTemplate ? { templateKey, variables } : { body: draft.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error?.message ?? data?.error ?? 'The message could not be sent.');
       setDraft('');
+      setTemplateKey('');
+      setVariables([]);
       await loadThread(activeId);
     } catch (err) {
       setError((err as Error).message);
@@ -300,33 +339,91 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
 
             {canSend ? (
               <form className="lf-inbox__composer" onSubmit={send}>
-                <label className="lf-visually-hidden" htmlFor="inbox-reply">
-                  Your reply
-                </label>
-                <textarea
-                  id="inbox-reply"
-                  className="lf-input"
-                  rows={2}
-                  value={draft}
-                  disabled={!windowState?.open || sending}
-                  placeholder={windowState?.open ? 'Write a reply…' : 'Free-form replies are closed'}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    // Enter sends, Shift+Enter breaks the line — and the button
-                    // is still there for anyone who does not want a keystroke to
-                    // message a customer.
-                    if (e.key === 'Enter' && !e.shiftKey) void send(e);
-                  }}
-                />
-                <button className="lf-btn" type="submit" disabled={!windowState?.open || sending || !draft.trim()}>
-                  {sending ? 'Sending…' : 'Send'}
-                </button>
-                {/* §32, said plainly rather than as a disabled control with no
-                    explanation. The server enforces this regardless. */}
-                {windowState && !windowState.open && (
-                  <p className="lf-inbox__notice" role="status">
-                    {windowState.reason}
-                  </p>
+                {windowState?.open !== false ? (
+                  <>
+                    <label className="lf-visually-hidden" htmlFor="inbox-reply">
+                      Your reply
+                    </label>
+                    <textarea
+                      id="inbox-reply"
+                      className="lf-input"
+                      rows={2}
+                      value={draft}
+                      disabled={sending}
+                      placeholder="Write a reply..."
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Enter sends, Shift+Enter breaks the line - and the
+                        // button is still there for anyone who does not want a
+                        // keystroke to message a customer.
+                        if (e.key === 'Enter' && !e.shiftKey) void send(e);
+                      }}
+                    />
+                    <button className="lf-btn" type="submit" disabled={sending || !draft.trim()}>
+                      {sending ? 'Sending...' : 'Send'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Â§32. The window has lapsed, so a template is not a
+                        fallback - it is the only legal way to write, and
+                        offering the list is the difference between a closed
+                        composer and a dead end. */}
+                    <p className="lf-inbox__notice" role="status">
+                      {windowState.reason}
+                    </p>
+                    <label className="lf-visually-hidden" htmlFor="inbox-template">
+                      Approved template
+                    </label>
+                    <select
+                      id="inbox-template"
+                      className="lf-input"
+                      value={templateKey}
+                      disabled={sending}
+                      onChange={(e) => {
+                        setTemplateKey(e.target.value);
+                        const next = templates.find((t) => t.key === e.target.value);
+                        setVariables(next ? next.mergeFields.map(() => '') : []);
+                      }}
+                    >
+                      <option value="">
+                        {templates.length ? 'Choose an approved template...' : 'No approved templates yet'}
+                      </option>
+                      {templates.map((template) => (
+                        <option key={template.key} value={template.key}>
+                          {template.name} ({template.language})
+                        </option>
+                      ))}
+                    </select>
+                    <button className="lf-btn" type="submit" disabled={sending || !templateKey}>
+                      {sending ? 'Sending...' : 'Send template'}
+                    </button>
+                    {chosen && (
+                      <div className="lf-inbox__template">
+                        {chosen.mergeFields.map((field, index) => (
+                          <span key={field} className="lf-inbox__var">
+                            <label className="lf-visually-hidden" htmlFor={`var-${field}`}>
+                              Value for placeholder {field}
+                            </label>
+                            <input
+                              id={`var-${field}`}
+                              className="lf-input"
+                              placeholder={`{{${field}}}`}
+                              value={variables[index] ?? ''}
+                              onChange={(e) =>
+                                setVariables((prev) => {
+                                  const next = [...prev];
+                                  next[index] = e.target.value;
+                                  return next;
+                                })
+                              }
+                            />
+                          </span>
+                        ))}
+                        <p className="lf-inbox__preview-text">{fill(chosen.body, variables)}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </form>
             ) : (

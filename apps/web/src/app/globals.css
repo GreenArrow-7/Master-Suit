@@ -3627,3 +3627,26 @@ a:hover {
     max-width: 88%;
   }
 }
+
+/* Template composer: the only legal way to write once the service window has
+   lapsed (§31), so it gets the same room as the reply box rather than being
+   tucked away as an exception. */
+.lf-inbox__template {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.lf-inbox__var {
+  display: block;
+}
+
+.lf-inbox__preview-text {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
