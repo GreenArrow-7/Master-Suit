@@ -133,7 +133,7 @@ export default function TopBar({
       .catch(() => {});
   }, []);
 
-  const CREATE_ITEMS =
+  const CREATE_ITEMS: { label: string; href: string; module?: string; group?: string }[] =
     module === 'people'
       ? [{ label: 'Employee', href: `${basePath}/people/employees/new` }]
       : module === 'platform'
@@ -145,12 +145,12 @@ export default function TopBar({
           // list pages and a `#new` fragment that no screen implements, so the menu
           // looked complete while only navigating away.
           [
-            { label: 'Lead', href: `${basePath}/sales/leads/new`, module: 'leads' },
-            { label: 'Opportunity', href: `${basePath}/sales/opportunities/new`, module: 'opportunities' },
-            { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts' },
-            { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts' },
-            { label: 'Call', href: `${basePath}/sales/calls/new`, module: 'calls' },
-            { label: 'Event', href: `${basePath}/sales/events/new`, module: 'events' },
+            { label: 'Lead', href: `${basePath}/sales/leads/new`, module: 'leads', group: 'Sales' },
+            { label: 'Opportunity', href: `${basePath}/sales/opportunities/new`, module: 'opportunities', group: 'Sales' },
+            { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts', group: 'Sales' },
+            { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts', group: 'Sales' },
+            { label: 'Call', href: `${basePath}/sales/calls/new`, module: 'calls', group: 'Engage' },
+            { label: 'Event', href: `${basePath}/sales/events/new`, module: 'events', group: 'Engage' },
           ].filter((item) => !creatable || creatable.includes(item.module));
 
   /**
@@ -168,7 +168,12 @@ export default function TopBar({
     module === 'people'
       ? { href: `${basePath}/people/employees`, placeholder: 'Search employees…', label: 'Search employees' }
       : module === 'platform'
-        ? { href: '/platform/workspaces', placeholder: 'Search workspaces…', label: 'Search workspaces' }
+        ? // The owner's search means different things in the two halves of the
+          // console. On the identity screens it must find a person, which is the
+          // whole point of arriving there.
+          pathname.startsWith('/platform/users')
+          ? { href: '/platform/users', placeholder: 'Search users, email, workspace…', label: 'Search platform users' }
+          : { href: '/platform/workspaces', placeholder: 'Search workspaces…', label: 'Search workspaces' }
         : { href: `${basePath}/sales/leads`, placeholder: 'Search leads…', label: 'Search leads' };
 
   return (
@@ -192,6 +197,19 @@ export default function TopBar({
           if (!search.current?.value.trim()) event.preventDefault();
         }}
       >
+        <svg
+          aria-hidden="true"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--lf-ink-3)"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+        >
+          <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+        </svg>
         <input
           ref={search}
           name="q"
@@ -199,7 +217,7 @@ export default function TopBar({
           className="lf-input"
           placeholder={target.placeholder}
           aria-label={target.label}
-          style={{ paddingRight: 46 }}
+          style={{ paddingRight: 46, paddingLeft: 30 }}
         />
         <kbd
           style={{
@@ -222,6 +240,40 @@ export default function TopBar({
       )}
 
       <div className="lf-shell-actions" hidden={module === 'people'}>
+        {/* The dashboard is a destination, not an action: it leads the right
+            cluster with an icon+label and a clear pressed state, quieter than
+            + Create but always one click away. */}
+        {(() => {
+          const dashHref = module === 'platform' ? '/platform' : `${basePath}/dashboard`;
+          const active = pathname === dashHref;
+          return (
+            <a
+              href={dashHref}
+              className="lf-btn lf-btn--ghost lf-btn--sm"
+              aria-current={active ? 'page' : undefined}
+              style={
+                active
+                  ? { background: 'var(--lf-wine-050)', color: 'var(--lf-wine-700)', fontWeight: 600 }
+                  : undefined
+              }
+            >
+              <svg
+                aria-hidden="true"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 10.5 12 3l9 7.5 M5 9.5V21h5v-6h4v6h5V9.5" />
+              </svg>
+              Dashboard
+            </a>
+          );
+        })()}
         {workspaceName && (
           <span className="lf-topbar-optional" style={{ color: 'var(--lf-ink-2)', fontSize: 11, fontWeight: 600 }}>
             {workspaceName}
@@ -478,22 +530,33 @@ export default function TopBar({
                 padding: '4px 0',
               }}
             >
-              {CREATE_ITEMS.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  style={{
-                    display: 'block',
-                    padding: '8px 16px',
-                    fontSize: 'var(--lf-text-sm)',
-                    color: 'var(--lf-ink-1)',
-                    textDecoration: 'none',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {item.label}
-                </a>
+              {CREATE_ITEMS.map((item, index) => (
+                <div key={item.href}>
+                  {/* A group label when the group changes — after role filtering,
+                      so an SDR who can only create leads sees no lone headings. */}
+                  {item.group && item.group !== CREATE_ITEMS[index - 1]?.group && (
+                    <div
+                      className="lf-eyebrow"
+                      style={{ padding: index === 0 ? '8px 16px 3px' : '10px 16px 3px' }}
+                    >
+                      {item.group}
+                    </div>
+                  )}
+                  <a
+                    href={item.href}
+                    style={{
+                      display: 'block',
+                      padding: '8px 16px',
+                      fontSize: 'var(--lf-text-sm)',
+                      color: 'var(--lf-ink-1)',
+                      textDecoration: 'none',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {item.label}
+                  </a>
+                </div>
               ))}
             </div>
           )}

@@ -48,6 +48,32 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
           </Link>
         }
       />
+      {/* The server filter already existed, driven only by the top bar's box.
+          An operator standing on this page could not see that search was
+          possible, so the control now lives where the list is. */}
+      <form className="lf-card lf-filters" method="get" role="search">
+        <div className="lf-field lf-filters__search">
+          <label className="lf-label" htmlFor="ws-q">
+            Search workspaces
+          </label>
+          <input
+            id="ws-q"
+            className="lf-input"
+            name="q"
+            type="search"
+            defaultValue={query ?? ''}
+            placeholder="Company name or slug"
+          />
+        </div>
+        <button className="lf-btn" type="submit">
+          Search
+        </button>
+        {query && (
+          <Link className="lf-btn lf-btn--ghost" href="/platform/workspaces">
+            Clear
+          </Link>
+        )}
+      </form>
       {workspaces.length === 0 ? (
         <EmptyState
           title={query ? `Nothing matches "${query}"` : 'No workspaces yet'}
