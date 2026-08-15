@@ -1,4 +1,4 @@
-import { requestCtx } from '@/lib/workspace-page';
+import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
@@ -102,9 +102,15 @@ const ROLE_COPY: Record<string, { title: string; responsibilities: string[] }> =
 
 export default async function RolePage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
+  // Was `requestCtx()`, which resolves the actor but runs neither of the two
+  // checks every other workspace page runs — the structural test in
+  // tests/permission/page-access.spec.ts has been failing on exactly that. The
+  // page shows the viewer their own role and needs no permission, which is what
+  // SELF_SERVICE is for; going through requirePageAccess is what restores the
+  // invariant that no workspace page reaches ctx by a private door.
   let ctx;
   try {
-    ctx = await requestCtx();
+    ctx = await requirePageAccess({ permission: SELF_SERVICE });
   } catch {
     redirect('/login');
   }
