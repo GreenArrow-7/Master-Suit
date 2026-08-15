@@ -5,6 +5,8 @@ import { NotFound, Conflict } from '@/lib/errors';
 import { enqueue } from '@/lib/queue';
 import { nextReference } from '@/services/shared/reference';
 import { normalizePhone } from '@/services/leads/normalizePhone';
+import { findDuplicates } from '@/services/leads/findDuplicates';
+import { utmFrom } from '@/services/leads/utm';
 
 /**
  * The public face of a lead-capture form. Unauthenticated by design: the
@@ -89,26 +91,48 @@ export const POST = route(
 
     const phoneNormalized = mapped.phone ? normalizePhone(mapped.phone, 'AE') : null;
 
+    /**
+     * The same duplicate check every other entry point already runs.
+     *
+     * This endpoint used to call `lead.create` unconditionally, so a customer
+     * who enquired twice became two leads with two owners — and the tenant's
+     * configured DuplicateRule rows, which the in-app lead form obeys, were
+     * simply not consulted on the one channel strangers actually use.
+     *
+     * An existing match attaches the submission to that lead instead of opening
+     * a second one. It deliberately does not answer with a Conflict the way
+     * createLead does: this caller is a member of the public, and "that email is
+     * already known to us" is an enumeration oracle as well as a dead end for
+     * someone simply asking to be contacted.
+     */
+    const duplicates = await findDuplicates(tenant.id, {
+      email: mapped.email ?? null,
+      phoneNormalized,
+      fullName: mapped.fullName ?? null,
+    });
+    const existing = duplicates[0];
+
     const { lead } = await withTx(tenant.id, async (tx) => {
-      const reference = await nextReference(tx, tenant.id, 'LEAD');
-      const lead = await tx.lead.create({
-        data: {
-          tenantId: tenant.id,
-          reference,
-          fullName: mapped.fullName!,
-          email: mapped.email ?? null,
-          phone: mapped.phone ?? null,
-          phoneNormalized,
-          company: mapped.company ?? null,
-          stageId: stage.id,
-          source: 'PUBLIC_FORM',
-          sourceDetail: form.key,
-          // They wrote to us asking to be contacted; that is implied consent,
-          // not granted-in-writing.
-          consentStatus: 'IMPLIED',
-        },
-        select: { id: true, reference: true },
-      });
+      const lead = existing
+        ? { id: existing.id, reference: existing.reference }
+        : await tx.lead.create({
+            data: {
+              tenantId: tenant.id,
+              reference: await nextReference(tx, tenant.id, 'LEAD'),
+              fullName: mapped.fullName!,
+              email: mapped.email ?? null,
+              phone: mapped.phone ?? null,
+              phoneNormalized,
+              company: mapped.company ?? null,
+              stageId: stage.id,
+              source: 'PUBLIC_FORM',
+              sourceDetail: form.key,
+              // They wrote to us asking to be contacted; that is implied consent,
+              // not granted-in-writing.
+              consentStatus: 'IMPLIED',
+            },
+            select: { id: true, reference: true },
+          });
       const submission = await tx.formSubmission.create({
         data: {
           tenantId: tenant.id,
@@ -118,6 +142,7 @@ export const POST = route(
           ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
           userAgent: req.headers.get('user-agent')?.slice(0, 300) ?? null,
           referrerUrl: req.headers.get('referer')?.slice(0, 500) ?? null,
+          utm: utmFrom(req.headers.get('referer')),
         },
         select: { id: true },
       });

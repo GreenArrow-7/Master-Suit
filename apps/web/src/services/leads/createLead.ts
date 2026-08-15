@@ -35,7 +35,11 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
   const phoneNormalized = input.phone ? normalizePhone(input.phone, 'AE') : null;
 
   // 1. Duplicate check ───────────────────────────────────────────────────────
-  const duplicates = await findDuplicates(ctx, { email: input.email, phoneNormalized, fullName: input.fullName });
+  const duplicates = await findDuplicates(ctx.tenantId, {
+    email: input.email,
+    phoneNormalized,
+    fullName: input.fullName,
+  });
   if (duplicates.length && (input.onDuplicate ?? 'BLOCK') === 'BLOCK') {
     throw Conflict(`A lead with this ${duplicates[0]!.matchedOn} already exists (${duplicates[0]!.reference}).`);
   }
