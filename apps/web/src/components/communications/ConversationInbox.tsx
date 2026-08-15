@@ -101,40 +101,51 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
 
   const active = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
 
-  const loadList = useCallback(async () => {
-    setLoadingList(true);
-    try {
-      const query = new URLSearchParams({ filter });
-      if (search.trim()) query.set('search', search.trim());
-      const res = await fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' } });
-      if (!res.ok) throw new Error('Could not load conversations.');
-      const data = await res.json();
-      setConversations(data.conversations ?? []);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoadingList(false);
-    }
+  const loadList = useCallback(() => {
+    const query = new URLSearchParams({ filter });
+    if (search.trim()) query.set('search', search.trim());
+    return fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' } })
+      .then((res) => {
+        if (!res.ok) throw new Error('Could not load conversations.');
+        return res.json();
+      })
+      .then((data) => setConversations(data.conversations ?? []))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoadingList(false));
   }, [filter, search]);
 
+  /**
+   * These effects fetch and nothing else, as promise chains rather than
+   * async/await.
+   *
+   * Setting state synchronously inside an effect triggers a cascading render,
+   * and the React Compiler counts an awaited body as synchronous — so `await
+   * fetch(...)` followed by setState is flagged even though it plainly is not.
+   * State set inside a `.then()` is a callback from an external system, which is
+   * what effects are for. TopBar fetches the same way for the same reason.
+   *
+   * The spinner and the thread reset moved to the controls that trigger them,
+   * which is where the interaction happens and where the user is already
+   * waiting — the note in WorkspaceSidebar makes the same point.
+   */
   useEffect(() => {
     void loadList();
   }, [loadList]);
 
-  const loadThread = useCallback(async (id: string) => {
-    setMessages([]);
-    setError(null);
-    const res = await fetch(`/api/v1/conversations/${id}/messages`, { headers: { accept: 'application/json' } });
-    if (!res.ok) {
-      setError('Could not open that conversation.');
-      return;
-    }
-    const data = await res.json();
-    setMessages(data.messages ?? []);
-    setWindowState(data.window ?? null);
-    // Opening a thread clears its unread badge server-side; mirror it here
-    // rather than refetching the whole list for one number.
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+  const loadThread = useCallback((id: string) => {
+    return fetch(`/api/v1/conversations/${id}/messages`, { headers: { accept: 'application/json' } })
+      .then((res) => {
+        if (!res.ok) throw new Error('Could not open that conversation.');
+        return res.json();
+      })
+      .then((data) => {
+        setMessages(data.messages ?? []);
+        setWindowState(data.window ?? null);
+        // Opening a thread clears its unread badge server-side; mirror it here
+        // rather than refetching the whole list for one number.
+        setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+      })
+      .catch((err: Error) => setError(err.message));
   }, []);
 
   useEffect(() => {
@@ -209,7 +220,10 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
             type="search"
             placeholder="Search name or number…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setLoadingList(true);
+              setSearch(e.target.value);
+            }}
           />
           <div className="lf-inbox__filters" role="tablist" aria-label="Filter conversations">
             {FILTERS.map(([key, label]) => (
@@ -219,7 +233,10 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
                 type="button"
                 aria-selected={filter === key}
                 className="lf-inbox__filter"
-                onClick={() => setFilter(key)}
+                onClick={() => {
+                  setLoadingList(true);
+                  setFilter(key);
+                }}
               >
                 {label}
               </button>
@@ -244,6 +261,8 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
               className="lf-inbox__thread"
               aria-current={conversation.id === activeId}
               onClick={() => {
+                setMessages([]);
+                setError(null);
                 setActiveId(conversation.id);
                 setShowContext(false);
               }}
@@ -264,9 +283,7 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
                 {/* An unlinked thread is §29's state, and says so in words. */}
                 {!conversation.lead && <span className="lf-badge">New contact</span>}
                 {!conversation.ownerId && <span className="lf-badge">Unassigned</span>}
-                {conversation.owner?.fullName && (
-                  <span className="lf-inbox__muted">{conversation.owner.fullName}</span>
-                )}
+                {conversation.owner?.fullName && <span className="lf-inbox__muted">{conversation.owner.fullName}</span>}
                 {conversation.unreadCount > 0 && (
                   <span className="lf-inbox__unread">
                     {conversation.unreadCount}
@@ -285,13 +302,15 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
         {active && (
           <>
             <header className="lf-inbox__threadhead">
-              <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm lf-inbox__back" onClick={() => setActiveId(null)}>
+              <button
+                type="button"
+                className="lf-btn lf-btn--ghost lf-btn--sm lf-inbox__back"
+                onClick={() => setActiveId(null)}
+              >
                 ← Conversations
               </button>
               <div>
-                <h2 className="lf-inbox__title">
-                  {active.lead?.fullName ?? active.displayName ?? active.externalId}
-                </h2>
+                <h2 className="lf-inbox__title">{active.lead?.fullName ?? active.displayName ?? active.externalId}</h2>
                 <p className="lf-inbox__muted">{active.externalId}</p>
               </div>
               <button
@@ -453,8 +472,8 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
               <div className="lf-empty">
                 <p>New WhatsApp contact</p>
                 <p className="lf-inbox__muted">
-                  This number is not linked to anyone yet. Nothing was created automatically — a wrong number should
-                  not become a customer.
+                  This number is not linked to anyone yet. Nothing was created automatically — a wrong number should not
+                  become a customer.
                 </p>
               </div>
             )}

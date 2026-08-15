@@ -65,11 +65,14 @@ beforeEach(() => {
 
 describe('Meta Lead Ads → CRM', () => {
   it('creates a lead from the retrieved field data and hands it to distribution', async () => {
-    vi.stubGlobal('fetch', graphOk([
-      { name: 'full_name', values: ['Priya Karim'] },
-      { name: 'email', values: ['Priya@Example.com'] },
-      { name: 'phone_number', values: ['0500000001'] },
-    ]));
+    vi.stubGlobal(
+      'fetch',
+      graphOk([
+        { name: 'full_name', values: ['Priya Karim'] },
+        { name: 'email', values: ['Priya@Example.com'] },
+        { name: 'phone_number', values: ['0500000001'] },
+      ]),
+    );
     findDuplicates.mockResolvedValue([]);
 
     const result = await applyMetaEvent({ ...base, event: leadgenEvent });
@@ -122,7 +125,10 @@ describe('Meta Lead Ads → CRM', () => {
   });
 
   it('throws on a Graph failure rather than writing an empty lead', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('rate limited', { status: 429 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('rate limited', { status: 429 })),
+    );
     findDuplicates.mockResolvedValue([]);
     await expect(applyMetaEvent({ ...base, event: leadgenEvent })).rejects.toThrow(/HTTP 429/);
     expect(prisma.lead.create).not.toHaveBeenCalled();

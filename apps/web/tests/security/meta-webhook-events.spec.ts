@@ -67,9 +67,7 @@ const statuses = (status: string) => ({
           field: 'messages',
           value: {
             metadata: { phone_number_id: '9876' },
-            statuses: [
-              { id: 'wamid.ABC', status, timestamp: '1750263773', recipient_id: '16505551234' },
-            ],
+            statuses: [{ id: 'wamid.ABC', status, timestamp: '1750263773', recipient_id: '16505551234' }],
           },
         },
       ],

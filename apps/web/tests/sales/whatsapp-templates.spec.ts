@@ -10,8 +10,7 @@ vi.mock('@/lib/integrations/connection', () => ({ connectionCredentials }));
 
 const { syncWhatsAppTemplates, placeholdersOf, SENDABLE } = await import('@/services/meta/templates');
 
-const graph = (data: unknown[]) =>
-  vi.fn(async () => new Response(JSON.stringify({ data }), { status: 200 }));
+const graph = (data: unknown[]) => vi.fn(async () => new Response(JSON.stringify({ data }), { status: 200 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,8 +32,20 @@ describe('template placeholders', () => {
 describe('template sync', () => {
   it('mirrors Meta approval state verbatim rather than collapsing it to a boolean', async () => {
     global.fetch = graph([
-      { id: 't1', name: 'viewing_reminder', status: 'APPROVED', language: 'en', components: [{ type: 'BODY', text: 'Hi {{1}}' }] },
-      { id: 't2', name: 'promo_blast', status: 'REJECTED', language: 'en', components: [{ type: 'BODY', text: 'Buy now' }] },
+      {
+        id: 't1',
+        name: 'viewing_reminder',
+        status: 'APPROVED',
+        language: 'en',
+        components: [{ type: 'BODY', text: 'Hi {{1}}' }],
+      },
+      {
+        id: 't2',
+        name: 'promo_blast',
+        status: 'REJECTED',
+        language: 'en',
+        components: [{ type: 'BODY', text: 'Buy now' }],
+      },
       { id: 't3', name: 'slow_one', status: 'PENDING', language: 'en', components: [{ type: 'BODY', text: 'Soon' }] },
     ]) as never;
 
@@ -63,7 +74,13 @@ describe('template sync', () => {
 
   it('records the variables a template expects', async () => {
     global.fetch = graph([
-      { id: 't1', name: 'viewing', status: 'APPROVED', language: 'en', components: [{ type: 'BODY', text: 'Hi {{1}}, {{2}} at {{3}}' }] },
+      {
+        id: 't1',
+        name: 'viewing',
+        status: 'APPROVED',
+        language: 'en',
+        components: [{ type: 'BODY', text: 'Hi {{1}}, {{2}} at {{3}}' }],
+      },
     ]) as never;
     await syncWhatsAppTemplates('tenant-a');
     expect(prisma.messageTemplate.upsert.mock.calls[0]![0].create.mergeFields).toEqual(['1', '2', '3']);

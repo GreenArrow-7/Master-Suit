@@ -14,12 +14,7 @@
  */
 
 export type MetaEventKind =
-  | 'MESSAGE_RECEIVED'
-  | 'MESSAGE_SENT'
-  | 'MESSAGE_DELIVERED'
-  | 'MESSAGE_READ'
-  | 'MESSAGE_FAILED'
-  | 'LEAD_CREATED';
+  'MESSAGE_RECEIVED' | 'MESSAGE_SENT' | 'MESSAGE_DELIVERED' | 'MESSAGE_READ' | 'MESSAGE_FAILED' | 'LEAD_CREATED';
 
 /** Maps onto CommunicationStatus without the caller restating the vocabulary. */
 export const STATUS_FOR: Record<string, 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'> = {
@@ -121,8 +116,7 @@ export function normalizeMetaWebhook(payload: unknown): NormalizedMetaEvent[] {
       // Inbound messages. `contacts[]` carries the profile name, which is the
       // only readable label an unknown number has before anyone links it (§29).
       const contacts = (value.contacts as { wa_id?: unknown; profile?: { name?: unknown } }[] | undefined) ?? [];
-      const nameFor = (waId?: string) =>
-        str(contacts.find((contact) => str(contact.wa_id) === waId)?.profile?.name);
+      const nameFor = (waId?: string) => str(contacts.find((contact) => str(contact.wa_id) === waId)?.profile?.name);
 
       for (const rawMessage of (value.messages as Record<string, unknown>[] | undefined) ?? []) {
         const id = str(rawMessage.id);

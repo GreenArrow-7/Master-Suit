@@ -134,10 +134,7 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
     });
   }
 
-  logger.info(
-    { tenantId: connection.tenantId, received: events.length, stored, duplicate },
-    'meta webhook accepted',
-  );
+  logger.info({ tenantId: connection.tenantId, received: events.length, stored, duplicate }, 'meta webhook accepted');
 
   // Accepted and queued, not applied. §52 and §63: a provider must never wait on
   // our database work, and a failure has to be retryable rather than lost inside

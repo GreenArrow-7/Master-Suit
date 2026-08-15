@@ -177,7 +177,9 @@ export const POST = route(
       });
       if (!template) throw NotFound('Template');
       if (!template.isActive || template.approvalState !== SENDABLE) {
-        throw Conflict(`That template is ${(template.approvalState ?? 'unavailable').toLowerCase()} and cannot be sent.`);
+        throw Conflict(
+          `That template is ${(template.approvalState ?? 'unavailable').toLowerCase()} and cannot be sent.`,
+        );
       }
 
       result = await provider.sendTemplate({

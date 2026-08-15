@@ -9,9 +9,9 @@ import { utmFrom } from '@/services/leads/utm';
  */
 describe('website enquiry attribution', () => {
   it('keeps the standard utm keys from the referring page', () => {
-    expect(
-      utmFrom('https://manathhomes.ae/villas?utm_source=instagram&utm_medium=social&utm_campaign=marina'),
-    ).toEqual({ utm_source: 'instagram', utm_medium: 'social', utm_campaign: 'marina' });
+    expect(utmFrom('https://manathhomes.ae/villas?utm_source=instagram&utm_medium=social&utm_campaign=marina')).toEqual(
+      { utm_source: 'instagram', utm_medium: 'social', utm_campaign: 'marina' },
+    );
   });
 
   it('drops non-utm parameters rather than sweeping up click ids and addresses', () => {

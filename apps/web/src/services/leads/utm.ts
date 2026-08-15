@@ -19,8 +19,8 @@ export function utmFrom(referer: string | null | undefined): Record<string, stri
   try {
     const params = new URL(referer).searchParams;
     return Object.fromEntries(
-      UTM_KEYS.map((key) => [key, params.get(key)?.slice(0, 200)]).filter(
-        (entry): entry is [string, string] => Boolean(entry[1]),
+      UTM_KEYS.map((key) => [key, params.get(key)?.slice(0, 200)]).filter((entry): entry is [string, string] =>
+        Boolean(entry[1]),
       ),
     );
   } catch {
