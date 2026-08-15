@@ -282,6 +282,7 @@ export default function WorkspaceSidebar({
       { label: 'Integrations', href: `/${slug}/admin/integrations`, icon: 'activity', permission: 'integrations' },
       { label: 'Security', href: `/${slug}/admin/security`, icon: 'shield', permission: 'settings' },
       { label: 'My security', href: `/${slug}/profile/security`, icon: 'shield' },
+      { label: 'My role & access', href: `/${slug}/profile/role`, icon: 'people' },
       { label: 'Settings', href: `/${slug}/admin/settings`, icon: 'settings', permission: 'settings' },
       { label: 'Audit logs', href: `/${slug}/admin/audit`, icon: 'report', permission: 'auditlogs' },
     ] as Item[]

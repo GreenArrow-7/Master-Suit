@@ -29,19 +29,29 @@ All demo accounts share the same password and land in the `manath-homes`
 workspace as org admins with their own populated queues (owned leads,
 follow-ups, a target, today's calls, notifications).
 
-## Role logins
+## Role logins — the demonstration cast
 
-| Role             | Email                          |
-| ---------------- | ------------------------------ |
-| org_admin        | amina.alrashid@example.com     |
-| sales_director   | dhruv.menon@example.com        |
-| branch_manager   | sofia.marchetti@example.com    |
-| team_manager     | rashid.alsuwaidi@example.com   |
-| sales_rep        | joel.fernandes@example.com     |
-| field_rep        | karim.haddad@example.com       |
-| service_agent    | liza.gonzales@example.com      |
-| analyst          | reem.silva@example.com         |
-| read_only        | auditor@example.com            |
+All share the demo password. Each lands in Manath Homes with genuinely
+different server-enforced scope; log out and back in to show "what the
+manager sees" vs "what a rep sees".
+
+| Persona (say this in the demo)  | Email                            | Sees                                                |
+| ------------------------------- | -------------------------------- | --------------------------------------------------- |
+| Organization Administrator      | `admin@manathhomes.ae`           | Everything: org pipeline, users & roles, settings    |
+| Sales Manager (Omar Hassan)     | `sales.manager@manathhomes.ae`   | The team's leads/deals; assigns; no admin area       |
+| Sales Rep (Sara Khan)           | `sales.rep@manathhomes.ae`       | Only her ~11 leads, follow-ups, target, calls        |
+| SDR (Rayan Malik)               | `sdr@manathhomes.ae`             | A 24-lead qualification queue (new/contacted stages) |
+| Account Manager (Nadia Ahmed)   | `account.manager@manathhomes.ae` | Her book of 8 accounts + their contacts              |
+| Call QA Manager (Daniel Joseph) | `qa.manager@manathhomes.ae`      | All calls, transcripts & audits — read-only records  |
+| Executive (Khalid Mansour)      | `executive@manathhomes.ae`       | Org-wide read-only; no + Create, no edits            |
+
+Every login also gets **My role & access** (sidebar → Administration) — a
+plain-language page of responsibilities and visible data, derived live from
+the role's actual grants.
+
+Legacy `@example.com` logins (same password): amina.alrashid, dhruv.menon,
+sofia.marchetti, rashid.alsuwaidi, joel.fernandes, karim.haddad,
+liza.gonzales, reem.silva, auditor.
 
 The exact list (plus the second, HRMS-only workspace `leadersfort` —
 `admin@leadersfort.com`, same shared password) is printed by the seed after

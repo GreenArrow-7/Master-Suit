@@ -104,7 +104,12 @@ export default async function WorkspaceLayout({
         {shell.supportMode && (
           <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} readOnly={shell.supportReadOnly} />
         )}
-        <WorkspaceTopBar slug={shell.slug} workspaceName={shell.displayName} plan={shell.plan} />
+        <WorkspaceTopBar
+          slug={shell.slug}
+          workspaceName={shell.displayName}
+          plan={shell.plan}
+          creatable={shell.creatable}
+        />
         <main className="lf-page-main">{children}</main>
       </div>
       <AssistantWidget />
@@ -160,6 +165,11 @@ async function loadShell(workspaceSlug: string) {
       // The sidebar is a client component and cannot evaluate permissions
       // itself, so the VIEW grants are resolved here and handed over as a list.
       permitted: PERMISSION_KEYS.filter((key) => can(ctx, key, 'VIEW')),
+      // Same trick for the + Create menu: entries whose module the role cannot
+      // CREATE never render (a read-only executive gets no menu at all).
+      creatable: ['leads', 'opportunities', 'accounts', 'contacts', 'calls', 'events'].filter((key) =>
+        can(ctx, key, 'CREATE'),
+      ),
       user: {
         name: signedInAs?.fullName ?? signedInAs?.email ?? (supportMode ? 'Platform staff' : 'Signed in'),
         role: ctx.actor.roleKey,

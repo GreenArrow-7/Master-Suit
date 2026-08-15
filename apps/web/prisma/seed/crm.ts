@@ -1124,6 +1124,41 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
     });
     seeded++;
   }
+
+  // Persona touches: the account manager owns a book of accounts, and the SDR's
+  // queue skews to leads still at the top of the funnel.
+  const accountManager = demoUsers.find((u) => u.email?.startsWith('account.manager@'));
+  if (accountManager) {
+    const unowned = await db.account.findMany({
+      where: { tenantId, ownerId: { not: accountManager.id } },
+      orderBy: { name: 'asc' },
+      take: 8,
+      select: { id: true },
+    });
+    if (unowned.length > 0) {
+      await db.account.updateMany({
+        where: { tenantId, id: { in: unowned.map((a) => a.id) } },
+        data: { ownerId: accountManager.id },
+      });
+      await db.contact.updateMany({
+        where: { tenantId, accountId: { in: unowned.map((a) => a.id) } },
+        data: { ownerId: accountManager.id },
+      });
+    }
+  }
+  const sdr = demoUsers.find((u) => u.email?.startsWith('sdr@'));
+  if (sdr) {
+    const early = await db.lead.findMany({
+      where: { tenantId, deletedAt: null, ownerId: { not: sdr.id }, stage: { key: { in: ['new', 'attempted', 'contacted'] } } },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+      select: { id: true },
+    });
+    if (early.length > 0) {
+      await db.lead.updateMany({ where: { tenantId, id: { in: early.map((l) => l.id) } }, data: { ownerId: sdr.id } });
+    }
+  }
+
   if (seeded > 0) {
     console.log(`  demo spotlight: ${seeded} demo login(s) given owned leads, follow-ups, a target, calls and notifications`);
   }

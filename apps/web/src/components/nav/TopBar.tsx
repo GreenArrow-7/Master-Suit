@@ -43,11 +43,14 @@ export default function TopBar({
   module = 'sales',
   workspaceName,
   plan,
+  creatable,
 }: {
   basePath?: string;
   module?: 'sales' | 'people' | 'platform';
   workspaceName?: string;
   plan?: string;
+  /** Permission modules the signed-in role may CREATE; undefined = show all. */
+  creatable?: string[];
 } = {}) {
   const pathname = usePathname();
   const search = useRef<HTMLInputElement>(null);
@@ -142,13 +145,13 @@ export default function TopBar({
           // list pages and a `#new` fragment that no screen implements, so the menu
           // looked complete while only navigating away.
           [
-            { label: 'Lead', href: `${basePath}/sales/leads/new` },
-            { label: 'Opportunity', href: `${basePath}/sales/opportunities/new` },
-            { label: 'Account', href: `${basePath}/sales/accounts/new` },
-            { label: 'Contact', href: `${basePath}/sales/contacts/new` },
-            { label: 'Call', href: `${basePath}/sales/calls/new` },
-            { label: 'Event', href: `${basePath}/sales/events/new` },
-          ];
+            { label: 'Lead', href: `${basePath}/sales/leads/new`, module: 'leads' },
+            { label: 'Opportunity', href: `${basePath}/sales/opportunities/new`, module: 'opportunities' },
+            { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts' },
+            { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts' },
+            { label: 'Call', href: `${basePath}/sales/calls/new`, module: 'calls' },
+            { label: 'Event', href: `${basePath}/sales/events/new`, module: 'events' },
+          ].filter((item) => !creatable || creatable.includes(item.module));
 
   /**
    * Where the box actually goes, and copy that promises only that.
@@ -452,7 +455,8 @@ export default function TopBar({
           Log out
         </button>
 
-        {/* Create dropdown */}
+        {/* Create dropdown — absent entirely for roles that can create nothing. */}
+        {CREATE_ITEMS.length > 0 && (
         <div ref={createRef} style={{ position: 'relative' }}>
           <button className="lf-btn lf-btn--sm" onClick={() => setCreateOpen((o) => !o)}>
             + Create
@@ -494,6 +498,7 @@ export default function TopBar({
             </div>
           )}
         </div>
+        )}
       </div>
     </header>
   );

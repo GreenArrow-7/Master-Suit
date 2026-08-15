@@ -7,11 +7,22 @@ export default function WorkspaceTopBar({
   slug,
   workspaceName: _workspaceName,
   plan,
+  creatable,
 }: {
   slug: string;
   workspaceName: string;
   plan: string;
+  /** Permission modules the signed-in role may CREATE, resolved server-side. */
+  creatable?: string[];
 }) {
   const pathname = usePathname();
-  return <TopBar basePath={`/${slug}`} module={pathname.includes("/people") ? "people" : "sales"} workspaceName={_workspaceName} plan={plan} />;
+  return (
+    <TopBar
+      basePath={`/${slug}`}
+      module={pathname.includes('/people') ? 'people' : 'sales'}
+      workspaceName={_workspaceName}
+      plan={plan}
+      creatable={creatable}
+    />
+  );
 }

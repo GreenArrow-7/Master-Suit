@@ -703,6 +703,15 @@ async function main() {
     // customer — both work, both are ordinary workspace admins (no MFA).
     ['Manath', 'Demo', 'org_admin', null, null, 'demo@manathhomes.ae'],
     ['Manath', 'Admin', 'org_admin', null, null, 'admin@manathhomes.ae'],
+    // The role-demonstration cast: each login lands in the same workspace with
+    // genuinely different scopes, so "this is what a manager sees" is real.
+    // Omar, Sara and Rayan share the BB branch, which makes Omar their manager.
+    ['Omar', 'Hassan', 'team_manager', 'BB', 'DXB', 'sales.manager@manathhomes.ae'],
+    ['Sara', 'Khan', 'sales_rep', 'BB', 'DXB', 'sales.rep@manathhomes.ae'],
+    ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@manathhomes.ae'],
+    ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@manathhomes.ae'],
+    ['Daniel', 'Joseph', 'analyst', null, null, 'qa.manager@manathhomes.ae'],
+    ['Khalid', 'Mansour', 'read_only', null, null, 'executive@manathhomes.ae'],
   ];
 
   const users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[] = [];
@@ -795,13 +804,27 @@ async function main() {
     users.push({ id: u.id, role: roleKey, name: `${first} ${last}`, email: addr, branch: branchCode, teamCode });
   }
 
-  // two on leave, one suspended — exercises distribution eligibility and lockout
-  const reps = users.filter((u) => u.role === 'sales_rep');
-  await db.user.update({
-    where: { id: reps[reps.length - 1]!.id },
-    data: { onLeaveUntil: new Date(Date.now() + 7 * 864e5), isAvailable: false },
+  // One on leave, one suspended — exercises distribution eligibility and
+  // lockout. Pinned to the two example.com reps written for the purpose:
+  // positional picks (`reps.length - 2`) started suspending whichever login
+  // was appended to the list most recently, which is how a demo account got
+  // locked out by its own seed.
+  const onLeaveRep = users.find((u) => u.name === 'Sana Chowdhury');
+  const suspendedRep = users.find((u) => u.name === 'Youssef Farooq');
+  if (onLeaveRep) {
+    await db.user.update({
+      where: { id: onLeaveRep.id },
+      data: { onLeaveUntil: new Date(Date.now() + 7 * 864e5), isAvailable: false },
+    });
+  }
+  if (suspendedRep) {
+    await db.user.update({ where: { id: suspendedRep.id }, data: { status: 'SUSPENDED' } });
+  }
+  // Any demo login the old positional pick suspended comes back.
+  await db.user.updateMany({
+    where: { tenantId, email: { endsWith: '@manathhomes.ae' }, status: 'SUSPENDED' },
+    data: { status: 'ACTIVE' },
   });
-  await db.user.update({ where: { id: reps[reps.length - 2]!.id }, data: { status: 'SUSPENDED' } });
   console.log(`  ${users.length} users`);
 
   // 6. Configuration ─────────────────────────────────────────────────────────

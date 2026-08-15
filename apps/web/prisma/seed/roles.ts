@@ -286,6 +286,10 @@ export const ROLES: RoleSpec[] = [
       reports: { VIEW: A, CREATE: A, EDIT: A, EXPORT: A, VIEW_REPORTS: A },
       dashboards: { VIEW: A, CREATE: A },
       smartviews: { VIEW: A, CREATE: A },
+      // Call review: the analyst is also the call-quality reviewer — reads
+      // calls, transcripts and audits organisation-wide, changes nothing.
+      calls: { VIEW: A },
+      events: { VIEW: A },
     },
   },
   // -- HR and the back office ------------------------------------------------
