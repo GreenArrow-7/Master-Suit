@@ -4,6 +4,7 @@ import { isHrAdmin } from '@/services/hr/access';
 import { Forbidden } from '@/lib/errors';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import SalesLink from '@/components/workspace/SalesLink';
+import TableSearch from '@/components/workspace/TableSearch';
 
 export const metadata = { title: 'Face recognition activity' };
 
@@ -200,6 +201,7 @@ export default async function Page({
       {consents.length === 0 ? (
         <div className="lf-card lf-leave__empty">No biometric consent has been recorded.</div>
       ) : (
+        <TableSearch placeholder="Employee or policy version…" label="Search the register">
         <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="lf-table">
             <thead>
@@ -225,12 +227,14 @@ export default async function Page({
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
 
       <h2 className="lf-leave__section">Verification events</h2>
       {rows.length === 0 ? (
         <div className="lf-card lf-leave__empty">No face recognition activity in this period.</div>
       ) : (
+        <TableSearch placeholder="Employee, location, status or reason…" label="Search these events">
         <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="lf-table">
             <thead>
@@ -277,6 +281,7 @@ export default async function Page({
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
     </div>
   );

@@ -17,7 +17,6 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { env } from '@/lib/env';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';

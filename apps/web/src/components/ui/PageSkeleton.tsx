@@ -29,7 +29,10 @@ export default function PageSkeleton({ rows = 6 }: { rows?: number }) {
 
 const BLOCK: React.CSSProperties = {
   borderRadius: 'var(--lf-radius-sm)',
-  background: 'var(--lf-surface-2, #f1f5f9)',
+  // --lf-line, not --lf-surface-2: the blocks sit on a white card, and
+  // surface-2 on white is invisible — a skeleton nobody can see reads as a
+  // blank page, which is the exact ambiguity this component exists to remove.
+  background: 'var(--lf-line, #e2e8f0)',
   // No animation: `prefers-reduced-motion` would have to switch it off again,
   // and a static block already says "not ready yet".
 };

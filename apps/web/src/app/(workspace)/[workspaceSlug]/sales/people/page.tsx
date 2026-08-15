@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
+import TableSearch from '@/components/workspace/TableSearch';
 
 export default async function PeoplePage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['users', 'VIEW'] });
@@ -46,6 +47,8 @@ export default async function PeoplePage() {
             description="People invited in the People module appear here — the directory is the same one, read from the Sales side."
           />
         ) : (
+          <div style={{ padding: 'var(--lf-space-4)' }}>
+          <TableSearch placeholder="Name, email, number or designation…" label="Search the directory">
           <table className="lf-table">
             <thead>
               <tr>
@@ -75,6 +78,8 @@ export default async function PeoplePage() {
               ))}
             </tbody>
           </table>
+          </TableSearch>
+          </div>
         )}
       </section>
     </div>

@@ -43,51 +43,69 @@ export default async function SettingsPage() {
     where: { tenantId: ctx.tenantId },
   });
 
-  const fields: [string, string][] = settings
+  // One page, three named groups — workspace identity, security posture,
+  // working time — instead of one undifferentiated list. The Administration
+  // group in the sidebar is already the settings navigation; a second in-page
+  // nav would duplicate it.
+  const groups: [string, [string, string][]][] = settings
     ? [
-        ['Product Name', settings.productName],
-        ['Default Timezone', settings.defaultTimezone],
-        ['Default Currency', settings.defaultCurrency],
-        ['Default Locale', settings.defaultLocale],
-        ['Fiscal Year Start', MONTHS[settings.fiscalYearStart - 1] ?? String(settings.fiscalYearStart)],
-        ['MFA Required', settings.mfaRequired ? 'Yes' : 'No'],
-        ['Session TTL', `${settings.sessionTtlMinutes} minutes`],
-        ['Working Hours', formatWorkingHours(settings.workingHours)],
+        [
+          'Workspace',
+          [
+            ['Product name', settings.productName],
+            ['Default timezone', settings.defaultTimezone],
+            ['Default currency', settings.defaultCurrency],
+            ['Default locale', settings.defaultLocale],
+            ['Fiscal year start', MONTHS[settings.fiscalYearStart - 1] ?? String(settings.fiscalYearStart)],
+          ],
+        ],
+        [
+          'Security',
+          [
+            ['MFA required', settings.mfaRequired ? 'Yes' : 'No'],
+            ['Session lifetime', `${settings.sessionTtlMinutes} minutes`],
+          ],
+        ],
+        ['Working hours', [['Standard week', formatWorkingHours(settings.workingHours)]]],
       ]
     : [];
 
   return (
-    <>
-      <header style={{ marginBottom: 'var(--lf-space-4)' }}>
-        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
+    <div className="lf-page-stack">
+      <header>
+        <div className="lf-eyebrow">Administration</div>
+        <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)', marginTop: 6 }}>
           Settings
         </h1>
-        <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-          Organization configuration
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+          Workspace-wide configuration. Users, roles, security policy and integrations each have their own page under
+          Administration.
         </p>
       </header>
 
-      <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        {!settings ? (
-          <p style={{ color: 'var(--lf-ink-3)' }}>No settings configured for this organization.</p>
-        ) : (
-          <dl
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'max-content 1fr',
-              gap: 'var(--lf-space-3) var(--lf-space-5)',
-              margin: 0,
-            }}
-          >
-            {fields.map(([label, value]) => (
-              <div key={label} style={{ display: 'contents' }}>
-                <dt style={{ fontWeight: 500, color: 'var(--lf-ink-2)', whiteSpace: 'nowrap' }}>{label}</dt>
-                <dd style={{ margin: 0, color: 'var(--lf-ink)' }}>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
-    </>
+      {!settings ? (
+        <div className="lf-card" style={{ padding: 'var(--lf-space-5)', color: 'var(--lf-ink-3)' }}>
+          No settings configured for this organization.
+        </div>
+      ) : (
+        groups.map(([title, fields]) => (
+          <section className="lf-card" key={title} style={{ padding: 'var(--lf-space-5)' }}>
+            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
+              {title}
+            </div>
+            <dl className="lf-facts" style={{ margin: 0 }}>
+              {fields.map(([label, value]) => (
+                <div key={label}>
+                  <dt className="lf-label">{label}</dt>
+                  <dd style={{ margin: '3px 0 0', fontSize: 'var(--lf-text-sm)', overflowWrap: 'anywhere' }}>
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))
+      )}
+    </div>
   );
 }

@@ -1,6 +1,13 @@
 import { logger } from '../logger';
 import { withRetry, isTransient } from './retry';
 
+/**
+ * Hard ceiling on one provider round-trip. A hung provider must fail the one
+ * feature that needed it, not hold a connection (and on the request path, a
+ * request) open indefinitely — graceful degradation starts with a deadline.
+ */
+const TRANSCRIBE_TIMEOUT_MS = 300_000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Transcription (speech-to-text) provider abstraction
 //
@@ -96,6 +103,7 @@ export class GoogleTranscriptionProvider implements TranscriptionProvider {
         const res = await fetch(
           `https://speech.googleapis.com/v1/speech:recognize?key=${encodeURIComponent(this.apiKey)}`,
           {
+            signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -169,6 +177,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       'deepgram',
       async () => {
         const res = await fetch(`https://api.deepgram.com/v1/listen?${query}`, {
+          signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
           method: 'POST',
           headers: { Authorization: `Token ${this.apiKey}`, 'Content-Type': request.mimeType },
           body: new Uint8Array(request.audio),
@@ -224,6 +233,7 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
         form.append('language', language);
 
         const res = await fetch(`${this.endpoint.replace(/\/$/, '')}/v1/audio/transcriptions`, {
+          signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
           method: 'POST',
           headers: this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : undefined,
           body: form,

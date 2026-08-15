@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
+import { refuseOwnerLockout } from '@/services/platform/identity';
 
 const updateSchema = z
   .object({
@@ -35,6 +36,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
 
     const current = await prisma.platformUser.findFirst({ where: { id: userId, deletedAt: null } });
     if (!current) throw NotFound('User');
+    // Same rule the recovery console enforces: the platform must never be left
+    // without a usable owner. Applied here too, because two write paths for one
+    // field with two different safety checks is one write path too many.
+    if (body.platformRole || body.status) await refuseOwnerLockout(ctx, current);
 
     const user = await withPlatformTx(async (tx) => {
       const updated = await tx.platformUser.update({

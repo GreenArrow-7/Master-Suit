@@ -441,7 +441,7 @@ body {
   padding: 16px 18px;
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
-  border-radius: 9px;
+  border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
 }
 .lf-metric-card__value {
@@ -457,7 +457,7 @@ body {
   overflow: auto;
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
-  border-radius: 10px;
+  border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
 }
 .lf-table {
@@ -532,7 +532,7 @@ body {
   gap: 16px;
   padding: 20px;
   border: 1px solid var(--lf-line);
-  border-radius: 9px;
+  border-radius: var(--lf-radius-lg);
   background: var(--lf-surface);
 }
 .lf-form-section__heading {
@@ -560,7 +560,7 @@ body {
   margin: 0;
   list-style: none;
   border: 1px solid var(--lf-line);
-  border-radius: 9px;
+  border-radius: var(--lf-radius-lg);
   overflow: hidden;
   background: var(--lf-surface);
 }
@@ -632,7 +632,11 @@ body {
     box-shadow: var(--lf-shadow-1);
   }
   .lf-shell-topbar {
-    padding: 0 12px 0 54px;
+    /* The action cluster wraps to two rows on narrow phones; a fixed height
+       clips the wrapped row, so the bar grows instead. */
+    height: auto;
+    min-height: 56px;
+    padding: 8px 12px 8px 54px;
   }
   .lf-shell-actions .lf-topbar-optional {
     display: none;
@@ -961,7 +965,9 @@ a:hover {
   color: #fff;
 }
 .lf-rail__seg[data-state='pending'] {
-  background: var(--lf-surface);
+  /* Tinted, not bare white: an empty white box inside a white card reads
+     unfinished; a pearl tint reads "stage not yet reached". */
+  background: var(--lf-surface-2);
   color: var(--lf-ink-4);
 }
 .lf-rail__seg[data-state='active']::after {
@@ -1097,19 +1103,27 @@ a:hover {
   gap: var(--lf-space-1);
   border-bottom: 1px solid var(--lf-line);
   overflow-x: auto;
+  /* Touch scrolling stays; the strip must never grow Windows scrollbar arrows. */
+  scrollbar-width: none;
+}
+.lf-tabs::-webkit-scrollbar {
+  display: none;
 }
 .lf-tab {
   position: relative;
   padding: var(--lf-space-3) var(--lf-space-4);
+  border-radius: var(--lf-radius-sm) var(--lf-radius-sm) 0 0;
   font: 500 var(--lf-text-sm)/1 var(--lf-font-ui);
   color: var(--lf-ink-2);
   background: none;
   border: 0;
   cursor: pointer;
   white-space: nowrap;
+  transition: color 120ms ease, background 120ms ease;
 }
 .lf-tab:hover {
   color: var(--lf-ink);
+  background: var(--lf-wine-050);
 }
 .lf-tab[aria-selected='true'] {
   color: var(--lf-wine-700);
@@ -1439,7 +1453,7 @@ a:hover {
   color: #06231b;
   font-family: var(--lf-font-display);
   font-weight: 600;
-  border-radius: 9px;
+  border-radius: var(--lf-radius-lg);
 }
 :root[data-lf-module='people'] .lf-brand-copy strong {
   font-family: var(--lf-font-display);
@@ -1966,9 +1980,10 @@ a:hover {
   color: var(--lf-ink-3);
 }
 .lf-users__role {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  /* A role name is prose, not a klaxon: readable size, no all-caps shout. */
+  font-size: var(--lf-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--lf-ink-2);
 }
 .lf-users__actions {
@@ -2282,7 +2297,7 @@ a:hover {
   position: relative;
   overflow: hidden;
   padding: 26px 30px 24px;
-  border-radius: 12px;
+  border-radius: var(--lf-radius-xl);
   background: linear-gradient(150deg, var(--lf-wine-900) 0%, var(--lf-wine-800) 55%, #4a1526 100%);
   color: #f3e9ec;
   border-bottom: 2px solid transparent;
@@ -2368,7 +2383,7 @@ a:hover {
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
   border-left: 3px solid var(--panel-accent, var(--lf-line-2));
-  border-radius: 10px;
+  border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
   padding: 18px 20px;
 }
@@ -2431,7 +2446,7 @@ a:hover {
 .lf-ledger {
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
-  border-radius: 10px;
+  border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
   overflow: hidden;
 }
@@ -2600,7 +2615,7 @@ a:hover {
   padding: 8px 11px;
   background: var(--lf-wine-050);
   border: 1px solid var(--lf-wine-100);
-  border-radius: 10px 10px 3px 10px;
+  border-radius: 12px 12px 4px 12px;
   white-space: pre-wrap;
 }
 .lf-ai-msg[data-role='assistant'] {
@@ -2761,7 +2776,7 @@ a:hover {
   height: 34px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--lf-radius-lg);
   background: rgb(255 255 255 / 0.1);
   border: 1px solid rgb(255 255 255 / 0.16);
   font: 700 13px/1 var(--lf-font-display);
@@ -2799,7 +2814,7 @@ a:hover {
   background: var(--lf-surface);
   color: var(--lf-ink);
   border: 1px solid var(--lf-line);
-  border-radius: 10px;
+  border-radius: var(--lf-radius-lg);
   box-shadow: 0 18px 40px -18px rgb(26 4 13 / 0.55);
   padding: 14px;
   font-size: 12.5px;
@@ -3368,4 +3383,270 @@ a:hover {
   border: 1px solid var(--lf-line);
   font-size: 13px;
   white-space: pre-wrap;
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   Platform Users — the owner's account-recovery console
+
+   A detail drawer rather than a second page, because the operator's job here is
+   comparative: find the account in the list, read its real authentication
+   state, act, and watch the row change. A full-page navigation loses the list
+   and the search that found it.
+
+   The drawer is opened by `?user=<id>`, so it is server-rendered, linkable, and
+   survives a refresh — which matters when the thing being repaired is the login
+   of the person on the phone.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.lf-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--lf-space-3);
+  padding: var(--lf-space-4);
+}
+.lf-filters .lf-field { margin: 0; min-width: 130px; }
+.lf-filters__search { flex: 1 1 260px; }
+
+.lf-statstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--lf-space-3);
+}
+.lf-statstrip__item {
+  padding: var(--lf-space-3) var(--lf-space-4);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  background: var(--lf-surface);
+  box-shadow: var(--lf-shadow-1);
+}
+.lf-statstrip__item b {
+  display: block;
+  margin-top: 2px;
+  color: var(--lf-ink);
+  font: 650 var(--lf-text-2xl) / 1.1 var(--lf-font-display);
+  font-variant-numeric: tabular-nums;
+}
+.lf-statstrip__item[data-alarm='true'] b { color: var(--lf-vermillion); }
+
+/* The person cell: name, address and the badge that says why they cannot log in. */
+.lf-usercell { display: grid; gap: 1px; }
+.lf-usercell strong { color: var(--lf-ink); font-weight: 600; }
+.lf-usercell span { color: var(--lf-ink-3); font-size: var(--lf-text-xs); }
+
+.lf-drawer { position: fixed; inset: 0; z-index: 200; }
+.lf-drawer__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(46 11 22 / 0.34);
+  backdrop-filter: blur(1.5px);
+}
+.lf-drawer__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  height: 100%;
+  background: var(--lf-surface);
+  border-left: 1px solid var(--lf-line);
+  box-shadow: var(--lf-shadow-3);
+  animation: lf-drawer-in 160ms ease-out;
+}
+@keyframes lf-drawer-in { from { transform: translateX(18px); opacity: 0.4; } }
+.lf-drawer__head {
+  display: flex;
+  align-items: start;
+  gap: var(--lf-space-3);
+  padding: var(--lf-space-5) var(--lf-space-5) var(--lf-space-4);
+  border-bottom: 1px solid var(--lf-line);
+  background: var(--lf-wine-050);
+}
+.lf-drawer__head h2 { margin: 0; font-size: var(--lf-text-xl); letter-spacing: var(--lf-track-tight); }
+.lf-drawer__head p { margin: 2px 0 0; color: var(--lf-ink-2); font-size: var(--lf-text-sm); }
+.lf-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--lf-space-5);
+  display: grid;
+  gap: var(--lf-space-5);
+  align-content: start;
+}
+.lf-drawer__close {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--lf-line-2);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
+  color: var(--lf-ink-2);
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  display: grid;
+  place-items: center;
+}
+.lf-drawer__close:hover { background: var(--lf-wine-100); color: var(--lf-ink); }
+
+.lf-section-title {
+  margin: 0 0 var(--lf-space-2);
+  color: var(--lf-ink-3);
+  font: 650 var(--lf-text-2xs) / 1 var(--lf-font-ui);
+  letter-spacing: var(--lf-track-wide);
+  text-transform: uppercase;
+}
+
+/* Label/value pairs. Two columns on a laptop, one on a phone — the values are
+   timestamps and states, and wrapping them mid-word is worse than stacking. */
+.lf-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lf-space-3); }
+.lf-facts > div { min-width: 0; }
+.lf-facts dt {
+  color: var(--lf-ink-3);
+  font: 650 var(--lf-text-2xs) / 1 var(--lf-font-ui);
+  letter-spacing: var(--lf-track-wide);
+  text-transform: uppercase;
+}
+.lf-facts dd {
+  margin: 3px 0 0;
+  color: var(--lf-ink);
+  font-size: var(--lf-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.lf-actionrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2);
+  align-items: center;
+}
+.lf-actionbox {
+  display: grid;
+  gap: var(--lf-space-3);
+  padding: var(--lf-space-4);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface-2);
+}
+.lf-actionbox[data-danger='true'] { border-color: var(--lf-vermillion); background: var(--lf-vermillion-sub); }
+
+/* Shown once, never stored: the generated password needs to be readable across
+   a phone line, so it is set in the mono face at a size that survives a photo. */
+.lf-secret {
+  padding: var(--lf-space-3);
+  border: 1px dashed var(--lf-wine-500);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
+  font: 600 var(--lf-text-lg) / 1.4 var(--lf-font-mono);
+  color: var(--lf-ink);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.lf-eventlist { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--lf-space-2); }
+.lf-eventlist li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  padding-bottom: var(--lf-space-2);
+  border-bottom: 1px solid var(--lf-line);
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-2);
+}
+.lf-eventlist li:last-child { border-bottom: 0; }
+.lf-eventlist time { color: var(--lf-ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  /* Full-bleed on a phone: a 560px panel inside a 375px viewport is a scroll
+     trap, and these actions must stay deliberate rather than cramped. */
+  .lf-drawer__panel { width: 100%; border-left: 0; }
+  .lf-facts { grid-template-columns: minmax(0, 1fr); }
+  .lf-filters { padding: var(--lf-space-3); }
+  .lf-filters .lf-field { min-width: 0; flex: 1 1 140px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Workspace dashboard — the day's briefing, not a wall of boxes
+
+   Hierarchy: the greeting band says where you are, the attention row says what
+   is on fire, the module panels carry the numbers. Colour still means module
+   (wine Sales, viridian People) or urgency (vermillion/brass) — never mood.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Hairline fact family on a light panel — the dark band's stat strip, requoted
+   for white surfaces so figures read as one sentence, not a grid of boxes. */
+.lf-stat-strip--light > a,
+.lf-stat-strip--light > div {
+  border-left-color: var(--lf-line);
+}
+.lf-stat-strip--light .lf-eyebrow {
+  color: var(--lf-ink-3);
+}
+
+/* What needs me: one clickable chip per overdue queue, tone by urgency.
+   Rendered only when the count is non-zero, so a quiet day shows nothing. */
+.lf-attention {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-3);
+}
+.lf-attention__item {
+  display: flex;
+  align-items: center;
+  gap: var(--lf-space-3);
+  padding: var(--lf-space-3) var(--lf-space-4);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  background: var(--lf-surface);
+  box-shadow: var(--lf-shadow-1);
+  color: var(--lf-ink);
+  text-decoration: none;
+  transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+.lf-attention__item:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--lf-shadow-2);
+  border-color: var(--lf-line-2);
+}
+.lf-attention__count {
+  min-width: 34px;
+  padding: 4px 8px;
+  border-radius: var(--lf-radius-sm);
+  text-align: center;
+  font: 650 var(--lf-text-lg)/1.2 var(--lf-font-ui);
+  font-variant-numeric: tabular-nums;
+  background: var(--lf-slate-sub);
+  color: var(--lf-slate);
+}
+.lf-attention__item[data-tone='vermillion'] .lf-attention__count {
+  background: var(--lf-vermillion-sub);
+  color: var(--lf-vermillion);
+}
+.lf-attention__item[data-tone='brass'] .lf-attention__count {
+  background: var(--lf-brass-sub);
+  color: var(--lf-brass);
+}
+.lf-attention__label {
+  display: block;
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.lf-attention__hint {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+}
+
+/* Two quiet panels sharing a row on wide screens; stacking below. */
+.lf-panel-duo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 22px;
+  align-items: start;
+}
+.lf-panel-duo .lf-metric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }

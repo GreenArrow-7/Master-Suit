@@ -164,6 +164,10 @@ export const GET = route(
           where: { tenantId: ctx.tenantId, deletedAt: null, ...(await employeeScope(ctx)) },
           include: { membership: MEMBERSHIP_WITH_ROLE_PUBLIC, department: true, designationRecord: true },
           orderBy: { employeeNumber: 'asc' },
+          // ponytail: hard cap, not pagination. At 10k employees this endpoint
+          // needs a cursor like the CRM lists have; until then the cap keeps one
+          // request from serialising the whole directory with three includes.
+          take: 2000,
         });
 
       // Attendance is a record of where a named person was and when. Same rule.
@@ -186,6 +190,7 @@ export const GET = route(
           where: { tenantId: ctx.tenantId, ...(await leaveScope(ctx)) },
           include: { employee: EMPLOYEE_WITH_PERSON, leaveType: true },
           orderBy: { createdAt: 'desc' },
+          take: 1000,
         });
       case 'holidays':
         return prisma.hrHoliday.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { holidayDate: 'asc' } });
@@ -221,6 +226,7 @@ export const GET = route(
           where: { tenantId: ctx.tenantId, status: 'PENDING', ...(await approvalScope(ctx)) },
           include: { employee: EMPLOYEE_WITH_PERSON, leaveType: true },
           orderBy: { startDate: 'asc' },
+          take: 1000,
         });
 
       case 'leave-calendar': {
@@ -380,6 +386,7 @@ export const GET = route(
             employee: EMPLOYEE_WITH_PERSON,
           },
           orderBy: { assignedAt: 'desc' },
+          take: 1000,
         });
       }
     }

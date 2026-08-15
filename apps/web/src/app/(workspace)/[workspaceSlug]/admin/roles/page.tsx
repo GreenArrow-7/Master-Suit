@@ -5,6 +5,7 @@ import { can } from '@/lib/security/rbac';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import PermissionMatrix, { type MatrixRow } from '@/components/workspace/PermissionMatrix';
+import TableSearch from '@/components/workspace/TableSearch';
 import { listRoles, permissionMatrix, roleAssignmentHistory } from '@/services/identity/roles';
 
 export const metadata = { title: 'Roles & permissions' };
@@ -279,6 +280,7 @@ export default async function Page({
         ) : holders.length === 0 ? (
           <div className="lf-card lf-leave__empty">Nobody currently holds this role.</div>
         ) : (
+          <TableSearch placeholder="Name or email…" label="Search the holders">
           <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
             <table className="lf-table">
               <thead>
@@ -301,6 +303,7 @@ export default async function Page({
               </tbody>
             </table>
           </div>
+          </TableSearch>
         )}
       </section>
 
@@ -309,6 +312,7 @@ export default async function Page({
         {history.length === 0 ? (
           <div className="lf-card lf-leave__empty">No additional role assignments.</div>
         ) : (
+          <TableSearch placeholder="User, role, scope or status…" label="Search the history">
           <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
             <table className="lf-table">
               <thead>
@@ -351,6 +355,7 @@ export default async function Page({
               </tbody>
             </table>
           </div>
+          </TableSearch>
         )}
       </section>
     </div>

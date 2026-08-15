@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger';
 import { clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { sendMail } from '@/lib/mailer';
+import { readJsonBody } from '@/lib/api/read-body';
 
 /**
  * Email only.
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
   const ip = clientIp(req) ?? 'unknown';
 
   try {
-    const body = bodySchema.parse(await req.json());
+    const body = await readJsonBody(req, bodySchema);
     const normalizedEmail = body.email.trim().toLowerCase();
 
     // Both keys, deliberately: per-address stops one account being spammed,

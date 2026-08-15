@@ -27,7 +27,7 @@ export default function MetricCard({ label, value, tone = 'slate', delta, href }
     <>
       <div className="lf-eyebrow">{label}</div>
       <div className="lf-hero-figure" style={{ color: COLOR[tone], marginTop: 6 }}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
+        {typeof value === 'number' ? value.toLocaleString('en-AE') : value}
       </div>
       {delta && (
         <div style={{ marginTop: 6, fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>

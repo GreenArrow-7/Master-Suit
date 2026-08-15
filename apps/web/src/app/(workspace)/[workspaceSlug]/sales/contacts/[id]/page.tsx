@@ -58,7 +58,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             </span>
             {contact.account && <SalesLink href={`/accounts/${contact.account.id}`}>{contact.account.name}</SalesLink>}
             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              {contact.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>}
+              Owner:{' '}
+              {contact.owner?.fullName ?? (
+                <em style={{ color: 'var(--lf-wine-700)', fontStyle: 'normal' }}>Unassigned</em>
+              )}
             </span>
           </div>
         </div>
@@ -74,11 +77,11 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         </div>
       </header>
 
-      <section className="lf-card" style={{ padding: 'var(--lf-space-5)', maxWidth: 420 }}>
+      <section className="lf-card" style={{ padding: 'var(--lf-space-5)', maxWidth: 720 }}>
         <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
           Details
         </div>
-        <dl style={{ display: 'grid', gap: 'var(--lf-space-3)', margin: 0 }}>
+        <dl className="lf-facts" style={{ margin: 0 }}>
           {(
             [
               ['Job title', contact.jobTitle ?? '—'],

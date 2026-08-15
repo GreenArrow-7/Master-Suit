@@ -118,8 +118,36 @@ answers (function calling); the data path and permissions are identical.
 
 ## If a login is refused
 
-Five wrong attempts on one account (or ten from one machine) within 15 minutes
-locks login temporarily — wait it out, or on a local install clear the counters:
+**Use the console, not the database.** Sign in as the platform owner and open
+**Platform → Platform users**. Search the address the customer typed; the drawer
+opens on a verdict — *sign-in permitted* or *sign-in refused, and why* — because
+the login form itself deliberately answers every credential failure with one
+vague message so nobody can enumerate accounts. That vagueness is owed to the
+public, not to you.
+
+From the same drawer:
+
+| Symptom | Action |
+| --- | --- |
+| Locked after repeated attempts | **Unlock account** — clears the lock, the failed counter and the per-account sign-in throttle together |
+| Forgotten password, real customer | **Generate temporary password** — shown once, and they must set their own at next login |
+| Forgotten password, demo workspace | Type the password, clear *require a password change*, **Reset password** |
+| Lost authenticator | **Reset MFA** — the secret and recovery codes die; enrolment restarts at next sign-in |
+| "No active workspace" | **Activate membership** — repairs the membership *and* the workspace user behind it |
+| Leaver | **Deactivate user** — authentication stops, their records and history stay |
+
+Every one of these writes an audit event naming you, the target and the result.
+Passwords are never logged, never stored in readable form, and a generated one
+is returned exactly once to the browser that asked for it.
+
+Three separate things can refuse a sign-in and they are easy to confuse. The
+drawer shows all three: the **account lock** (after `MAX_FAILED_LOGINS` wrong
+passwords — configured per environment, **10** on the demo install), the
+**per-account throttle** (5 attempts per 15 minutes), and the **per-IP throttle**
+(10 per 15 minutes from one machine). In practice the per-account throttle (5)
+trips before the lock (10). Unlocking clears the first two for that
+account. The per-IP limit is global and deliberately not clearable from the
+console; on a local install:
 
 ```bash
 docker exec master-saas-redis-1 sh -c "redis-cli --scan --pattern 'rl:login:*' | xargs -r redis-cli del"

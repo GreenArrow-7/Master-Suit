@@ -2802,6 +2802,8 @@ model Lead {
   @@index([tenantId, branchId, teamId])
   @@index([tenantId, score(sort: Desc)])
   @@index([tenantId, deletedAt])
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model LeadCustomFieldDefinition {
@@ -3026,6 +3028,8 @@ model Account {
   @@index([tenantId, ownerId])
   @@index([tenantId, name])
   @@index([tenantId, status])
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model Contact {
@@ -3065,6 +3069,8 @@ model Contact {
   @@index([tenantId, accountId])
   @@index([tenantId, email])
   @@index([tenantId, phoneNormalized])
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3201,6 +3207,8 @@ model Opportunity {
   @@index([tenantId, status, actualCloseDate])
   @@index([tenantId, accountId])
   @@index([tenantId, leadId])
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model OpportunityStageHistory {
@@ -5394,6 +5402,8 @@ model Project {
   @@index([name(ops: raw("gin_trgm_ops"))], map: "Project_name_trgm_idx", type: Gin)
   @@index([amenityKeys], map: "Project_amenityKeys_idx", type: Gin)
   @@index([unitTypes], map: "Project_unitTypes_idx", type: Gin)
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model ProjectMedia {
@@ -5695,6 +5705,8 @@ model Listing {
   @@index([tenantId, status, mandateExpires])
   @@index([title(ops: raw("gin_trgm_ops"))], map: "Listing_title_trgm_idx", type: Gin)
   @@index([amenityKeys], map: "Listing_amenityKeys_idx", type: Gin)
+  /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
+  @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model ListingMedia {

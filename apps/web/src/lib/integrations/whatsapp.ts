@@ -1,6 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { logger } from '../logger';
 
+/**
+ * Hard ceiling on one provider round-trip. A hung provider must fail the one
+ * feature that needed it, not hold a connection (and on the request path, a
+ * request) open indefinitely — graceful degradation starts with a deadline.
+ */
+const PROVIDER_TIMEOUT_MS = 30_000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp provider abstraction
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +191,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 
   private async post(body: unknown): Promise<WhatsAppResult> {
     const res = await fetch(`${this.baseUrl}/messages`, {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       method: 'POST',
       headers: { Authorization: `Bearer ${this.config.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

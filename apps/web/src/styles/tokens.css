@@ -103,9 +103,12 @@
   --lf-space-8: 32px;
   --lf-space-10: 40px;
 
-  --lf-radius-sm: 4px;
-  --lf-radius: 7px;
-  --lf-radius-lg: 10px;
+  /* Controls sit at 6/9, cards at 13, hero surfaces at 16 — structured, not
+     bubbly, and the three tiers stay visibly distinct. */
+  --lf-radius-sm: 6px;
+  --lf-radius: 9px;
+  --lf-radius-lg: 13px;
+  --lf-radius-xl: 16px;
 
   /* Commercial design-token aliases shared by Sales, People and Platform. */
   --background: var(--lf-canvas);

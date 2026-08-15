@@ -17,14 +17,46 @@ import { seedCrm, seedDemoSpotlight } from './crm';
 import { hash } from '@node-rs/argon2';
 
 /**
- * Two independent gates, because this script creates dozens of ACTIVE,
+ * Three independent gates, because this script creates dozens of ACTIVE,
  * email-verified logins. Pointed at a production DATABASE_URL it is a mass
  * account-provisioning tool, and it used to run on nothing but an npm script
- * name. NODE_ENV alone is not enough — staging and production frequently share
- * a NODE_ENV — so the operator has to say yes explicitly as well.
+ * name. None of the gates trusts the other two:
+ *
+ *   1. What the deployment *declares* — NODE_ENV and APP_ENV. NODE_ENV alone is
+ *      not enough (staging and production frequently share one), which is what
+ *      APP_ENV exists to distinguish.
+ *   2. What the database *is* — a name ending in `_prod`/`_production` or
+ *      `_staging` is refused no matter what the declarations say, because the
+ *      likeliest accident is a production connection string pasted into a shell
+ *      whose declarations are still the laptop defaults.
+ *   3. What the operator *said* — ALLOW_DEMO_SEED=yes, explicitly, every time.
  */
 if (process.env.NODE_ENV === 'production') {
   throw new Error('Refusing to seed demo data: NODE_ENV is production.');
+}
+if (process.env.APP_ENV === 'production' || process.env.APP_ENV === 'staging') {
+  throw new Error(
+    `Refusing to seed demo data: APP_ENV is ${process.env.APP_ENV}.\n` +
+      '  Demo personas, fake leads and published passwords must never reach a shared\n' +
+      '  environment. Provision a dedicated demo database instead — see docs/ENVIRONMENTS.md.',
+  );
+}
+{
+  const target = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || '';
+  const dbName = (() => {
+    try {
+      return decodeURIComponent(new URL(target).pathname.slice(1).split('?')[0] ?? '');
+    } catch {
+      return '';
+    }
+  })();
+  if (/[_-](prod|production|staging|stage)\d*$/i.test(dbName)) {
+    throw new Error(
+      `Refusing to seed demo data: the target database is named "${dbName}".\n` +
+        '  That name marks a shared environment. This guard reads the connection string\n' +
+        '  itself, so it holds even when NODE_ENV and APP_ENV are still laptop defaults.',
+    );
+  }
 }
 if (process.env.ALLOW_DEMO_SEED !== 'yes') {
   throw new Error(
@@ -710,8 +742,10 @@ async function main() {
     ['Sara', 'Khan', 'sales_rep', 'BB', 'DXB', 'sales.rep@manathhomes.ae'],
     ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@manathhomes.ae'],
     ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@manathhomes.ae'],
-    ['Daniel', 'Joseph', 'analyst', null, null, 'qa.manager@manathhomes.ae'],
-    ['Khalid', 'Mansour', 'read_only', null, null, 'executive@manathhomes.ae'],
+    // call_qa, not analyst: the QA persona's dashboard must lead with call
+    // quality, and the role's grants (no leads VIEW) are what decide that.
+    ['Daniel', 'Joseph', 'call_qa', null, null, 'qa.manager@manathhomes.ae'],
+    ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@manathhomes.ae'],
   ];
 
   const users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[] = [];
@@ -720,7 +754,16 @@ async function main() {
     const addr = fixedEmail ?? (roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0));
     const u = await db.user.upsert({
       where: { tenantId_email: { tenantId, email: addr } },
-      update: {},
+      // The demo personas are seed-owned: a re-seed must bring an existing user
+      // back to the documented role and scope, not leave a stale assignment
+      // behind (which is how the Executive ended up on the wrong role). Status is
+      // deliberately left untouched — the suspended/on-leave demo states are
+      // applied separately and must survive a top-up.
+      update: {
+        roleId: roleIds.get(roleKey)!,
+        branchId: branchCode ? branches.get(branchCode)! : null,
+        regionId: regionCode ? regions.get(regionCode)! : null,
+      },
       create: {
         tenantId,
         email: addr,
@@ -1103,7 +1146,10 @@ async function main() {
   // HRMS-only: opening its Sales URLs must be refused by entitlement checks.
   const second = await db.tenant.upsert({
     where: { slug: SECOND_WORKSPACE.slug },
-    update: {},
+    // A demo tenant must come back ACTIVE on a re-seed: an archived/soft-deleted
+    // row (which is how the second workspace's only login got refused with
+    // NO_ACTIVE_WORKSPACE) otherwise survives every top-up.
+    update: { status: 'ACTIVE', deletedAt: null },
     create: {
       slug: SECOND_WORKSPACE.slug,
       legalName: SECOND_WORKSPACE.legalName,

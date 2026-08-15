@@ -3,6 +3,7 @@ import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access';
 import { myEmployee } from '@/services/hr/leave';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import TableSearch from '@/components/workspace/TableSearch';
 
 export const metadata = { title: 'Attendance' };
 
@@ -142,6 +143,7 @@ export default async function Page({
       {rows.length === 0 ? (
         <div className="lf-card lf-leave__empty">No attendance in this period.</div>
       ) : (
+        <TableSearch placeholder="Employee, location, date or status…" label="Search this period">
         <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="lf-table">
             <thead>
@@ -172,6 +174,7 @@ export default async function Page({
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
     </div>
   );
