@@ -27,6 +27,9 @@ export const GET = route(
   async ({ ctx, params }) => {
     const data = await prisma.campaignMember.findMany({
       where: { tenantId: ctx.tenantId, campaignId: params.id, removedAt: null },
+      // A campaign audience can be thousands of leads; the dialer works through
+      // them queue-wise and never needs the whole membership in one response.
+      take: 1000,
     });
     return { data };
   },
