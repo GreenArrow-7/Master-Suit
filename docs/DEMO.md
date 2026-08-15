@@ -63,6 +63,30 @@ call audits) is reached by **entering** a workspace: Platform → Workspaces →
 Enter on `manath-homes`. That explicit step is deliberate — support access to
 tenant data is granted per session and audited.
 
+## Manath AI (in-app assistant)
+
+The ✦ button at the bottom right of every workspace page opens **Manath AI**,
+the CRM copilot. It answers from the signed-in user's own data only — every
+lookup runs through the same permission scoping as the pages — and cites the
+records it used as clickable chips. Record-changing requests ("create a
+follow-up for tomorrow…") are prepared and shown with a Confirm button; nothing
+is written until the user confirms.
+
+Good demo prompts:
+
+- "What should I focus on today?"
+- "Which leads have breached SLA?" · "Show my hottest leads"
+- "Summarize Northbay Logistics" · "Find Priya Karim"
+- "Prepare me for a call with Tariq Haddad"
+- "Summarize the latest recorded call."
+- "Create a follow-up for tomorrow to send the payment plan"
+- On a lead page: "Summarize this client" / "What happened recently?"
+
+Without `GEMINI_API_KEY` the assistant runs in **template mode**: a keyword
+router drives the same permission-scoped tools and renders real records through
+fixed phrasing. With the key set, Gemini plans the tool calls and writes the
+answers (function calling); the data path and permissions are identical.
+
 ## If a login is refused
 
 Five wrong attempts on one account (or ten from one machine) within 15 minutes

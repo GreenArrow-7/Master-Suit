@@ -7,6 +7,7 @@ import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import ModuleTheme from '@/components/workspace/ModuleTheme';
+import AssistantWidget from '@/components/assistant/AssistantWidget';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,6 +107,7 @@ export default async function WorkspaceLayout({
         <WorkspaceTopBar slug={shell.slug} workspaceName={shell.displayName} plan={shell.plan} />
         <main className="lf-page-main">{children}</main>
       </div>
+      <AssistantWidget />
     </div>
   );
 }
