@@ -51,16 +51,31 @@ every run.
 
 The owner signs in with the password from `PLATFORM_OWNER_PASSWORD` in
 `apps/web/.env` — **not** the shared demo password — and, like every privileged
-platform role, must present a TOTP code. On a local install, get codes with:
+platform role, must present a TOTP code. The account ships in the
+**enrolment-pending** state: the first correct password login opens the
+in-app authenticator setup (QR / setup key → first code → recovery codes),
+after which sign-in is password + the six-digit code from your app. Keep the
+recovery codes — each signs you in once if the authenticator is lost.
+
+If the authenticator is ever unrecoverable on a local install:
 
 ```bash
-node scripts/owner-mfa.mjs            # prints the current 6-digit code
-node scripts/owner-mfa.mjs --enroll   # (re)sets the secret; also prints an otpauth:// URL
+node scripts/owner-mfa.mjs --reset    # back to enrolment-pending; next login shows setup again
+node scripts/owner-mfa.mjs            # or: print codes for a script-enrolled secret
 ```
 
-`--enroll` prints an `otpauth://` URL you can scan into a phone authenticator
-once, after which the script is unnecessary. The script refuses to run when
-`NODE_ENV=production`.
+The script refuses to run when `NODE_ENV=production`.
+
+## Login smoke test
+
+```bash
+node scripts/demo-smoke.mjs           # verifies demo login + session against DEMO_URL (default :3000)
+```
+
+Credentials come from the environment (`DEMO_URL`, `DEMO_EMAIL`,
+`DEMO_PASSWORD` — the latter read from `.env`); nothing secret is hardcoded.
+The login page footer shows the running **build id** so you can always confirm
+which build you are testing.
 
 After signing in, the owner lands on `/platform`. Workspace data (leads, calls,
 call audits) is reached by **entering** a workspace: Platform → Workspaces →

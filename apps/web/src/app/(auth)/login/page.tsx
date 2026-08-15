@@ -1,5 +1,6 @@
 import LoginForm from './LoginForm';
 import { PRODUCT_NAME } from '@/lib/branding';
+import { buildId } from '@/lib/build';
 
 export const metadata = { title: 'Sign in' };
 
@@ -84,6 +85,16 @@ export default function LoginPage() {
             Use your workspace credentials.
           </p>
           <LoginForm />
+          <p
+            style={{
+              marginTop: 'var(--lf-space-6)',
+              fontSize: 'var(--lf-text-2xs)',
+              color: 'var(--lf-ink-4)',
+              textAlign: 'center',
+            }}
+          >
+            Build {buildId()}
+          </p>
         </div>
       </section>
     </main>

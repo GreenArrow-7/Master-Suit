@@ -83,6 +83,19 @@ export default function LoginForm() {
           autoFocus
         />
         <span className="lf-hint">One account for every workspace you belong to.</span>
+        {/* Demo installs hand this address to customers; one click removes the
+            typo surface. The password is still typed — never shipped in source. */}
+        <button
+          type="button"
+          className="lf-btn lf-btn--ghost lf-btn--sm"
+          style={{ justifySelf: 'start', marginTop: 4 }}
+          onClick={() => {
+            setEmail('demo@manathhomes.ae');
+            document.getElementById('password')?.focus();
+          }}
+        >
+          Use demo account
+        </button>
       </div>
 
       <div className="lf-field">

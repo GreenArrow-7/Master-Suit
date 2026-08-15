@@ -4,7 +4,7 @@ import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { AppError, Unauthorized } from '@/lib/errors';
+import { AppError, Unauthorized, TooManyRequests } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { verifyPassword, burnTiming } from '@/lib/auth/password';
 import { createPlatformSession, clientIp } from '@/lib/auth/session';
@@ -34,8 +34,19 @@ export async function POST(req: Request) {
 
   try {
     const body = bodySchema.parse(await req.json());
-    await consume(limits.loginPerIp(ip));
-    await consume(limits.loginPerAccount(body.email));
+    // A throttled login must not read as wrong credentials: rethrow with a
+    // message the form shows verbatim.
+    try {
+      await consume(limits.loginPerIp(ip));
+      await consume(limits.loginPerAccount(body.email));
+    } catch (limited) {
+      const retryAfter = (limited as { retryAfter?: number }).retryAfter;
+      const err: Error & { retryAfter?: number } = TooManyRequests(
+        'Too many sign-in attempts. Wait a few minutes and try again.',
+      );
+      err.retryAfter = retryAfter;
+      throw err;
+    }
 
     const normalizedEmail = body.email.trim().toLowerCase();
     // `salesUser` is deliberately not joined here.

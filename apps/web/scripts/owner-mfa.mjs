@@ -93,6 +93,24 @@ if (!owner) {
   process.exit(1);
 }
 
+if (process.argv.includes('--reset')) {
+  // Puts the owner back into the in-app enrolment flow: the next correct
+  // password login is granted only /enroll-2fa, which shows a fresh QR /
+  // setup key and issues new recovery codes. Old secret and codes die here.
+  await db.platformUser.update({
+    where: { id: owner.id },
+    data: { mfaSecret: null, mfaEnabled: false },
+  });
+  await db.authenticationFactor.deleteMany({ where: { platformUserId: owner.id } }).catch(() => {});
+  await db.platformSession.updateMany({
+    where: { platformUserId: owner.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  console.log(`${email}: MFA enrolment reset. Next password login opens the authenticator setup screen.`);
+  await db.$disconnect();
+  process.exit(0);
+}
+
 if (process.argv.includes('--enroll')) {
   // Raw base32 in mfaSecret is the documented legacy form; decryptSecret passes
   // it through unchanged, so codes verify without touching the crypto service.
