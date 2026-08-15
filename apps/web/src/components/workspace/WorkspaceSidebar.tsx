@@ -187,6 +187,12 @@ export default function WorkspaceSidebar({
           { label: 'Events', href: `/${slug}/sales/events`, icon: 'calendar', permission: 'events' },
           { label: 'Campaigns', href: `/${slug}/sales/campaigns`, icon: 'campaign', permission: 'campaigns' },
           {
+            label: 'Inbox',
+            href: `/${slug}/sales/communications/inbox`,
+            icon: 'activity',
+            permission: 'communications',
+          },
+          {
             label: 'Communications',
             href: `/${slug}/sales/communications`,
             icon: 'activity',
