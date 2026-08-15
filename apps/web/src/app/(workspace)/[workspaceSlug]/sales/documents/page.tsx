@@ -27,6 +27,7 @@ export default async function DocumentsPage() {
       mimeType: true,
       sizeBytes: true,
       status: true,
+      scanState: true,
       createdAt: true,
     },
   });

@@ -1157,7 +1157,9 @@ async function main() {
   });
   const secondPlatformUser = await db.platformUser.upsert({
     where: { normalizedEmail: secondAdminEmail },
-    update: { status: 'ACTIVE' },
+    // passwordHash included, as for the owner above: without it a re-seed
+    // leaves this login on a rotating password from whichever run created it.
+    update: { status: 'ACTIVE', passwordHash, passwordChangedAt: new Date() },
     create: {
       email: secondAdminEmail,
       normalizedEmail: secondAdminEmail,

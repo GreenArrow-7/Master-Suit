@@ -146,7 +146,9 @@ async function loadShell(workspaceSlug: string) {
       slug: workspace.slug,
       displayName: workspace.displayName,
       // Null means the account has not yet replaced the password it was issued.
-      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt == null,
+      // Strictly null: a platform support actor has no workspace User row at
+      // all, and the missing chain must not read as an unchanged password.
+      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt === null,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:

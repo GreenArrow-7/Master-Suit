@@ -34,7 +34,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 20,
-        select: { id: true, name: true, category: true, mimeType: true, sizeBytes: true, createdAt: true },
+        select: { id: true, name: true, category: true, mimeType: true, sizeBytes: true, scanState: true, createdAt: true },
       },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
     },
@@ -115,6 +115,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       category: d.category,
       mimeType: d.mimeType,
       sizeBytes: d.sizeBytes,
+      scanState: d.scanState,
       createdAt: d.createdAt.toISOString(),
     })),
   };

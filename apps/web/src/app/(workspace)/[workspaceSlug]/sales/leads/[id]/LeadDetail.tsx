@@ -54,6 +54,7 @@ interface Doc {
   category: string | null;
   mimeType: string;
   sizeBytes: number;
+  scanState: string;
   createdAt: string;
 }
 
@@ -350,7 +351,7 @@ export default function LeadDetail({
       {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
       {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
       {tab === 'Notes' && <NotesTab lead={lead} patchLead={patchLead} canEdit={canEdit} />}
-      {tab === 'Documents' && <DocumentsTab documents={lead.documents} />}
+      {tab === 'Documents' && <DocumentsTab documents={lead.documents} leadId={lead.id} canEdit={canEdit} />}
     </>
   );
 }
@@ -968,50 +969,97 @@ function NotesTab({
 
 // ── Documents Tab ───────────────────────────────────────────────────────────
 
-function DocumentsTab({ documents }: { documents: Doc[] }) {
-  if (documents.length === 0) {
-    return (
-      <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-          Documents
-        </div>
-        <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>
-          No documents attached to this lead.
-        </p>
-      </section>
-    );
+function DocumentsTab({ documents, leadId, canEdit }: { documents: Doc[]; leadId: string; canEdit: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      form.set('leadId', leadId);
+      const res = await fetch('/api/v1/documents', { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.detail ?? 'The upload failed.');
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError('Could not reach the server. Try again.');
+    } finally {
+      setBusy(false);
+      e.target.value = '';
+    }
   }
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-      <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-        Documents
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--lf-space-3)',
+          marginBottom: 'var(--lf-space-4)',
+        }}
+      >
+        <div className="lf-eyebrow">Documents</div>
+        {canEdit && (
+          <label className="lf-btn lf-btn--sm" style={{ cursor: busy ? 'progress' : 'pointer' }}>
+            {busy ? 'Uploading…' : 'Upload document'}
+            <input type="file" onChange={upload} disabled={busy} style={{ display: 'none' }} />
+          </label>
+        )}
       </div>
-      <div style={{ display: 'grid', gap: 'var(--lf-space-3)' }}>
-        {documents.map((d) => (
-          <div
-            key={d.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--lf-space-3)',
-              padding: 'var(--lf-space-3)',
-              border: '1px solid var(--lf-line)',
-              borderRadius: 6,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, fontSize: 'var(--lf-text-sm)' }}>{d.name}</div>
-              <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 4 }}>
-                {d.category && <Badge tone="slate">{d.category}</Badge>}
-                <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{d.mimeType}</span>
-                <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtBytes(d.sizeBytes)}</span>
-                <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtDate(d.createdAt)}</span>
+
+      {error && (
+        <div className="lf-alert" role="alert" style={{ marginBottom: 'var(--lf-space-3)' }}>
+          {error}
+        </div>
+      )}
+
+      {documents.length === 0 ? (
+        <p style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)', margin: 0 }}>
+          No documents attached to this lead.
+        </p>
+      ) : (
+        <div style={{ display: 'grid', gap: 'var(--lf-space-3)' }}>
+          {documents.map((d) => (
+            <div
+              key={d.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--lf-space-3)',
+                padding: 'var(--lf-space-3)',
+                border: '1px solid var(--lf-line)',
+                borderRadius: 6,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 500, fontSize: 'var(--lf-text-sm)' }}>{d.name}</div>
+                <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 4, flexWrap: 'wrap' }}>
+                  {d.category && <Badge tone="slate">{d.category}</Badge>}
+                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{d.mimeType}</span>
+                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtBytes(d.sizeBytes)}</span>
+                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtDate(d.createdAt)}</span>
+                </div>
               </div>
+              {d.scanState === 'CLEAN' && (
+                <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/api/v1/documents/${d.id}/download`}>
+                  Download
+                </a>
+              )}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

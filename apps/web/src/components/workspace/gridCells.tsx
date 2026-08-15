@@ -306,7 +306,15 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
     case 'DOCUMENT':
       switch (key) {
         case 'name':
-          return <span style={{ fontWeight: 500 }}>{row.name}</span>;
+          // Plain anchor on purpose: SalesLink would prefix the module base
+          // onto an /api path. Only clean files are downloadable.
+          return row.scanState === 'CLEAN' ? (
+            <a href={`/api/v1/documents/${row.id}/download`} style={{ fontWeight: 500 }}>
+              {row.name}
+            </a>
+          ) : (
+            <span style={{ fontWeight: 500 }}>{row.name}</span>
+          );
         case 'category':
           return muted(row.category ?? '—');
         case 'mimeType':
