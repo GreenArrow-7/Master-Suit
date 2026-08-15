@@ -742,7 +742,9 @@ async function main() {
     ['Sara', 'Khan', 'sales_rep', 'BB', 'DXB', 'sales.rep@manathhomes.ae'],
     ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@manathhomes.ae'],
     ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@manathhomes.ae'],
-    ['Daniel', 'Joseph', 'analyst', null, null, 'qa.manager@manathhomes.ae'],
+    // call_qa, not analyst: the QA persona's dashboard must lead with call
+    // quality, and the role's grants (no leads VIEW) are what decide that.
+    ['Daniel', 'Joseph', 'call_qa', null, null, 'qa.manager@manathhomes.ae'],
     ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@manathhomes.ae'],
   ];
 

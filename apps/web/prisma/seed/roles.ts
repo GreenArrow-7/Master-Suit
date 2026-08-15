@@ -544,6 +544,24 @@ export const ROLES: RoleSpec[] = [
     },
   },
   {
+    // Call quality reviewer. Deliberately holds NO leads/opportunities grants:
+    // the QA job is calls, transcripts and audit scorecards, and the absence of
+    // `leads VIEW` is what makes the dashboard lead with call quality rather
+    // than a pipeline this person never works. Reviewing is a write action on
+    // audits (the human pass over AI scores), hence calls EDIT.
+    key: 'call_qa',
+    name: 'Call Quality Manager',
+    rank: 40,
+    defaultScope: A,
+    grants: {
+      calls: { VIEW: A, EDIT: A, EXPORT: A },
+      tasks: { VIEW: A, CREATE: A, EDIT: A },
+      reports: { VIEW: A, VIEW_REPORTS: A },
+      dashboards: { VIEW: A },
+      documents: { VIEW: A },
+    },
+  },
+  {
     // Organization-wide oversight, read-only. Unlike `read_only` (TEAM scope,
     // for a team lead or auditor with a team), an executive owns nothing and
     // leads no team, so TEAM scope would show them an empty CRM. This role sees

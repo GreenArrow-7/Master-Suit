@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
-import { can } from '@/lib/security/rbac';
+import { can, scopeFor } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 
 /**
@@ -70,22 +71,54 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         prisma.hrHoliday.count({ where: { tenantId: ctx.tenantId, holidayDate: { gte: today } } }),
       ])
     : null;
+  /**
+   * §41–48: the same page IS the role dashboard, because the numbers are
+   * scoped by the viewer's actual grant, not merely gated by it.
+   *
+   * These counts were tenant-wide for everyone who held `leads VIEW` at any
+   * scope: a representative's "Active leads" was the company's total — a
+   * number they can neither open nor act on, on the screen that is supposed to
+   * answer "what should I do next". Routing every filter through
+   * `visibilityWhere` makes one composition truthful for the whole ladder:
+   *
+   *   OWN            a rep/SDR reads *their* pipeline and queue;
+   *   TEAM/BRANCH    a manager reads their team's, plus unassigned leads
+   *                  (includeUnassigned — triage is the manager's queue);
+   *   ORGANIZATION   an admin or executive reads the operation.
+   *
+   * The label on the band says which of those it is, so the same figure is
+   * never mistaken for a different altitude.
+   */
+  const salesScope = showSales ? scopeFor(ctx, 'leads', 'VIEW') : 'NONE';
   const salesQuery = showSales
     ? Promise.all([
-        prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null } }),
-        prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
-        prisma.opportunity.count({ where: { tenantId: ctx.tenantId, deletedAt: null, status: 'OPEN' } }),
-        prisma.followUpTask.count({
-          where: { tenantId: ctx.tenantId, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
-        }),
-        prisma.opportunity.aggregate({
-          where: { tenantId: ctx.tenantId, deletedAt: null, status: 'OPEN' },
-          _sum: { amount: true },
-        }),
-        prisma.task.count({
-          where: { tenantId: ctx.tenantId, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
-        }),
-      ])
+        visibilityWhere(ctx, 'leads', 'VIEW'),
+        visibilityWhere(ctx, 'opportunities', 'VIEW'),
+        // Follow-ups key on ownerId like leads do; they carry the lead module's
+        // grant because they are lead work.
+        visibilityWhere(ctx, 'leads', 'VIEW'),
+        visibilityWhere(ctx, 'tasks', 'VIEW'),
+      ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere]) =>
+        Promise.all([
+          prisma.lead.count({ where: { ...leadWhere, deletedAt: null } }),
+          // Unassigned is a triage queue: tenant-wide by definition, shown only
+          // to viewers whose scope reaches beyond their own records.
+          salesScope === 'OWN'
+            ? Promise.resolve(0)
+            : prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
+          prisma.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }),
+          prisma.followUpTask.count({
+            where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
+          }),
+          prisma.opportunity.aggregate({
+            where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
+            _sum: { amount: true },
+          }),
+          prisma.task.count({
+            where: { ...taskWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
+          }),
+        ]),
+      )
     : null;
 
   /**
@@ -311,10 +344,15 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   // The band's figures: the three or four numbers that describe the operation.
   const bandStats: { label: string; value: string; href: string }[] = [];
   if (sales) {
+    // The figures are scoped by the viewer's grant; the words must say so. A
+    // rep's band reads "My pipeline", a manager's "Team pipeline", an
+    // executive's the operation — same composition, honest at every altitude.
+    const lens = salesScope === 'OWN' ? 'My' : salesScope === 'ORGANIZATION' ? '' : 'Team';
+    const title = (base: string) => (lens ? `${lens} ${base.toLowerCase()}` : base);
     bandStats.push(
-      { label: 'Pipeline value', value: money(Number(sales[4]._sum.amount ?? 0)), href: `/${workspace.slug}/sales/opportunities` },
-      { label: 'Open opportunities', value: String(sales[2]), href: `/${workspace.slug}/sales/opportunities` },
-      { label: 'Active leads', value: String(sales[0]), href: `/${workspace.slug}/sales/leads` },
+      { label: title('Pipeline value'), value: money(Number(sales[4]._sum.amount ?? 0)), href: `/${workspace.slug}/sales/opportunities` },
+      { label: title('Open opportunities'), value: String(sales[2]), href: `/${workspace.slug}/sales/opportunities` },
+      { label: title('Active leads'), value: String(sales[0]), href: `/${workspace.slug}/sales/leads` },
     );
   }
   if (!sales && calls) {
