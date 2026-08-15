@@ -711,7 +711,7 @@ async function main() {
     ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@manathhomes.ae'],
     ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@manathhomes.ae'],
     ['Daniel', 'Joseph', 'analyst', null, null, 'qa.manager@manathhomes.ae'],
-    ['Khalid', 'Mansour', 'read_only', null, null, 'executive@manathhomes.ae'],
+    ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@manathhomes.ae'],
   ];
 
   const users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[] = [];
@@ -720,7 +720,16 @@ async function main() {
     const addr = fixedEmail ?? (roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0));
     const u = await db.user.upsert({
       where: { tenantId_email: { tenantId, email: addr } },
-      update: {},
+      // The demo personas are seed-owned: a re-seed must bring an existing user
+      // back to the documented role and scope, not leave a stale assignment
+      // behind (which is how the Executive ended up on the wrong role). Status is
+      // deliberately left untouched — the suspended/on-leave demo states are
+      // applied separately and must survive a top-up.
+      update: {
+        roleId: roleIds.get(roleKey)!,
+        branchId: branchCode ? branches.get(branchCode)! : null,
+        regionId: regionCode ? regions.get(regionCode)! : null,
+      },
       create: {
         tenantId,
         email: addr,
@@ -1103,7 +1112,10 @@ async function main() {
   // HRMS-only: opening its Sales URLs must be refused by entitlement checks.
   const second = await db.tenant.upsert({
     where: { slug: SECOND_WORKSPACE.slug },
-    update: {},
+    // A demo tenant must come back ACTIVE on a re-seed: an archived/soft-deleted
+    // row (which is how the second workspace's only login got refused with
+    // NO_ACTIVE_WORKSPACE) otherwise survives every top-up.
+    update: { status: 'ACTIVE', deletedAt: null },
     create: {
       slug: SECOND_WORKSPACE.slug,
       legalName: SECOND_WORKSPACE.legalName,

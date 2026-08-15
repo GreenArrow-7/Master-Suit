@@ -543,4 +543,29 @@ export const ROLES: RoleSpec[] = [
       smartviews: { VIEW: T },
     },
   },
+  {
+    // Organization-wide oversight, read-only. Unlike `read_only` (TEAM scope,
+    // for a team lead or auditor with a team), an executive owns nothing and
+    // leads no team, so TEAM scope would show them an empty CRM. This role sees
+    // the whole organization but holds no write action anywhere.
+    key: 'executive_read_only',
+    name: 'Executive (Read-Only)',
+    rank: 15,
+    defaultScope: A,
+    grants: {
+      leads: { VIEW: A },
+      opportunities: { VIEW: A },
+      accounts: { VIEW: A },
+      contacts: { VIEW: A },
+      activities: { VIEW: A },
+      tasks: { VIEW: A },
+      calls: { VIEW: A },
+      campaigns: { VIEW: A },
+      products: { VIEW: A },
+      documents: { VIEW: A },
+      reports: { VIEW: A, VIEW_REPORTS: A },
+      dashboards: { VIEW: A },
+      smartviews: { VIEW: A },
+    },
+  },
 ];
