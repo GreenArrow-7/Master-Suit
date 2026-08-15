@@ -453,6 +453,7 @@ model Tenant {
   commissionSlabs            CommissionSlab[]
   commissionSlabBands        CommissionSlabBand[]
   communications             Communication[]
+  conversations              Conversation[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -922,6 +923,7 @@ model User {
   teams               UserTeam[]
   passwordResetTokens PasswordResetToken[]
   ownedLeads          Lead[]               @relation("LeadOwner")
+  ownedConversations  Conversation[]       @relation("ConversationOwner")
   ownedOpps           Opportunity[]        @relation("OpportunityOwner")
   ownedAccounts       Account[]            @relation("AccountOwner")
   ownedContacts       Contact[]            @relation("ContactOwner")
@@ -2780,6 +2782,7 @@ model Lead {
   opportunities  Opportunity[]
   documents      Document[]
   communications Communication[]
+  conversations  Conversation[]
   tickets        Ticket[]
   submissions    FormSubmission[]
 
@@ -3730,9 +3733,73 @@ model MessageTemplate {
 // COMMUNICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// A threaded exchange with one customer on one channel.
+///
+/// Communication already records every individual message and already links to
+/// lead/contact/account/opportunity, so this deliberately adds only what a row
+/// per message cannot express: which messages belong together, who owns the
+/// thread, and what the provider calls it.
+///
+/// `externalId` is whatever identifies the thread at the provider — the WhatsApp
+/// phone number, a Messenger PSID, an Instagram IGSID. It is scoped by tenant
+/// and channel, never global, so two workspaces messaging the same customer keep
+/// separate threads. That uniqueness is also the idempotency key: a repeated
+/// inbound webhook finds the existing thread instead of opening a second one.
+///
+/// There is no ConversationParticipant model. Every channel here is one business
+/// to one customer; a participant table would be a join with exactly two rows
+/// and no query asking for it. Add one when a channel actually carries groups.
+model Conversation {
+  id          String              @id @default(cuid())
+  tenantId    String
+  channel     ChannelType
+  /// Provider key from lib/integrations/registry.ts, e.g. `meta`.
+  providerKey String?
+  /// The provider's identifier for this thread. See the note above.
+  externalId  String
+  /// Display handle for an unlinked thread — a phone number or @username —
+  /// so an inbox row is readable before anyone attaches it to a customer.
+  displayName String?
+
+  /// CRM links, all optional: a thread from an unknown number is exactly the
+  /// case §29 describes, and it must be storable before anyone identifies it.
+  leadId        String?
+  contactId     String?
+  accountId     String?
+  opportunityId String?
+
+  /// Null means unassigned, which the inbox filters on.
+  ownerId       String?
+  status        ConversationStatus @default(OPEN)
+  lastMessageAt DateTime?
+  /// Denormalised so the conversation list does not count rows per thread.
+  unreadCount   Int                @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  owner          User?           @relation("ConversationOwner", fields: [ownerId], references: [id])
+  communications Communication[]
+
+  @@unique([tenantId, channel, externalId])
+  @@index([tenantId, status, lastMessageAt(sort: Desc)])
+  @@index([tenantId, ownerId, status])
+  @@index([tenantId, leadId])
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  ARCHIVED
+}
+
 model Communication {
   id                String                 @id @default(cuid())
   tenantId          String
+  conversationId    String?
   channel           ChannelType
   direction         CommunicationDirection
   status            CommunicationStatus    @default(QUEUED)
@@ -3769,11 +3836,15 @@ model Communication {
 
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt(sort: Desc)])
   @@index([tenantId, channel, status])
   @@index([tenantId, providerMessageId])
+  /// Backs the message pane's cursor pagination (§55): newest first, older on scroll.
+  @@index([tenantId, conversationId, createdAt(sort: Desc)])
 }
 
 model CommunicationProvider {
