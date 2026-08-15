@@ -15,7 +15,7 @@ import type { PrismaClient } from '@prisma/client';
 
 export interface CrmCtx {
   tenantId: string;
-  users: { id: string; role: string; name: string; branch: string | null; teamCode: string | null }[];
+  users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[];
   rnd: () => number;
   pick: <T>(xs: readonly T[]) => T;
   int: (min: number, max: number) => number;
@@ -920,82 +920,6 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     },
   });
 
-  // 18. Demo presenter spotlight ─────────────────────────────────────────────
-  // The documented demo login must land on populated "my" views, not empty
-  // queues: give demo@manathhomes.com owned leads, a live follow-up queue, a
-  // target mid-flight, calls made today and unread notifications.
-  const demoUser = ctx.users.find((u) => u.name === 'Demo Presenter');
-  if (demoUser) {
-    const demoLeads = assignedLeads.slice(45, 57);
-    await db.lead.updateMany({
-      where: { tenantId, id: { in: demoLeads.map((l) => l.id) } },
-      data: { ownerId: demoUser.id },
-    });
-
-    const demoFollowUps: ['OPEN' | 'COMPLETED', Date][] = [
-      ['OPEN', new Date(now - 3 * 864e5)], // overdue
-      ['OPEN', new Date(now - 864e5)], // overdue
-      ['OPEN', todayAt(16)],
-      ['OPEN', todayAt(19)],
-      ['OPEN', future(2, 5, 11)],
-      ['COMPLETED', new Date(now - 5 * 864e5)],
-    ];
-    await db.followUpTask.createMany({
-      data: demoFollowUps.map(([status, dueAt], i) => ({
-        tenantId,
-        leadId: demoLeads[i % demoLeads.length]!.id,
-        ownerId: demoUser.id,
-        title: FOLLOW_UP_TITLES[(i * 3) % FOLLOW_UP_TITLES.length]!,
-        dueAt,
-        priority: (['HIGH', 'MEDIUM', 'MEDIUM', 'URGENT', 'LOW', 'MEDIUM'] as const)[i]!,
-        status,
-        completedAt: status === 'COMPLETED' ? new Date(now - 4 * 864e5) : null,
-        outcome: status === 'COMPLETED' ? 'Done' : null,
-      })),
-    });
-
-    const demoTarget = await db.employeeTarget.create({
-      data: {
-        tenantId, userId: demoUser.id, metric: 'CALLS_CONNECTED', period: 'MONTHLY',
-        targetValue: 50, periodStart: monthStart(0), periodEnd: monthEnd(0),
-      },
-    });
-    const demoDom = Math.max(1, new Date().getDate());
-    await writeProgress(demoTarget.id, demoUser.id, monthStart(0), [...new Set([1, Math.ceil(demoDom / 2), demoDom])], 31);
-
-    // Calls placed today so the demo login's Calls metrics read non-zero.
-    await db.call.createMany({
-      data: [0, 1, 2, 3].map((i) => {
-        const lead = demoLeads[i]!;
-        const started = todayAt(9 + i * 2);
-        const scheduled = i === 3;
-        return {
-          tenantId,
-          leadId: lead.id,
-          callerId: demoUser.id,
-          direction: 'OUTBOUND' as const,
-          status: scheduled ? ('SCHEDULED' as const) : ('COMPLETED' as const),
-          outcome: scheduled ? null : (['CONNECTED', 'INTERESTED', 'VOICEMAIL'] as const)[i]!,
-          recipientNumber: lead.phone ?? `+97150000010${i}`,
-          startedAt: scheduled ? null : started,
-          endedAt: scheduled ? null : new Date(started.getTime() + (180 + i * 120) * 1000),
-          durationSecs: scheduled ? null : 180 + i * 120,
-          createdAt: started,
-        };
-      }),
-    });
-
-    await db.notification.createMany({
-      data: [
-        { tenantId, userId: demoUser.id, kind: 'LEAD_ASSIGNED', title: 'New lead assigned', body: `${demoLeads[0]!.fullName} was assigned to you.`, objectType: 'leads', recordId: demoLeads[0]!.id, priority: 'MEDIUM', readAt: null },
-        { tenantId, userId: demoUser.id, kind: 'TASK_OVERDUE', title: 'Follow-up overdue', body: `A follow-up for ${demoLeads[1]!.fullName} is past due.`, objectType: 'tasks', recordId: null, priority: 'HIGH', readAt: null },
-        { tenantId, userId: demoUser.id, kind: 'SLA_BREACHED', title: 'SLA breached', body: `First contact for ${demoLeads[2]!.fullName} breached its SLA.`, objectType: 'leads', recordId: demoLeads[2]!.id, priority: 'URGENT', readAt: null },
-        { tenantId, userId: demoUser.id, kind: 'TARGET_PROGRESS', title: 'Target update', body: 'You are at 62% of your calls-connected target for this month.', objectType: null, recordId: null, priority: 'MEDIUM', readAt: new Date() },
-      ],
-    });
-    console.log('  demo presenter: 12 leads · 6 follow-ups · 1 target · 4 calls · 4 notifications');
-  }
-
   console.log(`\n  ${accounts.length} accounts · ${contacts.length} contacts · 1 pipeline (${PIPELINE_STAGES.length} stages) · ${lossReasons.length} loss reasons`);
   console.log(`  ${oppRows.length} opportunities (8 open · 4 won · 2 lost)`);
   console.log(`  1 scorecard (${CRITERIA.length} criteria) · ${callRows.length} calls · ${spoken.length} transcripts · 8 analyses · 6 audits`);
@@ -1065,4 +989,142 @@ function makeTranscript(
   c(pick(['Thanks for the call.', 'Appreciate it — talk soon.', 'Thank you, goodbye.']));
   a(`Thank you, ${customer}. Speak soon.`);
   return t.join('\n');
+}
+
+// ── demo spotlight ───────────────────────────────────────────────────────────
+/**
+ * Populates the "my" views for every documented demo login: owned leads, a
+ * live follow-up queue (overdue/today/upcoming), a mid-flight target, calls
+ * made today and unread notifications. Runs on every seed — including top-up
+ * runs where the CRM chain above was skipped — and is idempotent per user:
+ * a demo identity that already owns leads is left alone. Each user gets a
+ * distinct slice of leads so the accounts do not fight over the same records.
+ */
+export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
+  const { tenantId } = ctx;
+  const demoUsers = ctx.users.filter((u) => u.email && /@manathhomes\.(com|ae)$/i.test(u.email));
+  if (demoUsers.length === 0) return;
+
+  const leads = await db.lead.findMany({
+    where: { tenantId, deletedAt: null, ownerId: { not: null } },
+    orderBy: { reference: 'asc' },
+    select: { id: true, fullName: true, phone: true },
+  });
+  if (leads.length < 60) return;
+
+  const now = Date.now();
+  const todayAt = (hour: number) => {
+    const d = new Date();
+    d.setHours(hour, ctx.int(0, 55), 0, 0);
+    return d;
+  };
+  const future = (minDays: number, maxDays: number, hour: number) => {
+    const d = new Date(now + ctx.int(minDays, maxDays) * 864e5);
+    d.setHours(hour, ctx.int(0, 55), 0, 0);
+    return d;
+  };
+  const monthStart = (offset: number) => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + offset, 1);
+  };
+  const monthEnd = (offset: number) => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + offset + 1, 0, 23, 59, 59);
+  };
+  const dayKey = (base: Date, day: number) =>
+    new Date(base.getFullYear(), base.getMonth(), day, 12).toISOString().slice(0, 10);
+
+  let seeded = 0;
+  for (let i = 0; i < demoUsers.length; i++) {
+    const user = demoUsers[i]!;
+    const alreadyOwns = await db.lead.count({ where: { tenantId, ownerId: user.id } });
+    if (alreadyOwns > 0) continue;
+
+    const slice = leads.slice(45 + i * 12, 57 + i * 12);
+    if (slice.length < 6) continue;
+    await db.lead.updateMany({
+      where: { tenantId, id: { in: slice.map((l) => l.id) } },
+      data: { ownerId: user.id },
+    });
+
+    const followUps: ['OPEN' | 'COMPLETED', Date][] = [
+      ['OPEN', new Date(now - 3 * 864e5)],
+      ['OPEN', new Date(now - 864e5)],
+      ['OPEN', todayAt(16)],
+      ['OPEN', todayAt(19)],
+      ['OPEN', future(2, 5, 11)],
+      ['COMPLETED', new Date(now - 5 * 864e5)],
+    ];
+    await db.followUpTask.createMany({
+      data: followUps.map(([status, dueAt], j) => ({
+        tenantId,
+        leadId: slice[j % slice.length]!.id,
+        ownerId: user.id,
+        title: FOLLOW_UP_TITLES[(j * 3) % FOLLOW_UP_TITLES.length]!,
+        dueAt,
+        priority: (['HIGH', 'MEDIUM', 'MEDIUM', 'URGENT', 'LOW', 'MEDIUM'] as const)[j]!,
+        status,
+        completedAt: status === 'COMPLETED' ? new Date(now - 4 * 864e5) : null,
+        outcome: status === 'COMPLETED' ? 'Done' : null,
+      })),
+    });
+
+    const target = await db.employeeTarget.create({
+      data: {
+        tenantId,
+        userId: user.id,
+        metric: 'CALLS_CONNECTED',
+        period: 'MONTHLY',
+        targetValue: 50,
+        periodStart: monthStart(0),
+        periodEnd: monthEnd(0),
+      },
+    });
+    const dom = Math.max(1, new Date().getDate());
+    const days = [...new Set([1, Math.ceil(dom / 2), dom])];
+    const per = Math.floor(31 / days.length);
+    await db.targetProgress.createMany({
+      data: days.map((day, j) => ({
+        tenantId,
+        targetId: target.id,
+        userId: user.id,
+        dateKey: dayKey(monthStart(0), day),
+        achieved: j === 0 ? 31 - per * (days.length - 1) : per,
+      })),
+    });
+
+    await db.call.createMany({
+      data: [0, 1, 2, 3].map((j) => {
+        const lead = slice[j]!;
+        const started = todayAt(9 + j * 2);
+        const scheduled = j === 3;
+        return {
+          tenantId,
+          leadId: lead.id,
+          callerId: user.id,
+          direction: 'OUTBOUND' as const,
+          status: scheduled ? ('SCHEDULED' as const) : ('COMPLETED' as const),
+          outcome: scheduled ? null : (['CONNECTED', 'INTERESTED', 'VOICEMAIL'] as const)[j]!,
+          recipientNumber: lead.phone ?? `+9715000${i}010${j}`,
+          startedAt: scheduled ? null : started,
+          endedAt: scheduled ? null : new Date(started.getTime() + (180 + j * 120) * 1000),
+          durationSecs: scheduled ? null : 180 + j * 120,
+          createdAt: started,
+        };
+      }),
+    });
+
+    await db.notification.createMany({
+      data: [
+        { tenantId, userId: user.id, kind: 'LEAD_ASSIGNED', title: 'New lead assigned', body: `${slice[0]!.fullName} was assigned to you.`, objectType: 'leads', recordId: slice[0]!.id, priority: 'MEDIUM', readAt: null },
+        { tenantId, userId: user.id, kind: 'TASK_OVERDUE', title: 'Follow-up overdue', body: `A follow-up for ${slice[1]!.fullName} is past due.`, objectType: 'tasks', recordId: null, priority: 'HIGH', readAt: null },
+        { tenantId, userId: user.id, kind: 'SLA_BREACHED', title: 'SLA breached', body: `First contact for ${slice[2]!.fullName} breached its SLA.`, objectType: 'leads', recordId: slice[2]!.id, priority: 'URGENT', readAt: null },
+        { tenantId, userId: user.id, kind: 'TARGET_PROGRESS', title: 'Target update', body: 'You are at 62% of your calls-connected target for this month.', objectType: null, recordId: null, priority: 'MEDIUM', readAt: new Date() },
+      ],
+    });
+    seeded++;
+  }
+  if (seeded > 0) {
+    console.log(`  demo spotlight: ${seeded} demo login(s) given owned leads, follow-ups, a target, calls and notifications`);
+  }
 }

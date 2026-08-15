@@ -637,6 +637,14 @@ body {
   .lf-shell-actions .lf-topbar-optional {
     display: none;
   }
+  /* The remaining actions (Notifications · Log out · + Create) run a few px
+     past a 360px viewport; wrapping beats horizontal scroll. */
+  .lf-shell-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
+    min-width: 0;
+  }
   .lf-page-main {
     padding: 20px 16px 32px;
   }

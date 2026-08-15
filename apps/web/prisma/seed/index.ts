@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { ROLES } from './roles';
-import { seedCrm } from './crm';
+import { seedCrm, seedDemoSpotlight } from './crm';
 import { hash } from '@node-rs/argon2';
 
 /**
@@ -699,9 +699,13 @@ async function main() {
     // Last on purpose: picks up the next employee code (MH-032) without
     // renumbering anyone, and demos always sign in with a memorable address.
     ['Demo', 'Presenter', 'org_admin', null, null, 'demo@manathhomes.com'],
+    // The .ae addresses are the ones people type from memory in front of a
+    // customer — both work, both are ordinary workspace admins (no MFA).
+    ['Manath', 'Demo', 'org_admin', null, null, 'demo@manathhomes.ae'],
+    ['Manath', 'Admin', 'org_admin', null, null, 'admin@manathhomes.ae'],
   ];
 
-  const users: { id: string; role: string; name: string; branch: string | null; teamCode: string | null }[] = [];
+  const users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[] = [];
   let n = 0;
   for (const [first, last, roleKey, branchCode, regionCode, fixedEmail] of userSpecs) {
     const addr = fixedEmail ?? (roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0));
@@ -788,7 +792,7 @@ async function main() {
         create: { tenantId, userId: u.id, teamId: teams.get(teamCode)!, isManager: roleKey.includes('manager') },
       });
     }
-    users.push({ id: u.id, role: roleKey, name: `${first} ${last}`, branch: branchCode, teamCode });
+    users.push({ id: u.id, role: roleKey, name: `${first} ${last}`, email: addr, branch: branchCode, teamCode });
   }
 
   // two on leave, one suspended — exercises distribution eligibility and lockout
@@ -1066,6 +1070,9 @@ async function main() {
   // Runs even when the lead guard above skipped, so a top-up over an existing
   // database still gains the chain; crm.ts re-reads leads and guards itself.
   await seedCrm(db, { tenantId, users, rnd, pick, int, chance, businessDate });
+  // Outside seedCrm's accounts-guard: a top-up run that adds a new demo login
+  // must still equip it with owned records.
+  await seedDemoSpotlight(db, { tenantId, users, rnd, pick, int, chance, businessDate });
 
   // ── second workspace ──────────────────────────────────────────────────────
   // Leadersfort exists so cross-workspace isolation is demonstrable in the UI,
@@ -1218,6 +1225,8 @@ async function main() {
     console.log(` ${key.padEnd(16)} ${addr}`);
   }
   console.log(` ${'demo'.padEnd(16)} demo@manathhomes.com`);
+  console.log(` ${'demo (.ae)'.padEnd(16)} demo@manathhomes.ae`);
+  console.log(` ${'admin (.ae)'.padEnd(16)} admin@manathhomes.ae`);
   console.log(` ${SECOND_WORKSPACE.slug.padEnd(16)} ${SECOND_WORKSPACE.adminEmail}`);
   console.log('─────────────────────────────────────────────\n');
 }
