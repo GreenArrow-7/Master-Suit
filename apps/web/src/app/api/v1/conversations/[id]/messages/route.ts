@@ -5,6 +5,7 @@ import { Forbidden, NotFound, Conflict } from '@/lib/errors';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getWhatsAppProvider, serviceWindowOpen } from '@/lib/integrations/whatsapp';
+import { SENDABLE } from '@/services/meta/templates';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -110,7 +111,22 @@ async function windowState(tenantId: string, conversationId: string) {
   };
 }
 
-const sendBody = z.object({ body: z.string().trim().min(1).max(4096) }).strict();
+/**
+ * Either a free-form reply or an approved template — never both, and the choice
+ * is not the client's to make freely: free-form is legal only inside the service
+ * window, a template only outside it is *required* but it is always permitted.
+ */
+const sendBody = z
+  .object({
+    body: z.string().trim().min(1).max(4096).optional(),
+    templateKey: z.string().trim().min(1).max(120).optional(),
+    /** Values for the template's {{1}}, {{2}} placeholders, in order. */
+    variables: z.array(z.string().max(500)).max(20).default([]),
+  })
+  .strict()
+  .refine((v) => Boolean(v.body) !== Boolean(v.templateKey), {
+    message: 'Send either a message or a template, not both.',
+  });
 
 export const POST = route(
   { module: 'communications', action: 'CREATE', params, body: sendBody, auditEvent: 'MESSAGE_SENT' },
@@ -125,10 +141,11 @@ export const POST = route(
      * §32 is explicit that free-form outbound is not unrestricted. Meta rejects
      * a service message sent outside the window, so without this the agent sees
      * a message in the thread that the customer never received — which is worse
-     * than being told they cannot send it.
+     * than being told they cannot send it. A template is exempt: that is
+     * precisely what templates are for, and it is how a lapsed window reopens.
      */
     const state = await windowState(ctx.tenantId, conversation.id);
-    if (!state.open) throw Conflict(state.reason ?? 'The service window is closed.');
+    if (!state.open && !body.templateKey) throw Conflict(state.reason ?? 'The service window is closed.');
 
     const credentials = await connectionCredentials(ctx.tenantId, 'meta');
     if (!credentials?.accessToken || !credentials.phoneNumberId) {
@@ -136,7 +153,53 @@ export const POST = route(
     }
 
     const provider = getWhatsAppProvider('meta', credentials);
-    const result = await provider.sendText(conversation.externalId, body.body);
+
+    let result;
+    let sentText: string;
+    if (body.templateKey) {
+      /**
+       * The template is re-read here rather than trusted from the request.
+       *
+       * A client that could name a template and its body would be able to send
+       * unreviewed content through an approved name, which is the whole thing
+       * template review exists to prevent. Approval state is checked at send
+       * time too: a template approved when the page loaded can be paused by
+       * Meta minutes later.
+       */
+      const template = await prisma.messageTemplate.findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          key: body.templateKey,
+          channel: 'WHATSAPP',
+          deletedAt: null,
+        },
+        select: { name: true, body: true, language: true, approvalState: true, isActive: true },
+      });
+      if (!template) throw NotFound('Template');
+      if (!template.isActive || template.approvalState !== SENDABLE) {
+        throw Conflict(`That template is ${(template.approvalState ?? 'unavailable').toLowerCase()} and cannot be sent.`);
+      }
+
+      result = await provider.sendTemplate({
+        to: conversation.externalId,
+        template: {
+          name: template.name,
+          language: template.language,
+          components: body.variables.length
+            ? [{ type: 'body', parameters: body.variables.map((text) => ({ type: 'text', text })) }]
+            : undefined,
+        },
+      });
+      // Stored with the variables already substituted, so the thread shows what
+      // the customer actually received rather than a row of placeholders.
+      sentText = template.body.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (_m, token) => {
+        const index = Number(token);
+        return Number.isInteger(index) && index >= 1 ? (body.variables[index - 1] ?? _m) : _m;
+      });
+    } else {
+      result = await provider.sendText(conversation.externalId, body.body!);
+      sentText = body.body!;
+    }
 
     // Written whether or not the send succeeded, with the provider's own reason:
     // a failed message the agent can see and retry beats one that vanished.
@@ -150,7 +213,7 @@ export const POST = route(
         leadId: conversation.leadId,
         fromAddress: String(credentials.phoneNumberId),
         toAddress: conversation.externalId,
-        body: body.body,
+        body: sentText,
         providerKey: 'meta',
         providerMessageId: result.externalMessageId || null,
         errorCode: result.errorCode ?? null,
