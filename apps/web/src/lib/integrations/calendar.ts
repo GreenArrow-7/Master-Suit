@@ -1,5 +1,12 @@
 import { logger } from '../logger';
 
+/**
+ * Hard ceiling on one provider round-trip. A hung provider must fail the one
+ * feature that needed it, not hold a connection (and on the request path, a
+ * request) open indefinitely — graceful degradation starts with a deadline.
+ */
+const PROVIDER_TIMEOUT_MS = 30_000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Calendar provider abstraction
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,6 +104,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
     };
 
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1', {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       method: 'POST',
       headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -126,6 +134,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
     if (event.location !== undefined) body.location = event.location;
 
     const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       method: 'PATCH',
       headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -138,6 +147,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
 
   async cancelEvent(externalId: string): Promise<void> {
     const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       method: 'DELETE',
       headers: { Authorization: `Bearer ${this.accessToken}` },
     });
@@ -146,6 +156,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
 
   async getEvent(externalId: string): Promise<CalendarEventResult | null> {
     const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${externalId}`, {
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${this.accessToken}` },
     });
     if (res.status === 404) return null;

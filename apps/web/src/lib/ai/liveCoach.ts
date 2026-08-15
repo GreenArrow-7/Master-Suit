@@ -2,6 +2,13 @@ import { logger } from '../logger';
 import { redact } from './redact';
 
 /**
+ * Hard ceiling on one provider round-trip. A hung provider must fail the one
+ * feature that needed it, not hold a connection (and on the request path, a
+ * request) open indefinitely — graceful degradation starts with a deadline.
+ */
+const AI_TIMEOUT_MS = 30_000;
+
+/**
  * Live, during-call coaching.
  *
  * With GEMINI_API_KEY configured, `coachTick` sends the rolling transcript
@@ -82,6 +89,7 @@ export async function coachTick(windowText: string): Promise<CoachHint[]> {
 
   try {
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
