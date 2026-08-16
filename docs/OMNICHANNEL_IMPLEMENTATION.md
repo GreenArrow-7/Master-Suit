@@ -66,6 +66,8 @@ Provider → webhooks/meta/[key] → verify signature → normalise → WebhookE
 | 4 — Conversation APIs + Inbox | `738a371` `e802412` | List/thread/send APIs, 24h service window enforced server-side, 3-column inbox |
 | 5 — Templates | `087e327` | Meta template sync, approval state verbatim, template send re-read server-side |
 | CI | `1a012e2` (on `main`), `c66bbfd`, `efdcedf` | Format gate on main; E2E password locator; mojibake |
+| **Phase 2A — Meta routing model + ingestion** | `8920781` | `MetaLeadFormRouting` (RLS forced), ingestion applies stage/priority/source/owner, 6 routing tests |
+| **Phase 2B — Meta administration UI** | `a0e91c7` | `admin/integrations/meta`: connection, assets, capabilities, lead forms, routing drawer, webhook health, advanced |
 | **UI 1 — Channel control centre** | `a586491` | `Settings → Integrations` channel overview: 4 cards, derived state, LIVE/SIMULATED/NOT CONFIGURED, setup checklist |
 
 ### Decisions worth not relitigating
@@ -205,7 +207,28 @@ Everything the overview needs exists — no new tables required:
 
 ## 7. Next recommended task
 
-**Phase 2 — Meta configuration.** Phase 1 is closed: built, QA'd at both breakpoints, both
+**Phase 3 — WhatsApp administration.** Phases 1 and 2 are closed.
+
+Phase 2 delivered, both halves:
+- `2A` (`8920781`) — `MetaLeadFormRouting`, migration `20260816120000_meta_lead_form_routing`,
+  RLS forced, ingestion honours stage/priority/source/user/team with fallthrough to the
+  existing DistributionRule engine. No new assignment-strategy enum.
+- `2B` (`a0e91c7`) — route `admin/integrations/meta`, API `POST /api/v1/integrations/meta`
+  (`sync` | `routing` | `disconnect`), `services/meta/config.ts`,
+  `components/workspace/MetaConfiguration.tsx`, `.lf-meta*` / `.lf-drawer*` CSS.
+  QA'd on the running app: sync returned 3 demo forms, a rule saved and survived a full
+  reload, 390px has 0 overflow with the drawer full-width and Save reachable.
+
+**Defect the tenant guard caught during Phase 2B QA, now fixed:** two writes used a bare
+`id` filter and `lib/db.ts` refused them ("issued without a tenantId filter"). Both use the
+tenant-scoped composite key now. Worth remembering: that guard is load-bearing, and any new
+write addressed by `id` alone will fail the same way.
+
+**Phase 2 gaps, honestly:** there is no OAuth connect flow — the connection is created
+outside the UI and the page shows/manages it. `Reconnect` is not built (Disconnect is).
+Meta E2E specs are not written. Both are the first items for whoever continues Meta.
+
+Phase 1 was closed earlier: built, QA'd at both breakpoints, both
 findings fixed.
 
 Visual QA is unblocked and this is how (nobody had this working before 2026-08-16):
