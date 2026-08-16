@@ -4364,3 +4364,102 @@ a:hover {
     grid-template-columns: auto minmax(0, 1fr);
   }
 }
+
+/* Social Leads — the enquiry queue. */
+.lf-social__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.lf-social__stat {
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  background: var(--lf-surface);
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+.lf-social__statvalue {
+  font-size: var(--lf-text-xl);
+  font-weight: 600;
+}
+.lf-social__controls {
+  display: grid;
+  gap: 6px;
+}
+.lf-social__list {
+  display: grid;
+  gap: 6px;
+}
+.lf-social__row {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--lf-line);
+  border-radius: 11px;
+  background: var(--lf-surface);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+/* A high-intent enquiry earns a keyline; nothing else competes for attention. */
+.lf-social__row[data-intent='HIGH'] {
+  box-shadow: inset 3px 0 0 var(--lf-wine-500);
+}
+.lf-social__row[data-intent='MEDIUM'] {
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b08b4f);
+}
+.lf-social__who {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  grid-column: 1;
+}
+.lf-social__name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.lf-social__comment {
+  margin: 0;
+  grid-column: 1;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.lf-social__meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  align-items: center;
+}
+.lf-social__row > .lf-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+}
+.lf-social__intent {
+  font-weight: 600;
+  font-size: 12px;
+}
+.lf-social__intent[data-intent='HIGH'] {
+  color: var(--lf-wine-600);
+}
+.lf-social__quote {
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .lf-social__row {
+    grid-template-columns: 1fr;
+  }
+  .lf-social__row > .lf-btn {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}

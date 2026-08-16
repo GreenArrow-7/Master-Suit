@@ -202,6 +202,7 @@ export default function WorkspaceSidebar({
             icon: 'activity',
             permission: 'communications',
           },
+          { label: 'Social Leads', href: `/${slug}/sales/social-leads`, icon: 'campaign', permission: 'leads' },
           {
             label: 'Communications',
             href: `/${slug}/sales/communications`,
