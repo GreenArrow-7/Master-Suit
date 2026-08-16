@@ -459,6 +459,7 @@ model Tenant {
   conversations              Conversation[]
   metaLeadFormRoutings       MetaLeadFormRouting[]
   socialComments             SocialComment[]
+  socialAssignments          SocialAssignmentHistory[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -3752,6 +3753,50 @@ model MessageTemplate {
 // COMMUNICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Why a social enquiry changed hands.
+///
+/// Modelled on LeadAssignmentHistory but separate, because that one is
+/// Lead-shaped: it has a non-null `leadId` foreign key and a social enquiry has
+/// no Lead until somebody converts it. Forcing one in would mean inventing the
+/// very CRM record the two-layer design exists to withhold.
+model SocialAssignmentHistory {
+  id              String @id @default(cuid())
+  tenantId        String
+  socialCommentId String
+
+  fromOwnerId String?
+  toOwnerId   String?
+  teamId      String?
+  /// Which mechanism chose, so a retry can tell a human's decision from a rule's.
+  source      SocialAssignmentSource
+  method      DistributionMethod?
+  ruleId      String?
+  /// Human-readable, and the place a failure explains itself: "No eligible
+  /// members in Dubai Sales" is actionable where a null owner is not.
+  reason      String?
+  /// Null when the system assigned it.
+  assignedById String?
+
+  createdAt DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComment SocialComment @relation(fields: [socialCommentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, socialCommentId, createdAt])
+  @@index([tenantId, toOwnerId, createdAt])
+}
+
+enum SocialAssignmentSource {
+  /// The commenter already had a CRM owner; an established relationship is kept.
+  INHERITED_CUSTOMER_OWNER
+  EXPLICIT_USER
+  TEAM_DISTRIBUTION
+  GLOBAL_DISTRIBUTION
+  /// A person chose. This is the one a worker retry must never overwrite.
+  MANUAL
+  SYSTEM
+}
+
 /// A comment on a Facebook or Instagram post, captured as a possible enquiry.
 ///
 /// Layer 1 of two, and the separation is the whole point: a post attracts
@@ -3810,6 +3855,13 @@ model SocialComment {
   providerReplyId String?
   convertedAt     DateTime?
 
+  /// How the current owner was chosen. MANUAL is sticky: reprocessing must not
+  /// undo a manager's deliberate reassignment.
+  assignmentSource SocialAssignmentSource?
+  assignedAt       DateTime?
+  /// Why nobody owns it, when nobody does — surfaced in the unassigned queue.
+  assignmentNote   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3817,6 +3869,7 @@ model SocialComment {
   owner      User?    @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
   linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  assignments SocialAssignmentHistory[]
 
   @@unique([tenantId, provider, providerCommentId])
   /// The queue: newest first, filtered by status and intent.

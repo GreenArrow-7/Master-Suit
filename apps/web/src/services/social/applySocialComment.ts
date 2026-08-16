@@ -114,13 +114,26 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
    * who already knows them.
    */
   let ownerId: string | null = null;
-  if (ACTIONABLE.has(qualification.intent)) {
+  let source: 'INHERITED_CUSTOMER_OWNER' | 'GLOBAL_DISTRIBUTION' | null = null;
+  /**
+   * Why nobody owns it, when nobody does.
+   *
+   * A null owner with no explanation is the thing that makes an unassigned queue
+   * useless — a manager cannot tell "no rule configured" from "the team is
+   * empty" from "distribution errored", and those need different responses.
+   */
+  let note: string | null = null;
+
+  if (!ACTIONABLE.has(qualification.intent)) {
+    note = 'Not a sales enquiry, so it was not distributed.';
+  } else {
     if (linkedLeadId) {
       const lead = await prisma.lead.findFirst({
         where: { tenantId, id: linkedLeadId },
         select: { ownerId: true },
       });
       ownerId = lead?.ownerId ?? null;
+      if (ownerId) source = 'INHERITED_CUSTOMER_OWNER';
     }
     /**
      * Nobody owns them yet, so fall through to the workspace's distribution
@@ -132,10 +145,13 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
      * unassigned queue, which is a legitimate way to run the desk, not a failure.
      */
     if (!ownerId) {
-      ownerId = await nextDistributionOwner(tenantId).catch((err) => {
+      const distributed = await nextDistributionOwner(tenantId).catch((err) => {
         logger.warn({ err: (err as Error).message, tenantId }, 'social comment distribution failed');
-        return null;
+        return { userId: null, note: 'Distribution failed; left for manual assignment.' };
       });
+      ownerId = distributed.userId;
+      if (ownerId) source = 'GLOBAL_DISTRIBUTION';
+      else note = distributed.note;
     }
   }
 
@@ -161,10 +177,33 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
       intentReasons: qualification.reasons,
       status: qualification.intent === 'SPAM' ? 'SPAM' : ownerId ? 'ASSIGNED' : 'NEW',
       ownerId,
+      assignmentSource: source,
+      assignedAt: ownerId ? new Date() : null,
+      assignmentNote: note,
       linkedLeadId,
     },
     select: { id: true, intent: true, status: true },
   });
+
+  /**
+   * The assignment trail. Written even when nobody was assigned, because
+   * "we tried and there was no eligible user" is the fact a manager needs, and
+   * time-to-assignment analytics needs a row to measure from.
+   */
+  if (source || note) {
+    await prisma.socialAssignmentHistory
+      .create({
+        data: {
+          tenantId,
+          socialCommentId: created.id,
+          toOwnerId: ownerId,
+          source: source ?? 'SYSTEM',
+          method: source === 'GLOBAL_DISTRIBUTION' ? 'ROUND_ROBIN' : null,
+          reason: note ?? (source === 'INHERITED_CUSTOMER_OWNER' ? 'Existing customer owner' : 'Distribution rule'),
+        },
+      })
+      .catch((err) => logger.warn({ err: (err as Error).message, tenantId }, 'social assignment history failed'));
+  }
 
   /**
    * Notification, best-effort by design (§21).

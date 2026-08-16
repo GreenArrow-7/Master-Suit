@@ -48,30 +48,36 @@ export async function assignLead(tenantId: string, leadId: string) {
  * force social enquiries into a lead-shaped transaction. Two short readers beat
  * one wrong one; revisit if a third caller appears.
  */
-export async function nextDistributionOwner(tenantId: string): Promise<string | null> {
+export async function nextDistributionOwner(tenantId: string): Promise<{ userId: string | null; note: string | null }> {
   const rule = await prisma.distributionRule.findFirst({
     where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
     orderBy: { position: 'asc' },
   });
-  if (!rule) return null;
+  if (!rule) return { userId: null, note: 'No matching distribution rule.' };
 
   const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
-  if (pool.length === 0) return null;
+  if (pool.length === 0) return { userId: null, note: `No members in ${rule.name}.` };
 
   const lastIndex = rule.lastAssignedUserId ? pool.indexOf(rule.lastAssignedUserId) : -1;
-  const nextUserId = pool[(lastIndex + 1) % pool.length]!;
 
-  // Only hand out someone who can actually work it — a rotation that assigns to
-  // a suspended account produces enquiries nobody sees.
-  const usable = await prisma.user.findFirst({
-    where: { tenantId, id: nextUserId, status: 'ACTIVE', deletedAt: null },
-    select: { id: true },
-  });
-  if (!usable) return null;
+  /**
+   * Walk the pool until someone can actually work it, rather than giving up on
+   * the first inactive account. A rotation that stops at the first suspended
+   * user leaves every later enquiry unassigned until somebody edits the rule.
+   */
+  for (let step = 1; step <= pool.length; step += 1) {
+    const candidate = pool[(lastIndex + step) % pool.length]!;
+    const usable = await prisma.user.findFirst({
+      where: { tenantId, id: candidate, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!usable) continue;
+    await prisma.distributionRule.update({
+      where: { tenantId, id: rule.id },
+      data: { lastAssignedUserId: candidate },
+    });
+    return { userId: candidate, note: null };
+  }
 
-  await prisma.distributionRule.update({
-    where: { tenantId, id: rule.id },
-    data: { lastAssignedUserId: nextUserId },
-  });
-  return nextUserId;
+  return { userId: null, note: `No eligible members in ${rule.name}.` };
 }
