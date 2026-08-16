@@ -6,6 +6,8 @@ import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony'
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
+import ChannelOverview from '@/components/workspace/ChannelOverview';
+import { channelCards } from '@/services/integrations/channelState';
 
 export const metadata = { title: 'Integrations' };
 
@@ -15,10 +17,11 @@ export const metadata = { title: 'Integrations' };
  * while the connections that actually gate Meet, WhatsApp, transcription and
  * every outbound call lived in `IntegrationConnection` with no UI at all.
  */
-export default async function IntegrationsPage() {
+export default async function IntegrationsPage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
+  const { workspaceSlug } = await params;
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
-  const [connections, chosen] = await Promise.all([
+  const [connections, chosen, channels] = await Promise.all([
     prisma.integrationConnection.findMany({
       where: { tenantId: ctx.tenantId },
       select: {
@@ -31,6 +34,7 @@ export default async function IntegrationsPage() {
       },
     }),
     defaultVendor(ctx.tenantId),
+    channelCards(ctx.tenantId, workspaceSlug),
   ]);
 
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
@@ -39,9 +43,7 @@ export default async function IntegrationsPage() {
   const providers: ProviderCard[] = PROVIDERS.map((spec) => {
     const conn = byProvider.get(spec.key);
     const token =
-      conn && UNSIGNED_VENDORS.includes(spec.key as never)
-        ? `?token=${callbackSecrets(conn.webhookKey).urlToken}`
-        : '';
+      conn && UNSIGNED_VENDORS.includes(spec.key as never) ? `?token=${callbackSecrets(conn.webhookKey).urlToken}` : '';
 
     return {
       key: spec.key,
@@ -70,6 +72,16 @@ export default async function IntegrationsPage() {
           Credentials are encrypted before they are stored and are never shown again.
         </p>
       </header>
+
+      <ChannelOverview cards={channels} />
+
+      {/* The vendor board stays beneath the channel view: it answers a different
+          and more technical question — which credential goes where — and moving
+          it would strand the telephony, calendar and transcription providers
+          that have no channel card. */}
+      <h2 className="lf-channels__title" style={{ marginTop: 'var(--lf-space-5)' }}>
+        Providers
+      </h2>
 
       <IntegrationBoard
         providers={providers}

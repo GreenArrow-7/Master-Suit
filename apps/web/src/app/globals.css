@@ -3897,3 +3897,201 @@ a:hover {
 .lf-panel-duo .lf-metric-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Integrations — the channel overview (§2, §7, §68)
+
+   Cards, not a table: an administrator scanning "is WhatsApp working" wants four
+   objects with a state each, and a table makes them read cells to find out.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.lf-channels__intro {
+  display: grid;
+  gap: 2px;
+}
+
+.lf-channels__title {
+  font-size: var(--lf-text-lg);
+  font-weight: 600;
+  margin: 0;
+}
+
+.lf-channels__blurb {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
+}
+
+.lf-setup {
+  border: 1px solid var(--lf-line);
+  border-radius: 12px;
+  background: var(--lf-surface);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.lf-setup__count {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+
+.lf-setup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.lf-setup__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--lf-text-sm);
+}
+
+.lf-setup__item[data-ready='false'] {
+  color: var(--lf-ink-3);
+}
+
+.lf-setup__state {
+  font-size: 11px;
+  color: var(--lf-ink-3);
+}
+
+.lf-channels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.lf-channel {
+  border: 1px solid var(--lf-line);
+  border-radius: 12px;
+  background: var(--lf-surface);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+/* A live channel earns a keyline; a simulated one must not look identical to it. */
+.lf-channel[data-mode='LIVE'] {
+  box-shadow: inset 3px 0 0 var(--lf-viridian);
+}
+
+.lf-channel[data-mode='SIMULATED'] {
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b08b4f);
+}
+
+.lf-channel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lf-channel__name {
+  margin: 0;
+  font-size: var(--lf-text-base);
+  font-weight: 600;
+}
+
+/* The mode chip carries a word, never colour alone — §73. */
+.lf-channel__mode {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--lf-line);
+  white-space: nowrap;
+}
+
+.lf-channel__mode[data-mode='LIVE'] {
+  color: var(--lf-viridian);
+  border-color: var(--lf-viridian);
+}
+
+.lf-channel__mode[data-mode='SIMULATED'] {
+  color: #8a6a2f;
+  border-color: #c8a86a;
+  background: #fdf7ec;
+}
+
+.lf-channel__mode[data-mode='NOT_CONFIGURED'] {
+  color: var(--lf-ink-3);
+}
+
+.lf-channel__blurb {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+
+.lf-channel__mode-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lf-ink-3);
+}
+
+.lf-channel__facts {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.lf-channel__fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.lf-channel__fact dt {
+  color: var(--lf-ink-3);
+}
+
+.lf-channel__fact dd {
+  margin: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lf-channel__attention {
+  margin: 0;
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #fdf7ec;
+  border: 1px solid #e6d3ae;
+  color: #7a5c22;
+}
+
+.lf-channel__manage {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .lf-channels {
+    grid-template-columns: 1fr;
+  }
+
+  .lf-channel__fact {
+    /* Long values (a phone number id, an account name) must wrap rather than
+       push the card wider than the viewport. */
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .lf-channel__fact dd {
+    white-space: normal;
+  }
+}
