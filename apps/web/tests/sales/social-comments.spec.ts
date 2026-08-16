@@ -147,3 +147,81 @@ describe('comment qualification', () => {
     expect(qualifyComment('Interested, my number is +971 50 123 4567').reasons).toContain('left contact details');
   });
 });
+
+/**
+ * The checkpoint that matters: an event off the wire becomes an actionable
+ * enquiry, and does NOT become a CRM Lead.
+ */
+describe('webhook envelope → social comment event', () => {
+  const igEnvelope = (text: string, id = 'c-1') => ({
+    object: 'instagram',
+    entry: [
+      {
+        id: 'ig-account-1',
+        changes: [
+          {
+            field: 'comments',
+            value: {
+              id,
+              text,
+              timestamp: 1786900000,
+              from: { id: 'ig-scoped-987', username: 'priya.k' },
+              media: { id: 'media-marina-1', media_product_type: 'REELS' },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  it('emits SOCIAL_COMMENT_RECEIVED from the shared normaliser', async () => {
+    const { normalizeMetaWebhook } = await import('@/lib/integrations/meta/events');
+    const [event] = normalizeMetaWebhook(igEnvelope('Can you send me the price and payment plan?'));
+    expect(event).toMatchObject({
+      kind: 'SOCIAL_COMMENT_RECEIVED',
+      externalId: 'comment:instagram:c-1',
+      assetId: 'media-marina-1',
+    });
+    expect(event!.comment).toMatchObject({ provider: 'instagram', authorName: 'priya.k' });
+  });
+
+  /** Provider is in the key: the two id spaces are separate. */
+  it('keys the event so a redelivery deduplicates and the two providers cannot collide', async () => {
+    const { normalizeMetaWebhook } = await import('@/lib/integrations/meta/events');
+    const once = normalizeMetaWebhook(igEnvelope('Price?'))[0]!.externalId;
+    const twice = normalizeMetaWebhook(igEnvelope('Price?'))[0]!.externalId;
+    expect(once).toBe(twice);
+    expect(once).toContain('instagram');
+  });
+
+  it('still emits Lead Ads and WhatsApp events alongside comments', async () => {
+    const { normalizeMetaWebhook } = await import('@/lib/integrations/meta/events');
+    const mixed = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page-1',
+          changes: [
+            { field: 'leadgen', value: { leadgen_id: '55', form_id: 'f1', created_time: 1786900000 } },
+            {
+              field: 'feed',
+              value: {
+                item: 'comment',
+                verb: 'add',
+                comment_id: 'fb-c-1',
+                post_id: 'p-1',
+                from: { id: 'fb-1', name: 'Ahmed Rahman' },
+                message: 'Interested in 2BR. Please contact me.',
+                created_time: 1786900000,
+              },
+            },
+            { field: 'feed', value: { item: 'like', post_id: 'p-1' } },
+          ],
+        },
+      ],
+    };
+    const kinds = normalizeMetaWebhook(mixed).map((e) => e.kind);
+    // The like is dropped; the lead and the comment both survive.
+    expect(kinds).toEqual(['LEAD_CREATED', 'SOCIAL_COMMENT_RECEIVED']);
+  });
+});

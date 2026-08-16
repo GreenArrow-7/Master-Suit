@@ -16,6 +16,7 @@ import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { findDuplicates } from '@/services/leads/findDuplicates';
+import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
@@ -34,6 +35,8 @@ export async function applyMetaEvent({ tenantId, connectionId, event }: ApplyMet
   switch (event.kind) {
     case 'LEAD_CREATED':
       return applyLeadgen(tenantId, connectionId, event);
+    case 'SOCIAL_COMMENT_RECEIVED':
+      return applySocialComment({ tenantId, connectionId, event });
     case 'MESSAGE_RECEIVED':
       return applyInboundMessage(tenantId, event);
     case 'MESSAGE_SENT':
