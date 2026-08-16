@@ -205,7 +205,14 @@ Everything the overview needs exists — no new tables required:
 
 ## 7. Next recommended task
 
-**Fix the E2E owner sign-in (Known Issue 1), then build Phase 2 (Meta configuration).**
+**Phase 2 — Meta configuration.** Phase 1 is closed: built, QA'd at both breakpoints, both
+findings fixed.
+
+Visual QA is unblocked and this is how (nobody had this working before 2026-08-16):
+Playwright cannot inject cookies, but it *can* drive the real login form — set `#email` and
+`#password` through the native value setter, `form.requestSubmit()`, then navigate. Log in as
+`admin@manathhomes.ae` with `DEMO_PASSWORD` from `.env`. Screenshots and DOM measurement both
+work from there. Use it on every phase.
 
 Concretely, in order:
 
@@ -213,9 +220,7 @@ Concretely, in order:
    Determine why `PLATFORM_OWNER_PASSWORD` is rejected. Check whether the owner is being
    forced through MFA enrolment that the helper does not complete.
 2. Measure the `environment-separation` timeout before changing it.
-3. Screenshot the Phase 1 overview at 1440px and 390px via Playwright — this is the one
-   acceptance item Phase 1 has not met.
-4. Build Phase 2, Meta configuration, at
+3. Build Phase 2, Meta configuration, at
    `admin/integrations/meta/`. Reuse `channelCards()` for the header state and the same
    `.lf-channel*` primitives. Lead-form routing needs new tenant-scoped storage — there is
    no model for form→pipeline mapping yet, so it needs a migration.
