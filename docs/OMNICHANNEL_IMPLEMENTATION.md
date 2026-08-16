@@ -117,7 +117,14 @@ Provider → webhooks/meta/[key] → verify signature → normalise → WebhookE
    workers contend on the same database or on process startup. This test protects demo/prod
    isolation and matters.
 
-3. **The password-locator fix is only half done.** `getByLabel('Password')` matched both the
+3. **Horizontal overflow at 390px on `Settings → Integrations`.** 95px. The offending
+   element is `.lf-card` (454px) inside the **pre-existing IntegrationBoard health
+   section** — not the Phase 1 `.lf-channel` cards, which collapse correctly. §33 forbids
+   horizontal page overflow, so this blocks the mobile acceptance item for this page.
+   Fix belongs in `IntegrationBoard`/`.lf-card`, likely `min-width: 0` on the grid child
+   plus `overflow-x: auto` on the health table.
+
+4. **The password-locator fix is only half done.** `getByLabel('Password')` matched both the
    input and a `Show password` eye button. Tests now pass `{ exact: true }` (measured: 10 → 6
    failures). Per §74 the **component semantics** still need review — the eye button's
    accessible name colliding with the field's label is a UX problem, not only a test problem.
@@ -139,6 +146,11 @@ the backend is real, the administrator cannot see or operate it.
       `globals.css`. **Outstanding: screenshot QA at 1440px and 390px (§33).**
       Cards currently link `Manage` to the same page; per-channel destinations arrive with
       Phases 2/3/5.
+      **QA done 2026-08-16** at 1440px and 390px via Playwright (log in through the real
+      form as `admin@manathhomes.ae` / `DEMO_PASSWORD`; cookie injection is blocked but a
+      form login works). Desktop renders correctly. Two findings: LIVE copy said
+      "Connected to the provider" on first-party channels (fixed), and the 390px overflow
+      above (pre-existing, not fixed).
 - [ ] **Phase 2 — Meta configuration** + guided connect, page/IG selection, lead forms,
       lead routing, permissions, webhook health, reconnect.
 - [ ] **Phase 3 — WhatsApp control centre** + setup wizard, templates screen, conversation

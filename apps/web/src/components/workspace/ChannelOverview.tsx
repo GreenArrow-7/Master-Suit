@@ -14,7 +14,9 @@ import type { ChannelCard } from '@/services/integrations/channelState';
  */
 
 const MODE_COPY: Record<ChannelCard['mode'], { label: string; note: string }> = {
-  LIVE: { label: 'Live', note: 'Connected to the provider.' },
+  // Not "connected to the provider": Website and Notifications are first-party
+  // and have no provider to connect to, which QA caught on the rendered page.
+  LIVE: { label: 'Live', note: 'Active in this workspace.' },
   SIMULATED: { label: 'Simulated', note: 'Messages are simulated in this environment.' },
   NOT_CONFIGURED: { label: 'Not configured', note: 'Not connected yet.' },
 };
