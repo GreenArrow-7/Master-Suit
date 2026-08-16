@@ -58,7 +58,7 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
     if (comment.verb === 'edit' || comment.verb === 'edited') {
       const requalified = qualifyComment(comment.commentText);
       await prisma.socialComment.update({
-        where: { id: existing.id },
+        where: { id: existing.id, tenantId },
         data: {
           commentText: comment.commentText,
           intent: requalified.intent,
@@ -70,7 +70,7 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
     }
     if (comment.verb === 'remove' || comment.verb === 'delete') {
       await prisma.socialComment.update({
-        where: { id: existing.id },
+        where: { id: existing.id, tenantId },
         data: { status: 'DISMISSED' },
       });
       return { socialCommentId: existing.id, removed: true };

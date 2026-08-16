@@ -4463,3 +4463,8 @@ a:hover {
     justify-self: start;
   }
 }
+.lf-social__convert {
+  display: grid;
+  gap: 8px;
+  justify-content: stretch;
+}

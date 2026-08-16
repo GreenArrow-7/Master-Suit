@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 /**
@@ -239,11 +240,108 @@ function SocialLeadDrawer({
           )}
         </div>
 
-        <footer className="lf-drawer__foot">
-          {/* Convert and Reply land in the next phases; showing dead buttons
-              would be worse than their absence. */}
-          <span className="lf-inbox__muted">Convert and reply arrive in the next release.</span>
-        </footer>
+        {!lead.linkedLeadId && <ConvertPanel lead={lead} onDone={onClose} />}
+
+        {lead.linkedLeadId && (
+          <footer className="lf-drawer__foot">
+            <span className="lf-inbox__muted">Already linked to a customer.</span>
+          </footer>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Layer 1 → Layer 2 bridge, in the drawer where the salesperson already is.
+ *
+ * Only the name is required, because it is the only thing Meta reliably gives —
+ * a handle. Phone and email are blank until the customer actually provides
+ * them, and nothing here pre-fills a guess.
+ */
+function ConvertPanel({ lead, onDone }: { lead: Lead; onDone: () => void }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [fullName, setFullName] = useState(lead.authorName ?? '');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function convert() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/social-leads/${lead.id}/convert`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          ...(phone.trim() ? { phone: phone.trim() } : {}),
+          ...(email.trim() ? { email: email.trim() } : {}),
+          priority: lead.intent === 'HIGH' ? 'HIGH' : 'MEDIUM',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message ?? data?.detail ?? 'Could not convert this enquiry.');
+      router.refresh();
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <footer className="lf-drawer__foot">
+        <button className="lf-btn lf-btn--sm" type="button" onClick={() => setOpen(true)}>
+          Convert to Lead
+        </button>
+      </footer>
+    );
+  }
+
+  return (
+    <div className="lf-drawer__foot lf-social__convert">
+      <label className="lf-meta__field">
+        <span>Full name</span>
+        <input className="lf-input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+      </label>
+      <label className="lf-meta__field">
+        <span>Phone (if they have given one)</span>
+        <input
+          className="lf-input"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Not provided"
+        />
+      </label>
+      <label className="lf-meta__field">
+        <span>Email (if they have given one)</span>
+        <input
+          className="lf-input"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Not provided"
+        />
+      </label>
+      <p className="lf-inbox__muted">
+        The comment, the post and the channel are kept on the customer record so you can see where they came from.
+      </p>
+      {error && (
+        <p className="lf-inbox__error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="lf-meta__actions">
+        <button className="lf-btn lf-btn--ghost lf-btn--sm" type="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <button className="lf-btn lf-btn--sm" type="button" disabled={busy || !fullName.trim()} onClick={convert}>
+          {busy ? 'Converting…' : 'Create customer'}
+        </button>
       </div>
     </div>
   );
