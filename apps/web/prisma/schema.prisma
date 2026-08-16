@@ -457,6 +457,7 @@ model Tenant {
   commissionSlabBands        CommissionSlabBand[]
   communications             Communication[]
   conversations              Conversation[]
+  metaLeadFormRoutings       MetaLeadFormRouting[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -871,6 +872,7 @@ model Team {
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
+  metaRoutings MetaLeadFormRouting[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -927,6 +929,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   ownedLeads          Lead[]               @relation("LeadOwner")
   ownedConversations  Conversation[]       @relation("ConversationOwner")
+  metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
   ownedOpps           Opportunity[]        @relation("OpportunityOwner")
   ownedAccounts       Account[]            @relation("AccountOwner")
   ownedContacts       Contact[]            @relation("ContactOwner")
@@ -2702,6 +2705,7 @@ model LeadStage {
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
+  metaRoutings MetaLeadFormRouting[]
 }
 
 model Lead {
@@ -3743,6 +3747,58 @@ model MessageTemplate {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMMUNICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// What a Facebook Lead Ad form becomes when its leads reach the CRM.
+///
+/// The webhook already knows the form id; it had nowhere to look up what that
+/// form *means*, so every Meta lead landed on the tenant's default stage with no
+/// owner. This is that lookup, and it is deliberately thin: stage, priority and
+/// source reuse LeadStage, Priority and RecordSource rather than defining
+/// Meta-only copies of them.
+///
+/// There is no assignment-strategy column. `assignedUserId` and `assignedTeamId`
+/// name a destination; with neither set the lead falls through to the existing
+/// DistributionRule engine, which already does round-robin, load and territory
+/// and is what the distribution queue consults today. A second strategy enum
+/// here would be a parallel implementation of a solved problem.
+model MetaLeadFormRouting {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Meta's own form id — the key the webhook arrives holding.
+  providerFormId String
+  /// The Page the form belongs to; kept for display and for scoping a resync.
+  providerPageId String?
+  formName       String
+
+  /// Off means leads from this form are recorded but not turned into Leads.
+  enabled  Boolean      @default(true)
+  source   RecordSource @default(AD_LEAD_FORM)
+  stageId  String?
+  priority Priority     @default(MEDIUM)
+
+  assignedUserId String?
+  assignedTeamId String?
+  /// Whether the resulting owner is notified. Team managers follow the
+  /// workspace's existing notification policy rather than a flag here.
+  notifyOwner    Boolean @default(true)
+
+  lastLeadAt DateTime?
+  lastSyncAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage        LeadStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  assignedUser User?      @relation("MetaRoutingOwner", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedTeam Team?      @relation(fields: [assignedTeamId], references: [id], onDelete: SetNull)
+
+  /// The webhook lookup, and the guarantee that one tenant's form maps once.
+  /// Scoped by tenant so two workspaces may legitimately hold the same form id.
+  @@unique([tenantId, providerFormId])
+  @@index([tenantId, enabled])
+}
 
 /// A threaded exchange with one customer on one channel.
 ///

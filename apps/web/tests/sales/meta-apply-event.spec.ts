@@ -12,6 +12,7 @@ import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 
 const prisma = {
   lead: { update: vi.fn(), create: vi.fn(), findFirst: vi.fn() },
+  metaLeadFormRouting: { findUnique: vi.fn(), update: vi.fn() },
   leadStage: { findFirst: vi.fn() },
   conversation: { upsert: vi.fn() },
   communication: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -61,6 +62,8 @@ beforeEach(() => {
   prisma.leadStage.findFirst.mockResolvedValue({ id: 'stage-1' });
   prisma.lead.create.mockResolvedValue({ id: 'lead-new' });
   prisma.lead.findFirst.mockResolvedValue({ customData: {} });
+  prisma.metaLeadFormRouting.findUnique.mockResolvedValue(null);
+  prisma.metaLeadFormRouting.update.mockResolvedValue({});
 });
 
 describe('Meta Lead Ads → CRM', () => {
@@ -210,5 +213,93 @@ describe('delivery receipts', () => {
     prisma.communication.findFirst.mockResolvedValue(null);
     await expect(applyMetaEvent({ ...base, event: status('MESSAGE_DELIVERED', 'DELIVERED') })).resolves.toBeUndefined();
     expect(prisma.communication.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Phase 2: a routing rule is what turns "a Meta lead arrived" into "this lead,
+ * on this stage, owned by this person". Configuration that the ingestion path
+ * ignores would be a settings screen that changes nothing.
+ */
+describe('Meta lead form routing', () => {
+  const withRouting = (rule: Record<string, unknown>) =>
+    prisma.metaLeadFormRouting.findUnique.mockResolvedValue({
+      id: 'rule-1',
+      enabled: true,
+      source: 'AD_LEAD_FORM',
+      stageId: null,
+      priority: 'MEDIUM',
+      assignedUserId: null,
+      assignedTeamId: null,
+      ...rule,
+    });
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', graphOk([{ name: 'email', values: ['new@example.com'] }]));
+    findDuplicates.mockResolvedValue([]);
+  });
+
+  it('applies the rule stage, priority, source and owner to the new lead', async () => {
+    withRouting({ stageId: 'stage-qualified', priority: 'HIGH', source: 'CHAT', assignedUserId: 'user-9' });
+    prisma.leadStage.findFirst.mockResolvedValue({ id: 'stage-qualified' });
+
+    await applyMetaEvent({ ...base, event: leadgenEvent });
+
+    expect(prisma.lead.create.mock.calls[0]![0].data).toMatchObject({
+      stageId: 'stage-qualified',
+      priority: 'HIGH',
+      source: 'CHAT',
+      ownerId: 'user-9',
+    });
+  });
+
+  /** An administrator who named an owner must not have the engine overrule them. */
+  it('skips distribution when the rule already names a person', async () => {
+    withRouting({ assignedUserId: 'user-9' });
+    await applyMetaEvent({ ...base, event: leadgenEvent });
+    const queues = enqueue.mock.calls.map((c) => c[0]);
+    expect(queues).not.toContain('distribution');
+    expect(queues).toContain('automation');
+  });
+
+  /** A team is not a person — distribution still picks who inside it. */
+  it('still runs distribution when the rule names only a team', async () => {
+    withRouting({ assignedTeamId: 'team-3' });
+    await applyMetaEvent({ ...base, event: leadgenEvent });
+    expect(enqueue.mock.calls.map((c) => c[0])).toContain('distribution');
+    expect(prisma.lead.create.mock.calls[0]![0].data.teamId).toBe('team-3');
+  });
+
+  it('creates no lead when the form is switched off, and says so', async () => {
+    withRouting({ enabled: false });
+    const result = await applyMetaEvent({ ...base, event: leadgenEvent });
+    expect(result).toEqual({ skipped: 'routing-disabled' });
+    expect(prisma.lead.create).not.toHaveBeenCalled();
+  });
+
+  /** A deleted stage must not stop leads arriving. */
+  it('falls back to the default stage when the rule points at a stage that is gone', async () => {
+    withRouting({ stageId: 'stage-deleted' });
+    prisma.leadStage.findFirst
+      .mockResolvedValueOnce(null) // the rule's stage no longer exists
+      .mockResolvedValueOnce({ id: 'stage-default' });
+
+    await applyMetaEvent({ ...base, event: leadgenEvent });
+
+    expect(prisma.lead.create.mock.calls[0]![0].data.stageId).toBe('stage-default');
+  });
+
+  it('behaves exactly as before when no rule exists', async () => {
+    prisma.metaLeadFormRouting.findUnique.mockResolvedValue(null);
+    prisma.leadStage.findFirst.mockResolvedValue({ id: 'stage-1' });
+
+    await applyMetaEvent({ ...base, event: leadgenEvent });
+
+    expect(prisma.lead.create.mock.calls[0]![0].data).toMatchObject({
+      stageId: 'stage-1',
+      source: 'AD_LEAD_FORM',
+      ownerId: null,
+    });
+    expect(enqueue.mock.calls.map((c) => c[0])).toContain('distribution');
   });
 });
