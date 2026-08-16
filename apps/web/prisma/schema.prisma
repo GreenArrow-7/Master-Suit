@@ -458,6 +458,7 @@ model Tenant {
   communications             Communication[]
   conversations              Conversation[]
   metaLeadFormRoutings       MetaLeadFormRouting[]
+  socialComments             SocialComment[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -873,6 +874,7 @@ model Team {
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
   metaRoutings MetaLeadFormRouting[]
+  socialComments SocialComment[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -930,6 +932,7 @@ model User {
   ownedLeads          Lead[]               @relation("LeadOwner")
   ownedConversations  Conversation[]       @relation("ConversationOwner")
   metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
+  socialComments      SocialComment[]      @relation("SocialCommentOwner")
   ownedOpps           Opportunity[]        @relation("OpportunityOwner")
   ownedAccounts       Account[]            @relation("AccountOwner")
   ownedContacts       Contact[]            @relation("ContactOwner")
@@ -2808,6 +2811,7 @@ model Lead {
   @@index([tenantId, deletedAt])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  socialComments SocialComment[]
 }
 
 model LeadCustomFieldDefinition {
@@ -3747,6 +3751,104 @@ model MessageTemplate {
 // ─────────────────────────────────────────────────────────────────────────────
 // COMMUNICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// A comment on a Facebook or Instagram post, captured as a possible enquiry.
+///
+/// Layer 1 of two, and the separation is the whole point: a post attracts
+/// "Beautiful 🔥" alongside "what's the payment plan?", and only the second is a
+/// customer. Everything supported lands here; a CRM Lead is created only when a
+/// human converts it or an explicitly configured policy says to. Writing every
+/// comment straight into Lead would poison the customer's database permanently.
+///
+/// `providerCommentId` is scoped by provider as well as tenant: Facebook and
+/// Instagram mint ids in separate spaces, so the pair is what actually
+/// identifies a comment. That unique is the idempotency key — Meta redelivers.
+model SocialComment {
+  id                      String  @id @default(cuid())
+  tenantId                String
+  integrationConnectionId String?
+
+  /// `facebook` or `instagram`. They share this model and nothing else: the two
+  /// payloads differ in field names, identity shape and lifecycle events.
+  provider          String
+  providerCommentId String
+  /// Facebook gives a page-scoped id and a display name; Instagram gives an
+  /// IG-scoped id and a username. Neither is an email, a phone or a legal name,
+  /// and nothing here may invent one.
+  providerAuthorId  String?
+  authorName        String?
+  commentText       String
+  commentCreatedAt  DateTime
+
+  /// What they commented on. "Price?" is unactionable without it.
+  providerMediaId String?
+  mediaType       String?
+  mediaPermalink  String?
+  parentCommentId String?
+  /// Instagram supplies ad id and title on ad comments; Facebook does not.
+  providerAdId    String?
+  providerAdTitle String?
+
+  status  SocialCommentStatus @default(NEW)
+  intent  SocialIntent        @default(UNSCORED)
+  /// 0–100. Meaningless without `intentReasons`, which is why they travel together.
+  intentScore Int?
+  /// Why the score is what it is. A bare number is not something a salesperson
+  /// can act on or disagree with.
+  intentReasons String[] @default([])
+  /// True once AI enrichment ran. False means rules-only, not "failed" — the
+  /// pipeline completes either way.
+  aiQualified Boolean @default(false)
+
+  ownerId  String?
+  teamId   String?
+  /// Layer 2, once someone converts. Null is the normal state.
+  linkedLeadId    String?
+  linkedContactId String?
+
+  repliedAt       DateTime?
+  providerReplyId String?
+  convertedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User?    @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, provider, providerCommentId])
+  /// The queue: newest first, filtered by status and intent.
+  @@index([tenantId, status, commentCreatedAt(sort: Desc)])
+  @@index([tenantId, intent, status])
+  @@index([tenantId, ownerId, status])
+  /// "Which post produced enquiries" — the attribution question this feature exists to answer.
+  @@index([tenantId, providerMediaId])
+  /// Recognising a returning commenter without relying on a username, which changes.
+  @@index([tenantId, provider, providerAuthorId])
+}
+
+enum SocialCommentStatus {
+  NEW
+  REVIEWED
+  ASSIGNED
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  DISMISSED
+  SPAM
+}
+
+enum SocialIntent {
+  HIGH
+  MEDIUM
+  LOW
+  IRRELEVANT
+  SPAM
+  /// Ingested but not yet classified — a comment is never blocked on scoring.
+  UNSCORED
+}
 
 /// What a Facebook Lead Ad form becomes when its leads reach the CRM.
 ///
