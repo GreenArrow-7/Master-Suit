@@ -207,7 +207,66 @@ Everything the overview needs exists — no new tables required:
 
 ## 7. Next recommended task
 
-**Phase 3 — WhatsApp administration.** Phases 1 and 2 are closed.
+**Phase 2C — Social Comment Leads.** This is now the highest priority, ahead of WhatsApp.
+
+## PRODUCT DIRECTION CHANGED (2026-08-16)
+
+The primary objective of the Meta integration is **capturing sales leads from Facebook and
+Instagram comments**, not account connection. Connection settings are plumbing; the product
+is: a prospect comments on a post/reel/ad → Master Suite captures it → qualifies intent →
+routes it to a salesperson → they reply → it converts to a CRM Lead.
+
+**The load-bearing design decision — two layers.** A social post gets `Beautiful 🔥`, `Nice`,
+`😂`. Those must never reach the CRM Leads table.
+
+    Layer 1  SocialComment / social enquiry   ← every captured comment lands here
+    Layer 2  CRM Lead                          ← only on qualification, policy, or a human
+                                                 pressing "Convert to Lead"
+
+Getting this wrong pollutes the customer's CRM permanently, so it is the first thing to get
+right and the last thing to compromise on.
+
+**Build order (from the work order §76):**
+1. SocialComment model + normalized webhook pipeline  ← START HERE
+2. Social Leads UI (navigation: ENGAGE → Social Leads; not under Integrations settings)
+3. AI intent/qualification, with visible explainability — never a bare score
+4. Comment Capture configuration (Meta settings gains tabs; Lead Forms becomes one source among several)
+5. Reply / private reply, gated by a provider capability layer
+6. CRM Lead conversion + identity linking
+7. Attribution analytics ("which post produced pipeline?")
+
+**Hard prerequisite before writing the adapter (§8).** Verify against *current* official Meta
+documentation, not memory: Graph version, comment webhook fields for `feed` (Facebook) and
+`comments` (Instagram), required permissions, Page/IG-professional requirements, App Review
+requirements, private-reply mechanism and its window, and rate limits. **Facebook and
+Instagram differ materially** — payload shape, identity fields, private-reply behaviour — so
+build provider-specific adapters behind one shared model. This programme has already shipped
+one bug from trusting remembered Meta behaviour (the app-secret signature fix, `3dc45c5`);
+do not repeat it.
+
+**What already exists and must be reused, not rebuilt:**
+- `webhooks/meta/[key]` receiver — signature verification, tenant resolution from the
+  connection, `WebhookEvent` idempotency, queue handoff. Comments are a new `field` in the
+  same envelope; extend `lib/integrations/meta/events.ts`, do not write a second receiver.
+- `findDuplicates` for identity matching, `DistributionRule` for assignment, existing SLA,
+  `Notification`, `Activity`, and Manath AI's authorization/context framework.
+- `MetaLeadFormRouting` stays. Lead Forms becomes one acquisition source alongside FB and IG
+  comments — a shared social-acquisition architecture, not a replacement.
+
+**Schema sketch for the new model** (design against existing conventions; tenant-scoped, RLS
+FORCED, `@@unique([tenantId, providerCommentId])` as the idempotency key):
+tenantId, integrationConnectionId, provider, providerCommentId, providerAuthorId, authorName,
+commentText, commentCreatedAt, mediaId/mediaType/permalink, parentCommentId, campaign/ad
+attribution where actually supplied, intent, score, status, ownerId, teamId, linkedLeadId,
+linkedContactId, repliedAt, providerReplyId.
+**Store only what Meta actually supplies — never invent a phone, email or legal name.**
+
+**Not started.** No code written for this yet. The Phase 2 work below (`8920781`, `a0e91c7`)
+remains valid and is unaffected.
+
+---
+
+**After Phase 2C: Phase 3 — WhatsApp administration.** Phases 1 and 2 are closed.
 
 Phase 2 delivered, both halves:
 - `2A` (`8920781`) — `MetaLeadFormRouting`, migration `20260816120000_meta_lead_form_routing`,
