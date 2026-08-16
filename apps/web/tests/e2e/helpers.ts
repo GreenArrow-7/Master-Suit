@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
-import { generateSecret, totp } from '@/lib/auth/mfa';
+import { totp } from '@/lib/auth/mfa';
 import { encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
 
@@ -127,10 +127,26 @@ export async function loginPlatformOwner(page: Page) {
 
 /** Gives the owner a known authenticator, returning its base32 secret. */
 async function ensureOwnerAuthenticator(email: string): Promise<string> {
-  const secret = generateSecret();
+  // Deterministic, not generated: spec files run in parallel workers and
+  // each beforeAll passes through here. A random secret per caller rotates
+  // the shared owner's authenticator underneath whichever worker is
+  // mid-sign-in, and its freshly computed code stops matching. Every worker
+  // writing the same value makes the update idempotent and the race harmless.
+  const secret = 'E2EOWNERAUTHENTICATORSECRET23456';
   await prisma.platformUser.update({
     where: { email },
-    data: { mfaSecret: encryptSecret(secret), mfaEnabled: true, failedLoginCount: 0, lockedUntil: null },
+    data: {
+      mfaSecret: encryptSecret(secret),
+      mfaEnabled: true,
+      failedLoginCount: 0,
+      lockedUntil: null,
+      // bootstrap-owner.mjs leaves passwordChangedAt null on purpose, and the
+      // must-change gate then refuses every platform page in CI, where the
+      // owner is always freshly bootstrapped. The suite's owner treats the
+      // password in .env as its chosen credential, so the fixture records
+      // the choice.
+      passwordChangedAt: new Date(),
+    },
   });
   return secret;
 }

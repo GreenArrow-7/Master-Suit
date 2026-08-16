@@ -185,7 +185,8 @@ export default function TopBar({
           {workspaceName} · <b>{peoplePageTitle(pathname)}</b>
         </div>
       )}
-      {module !== 'people' && (
+      {/* Every module keeps the search box — the crumb identifies the HR page,
+          the search still has to reach the employee list from it. */}
       <form
         className="lf-shell-search"
         action={target.href}
@@ -237,7 +238,6 @@ export default function TopBar({
           ⌘K
         </kbd>
       </form>
-      )}
 
       <div className="lf-shell-actions" hidden={module === 'people'}>
         {/* The dashboard is a destination, not an action: it leads the right
