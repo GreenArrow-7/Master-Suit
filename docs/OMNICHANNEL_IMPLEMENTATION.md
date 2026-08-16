@@ -344,8 +344,35 @@ exactly the class of bug this section exists to prevent.
 - **Three more bare-`id` writes** were caught by the tenant guard (same class as Phase 2B).
   Rule for future work: any Prisma write addressed by `id` alone will be refused.
 
-**NOT DONE — next tasks in order:**
-1. **DistributionRule fallthrough** — an unmatched HIGH enquiry currently lands unassigned;
+**DONE (`6339c82`) — distribution fallthrough.**
+- `nextDistributionOwner(tenantId)` in `services/distribution/assignLead.ts` — reads the
+  tenant's active ROUND_ROBIN rule, advances the pointer, refuses suspended/deleted users.
+  Extracted, not copied. `assignLead` keeps its transactional variant on purpose (it must
+  not advance the pointer for an already-assigned lead) — see the ponytail comment.
+- **Priority order:** linked customer's owner → rotation → unassigned queue.
+  No fake Lead is created to make distribution run.
+- Only HIGH/MEDIUM consume capacity. Idempotent by construction — the duplicate check
+  returns before assignment, so retries preserve the owner and send no second notification.
+- Proven live: `dr-4 → Amina Al Rashid`, `dr-5 → Dhruv Menon` (rotation advanced),
+  `dr-6 LOW → unassigned`, 2 notifications not 3. Probe data cleaned up.
+
+**NOT DONE — next tasks in order (from the 2026-08-17 direction):**
+1. **Social Lead SLA + overdue escalation** — reuse the existing SLA architecture, do not
+   build a social-specific one. Clock should start from the provider comment timestamp;
+   document that choice.
+2. **Manual-reassignment preservation** — a manager's explicit choice must survive a retry.
+   Currently safe *because* retries return early, but there is no explicit
+   `assignmentSource` (auto/manual/inherited) field. Add one if reassignment UI lands.
+3. **`Unassigned` filter + count** in the Social Leads UI for manager visibility.
+4. **Assignment activity/history** — `LeadAssignmentHistory` is Lead-shaped; social
+   assignments currently record nothing beyond `ownerId`. Needed for time-to-assignment
+   analytics.
+5. **Meta reply contract verification** — still BLOCKED and still unverified. Do not build
+   reply UI before checking public reply, private reply, permissions, windows and App Review
+   for **both** providers separately.
+6. Comment Capture settings tab; AI enrichment; simulated-comment admin action.
+
+**Old item, superseded:** DistributionRule fallthrough — an unmatched HIGH enquiry currently lands unassigned;
    `applySocialComment` only inherits a linked lead's owner.
 3. Simulated comment action in demo mode (§25) — a safe admin path that goes through the
    real receiver, not a direct insert.
