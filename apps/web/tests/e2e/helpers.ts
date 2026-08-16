@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
-import { generateSecret, totp } from '@/lib/auth/mfa';
+import { totp } from '@/lib/auth/mfa';
 import { encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
 
@@ -77,9 +77,14 @@ export function platformOwner() {
  * hide a broken sign-in behind twenty passing assertions.
  */
 export async function login(page: Page, email: string, password: string) {
+  // Self-sufficient rather than per-spec: with no trusted proxy configured the
+  // whole suite shares one 'unknown' per-IP bucket (10 sign-ins / 15 min), so
+  // whichever spec ran deepest in the order was the one that starved. Clearing
+  // here removes the ordering coupling entirely.
+  await resetLoginThrottle();
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
 }
@@ -101,28 +106,47 @@ export async function logout(page: Page) {
  * the ordinary endpoint, and the code is verified server-side like any other.
  */
 export async function loginPlatformOwner(page: Page) {
+  await resetLoginThrottle(); // see login()
   const { email, password } = platformOwner();
   const secret = await ensureOwnerAuthenticator(email);
 
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   const code = page.getByLabel('Authentication code');
   await expect(code).toBeVisible({ timeout: 60_000 });
+  // The code field auto-submits on its sixth digit; clicking "Verify and sign
+  // in" afterwards raced the navigation and sometimes found the button already
+  // gone. The outcome is the assertion, not the click.
   await code.fill(totp(secret, Math.floor(Date.now() / 1000 / 30)));
-  await page.getByRole('button', { name: 'Verify and sign in' }).click();
 
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
 }
 
 /** Gives the owner a known authenticator, returning its base32 secret. */
 async function ensureOwnerAuthenticator(email: string): Promise<string> {
-  const secret = generateSecret();
+  // Deterministic, not generated: spec files run in parallel workers and
+  // each beforeAll passes through here. A random secret per caller rotates
+  // the shared owner's authenticator underneath whichever worker is
+  // mid-sign-in, and its freshly computed code stops matching. Every worker
+  // writing the same value makes the update idempotent and the race harmless.
+  const secret = 'E2EOWNERAUTHENTICATORSECRET23456';
   await prisma.platformUser.update({
     where: { email },
-    data: { mfaSecret: encryptSecret(secret), mfaEnabled: true, failedLoginCount: 0, lockedUntil: null },
+    data: {
+      mfaSecret: encryptSecret(secret),
+      mfaEnabled: true,
+      failedLoginCount: 0,
+      lockedUntil: null,
+      // bootstrap-owner.mjs leaves passwordChangedAt null on purpose, and the
+      // must-change gate then refuses every platform page in CI, where the
+      // owner is always freshly bootstrapped. The suite's owner treats the
+      // password in .env as its chosen credential, so the fixture records
+      // the choice.
+      passwordChangedAt: new Date(),
+    },
   });
   return secret;
 }
@@ -181,7 +205,8 @@ export async function createWorkspaceViaWizard(page: Page, spec: NewWorkspace): 
   // Step 2 — administrator
   await field('primaryAdminName').fill(spec.adminName);
   await field('primaryAdminEmail').fill(spec.adminEmail);
-  await field('primaryAdminPassword').fill(spec.adminPassword);
+  // `-tmp0`: the settling step below replaces this with spec.adminPassword.
+  await field('primaryAdminPassword').fill(`${spec.adminPassword}-tmp0`);
   await page.getByRole('button', { name: 'Continue' }).click();
 
   // Step 3 — subscription and limits (defaults are valid)
@@ -204,5 +229,32 @@ export async function createWorkspaceViaWizard(page: Page, spec: NewWorkspace): 
     .locator('td')
     .innerText();
   expect(workspaceId.trim()).not.toBe('');
+
+  /**
+   * Settle the administrator's password before handing the workspace to a spec.
+   *
+   * A wizard-issued credential is administrator-known, so the product forces a
+   * change at first sign-in (`passwordChangedAt: null` → /profile/security).
+   * That gate is correct, and the specs must model it once, here, through the
+   * real endpoints — otherwise every "admin signs in and reaches the dashboard"
+   * assertion lands on the change screen instead. The wizard typed
+   * `<password>-tmp0`; this first sign-in replaces it with the password the
+   * spec will use, in an isolated request context so the platform owner's
+   * session on `page` is untouched.
+   */
+  const api = await page.context().browser()!.newContext();
+  try {
+    await resetLoginThrottle(); // this settling login spends the shared bucket too
+    const login = await api.request.post('/api/v1/auth/login', {
+      data: { email: spec.adminEmail, password: `${spec.adminPassword}-tmp0` },
+    });
+    expect(login.ok(), `settling login failed: ${login.status()}`).toBe(true);
+    const change = await api.request.post(`/api/v1/workspaces/${spec.slug}/identity/self/password-change`, {
+      data: { currentPassword: `${spec.adminPassword}-tmp0`, newPassword: spec.adminPassword },
+    });
+    expect(change.ok(), `password settle failed: ${change.status()} ${await change.text()}`).toBe(true);
+  } finally {
+    await api.close();
+  }
   return workspaceId.trim();
 }

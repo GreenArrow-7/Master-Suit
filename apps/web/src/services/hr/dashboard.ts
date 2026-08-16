@@ -14,7 +14,7 @@
  */
 import { prisma } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
-import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import {
   isApprover,
@@ -40,14 +40,39 @@ export type Persona =
  * gets the HR dashboard, not the auditor's read-only one.
  */
 export function resolvePersona(ctx: Ctx): Persona {
+  /**
+   * Scope matters here, not merely the grant.
+   *
+   * `can()` is true at any scope above NONE, and the payroll and auditor
+   * dashboards below count the *whole workspace* — open payroll runs, every
+   * attendance exception, org-wide audit events. Selecting them with a bare
+   * `can()` handed those figures to anyone holding the same permission over
+   * their own record:
+   *
+   *   - `payroll:VIEW = OWN`  — an employee reading their own payslip — landed
+   *     on "Payroll readiness" showing every run and exception in the company.
+   *   - `reports:VIEW = OWN`  — a salesperson reading their own sales figures —
+   *     landed on "Compliance & evidence" showing org-wide audit counts.
+   *
+   * Both are ordinary demo personas, so the HR module opened on a compliance
+   * dashboard for most of the workspace. Every role that genuinely owns one of
+   * these functions holds the permission at ORGANIZATION; requiring that keeps
+   * the selector honest with the loaders, which is what the file header already
+   * promises ("only reads what that persona is entitled to see, at the scope
+   * they hold it").
+   */
+  const orgWide = (module: string, action: Action) =>
+    SCOPE_RANK[scopeFor(ctx, module, action)] >= SCOPE_RANK.ORGANIZATION;
+
   if (isHrAdmin(ctx)) return 'hr_admin';
-  if (can(ctx, 'payroll', 'VIEW')) return 'payroll';
-  if (can(ctx, 'recruitment', 'VIEW') || can(ctx, 'recruitment', 'EDIT')) return 'recruiter';
+  if (orgWide('payroll', 'VIEW')) return 'payroll';
+  if (orgWide('recruitment', 'VIEW') || orgWide('recruitment', 'EDIT')) return 'recruiter';
   if (can(ctx, 'users', 'MANAGE_USERS')) return 'it_admin';
   // A team/branch-scoped approver is a line, property or site manager.
   if (isAttendanceApprover(ctx) || isApprover(ctx)) return 'manager';
-  // Read-only compliance: sees reports or audit but holds no write authority.
-  if (can(ctx, 'auditlogs', 'VIEW') || can(ctx, 'reports', 'VIEW')) return 'auditor';
+  // Read-only compliance: sees the audit trail, or reports across the whole
+  // organization, but holds no write authority.
+  if (orgWide('auditlogs', 'VIEW') || orgWide('reports', 'VIEW')) return 'auditor';
   return 'employee';
 }
 

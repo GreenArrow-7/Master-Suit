@@ -123,9 +123,19 @@ export default function WorkspaceSidebar({
           label: 'Administration',
           items: (
             [
-              { label: 'Attendance locations', href: `/${slug}/people/work-locations`, icon: 'company', permission: 'employee' },
+              {
+                label: 'Attendance locations',
+                href: `/${slug}/people/work-locations`,
+                icon: 'company',
+                permission: 'employee',
+              },
               { label: 'Users', href: `/${slug}/people/users`, icon: 'people', permission: 'users' },
-              { label: 'Face recognition activity', href: `/${slug}/people/face-activity`, icon: 'shield', permission: 'employee' },
+              {
+                label: 'Face recognition activity',
+                href: `/${slug}/people/face-activity`,
+                icon: 'shield',
+                permission: 'employee',
+              },
               { label: 'Roles & permissions', href: `/${slug}/people/roles`, icon: 'shield', permission: 'roles' },
               { label: 'HR policy', href: `/${slug}/people/settings`, icon: 'settings', permission: 'employee' },
             ] as Item[]
@@ -186,6 +196,12 @@ export default function WorkspaceSidebar({
           { label: 'Calls', href: `/${slug}/sales/calls`, icon: 'call', permission: 'calls' },
           { label: 'Events', href: `/${slug}/sales/events`, icon: 'calendar', permission: 'events' },
           { label: 'Campaigns', href: `/${slug}/sales/campaigns`, icon: 'campaign', permission: 'campaigns' },
+          {
+            label: 'Inbox',
+            href: `/${slug}/sales/communications/inbox`,
+            icon: 'activity',
+            permission: 'communications',
+          },
           {
             label: 'Communications',
             href: `/${slug}/sales/communications`,
@@ -298,9 +314,7 @@ export default function WorkspaceSidebar({
       >
         ☰
       </button>
-      {mobileOpen && (
-        <div className="lf-mobile-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-      )}
+      {mobileOpen && <div className="lf-mobile-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
       <aside className="lf-workspace-sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen}>
         <div className="lf-sidebar-brand">
           <Link href={`/${slug}/dashboard`} className="lf-brand-mark" aria-label={`${name} dashboard`}>
@@ -369,10 +383,29 @@ export default function WorkspaceSidebar({
         )}
 
         <nav className="lf-sidebar-nav" aria-label="Workspace">
-          {sections.map((section) => (
-            <section className="lf-nav-section" key={section.label}>
-              {!collapsed && <div className="lf-nav-label">{section.label}</div>}
-              {section.items.map((item) => (
+          {/* A group whose every link was filtered out by permission renders as a
+              bare heading with nothing under it — which reads as a broken menu
+              rather than as access the viewer does not have. */}
+          {sections
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
+              <section className="lf-nav-section" key={section.label}>
+                {!collapsed && <div className="lf-nav-label">{section.label}</div>}
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    collapsed={collapsed}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
+                ))}
+              </section>
+            ))}
+          {activeModule !== 'people' && administration.length > 0 && (
+            <section className="lf-nav-section">
+              {!collapsed && <div className="lf-nav-label">Administration</div>}
+              {administration.map((item) => (
                 <NavLink
                   key={item.href}
                   item={item}
@@ -382,20 +415,6 @@ export default function WorkspaceSidebar({
                 />
               ))}
             </section>
-          ))}
-          {activeModule !== 'people' && (
-          <section className="lf-nav-section">
-            {!collapsed && <div className="lf-nav-label">Administration</div>}
-            {administration.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                pathname={pathname}
-                collapsed={collapsed}
-                onNavigate={() => setMobileOpen(false)}
-              />
-            ))}
-          </section>
           )}
         </nav>
 

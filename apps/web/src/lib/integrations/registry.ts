@@ -87,6 +87,12 @@ export const PROVIDERS: ProviderSpec[] = [
       { key: 'accessToken', label: 'System user access token', secret: true },
       { key: 'phoneNumberId', label: 'Phone number ID', secret: false },
       {
+        key: 'wabaId',
+        label: 'WhatsApp Business Account ID',
+        secret: false,
+        hint: 'Needed to sync templates. Not the same as the phone number ID — templates belong to the account.',
+      },
+      {
         key: 'appSecret',
         label: 'App secret',
         secret: true,

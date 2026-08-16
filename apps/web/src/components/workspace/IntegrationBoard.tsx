@@ -107,11 +107,15 @@ function HealthSummary({ providers }: { providers: ProviderCard[] }) {
         {rows.map((row) => (
           <div
             key={row.label}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 'var(--lf-text-sm)' }}
+            // The fixed 180px label plus a badge plus a detail string overflowed
+            // the page at 390px. Wrapping costs nothing on a wide screen, where
+            // the rows still line up, and the label only claims its column when
+            // there is room for one.
+            style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 'var(--lf-text-sm)', flexWrap: 'wrap' }}
           >
             <Badge tone={TONE[row.status] ?? 'slate'}>{row.status.replace('_', ' ').toLowerCase()}</Badge>
-            <span style={{ fontWeight: 500, minWidth: 180 }}>{row.label}</span>
-            <span style={{ color: 'var(--lf-ink-3)' }}>{row.detail}</span>
+            <span style={{ fontWeight: 500, minWidth: 'min(180px, 100%)' }}>{row.label}</span>
+            <span style={{ color: 'var(--lf-ink-3)', overflowWrap: 'anywhere' }}>{row.detail}</span>
           </div>
         ))}
       </div>

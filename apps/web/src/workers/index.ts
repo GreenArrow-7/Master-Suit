@@ -6,11 +6,12 @@ import { startDistributionWorker } from './distribution';
 import { startMediaWorker } from './media';
 import { startNotificationsWorker } from './notifications';
 import { startSlaWorker } from './sla';
+import { startWebhookWorker } from './webhook';
 
 /**
  * Entry point for `npm run worker` (PROCESS_ROLE=worker). Wired queues:
- * automation, distribution, sla, media, ai, notifications and campaign (the
- * scheduled-send sweep). messaging/import/export/webhook/maintenance have no
+ * automation, distribution, sla, media, ai, notifications, webhook and campaign
+ * (the scheduled-send sweep). messaging/import/export/maintenance have no
  * consumer yet: jobs enqueued to them sit in Redis until a worker is added for
  * them, same as before this file existed.
  *
@@ -31,6 +32,10 @@ const workers = [
   startNotificationsWorker(),
   // Without this a SCHEDULED campaign never fires: nothing else reads the clock.
   startCampaignWorker(),
+  // Without this an authenticated Meta callback is stored and never applied:
+  // Facebook leads never reach the CRM and WhatsApp messages never open a
+  // conversation. The receiver deliberately does no CRM work itself.
+  startWebhookWorker(),
 ];
 
 // The once-a-minute campaign lifecycle sweep. Idempotent on restart.

@@ -185,6 +185,9 @@ export default function TopBar({
           {workspaceName} · <b>{peoplePageTitle(pathname)}</b>
         </div>
       )}
+      {/* The HR topbar stays crumb-only: the employee directory carries its own
+          search (labelled "Search employees"), so a topbar twin would give two
+          controls one accessible name — and the pair overflows a 375px phone. */}
       {module !== 'people' && (
       <form
         className="lf-shell-search"

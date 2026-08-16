@@ -14,8 +14,11 @@ export default async function EmployeesPage({
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
 
-  // The destination of the People search box in the top bar. Matches the three
-  // columns the table actually shows a person by.
+  // Matches the three columns the table actually shows a person by. The input
+  // lives on this page: the People top bar deliberately leads with the
+  // breadcrumb instead of a search box, and when that changed the `?q=`
+  // handling here was left with no way to reach it from the UI — the e2e
+  // search specs are what caught the regression.
   const query = (await searchParams).q?.trim();
   const search = query
     ? {
@@ -52,6 +55,36 @@ export default async function EmployeesPage({
           </Link>
         }
       />
+      <form className="lf-card lf-filters" method="get" role="search">
+        <div className="lf-field lf-filters__search">
+          <label className="lf-label" htmlFor="emp-q">
+            Search employees
+          </label>
+          <input
+            id="emp-q"
+            className="lf-input"
+            name="q"
+            type="search"
+            defaultValue={query ?? ''}
+            placeholder="Name, work email or employee number"
+            // Native, no client JS: an empty or whitespace-only submission would
+            // navigate to `?q=`, which reads as a search that matched nothing
+            // rather than no search at all. `required` blocks empty; the pattern
+            // blocks spaces.
+            required
+            pattern=".*\S.*"
+            title="Type a name, work email or employee number"
+          />
+        </div>
+        <button className="lf-btn" type="submit">
+          Search
+        </button>
+        {query && (
+          <Link className="lf-btn lf-btn--ghost" href={`/${workspaceSlug}/people/employees`}>
+            Clear
+          </Link>
+        )}
+      </form>
       <WorkspaceTable
         empty={
           query
