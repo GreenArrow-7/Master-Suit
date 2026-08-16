@@ -131,7 +131,7 @@ const schema = z.object({
    * demo, not for production analysis.
    */
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.

@@ -1,4 +1,6 @@
 import { logger } from '@/lib/logger';
+import { geminiKeyForTenant, resolveGeminiModel } from '../gemini';
+import { withRetry, isTransient } from '../../integrations/retry';
 import type { Ctx } from '@/lib/security/rbac';
 import { TOOLS, toolByName, type ProposedAction, type ToolSource } from './tools';
 
@@ -56,9 +58,17 @@ const SYSTEM = (ctx: Ctx, page: AssistantContext | undefined, today: string) =>
 /** Convert our ToolDefs to Gemini functionDeclarations. */
 const declarations = TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
-async function geminiTurn(contents: unknown[], system: string) {
-  const key = process.env.GEMINI_API_KEY!;
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+async function geminiTurn(contents: unknown[], system: string, key: string) {
+  const model = await resolveGeminiModel(key);
+  // Capacity 503s are common and brief on the flash tiers — the same model
+  // refuses one request and answers the next. Retry before degrading.
+  return withRetry('gemini-assistant', () => geminiCall(model, contents, system, key), {
+    maxAttempts: 3,
+    retryOn: isTransient,
+  });
+}
+
+async function geminiCall(model: string, contents: unknown[], system: string, key: string) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
@@ -74,7 +84,10 @@ async function geminiTurn(contents: unknown[], system: string) {
     },
   );
   if (!res.ok) {
-    const err: Error & { status?: number } = new Error(`Gemini error ${res.status}`);
+    // The status alone hid a year of model churn ("503" that was really a
+    // schema rejection); keep the first lines of the body in the log.
+    const body = await res.text().catch(() => '');
+    const err: Error & { status?: number } = new Error(`Gemini error ${res.status} — ${body.slice(0, 300)}`);
     err.status = res.status;
     throw err;
   }
@@ -129,35 +142,49 @@ export async function* runAssistant(
   };
 
   try {
-    if (process.env.GEMINI_API_KEY) {
+    const aiKey = await geminiKeyForTenant(ctx.tenantId);
+    let answered = false;
+    if (aiKey) {
       // ── Gemini function-calling loop ────────────────────────────────────
-      const contents: any[] = messages.map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content.slice(0, 4000) }],
-      }));
-      const system = SYSTEM(ctx, page, today);
+      try {
+        const contents: any[] = messages.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content.slice(0, 4000) }],
+        }));
+        const system = SYSTEM(ctx, page, today);
 
-      for (let round = 0; round < 6; round++) {
-        const parts = await geminiTurn(contents, system);
-        const calls = parts.filter((p) => p.functionCall);
-        if (calls.length === 0) {
-          const text = parts.map((p) => p.text ?? '').join('') || "I couldn't find that information in the CRM.";
-          yield { type: 'delta', text };
-          break;
+        for (let round = 0; round < 6; round++) {
+          const parts = await geminiTurn(contents, system, aiKey);
+          const calls = parts.filter((p) => p.functionCall);
+          if (calls.length === 0) {
+            const text = parts.map((p) => p.text ?? '').join('') || "I couldn't find that information in the CRM.";
+            yield { type: 'delta', text };
+            break;
+          }
+          contents.push({ role: 'model', parts });
+          const responses = [];
+          for (const call of calls) {
+            yield { type: 'status', text: STATUS[call.functionCall!.name] ?? 'Looking that up…' };
+            const result = await runTool(call.functionCall!.name, call.functionCall!.args);
+            responses.push({
+              functionResponse: { name: call.functionCall!.name, response: { data: result.data } },
+            });
+          }
+          contents.push({ role: 'user', parts: responses });
+          if (round === 5) yield { type: 'delta', text: 'That took too many steps — try a more specific question.' };
         }
-        contents.push({ role: 'model', parts });
-        const responses = [];
-        for (const call of calls) {
-          yield { type: 'status', text: STATUS[call.functionCall!.name] ?? 'Looking that up…' };
-          const result = await runTool(call.functionCall!.name, call.functionCall!.args);
-          responses.push({
-            functionResponse: { name: call.functionCall!.name, response: { data: result.data } },
-          });
-        }
-        contents.push({ role: 'user', parts: responses });
-        if (round === 5) yield { type: 'delta', text: 'That took too many steps — try a more specific question.' };
+        answered = true;
+      } catch (err) {
+        // An overloaded or rate-limited model is Google's weather, not the
+        // user's problem: the keyword router answers from the same
+        // permission-scoped tools, so degrade instead of erroring "hello".
+        const status = (err as { status?: number }).status ?? 0;
+        if (status !== 429 && status < 500) throw err;
+        logger.warn({ status }, 'gemini unavailable — falling back to template mode');
       }
-    } else {
+    }
+
+    if (!answered) {
       // ── Template mode: keyword router over the same tools ───────────────
       yield* templateMode(messages, page, runTool);
     }

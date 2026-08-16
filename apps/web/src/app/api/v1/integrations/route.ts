@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { geminiKeyForTenant } from '@/lib/ai/gemini';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -77,7 +78,7 @@ export const GET = route({ module: 'integrations', action: 'VIEW' }, async ({ ct
      * deployment, so the board reports whether it is configured instead of
      * offering a form that would store one workspace's key for everyone.
      */
-    ai: { provider: 'gemini', configured: Boolean(process.env.GEMINI_API_KEY) },
+    ai: { provider: 'gemini', configured: Boolean(await geminiKeyForTenant(ctx.tenantId)) },
   };
 });
 

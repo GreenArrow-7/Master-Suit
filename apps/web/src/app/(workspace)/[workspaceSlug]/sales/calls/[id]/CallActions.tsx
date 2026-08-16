@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Props {
@@ -17,6 +17,7 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
   const [error, setError] = useState('');
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const audioInput = useRef<HTMLInputElement>(null);
 
   async function api(url: string, method: string, body?: Record<string, unknown>) {
     const res = await fetch(url, {
@@ -88,6 +89,37 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       router.refresh();
     } catch (e: any) {
       setError(e.message);
+    }
+    setBusy('');
+  }
+
+  async function uploadAudio(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy('audio');
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/calls/${callId}/recording/upload`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? `Upload failed (${res.status})`);
+      }
+      // Transcription and the audit chain run server-side; poll the transcript
+      // until it exists so the page fills in without a manual reload.
+      for (let attempt = 0; attempt < 24; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const check = await fetch(`/api/v1/calls/${callId}/transcript`);
+        if (check.ok) {
+          const data = await check.json().catch(() => null);
+          if (data?.id || data?.content || data?.wordCount) break;
+        }
+      }
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
     }
     setBusy('');
   }
@@ -206,6 +238,19 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
           </div>
         </form>
       )}
+
+      {/* Audio upload → Gemini transcription → analysis → audit. Consent
+          gates the whole chain server-side; the button says so up front. */}
+      <input ref={audioInput} type="file" accept="audio/*" hidden onChange={uploadAudio} />
+      <button
+        className="lf-btn lf-btn--secondary"
+        onClick={() => audioInput.current?.click()}
+        disabled={!!busy || !hasConsent}
+        title={hasConsent ? 'Upload a recording (max 10 MB); transcription and audit run automatically' : 'Record consent first'}
+        style={{ marginBottom: 8, display: 'block' }}
+      >
+        {busy === 'audio' ? 'Transcribing…' : 'Upload audio for AI audit'}
+      </button>
 
       {/* Transcript upload */}
       {!showTranscript ? (

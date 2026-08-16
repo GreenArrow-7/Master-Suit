@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { geminiKeyForTenant, resolveGeminiModel } from './gemini';
 import { withRetry, isTransient } from '../integrations/retry';
 import { redact } from './redact';
 
@@ -114,8 +115,11 @@ function buildPrompt(input: AnalysisInput): string {
 
 export async function analyzeTranscript(
   input: AnalysisInput,
+  tenantId?: string,
 ): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // The env key when the operator set one, else the key this tenant connected
+  // in Integrations — one paste lights up the whole AI surface.
+  const apiKey = tenantId ? await geminiKeyForTenant(tenantId) : process.env.GEMINI_API_KEY;
   if (!apiKey) {
     // Demo fallback: a deterministic keyword pass, stamped as simulation so the
     // stored row can never masquerade as a model verdict.
@@ -126,7 +130,7 @@ export async function analyzeTranscript(
     return { result, modelId: SIMULATED_MODEL_ID, processingMs: Date.now() - started };
   }
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await resolveGeminiModel(apiKey);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = buildPrompt(input);

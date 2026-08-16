@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { geminiKeyForTenant } from '@/lib/ai/gemini';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
@@ -37,6 +38,9 @@ export const GET = route(
 
     const scope = scopeFor(ctx, 'calls', 'EDIT');
     if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Call');
+
+    // Resolved once per stream: the env key or the tenant's connected one.
+    const liveKey = await geminiKeyForTenant(ctx.tenantId);
 
     if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
       throw Invalid([
@@ -154,8 +158,8 @@ export const GET = route(
               const window = spoken.slice(-6).join('\n');
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
-              if (process.env.GEMINI_API_KEY && i % 4 === 3) {
-                const hints = await coachTick(window);
+              if (liveKey && i % 4 === 3) {
+                const hints = await coachTick(window, liveKey);
                 for (const hint of hints.filter((h) => h.source === 'gemini')) send({ type: 'coach', ...hint, at });
               }
             }

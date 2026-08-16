@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
-import { enqueue } from '@/lib/queue';
+import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { logger } from '@/lib/logger';
+import { runCallAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -44,19 +46,17 @@ export const POST = route(
     if (!scorecard) throw NotFound('Active scorecard');
     if (existing?.status === 'PROCESSING') throw Conflict('This audit is already in progress.');
 
-    // Claimed here for the same reason as the analysis: a second press must be
-    // refused now, not deduplicated later by a worker that has already started.
-    const row = existing
-      ? await prisma.callAudit.update({
-          where: { id: existing.id, tenantId: ctx.tenantId },
-          data: { status: 'PROCESSING', errorMessage: null },
-        })
-      : await prisma.callAudit.create({
-          data: { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId, status: 'PROCESSING' },
-        });
-
-    await enqueue('ai', 'audit', { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId });
-    return row;
+    // The PROCESSING check above is the whole refusal; the service claims the
+    // row itself. When this route also flipped it to PROCESSING, `runCallAudit`
+    // then saw an in-progress row and skipped — stranding every manual re-audit.
+    // Queue when a worker is listening, inline when this box is all there is.
+    const job = { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId };
+    if (await queueHasWorkers('ai')) {
+      await enqueue('ai', 'audit', job, { fresh: true });
+    } else {
+      void runCallAudit(job).catch((err) => logger.error({ err, callId: params.id }, 'inline audit failed'));
+    }
+    return { status: 'QUEUED', existingAuditId: existing?.id ?? null };
   },
 );
 
@@ -89,5 +89,27 @@ export const PATCH = route(
       where: { id: body.auditId, tenantId: ctx.tenantId },
       data: { humanReviewed: true, reviewedById: ctx.actor.id, reviewedAt: new Date() },
     });
+  },
+);
+
+const deleteQuery = z.object({ auditId: z.string().cuid() }).strict();
+
+/**
+ * Removes one audit verdict. `calls:DELETE` is held only by the administrator
+ * roles (wildcard grants) — QA managers review audits, they do not erase them,
+ * and the deletion itself lands in the audit log like every other destructive
+ * action.
+ */
+export const DELETE = route(
+  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, query: deleteQuery, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params, query }) => {
+    const audit = await prisma.callAudit.findFirst({
+      where: { id: query.auditId, callId: params.id, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!audit) throw NotFound('Call audit');
+
+    await prisma.callAudit.delete({ where: { id: audit.id, tenantId: ctx.tenantId } });
+    return { ok: true };
   },
 );

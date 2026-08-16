@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { resolveGeminiModel } from './gemini';
 import { redact } from './redact';
 
 /**
@@ -70,11 +71,11 @@ export function heuristicHints(windowText: string): CoachHint[] {
   return hints;
 }
 
-export async function coachTick(windowText: string): Promise<CoachHint[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
+export async function coachTick(windowText: string, key?: string): Promise<CoachHint[]> {
+  const apiKey = key ?? process.env.GEMINI_API_KEY;
   if (!apiKey) return heuristicHints(windowText);
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await resolveGeminiModel(apiKey);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const prompt = [
     'You are a live sales-call coach. The agent is on a call right now.',

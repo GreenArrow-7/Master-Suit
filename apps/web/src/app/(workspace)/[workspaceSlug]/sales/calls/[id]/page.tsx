@@ -1,9 +1,11 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallActions from './CallActions';
+import AuditDelete from './AuditDelete';
 import AnalysisPanel from './AnalysisPanel';
 
 export const metadata = { title: 'Call Detail' };
@@ -74,6 +76,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
     : null;
 
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
+  // Wildcard-granted to administrator roles only; QA reviews, admins erase.
+  const canDeleteAudits = can(ctx, 'calls', 'DELETE');
 
   return (
     <>
@@ -375,19 +379,22 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                       >
                         {a.status.toLowerCase()}
                       </Badge>
-                      {pct !== null && (
-                        <span
-                          className="lf-num"
-                          style={{
-                            fontSize: 'var(--lf-text-lg)',
-                            fontWeight: 700,
-                            color:
-                              pct >= 70 ? 'var(--lf-viridian)' : pct >= 40 ? 'var(--lf-brass)' : 'var(--lf-vermillion)',
-                          }}
-                        >
-                          {pct}%
-                        </span>
-                      )}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--lf-space-3)' }}>
+                        {pct !== null && (
+                          <span
+                            className="lf-num"
+                            style={{
+                              fontSize: 'var(--lf-text-lg)',
+                              fontWeight: 700,
+                              color:
+                                pct >= 70 ? 'var(--lf-viridian)' : pct >= 40 ? 'var(--lf-brass)' : 'var(--lf-vermillion)',
+                            }}
+                          >
+                            {pct}%
+                          </span>
+                        )}
+                        {canDeleteAudits && <AuditDelete callId={call.id} auditId={a.id} />}
+                      </span>
                     </div>
 
                     {scores.length > 0 && (

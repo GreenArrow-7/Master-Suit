@@ -152,6 +152,146 @@ export class GoogleTranscriptionProvider implements TranscriptionProvider {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Gemini (generative language API)
+//
+// A Gemini API key is not a Cloud Speech-to-Text key: it authenticates
+// generativelanguage.googleapis.com and nothing else. Tenants who connected
+// "Google" with a Gemini key were silently broken until this provider existed —
+// the model reads the audio part directly and returns the transcript.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Google retires Gemini models on its own clock — 2.0-flash and then 2.5-flash
+ * both 404ed here inside one year, each error naming a successor. Rather than
+ * chase the default in code forever, a 404 asks ListModels what this key can
+ * run, prefers the newest flash generation, and remembers the answer for the
+ * process lifetime.
+ */
+const resolvedModelByKey = new Map<string, string>();
+
+async function currentGeminiModel(apiKey: string): Promise<string> {
+  const cached = resolvedModelByKey.get(apiKey);
+  if (cached) return cached;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+  if (!res.ok) throw new Error(`Gemini model discovery failed: ${res.status}`);
+  const body = (await res.json()) as {
+    models?: { name?: string; supportedGenerationMethods?: string[] }[];
+  };
+
+  const usable = (body.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+    .map((m) => (m.name ?? '').replace(/^models\//, ''))
+    // Stable flash models sort newest-first by their version number; previews
+    // and experiments churn too fast to depend on.
+    .filter((n) => /^gemini-[\d.]+-flash$/.test(n))
+    .sort((a, b) => parseFloat(b.split('-')[1]) - parseFloat(a.split('-')[1]));
+
+  const model = usable[0];
+  if (!model) throw new Error('This Gemini key lists no stable flash model that supports generateContent.');
+  resolvedModelByKey.set(apiKey, model);
+  logger.info({ model }, 'gemini model resolved by discovery');
+  return model;
+}
+
+export class GeminiTranscriptionProvider implements TranscriptionProvider {
+  name = 'gemini';
+
+  constructor(
+    private apiKey: string,
+    private model = process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  ) {}
+
+  async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
+    // Inline base64 grows the payload ~4/3, and the API caps requests around
+    // 20MB — the shared 10MB audio ceiling keeps us comfortably under it.
+    assertSize(request.audio, 'Gemini');
+
+    try {
+      return await this.transcribeWith(this.model, request);
+    } catch (err: any) {
+      // 404 means the configured model is gone, not that the audio failed —
+      // discover what this key can run today and go again once.
+      if (err?.status !== 404) throw err;
+      const discovered = await currentGeminiModel(this.apiKey);
+      if (discovered === this.model) throw err;
+      logger.warn({ retired: this.model, using: discovered }, 'gemini model retired; using discovered successor');
+      this.model = discovered;
+      return this.transcribeWith(discovered, request);
+    }
+  }
+
+  private async transcribeWith(model: string, request: TranscriptionRequest): Promise<TranscriptionResult> {
+    const language = request.language ?? 'en';
+    const data = await withRetry(
+      'gemini-stt',
+      async () => {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
+          {
+            signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text:
+                        'Transcribe this sales call verbatim. Two speakers: label each turn ' +
+                        '"Agent:" or "Client:". Do not summarise, translate or annotate.',
+                    },
+                    { inline_data: { mime_type: request.mimeType.split(';')[0].trim(), data: request.audio.toString('base64') } },
+                  ],
+                },
+              ],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'object',
+                  properties: {
+                    transcript: { type: 'string' },
+                    language: { type: 'string', description: 'BCP-47 tag of the spoken language' },
+                  },
+                  required: ['transcript'],
+                },
+              },
+            }),
+          },
+        );
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          const err: any = new Error(`Gemini transcription error: ${res.status} — ${body.slice(0, 200)}`);
+          err.status = res.status;
+          throw err;
+        }
+        return res.json();
+      },
+      { maxAttempts: 3, retryOn: isTransient },
+    );
+
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    let transcript = '';
+    let detected: string | undefined;
+    try {
+      const parsed = JSON.parse(raw) as { transcript?: string; language?: string };
+      transcript = (parsed.transcript ?? '').trim();
+      detected = parsed.language || undefined;
+    } catch {
+      // The model answered outside the schema; the raw text is still the best
+      // transcript we will get from this attempt.
+      transcript = String(raw).trim();
+    }
+
+    return { text: transcript, language: detected ?? language, provider: this.name };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Deepgram
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -264,9 +404,21 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getTranscriptionProvider(provider: string, config: Record<string, string> = {}): TranscriptionProvider {
-  switch (provider) {
+  // Connections store whatever the admin typed — "Google", "gemini", "Deepgram"
+  // — and a case mismatch must select the provider, not throw.
+  switch (provider.trim().toLowerCase()) {
+    case 'gemini':
+      if (!config.apiKey) throw new Error('Gemini transcription requires an API key.');
+      return new GeminiTranscriptionProvider(config.apiKey, looksLikeGeminiModel(config.model) ? config.model : undefined);
+
     case 'google':
       if (!config.apiKey) throw new Error('Google Speech-to-Text requires an API key.');
+      // "Google" with a Gemini model means the generative API, not Cloud
+      // Speech-to-Text — the two take different keys, and sending a Gemini key
+      // to speech.googleapis.com fails with a 403 that reads like a bad key.
+      if ((config.model ?? '').toLowerCase().includes('gemini')) {
+        return new GeminiTranscriptionProvider(config.apiKey, looksLikeGeminiModel(config.model) ? config.model : undefined);
+      }
       return new GoogleTranscriptionProvider(config.apiKey);
 
     case 'deepgram':
@@ -288,4 +440,12 @@ export function getTranscriptionProvider(provider: string, config: Record<string
     default:
       throw new Error(`Unknown transcription provider: ${provider}`);
   }
+}
+
+/**
+ * "Gemini" typed as a display name is a family, not a model id; only pass it
+ * through when it names an actual model the API accepts.
+ */
+function looksLikeGeminiModel(model?: string): model is string {
+  return Boolean(model && /^gemini-[\w.-]+$/i.test(model));
 }

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { NotFound, Conflict } from '@/lib/errors';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
-import { claimAnalysis, analyseAndAudit } from '@/services/shared/callIntelligence';
+import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -16,9 +16,9 @@ const params = z.object({ id: z.string().cuid() });
  * gave up. The work now runs on the `ai` queue with backoff and a recorded
  * failure message, and this returns the row so the caller can poll GET.
  *
- * The row is still claimed *here* rather than in the worker, so a second press
- * of the button is refused immediately with a 409 instead of silently queueing a
- * second billed model call.
+ * A second press is refused with a 409 while a run is in flight, but the claim
+ * itself belongs to the service — the one lock both the worker and the inline
+ * path go through.
  */
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
@@ -30,12 +30,21 @@ export const POST = route(
 
     if (!call) throw NotFound('Call');
     if (!transcript) throw NotFound('Transcript — upload a transcript before requesting analysis');
-    if (!(await claimAnalysis(ctx.tenantId, params.id))) {
+
+    // Read-only refusal, not a claim: the service's own `claimAnalysis` is the
+    // single lock. When this route claimed too, the service then found the row
+    // already PROCESSING and skipped — stranding every manual analysis, queued
+    // or inline, in PROCESSING forever.
+    const existing = await prisma.aIAnalysis.findFirst({
+      where: { callId: params.id, tenantId: ctx.tenantId },
+      select: { status: true },
+    });
+    if (existing?.status === 'PROCESSING') {
       throw Conflict('Analysis is already in progress for this call.');
     }
 
     if (await queueHasWorkers('ai')) {
-      await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
+      await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id }, { fresh: true });
     } else {
       // No worker is draining the queue (dev/demo box). Run the chain in the
       // background of this request; the claim above still guards double-runs

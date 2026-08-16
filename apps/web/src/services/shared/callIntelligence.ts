@@ -141,13 +141,16 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
 
   try {
     const context = await campaignContext(tenantId, call.campaignId);
-    const { result, modelId, processingMs } = await analyzeTranscript({
-      transcript: transcript.content,
-      talkingPoints: context.talkingPoints,
-      qualifications: context.qualifications,
-      callDirection: call.direction,
-      campaignName: context.campaignName,
-    });
+    const { result, modelId, processingMs } = await analyzeTranscript(
+      {
+        transcript: transcript.content,
+        talkingPoints: context.talkingPoints,
+        qualifications: context.qualifications,
+        callDirection: call.direction,
+        campaignName: context.campaignName,
+      },
+      tenantId,
+    );
 
     await prisma.aIAnalysis.update({
       where: { callId, tenantId },
@@ -248,7 +251,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
         weight: c.weight,
         isRequired: c.isRequired,
       })),
-    });
+    }, tenantId);
 
     await prisma.callAudit.update({
       where: { id: row.id, tenantId },

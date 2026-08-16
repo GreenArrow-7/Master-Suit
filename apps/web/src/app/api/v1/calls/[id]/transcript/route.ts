@@ -66,7 +66,12 @@ export const POST = route(
         ]);
       }
 
-      await enqueue('ai', 'transcribe', { tenantId: ctx.tenantId, callId: params.id, language: body.language });
+      await enqueue(
+        'ai',
+        'transcribe',
+        { tenantId: ctx.tenantId, callId: params.id, language: body.language },
+        { fresh: true },
+      );
       return { callId: params.id, status: 'QUEUED' };
     }
 

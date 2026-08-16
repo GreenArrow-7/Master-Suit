@@ -63,6 +63,13 @@ export interface EnqueueOptions {
   delayMs?: number;
   /** Convenience so callers can write `enqueue(..., { skip: !!ownerId })` inline. */
   skip?: boolean;
+  /**
+   * Explicit user actions ("Re-run analysis") salt the job id so they actually
+   * run again. Without it, the payload-hash id converges on the COMPLETED job
+   * BullMQ retains — which is exactly right for webhook replays and exactly
+   * wrong for a button whose whole point is a second run.
+   */
+  fresh?: boolean;
 }
 
 /**
@@ -94,7 +101,7 @@ export async function enqueue(
   if (opts.skip) return null;
 
   const jobId = createHash('sha256')
-    .update(`${name}:${jobName}:${JSON.stringify(payload)}`)
+    .update(`${name}:${jobName}:${JSON.stringify(payload)}${opts.fresh ? `:${Date.now()}` : ''}`)
     .digest('hex')
     .slice(0, 32);
 
