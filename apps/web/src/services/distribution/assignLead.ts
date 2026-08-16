@@ -34,3 +34,44 @@ export async function assignLead(tenantId: string, leadId: string) {
 
   logger.info({ tenantId, leadId, assignedTo: nextUserId, rule: rule.name }, 'lead distributed');
 }
+
+/**
+ * The next user in the tenant's round-robin, advancing the pointer.
+ *
+ * Shared with social enquiries so one rotation covers all inbound work rather
+ * than two competing ones — a rep who just took a Facebook comment should be
+ * behind their colleagues for the next website lead too.
+ *
+ * ponytail: assignLead above keeps its own copy of the rotation inside its
+ * transaction because it must NOT advance the pointer when the lead turns out to
+ * be already assigned. Merging them would either move the pointer on a no-op or
+ * force social enquiries into a lead-shaped transaction. Two short readers beat
+ * one wrong one; revisit if a third caller appears.
+ */
+export async function nextDistributionOwner(tenantId: string): Promise<string | null> {
+  const rule = await prisma.distributionRule.findFirst({
+    where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
+    orderBy: { position: 'asc' },
+  });
+  if (!rule) return null;
+
+  const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
+  if (pool.length === 0) return null;
+
+  const lastIndex = rule.lastAssignedUserId ? pool.indexOf(rule.lastAssignedUserId) : -1;
+  const nextUserId = pool[(lastIndex + 1) % pool.length]!;
+
+  // Only hand out someone who can actually work it — a rotation that assigns to
+  // a suspended account produces enquiries nobody sees.
+  const usable = await prisma.user.findFirst({
+    where: { tenantId, id: nextUserId, status: 'ACTIVE', deletedAt: null },
+    select: { id: true },
+  });
+  if (!usable) return null;
+
+  await prisma.distributionRule.update({
+    where: { tenantId, id: rule.id },
+    data: { lastAssignedUserId: nextUserId },
+  });
+  return nextUserId;
+}

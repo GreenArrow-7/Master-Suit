@@ -13,6 +13,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { qualifyComment } from '@/services/social/qualify';
+import { nextDistributionOwner } from '@/services/distribution/assignLead';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 
 /** Intent levels that put an enquiry in front of a salesperson. */
@@ -113,12 +114,29 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
    * who already knows them.
    */
   let ownerId: string | null = null;
-  if (ACTIONABLE.has(qualification.intent) && linkedLeadId) {
-    const lead = await prisma.lead.findFirst({
-      where: { tenantId, id: linkedLeadId },
-      select: { ownerId: true },
-    });
-    ownerId = lead?.ownerId ?? null;
+  if (ACTIONABLE.has(qualification.intent)) {
+    if (linkedLeadId) {
+      const lead = await prisma.lead.findFirst({
+        where: { tenantId, id: linkedLeadId },
+        select: { ownerId: true },
+      });
+      ownerId = lead?.ownerId ?? null;
+    }
+    /**
+     * Nobody owns them yet, so fall through to the workspace's distribution
+     * rules — the same rotation leads use. Without this an unmatched high-intent
+     * enquiry sat unassigned, which is the difference between "captured" and
+     * "somebody is working it".
+     *
+     * Best-effort: a workspace with no configured rule simply leaves it in the
+     * unassigned queue, which is a legitimate way to run the desk, not a failure.
+     */
+    if (!ownerId) {
+      ownerId = await nextDistributionOwner(tenantId).catch((err) => {
+        logger.warn({ err: (err as Error).message, tenantId }, 'social comment distribution failed');
+        return null;
+      });
+    }
   }
 
   const created = await prisma.socialComment.create({
