@@ -5,7 +5,7 @@ touching the code.** It exists so a new session does not spend half its context
 rediscovering the architecture (§29 of the work order).
 
 Branch: `feat/omnichannel-conversation-spine` → PR #2 against `main`.
-Last updated: 2026-08-15.
+Last updated: 2026-08-15 (Phase 1 UI complete).
 
 ---
 
@@ -66,6 +66,7 @@ Provider → webhooks/meta/[key] → verify signature → normalise → WebhookE
 | 4 — Conversation APIs + Inbox | `738a371` `e802412` | List/thread/send APIs, 24h service window enforced server-side, 3-column inbox |
 | 5 — Templates | `087e327` | Meta template sync, approval state verbatim, template send re-read server-side |
 | CI | `1a012e2` (on `main`), `c66bbfd`, `efdcedf` | Format gate on main; E2E password locator; mojibake |
+| **UI 1 — Channel control centre** | `a586491` | `Settings → Integrations` channel overview: 4 cards, derived state, LIVE/SIMULATED/NOT CONFIGURED, setup checklist |
 
 ### Decisions worth not relitigating
 
@@ -129,9 +130,15 @@ Provider → webhooks/meta/[key] → verify signature → normalise → WebhookE
 **None of the admin UI in the work order exists yet.** This is the gap the customer named:
 the backend is real, the administrator cannot see or operate it.
 
-- [ ] **Phase 1 — `Settings → Integrations` overview.** Four cards (Meta, WhatsApp, Website,
-      Notifications), real state from `IntegrationConnection`, setup-progress checklist,
-      `LIVE / SIMULATED / NOT CONFIGURED` mode chip.
+- [x] **Phase 1 — `Settings → Integrations` overview.** DONE (`a586491`). Four cards, state
+      derived from `IntegrationConnection` / `WebhookEvent` / `MessageTemplate` /
+      `Form`+`FormSubmission`, setup checklist, mode chip. **Extends** the existing vendor
+      board on the same route — do not create a second Integrations destination.
+      Files: `src/services/integrations/channelState.ts`,
+      `src/components/workspace/ChannelOverview.tsx`, `.lf-channel*` / `.lf-setup*` in
+      `globals.css`. **Outstanding: screenshot QA at 1440px and 390px (§33).**
+      Cards currently link `Manage` to the same page; per-channel destinations arrive with
+      Phases 2/3/5.
 - [ ] **Phase 2 — Meta configuration** + guided connect, page/IG selection, lead forms,
       lead routing, permissions, webhook health, reconnect.
 - [ ] **Phase 3 — WhatsApp control centre** + setup wizard, templates screen, conversation
@@ -191,7 +198,7 @@ Everything the overview needs exists — no new tables required:
 
 ## 7. Next recommended task
 
-**Fix the E2E owner sign-in (Known Issue 1), then build Phase 1.**
+**Fix the E2E owner sign-in (Known Issue 1), then build Phase 2 (Meta configuration).**
 
 Concretely, in order:
 
@@ -199,9 +206,11 @@ Concretely, in order:
    Determine why `PLATFORM_OWNER_PASSWORD` is rejected. Check whether the owner is being
    forced through MFA enrolment that the helper does not complete.
 2. Measure the `environment-separation` timeout before changing it.
-3. Build `Settings → Integrations` overview at
-   `src/app/(workspace)/[workspaceSlug]/admin/integrations/` — note an `admin/integrations`
-   route **already exists**; read it first and extend rather than duplicate.
-4. Screenshot at 1440px and 390px via Playwright before calling the phase done.
+3. Screenshot the Phase 1 overview at 1440px and 390px via Playwright — this is the one
+   acceptance item Phase 1 has not met.
+4. Build Phase 2, Meta configuration, at
+   `admin/integrations/meta/`. Reuse `channelCards()` for the header state and the same
+   `.lf-channel*` primitives. Lead-form routing needs new tenant-scoped storage — there is
+   no model for form→pipeline mapping yet, so it needs a migration.
 
 Commit per phase. Update this document at the end of every session.
