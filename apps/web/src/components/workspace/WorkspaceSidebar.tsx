@@ -383,7 +383,12 @@ export default function WorkspaceSidebar({
         )}
 
         <nav className="lf-sidebar-nav" aria-label="Workspace">
-          {sections.map((section) => (
+          {/* A group whose every link was filtered out by permission renders as a
+              bare heading with nothing under it — which reads as a broken menu
+              rather than as access the viewer does not have. */}
+          {sections
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
             <section className="lf-nav-section" key={section.label}>
               {!collapsed && <div className="lf-nav-label">{section.label}</div>}
               {section.items.map((item) => (
@@ -397,7 +402,7 @@ export default function WorkspaceSidebar({
               ))}
             </section>
           ))}
-          {activeModule !== 'people' && (
+          {activeModule !== 'people' && administration.length > 0 && (
             <section className="lf-nav-section">
               {!collapsed && <div className="lf-nav-label">Administration</div>}
               {administration.map((item) => (
