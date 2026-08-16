@@ -51,4 +51,32 @@ describe('resolvePersona', () => {
   it('nothing but self-service is an ordinary employee', () => {
     expect(resolvePersona(ctxWith({ 'attendance:VIEW': 'OWN' }))).toBe('employee');
   });
+
+  /**
+   * Scope, not just the grant.
+   *
+   * Every case above holds its permission at ORGANIZATION, so the resolver
+   * could ignore scope entirely and still pass — which it did. The payroll and
+   * auditor dashboards count the whole workspace, and these are the grants that
+   * were quietly opening them to ordinary staff.
+   */
+  it('payroll:VIEW at OWN is an employee reading their own payslip, not payroll', () => {
+    expect(resolvePersona(ctxWith({ 'payroll:VIEW': 'OWN' }))).toBe('employee');
+  });
+
+  it('reports:VIEW at OWN is a salesperson, not a compliance auditor', () => {
+    expect(resolvePersona(ctxWith({ 'reports:VIEW': 'OWN' }))).toBe('employee');
+  });
+
+  it('reports:VIEW at TEAM is still not the org-wide auditor dashboard', () => {
+    expect(resolvePersona(ctxWith({ 'reports:VIEW': 'TEAM' }))).toBe('employee');
+  });
+
+  it('recruitment:VIEW below ORGANIZATION is not the recruiter dashboard', () => {
+    expect(resolvePersona(ctxWith({ 'recruitment:VIEW': 'TEAM' }))).toBe('employee');
+  });
+
+  it('a team-scoped approver still outranks a self-scoped payroll grant', () => {
+    expect(resolvePersona(ctxWith({ 'attendance:APPROVE': 'TEAM', 'payroll:VIEW': 'OWN' }))).toBe('manager');
+  });
 });

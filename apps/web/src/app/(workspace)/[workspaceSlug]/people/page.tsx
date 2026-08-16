@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import { isHrAdmin } from '@/services/hr/access';
 import { loadDashboard, type Stat } from '@/services/hr/dashboard';
@@ -9,10 +9,21 @@ import { loadDashboard, type Stat } from '@/services/hr/dashboard';
  * HR administrator, a site manager, payroll, a recruiter, IT, an auditor and an
  * ordinary employee each get their own dashboard, resolved from server-side
  * permissions in loadDashboard — not the same page with cards hidden.
+ *
+ * `SELF_SERVICE`, not `employee:VIEW`. The gate used to demand the permission
+ * that reads *other people's* records, which only the HR-facing roles hold —
+ * so every sales persona clicking "People" in the module switcher landed on
+ * "You do not have access to this page", and the whole module read as broken.
+ * `resolvePersona` already falls back to the `employee` dashboard, which shows
+ * nothing but the viewer's own attendance, leave and balances via
+ * `myEmployee(ctx)`; that page was built for exactly the people the gate was
+ * turning away. Entitlement is still enforced — a workspace without HRMS has
+ * no People module at all — and every queue this dashboard links into keeps
+ * its own permission check.
  */
 export default async function PeopleOverview({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: SELF_SERVICE });
   const dashboard = await loadDashboard(ctx);
   const base = `/${workspaceSlug}/people`;
   const href = (h?: string) => (h ? `${base}/${h}` : undefined);
