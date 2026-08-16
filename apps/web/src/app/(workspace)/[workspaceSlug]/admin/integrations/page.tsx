@@ -6,6 +6,7 @@ import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony'
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
+import { geminiKeyForTenant } from '@/lib/ai/gemini';
 
 export const metadata = { title: 'Integrations' };
 
@@ -18,7 +19,7 @@ export const metadata = { title: 'Integrations' };
 export default async function IntegrationsPage() {
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
-  const [connections, chosen] = await Promise.all([
+  const [connections, chosen, aiConfigured] = await Promise.all([
     prisma.integrationConnection.findMany({
       where: { tenantId: ctx.tenantId },
       select: {
@@ -31,6 +32,9 @@ export default async function IntegrationsPage() {
       },
     }),
     defaultVendor(ctx.tenantId),
+    // The deployment key or the one this workspace connected — the card used to
+    // read only the env var and told every hosted tenant "not configured".
+    geminiKeyForTenant(ctx.tenantId).then(Boolean),
   ]);
 
   const byProvider = new Map(connections.map((c) => [c.provider, c]));
@@ -52,7 +56,8 @@ export default async function IntegrationsPage() {
       unsignedCallbacks: spec.unsignedCallbacks ?? false,
       credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
       settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
-      status: conn?.status ?? 'NOT_CONFIGURED',
+      // A deployment-wide GEMINI_API_KEY is a real connection with no row.
+      status: conn?.status ?? (spec.key === 'gemini' && aiConfigured ? 'CONNECTED' : 'NOT_CONFIGURED'),
       settings: (conn?.metadata ?? {}) as Record<string, unknown>,
       lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
       errorMessage: conn?.errorMessage ?? null,
@@ -74,7 +79,6 @@ export default async function IntegrationsPage() {
       <IntegrationBoard
         providers={providers}
         defaultTelephonyProvider={chosen}
-        aiConfigured={Boolean(process.env.GEMINI_API_KEY)}
         canEdit={can(ctx, 'integrations', 'MANAGE_CONFIGURATION')}
       />
     </>

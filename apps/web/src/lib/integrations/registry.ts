@@ -131,11 +131,30 @@ export const PROVIDERS: ProviderSpec[] = [
         label: 'Engine',
         secret: false,
         setting: true,
-        hint: 'google, deepgram or whisper',
+        hint: 'gemini, google, deepgram or whisper',
       },
       { key: 'model', label: 'Model', secret: false, setting: true },
     ],
     capabilities: ['TRANSCRIBE'],
+    webhook: false,
+  },
+  {
+    key: 'gemini',
+    label: 'Gemini',
+    category: 'AI',
+    description:
+      'Call analysis, audit scoring, live coaching and the in-app assistant. Without it those features fall back to a labelled simulation.',
+    credentials: [{ key: 'apiKey', label: 'API key', secret: true, hint: 'From Google AI Studio' }],
+    settings: [
+      {
+        key: 'model',
+        label: 'Model',
+        secret: false,
+        setting: true,
+        hint: 'Optional — the newest available flash model is discovered automatically',
+      },
+    ],
+    capabilities: ['ANALYSE', 'AUDIT', 'ASSIST', 'TRANSCRIBE'],
     webhook: false,
   },
 ];

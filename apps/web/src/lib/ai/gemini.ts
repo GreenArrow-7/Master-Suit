@@ -20,12 +20,26 @@ export async function geminiKeyForTenant(tenantId: string): Promise<string | nul
   const cached = keyByTenant.get(tenantId);
   if (cached && Date.now() - cached.at < KEY_TTL_MS) return cached.key;
 
-  const creds = await connectionCredentials(tenantId, 'transcription').catch(() => null);
-  const flavour = `${creds?.provider ?? ''} ${creds?.model ?? ''}`.toLowerCase();
-  const key = creds?.apiKey && (flavour.includes('gemini') || flavour.includes('google')) ? creds.apiKey : null;
+  // The dedicated Gemini connection is the intended home for the key.
+  const own = await connectionCredentials(tenantId, 'gemini').catch(() => null);
+  let key = own?.apiKey ?? null;
+
+  if (!key) {
+    // Workspaces that connected Gemini as their speech-to-text engine before
+    // the AI card existed already pasted the same key there; reuse it rather
+    // than asking for it twice.
+    const stt = await connectionCredentials(tenantId, 'transcription').catch(() => null);
+    const flavour = `${stt?.provider ?? ''} ${stt?.model ?? ''}`.toLowerCase();
+    if (stt?.apiKey && (flavour.includes('gemini') || flavour.includes('google'))) key = stt.apiKey;
+  }
 
   keyByTenant.set(tenantId, { key, at: Date.now() });
   return key;
+}
+
+/** Drops the cached answer so a just-saved key takes effect immediately. */
+export function forgetGeminiKey(tenantId: string) {
+  keyByTenant.delete(tenantId);
 }
 
 /**

@@ -76,6 +76,22 @@ export async function verifyConnection(provider: string, c: Record<string, strin
         // no health endpoint. The first transcription is the test.
         return unverifiable('Speech-to-text credentials are proven by the first transcription.');
 
+      case 'gemini': {
+        // ListModels is read-only, free, and fails loudly on a bad key — the
+        // admin learns the key is wrong while pasting it, not on the first call
+        // that needed it.
+        if (!c.apiKey) return { ok: false, detail: 'An API key is required.' };
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(c.apiKey)}`,
+          { signal: AbortSignal.timeout(20_000) },
+        );
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          return { ok: false, detail: `Google rejected the key (${res.status}). ${body.slice(0, 120)}` };
+        }
+        return { ok: true, detail: 'Key accepted by the Gemini API.' };
+      }
+
       default:
         return unverifiable('No verification is defined for this provider.');
     }

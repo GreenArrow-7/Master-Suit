@@ -52,19 +52,17 @@ const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {
 export default function IntegrationBoard({
   providers,
   defaultTelephonyProvider,
-  aiConfigured,
   canEdit,
 }: {
   providers: ProviderCard[];
   defaultTelephonyProvider: string | null;
-  aiConfigured: boolean;
   canEdit: boolean;
 }) {
   const categories = [...new Set(providers.map((p) => p.category))];
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <HealthSummary providers={providers} aiConfigured={aiConfigured} />
+      <HealthSummary providers={providers} />
 
       {categories.map((category) => (
         <section key={category}>
@@ -93,15 +91,12 @@ export default function IntegrationBoard({
   );
 }
 
-function HealthSummary({ providers, aiConfigured }: { providers: ProviderCard[]; aiConfigured: boolean }) {
-  const rows = [
-    ...providers.map((p) => ({ label: p.label, status: p.status, detail: p.errorMessage ?? relative(p.lastSyncAt) })),
-    {
-      label: 'Gemini',
-      status: aiConfigured ? 'CONNECTED' : 'NOT_CONFIGURED',
-      detail: aiConfigured ? 'Deployment key present' : 'GEMINI_API_KEY is not set on this deployment',
-    },
-  ];
+function HealthSummary({ providers }: { providers: ProviderCard[] }) {
+  const rows = providers.map((p) => ({
+    label: p.label,
+    status: p.status,
+    detail: p.errorMessage ?? relative(p.lastSyncAt),
+  }));
 
   return (
     <div className="lf-card" style={{ padding: 18 }}>

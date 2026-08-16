@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { forgetGeminiKey } from '@/lib/ai/gemini';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
@@ -112,6 +113,10 @@ export const PUT = route(
       select: { id: true, provider: true, status: true, webhookKey: true, metadata: true, lastSyncAt: true },
     });
 
+    // The resolver caches the answer for five minutes; a key saved in the UI
+    // must work on the next request, not the next cache expiry.
+    forgetGeminiKey(ctx.tenantId);
+
     return { ...connection, verification: verdict };
   },
 );
@@ -172,6 +177,7 @@ export const DELETE = route(
       data: { telephonyProvider: null },
     });
 
+    forgetGeminiKey(ctx.tenantId);
     return { provider: params.provider, status: 'NOT_CONFIGURED' };
   },
 );
