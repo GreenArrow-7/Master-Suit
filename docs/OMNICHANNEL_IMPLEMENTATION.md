@@ -301,13 +301,27 @@ exactly the class of bug this section exists to prevent.
 - `services/social/qualify.ts` — deterministic, no Gemini dependency, explainable reasons.
 - 16 tests (`tests/sales/social-comments.spec.ts`), 34 with the Meta suite.
 
+**DONE (`f745b6f`) — receiver wiring + worker.**
+- `normalizeMetaWebhook` now emits `SOCIAL_COMMENT_RECEIVED` for `feed` and `comments`.
+  **The route required no change** — it already stores + enqueues whatever the normaliser
+  returns, which is why extending the shared walk was the whole job.
+- Event id `comment:<provider>:<commentId>`; existing `WebhookEvent` uniqueness dedupes.
+- `services/social/applySocialComment.ts` — idempotent persist, qualification, identity
+  match on stable provider id (never username), assignment for HIGH/MEDIUM only,
+  best-effort notification with `actionUrl` deep link.
+- Facebook edit/delete verbs honoured; Instagram delivers neither, so unreachable there.
+- 19 social tests; 513 across tests/sales + tests/security. tsc 0, lint 0, build green.
+
+**Known gaps in this slice (deliberate, not oversights):**
+- Assignment currently only inherits the linked lead's owner. **`DistributionRule`
+  fallthrough for unknown commenters is not wired** — an unmatched HIGH enquiry lands
+  unassigned in the queue. Next task after the UI.
+- No realtime publish yet; the queue is read on page load.
+- No Activity record on link — deliberate, to avoid flooding CRM history with unlinked
+  comments (§27 leaves this to product judgment).
+
 **NOT DONE — next tasks in order:**
-1. **Wire the normaliser into the receiver.** `webhooks/meta/[key]/route.ts` handles
-   `leadgen` and `messages`; add `feed` and `comments` → enqueue → a `applySocialComment`
-   worker that persists the row, qualifies it, matches identity via `findDuplicates`,
-   assigns via `DistributionRule`, and notifies. **The route change is small; the worker is
-   the real work.**
-2. Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
+1. Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
 3. AI enrichment on top of the deterministic score — optional, must degrade.
 4. Comment Capture settings tab on the Meta page.
 5. Reply workflow — **blocked** on the unverified private-reply contract above.
