@@ -161,7 +161,7 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
    *
    * Inside the window a free-form reply is the right answer and a template list
    * is noise; outside it, it is the only answer — which is why the composer
-   * cannot simply be disabled with an apology (Â§31).
+   * cannot simply be disabled with an apology (§31).
    */
   useEffect(() => {
     if (!canSend || windowState?.open !== false) return;
@@ -384,7 +384,7 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
                   </>
                 ) : (
                   <>
-                    {/* Â§32. The window has lapsed, so a template is not a
+                    {/* §32. The window has lapsed, so a template is not a
                         fallback - it is the only legal way to write, and
                         offering the list is the difference between a closed
                         composer and a dead end. */}
