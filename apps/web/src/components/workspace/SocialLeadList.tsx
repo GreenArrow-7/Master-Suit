@@ -25,6 +25,7 @@ interface Lead {
   intentScore: number | null;
   intentReasons: string[];
   status: string;
+  assignmentNote: string | null;
   linkedLeadId: string | null;
   owner: { fullName: string | null } | null;
 }
@@ -62,7 +63,7 @@ export default function SocialLeadList({
   activeTab: string;
   activeChannel: string;
   workspaceSlug: string;
-  summary: { new: number; high: number; assigned: number; converted: number };
+  summary: { new: number; high: number; unassigned: number; converted: number };
 }) {
   const [open, setOpen] = useState<Lead | null>(null);
   const base = `/${workspaceSlug}/sales/social-leads`;
@@ -77,7 +78,7 @@ export default function SocialLeadList({
         {[
           ['New', summary.new],
           ['High intent', summary.high],
-          ['Assigned', summary.assigned],
+          ['Unassigned', summary.unassigned],
           ['Converted', summary.converted],
         ].map(([label, value]) => (
           <div className="lf-social__stat" key={label as string}>
@@ -150,6 +151,9 @@ export default function SocialLeadList({
                 <span className="lf-inbox__muted">{when(lead.commentCreatedAt)}</span>
                 <span className="lf-inbox__muted">{lead.owner?.fullName ?? 'Unassigned'}</span>
                 {lead.linkedLeadId && <span className="lf-badge">Known customer</span>}
+                {/* Why nobody owns it — the difference between a queue a manager
+                    can act on and a list of nulls. */}
+                {!lead.owner && lead.assignmentNote && <span className="lf-social__note">{lead.assignmentNote}</span>}
               </div>
 
               <button className="lf-btn lf-btn--secondary lf-btn--sm" type="button" onClick={() => setOpen(lead)}>

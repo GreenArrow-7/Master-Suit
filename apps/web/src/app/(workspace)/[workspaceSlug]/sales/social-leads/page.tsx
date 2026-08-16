@@ -22,6 +22,7 @@ const TABS = [
   ['new', 'New'],
   ['high', 'High intent'],
   ['assigned', 'Assigned'],
+  ['unassigned', 'Unassigned'],
   ['converted', 'Converted'],
   ['dismissed', 'Dismissed'],
 ] as const;
@@ -48,11 +49,16 @@ export default async function SocialLeadsPage({
     ...(tab === 'new' ? { status: 'NEW' } : {}),
     ...(tab === 'high' ? { intent: 'HIGH' } : {}),
     ...(tab === 'assigned' ? { status: 'ASSIGNED' } : {}),
+    // Everything a salesperson should be working that nobody owns. Spam and
+    // praise are excluded — they were never meant to be assigned.
+    ...(tab === 'unassigned' ? { ownerId: null, intent: { in: ['HIGH', 'MEDIUM'] } } : {}),
     ...(tab === 'converted' ? { status: 'CONVERTED' } : {}),
     // Spam and dismissed are captured for marketing, not for a salesperson's
     // queue, so they surface only on their own tab.
     ...(tab === 'dismissed' ? { status: { in: [...hidden] } } : {}),
-    ...(tab === 'all' || tab === 'new' || tab === 'high' ? { status: { notIn: [...hidden] } } : {}),
+    ...(tab === 'all' || tab === 'new' || tab === 'high' || tab === 'unassigned'
+      ? { status: { notIn: [...hidden] } }
+      : {}),
   };
 
   const [rows, counts] = await Promise.all([
@@ -72,6 +78,7 @@ export default async function SocialLeadsPage({
         intentScore: true,
         intentReasons: true,
         status: true,
+        assignmentNote: true,
         linkedLeadId: true,
         owner: { select: { fullName: true } },
       },
@@ -88,6 +95,16 @@ export default async function SocialLeadsPage({
     where: {
       ...visible,
       intent: 'HIGH',
+      status: { notIn: ['CONVERTED', 'DISMISSED', 'SPAM'] },
+    } as Prisma.SocialCommentWhereInput,
+  });
+
+  // The number a manager actually acts on: real enquiries nobody owns.
+  const unassignedCount = await prisma.socialComment.count({
+    where: {
+      ...visible,
+      ownerId: null,
+      intent: { in: ['HIGH', 'MEDIUM'] },
       status: { notIn: ['CONVERTED', 'DISMISSED', 'SPAM'] },
     } as Prisma.SocialCommentWhereInput,
   });
@@ -110,7 +127,7 @@ export default async function SocialLeadsPage({
         summary={{
           new: byStatus.NEW ?? 0,
           high: highCount,
-          assigned: byStatus.ASSIGNED ?? 0,
+          unassigned: unassignedCount,
           converted: byStatus.CONVERTED ?? 0,
         }}
       />

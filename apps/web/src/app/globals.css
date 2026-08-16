@@ -4468,3 +4468,7 @@ a:hover {
   gap: 8px;
   justify-content: stretch;
 }
+.lf-social__note {
+  font-size: 12px;
+  color: #7a5c22;
+}
