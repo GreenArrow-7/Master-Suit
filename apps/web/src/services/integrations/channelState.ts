@@ -54,6 +54,7 @@ const ago = (date: Date | null | undefined): string => {
 
 export async function channelCards(tenantId: string, slug: string): Promise<ChannelCard[]> {
   const settings = `/${slug}/admin/integrations`;
+  const metaPage = `${settings}/meta`;
 
   const [meta, metaCreds, lastMetaEvent, failedEvents, templates, forms, lastSubmission, notified] = await Promise.all([
     prisma.integrationConnection.findUnique({
@@ -118,7 +119,7 @@ export async function channelCards(tenantId: string, slug: string): Promise<Chan
         { label: 'Last event', value: ago(lastMetaEvent?.createdAt) },
         { label: 'Event type', value: lastMetaEvent?.eventType ?? '—' },
       ],
-      href: settings,
+      href: metaPage,
       ready: metaMode !== 'NOT_CONFIGURED' && !tokenExpired,
       attention: metaAttention,
     },
