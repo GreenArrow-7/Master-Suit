@@ -356,8 +356,26 @@ exactly the class of bug this section exists to prevent.
 - Proven live: `dr-4 → Amina Al Rashid`, `dr-5 → Dhruv Menon` (rotation advanced),
   `dr-6 LOW → unassigned`, 2 notifications not 3. Probe data cleaned up.
 
-**NOT DONE — next tasks in order (from the 2026-08-17 direction):**
-1. **Social Lead SLA + overdue escalation** — reuse the existing SLA architecture, do not
+**DONE (`aa27c0f`) — assignment history + non-assignment reasons.**
+- `SocialAssignmentHistory` + `SocialAssignmentSource` enum, migration
+  `20260817090000_social_assignment_history`, RLS FORCED and verified.
+  Separate from `LeadAssignmentHistory` because its `leadId` is non-null — reusing it would
+  mean creating the CRM record the two-layer design withholds.
+- `SocialComment.assignmentSource` / `assignedAt` / `assignmentNote`.
+  **`MANUAL` is the value a retry must never overwrite** when reassignment UI lands.
+- `nextDistributionOwner` returns a reason and walks the pool past inactive users rather
+  than giving up on the first one.
+- Verified all four paths: no rule / no eligible members / assigned / low-intent, plus a
+  replay that preserved the owner and sent 1 notification not 2.
+
+**DONE (`190ddbb`) — unassigned queue.** Tab + count, HIGH/MEDIUM only, reason rendered
+inline. Verified live: `UNASSIGNED 1` with "No matching distribution rule."
+
+**NOT DONE — next tasks in order:**
+1. **Manual reassignment UI** — assign to me / user / team. The data layer is ready
+   (`assignmentSource: MANUAL`); the worker's early-return on duplicates already protects it,
+   but add an explicit guard when the UI lands so a *reprocessed* comment cannot overwrite.
+2. **Social Lead SLA + overdue escalation** — reuse the existing SLA architecture, do not
    build a social-specific one. Clock should start from the provider comment timestamp;
    document that choice.
 2. **Manual-reassignment preservation** — a manager's explicit choice must survive a retry.
