@@ -261,7 +261,59 @@ attribution where actually supplied, intent, score, status, ownerId, teamId, lin
 linkedContactId, repliedAt, providerReplyId.
 **Store only what Meta actually supplies — never invent a phone, email or legal name.**
 
-**Not started.** No code written for this yet. The Phase 2 work below (`8920781`, `a0e91c7`)
+## VERIFIED META COMMENT CONTRACT (checked 2026-08-16, not recalled)
+
+Sources: `developers.facebook.com/docs/graph-api/webhooks/reference/page` (feed) and
+`.../reference/instagram` (comments). Graph pinned **v26.0**.
+
+|                   | Facebook                          | Instagram                          |
+|-------------------|-----------------------------------|------------------------------------|
+| webhook field     | `feed`                            | `comments`                         |
+| discriminator     | `value.item === 'comment'`        | the field itself                   |
+| comment id        | `value.comment_id`                | `value.id`                         |
+| text              | `value.message`                   | `value.text`                       |
+| author            | `from.{id, name}`                 | `from.{id, username}`              |
+| author id scope   | page-scoped                       | Instagram-scoped (`self_ig_scoped_id`) |
+| content           | `value.post_id`                   | `value.media.{id, media_product_type}` |
+| ad attribution    | not supplied                      | `value.media.{ad_id, ad_title}`    |
+| edit/delete       | `value.verb` (add/edit/edited/delete/remove/…) | **not delivered**     |
+| permission noted  | `pages_manage_metadata`, page admin with MODERATE | (not stated in that reference) |
+
+**Consequences already encoded:** `feed` also carries posts/likes/shares, so non-comment
+items are dropped; `verb` is Facebook-only and must stay undefined for Instagram; ad
+attribution is Instagram-only; ids live in separate spaces, so the idempotency key includes
+`provider`.
+
+**Still unverified — do this before going LIVE:** exact permission set for each field,
+Instagram professional-account requirements, App Review requirements, and the private-reply
+mechanism and its window. The reference pages consulted did not state them. §41/§45 (reply
+UI and deadline) must not be built until they are, because inventing a reply window is
+exactly the class of bug this section exists to prevent.
+
+## Phase 2C progress
+
+**DONE (`d1187e1`) — ingestion foundation.**
+- `SocialComment` model + migration `20260816180000_social_comment`, RLS FORCED (verified
+  via `pg_class`), indexes for queue / owner / media-attribution / returning-commenter.
+- `@@unique([tenantId, provider, providerCommentId])` idempotency key.
+- `lib/integrations/meta/comments.ts` — `normalizeFacebookComment`, `normalizeInstagramComment`,
+  `normalizeSocialComment(field, value)`. Never throws.
+- `services/social/qualify.ts` — deterministic, no Gemini dependency, explainable reasons.
+- 16 tests (`tests/sales/social-comments.spec.ts`), 34 with the Meta suite.
+
+**NOT DONE — next tasks in order:**
+1. **Wire the normaliser into the receiver.** `webhooks/meta/[key]/route.ts` handles
+   `leadgen` and `messages`; add `feed` and `comments` → enqueue → a `applySocialComment`
+   worker that persists the row, qualifies it, matches identity via `findDuplicates`,
+   assigns via `DistributionRule`, and notifies. **The route change is small; the worker is
+   the real work.**
+2. Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
+3. AI enrichment on top of the deterministic score — optional, must degrade.
+4. Comment Capture settings tab on the Meta page.
+5. Reply workflow — **blocked** on the unverified private-reply contract above.
+6. `Convert to Lead` + attribution preservation.
+
+**Not started.** No further code written for this yet. The Phase 2 work below (`8920781`, `a0e91c7`)
 remains valid and is unaffected.
 
 ---
