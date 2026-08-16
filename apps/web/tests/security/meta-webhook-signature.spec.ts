@@ -12,8 +12,7 @@ const payload = JSON.stringify({
 const provider = () =>
   new MetaWhatsAppProvider({ accessToken: 'tok', phoneNumberId: '123', appSecret, webhookVerifyToken: verifyToken });
 
-const sign = (body = payload, key = appSecret) =>
-  `sha256=${createHmac('sha256', key).update(body).digest('hex')}`;
+const sign = (body = payload, key = appSecret) => `sha256=${createHmac('sha256', key).update(body).digest('hex')}`;
 
 describe('Meta webhook authentication', () => {
   it('accepts a payload signed with the app secret', () => {

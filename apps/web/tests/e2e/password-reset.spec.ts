@@ -90,7 +90,7 @@ test.describe('Password reset', () => {
     await page.getByLabel('Email').fill(workspace.adminEmail);
     await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.locator('.lf-alert')).toBeVisible();
+    await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -101,6 +101,6 @@ test.describe('Password reset', () => {
     await page.getByLabel('Confirm new password').fill(strongPassword(`two${run}`));
     await page.getByRole('button', { name: 'Change password' }).click();
 
-    await expect(page.locator('.lf-alert')).toBeVisible();
+    await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
   });
 });

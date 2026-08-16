@@ -263,7 +263,18 @@ function RequestTable({
           {rows.map((row) => (
             <tr key={row.id}>
               {showEmployee && <td data-label="Employee">{row.employee}</td>}
-              <td data-label="Type">{row.type}</td>
+              <td data-label="Type">
+                {row.type}
+                {/* The why, under the what. The applicant wrote it for the
+                    approver; a queue that hides it forces a phone call per
+                    request. Data was already fetched — the reference rebuild
+                    just stopped rendering it. */}
+                {row.reason && (
+                  <span style={{ display: 'block', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
+                    {row.reason}
+                  </span>
+                )}
+              </td>
               <td data-label="From">{row.from}</td>
               <td data-label="To">{row.to}</td>
               <td data-label="Days">{row.days}</td>

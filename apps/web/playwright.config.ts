@@ -77,7 +77,11 @@ export default defineConfig({
 
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000/login',
+    // Gate on the server the suite will actually talk to. With APP_URL set
+    // (a developer pointing the suite at a production build on another port)
+    // the gate attaches to that server and never spawns a dev server of its
+    // own — a run must not depend on whatever happens to occupy port 3000.
+    url: `${process.env.APP_URL ?? 'http://localhost:3000'}/login`,
     // Locally, attach to the server the developer already has running. In CI
     // there is never one, and silently reusing a stale process would test the
     // wrong build.

@@ -50,10 +50,11 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await page.getByLabel('Password', { exact: true }).fill('definitely-not-the-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    // `.lf-alert` and not role=alert: Next's dev overlay renders its own empty
+    // A class and not role=alert: Next's dev overlay renders its own empty
     // alert region on every page, which makes a role query match whether or not
-    // the app said anything.
-    const alert = page.locator('.lf-alert');
+    // the app said anything. Both spellings, because the redesigned sign-in
+    // renders its refusal as `.lf-auth-alert` while in-app screens keep `.lf-alert`.
+    const alert = page.locator('.lf-alert, .lf-auth-alert');
     await expect(alert).toBeVisible();
     // Account enumeration: the message must not confirm the address exists.
     await expect(alert).not.toContainText(workspace.adminEmail);
@@ -64,7 +65,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
     await page.goto('/enroll-2fa');
 
-    await expect(page.getByRole('heading', { name: 'Set up two-factor authentication' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Set up your authenticator' })).toBeVisible();
     await expect(page.getByText('Enter this setup key:')).toBeVisible();
 
     // The setup key is the only copy the account holder ever receives.
@@ -101,7 +102,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
 
     await code.fill('000000');
     await page.getByRole('button', { name: 'Verify and sign in' }).click();
-    await expect(page.locator('.lf-alert')).toBeVisible();
+    await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
     await code.fill(currentCode(secret));
@@ -142,7 +143,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await page.getByLabel('Recovery code').fill(code);
     await page.getByRole('button', { name: 'Verify and sign in' }).click();
 
-    await expect(page.locator('.lf-alert')).toBeVisible();
+    await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 });
