@@ -330,11 +330,22 @@ exactly the class of bug this section exists to prevent.
 - QA'd 1440px + 390px: 0 overflow, drawer full-width.
 - Convert/Reply not built; the drawer says so rather than showing dead buttons.
 
+**DONE (`84df82b`) — Convert to Lead.**
+- `POST /api/v1/social-leads/[id]/convert`, drawer panel. Name required only; phone/email
+  blank until collected. `findDuplicates` first — a match links and merges attribution
+  without rewriting the existing `source`.
+- Attribution survives: `source=CHAT`, `sourceDetail='Instagram Comment'`, and
+  `customData.socialEnquiry` carrying comment text, ad id/title, media id, provider ids,
+  timestamps. **This is what makes "which post produced pipeline?" answerable later.**
+- Consent is `UNKNOWN`, not `IMPLIED` — a public comment is not a submitted form.
+- Re-converting returns 409.
+- Verified live end to end: seed → convert → 409 on repeat → attribution read back from
+  the database. Demo data cleaned up.
+- **Three more bare-`id` writes** were caught by the tenant guard (same class as Phase 2B).
+  Rule for future work: any Prisma write addressed by `id` alone will be refused.
+
 **NOT DONE — next tasks in order:**
-1. **`Convert to Lead`** — the Layer 1 → Layer 2 bridge, and the highest-value remaining
-   piece. Must preserve source (`Instagram Comment` / `Facebook Comment`), the original
-   comment, the media/ad context, and the social identity link.
-2. **DistributionRule fallthrough** — an unmatched HIGH enquiry currently lands unassigned;
+1. **DistributionRule fallthrough** — an unmatched HIGH enquiry currently lands unassigned;
    `applySocialComment` only inherits a linked lead's owner.
 3. Simulated comment action in demo mode (§25) — a safe admin path that goes through the
    real receiver, not a direct insert.
