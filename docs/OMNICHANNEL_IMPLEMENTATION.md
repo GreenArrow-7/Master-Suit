@@ -320,8 +320,28 @@ exactly the class of bug this section exists to prevent.
 - No Activity record on link — deliberate, to avoid flooding CRM history with unlinked
   comments (§27 leaves this to product judgment).
 
+**DONE (`f180e44`) — Social Leads workspace.**
+- Route `sales/social-leads`, nav entry under ENGAGE. Server-rendered, link-based tabs
+  (shareable URLs), scoped by `visibilityWhere` with unassigned included.
+- `components/workspace/SocialLeadList.tsx` — queue rows + detail drawer. Score always shown
+  with its reasons. No provider ids on the row.
+- **Verified through the real pipeline**, not by inserting rows: IG high→HIGH 80,
+  IG praise→LOW 5, FB high→HIGH 70, a `like` dropped, redelivery deduped, **0 CRM Leads**.
+- QA'd 1440px + 390px: 0 overflow, drawer full-width.
+- Convert/Reply not built; the drawer says so rather than showing dead buttons.
+
 **NOT DONE — next tasks in order:**
-1. Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
+1. **`Convert to Lead`** — the Layer 1 → Layer 2 bridge, and the highest-value remaining
+   piece. Must preserve source (`Instagram Comment` / `Facebook Comment`), the original
+   comment, the media/ad context, and the social identity link.
+2. **DistributionRule fallthrough** — an unmatched HIGH enquiry currently lands unassigned;
+   `applySocialComment` only inherits a linked lead's owner.
+3. Simulated comment action in demo mode (§25) — a safe admin path that goes through the
+   real receiver, not a direct insert.
+4. Comment Capture settings tab on the Meta page.
+5. AI enrichment on top of the deterministic score — optional, must degrade.
+6. Reply workflow — **still BLOCKED** on the unverified Meta private-reply contract.
+7. Old item: Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
 3. AI enrichment on top of the deterministic score — optional, must degrade.
 4. Comment Capture settings tab on the Meta page.
 5. Reply workflow — **blocked** on the unverified private-reply contract above.
