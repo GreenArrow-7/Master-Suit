@@ -133,6 +133,17 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
 
+  /**
+   * The Meta app Master Suite itself is registered as, so one App Review covers
+   * every workspace. These identify the *platform*; the Page tokens they produce
+   * are per-tenant and live encrypted on the connection.
+   *
+   * Unset means the Connect button explains what an operator has to configure
+   * rather than sending anyone to a broken Facebook dialog.
+   */
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),

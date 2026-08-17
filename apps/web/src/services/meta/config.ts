@@ -8,6 +8,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { metaOAuthConfigured } from '@/services/meta/oauth';
 
 const GRAPH_VERSION = 'v26.0';
 
@@ -111,6 +112,9 @@ export async function metaConfig(tenantId: string) {
   return {
     mode,
     simulated,
+    // Whether this deployment can run the connect flow at all. Without it the
+    // button would send an administrator to a Facebook dialog that refuses them.
+    oauthReady: metaOAuthConfigured(),
     connected: connection?.status === 'CONNECTED',
     status: tokenExpired ? 'EXPIRED' : (connection?.status ?? 'NOT_CONFIGURED'),
     errorMessage: connection?.errorMessage ?? null,

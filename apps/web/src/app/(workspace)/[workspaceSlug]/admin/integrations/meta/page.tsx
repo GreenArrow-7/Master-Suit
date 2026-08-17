@@ -14,10 +14,29 @@ export const metadata = { title: 'Facebook & Instagram' };
  * URL directly gets the workspace's standard refusal, and the API refuses them
  * again independently, because hiding a nav item is not access control.
  */
-export default async function MetaIntegrationPage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
+export default async function MetaIntegrationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ connected?: string; page?: string; error?: string }>;
+}) {
   const { workspaceSlug } = await params;
+  const query = await searchParams;
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
   const config = await metaConfig(ctx.tenantId);
+
+  /**
+   * What the OAuth callback redirected back with. Read here rather than from
+   * `window.location` in an effect: the person is arriving from Facebook and the
+   * first paint should already say what happened.
+   */
+  const outcome =
+    query.connected === 'meta'
+      ? query.error
+        ? { ok: false, text: query.error }
+        : { ok: true, text: `Connected to ${query.page ?? 'Facebook'}.` }
+      : null;
 
   return (
     <div className="lf-page-stack">
@@ -36,6 +55,7 @@ export default async function MetaIntegrationPage({ params }: { params: Promise<
       <MetaConfiguration
         config={JSON.parse(JSON.stringify(config))}
         canEdit={can(ctx, 'integrations', 'MANAGE_CONFIGURATION')}
+        outcome={outcome}
         workspaceSlug={workspaceSlug}
       />
     </div>

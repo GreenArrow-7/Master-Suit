@@ -32,6 +32,8 @@ interface Form {
 
 interface Config {
   mode: 'LIVE' | 'SIMULATED' | 'NOT_CONFIGURED';
+  /** False when the deployment has no Meta app configured — see services/meta/oauth.ts. */
+  oauthReady: boolean;
   simulated: boolean;
   connected: boolean;
   status: string;
@@ -82,15 +84,39 @@ export default function MetaConfiguration({
   config,
   canEdit,
   workspaceSlug,
+  outcome,
 }: {
   config: Config;
   canEdit: boolean;
   workspaceSlug: string;
+  /** What the OAuth callback came back with, resolved on the server. */
+  outcome: { ok: boolean; text: string } | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(
+    outcome ? { tone: outcome.ok ? 'ok' : 'bad', text: outcome.text } : null,
+  );
   const [editing, setEditing] = useState<Form | null>(null);
+
+  async function connect() {
+    setBusy('connect');
+    setNotice(null);
+    try {
+      const res = await fetch('/api/v1/integrations/meta/connect', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ returnTo: window.location.pathname }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail ?? data?.error?.message ?? 'Could not start the connection.');
+      // A full navigation, not a fetch: the consent screen is Facebook's page.
+      window.location.href = data.url;
+    } catch (err) {
+      setNotice({ tone: 'bad', text: (err as Error).message });
+      setBusy(null);
+    }
+  }
 
   async function post(payload: Record<string, unknown>, label: string) {
     setBusy(label);
@@ -166,8 +192,22 @@ export default function MetaConfiguration({
 
         {canEdit && (
           <div className="lf-meta__actions">
+            {/* The first thing on an unconnected workspace, and the fix on a
+                broken one — so it leads rather than sitting behind Sync. */}
             <button
-              className="lf-btn lf-btn--sm"
+              className={config.connected ? 'lf-btn lf-btn--secondary lf-btn--sm' : 'lf-btn lf-btn--sm'}
+              type="button"
+              disabled={busy !== null || !config.oauthReady}
+              onClick={connect}
+            >
+              {busy === 'connect'
+                ? 'Opening Facebook…'
+                : config.connected
+                  ? 'Reconnect'
+                  : 'Connect Facebook & Instagram'}
+            </button>
+            <button
+              className="lf-btn lf-btn--secondary lf-btn--sm"
               type="button"
               disabled={busy !== null}
               onClick={() => post({ action: 'sync' }, 'sync')}
@@ -194,6 +234,14 @@ export default function MetaConfiguration({
               </button>
             )}
           </div>
+        )}
+
+        {canEdit && !config.oauthReady && (
+          <p className="lf-inbox__muted">
+            Connecting is unavailable on this deployment: no Meta app is configured. An operator needs to set{' '}
+            <code>META_APP_ID</code> and <code>META_APP_SECRET</code>, and add this server&apos;s callback URL to the
+            Meta app&apos;s allowed redirect URIs.
+          </p>
         )}
 
         {notice && (
