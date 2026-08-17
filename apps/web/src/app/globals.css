@@ -4537,3 +4537,35 @@ a:hover {
 .lf-social__slaline[data-sla='breached'] strong {
   color: var(--lf-vermillion);
 }
+.lf-social__reply {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  padding: 11px;
+}
+.lf-social__reply ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.lf-social__reply li {
+  display: grid;
+  gap: 1px;
+  font-size: 13px;
+  padding-left: 15px;
+  position: relative;
+}
+/* The mark carries the state as a shape, not only a colour (§73). */
+.lf-social__reply li::before {
+  content: '×';
+  position: absolute;
+  left: 0;
+  color: var(--lf-ink-3);
+}
+.lf-social__reply li[data-allowed='true']::before {
+  content: '✓';
+  color: var(--lf-viridian);
+}

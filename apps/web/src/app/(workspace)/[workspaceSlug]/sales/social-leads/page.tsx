@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
 import { socialSlaState, socialSlaTarget } from '@/services/social/sla';
+import { replyCapability } from '@/lib/integrations/meta/replyCapability';
 import PageHeader from '@/components/ui/PageHeader';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
 
@@ -101,6 +102,8 @@ export default async function SocialLeadsPage({
         intentReasons: true,
         status: true,
         assignmentNote: true,
+        parentCommentId: true,
+        providerReplyId: true,
         slaDueAt: true,
         repliedAt: true,
         convertedAt: true,
@@ -180,14 +183,24 @@ export default async function SocialLeadsPage({
    * Overdue tab and the count are all one clock. The tenant's warning threshold
    * comes from its own SLA row when it has configured one.
    */
-  const [highTarget, mediumTarget] = await Promise.all([
+  const [highTarget, mediumTarget, connections] = await Promise.all([
     socialSlaTarget(ctx.tenantId, 'HIGH'),
     socialSlaTarget(ctx.tenantId, 'MEDIUM'),
+    // What Meta actually granted this workspace. Without it the drawer would
+    // promise a reply the connection has no permission to send.
+    prisma.integrationConnection.findMany({
+      where: { tenantId: ctx.tenantId, provider: { in: ['facebook', 'instagram', 'meta'] } },
+      select: { provider: true, scopes: true },
+    }),
   ]);
+  const scopesFor = (provider: string) =>
+    connections.find((c) => c.provider === provider)?.scopes ?? connections.find((c) => c.provider === 'meta')?.scopes;
+
   const now = new Date();
   const leads = rows.map((row) => ({
     ...row,
     sla: socialSlaState(row, now, (row.intent === 'HIGH' ? highTarget : mediumTarget)?.warningPct ?? 80),
+    reply: replyCapability({ ...row, grantedScopes: scopesFor(row.provider) }, now),
   }));
 
   return (

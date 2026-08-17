@@ -31,6 +31,13 @@ interface Lead {
   convertedAt: string | null;
   /** Derived on the server so the badge, the Overdue tab and the count agree. */
   sla: string;
+  /** What Meta will actually accept for this comment — see replyCapability.ts. */
+  reply: {
+    canPublicReply: boolean;
+    canPrivateReply: boolean;
+    replyExpiresAt: string | null;
+    reasonUnavailable: { public?: string; private?: string };
+  };
   linkedLeadId: string | null;
   owner: { fullName: string | null } | null;
   team: { name: string } | null;
@@ -79,11 +86,26 @@ const SLA_LABEL: Record<string, string> = {
   ON_TRACK: 'On track',
 };
 
+/** Minutes while that reads as urgency; hours and days once it stops. */
+const spell = (mins: number) => {
+  if (mins < 90) return `${mins} min`;
+  if (mins < 60 * 36) return `${Math.round(mins / 60)} hr`;
+  return `${Math.round(mins / (60 * 24))} days`;
+};
+
 const slaDetail = (lead: Lead) => {
   if (!lead.slaDueAt || lead.sla === 'MET' || lead.sla === 'PAUSED') return null;
   const mins = Math.round((new Date(lead.slaDueAt).getTime() - Date.now()) / 60_000);
-  if (mins < 0) return `${Math.abs(mins)} min late`;
-  return `${mins} min left`;
+  return mins < 0 ? `${spell(Math.abs(mins))} late` : `${spell(mins)} left`;
+};
+
+/** How long the private-reply window has left, in a sentence. */
+const privateWindow = (expiresAt: string | null) => {
+  if (!expiresAt) return 'Allowed, and only once.';
+  const hours = Math.round((new Date(expiresAt).getTime() - Date.now()) / 3_600_000);
+  if (hours < 24)
+    return `Allowed for about ${Math.max(hours, 1)} more hours — Meta closes it 7 days after the comment.`;
+  return `Allowed for ${Math.round(hours / 24)} more days, and only once.`;
 };
 
 const when = (iso: string) => {
@@ -304,6 +326,8 @@ function SocialLeadDrawer({
               <span className="lf-inbox__muted">Measured from the customer&apos;s comment, not from assignment.</span>
             </p>
           )}
+
+          <ReplyCapability lead={lead} />
 
           <AssignmentPanel lead={lead} canAssign={canAssign} me={me} options={options} />
 
@@ -616,6 +640,39 @@ function AssignmentPanel({
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * What Meta will let us do with this comment.
+ *
+ * Sending is not built yet — the honest thing is to say what is possible and
+ * what is not, rather than show a button that produces an error, or say nothing
+ * and leave a salesperson guessing whether a private reply is still open.
+ */
+function ReplyCapability({ lead }: { lead: Lead }) {
+  const { canPublicReply, canPrivateReply, reasonUnavailable } = lead.reply;
+  const channel = CHANNEL[lead.provider] ?? lead.provider;
+
+  return (
+    <section className="lf-social__reply">
+      <span className="lf-eyebrow">Replying on {channel}</span>
+      <ul>
+        <li data-allowed={canPublicReply}>
+          <strong>Public reply</strong>
+          <span className="lf-inbox__muted">
+            {canPublicReply ? 'Allowed — no time limit.' : reasonUnavailable.public}
+          </span>
+        </li>
+        <li data-allowed={canPrivateReply}>
+          <strong>Private reply</strong>
+          <span className="lf-inbox__muted">
+            {canPrivateReply ? privateWindow(lead.reply.replyExpiresAt) : reasonUnavailable.private}
+          </span>
+        </li>
+      </ul>
+      <p className="lf-inbox__muted">Sending from Master Suite is not built yet.</p>
     </section>
   );
 }
