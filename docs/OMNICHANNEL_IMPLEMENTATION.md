@@ -508,11 +508,44 @@ and refused private with Meta's reason; EXTERNAL/WhatsApp recorded and dropped O
 without a refresh; API refusals 409/422 across five malformed bodies. 1440px and 390px both
 0 overflow. 1153 unit tests green. Probe data and scopes restored.
 
+**DONE (`28cc1e6`) — the OAuth connect flow.** The connection was a hand-written database row
+until now, which meant no customer could adopt any of this without an engineer.
+- `services/meta/oauth.ts` — dialog URL, code exchange, long-lived exchange, `/me/accounts`,
+  `/me/permissions`. Contract checked against live docs 2026-08-17, recorded in the file header.
+- **`state` is a random handle to a Redis record**, not a signed blob: bound to workspace +
+  actor, 10-minute TTL, spent with **GETDEL** so a replayed callback cannot also succeed. It
+  proves the redirect belongs to a flow this server started; **identity still comes from the
+  session**, and a state minted in one workspace is refused when the session is in another.
+- **The app secret never reaches the browser.** A test asserts the authorize URL contains
+  neither the secret, the tenant id nor the actor id.
+- **The Page token is stored, not the user token** — Page tokens from a long-lived user token
+  do not expire on a timer, so capture does not silently stop after 60 days.
+- Two things that only appear with real accounts: the Page chosen is the first that can
+  actually be *used* (a role of only ANALYZE authenticates fine and refuses every write), and
+  **granted scopes are read back from `/me/permissions`** rather than assumed from what was
+  requested, because a person can untick permissions on the consent screen. `replyCapability`
+  already reads that field.
+- `META_APP_ID` / `META_APP_SECRET` unset → button disabled, screen explains what an operator
+  must configure. Documented in `.env.example` along with the callback URL to register.
+- `tests/sales/meta-oauth.spec.ts` (10). 1163 unit tests green, tsc 0, lint 0, build green.
+
+**Verified over the live devtunnel** (`https://w3ksqsxm-3000.asse.devtunnels.ms`), which is what
+a real Meta callback would hit: unconfigured → button disabled with the explanation; configured
+→ authorize URL correct (`/v26.0/dialog/oauth`, right scopes, no secret, opaque 43-char state);
+callback cancel → "Connection cancelled — nothing was changed"; unknown state, absent state and
+**both replay attempts** refused; a valid state with a fake code reached Facebook and surfaced
+**Meta's own error**, and the connection row and audit log were **untouched** by the failure.
+
+**Still not proven, and worth being blunt about:** no real Meta app exists here, so the
+successful branch of the exchange — real code → real Page token → stored connection — has never
+run. Everything up to and after it has. That is the one remaining unknown in the flow.
+
 **NOT DONE — next tasks in order:**
-1. **A real Meta connection has never been exercised.** Everything above is proven through the
-   simulated path and unit tests. `sendMetaReply` has not made one live Graph call, and there
-   is still **no OAuth connect flow** — the connection is created outside the UI. That is the
-   biggest remaining gap in the whole programme.
+1. **A real Meta connection has never been exercised.** Everything is proven through the
+   simulated path, unit tests and the devtunnel. `sendMetaReply` has not made one live Graph
+   call, and no real App ID has been through the consent screen. Register a Meta app, set
+   `META_APP_ID`/`META_APP_SECRET`, add `{APP_URL}/api/v1/integrations/meta/callback` to its
+   Valid OAuth Redirect URIs, and walk the flow once. That is now the biggest remaining gap.
 2. **Bulk assignment** (§20) — deliberately not started; single assignment had to be right first.
 3. **Previous-owner notification** (§18) — judged not worth it for every reassignment; revisit
    if managers ask.
