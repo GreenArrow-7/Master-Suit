@@ -468,8 +468,56 @@ to be checked separately rather than assumed identical.
 
 **Also fixed:** overdue rows read "11511 min late". Units now scale to hours and days.
 
+**DONE (`df147ed`) — the reply workflow.**
+- `SocialReply` + `SocialReplyKind` (PUBLIC / PRIVATE / EXTERNAL), migration
+  `20260817160000_social_reply`, RLS FORCED. Append-only, alongside `SocialComment.repliedAt`
+  rather than replacing it: that field is the *first* response, which is what the SLA measures.
+- `lib/integrations/meta/send.ts` — the two endpoints from the verified contract. Errors are
+  **returned, not thrown**: a refusal from Meta is something a salesperson reads, and it is
+  shown in Meta's own words (`(#10) Application does not have permission…` beats "reply failed").
+- `services/social/replyToComment.ts` — authorization (`leads` EDIT), a **re-check of the
+  capability at send time** (a tab left open overnight can outlive the window), the call, the
+  trail, the status move to CONTACTED and the clock stopping, in one transaction.
+- **Nothing is written when Meta refuses.** A row claiming we answered would stop the SLA and
+  tell a manager the enquiry was handled. Demo mode records replies as `delivered: false`.
+- `services/social/draftReply.ts` + `POST …/draft` — returns text, writes nothing, and **cannot
+  import the sender**. `tests/sales/social-reply.spec.ts` asserts that on the module graph,
+  because "AI must never auto-send" is a structural property, not a promise about a code path.
+  The prompt forbids inventing prices, dates or contact details; the template fallback has none.
+- `EXTERNAL` covers §36: a person recording that they phoned or messaged the customer, with the
+  channel from a fixed list. It stops the clock because the customer really was answered.
+
+**Two things earlier in this session were wrong, and are corrected here:**
+1. **Converting was stopping the SLA clock.** §35 is explicit and was right: creating a CRM
+   record is filing, not answering. An enquiry converted in silence is exactly the one that
+   should stay red. Only a reply stops the clock now, and the Overdue tab counts converted
+   rows too.
+2. **The queue was ordered purely by deadline**, which put a lukewarm enquiry twenty minutes
+   late above a hot one two minutes from target. `queueRank()` now puts intent before lateness.
+   ponytail ceiling: the ranking is applied to the fetched page, since derived state cannot be
+   sorted in SQL — store the state if a workspace ever runs a backlog deeper than `take`.
+
+**Found during QA:** a *public* reply was being treated as spending Meta's single *private*
+reply, so the drawer said the direct route was closed while it was open. Only a private reply
+spends it now. Also: after sending, the selected option could become disabled with nothing
+checked — the form falls back to an allowed one.
+
+Verified live: draft filled the box and sent nothing; Send recorded the reply, labelled it
+`not delivered (demo)`, and flipped SLA to Answered; the 9-day-old enquiry offered public reply
+and refused private with Meta's reason; EXTERNAL/WhatsApp recorded and dropped Overdue 1→0
+without a refresh; API refusals 409/422 across five malformed bodies. 1440px and 390px both
+0 overflow. 1153 unit tests green. Probe data and scopes restored.
+
 **NOT DONE — next tasks in order:**
-1. **Reply UI + sending** — the capability layer is ready and the contract is known, so this
+1. **A real Meta connection has never been exercised.** Everything above is proven through the
+   simulated path and unit tests. `sendMetaReply` has not made one live Graph call, and there
+   is still **no OAuth connect flow** — the connection is created outside the UI. That is the
+   biggest remaining gap in the whole programme.
+2. **Bulk assignment** (§20) — deliberately not started; single assignment had to be right first.
+3. **Previous-owner notification** (§18) — judged not worth it for every reassignment; revisit
+   if managers ask.
+4. **SLA history/analytics** (§38) — `SocialReply` now carries first-response data, so
+   time-to-response reporting is possible but not built. — the capability layer is ready and the contract is known, so this
    is now unblocked. Public reply first (no window, simpler permissions); private reply
    second, and only where `canPrivateReply` says so. Record `providerReplyId` and `repliedAt`
    on success — the SLA and the capability layer both already read them. **AI drafts must
