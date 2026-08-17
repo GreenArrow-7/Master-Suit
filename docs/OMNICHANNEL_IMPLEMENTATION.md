@@ -396,19 +396,49 @@ inline. Verified live: `UNASSIGNED 1` with "No matching distribution rule."
 - QA'd live at 1440px and 390px: 0 overflow, full history trail reads
   `Amina → Sara · assigned by hand by Manath Admin · reason`. Probe data cleaned up.
 
+**DONE (`40d4c61`) — response SLA + escalation.**
+- Migration `20260817140000_social_sla`: `SocialComment.slaDueAt` + `slaEscalatedAt`, index
+  `(tenantId, slaDueAt)`. **Two columns only — the SLA *state* is derived, not stored.** A
+  stored state needs a job to keep it true, and a late or lost job leaves a row lying about
+  itself; a deadline and the clock cannot disagree. It also means the Overdue tab's SQL, the
+  count and the badge are one rule instead of three that drift.
+- `services/social/sla.ts` — `socialSlaTarget()` and the pure `socialSlaState()`.
+  **Clock runs from `commentCreatedAt`**, which the normaliser already defaults to ingestion
+  time when Meta omits a timestamp (`comments.ts` `at()`), so the fallback was already there.
+- **Targets reuse the tenant's existing `SLA` rows** — `firstResponseMins` is literally this
+  question and `warningThresholdPct` is where AT_RISK comes from. Both were dead schema
+  before this. Defaults HIGH 10m / MEDIUM 30m; LOW and non-enquiries get no clock at all.
+  No new policy model.
+- `escalateSocialSla` on the existing `sla` queue (job `social-enquiry-response`, armed at
+  ingestion for the deadline). Owner's `managerId` → team's `managerId` → nobody; the
+  `sla.warning` automation event fires either way. **HIGH only** — escalating MEDIUM teaches
+  managers to ignore the alert. Deduplicated on `slaEscalatedAt`.
+- UI: chip on the row, line in the drawer, Overdue tab + count. Ordering is
+  `repliedAt` nulls-first → `convertedAt` nulls-first → `slaDueAt` — **the two nulls-first
+  keys are load-bearing**, without them answered enquiries have older deadlines and float
+  to the top of the queue.
+- Checks: `tests/sales/social-sla.spec.ts` (9, pure, no DB) + 3 more in
+  `tests/tenant/social-assignment.spec.ts`. 1134 unit tests green, tsc 0, lint 0, build green.
+- Proven live through the real pipeline: fresh → ON_TRACK 10 min left, 9-min-old → AT_RISK,
+  40-min-old → BREACHED 30 min late; escalation notified the manager once and returned
+  `already-escalated` on the retry; a reply flipped it to MET. Overdue tab and count agreed
+  (2 and 2). 1440px and 390px both 0 overflow. Probe data cleaned up.
+
+**Gotcha worth remembering:** `.env.test` points at a **separate database**
+(`master_saas_test`). A migration applied only to `leadflow` leaves every DB-touching spec
+failing with "column does not exist". Run `prisma migrate deploy` against both.
+
+Second gotcha: a script that calls `enqueue` keeps a BullMQ Redis connection open, so node
+never exits and buffered stdout never flushes — a probe script looks like it hung when it
+actually finished. End such scripts with `process.exit(0)`.
+
 **NOT DONE — next tasks in order:**
-1. **Social Lead SLA + escalation** — reuse the existing SLA architecture, do not build a
-   social-specific one. The clock runs from the provider comment timestamp (falling back to
-   ingestion when absent), **not** from assignment: a reassignment must not reset it, because
-   SLA follows the customer's enquiry, not the salesperson's ownership. Targets configurable,
-   HIGH 10m / MEDIUM 30m as defaults; states HEALTHY / AT RISK / BREACHED; queue ordering
-   follows. Then manager escalation on HIGH breach, deduplicated.
-2. **Meta reply contract verification** — still BLOCKED and still unverified. Check public
+1. **Meta reply contract verification** — still BLOCKED and still unverified. Check public
    reply, private reply, permissions, windows and App Review for **each provider separately**
    before any reply UI. Then a capability layer (`canPublicReply`, `canPrivateReply`,
    `replyExpiresAt`, `reasonUnavailable`) so the UI never offers what Meta will refuse.
-3. **Reply UI + AI draft** — AI never auto-sends. Depends on 2.
-4. Comment Capture settings tab; AI enrichment on the deterministic score (must degrade);
+2. **Reply UI + AI draft** — AI never auto-sends. Depends on 1.
+3. Comment Capture settings tab; AI enrichment on the deterministic score (must degrade);
    simulated-comment admin action (§25) through the real receiver, never a direct insert;
    social analytics.
 
