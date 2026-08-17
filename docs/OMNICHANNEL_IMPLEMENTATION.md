@@ -478,9 +478,15 @@ to be checked separately rather than assumed identical.
    simulated-comment admin action (§25) through the real receiver, never a direct insert;
    social analytics.
 
-**Long-standing defects, still open:** E2E owner sign-in (6 specs), the
-`environment-separation` timeout (measure before changing), password-locator component
-semantics.
+**`environment-separation` timeout — FIXED (`30c16c2`).** Not flaky code: `seedWith` allows
+each child subprocess 120s while vitest's default killed the test at 30s, so a loaded
+parallel run cut off a test still legitimately waiting on a child it had authorised.
+Measured first, as asked: 9.9s for the whole file in isolation, ~2.5s per spawn, failing
+only inside the full 85-file run. The timeout is aligned with the child deadline the file
+already declares, not inflated until the symptom stopped.
+
+**Long-standing defects, still open:** E2E owner sign-in (6 specs), password-locator
+component semantics.
 
 ---
 
