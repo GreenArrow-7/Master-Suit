@@ -2,6 +2,7 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { can } from '@/lib/security/rbac';
 import PageHeader from '@/components/ui/PageHeader';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
 
@@ -81,6 +82,20 @@ export default async function SocialLeadsPage({
         assignmentNote: true,
         linkedLeadId: true,
         owner: { select: { fullName: true } },
+        team: { select: { name: true } },
+        assignments: {
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          select: {
+            id: true,
+            createdAt: true,
+            source: true,
+            reason: true,
+            toOwnerId: true,
+            fromOwnerId: true,
+            assignedById: true,
+          },
+        },
       },
     }),
     prisma.socialComment.groupBy({
@@ -109,6 +124,22 @@ export default async function SocialLeadsPage({
     } as Prisma.SocialCommentWhereInput,
   });
 
+  // Only people who can actually take work. Listing every User row would offer
+  // suspended accounts as destinations.
+  const [users, teams] = await Promise.all([
+    prisma.user.findMany({
+      where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
+      orderBy: { fullName: 'asc' },
+      take: 200,
+      select: { id: true, fullName: true },
+    }),
+    prisma.team.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
+  ]);
+
   return (
     <div className="lf-page-stack">
       <PageHeader
@@ -124,6 +155,9 @@ export default async function SocialLeadsPage({
         activeTab={tab}
         activeChannel={channel ?? ''}
         workspaceSlug={workspaceSlug}
+        canAssign={can(ctx, 'leads', 'ASSIGN')}
+        me={ctx.actor.id}
+        options={{ users, teams }}
         summary={{
           new: byStatus.NEW ?? 0,
           high: highCount,

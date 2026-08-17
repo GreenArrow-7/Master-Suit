@@ -45,7 +45,7 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
         providerCommentId: comment.providerCommentId,
       },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, assignmentSource: true },
   });
 
   if (existing) {
@@ -69,6 +69,23 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
       });
       return { socialCommentId: existing.id, updated: true };
     }
+    /**
+     * A human's decision outranks reprocessing, explicitly.
+     *
+     * Today the duplicate branch below already returns before assignment runs,
+     * so this is belt and braces — but that is an accident of control flow, and
+     * a future reprocessing path (a backfill, a re-qualification job) could
+     * easily reach the assignment code. The business rule belongs in the
+     * business logic, not in the shape of an if-statement.
+     */
+    if (existing.assignmentSource === 'MANUAL') {
+      logger.info(
+        { tenantId, socialCommentId: existing.id },
+        'social enquiry was assigned manually — leaving ownership alone',
+      );
+      return { socialCommentId: existing.id, duplicate: true, manualOwnershipPreserved: true };
+    }
+
     if (comment.verb === 'remove' || comment.verb === 'delete') {
       await prisma.socialComment.update({
         where: { id: existing.id, tenantId },

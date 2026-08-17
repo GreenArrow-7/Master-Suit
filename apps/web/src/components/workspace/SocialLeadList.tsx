@@ -28,7 +28,27 @@ interface Lead {
   assignmentNote: string | null;
   linkedLeadId: string | null;
   owner: { fullName: string | null } | null;
+  team: { name: string } | null;
+  assignments: {
+    id: string;
+    createdAt: string;
+    source: string;
+    reason: string | null;
+    toOwnerId: string | null;
+    fromOwnerId: string | null;
+    assignedById: string | null;
+  }[];
 }
+
+/** Enum names are for the database; a person reads the sentence. */
+const SOURCE_LABEL: Record<string, string> = {
+  INHERITED_CUSTOMER_OWNER: 'kept with the existing customer owner',
+  EXPLICIT_USER: 'routed to a named person',
+  TEAM_DISTRIBUTION: 'distributed within the team',
+  GLOBAL_DISTRIBUTION: 'assigned by distribution rules',
+  MANUAL: 'assigned by hand',
+  SYSTEM: 'recorded by the system',
+};
 
 const CHANNEL: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook' };
 
@@ -56,6 +76,9 @@ export default function SocialLeadList({
   activeTab,
   activeChannel,
   workspaceSlug,
+  canAssign,
+  me,
+  options,
   summary,
 }: {
   leads: Lead[];
@@ -63,9 +86,18 @@ export default function SocialLeadList({
   activeTab: string;
   activeChannel: string;
   workspaceSlug: string;
+  canAssign: boolean;
+  me: string;
+  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
   summary: { new: number; high: number; unassigned: number; converted: number };
 }) {
-  const [open, setOpen] = useState<Lead | null>(null);
+  /**
+   * The id, not the row. Holding the object froze the drawer at whatever the
+   * enquiry looked like when it was opened, so a reassignment refreshed the
+   * queue behind an open drawer that still showed the old owner.
+   */
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = leads.find((lead) => lead.id === openId) ?? null;
   const base = `/${workspaceSlug}/sales/social-leads`;
   const href = (next: Record<string, string>) => {
     const q = new URLSearchParams({ tab: activeTab, ...(activeChannel ? { channel: activeChannel } : {}), ...next });
@@ -156,7 +188,7 @@ export default function SocialLeadList({
                 {!lead.owner && lead.assignmentNote && <span className="lf-social__note">{lead.assignmentNote}</span>}
               </div>
 
-              <button className="lf-btn lf-btn--secondary lf-btn--sm" type="button" onClick={() => setOpen(lead)}>
+              <button className="lf-btn lf-btn--secondary lf-btn--sm" type="button" onClick={() => setOpenId(lead.id)}>
                 Open
               </button>
             </article>
@@ -164,7 +196,16 @@ export default function SocialLeadList({
         </div>
       )}
 
-      {open && <SocialLeadDrawer lead={open} onClose={() => setOpen(null)} workspaceSlug={workspaceSlug} />}
+      {open && (
+        <SocialLeadDrawer
+          lead={open}
+          onClose={() => setOpenId(null)}
+          workspaceSlug={workspaceSlug}
+          canAssign={canAssign}
+          me={me}
+          options={options}
+        />
+      )}
     </>
   );
 }
@@ -173,10 +214,16 @@ function SocialLeadDrawer({
   lead,
   onClose,
   workspaceSlug,
+  canAssign,
+  me,
+  options,
 }: {
   lead: Lead;
   onClose: () => void;
   workspaceSlug: string;
+  canAssign: boolean;
+  me: string;
+  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
 }) {
   return (
     <div className="lf-drawer" role="dialog" aria-modal="true" aria-label="Social enquiry">
@@ -214,11 +261,9 @@ function SocialLeadDrawer({
             )}
           </div>
 
+          <AssignmentPanel lead={lead} canAssign={canAssign} me={me} options={options} />
+
           <dl className="lf-meta__facts">
-            <div>
-              <dt>Owner</dt>
-              <dd>{lead.owner?.fullName ?? 'Unassigned'}</dd>
-            </div>
             <div>
               <dt>Status</dt>
               <dd>{lead.status.toLowerCase()}</dd>
@@ -348,5 +393,185 @@ function ConvertPanel({ lead, onDone }: { lead: Lead; onDone: () => void }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Who owns this, and how to change it.
+ *
+ * "Assign to me" is separated from the rest because it is the common move from
+ * the unassigned queue and should be one click, not a form.
+ */
+function AssignmentPanel({
+  lead,
+  canAssign,
+  me,
+  options,
+}: {
+  lead: Lead;
+  canAssign: boolean;
+  me: string;
+  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'user' | 'team'>('user');
+  const [userId, setUserId] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Names come from the eligible-user list the page already loaded, rather than
+  // three more relations on the history table for a label.
+  const nameOf = (id: string | null) => (id ? (options.users.find((u) => u.id === id)?.fullName ?? 'Someone') : null);
+
+  async function send(payload: Record<string, unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/social-leads/${lead.id}/assign`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message ?? data?.detail ?? 'Could not change the owner.');
+      setOpen(false);
+      // The list, the drawer and the unassigned count all read from the server.
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="lf-social__assign">
+      <div className="lf-meta__panelhead">
+        <div>
+          <span className="lf-eyebrow">Assigned to</span>
+          <p className="lf-social__owner">{lead.owner?.fullName ?? 'Unassigned'}</p>
+          {lead.team?.name && <p className="lf-inbox__muted">{lead.team.name}</p>}
+          {!lead.owner && lead.assignmentNote && <p className="lf-social__note">{lead.assignmentNote}</p>}
+        </div>
+        <div className="lf-meta__actions">
+          {!lead.owner && (
+            <button className="lf-btn lf-btn--sm" type="button" disabled={busy} onClick={() => send({ toUserId: me })}>
+              Assign to me
+            </button>
+          )}
+          {canAssign && (
+            <button className="lf-btn lf-btn--secondary lf-btn--sm" type="button" onClick={() => setOpen((v) => !v)}>
+              {lead.owner ? 'Reassign' : 'Assign'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {open && (
+        <div className="lf-social__assignform">
+          <fieldset className="lf-meta__field">
+            <legend>Send it to</legend>
+            <label className="lf-meta__radio">
+              <input type="radio" checked={mode === 'user'} onChange={() => setMode('user')} />
+              <span>A person</span>
+            </label>
+            <label className="lf-meta__radio">
+              <input type="radio" checked={mode === 'team'} onChange={() => setMode('team')} />
+              <span>
+                A team
+                <span className="lf-inbox__muted">Distribution rules pick who inside it takes it.</span>
+              </span>
+            </label>
+          </fieldset>
+
+          {mode === 'user' ? (
+            <label className="lf-meta__field">
+              <span>Person</span>
+              <select className="lf-input" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Choose…</option>
+                {options.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName ?? u.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="lf-meta__field">
+              <span>Team</span>
+              <select className="lf-input" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                <option value="">Choose…</option>
+                {options.teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="lf-meta__field">
+            <span>Why (optional)</span>
+            <input
+              className="lf-input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Arabic-speaking buyer"
+            />
+          </label>
+
+          {error && (
+            <p className="lf-inbox__error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <div className="lf-meta__actions">
+            <button className="lf-btn lf-btn--ghost lf-btn--sm" type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="lf-btn lf-btn--sm"
+              type="button"
+              disabled={busy || (mode === 'user' ? !userId : !teamId)}
+              onClick={() =>
+                send({
+                  ...(mode === 'user' ? { toUserId: userId } : { toTeamId: teamId }),
+                  ...(reason.trim() ? { reason: reason.trim() } : {}),
+                })
+              }
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {lead.assignments.length > 0 && (
+        <div className="lf-social__history">
+          <span className="lf-eyebrow">Assignment history</span>
+          <ul>
+            {lead.assignments.map((entry) => (
+              <li key={entry.id}>
+                <span>
+                  {nameOf(entry.fromOwnerId) ? `${nameOf(entry.fromOwnerId)} → ` : ''}
+                  {nameOf(entry.toOwnerId) ?? 'Unassigned'}
+                </span>
+                <span className="lf-inbox__muted">
+                  {SOURCE_LABEL[entry.source] ?? entry.source.toLowerCase()}
+                  {nameOf(entry.assignedById) && ` by ${nameOf(entry.assignedById)}`}
+                  {' · '}
+                  {when(entry.createdAt)}
+                </span>
+                {entry.reason && <span className="lf-inbox__muted">{entry.reason}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
