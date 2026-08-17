@@ -67,20 +67,46 @@ export async function socialSlaTarget(tenantId: string, intent: SocialIntent): P
 export interface SlaSubject {
   commentCreatedAt: Date;
   slaDueAt: Date | null;
+  /** The one thing that stops the clock: the customer was answered. */
   repliedAt: Date | null;
-  convertedAt: Date | null;
   status: string;
 }
 
 /**
- * MET once somebody answered — replying is the point, and converting is a
- * stronger form of answering. PAUSED when the enquiry was dismissed or marked
- * spam, because a clock on work nobody intends to do is just noise in the
- * numbers. Otherwise it is a straight comparison against the deadline.
+ * Operational order for the queue, worst first.
+ *
+ * Intent outranks lateness on purpose: a hot buyer two minutes from their
+ * deadline is worth more attention than a lukewarm one twenty minutes past it,
+ * because the first is still winnable. Sorting by deadline alone quietly
+ * inverted that.
+ */
+const INTENT_RANK: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2, UNSCORED: 3, IRRELEVANT: 4, SPAM: 5 };
+const STATE_RANK: Record<SlaState, number> = { BREACHED: 0, AT_RISK: 1, ON_TRACK: 2, PAUSED: 3, MET: 4 };
+
+export function queueRank(row: { intent: string; sla: SlaState; slaDueAt: Date | string | null }): number[] {
+  return [
+    INTENT_RANK[row.intent] ?? 9,
+    STATE_RANK[row.sla] ?? 9,
+    row.slaDueAt ? new Date(row.slaDueAt).getTime() : Number.MAX_SAFE_INTEGER,
+  ];
+}
+
+/**
+ * MET only once somebody actually answered the customer.
+ *
+ * Nothing internal stops this clock. Opening the drawer, assigning it, marking
+ * it reviewed and converting it to a CRM Lead are all things *we* did — the
+ * person who commented has heard nothing from any of them, and a clock that
+ * stops on our own paperwork measures our filing rather than our service.
+ * Converting a silent enquiry is precisely the case where the number needs to
+ * stay red.
+ *
+ * PAUSED when the enquiry was dismissed or marked spam, because a clock on work
+ * nobody intends to do is only noise in the averages.
  */
 export function socialSlaState(subject: SlaSubject, now: Date = new Date(), warningPct = 80): SlaState {
   if (!subject.slaDueAt) return 'ON_TRACK';
-  if (subject.repliedAt || subject.convertedAt) return 'MET';
+  if (subject.repliedAt) return 'MET';
   if (subject.status === 'DISMISSED' || subject.status === 'SPAM') return 'PAUSED';
 
   const due = subject.slaDueAt.getTime();

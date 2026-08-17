@@ -14,7 +14,7 @@ const base = {
   commentCreatedAt: start,
   slaDueAt: due,
   repliedAt: null,
-  convertedAt: null,
+  // Nothing internal stops the clock; only a real answer does.
   status: 'ASSIGNED',
 };
 
@@ -38,10 +38,19 @@ describe('social SLA state', () => {
     expect(socialSlaState(base, new Date('2026-08-17T10:10:00Z'))).toBe('BREACHED');
   });
 
-  it('is met by a reply, and by a conversion', () => {
+  it('is met by a reply', () => {
     const late = new Date('2026-08-17T11:00:00Z');
     expect(socialSlaState({ ...base, repliedAt: new Date('2026-08-17T10:03:00Z') }, late)).toBe('MET');
-    expect(socialSlaState({ ...base, convertedAt: new Date('2026-08-17T10:03:00Z') }, late)).toBe('MET');
+  });
+
+  /**
+   * Converting is filing, not answering. The person who commented has heard
+   * nothing from a CRM record being created, so an enquiry converted in silence
+   * is exactly the one that should stay red.
+   */
+  it('is not met by converting the enquiry to a lead', () => {
+    const converted = { ...base, status: 'CONVERTED' };
+    expect(socialSlaState(converted, new Date('2026-08-17T11:00:00Z'))).toBe('BREACHED');
   });
 
   it('pauses rather than breaching what nobody intends to answer', () => {

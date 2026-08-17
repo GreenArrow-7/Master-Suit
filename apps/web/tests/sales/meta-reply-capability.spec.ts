@@ -28,23 +28,32 @@ describe('meta reply capability', () => {
   });
 
   it('refuses both on an Instagram live comment', () => {
-    const cap = replyCapability(
-      { provider: 'instagram', commentCreatedAt: commentedAt, mediaType: 'LIVE' },
-      dayAfter,
-    );
+    const cap = replyCapability({ provider: 'instagram', commentCreatedAt: commentedAt, mediaType: 'LIVE' }, dayAfter);
     expect(cap.canPublicReply).toBe(false);
     expect(cap.canPrivateReply).toBe(false);
     // No seven-day promise on a broadcast that may already have ended.
     expect(cap.replyExpiresAt).toBeNull();
   });
 
-  it('treats a private reply as spent once anyone has answered', () => {
-    const cap = replyCapability(
-      { provider: 'facebook', commentCreatedAt: commentedAt, repliedAt: dayAfter },
+  it('spends the single private reply only on a private reply', () => {
+    const afterPrivate = replyCapability(
+      { provider: 'facebook', commentCreatedAt: commentedAt, privateReplySent: true },
       dayAfter,
     );
-    expect(cap.canPrivateReply).toBe(false);
-    expect(cap.reasonUnavailable.private).toMatch(/only one private reply/i);
+    expect(afterPrivate.canPrivateReply).toBe(false);
+    expect(afterPrivate.reasonUnavailable.private).toMatch(/only one private reply/i);
+
+    /**
+     * A public reply under the post does not consume Meta's private-message
+     * allowance. Treating any answer as spending it told salespeople the direct
+     * route was closed while it was still open.
+     */
+    const afterPublic = replyCapability(
+      { provider: 'facebook', commentCreatedAt: commentedAt, providerReplyId: 'x' },
+      dayAfter,
+    );
+    expect(afterPublic.canPrivateReply).toBe(true);
+    expect(afterPublic.canPublicReply).toBe(false);
   });
 
   it('does not offer a second public reply', () => {

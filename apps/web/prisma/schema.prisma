@@ -460,6 +460,7 @@ model Tenant {
   metaLeadFormRoutings       MetaLeadFormRouting[]
   socialComments             SocialComment[]
   socialAssignments          SocialAssignmentHistory[]
+  socialReplies              SocialReply[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -3878,6 +3879,7 @@ model SocialComment {
   team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
   linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
   assignments SocialAssignmentHistory[]
+  replies     SocialReply[]
 
   @@unique([tenantId, provider, providerCommentId])
   /// The queue: newest first, filtered by status and intent.
@@ -3890,6 +3892,53 @@ model SocialComment {
   @@index([tenantId, provider, providerAuthorId])
   /// The overdue sweep and the urgency ordering both read this.
   @@index([tenantId, slaDueAt])
+}
+
+/**
+ * Every answer sent to a social enquiry, append-only.
+ *
+ * Separate from `SocialComment.repliedAt` rather than replacing it: that field
+ * is the *first* response, which is what the SLA measures and what the reply
+ * capability treats as spending Meta's single private reply. A conversation can
+ * have several public replies afterwards, and the trail is what makes
+ * response-time reporting and "who actually answered this" answerable.
+ */
+model SocialReply {
+  id              String @id @default(cuid())
+  tenantId        String
+  socialCommentId String
+
+  /// PUBLIC and PRIVATE go through Meta. EXTERNAL is a person recording that
+  /// they phoned or messaged the customer some other way — the customer was
+  /// answered, and the clock should reflect that even though we did not send it.
+  kind    SocialReplyKind
+  /// Phone, WhatsApp, Email… only meaningful for EXTERNAL.
+  channel String?
+  body    String
+
+  /// Meta's id for what we published. Null for EXTERNAL, and null when the
+  /// provider is simulated.
+  providerReplyId String?
+  /// False when the connection was in demo mode, so nobody mistakes a
+  /// demonstration for something the customer received.
+  delivered       Boolean @default(true)
+
+  /// Whether a person wrote it or edited a suggestion. AI never sends on its own.
+  aiAssisted Boolean @default(false)
+
+  sentById  String?
+  createdAt DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComment SocialComment @relation(fields: [socialCommentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, socialCommentId, createdAt])
+}
+
+enum SocialReplyKind {
+  PUBLIC
+  PRIVATE
+  EXTERNAL
 }
 
 enum SocialCommentStatus {

@@ -4544,28 +4544,32 @@ a:hover {
   border-radius: 10px;
   padding: 11px;
 }
-.lf-social__reply ul {
+.lf-social__composer {
+  resize: vertical;
+  min-height: 78px;
+  font: inherit;
+  line-height: 1.5;
+}
+.lf-social__thread {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 4px;
   display: grid;
-  gap: 7px;
+  gap: 8px;
+  border-bottom: 1px solid var(--lf-line);
 }
-.lf-social__reply li {
+.lf-social__thread li {
   display: grid;
-  gap: 1px;
+  gap: 2px;
   font-size: 13px;
-  padding-left: 15px;
-  position: relative;
 }
-/* The mark carries the state as a shape, not only a colour (§73). */
-.lf-social__reply li::before {
-  content: '×';
-  position: absolute;
-  left: 0;
-  color: var(--lf-ink-3);
+.lf-social__replyhead {
+  font-size: 12px;
+  color: var(--lf-ink-2);
 }
-.lf-social__reply li[data-allowed='true']::before {
-  content: '✓';
+.lf-social__sent {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--lf-viridian);
 }

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
-import { socialSlaState, socialSlaTarget } from '@/services/social/sla';
+import { socialSlaState, socialSlaTarget, queueRank } from '@/services/social/sla';
 import { replyCapability } from '@/lib/integrations/meta/replyCapability';
 import PageHeader from '@/components/ui/PageHeader';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
@@ -56,10 +56,16 @@ export default async function SocialLeadsPage({
     // Everything a salesperson should be working that nobody owns. Spam and
     // praise are excluded — they were never meant to be assigned.
     ...(tab === 'unassigned' ? { ownerId: null, intent: { in: ['HIGH', 'MEDIUM'] } } : {}),
-    // Past the deadline and still unanswered. `repliedAt`/`convertedAt` null is
-    // the same test `socialSlaState` makes, expressed in SQL so the tab counts
-    // and the badges cannot disagree.
-    ...(tab === 'overdue' ? { slaDueAt: { lt: new Date() }, repliedAt: null, convertedAt: null } : {}),
+    /**
+     * Past the deadline and still unanswered — `repliedAt: null` is the same
+     * test `socialSlaState` makes, written in SQL so the tab, the count and the
+     * badges cannot disagree.
+     *
+     * Converting is deliberately not an exclusion. An enquiry someone turned
+     * into a CRM lead without ever answering the person who asked is precisely
+     * the failure this tab exists to surface.
+     */
+    ...(tab === 'overdue' ? { slaDueAt: { lt: new Date() }, repliedAt: null } : {}),
     ...(tab === 'converted' ? { status: 'CONVERTED' } : {}),
     // Spam and dismissed are captured for marketing, not for a salesperson's
     // queue, so they surface only on their own tab.
@@ -73,18 +79,13 @@ export default async function SocialLeadsPage({
     prisma.socialComment.findMany({
       where,
       /**
-       * Work still owed, soonest deadline first — so the row to pick up next is
-       * the top one.
-       *
-       * The two nulls-first keys are what stop an answered enquiry from
-       * outranking a live one: its deadline is older, so ordering on the
-       * deadline alone floated finished work to the top of the queue. Nulls
-       * last on the deadline then puts "nothing owed" — praise, spam, LOW —
-       * below everything with a clock, whatever its intent.
+       * A pre-filter, not the final order — SLA state is derived, so the
+       * operational ranking has to happen after these rows are read (see the
+       * sort below). Unanswered first, then soonest deadline, so the page this
+       * takes is the right hundred rows to rank.
        */
       orderBy: [
         { repliedAt: { sort: 'asc', nulls: 'first' } },
-        { convertedAt: { sort: 'asc', nulls: 'first' } },
         { slaDueAt: { sort: 'asc', nulls: 'last' } },
         { commentCreatedAt: 'desc' },
       ],
@@ -110,6 +111,20 @@ export default async function SocialLeadsPage({
         linkedLeadId: true,
         owner: { select: { fullName: true } },
         team: { select: { name: true } },
+        replies: {
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+          select: {
+            id: true,
+            kind: true,
+            channel: true,
+            body: true,
+            delivered: true,
+            aiAssisted: true,
+            sentById: true,
+            createdAt: true,
+          },
+        },
         assignments: {
           orderBy: { createdAt: 'desc' },
           take: 6,
@@ -152,13 +167,13 @@ export default async function SocialLeadsPage({
   });
 
   // The other number a manager acts on: past target and still unanswered.
+  // Converted rows are counted too — see the Overdue tab filter above.
   const overdueCount = await prisma.socialComment.count({
     where: {
       ...visible,
       slaDueAt: { lt: new Date() },
       repliedAt: null,
-      convertedAt: null,
-      status: { notIn: ['CONVERTED', 'DISMISSED', 'SPAM'] },
+      status: { notIn: ['DISMISSED', 'SPAM'] },
     } as Prisma.SocialCommentWhereInput,
   });
 
@@ -197,11 +212,33 @@ export default async function SocialLeadsPage({
     connections.find((c) => c.provider === provider)?.scopes ?? connections.find((c) => c.provider === 'meta')?.scopes;
 
   const now = new Date();
-  const leads = rows.map((row) => ({
-    ...row,
-    sla: socialSlaState(row, now, (row.intent === 'HIGH' ? highTarget : mediumTarget)?.warningPct ?? 80),
-    reply: replyCapability({ ...row, grantedScopes: scopesFor(row.provider) }, now),
-  }));
+  const leads = rows
+    .map((row) => ({
+      ...row,
+      sla: socialSlaState(row, now, (row.intent === 'HIGH' ? highTarget : mediumTarget)?.warningPct ?? 80),
+      reply: replyCapability(
+        {
+          ...row,
+          // Only a private reply spends Meta's single private-reply allowance.
+          privateReplySent: row.replies.some((reply) => reply.kind === 'PRIVATE'),
+          grantedScopes: scopesFor(row.provider),
+        },
+        now,
+      ),
+    }))
+    /**
+     * Worst first, intent before lateness. The database ordering above is a
+     * proxy — SLA state is derived, so it cannot be sorted on in SQL.
+     *
+     * ponytail: that means the operational order is applied to the fetched page
+     * rather than the whole table, so with more than `take` rows the ranking is
+     * within the page. Move the state into a stored column if a workspace ever
+     * runs a backlog that deep.
+     */
+    .sort((a, b) => {
+      const [x, y] = [queueRank(a), queueRank(b)];
+      return x[0]! - y[0]! || x[1]! - y[1]! || x[2]! - y[2]!;
+    });
 
   return (
     <div className="lf-page-stack">

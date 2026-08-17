@@ -39,6 +39,16 @@ interface Lead {
     reasonUnavailable: { public?: string; private?: string };
   };
   linkedLeadId: string | null;
+  replies: {
+    id: string;
+    kind: string;
+    channel: string | null;
+    body: string;
+    delivered: boolean;
+    aiAssisted: boolean;
+    sentById: string | null;
+    createdAt: string;
+  }[];
   owner: { fullName: string | null } | null;
   team: { name: string } | null;
   assignments: {
@@ -63,6 +73,15 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 const CHANNEL: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook' };
+
+const REPLY_LABEL: Record<string, string> = {
+  PUBLIC: 'Public reply',
+  PRIVATE: 'Private reply',
+  EXTERNAL: 'Contacted outside Meta',
+};
+
+/** Meta's own list, no free text — a channel nobody can group by is not data. */
+const EXTERNAL_CHANNELS = ['Phone', 'WhatsApp', 'Email', 'In person', 'Other'];
 
 /** Intent carries a word as well as a colour — §73 applies here too. */
 const INTENT_LABEL: Record<string, string> = {
@@ -327,7 +346,7 @@ function SocialLeadDrawer({
             </p>
           )}
 
-          <ReplyCapability lead={lead} />
+          <ReplyPanel lead={lead} options={options} />
 
           <AssignmentPanel lead={lead} canAssign={canAssign} me={me} options={options} />
 
@@ -645,34 +664,218 @@ function AssignmentPanel({
 }
 
 /**
- * What Meta will let us do with this comment.
+ * Answering the customer.
  *
- * Sending is not built yet — the honest thing is to say what is possible and
- * what is not, rather than show a button that produces an error, or say nothing
- * and leave a salesperson guessing whether a private reply is still open.
+ * The capability layer decides which kinds are offered — a button Meta will
+ * refuse is worse than no button, because a salesperson writes a considered
+ * answer before finding out. Where nothing can be sent through Meta any more,
+ * recording that they phoned instead is still worth having: the customer was
+ * answered, and the response clock should say so.
+ *
+ * Nothing here sends without a person. `Draft with AI` fills the box and stops;
+ * reaching the customer always takes a second, deliberate press of Send.
  */
-function ReplyCapability({ lead }: { lead: Lead }) {
+function ReplyPanel({
+  lead,
+  options,
+}: {
+  lead: Lead;
+  options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
+}) {
+  const router = useRouter();
   const { canPublicReply, canPrivateReply, reasonUnavailable } = lead.reply;
   const channel = CHANNEL[lead.provider] ?? lead.provider;
 
+  const kinds = [
+    { key: 'PUBLIC' as const, label: 'Reply publicly', allowed: canPublicReply, why: reasonUnavailable.public },
+    { key: 'PRIVATE' as const, label: 'Private message', allowed: canPrivateReply, why: reasonUnavailable.private },
+    { key: 'EXTERNAL' as const, label: 'I contacted them another way', allowed: true, why: undefined },
+  ];
+
+  const [chosen, setKind] = useState<'PUBLIC' | 'PRIVATE' | 'EXTERNAL'>(
+    canPublicReply ? 'PUBLIC' : canPrivateReply ? 'PRIVATE' : 'EXTERNAL',
+  );
+  /**
+   * Sending can close the option that was selected — a private reply spends the
+   * only one Meta allows — so the choice falls back rather than leaving the form
+   * pointing at a disabled control with nothing checked.
+   */
+  const kind = kinds.find((k) => k.key === chosen)?.allowed
+    ? chosen
+    : (kinds.find((k) => k.allowed)?.key ?? 'EXTERNAL');
+  const [body, setBody] = useState('');
+  const [externalChannel, setExternalChannel] = useState('Phone');
+  const [aiAssisted, setAiAssisted] = useState(false);
+  const [state, setState] = useState<'idle' | 'drafting' | 'sending' | 'sent'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const nameOf = (id: string | null) =>
+    id ? (options.users.find((u) => u.id === id)?.fullName ?? 'Someone') : 'Someone';
+
+  async function draft() {
+    setState('drafting');
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/social-leads/${lead.id}/draft`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: kind === 'EXTERNAL' ? 'PRIVATE' : kind }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail ?? 'Could not draft a reply.');
+      setBody(data.body ?? '');
+      // Recorded honestly: a suggestion the salesperson then edits is still
+      // AI-assisted, and reporting should be able to tell.
+      setAiAssisted(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setState('idle');
+    }
+  }
+
+  async function send() {
+    setState('sending');
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/social-leads/${lead.id}/reply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          body: body.trim(),
+          ...(kind === 'EXTERNAL' ? { channel: externalChannel } : {}),
+          aiAssisted,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail ?? data?.error?.message ?? 'Could not send that.');
+      setState('sent');
+      setBody('');
+      setAiAssisted(false);
+      router.refresh();
+    } catch (err) {
+      // The enquiry is untouched when this fails — the service writes nothing
+      // unless Meta accepted the message.
+      setError((err as Error).message);
+      setState('idle');
+    }
+  }
+
+  const busy = state === 'sending' || state === 'drafting';
+
   return (
     <section className="lf-social__reply">
-      <span className="lf-eyebrow">Replying on {channel}</span>
-      <ul>
-        <li data-allowed={canPublicReply}>
-          <strong>Public reply</strong>
-          <span className="lf-inbox__muted">
-            {canPublicReply ? 'Allowed — no time limit.' : reasonUnavailable.public}
-          </span>
-        </li>
-        <li data-allowed={canPrivateReply}>
-          <strong>Private reply</strong>
-          <span className="lf-inbox__muted">
-            {canPrivateReply ? privateWindow(lead.reply.replyExpiresAt) : reasonUnavailable.private}
-          </span>
-        </li>
-      </ul>
-      <p className="lf-inbox__muted">Sending from Master Suite is not built yet.</p>
+      <span className="lf-eyebrow">Respond on {channel}</span>
+
+      {lead.replies.length > 0 && (
+        <ul className="lf-social__thread">
+          {lead.replies.map((reply) => (
+            <li key={reply.id}>
+              <span className="lf-social__replyhead">
+                {REPLY_LABEL[reply.kind] ?? reply.kind}
+                {reply.channel && ` · ${reply.channel}`}
+                {' · '}
+                {nameOf(reply.sentById)}
+                {' · '}
+                {when(reply.createdAt)}
+                {reply.aiAssisted && ' · AI-assisted'}
+                {!reply.delivered && reply.kind !== 'EXTERNAL' && ' · not delivered (demo)'}
+              </span>
+              <span>{reply.body}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <fieldset className="lf-meta__field">
+        <legend>How</legend>
+        {kinds.map((option) => (
+          <label className="lf-meta__radio" key={option.key}>
+            <input
+              type="radio"
+              name={`reply-kind-${lead.id}`}
+              checked={kind === option.key}
+              disabled={!option.allowed || busy}
+              onChange={() => setKind(option.key)}
+            />
+            <span>
+              {option.label}
+              {/* Why, not just a dead control: "Meta closed the window" is
+                  something a salesperson can act on. */}
+              {!option.allowed && option.why && <span className="lf-inbox__muted">{option.why}</span>}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      {kind === 'EXTERNAL' && (
+        <label className="lf-meta__field">
+          <span>How did you reach them?</span>
+          <select
+            className="lf-input"
+            value={externalChannel}
+            disabled={busy}
+            onChange={(e) => setExternalChannel(e.target.value)}
+          >
+            {EXTERNAL_CHANNELS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <label className="lf-meta__field">
+        <span>{kind === 'EXTERNAL' ? 'What was said' : 'Message'}</span>
+        <textarea
+          className="lf-input lf-social__composer"
+          rows={4}
+          value={body}
+          disabled={busy}
+          placeholder={
+            kind === 'PUBLIC'
+              ? 'Everyone who sees the post will read this.'
+              : kind === 'PRIVATE'
+                ? 'Only they will see this.'
+                : 'A short note about the conversation you had.'
+          }
+          onChange={(e) => {
+            setBody(e.target.value);
+            if (state === 'sent') setState('idle');
+          }}
+        />
+      </label>
+
+      {error && (
+        <p className="lf-inbox__error" role="alert">
+          {error}
+        </p>
+      )}
+      {state === 'sent' && (
+        <p className="lf-social__sent" role="status">
+          Sent.
+        </p>
+      )}
+
+      <div className="lf-meta__actions">
+        {kind !== 'EXTERNAL' && (
+          <button className="lf-btn lf-btn--ghost lf-btn--sm" type="button" disabled={busy} onClick={draft}>
+            {state === 'drafting' ? 'Drafting…' : 'Draft with AI'}
+          </button>
+        )}
+        <button className="lf-btn lf-btn--sm" type="button" disabled={busy || !body.trim()} onClick={send}>
+          {state === 'sending' ? 'Sending…' : kind === 'EXTERNAL' ? 'Record it' : 'Send'}
+        </button>
+      </div>
+
+      {kind !== 'EXTERNAL' && (
+        <p className="lf-inbox__muted">
+          {kind === 'PRIVATE' ? privateWindow(lead.reply.replyExpiresAt) : 'Public replies have no time limit.'}
+          {' Nothing is sent until you press Send.'}
+        </p>
+      )}
     </section>
   );
 }

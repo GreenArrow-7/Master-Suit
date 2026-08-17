@@ -90,6 +90,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.socialReply.deleteMany({ where: { tenantId: workspace.id } });
   await prisma.notification.deleteMany({ where: { tenantId: workspace.id } });
   await prisma.socialAssignmentHistory.deleteMany({ where: { tenantId: workspace.id } });
   await prisma.socialComment.deleteMany({ where: { tenantId: workspace.id } });
@@ -166,6 +167,39 @@ describe('social enquiry assignment', () => {
     // A redelivered webhook arms a second job; a retry re-runs the same one.
     const second = await escalateSocialSla(workspace.id, workspace.enquiryId);
     expect(second).toMatchObject({ ignored: 'already-escalated' });
+  });
+
+  it('stops the response clock only when someone actually answers', async () => {
+    const { socialSlaState } = await import('@/services/social/sla');
+    const read = () =>
+      prisma.socialComment.findFirst({
+        where: { tenantId: workspace.id, id: workspace.enquiryId },
+        select: { commentCreatedAt: true, slaDueAt: true, repliedAt: true, status: true },
+      });
+
+    // Converting is filing, not answering: the clock must keep running.
+    await prisma.socialComment.update({
+      where: { id: workspace.enquiryId, tenantId: workspace.id },
+      data: { status: 'CONVERTED', convertedAt: new Date() },
+    });
+    expect(socialSlaState((await read())!)).toBe('BREACHED');
+
+    await prisma.socialReply.create({
+      data: {
+        tenantId: workspace.id,
+        socialCommentId: workspace.enquiryId,
+        kind: 'EXTERNAL',
+        channel: 'Phone',
+        body: 'Called and talked through the payment plan.',
+        delivered: false,
+        sentById: workspace.manualOwner,
+      },
+    });
+    await prisma.socialComment.update({
+      where: { id: workspace.enquiryId, tenantId: workspace.id },
+      data: { repliedAt: new Date() },
+    });
+    expect(socialSlaState((await read())!)).toBe('MET');
   });
 
   it('never creates a CRM lead from a comment on its own', async () => {

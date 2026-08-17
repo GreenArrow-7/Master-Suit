@@ -63,8 +63,14 @@ export interface ReplySubject {
   parentCommentId?: string | null;
   /** Set once we have replied publicly. */
   providerReplyId?: string | null;
-  /** Set once anyone on the desk answered. */
-  repliedAt?: Date | null;
+  /**
+   * Whether a *private* reply has already gone out. Meta allows exactly one and
+   * offers no way to ask whether it was used, so this has to be tracked here.
+   * Deliberately not "has anyone answered at all": a public reply under the post
+   * does not spend the private allowance, and treating it as though it did told
+   * salespeople the direct-message route was gone when it was still open.
+   */
+  privateReplySent?: boolean;
   /**
    * Scopes the connection reports holding. Undefined means "we do not know",
    * which is treated as no objection — an unknown is not evidence of absence,
@@ -119,9 +125,7 @@ export function replyCapability(subject: ReplySubject, now: Date = new Date()): 
   } else if (now.getTime() >= expiresAt!.getTime()) {
     canPrivateReply = false;
     reasonUnavailable.private = 'The seven-day window for a private reply has closed.';
-  } else if (subject.repliedAt) {
-    // Meta allows exactly one, ever, and gives no way to ask whether it was
-    // used. Having answered at all is the safest thing to treat as spent.
+  } else if (subject.privateReplySent) {
     canPrivateReply = false;
     reasonUnavailable.private = 'Meta allows only one private reply per comment, and one has already been sent.';
   }
