@@ -18,7 +18,7 @@
  * Leaving the old refresh tokens alive would make the reset pointless in exactly
  * the case it matters — an account that has already been taken over.
  */
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword, type PasswordPolicy } from '@/lib/auth/password';
@@ -45,12 +45,45 @@ function assertPolicy(plain: string, policy: PasswordPolicy) {
 }
 
 /**
+ * Characters that survive being read down a phone line.
+ *
+ * No O/0, no I/l/1: this password is dictated to someone, and a lookalike costs
+ * a second call. The set is still large enough that 20 characters is far more
+ * entropy than a password which exists for one login.
+ */
+const LOWER = 'abcdefghijkmnopqrstuvwxyz';
+const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const DIGIT = '23456789';
+const SYMBOL = '-_';
+const TEMPORARY_LENGTH = 20;
+
+const pick = (alphabet: string) => alphabet[randomInt(alphabet.length)]!;
+
+/**
  * A temporary password the administrator reads out and the user replaces. Shown
  * once, in the browser, at the moment it is created — hand it over in person or
  * by phone, not by email.
+ *
+ * Built to satisfy the policy rather than hoping it does. The previous version
+ * was random base64url plus random hex, which could legitimately contain no
+ * digit at all — about one call in three thousand — and the reset then failed
+ * its own strength check with "Include a number." Rare enough to look like a
+ * flaky test, common enough to have hit CI.
  */
-export const generateTemporaryPassword = () =>
-  `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+export function generateTemporaryPassword(): string {
+  // One of each class up front, so no policy toggle can be missed.
+  const required = [pick(LOWER), pick(UPPER), pick(DIGIT), pick(SYMBOL)];
+  const all = LOWER + UPPER + DIGIT + SYMBOL;
+  const chars = [...required];
+  while (chars.length < TEMPORARY_LENGTH) chars.push(pick(all));
+
+  // Fisher-Yates, so the guaranteed characters are not always the first four.
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+  }
+  return chars.join('');
+}
 
 /** The workspace user being administered, with the role rank the guards compare. */
 async function loadTarget(ctx: Ctx, userId: string) {
@@ -492,7 +525,9 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
   if (!role) throw NotFound('Role');
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot grant a role at or above your own level.');
 
-  if (await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, email, deletedAt: null }, select: { id: true } })) {
+  if (
+    await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, email, deletedAt: null }, select: { id: true } })
+  ) {
     throw Conflict('Somebody in this workspace already uses that work email.');
   }
   if (
