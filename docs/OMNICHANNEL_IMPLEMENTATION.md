@@ -432,13 +432,49 @@ Second gotcha: a script that calls `enqueue` keeps a BullMQ Redis connection ope
 never exits and buffered stdout never flushes — a probe script looks like it hung when it
 actually finished. End such scripts with `process.exit(0)`.
 
+**DONE (`bd39c67`) — Meta reply contract verified, and encoded.**
+
+**The contract, checked against live official docs on 2026-08-17. Not recalled.**
+
+| | Facebook | Instagram |
+|---|---|---|
+| public reply | `POST /v26.0/{comment-id}/comments` `{message}` | `POST /{ig-comment-id}/replies` `{message}` |
+| public perms | `pages_manage_engagement` + MODERATE task | `instagram_basic`+`instagram_manage_comments` (FB login) **or** `instagram_business_manage_comments` (IG login) |
+| public window | none documented | none, but **top-level comments only**, and **never on live video** |
+| private reply | `POST /{page-id}/messages` `{recipient:{comment_id}, message}` | same endpoint and shape |
+| private perms | `pages_messaging` + MESSAGING task | `instagram_manage_comments` + `pages_messaging` |
+| private window | **7 days** from the comment | **7 days**, or **only during the broadcast** on a Live |
+| how many | **exactly one, ever** | **exactly one, ever** |
+
+Continuing after that first message needs the customer to answer, which opens the standard
+24-hour messaging window — that belongs to the Conversation spine, not to comments.
+**App Review gates all of it** for accounts the app does not own; Advanced Access also needs
+Business Verification. A green panel does not mean a call will succeed.
+
+**Every row of that table differs between the two providers**, which is exactly why they had
+to be checked separately rather than assumed identical.
+
+- `lib/integrations/meta/replyCapability.ts` — pure, no API calls: `canPublicReply`,
+  `canPrivateReply`, `replyExpiresAt`, `reasonUnavailable`. Consults the connection's stored
+  `scopes` when it has them; an **unknown scope list is treated as no objection**, since
+  absence of evidence is not evidence of absence and the call is the real check.
+- Rendered in the drawer with a ✓/× mark and a sentence. Sending is not built and the panel
+  says so, rather than showing a button that fails after someone has typed an answer.
+- `tests/sales/meta-reply-capability.spec.ts` (8) pins the contract: **if Meta changes a
+  rule, that file is where it should first be felt.**
+- Verified live across three seeded cases: fresh → both allowed, 8-day-old → public allowed
+  and private closed, LIVE → both refused with the right reason. Also verified with the
+  scopes withheld (both refused) and granted. Probe rows and scopes restored afterwards.
+
+**Also fixed:** overdue rows read "11511 min late". Units now scale to hours and days.
+
 **NOT DONE — next tasks in order:**
-1. **Meta reply contract verification** — still BLOCKED and still unverified. Check public
-   reply, private reply, permissions, windows and App Review for **each provider separately**
-   before any reply UI. Then a capability layer (`canPublicReply`, `canPrivateReply`,
-   `replyExpiresAt`, `reasonUnavailable`) so the UI never offers what Meta will refuse.
-2. **Reply UI + AI draft** — AI never auto-sends. Depends on 1.
-3. Comment Capture settings tab; AI enrichment on the deterministic score (must degrade);
+1. **Reply UI + sending** — the capability layer is ready and the contract is known, so this
+   is now unblocked. Public reply first (no window, simpler permissions); private reply
+   second, and only where `canPrivateReply` says so. Record `providerReplyId` and `repliedAt`
+   on success — the SLA and the capability layer both already read them. **AI drafts must
+   never auto-send.**
+2. Comment Capture settings tab; AI enrichment on the deterministic score (must degrade);
    simulated-comment admin action (§25) through the real receiver, never a direct insert;
    social analytics.
 
