@@ -371,40 +371,50 @@ exactly the class of bug this section exists to prevent.
 **DONE (`190ddbb`) — unassigned queue.** Tab + count, HIGH/MEDIUM only, reason rendered
 inline. Verified live: `UNASSIGNED 1` with "No matching distribution rule."
 
+**DONE (`2b94386`) — manual assignment and reassignment.**
+- `services/social/assignSocialLead.ts` owns authorization, eligibility, the write, the
+  history row and the notification, so a later caller (bulk assign, an automation) gets the
+  same guarantees without reimplementing them. `POST /api/v1/social-leads/[id]/assign` is thin.
+- **Claiming for yourself needs only VIEW; handing it to anyone else or to a team needs
+  ASSIGN.** Verified against a real `marketing_manager` session (VIEW=ORGANIZATION, no
+  ASSIGN): hand-to-person 403, hand-to-team 403, claim-for-self 200. The Reassign button is
+  absent for that role, so the UI and the API agree.
+- A team is a destination, not a person — `nextDistributionOwner` picks who inside it takes
+  it rather than a second rotation competing with the first.
+- **The manual guard is explicit in `applySocialComment`, not a side effect of the duplicate
+  early-return.** Proven by replaying the original provider event: owner survives,
+  `assignmentSource` stays MANUAL, `assignedAt` untouched, no extra history row, no extra
+  notification, no duplicate enquiry, no CRM Lead.
+- Permanent check: `tests/tenant/social-assignment.spec.ts` (3 tests) — distribution assigns,
+  redelivery preserves a manual owner, no Lead is ever created. Runs with `npm test`,
+  needs Postgres only.
+- Refusals verified at the API: suspended user 404, unknown user 404, both person and team
+  422, neither 422.
+- **UI bug found and fixed in the same pass:** the drawer held a copy of the row, so a
+  reassignment refreshed the queue behind a drawer still showing the old owner. It keeps the
+  id now and derives the row from the fresh list.
+- QA'd live at 1440px and 390px: 0 overflow, full history trail reads
+  `Amina → Sara · assigned by hand by Manath Admin · reason`. Probe data cleaned up.
+
 **NOT DONE — next tasks in order:**
-1. **Manual reassignment UI** — assign to me / user / team. The data layer is ready
-   (`assignmentSource: MANUAL`); the worker's early-return on duplicates already protects it,
-   but add an explicit guard when the UI lands so a *reprocessed* comment cannot overwrite.
-2. **Social Lead SLA + overdue escalation** — reuse the existing SLA architecture, do not
-   build a social-specific one. Clock should start from the provider comment timestamp;
-   document that choice.
-2. **Manual-reassignment preservation** — a manager's explicit choice must survive a retry.
-   Currently safe *because* retries return early, but there is no explicit
-   `assignmentSource` (auto/manual/inherited) field. Add one if reassignment UI lands.
-3. **`Unassigned` filter + count** in the Social Leads UI for manager visibility.
-4. **Assignment activity/history** — `LeadAssignmentHistory` is Lead-shaped; social
-   assignments currently record nothing beyond `ownerId`. Needed for time-to-assignment
-   analytics.
-5. **Meta reply contract verification** — still BLOCKED and still unverified. Do not build
-   reply UI before checking public reply, private reply, permissions, windows and App Review
-   for **both** providers separately.
-6. Comment Capture settings tab; AI enrichment; simulated-comment admin action.
+1. **Social Lead SLA + escalation** — reuse the existing SLA architecture, do not build a
+   social-specific one. The clock runs from the provider comment timestamp (falling back to
+   ingestion when absent), **not** from assignment: a reassignment must not reset it, because
+   SLA follows the customer's enquiry, not the salesperson's ownership. Targets configurable,
+   HIGH 10m / MEDIUM 30m as defaults; states HEALTHY / AT RISK / BREACHED; queue ordering
+   follows. Then manager escalation on HIGH breach, deduplicated.
+2. **Meta reply contract verification** — still BLOCKED and still unverified. Check public
+   reply, private reply, permissions, windows and App Review for **each provider separately**
+   before any reply UI. Then a capability layer (`canPublicReply`, `canPrivateReply`,
+   `replyExpiresAt`, `reasonUnavailable`) so the UI never offers what Meta will refuse.
+3. **Reply UI + AI draft** — AI never auto-sends. Depends on 2.
+4. Comment Capture settings tab; AI enrichment on the deterministic score (must degrade);
+   simulated-comment admin action (§25) through the real receiver, never a direct insert;
+   social analytics.
 
-**Old item, superseded:** DistributionRule fallthrough — an unmatched HIGH enquiry currently lands unassigned;
-   `applySocialComment` only inherits a linked lead's owner.
-3. Simulated comment action in demo mode (§25) — a safe admin path that goes through the
-   real receiver, not a direct insert.
-4. Comment Capture settings tab on the Meta page.
-5. AI enrichment on top of the deterministic score — optional, must degrade.
-6. Reply workflow — **still BLOCKED** on the unverified Meta private-reply contract.
-7. Old item: Social Leads UI at `ENGAGE → Social Leads` (nav, queue, tabs, detail drawer).
-3. AI enrichment on top of the deterministic score — optional, must degrade.
-4. Comment Capture settings tab on the Meta page.
-5. Reply workflow — **blocked** on the unverified private-reply contract above.
-6. `Convert to Lead` + attribution preservation.
-
-**Not started.** No further code written for this yet. The Phase 2 work below (`8920781`, `a0e91c7`)
-remains valid and is unaffected.
+**Long-standing defects, still open:** E2E owner sign-in (6 specs), the
+`environment-separation` timeout (measure before changing), password-locator component
+semantics.
 
 ---
 
