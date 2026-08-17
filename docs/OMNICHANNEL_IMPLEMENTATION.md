@@ -540,6 +540,36 @@ callback cancel → "Connection cancelled — nothing was changed"; unknown stat
 successful branch of the exchange — real code → real Page token → stored connection — has never
 run. Everything up to and after it has. That is the one remaining unknown in the flow.
 
+**DONE (`85ab3d0`) — Gemini connected per workspace, and actually used.**
+- **The bug this exposed:** the screen said Gemini CONNECTED while every AI feature read
+  `process.env.GEMINI_API_KEY`, which is unset on this deployment. Analysis, audits, live
+  coaching and reply drafts were all running simulated behind a green badge, while the
+  workspace's own key sat encrypted in its connection row with nothing reading it.
+- Gemini is a **registry provider** now (`lib/integrations/registry.ts`), so the existing
+  Configure form, encrypted save and health row cover it — no second form, no second list.
+- `lib/ai/gemini.ts` — `geminiKey()` / `geminiModel()`: **workspace key first, deployment key
+  second.** A tenant with its own key is buying its own quota, billing and data boundary.
+  **Every call site moved onto it** (analysis, audit, liveCoach, assistant, draftReply) — a
+  resolver half the callers ignore reproduces the same green-badge-over-simulation bug.
+- **`gemini-2.0-flash` has been retired by Google.** It was the hardcoded default, so every
+  request 404'd. Default is now the `gemini-flash-latest` alias; the model is editable per
+  workspace. `verifyConnection` **names a usable model** instead of counting them, because
+  when an id retires the useful fact is what to type instead.
+- Drafting had no retry while analysis and audits did — now on the same `withRetry`/
+  `isTransient` pair. Output budget 400 → 1500: current flash models spend output tokens
+  thinking, and the first real draft came back cut off mid-sentence.
+- **Also fixed:** the callback URL block forced this page 291px sideways at 390px. A URL is
+  one unbreakable token, so `overflowX: auto` never got to scroll — the element widened its
+  grid. Invisible while APP_URL was `localhost:3000`.
+- `tests/tenant/gemini-key.spec.ts` (7) — including that one workspace's key never serves
+  another's, and that a DISCONNECTED row stops being used. 1170 unit tests green.
+
+**Proven live over the tunnel:** verify returned `28 models available, e.g.
+gemini-flash-latest` against the stored key; a reply draft came back `source: "gemini"`.
+Repeat calls then returned **429 — that key's quota is spent**, which is Google's limit, not
+our code. The 1500-token budget fix is therefore **not yet visually confirmed**; it is a
+reasoned fix for an observed truncation, not a verified one.
+
 **NOT DONE — next tasks in order:**
 1. **A real Meta connection has never been exercised.** Everything is proven through the
    simulated path, unit tests and the devtunnel. `sendMetaReply` has not made one live Graph
