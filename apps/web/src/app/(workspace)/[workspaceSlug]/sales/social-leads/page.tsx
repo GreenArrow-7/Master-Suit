@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
+import { socialSlaState, socialSlaTarget } from '@/services/social/sla';
 import PageHeader from '@/components/ui/PageHeader';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
 
@@ -24,6 +25,7 @@ const TABS = [
   ['high', 'High intent'],
   ['assigned', 'Assigned'],
   ['unassigned', 'Unassigned'],
+  ['overdue', 'Overdue'],
   ['converted', 'Converted'],
   ['dismissed', 'Dismissed'],
 ] as const;
@@ -53,11 +55,15 @@ export default async function SocialLeadsPage({
     // Everything a salesperson should be working that nobody owns. Spam and
     // praise are excluded — they were never meant to be assigned.
     ...(tab === 'unassigned' ? { ownerId: null, intent: { in: ['HIGH', 'MEDIUM'] } } : {}),
+    // Past the deadline and still unanswered. `repliedAt`/`convertedAt` null is
+    // the same test `socialSlaState` makes, expressed in SQL so the tab counts
+    // and the badges cannot disagree.
+    ...(tab === 'overdue' ? { slaDueAt: { lt: new Date() }, repliedAt: null, convertedAt: null } : {}),
     ...(tab === 'converted' ? { status: 'CONVERTED' } : {}),
     // Spam and dismissed are captured for marketing, not for a salesperson's
     // queue, so they surface only on their own tab.
     ...(tab === 'dismissed' ? { status: { in: [...hidden] } } : {}),
-    ...(tab === 'all' || tab === 'new' || tab === 'high' || tab === 'unassigned'
+    ...(tab === 'all' || tab === 'new' || tab === 'high' || tab === 'unassigned' || tab === 'overdue'
       ? { status: { notIn: [...hidden] } }
       : {}),
   };
@@ -65,7 +71,22 @@ export default async function SocialLeadsPage({
   const [rows, counts] = await Promise.all([
     prisma.socialComment.findMany({
       where,
-      orderBy: [{ intent: 'asc' }, { commentCreatedAt: 'desc' }],
+      /**
+       * Work still owed, soonest deadline first — so the row to pick up next is
+       * the top one.
+       *
+       * The two nulls-first keys are what stop an answered enquiry from
+       * outranking a live one: its deadline is older, so ordering on the
+       * deadline alone floated finished work to the top of the queue. Nulls
+       * last on the deadline then puts "nothing owed" — praise, spam, LOW —
+       * below everything with a clock, whatever its intent.
+       */
+      orderBy: [
+        { repliedAt: { sort: 'asc', nulls: 'first' } },
+        { convertedAt: { sort: 'asc', nulls: 'first' } },
+        { slaDueAt: { sort: 'asc', nulls: 'last' } },
+        { commentCreatedAt: 'desc' },
+      ],
       take: 100,
       select: {
         id: true,
@@ -80,6 +101,9 @@ export default async function SocialLeadsPage({
         intentReasons: true,
         status: true,
         assignmentNote: true,
+        slaDueAt: true,
+        repliedAt: true,
+        convertedAt: true,
         linkedLeadId: true,
         owner: { select: { fullName: true } },
         team: { select: { name: true } },
@@ -124,6 +148,17 @@ export default async function SocialLeadsPage({
     } as Prisma.SocialCommentWhereInput,
   });
 
+  // The other number a manager acts on: past target and still unanswered.
+  const overdueCount = await prisma.socialComment.count({
+    where: {
+      ...visible,
+      slaDueAt: { lt: new Date() },
+      repliedAt: null,
+      convertedAt: null,
+      status: { notIn: ['CONVERTED', 'DISMISSED', 'SPAM'] },
+    } as Prisma.SocialCommentWhereInput,
+  });
+
   // Only people who can actually take work. Listing every User row would offer
   // suspended accounts as destinations.
   const [users, teams] = await Promise.all([
@@ -140,6 +175,21 @@ export default async function SocialLeadsPage({
     }),
   ]);
 
+  /**
+   * SLA state is derived here rather than in the browser so the badge, the
+   * Overdue tab and the count are all one clock. The tenant's warning threshold
+   * comes from its own SLA row when it has configured one.
+   */
+  const [highTarget, mediumTarget] = await Promise.all([
+    socialSlaTarget(ctx.tenantId, 'HIGH'),
+    socialSlaTarget(ctx.tenantId, 'MEDIUM'),
+  ]);
+  const now = new Date();
+  const leads = rows.map((row) => ({
+    ...row,
+    sla: socialSlaState(row, now, (row.intent === 'HIGH' ? highTarget : mediumTarget)?.warningPct ?? 80),
+  }));
+
   return (
     <div className="lf-page-stack">
       <PageHeader
@@ -150,7 +200,7 @@ export default async function SocialLeadsPage({
       />
 
       <SocialLeadList
-        leads={JSON.parse(JSON.stringify(rows))}
+        leads={JSON.parse(JSON.stringify(leads))}
         tabs={TABS.map(([key, label]) => ({ key, label }))}
         activeTab={tab}
         activeChannel={channel ?? ''}
@@ -162,6 +212,7 @@ export default async function SocialLeadsPage({
           new: byStatus.NEW ?? 0,
           high: highCount,
           unassigned: unassignedCount,
+          overdue: overdueCount,
           converted: byStatus.CONVERTED ?? 0,
         }}
       />

@@ -26,6 +26,11 @@ interface Lead {
   intentReasons: string[];
   status: string;
   assignmentNote: string | null;
+  slaDueAt: string | null;
+  repliedAt: string | null;
+  convertedAt: string | null;
+  /** Derived on the server so the badge, the Overdue tab and the count agree. */
+  sla: string;
   linkedLeadId: string | null;
   owner: { fullName: string | null } | null;
   team: { name: string } | null;
@@ -62,6 +67,25 @@ const INTENT_LABEL: Record<string, string> = {
   UNSCORED: 'Not scored',
 };
 
+/**
+ * The deadline as a salesperson reads it. "8 min late" is actionable; a
+ * timestamp they have to subtract from the current time is not.
+ */
+const SLA_LABEL: Record<string, string> = {
+  BREACHED: 'Overdue',
+  AT_RISK: 'Due soon',
+  MET: 'Answered',
+  PAUSED: 'No target',
+  ON_TRACK: 'On track',
+};
+
+const slaDetail = (lead: Lead) => {
+  if (!lead.slaDueAt || lead.sla === 'MET' || lead.sla === 'PAUSED') return null;
+  const mins = Math.round((new Date(lead.slaDueAt).getTime() - Date.now()) / 60_000);
+  if (mins < 0) return `${Math.abs(mins)} min late`;
+  return `${mins} min left`;
+};
+
 const when = (iso: string) => {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return 'just now';
@@ -89,7 +113,7 @@ export default function SocialLeadList({
   canAssign: boolean;
   me: string;
   options: { users: { id: string; fullName: string | null }[]; teams: { id: string; name: string }[] };
-  summary: { new: number; high: number; unassigned: number; converted: number };
+  summary: { new: number; high: number; unassigned: number; overdue: number; converted: number };
 }) {
   /**
    * The id, not the row. Holding the object froze the drawer at whatever the
@@ -111,6 +135,7 @@ export default function SocialLeadList({
           ['New', summary.new],
           ['High intent', summary.high],
           ['Unassigned', summary.unassigned],
+          ['Overdue', summary.overdue],
           ['Converted', summary.converted],
         ].map(([label, value]) => (
           <div className="lf-social__stat" key={label as string}>
@@ -175,6 +200,14 @@ export default function SocialLeadList({
                   {INTENT_LABEL[lead.intent] ?? lead.intent}
                   {lead.intentScore != null && lead.intentScore > 0 && ` · ${lead.intentScore}`}
                 </span>
+                {/* The clock, only when one is running. A chip on every row
+                    would make the queue look uniformly urgent. */}
+                {lead.slaDueAt && lead.sla !== 'MET' && lead.sla !== 'PAUSED' && (
+                  <span className="lf-social__sla" data-sla={lead.sla.toLowerCase()}>
+                    {SLA_LABEL[lead.sla] ?? lead.sla}
+                    {slaDetail(lead) && ` · ${slaDetail(lead)}`}
+                  </span>
+                )}
                 {/* What they commented on. Without it "Price?" means nothing. */}
                 {lead.providerAdTitle && <span className="lf-inbox__muted">On: {lead.providerAdTitle}</span>}
                 {!lead.providerAdTitle && lead.mediaType && (
@@ -260,6 +293,17 @@ function SocialLeadDrawer({
               <p className="lf-inbox__muted">No qualification reasons recorded.</p>
             )}
           </div>
+
+          {lead.slaDueAt && (
+            <p className="lf-social__slaline" data-sla={lead.sla.toLowerCase()}>
+              <span>
+                <strong>{SLA_LABEL[lead.sla] ?? lead.sla}</strong>
+                {slaDetail(lead) && ` · ${slaDetail(lead)}`}
+              </span>
+              {/* Says out loud which clock this is, because the obvious guess is wrong. */}
+              <span className="lf-inbox__muted">Measured from the customer&apos;s comment, not from assignment.</span>
+            </p>
+          )}
 
           <AssignmentPanel lead={lead} canAssign={canAssign} me={me} options={options} />
 

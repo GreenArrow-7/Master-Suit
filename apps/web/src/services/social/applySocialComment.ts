@@ -12,7 +12,9 @@
  */
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { enqueue } from '@/lib/queue';
 import { qualifyComment } from '@/services/social/qualify';
+import { socialSlaTarget } from '@/services/social/sla';
 import { nextDistributionOwner } from '@/services/distribution/assignLead';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 
@@ -172,6 +174,15 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
     }
   }
 
+  /**
+   * The response clock, started from the customer's comment rather than from
+   * now. Ingestion can lag — a webhook retry, a worker restart, a backfill — and
+   * measuring from our own processing time would quietly forgive exactly the
+   * delays the target exists to catch.
+   */
+  const target = await socialSlaTarget(tenantId, qualification.intent);
+  const slaDueAt = target ? new Date(comment.commentCreatedAt.getTime() + target.minutes * 60_000) : null;
+
   const created = await prisma.socialComment.create({
     data: {
       tenantId,
@@ -197,10 +208,27 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
       assignmentSource: source,
       assignedAt: ownerId ? new Date() : null,
       assignmentNote: note,
+      slaDueAt,
       linkedLeadId,
     },
     select: { id: true, intent: true, status: true },
   });
+
+  /**
+   * One delayed job at the deadline, following the pattern `createLead` already
+   * uses for lead first-contact. A comment that arrived late enough to be
+   * overdue on arrival gets a job with no delay rather than being skipped —
+   * an enquiry that sat in a retry queue for an hour is exactly the one a
+   * manager needs told about.
+   */
+  if (slaDueAt) {
+    await enqueue(
+      'sla',
+      'social-enquiry-response',
+      { tenantId, socialCommentId: created.id },
+      { delayMs: Math.max(slaDueAt.getTime() - Date.now(), 0) },
+    );
+  }
 
   /**
    * The assignment trail. Written even when nobody was assigned, because

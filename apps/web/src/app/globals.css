@@ -4508,3 +4508,32 @@ a:hover {
   gap: 1px;
   font-size: 13px;
 }
+
+/* The response clock. Colour follows the SLA palette the lead rail already uses
+   (§ .lf-rail__seg), and each state carries a word as well as a colour. */
+.lf-social__sla {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--lf-ink-2);
+}
+.lf-social__sla[data-sla='at_risk'] {
+  color: var(--lf-brass);
+}
+.lf-social__sla[data-sla='breached'] {
+  color: var(--lf-vermillion);
+}
+.lf-social__slaline {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--lf-line);
+  font-size: 13px;
+}
+.lf-social__slaline[data-sla='at_risk'] strong {
+  color: var(--lf-brass);
+}
+.lf-social__slaline[data-sla='breached'] strong {
+  color: var(--lf-vermillion);
+}

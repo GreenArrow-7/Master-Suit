@@ -3862,6 +3862,14 @@ model SocialComment {
   /// Why nobody owns it, when nobody does — surfaced in the unassigned queue.
   assignmentNote   String?
 
+  /// When a reply is owed by. Measured from `commentCreatedAt` — the customer's
+  /// clock, not ours — so reassigning an enquiry never buys the desk more time.
+  /// Null when the comment is not a sales enquiry and nothing is owed.
+  slaDueAt DateTime?
+  /// Set once, when the manager was told this breached. The deduplication key:
+  /// a redelivered webhook or a retried job must not page anyone twice.
+  slaEscalatedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3880,6 +3888,8 @@ model SocialComment {
   @@index([tenantId, providerMediaId])
   /// Recognising a returning commenter without relying on a username, which changes.
   @@index([tenantId, provider, providerAuthorId])
+  /// The overdue sweep and the urgency ordering both read this.
+  @@index([tenantId, slaDueAt])
 }
 
 enum SocialCommentStatus {
