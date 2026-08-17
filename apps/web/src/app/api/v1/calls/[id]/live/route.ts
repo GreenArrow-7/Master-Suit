@@ -90,7 +90,12 @@ export const GET = route(
 
         await prisma.call.update({
           where: { id: callId, tenantId },
-          data: { status: 'COMPLETED', endedAt, durationSecs, ...(reason === 'completed' ? { outcome: 'CONNECTED' } : {}) },
+          data: {
+            status: 'COMPLETED',
+            endedAt,
+            durationSecs,
+            ...(reason === 'completed' ? { outcome: 'CONNECTED' } : {}),
+          },
         });
 
         if (content.length > 0) {
@@ -154,8 +159,10 @@ export const GET = route(
               const window = spoken.slice(-6).join('\n');
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
-              if (process.env.GEMINI_API_KEY && i % 4 === 3) {
-                const hints = await coachTick(window);
+              // The workspace's own key when it has one, the deployment's
+              // otherwise — `coachTick` degrades to heuristics with neither.
+              if (i % 4 === 3) {
+                const hints = await coachTick(window, ctx.tenantId);
                 for (const hint of hints.filter((h) => h.source === 'gemini')) send({ type: 'coach', ...hint, at });
               }
             }

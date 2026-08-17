@@ -131,7 +131,8 @@ const schema = z.object({
    * demo, not for production analysis.
    */
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  // A rolling alias: numbered ids retire and take every AI feature with them.
+  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
 
   /**
    * The Meta app Master Suite itself is registered as, so one App Review covers

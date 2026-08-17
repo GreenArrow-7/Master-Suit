@@ -13,10 +13,14 @@
  */
 import { logger } from '@/lib/logger';
 import { redact } from '@/lib/ai/redact';
+import { geminiKey, geminiModel } from '@/lib/ai/gemini';
+import { withRetry, isTransient } from '@/lib/integrations/retry';
 
 const AI_TIMEOUT_MS = 12_000;
 
 export interface DraftContext {
+  /** Whose key to run on. Absent falls back to the deployment key. */
+  tenantId?: string;
   provider: string;
   authorName: string | null;
   commentText: string;
@@ -56,10 +60,10 @@ export function templateDraft(context: DraftContext): string {
 }
 
 export async function draftReply(context: DraftContext): Promise<Draft> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = await geminiKey(context.tenantId);
   if (!apiKey) return { body: templateDraft(context), source: 'template' };
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await geminiModel(context.tenantId);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const channel = context.provider === 'instagram' ? 'Instagram' : 'Facebook';
 
@@ -85,17 +89,41 @@ export async function draftReply(context: DraftContext): Promise<Draft> {
   ].join('\n');
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 400 },
-      }),
-    });
-    if (!res.ok) throw new Error(`Gemini draft error: ${res.status}`);
-    const data = await res.json();
+    /**
+     * Retried on the statuses that mean "ask again", the same way analysis and
+     * audits are. Gemini answers 503 under load and 429 on quota often enough
+     * that a single attempt degraded to the template far more than it needed
+     * to — and a salesperson reading a generic template has no idea the model
+     * was ever asked.
+     */
+    const data = await withRetry(
+      'gemini-draft',
+      async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            /**
+             * Generous for a few sentences, because the current flash models
+             * spend output tokens on reasoning before they write. At 400 the
+             * reply came back cut off mid-sentence — the budget was being eaten
+             * before the answer started.
+             */
+            generationConfig: { temperature: 0.4, maxOutputTokens: 1500 },
+          }),
+        });
+        if (!res.ok) {
+          const error = new Error(`Gemini draft error: ${res.status}`) as Error & { status?: number };
+          error.status = res.status;
+          throw error;
+        }
+        return res.json();
+      },
+      { retryOn: isTransient },
+    );
+
     const text: string | undefined = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text?.trim()) throw new Error('Gemini returned no draft');
     return { body: text.trim(), source: 'gemini' };

@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { geminiKey, geminiModel } from './gemini';
 import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
@@ -10,6 +11,8 @@ import { withRetry, isTransient } from '../integrations/retry';
 const AI_TIMEOUT_MS = 60_000;
 
 export interface AuditInput {
+  /** Whose key to run on. Absent falls back to the deployment key. */
+  tenantId?: string;
   transcript: string;
   analysisJson: Record<string, unknown>;
   criteria: { label: string; description?: string; weight: number; isRequired: boolean }[];
@@ -94,15 +97,15 @@ const AUDIT_SCHEMA = {
 };
 
 export async function auditCall(input: AuditInput): Promise<AuditResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = await geminiKey(input.tenantId);
   if (!apiKey) {
     // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
     const { simulateAudit } = await import('./simulated');
-    logger.info('GEMINI_API_KEY not set — returning simulated audit');
+    logger.info('no Gemini key for this workspace — returning simulated audit');
     return simulateAudit(input);
   }
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await geminiModel(input.tenantId);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const data = await withRetry(

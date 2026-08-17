@@ -144,6 +144,34 @@ export const PROVIDERS: ProviderSpec[] = [
     capabilities: ['TRANSCRIBE'],
     webhook: false,
   },
+  {
+    key: 'gemini',
+    label: 'Gemini',
+    category: 'AI',
+    description:
+      'Call analysis, call audits, live coaching and reply drafts. Without a key these run in clearly-labelled simulation.',
+    credentials: [
+      {
+        key: 'apiKey',
+        label: 'API key',
+        secret: true,
+        hint: 'From Google AI Studio. Bringing your own key gives this workspace its own quota and billing.',
+      },
+    ],
+    settings: [
+      {
+        key: 'model',
+        label: 'Model',
+        secret: false,
+        setting: true,
+        // Google retires model ids on its own schedule, so this is editable
+        // rather than pinned in a deployment.
+        hint: 'Defaults to gemini-flash-latest, which tracks Google’s current model. Set a specific id to pin one.',
+      },
+    ],
+    capabilities: ['ANALYSE', 'AUDIT', 'COACH', 'DRAFT'],
+    webhook: false,
+  },
 ];
 
 export const providerSpec = (key: string) => PROVIDERS.find((p) => p.key === key);

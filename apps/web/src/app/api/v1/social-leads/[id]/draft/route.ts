@@ -28,6 +28,11 @@ export const POST = route({ module: 'leads', action: 'EDIT', params, body }, asy
     select: { displayName: true },
   });
 
-  const draft = await draftReply({ ...enquiry, kind: body.kind, businessName: tenant?.displayName ?? null });
+  const draft = await draftReply({
+    ...enquiry,
+    tenantId: ctx.tenantId,
+    kind: body.kind,
+    businessName: tenant?.displayName ?? null,
+  });
   return draft;
 });

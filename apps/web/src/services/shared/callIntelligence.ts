@@ -142,6 +142,7 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
   try {
     const context = await campaignContext(tenantId, call.campaignId);
     const { result, modelId, processingMs } = await analyzeTranscript({
+      tenantId,
       transcript: transcript.content,
       talkingPoints: context.talkingPoints,
       qualifications: context.qualifications,
@@ -232,6 +233,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
 
   try {
     const result = await auditCall({
+      tenantId,
       transcript: transcript.content,
       analysisJson: {
         summary: analysis.summary,

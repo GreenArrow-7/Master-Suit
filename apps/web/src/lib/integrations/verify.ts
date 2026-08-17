@@ -67,6 +67,32 @@ export async function verifyConnection(provider: string, c: Record<string, strin
         return { ok: true, detail: a.id };
       }
 
+      case 'gemini': {
+        /**
+         * ListModels is the only read that proves a key without spending a
+         * generation, and it doubles as the answer to Google retiring model
+         * ids — the reply says which ones this key can actually use.
+         */
+        const models = await vendorFetch<{
+          models?: { name?: string; supportedGenerationMethods?: string[] }[];
+        }>({
+          vendor: provider,
+          url: `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(c.apiKey ?? '')}`,
+        });
+        const usable = (models.models ?? [])
+          .filter((m) => m.name?.includes('gemini') && m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m) => m.name!.replace('models/', ''));
+        if (usable.length === 0) return { ok: false, detail: 'That key cannot generate with any Gemini model.' };
+
+        /**
+         * Names, not a count. When a model id retires the failure is a 404 deep
+         * inside a feature; the fix is knowing what to put in the Model field,
+         * so the health line is where that answer belongs.
+         */
+        const chosen = usable.find((n) => n === 'gemini-flash-latest') ?? usable[0]!;
+        return { ok: true, detail: `${usable.length} models available, e.g. ${chosen}` };
+      }
+
       case 'knowlarity':
         // Their API has no read that does not place a call or scan a day of logs.
         return unverifiable('Knowlarity has no read-only endpoint to test against.');
