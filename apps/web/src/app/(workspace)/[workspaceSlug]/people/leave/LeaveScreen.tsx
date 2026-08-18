@@ -255,7 +255,7 @@ function RequestTable({
 
   if (rows.length === 0) return <div className="lf-card lf-leave__empty">{empty}</div>;
   return (
-    <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+    <div className="lf-table-wrap">
       <table className="lf-table">
         <thead>
           <tr>

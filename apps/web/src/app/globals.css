@@ -1341,7 +1341,7 @@ a:hover {
    Same treatment as .lf-table: each cell shows its column header via
    data-label, so a phone user sees "Stage · Qualified" instead of a bare
    unexplained value. */
-@media (max-width: 860px) {
+@media (max-width: 760px) {
   .lf-grid thead {
     display: none;
   }
@@ -1386,6 +1386,96 @@ a:hover {
     box-shadow: none;
   }
   .lf-grid td[data-hide-mobile] {
+    display: none;
+  }
+}
+
+
+/* `.lf-table-scroll` — a scroll region with no chrome of its own.
+
+   `.lf-table-wrap` draws a card (surface, border, radius); use this instead
+   when the table already sits inside one, so a wide table can scroll without a
+   second border around it. It replaces the `overflow: hidden` that several
+   screens used to clip a 720px table — which does not scroll, it truncates,
+   leaving the last columns unreachable on every device including desktop. */
+.lf-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* ── Row-as-card: the phone form of every table ───────────────────────────
+   Both table systems already stopped being tables on a phone — but what they
+   became was a stack of blocks separated by hairlines, sitting inside the
+   wrapper's own border. A box of boxes, which is exactly the "squared, dense,
+   desktop-compressed" look this system exists to remove.
+
+   Below the phone tier a row becomes a real card on the page canvas, and the
+   wrapper stops drawing chrome so there is only one box, not two. Applies to
+   `.lf-table` (WorkspaceTable: HR, admin, platform) and `.lf-grid`
+   (ConfigurableGrid: the sales lists) alike, so neither can drift.
+
+   Column priority is what stops a card being fifteen label/value rows:
+     primary   — the record's identity. Card title: no label, larger, bold.
+     secondary — the fields worth scanning. Label/value pairs (the default).
+     meta      — hidden on a phone; still in the DOM and on desktop.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* One box, not two: the card is the row, so the container is just canvas. */
+  .lf-table-wrap,
+  .lf-grid-wrap {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    overflow: visible;
+    border-radius: 0;
+  }
+
+  /* The 720px floor is what forced horizontal scrolling in the first place. */
+  .lf-table,
+  .lf-grid {
+    min-width: 0;
+    font-size: var(--lf-text-sm);
+  }
+
+  .lf-table tbody tr,
+  .lf-grid tbody tr {
+    background: var(--lf-surface);
+    border: 1px solid var(--lf-line);
+    border-radius: var(--lf-radius-lg);
+    box-shadow: var(--lf-shadow-1);
+    padding: var(--lf-space-4);
+    margin-bottom: var(--lf-space-3);
+  }
+  /* The hairline belonged to the old stacked-block look. */
+  .lf-table tbody tr:last-child,
+  .lf-grid tbody tr:last-child {
+    border-bottom: 1px solid var(--lf-line);
+    margin-bottom: 0;
+  }
+  .lf-table tbody tr:hover,
+  .lf-grid tbody tr:hover {
+    background: var(--lf-surface);
+    border-color: var(--lf-line-2);
+  }
+
+  /* Identity line: reads as a heading, not as another field. */
+  .lf-table tbody td[data-priority='primary'],
+  .lf-grid tbody td[data-priority='primary'] {
+    display: block;
+    grid-template-columns: none;
+    padding: 0 0 var(--lf-space-2);
+    font-size: var(--lf-text-base);
+    font-weight: 600;
+    color: var(--lf-ink);
+  }
+  .lf-table tbody td[data-priority='primary']::before,
+  .lf-grid tbody td[data-priority='primary']::before {
+    display: none;
+  }
+
+  /* Detail that does not earn a line on a 390px screen. */
+  .lf-table tbody td[data-priority='meta'],
+  .lf-grid tbody td[data-priority='meta'] {
     display: none;
   }
 }

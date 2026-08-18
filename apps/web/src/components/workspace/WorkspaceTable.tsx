@@ -2,6 +2,27 @@ import type { ReactNode } from 'react';
 import TableSearch from './TableSearch';
 
 /**
+ * A column, optionally with a mobile priority.
+ *
+ * Below the phone tier a row becomes a card, and a card of fifteen label/value
+ * pairs is no better than the table it replaced. Priority is how a screen says
+ * which fields survive that transform:
+ *
+ *   primary   — the record's identity; becomes the card title.
+ *   secondary — worth scanning; renders as a labelled pair (the default).
+ *   meta      — desktop-only detail; stays in the DOM, hidden on a phone.
+ *
+ * A bare string is still a valid column, so the forty existing call sites keep
+ * working and adopt priority when someone has a reason to.
+ */
+export type Column = string | { label: string; priority?: 'primary' | 'secondary' | 'meta' };
+
+const label = (column: Column) => (typeof column === 'string' ? column : column.label);
+/** First column is the identity unless a screen says otherwise. */
+const priority = (column: Column, index: number) =>
+  typeof column === 'string' ? (index === 0 ? 'primary' : 'secondary') : (column.priority ?? 'secondary');
+
+/**
  * Every list that is small enough to arrive in one response gets a search box,
  * automatically — there is no page left where an operator has to read a table
  * of forty rows looking for one name.
@@ -19,7 +40,7 @@ export default function WorkspaceTable({
   /** Force the box on or off when the row count is a poor proxy for usefulness. */
   searchable,
 }: {
-  headers: string[];
+  headers: Column[];
   rows: ReactNode[][];
   empty?: string;
   searchPlaceholder?: string;
@@ -44,8 +65,10 @@ export default function WorkspaceTable({
       <table className="lf-table">
         <thead>
           <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
+            {headers.map((header, index) => (
+              <th key={label(header)} data-priority={priority(header, index)}>
+                {label(header)}
+              </th>
             ))}
           </tr>
         </thead>
@@ -53,7 +76,11 @@ export default function WorkspaceTable({
           {rows.map((row, index) => (
             <tr key={index}>
               {row.map((cell, cellIndex) => (
-                <td key={cellIndex} data-label={headers[cellIndex]}>
+                <td
+                  key={cellIndex}
+                  data-label={label(headers[cellIndex] ?? '')}
+                  data-priority={priority(headers[cellIndex] ?? '', cellIndex)}
+                >
                   {cell}
                 </td>
               ))}

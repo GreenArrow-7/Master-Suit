@@ -304,13 +304,13 @@ export default function LifecycleScreen({
 
       <h2 className="lf-leave__section">Joining and leaving</h2>
       <div className="lf-life__split">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-card" style={{ padding: 0 }}>
           {journeys.length === 0 ? (
             <p className="lf-leave__empty" style={{ margin: 0 }}>
               Nobody joining or leaving.
             </p>
           ) : (
-            <table className="lf-table">
+            <div className="lf-table-scroll"><table className="lf-table">
               <thead>
                 <tr>
                   <th>Employee</th>
@@ -334,11 +334,11 @@ export default function LifecycleScreen({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
 
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-card" style={{ padding: 0 }}>
           {!selected ? (
             <p className="lf-leave__empty" style={{ margin: 0 }}>
               Pick someone to see their checklist.
@@ -348,7 +348,7 @@ export default function LifecycleScreen({
               No checklist tasks for this person.
             </p>
           ) : (
-            <table className="lf-table">
+            <div className="lf-table-scroll"><table className="lf-table">
               <thead>
                 <tr>
                   <th>Task</th>
@@ -382,7 +382,7 @@ export default function LifecycleScreen({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
@@ -391,8 +391,8 @@ export default function LifecycleScreen({
       {expiring.length === 0 ? (
         <div className="lf-card lf-leave__empty">Nothing expiring in the next 90 days.</div>
       ) : (
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="lf-table">
+        <div className="lf-table-wrap">
+          <div className="lf-table-scroll"><table className="lf-table">
             <thead>
               <tr>
                 <th>Employee</th>
@@ -411,7 +411,7 @@ export default function LifecycleScreen({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </>

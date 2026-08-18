@@ -37,7 +37,7 @@ export default async function PeoplePage() {
           </article>
         ))}
       </section>
-      <section className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <section className="lf-card" style={{ padding: 0 }}>
         <div style={{ padding: 'var(--lf-space-5)', borderBottom: '1px solid var(--lf-border-subtle)' }}>
           <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Employee directory</h2>
         </div>
@@ -49,7 +49,7 @@ export default async function PeoplePage() {
         ) : (
           <div style={{ padding: 'var(--lf-space-4)' }}>
             <TableSearch placeholder="Name, email, number or designation…" label="Search the directory">
-              <table className="lf-table">
+              <div className="lf-table-scroll"><table className="lf-table">
                 <thead>
                   <tr>
                     <th>Employee</th>
@@ -77,7 +77,7 @@ export default async function PeoplePage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </TableSearch>
           </div>
         )}
