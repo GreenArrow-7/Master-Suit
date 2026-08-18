@@ -33,3 +33,4 @@ dump.rdb
 # `tsc --noEmit` passes with the file absent — verified rather than assumed.
 # Next writes it back on the first dev or build.
 next-env.d.ts
+.mobile-audit-auth.json
