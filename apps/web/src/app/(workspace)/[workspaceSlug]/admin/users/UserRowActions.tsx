@@ -67,7 +67,7 @@ export default function UserRowActions({
         Reset password
       </button>
       {employeeId && (
-        <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/${workspaceSlug}/people/users/${employeeId}/face`}>
+        <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/${workspaceSlug}/people/employees/${employeeId}/face`}>
           Face enrolment
         </a>
       )}

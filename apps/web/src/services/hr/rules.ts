@@ -12,6 +12,32 @@
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Employment statuses, spelled in one place.
+ *
+ * `EmployeeProfile.employmentStatus` is a plain String column, so nothing stops
+ * two parts of the module from disagreeing about how to spell the same state —
+ * and two of them did. Offboarding writes `NOTICE`, but the People dashboard
+ * counted `ON_NOTICE`, so its "On notice" tile read 0 however many people were
+ * serving notice; and the employees PATCH endpoint accepted `ON_NOTICE`, which
+ * would have written a value the lifecycle screens do not recognise.
+ */
+export const EMPLOYMENT_STATUSES = ['ONBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE', 'SUSPENDED', 'EXITED'] as const;
+
+export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
+
+/**
+ * The states in which somebody is still expected at work, and may therefore
+ * record attendance.
+ *
+ * PROBATION belongs here: `createStaffAccount` puts every hire who is not
+ * created as ACTIVE onto probation, which is the normal path for someone
+ * starting next month — and they were then refused at the door on day one with
+ * "You have no active employment record." Serving notice counts too; they are
+ * working until the last day.
+ */
+export const AT_WORK_STATUSES: readonly EmploymentStatus[] = ['ONBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE'];
+
 /** UAE weekend, as JS `getUTCDay()` values: Sunday 0, Saturday 6. */
 export const UAE_WEEKEND = [0, 6] as const;
 

@@ -1025,6 +1025,12 @@ model WorkspaceInvitation {
    * Agreed start date from the accepted offer, used instead of "today" on acceptance.
    */
   joiningDate    DateTime?
+  /**
+   * Full-time, contract, and so on. Carried from the invitation form, which
+   * asked for it and then had it dropped: the POST schema did not declare the
+   * field, so zod stripped it before anyone downstream could store it.
+   */
+  employmentType String?
   tokenHash      String    @unique
   expiresAt      DateTime
   acceptedAt     DateTime?

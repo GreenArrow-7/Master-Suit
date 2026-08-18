@@ -85,6 +85,22 @@ export function generateTemporaryPassword(): string {
   return chars.join('');
 }
 
+/**
+ * The membership that carries this account's login.
+ *
+ * `User.workspaceMembership` is genuinely optional — `salesUserId` is a
+ * nullable unique, and rows predating the membership backfill still have none.
+ * Every administration action here works on the *login*, so a `!` turned a
+ * legitimate "this account has no login" into `Cannot read properties of
+ * undefined` and a bare 500.
+ */
+function loginOf<T>(target: { workspaceMembership: T | null }): NonNullable<T> {
+  if (!target.workspaceMembership) {
+    throw Conflict('That account has no login. Invite the person, or recreate the account.');
+  }
+  return target.workspaceMembership as NonNullable<T>;
+}
+
 /** The workspace user being administered, with the role rank the guards compare. */
 async function loadTarget(ctx: Ctx, userId: string) {
   const user = await prisma.user.findFirst({
@@ -207,12 +223,23 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
+  /**
+   * The credential lives on PlatformUser, reached through the membership — and
+   * `User.workspaceMembership` is genuinely optional (`salesUserId` is a
+   * nullable unique). A `!` here turned "this account has no login" into
+   * `Cannot read properties of undefined`, so an administrator pressing Reset
+   * password on such a row got a bare 500 instead of being told what is wrong.
+   */
+  if (!target.workspaceMembership) {
+    throw Conflict('That account has no login to reset. Invite them, or recreate the account.');
+  }
+
   const password = temporaryPassword ?? generateTemporaryPassword();
   assertPolicy(password, await passwordPolicy(ctx.tenantId));
   const passwordHash = await hashPassword(password);
 
   await prisma.platformUser.update({
-    where: { id: target.workspaceMembership!.platformUserId },
+    where: { id: target.workspaceMembership.platformUserId },
     data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
   });
 
@@ -249,7 +276,7 @@ export async function unlockUser(ctx: Ctx, userId: string) {
 
   await withTx(ctx.tenantId, async (tx) => {
     await tx.platformUser.update({
-      where: { id: target.workspaceMembership!.platformUserId },
+      where: { id: loginOf(target).platformUserId },
       data: { failedLoginCount: 0, lockedUntil: null },
     });
   });
@@ -282,7 +309,7 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   await withTx(ctx.tenantId, async (tx) => {
     await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status } });
     await tx.workspaceMembership.update({
-      where: { id: target.workspaceMembership!.id },
+      where: { id: loginOf(target).id },
       data: { status: active ? 'ACTIVE' : 'SUSPENDED' },
     });
   });
@@ -316,6 +343,12 @@ export async function revokeUserSessions(ctx: Ctx, userId: string) {
 /** Everything an administrator needs to judge one account, in one call. */
 export async function accountDetail(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
+  /**
+   * Read-only, so a missing login is reported rather than refused. An account
+   * left without a membership is exactly the anomaly an administrator opens
+   * this screen to see; 500ing on it hides the one row worth looking at.
+   */
+  const membership = target.workspaceMembership;
   const [sessions, employee, loginHistory] = await Promise.all([
     /**
      * Read from PlatformSession, which is where sessions actually live.
@@ -325,19 +358,23 @@ export async function accountDetail(ctx: Ctx, userId: string) {
      * an account saw "no active sessions" for a user who was signed in on three
      * devices — and would have judged a suspected compromise on that.
      */
-    prisma.platformSession.findMany({
-      where: {
-        platformUserId: target.workspaceMembership!.platformUserId,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true, ipAddress: true, userAgent: true, lastSeenAt: true, expiresAt: true },
-      orderBy: { lastSeenAt: 'desc' },
-    }),
-    prisma.employeeProfile.findFirst({
-      where: { tenantId: ctx.tenantId, membershipId: target.workspaceMembership!.id, deletedAt: null },
-      select: { id: true, employeeNumber: true, employmentStatus: true, managerMembershipId: true },
-    }),
+    membership
+      ? prisma.platformSession.findMany({
+          where: {
+            platformUserId: membership.platformUserId,
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, ipAddress: true, userAgent: true, lastSeenAt: true, expiresAt: true },
+          orderBy: { lastSeenAt: 'desc' },
+        })
+      : [],
+    membership
+      ? prisma.employeeProfile.findFirst({
+          where: { tenantId: ctx.tenantId, membershipId: membership.id, deletedAt: null },
+          select: { id: true, employeeNumber: true, employmentStatus: true, managerMembershipId: true },
+        })
+      : null,
     // v21 §1 access panel: the account's recent sign-ins, successful and
     // failed, so an administrator judging a suspected compromise sees the
     // pattern rather than just the last-login timestamp.
@@ -349,21 +386,23 @@ export async function accountDetail(ctx: Ctx, userId: string) {
     }),
   ]);
 
-  const platformUser = target.workspaceMembership!.platformUser;
+  const platformUser = membership?.platformUser ?? null;
   return {
     userId: target.id,
     fullName: target.fullName,
     email: target.email,
     status: target.status,
     role: { id: target.roleId, key: target.role.key, name: target.role.name, rank: target.role.rank },
-    membershipStatus: target.workspaceMembership!.status,
-    lockedUntil: platformUser.lockedUntil,
-    failedLoginCount: platformUser.failedLoginCount,
-    lastLoginAt: platformUser.lastLoginAt,
-    mfaEnabled: platformUser.mfaEnabled,
-    recoveryCodesRemaining: platformUser.mfaRecoveryCodes.length,
+    membershipStatus: membership?.status ?? null,
+    /** False only when the account has no login at all — see `loginOf`. */
+    hasLogin: Boolean(membership),
+    lockedUntil: platformUser?.lockedUntil ?? null,
+    failedLoginCount: platformUser?.failedLoginCount ?? 0,
+    lastLoginAt: platformUser?.lastLoginAt ?? null,
+    mfaEnabled: platformUser?.mfaEnabled ?? false,
+    recoveryCodesRemaining: platformUser?.mfaRecoveryCodes.length ?? 0,
     /** Null means the account is still on an administrator-issued temporary password. */
-    passwordChangedAt: platformUser.passwordChangedAt,
+    passwordChangedAt: platformUser?.passwordChangedAt ?? null,
     activeSessions: sessions,
     loginHistory: loginHistory.map((row) => ({
       event: row.event,
@@ -418,7 +457,7 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
     include: { role: true },
   });
   await prisma.workspaceMembership.update({
-    where: { id: target.workspaceMembership!.id },
+    where: { id: loginOf(target).id },
     data: { roleSnapshot: role.key },
   });
 

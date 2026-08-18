@@ -16,23 +16,11 @@ import { prisma } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
 import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
-import {
-  isApprover,
-  isAttendanceApprover,
-  isHrAdmin,
-  mayReadAllEmployees,
-} from './access';
+import { isApprover, isAttendanceApprover, isHrAdmin, mayReadAllEmployees } from './access';
 import { myEmployee } from './leave';
 import { lifecycleDashboard } from './lifecycle';
 
-export type Persona =
-  | 'hr_admin'
-  | 'payroll'
-  | 'recruiter'
-  | 'it_admin'
-  | 'manager'
-  | 'auditor'
-  | 'employee';
+export type Persona = 'hr_admin' | 'payroll' | 'recruiter' | 'it_admin' | 'manager' | 'auditor' | 'employee';
 
 /**
  * The one dashboard this actor sees. Ordered by primary function: the first
@@ -97,7 +85,12 @@ export interface DashboardData {
   lede: string;
   stats: Stat[];
   /** Optional narrow lists a persona wants surfaced (e.g. joiners, exceptions). */
-  sections: { heading: string; rows: { primary: string; secondary?: string; badge?: string }[]; empty: string; href?: string }[];
+  sections: {
+    heading: string;
+    rows: { primary: string; secondary?: string; badge?: string }[];
+    empty: string;
+    href?: string;
+  }[];
 }
 
 /** The set of employees a persona may count at their scope. */
@@ -140,11 +133,15 @@ async function hrAdmin(ctx: Ctx): Promise<DashboardData> {
   const [headcount, present, pendingLeave, lifecycle, onNotice] = await Promise.all([
     prisma.employeeProfile.count({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ACTIVE' } }),
     prisma.hrAttendanceRecord.count({
-      where: { tenantId: ctx.tenantId, workDate: { gte: today, lt: tomorrow }, status: { in: ['PRESENT', 'LATE', 'REMOTE'] } },
+      where: {
+        tenantId: ctx.tenantId,
+        workDate: { gte: today, lt: tomorrow },
+        status: { in: ['PRESENT', 'LATE', 'REMOTE'] },
+      },
     }),
     prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
     lifecycleDashboard(ctx),
-    prisma.employeeProfile.count({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ON_NOTICE' } }),
+    prisma.employeeProfile.count({ where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE' } }),
   ]);
   return {
     persona: 'hr_admin',
@@ -156,9 +153,19 @@ async function hrAdmin(ctx: Ctx): Promise<DashboardData> {
       { label: 'Pending leave', value: pendingLeave, href: 'requests', tone: pendingLeave ? 'warn' : 'muted' },
       { label: 'Joining', value: lifecycle.joining.length, href: 'lifecycle' },
       { label: 'On notice', value: onNotice, href: 'lifecycle', tone: onNotice ? 'warn' : 'muted' },
-      { label: 'Overdue tasks', value: lifecycle.overdueTasks, href: 'lifecycle', tone: lifecycle.overdueTasks ? 'bad' : 'ok' },
+      {
+        label: 'Overdue tasks',
+        value: lifecycle.overdueTasks,
+        href: 'lifecycle',
+        tone: lifecycle.overdueTasks ? 'bad' : 'ok',
+      },
       { label: 'Docs expiring 60d', value: lifecycle.documentsExpiring60d, href: 'documents', tone: 'warn' },
-      { label: 'Docs expired', value: lifecycle.documentsExpired, href: 'documents', tone: lifecycle.documentsExpired ? 'bad' : 'ok' },
+      {
+        label: 'Docs expired',
+        value: lifecycle.documentsExpired,
+        href: 'documents',
+        tone: lifecycle.documentsExpired ? 'bad' : 'ok',
+      },
     ],
     sections: [
       {
@@ -185,7 +192,9 @@ async function payroll(ctx: Ctx): Promise<DashboardData> {
       where: { tenantId: ctx.tenantId, workDate: { gte: monthStart }, status: { in: ['ABSENT', 'LATE'] } },
     }),
     prisma.hrOvertimeRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
-    prisma.hrAttendanceRecord.count({ where: { tenantId: ctx.tenantId, workDate: { gte: monthStart }, checkOutAt: null, checkInAt: { not: null } } }),
+    prisma.hrAttendanceRecord.count({
+      where: { tenantId: ctx.tenantId, workDate: { gte: monthStart }, checkOutAt: null, checkInAt: { not: null } },
+    }),
   ]);
   return {
     persona: 'payroll',
@@ -205,7 +214,9 @@ async function payroll(ctx: Ctx): Promise<DashboardData> {
 async function recruiter(ctx: Ctx): Promise<DashboardData> {
   const [openReqs, activeCandidates, interviews, offers] = await Promise.all([
     prisma.hrRequisition.count({ where: { tenantId: ctx.tenantId, status: 'OPEN' } }),
-    prisma.hrCandidate.count({ where: { tenantId: ctx.tenantId, stage: { notIn: ['HIRED', 'REJECTED', 'WITHDRAWN'] } } }),
+    prisma.hrCandidate.count({
+      where: { tenantId: ctx.tenantId, stage: { notIn: ['HIRED', 'REJECTED', 'WITHDRAWN'] } },
+    }),
     prisma.hrInterview.count({ where: { tenantId: ctx.tenantId, scheduledAt: { gte: new Date() } } }),
     prisma.hrOffer.count({ where: { tenantId: ctx.tenantId, status: { in: ['DRAFT', 'PENDING_APPROVAL', 'SENT'] } } }),
   ]);
@@ -227,8 +238,12 @@ async function recruiter(ctx: Ctx): Promise<DashboardData> {
 async function itAdmin(ctx: Ctx): Promise<DashboardData> {
   const [activeAccounts, suspended, noMfa, joining] = await Promise.all([
     prisma.user.count({ where: { tenantId: ctx.tenantId, deletedAt: null, status: 'ACTIVE' } }),
-    prisma.user.count({ where: { tenantId: ctx.tenantId, deletedAt: null, status: { in: ['SUSPENDED', 'DEACTIVATED'] } } }),
-    prisma.workspaceMembership.count({ where: { tenantId: ctx.tenantId, status: 'ACTIVE', platformUser: { mfaEnabled: false } } }),
+    prisma.user.count({
+      where: { tenantId: ctx.tenantId, deletedAt: null, status: { in: ['SUSPENDED', 'DEACTIVATED'] } },
+    }),
+    prisma.workspaceMembership.count({
+      where: { tenantId: ctx.tenantId, status: 'ACTIVE', platformUser: { mfaEnabled: false } },
+    }),
     lifecycleDashboard(ctx).then((l) => l.joining.length),
   ]);
   return {
@@ -251,19 +266,29 @@ async function manager(ctx: Ctx): Promise<DashboardData> {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const where = await scopedEmployeeWhere(ctx);
-  const teamIds = (
-    await prisma.employeeProfile.findMany({ where, select: { id: true } })
-  ).map((e) => e.id);
+  const teamIds = (await prisma.employeeProfile.findMany({ where, select: { id: true } })).map((e) => e.id);
 
   const [team, presentToday, lateToday, pendingLeave] = await Promise.all([
     Promise.resolve(teamIds.length),
     prisma.hrAttendanceRecord.count({
-      where: { tenantId: ctx.tenantId, employeeId: { in: teamIds }, workDate: { gte: today, lt: tomorrow }, status: { in: ['PRESENT', 'REMOTE'] } },
+      where: {
+        tenantId: ctx.tenantId,
+        employeeId: { in: teamIds },
+        workDate: { gte: today, lt: tomorrow },
+        status: { in: ['PRESENT', 'REMOTE'] },
+      },
     }),
     prisma.hrAttendanceRecord.count({
-      where: { tenantId: ctx.tenantId, employeeId: { in: teamIds }, workDate: { gte: today, lt: tomorrow }, status: 'LATE' },
+      where: {
+        tenantId: ctx.tenantId,
+        employeeId: { in: teamIds },
+        workDate: { gte: today, lt: tomorrow },
+        status: 'LATE',
+      },
     }),
-    prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING', approverId: (await myEmployee(ctx))?.id ?? '__none__' } }),
+    prisma.hrLeaveRequest.count({
+      where: { tenantId: ctx.tenantId, status: 'PENDING', approverId: (await myEmployee(ctx))?.id ?? '__none__' },
+    }),
   ]);
   const missing = Math.max(0, team - presentToday - lateToday);
   return {
@@ -288,7 +313,9 @@ async function auditor(ctx: Ctx): Promise<DashboardData> {
     prisma.auditLog.count({ where: { tenantId: ctx.tenantId, occurredAt: { gte: weekAgo } } }),
     prisma.biometricConsent.count({ where: { tenantId: ctx.tenantId, withdrawnAt: null, grantedAt: { not: null } } }),
     prisma.hrAttendancePunch.count({ where: { tenantId: ctx.tenantId, result: 'FLAGGED_REVIEW' } }),
-    prisma.hrAttendancePunch.count({ where: { tenantId: ctx.tenantId, result: { in: ['REJECTED_GEOFENCE', 'REJECTED_FACE'] } } }),
+    prisma.hrAttendancePunch.count({
+      where: { tenantId: ctx.tenantId, result: { in: ['REJECTED_GEOFENCE', 'REJECTED_FACE'] } },
+    }),
   ]);
   return {
     persona: 'auditor',
@@ -297,7 +324,12 @@ async function auditor(ctx: Ctx): Promise<DashboardData> {
     stats: [
       { label: 'Audit events (7d)', value: auditEvents, href: 'reports' },
       { label: 'Active biometric consents', value: consents, tone: 'ok' },
-      { label: 'Punches flagged for review', value: flaggedPunches, href: 'attendance', tone: flaggedPunches ? 'warn' : 'ok' },
+      {
+        label: 'Punches flagged for review',
+        value: flaggedPunches,
+        href: 'attendance',
+        tone: flaggedPunches ? 'warn' : 'ok',
+      },
       { label: 'Rejected attempts', value: exceptions, href: 'attendance', tone: exceptions ? 'warn' : 'muted' },
     ],
     sections: [],
@@ -317,7 +349,11 @@ async function employee(ctx: Ctx): Promise<DashboardData> {
           select: { checkInAt: true, checkOutAt: true, workMinutes: true },
         }),
         prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, employeeId: self.id, status: 'PENDING' } }),
-        prisma.hrLeaveBalance.findMany({ where: { tenantId: ctx.tenantId, employeeId: self.id }, include: { leaveType: true }, take: 4 }),
+        prisma.hrLeaveBalance.findMany({
+          where: { tenantId: ctx.tenantId, employeeId: self.id },
+          include: { leaveType: true },
+          take: 4,
+        }),
       ])
     : [null, 0, []];
 
