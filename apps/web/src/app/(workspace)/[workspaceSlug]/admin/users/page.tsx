@@ -146,7 +146,7 @@ export default async function UsersPage({
       {rows.length === 0 ? (
         <div className="lf-card lf-leave__empty">Nobody matches those filters.</div>
       ) : (
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-table-wrap">
           <table className="lf-table">
             <thead>
               <tr>

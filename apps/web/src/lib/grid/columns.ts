@@ -41,13 +41,20 @@ export interface ColumnDef {
   byDefault?: boolean;
   /** Dropped from the mobile card layout, matching `data-hide-mobile`. */
   hideMobile?: boolean;
+  /**
+   * The record's identity. On a phone a row becomes a card, and this column is
+   * its title — rendered without a label, at heading weight — so a card reads
+   * as "Priya Karim" rather than a list of fields one of which happens to be a
+   * name. Exactly one per object.
+   */
+  primary?: boolean;
   align?: 'left' | 'right';
 }
 
 export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   LEAD: [
     { key: 'reference', label: 'Reference', fixed: true },
-    { key: 'fullName', label: 'Name', fixed: true },
+    { key: 'fullName', label: 'Name', fixed: true, primary: true },
     { key: 'company', label: 'Company', byDefault: true, hideMobile: true },
     { key: 'stage', label: 'Stage', byDefault: true },
     { key: 'score', label: 'Score', byDefault: true, align: 'right' },
@@ -62,7 +69,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   ACCOUNT: [
     { key: 'reference', label: 'Reference', fixed: true },
-    { key: 'name', label: 'Name', fixed: true },
+    { key: 'name', label: 'Name', fixed: true, primary: true },
     { key: 'industry', label: 'Industry', byDefault: true, hideMobile: true },
     { key: 'mainPhone', label: 'Phone', byDefault: true, hideMobile: true },
     { key: 'mainEmail', label: 'Email', byDefault: true, hideMobile: true },
@@ -73,7 +80,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   CONTACT: [
     { key: 'reference', label: 'Reference', fixed: true },
-    { key: 'fullName', label: 'Name', fixed: true },
+    { key: 'fullName', label: 'Name', fixed: true, primary: true },
     { key: 'jobTitle', label: 'Title', byDefault: true, hideMobile: true },
     { key: 'account', label: 'Account', byDefault: true, hideMobile: true },
     { key: 'email', label: 'Email', byDefault: true, hideMobile: true },
@@ -83,7 +90,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   OPPORTUNITY: [
     { key: 'reference', label: 'Reference', fixed: true },
-    { key: 'name', label: 'Name', fixed: true },
+    { key: 'name', label: 'Name', fixed: true, primary: true },
     { key: 'account', label: 'Account', byDefault: true, hideMobile: true },
     { key: 'stage', label: 'Stage', byDefault: true },
     { key: 'status', label: 'Status', byDefault: true },
@@ -94,7 +101,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
   ACTIVITY: [
-    { key: 'occurredAt', label: 'Date', fixed: true },
+    { key: 'occurredAt', label: 'Date', fixed: true, primary: true },
     { key: 'type', label: 'Type', byDefault: true },
     { key: 'lead', label: 'Lead', byDefault: true },
     { key: 'outcome', label: 'Outcome', byDefault: true, hideMobile: true },
@@ -102,7 +109,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
   ],
   TASK: [
-    { key: 'title', label: 'Title', fixed: true },
+    { key: 'title', label: 'Title', fixed: true, primary: true },
     { key: 'type', label: 'Type', byDefault: true, hideMobile: true },
     { key: 'lead', label: 'Lead', byDefault: true },
     { key: 'dueAt', label: 'Due date', byDefault: true },
@@ -112,7 +119,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'completedAt', label: 'Completed', hideMobile: true },
   ],
   CALL: [
-    { key: 'createdAt', label: 'Date', fixed: true },
+    { key: 'createdAt', label: 'Date', fixed: true, primary: true },
     { key: 'lead', label: 'Lead', byDefault: true },
     { key: 'caller', label: 'Owner', byDefault: true, hideMobile: true },
     { key: 'recipientNumber', label: 'Number', byDefault: true, hideMobile: true },
@@ -124,7 +131,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'notes', label: 'Notes', hideMobile: true },
   ],
   CAMPAIGN: [
-    { key: 'name', label: 'Name', fixed: true },
+    { key: 'name', label: 'Name', fixed: true, primary: true },
     { key: 'campaignType', label: 'Type', byDefault: true, hideMobile: true },
     { key: 'channel', label: 'Channel', byDefault: true, hideMobile: true },
     { key: 'status', label: 'Status', byDefault: true },
@@ -137,19 +144,19 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'channel', label: 'Channel', byDefault: true },
     { key: 'direction', label: 'Direction', byDefault: true, hideMobile: true },
     { key: 'toAddress', label: 'To', byDefault: true },
-    { key: 'subject', label: 'Subject', byDefault: true, hideMobile: true },
+    { key: 'subject', label: 'Subject', byDefault: true, hideMobile: true, primary: true },
     { key: 'status', label: 'Status', byDefault: true },
   ],
   PRODUCT: [
     { key: 'code', label: 'Code', fixed: true },
-    { key: 'name', label: 'Name', fixed: true },
+    { key: 'name', label: 'Name', fixed: true, primary: true },
     { key: 'category', label: 'Category', byDefault: true, hideMobile: true },
     { key: 'unitPrice', label: 'Unit price', byDefault: true, align: 'right' },
     { key: 'status', label: 'Status', byDefault: true },
   ],
   TICKET: [
     { key: 'number', label: 'Number', fixed: true },
-    { key: 'subject', label: 'Subject', fixed: true },
+    { key: 'subject', label: 'Subject', fixed: true, primary: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
     { key: 'status', label: 'Status', byDefault: true },
     { key: 'channel', label: 'Channel', byDefault: true, hideMobile: true },
@@ -158,7 +165,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'createdAt', label: 'Created', byDefault: true, hideMobile: true },
   ],
   DOCUMENT: [
-    { key: 'name', label: 'Name', fixed: true },
+    { key: 'name', label: 'Name', fixed: true, primary: true },
     { key: 'category', label: 'Category', byDefault: true, hideMobile: true },
     { key: 'mimeType', label: 'Type', byDefault: true, hideMobile: true },
     { key: 'sizeBytes', label: 'Size', byDefault: true, align: 'right', hideMobile: true },
@@ -166,7 +173,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'createdAt', label: 'Uploaded', byDefault: true, hideMobile: true },
   ],
   FOLLOWUP: [
-    { key: 'title', label: 'Task', fixed: true },
+    { key: 'title', label: 'Task', fixed: true, primary: true },
     { key: 'lead', label: 'Lead', byDefault: true, hideMobile: true },
     { key: 'dueAt', label: 'Due', byDefault: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
@@ -174,7 +181,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'actions', label: '', byDefault: true, align: 'right' },
   ],
   FIELDVISIT: [
-    { key: 'rep', label: 'Rep', fixed: true },
+    { key: 'rep', label: 'Rep', fixed: true, primary: true },
     { key: 'lead', label: 'Lead', byDefault: true },
     { key: 'status', label: 'Status', byDefault: true },
     { key: 'plannedAt', label: 'Planned', byDefault: true, hideMobile: true },
@@ -185,7 +192,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'outcome', label: 'Outcome', byDefault: true, hideMobile: true },
   ],
   PROJECT: [
-    { key: 'name', label: 'Project', fixed: true },
+    { key: 'name', label: 'Project', fixed: true, primary: true },
     { key: 'code', label: 'Code', hideMobile: true },
     { key: 'micromarket', label: 'Micromarket', byDefault: true },
     { key: 'developer', label: 'Developer', byDefault: true, hideMobile: true },
@@ -200,7 +207,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   LISTING: [
     { key: 'reference', label: 'Ref', fixed: true },
-    { key: 'title', label: 'Listing', fixed: true },
+    { key: 'title', label: 'Listing', fixed: true, primary: true },
     { key: 'listingType', label: 'For', byDefault: true },
     { key: 'propertyType', label: 'Type', byDefault: true, hideMobile: true },
     { key: 'priceCell', label: 'Price', byDefault: true, align: 'right' },

@@ -144,7 +144,7 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No attendance in this period.</div>
       ) : (
         <TableSearch placeholder="Employee, location, date or status…" label="Search this period">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-table-wrap">
           <table className="lf-table">
             <thead>
               <tr>

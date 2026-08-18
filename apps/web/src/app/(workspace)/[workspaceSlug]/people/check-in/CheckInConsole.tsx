@@ -423,7 +423,8 @@ export default function CheckInConsole({
         {recent.length === 0 ? (
           <p className="lf-checkin__none">No check-in has been attempted yet.</p>
         ) : (
-          <table className="lf-table">
+          <div className="lf-table-scroll">
+            <table className="lf-table">
             <thead>
               <tr>
                 <th>When</th>
@@ -456,6 +457,7 @@ export default function CheckInConsole({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>

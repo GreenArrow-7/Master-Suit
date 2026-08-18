@@ -281,7 +281,7 @@ export default async function Page({
           <div className="lf-card lf-leave__empty">Nobody currently holds this role.</div>
         ) : (
           <TableSearch placeholder="Name or email…" label="Search the holders">
-          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="lf-table-wrap">
             <table className="lf-table">
               <thead>
                 <tr>
@@ -313,7 +313,7 @@ export default async function Page({
           <div className="lf-card lf-leave__empty">No additional role assignments.</div>
         ) : (
           <TableSearch placeholder="User, role, scope or status…" label="Search the history">
-          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="lf-table-wrap">
             <table className="lf-table">
               <thead>
                 <tr>

@@ -312,7 +312,7 @@ export default function LeadGrid({
           <tbody>
             {sorted.map((row) => (
               <tr key={row.id} aria-selected={selected.has(row.id)}>
-                <td>
+                <td data-label="">
                   <input
                     type="checkbox"
                     checked={selected.has(row.id)}
@@ -326,6 +326,7 @@ export default function LeadGrid({
                     className={column.key === 'reference' ? 'lf-sticky' : undefined}
                     data-hide-mobile={column.hideMobile ? '' : undefined}
                     data-label={column.label}
+                    data-priority={column.primary ? 'primary' : undefined}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
                     {cell(column.key, row)}
