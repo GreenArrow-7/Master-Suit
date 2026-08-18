@@ -1,4 +1,4 @@
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ExportCsv from '@/components/workspace/ExportCsv';
@@ -35,7 +35,7 @@ export default async function CompliancePage({
 
   const within = query.within === '30' || query.within === '60' || query.within === '90' ? Number(query.within) : 90;
   const contractorsOnly = query.contractors === 'true';
-  const rows = await complianceRegister(ctx, { withinDays: within, contractorsOnly });
+  const rows = await pageLoad(complianceRegister(ctx, { withinDays: within, contractorsOnly }));
 
   const expired = rows.filter((row) => row.severity === 'expired').length;
   const urgent = rows.filter((row) => row.severity === 'urgent').length;

@@ -23,6 +23,21 @@ export function toDay(value: Date): Date {
 export const dayKey = (value: Date) => toDay(value).toISOString().slice(0, 10);
 
 /**
+ * A date out of a query string, or the fallback.
+ *
+ * `new Date('last-tuesday')` is an Invalid Date rather than an error, and it
+ * stays quiet until something calls `.toISOString()` on it or hands it to
+ * Prisma — at which point the page 500s and the viewer is told the server
+ * broke. A mistyped or stale URL is not a server fault, so an unreadable value
+ * falls back to the same default an absent one would use.
+ */
+export function queryDate(value: string | undefined, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+/**
  * Days that actually consume leave balance. Weekends and public holidays do not:
  * an employee taking Thu–Mon burns three days, not five.
  */

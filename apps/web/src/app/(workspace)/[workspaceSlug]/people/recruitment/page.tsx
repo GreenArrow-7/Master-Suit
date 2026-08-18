@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
@@ -23,9 +23,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   const bands = mayReadBands(ctx);
 
   const [requisitions, candidates, summary, employees, departments] = await Promise.all([
-    listRequisitions(ctx),
-    listCandidates(ctx),
-    pipelineSummary(ctx),
+    pageLoad(listRequisitions(ctx)),
+    pageLoad(listCandidates(ctx)),
+    pageLoad(pipelineSummary(ctx)),
     recruiter
       ? prisma.employeeProfile.findMany({
           where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
@@ -53,11 +53,20 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       </section>
 
       <section
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 'var(--lf-space-4)' }}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
       >
         {[
           ['Open roles', summary.openRequisitions],
-          ['In pipeline', Object.entries(summary.byStage).filter(([stage]) => !TERMINAL.includes(stage)).reduce((total, [, count]) => total + count, 0)],
+          [
+            'In pipeline',
+            Object.entries(summary.byStage)
+              .filter(([stage]) => !TERMINAL.includes(stage))
+              .reduce((total, [, count]) => total + count, 0),
+          ],
           ['Offers out', summary.byStage.OFFER ?? 0],
           ['Hired', summary.hires],
           ['Avg days to hire', summary.averageDaysToHire ?? '—'],

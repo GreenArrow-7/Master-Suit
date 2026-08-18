@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
@@ -26,7 +26,7 @@ export default async function Page({
   const policy = await getHrPolicy(ctx);
 
   const [runs, employees, selected] = await Promise.all([
-    listRuns(ctx),
+    pageLoad(listRuns(ctx)),
     officer
       ? prisma.employeeProfile.findMany({
           where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
