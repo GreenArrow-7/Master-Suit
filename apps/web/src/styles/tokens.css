@@ -105,6 +105,27 @@
 
   /* Controls sit at 6/9, cards at 13, hero surfaces at 16 — structured, not
      bubbly, and the three tiers stay visibly distinct. */
+  /* ── Responsive tiers ─────────────────────────────────────────────────────
+     Three intentional experiences, not one layout scaled down. Every new
+     responsive rule MUST use one of these boundaries — the codebase had grown
+     twelve ad-hoc breakpoints (430/560/640/760/820/860/900/960/1100…), which is
+     why 768px ended up with no design at all and overflowed on 22 routes.
+
+       phone    ≤ 760px   single column, drawer nav, cards not tables
+       tablet   761–1023  icon rail + condensed chrome, keeps desktop density
+       desktop  ≥ 1024px  full sidebar, full chrome
+
+     CSS cannot use custom properties in media queries, so these are the
+     canonical literals to copy:
+       @media (max-width: 760px)                          phone
+       @media (min-width: 761px) and (max-width: 1023px)  tablet
+       @media (max-width: 1023px)                         phone + tablet
+       @media (min-width: 1024px)                         desktop
+     ─────────────────────────────────────────────────────────────────────── */
+  --lf-bp-phone: 760px;
+  --lf-bp-tablet: 1023px;
+  --lf-bp-desktop: 1024px;
+
   --lf-radius-sm: 6px;
   --lf-radius: 9px;
   --lf-radius-lg: 13px;

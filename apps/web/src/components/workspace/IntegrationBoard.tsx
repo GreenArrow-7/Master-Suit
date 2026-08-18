@@ -61,7 +61,7 @@ export default function IntegrationBoard({
   const categories = [...new Set(providers.map((p) => p.category))];
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
+    <div className="lf-stack" style={{ ['--lf-stack-gap' as string]: 'var(--lf-space-5)' } as React.CSSProperties}>
       <HealthSummary providers={providers} />
 
       {categories.map((category) => (
@@ -78,7 +78,7 @@ export default function IntegrationBoard({
             />
           )}
 
-          <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
+          <div className="lf-stack">
             {providers
               .filter((p) => p.category === category)
               .map((provider) => (
@@ -103,7 +103,7 @@ function HealthSummary({ providers }: { providers: ProviderCard[] }) {
       <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 12px' }}>
         Health
       </h2>
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div className="lf-stack" style={{ ['--lf-stack-gap' as string]: '8px' } as React.CSSProperties}>
         {rows.map((row) => (
           <div
             key={row.label}
@@ -308,7 +308,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
             e.preventDefault();
             void send('save');
           }}
-          style={{ marginTop: 16, display: 'grid', gap: 12 }}
+          className="lf-stack" style={{ marginTop: 16, ['--lf-stack-gap' as string]: '12px' } as React.CSSProperties}
         >
           {[...provider.credentialFields, ...provider.settingFields].map((field) => {
             const stored = 'secret' in field && field.secret ? configured : false;

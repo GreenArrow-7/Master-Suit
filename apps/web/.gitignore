@@ -10,3 +10,4 @@ node_modules/
 *.log
 # Scratch verification scripts and logs from local test runs
 .verify/
+.mobile-audit-auth.json

@@ -86,7 +86,15 @@ body {
 }
 .lf-page-stack {
   display: grid;
+  /* Same constraint as .lf-stack: a bare grid's implicit track sizes to
+     max-content, so one wide child (a hero band, a 320px-floor grid) drags the
+     whole page past the viewport. Every screen hangs off this container, so the
+     floor belongs here rather than in each page. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
+}
+.lf-page-stack > * {
+  min-width: 0;
 }
 
 .lf-shell-topbar {
@@ -105,7 +113,11 @@ body {
 }
 .lf-shell-search {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
+  /* Without this the flex item cannot shrink below the intrinsic width of the
+     input it wraps, so the top bar pushes the page wider than the viewport
+     instead of the search box getting narrower. */
+  min-width: 0;
   max-width: 460px;
 }
 .lf-shell-search .lf-input {
@@ -600,6 +612,72 @@ body {
     padding: 24px;
   }
 }
+/* ── Layout primitives ────────────────────────────────────────────────────
+   `.lf-stack` — a vertical grid that cannot outgrow its container.
+
+   A bare `display: grid` creates an implicit column sized to max-content, and
+   an explicit `1fr` track still refuses to shrink past its items' min-content
+   because grid items default to `min-width: auto`. Either way a long line of
+   text or a wide child silently pushes the whole page wider than the viewport:
+   the integrations board rendered a 639px track inside a 358px column and
+   overflowed every phone width. `minmax(0, 1fr)` is the constraint that says
+   "share the container, and shrink when it does".
+
+   Use this instead of an inline `display: grid` anywhere content stacks. Rows
+   flow with the token gap; override with --lf-stack-gap when a screen needs a
+   tighter rhythm.
+   ──────────────────────────────────────────────────────────────────────── */
+.lf-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lf-stack-gap, var(--lf-space-4));
+}
+/* Grid and flex children opt out of min-content sizing the same way. */
+.lf-stack > * {
+  min-width: 0;
+}
+
+/* ── Tablet: 761–1023px ───────────────────────────────────────────────────
+   The tier that did not exist. Every mobile rule was gated on ≤760px, so an
+   iPad in portrait rendered the full desktop shell — a 236px sidebar plus a
+   648px action cluster inside 768px — and 22 routes overflowed by +234px.
+
+   A tablet has room for desktop information density; what it lacks is chrome
+   width. So the sidebar becomes an icon rail (the same collapsed rendering the
+   desktop toggle already produces, driven here by WorkspaceSidebar's media
+   query) and the top bar sheds the controls that are conveniences rather than
+   navigation. Nothing is stacked or hidden behind a drawer: this is a tablet
+   layout, not the phone layout promoted upward.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (min-width: 761px) and (max-width: 1023px) {
+  /* Width matches the rail so there is no reflow when the component's own
+     media query collapses it; the two agree on the same 64px. */
+  .lf-workspace-sidebar {
+    width: 64px;
+  }
+
+  .lf-shell-topbar {
+    gap: 8px;
+    padding: 0 16px;
+  }
+
+  /* Workspace name, plan badge, density and theme toggles, Help. Each is a
+     preference rather than a destination, and together they are most of the
+     648px. They remain reachable on desktop and in the drawer. */
+  .lf-shell-actions .lf-topbar-optional {
+    display: none;
+  }
+
+  .lf-shell-actions {
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .lf-page-main {
+    padding: 24px 20px 32px;
+  }
+}
+
 @media (max-width: 760px) {
   .lf-workspace-sidebar {
     position: fixed;
@@ -1804,7 +1882,7 @@ a:hover {
 }
 .lf-leave__balances {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: 16px;
 }
 .lf-leave__balance {
@@ -1857,7 +1935,7 @@ a:hover {
 }
 .lf-leave__fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 12px;
 }
 .lf-leave__half {
@@ -1908,7 +1986,7 @@ a:hover {
 }
 .lf-life__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 12px;
 }
 .lf-life__helper {
@@ -2106,7 +2184,7 @@ a:hover {
 }
 .lf-users__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 4px 20px;
 }
 .lf-users__grid .lf-field {
@@ -2128,7 +2206,7 @@ a:hover {
 }
 .lf-users__created dl {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 14px;
   margin: 0;
 }
@@ -2171,7 +2249,7 @@ a:hover {
 }
 .lf-face__facts dl {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px 24px;
   margin: 0;
   width: 100%;
@@ -3890,7 +3968,7 @@ a:hover {
 /* Two quiet panels sharing a row on wide screens; stacking below. */
 .lf-panel-duo {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 22px;
   align-items: start;
 }
@@ -3964,7 +4042,7 @@ a:hover {
 
 .lf-channels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 12px;
 }
 
