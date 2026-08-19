@@ -312,7 +312,7 @@ export default function LeadGrid({
           <tbody>
             {sorted.map((row) => (
               <tr key={row.id} aria-selected={selected.has(row.id)}>
-                <td data-label="">
+                <td className="lf-grid__select" data-label="">
                   <input
                     type="checkbox"
                     checked={selected.has(row.id)}

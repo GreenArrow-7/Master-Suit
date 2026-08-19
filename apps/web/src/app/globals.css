@@ -1638,15 +1638,39 @@ a:hover {
     border-color: var(--lf-line-2);
   }
 
+  /* A card is read top-down, so the identity has to be the first thing in it.
+     Column order is a desktop decision — reference first, because that is the
+     link column and the sticky one — and it should not dictate what a phone
+     leads with. Flex lets the visual order differ from the column order
+     without a second markup path. */
+  .lf-table tbody tr,
+  .lf-grid tbody tr {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
   /* Identity line: reads as a heading, not as another field. */
   .lf-table tbody td[data-priority='primary'],
   .lf-grid tbody td[data-priority='primary'] {
+    order: -1;
     display: block;
     grid-template-columns: none;
-    padding: 0 0 var(--lf-space-2);
+    /* Clear of the selection control parked in the corner. */
+    padding: 0 40px var(--lf-space-2) 0;
     font-size: var(--lf-text-base);
     font-weight: 600;
     color: var(--lf-ink);
+  }
+
+  /* Bulk-select belongs in the card's corner, not as a labelled row of its
+     own — it acts on the card rather than being one of its fields. */
+  .lf-grid__select {
+    position: absolute;
+    top: var(--lf-space-3);
+    right: var(--lf-space-3);
+    width: auto;
+    padding: 0;
   }
   .lf-table tbody td[data-priority='primary']::before,
   .lf-grid tbody td[data-priority='primary']::before {
