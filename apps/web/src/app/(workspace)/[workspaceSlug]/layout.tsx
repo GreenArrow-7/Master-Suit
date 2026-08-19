@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
+import MobileTabBar from '@/components/workspace/MobileTabBar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import ModuleTheme from '@/components/workspace/ModuleTheme';
@@ -111,6 +112,8 @@ export default async function WorkspaceLayout({
           creatable={shell.creatable}
         />
         <main className="lf-page-main">{children}</main>
+        {/* Phone-tier primary navigation; hidden by CSS above it. */}
+        <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
       </div>
       <AssistantWidget />
     </div>

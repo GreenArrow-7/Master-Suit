@@ -612,6 +612,112 @@ body {
     padding: 24px;
   }
 }
+/* ── Phone navigation and app bar ─────────────────────────────────────────
+   A phone got the desktop chrome: a top bar carrying search, workspace name,
+   plan, density, theme, help, notifications, sign-out and Create, wrapping
+   onto three rows — and a 40-link sidebar as the only way to navigate.
+
+   Below the phone tier the bar keeps a menu button, the page title and the two
+   actions worth a thumb; everything else already exists in the drawer, so
+   nothing is lost by removing it here. Primary destinations move to a bottom
+   tab bar, where a thumb actually reaches.
+   ──────────────────────────────────────────────────────────────────────── */
+.lf-tabbar {
+  display: none;
+}
+.lf-appbar-title {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .lf-tabbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 44;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    background: rgb(255 255 255 / 0.96);
+    border-top: 1px solid var(--lf-line);
+    backdrop-filter: blur(14px);
+    /* Home-indicator safe area on iOS, zero elsewhere. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .lf-tabbar__item {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 3px;
+    /* Comfortably past the 44px floor once the safe area is added. */
+    min-height: 52px;
+    padding: 6px 2px;
+    border: 0;
+    background: none;
+    color: var(--lf-ink-3);
+    font: 600 var(--lf-text-2xs)/1 var(--lf-font-ui);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lf-tabbar__item svg {
+    width: 20px;
+    height: 20px;
+  }
+  .lf-tabbar__item[aria-current='page'] {
+    color: var(--lf-wine-700);
+  }
+
+  /* The bar is fixed, so the last rows of every page need somewhere to go. */
+  .lf-page-main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+  /* One row, never three: the bar is chrome, not content. */
+  .lf-shell-topbar {
+    height: 56px;
+    min-height: 0;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0 8px 0 52px;
+  }
+  .lf-shell-actions {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  /* Search lives on the list screens it filters; on a phone the bar cannot
+     afford it and the tab bar reaches those lists in one tap. */
+  .lf-shell-search {
+    display: none;
+  }
+  .lf-appbar-title {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 600 var(--lf-text-base)/1 var(--lf-font-ui);
+    color: var(--lf-ink);
+  }
+
+  /* Anything below the touch floor gets a hit area without growing visually. */
+  .lf-shell-actions .lf-btn--sm {
+    min-height: 40px;
+  }
+  .lf-mobile-nav-button {
+    width: 40px;
+    height: 40px;
+    top: 8px;
+    left: 8px;
+    border-radius: var(--lf-radius);
+  }
+}
+
+/* The drawer is a phone surface; on a tablet the rail is the navigation. */
+@media (min-width: 761px) {
+  .lf-tabbar {
+    display: none;
+  }
+}
+
 /* ── Layout primitives ────────────────────────────────────────────────────
    `.lf-stack` — a vertical grid that cannot outgrow its container.
 
@@ -2729,6 +2835,15 @@ a:hover {
   cursor: pointer;
   box-shadow: var(--lf-shadow-3);
 }
+/* Clears the bottom tab bar. Declared after the base rule rather than with the
+   other phone rules, because both are single-class selectors and the later one
+   wins — order is the whole mechanism here. */
+@media (max-width: 760px) {
+  .lf-ai-fab {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .lf-ai-fab:hover {
   background: var(--lf-wine-500);
 }
