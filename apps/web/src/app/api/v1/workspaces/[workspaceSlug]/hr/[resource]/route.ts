@@ -508,6 +508,11 @@ export const POST = route(
             roleKey: z.string().min(2).max(50).default('employee'),
             departmentId: z.string().optional().or(z.literal('')),
             designation: z.string().max(120).optional(),
+            // The form asks for both. Undeclared here, zod stripped them and the
+            // accepted employee got a blank employment type and a joining date
+            // of whenever they happened to click the link.
+            employmentType: z.string().max(50).optional().or(z.literal('')),
+            joinedOn: z.coerce.date().optional(),
           })
           .parse(body);
 
@@ -535,6 +540,8 @@ export const POST = route(
           employeeNumber: input.employeeNumber,
           jobTitle: input.designation,
           departmentId: input.departmentId || undefined,
+          employmentType: input.employmentType || undefined,
+          joiningDate: input.joinedOn,
         });
       }
       // Writing attendance for someone else is a claim about where they were.
@@ -910,7 +917,7 @@ export const PATCH = route(
             designationId: z.string().max(64).optional().or(z.literal('')),
             designation: z.string().max(120).optional(),
             employmentType: z.string().max(50).optional(),
-            employmentStatus: z.enum(['ACTIVE', 'ON_NOTICE', 'SUSPENDED', 'EXITED']).optional(),
+            employmentStatus: z.enum(['ACTIVE', 'NOTICE', 'SUSPENDED', 'EXITED']).optional(),
             joinedOn: z.coerce.date().optional(),
             managerMembershipId: z.string().max(64).optional().or(z.literal('')),
           })

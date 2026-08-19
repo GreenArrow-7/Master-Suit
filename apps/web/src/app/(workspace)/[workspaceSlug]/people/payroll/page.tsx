@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
@@ -26,7 +26,7 @@ export default async function Page({
   const policy = await getHrPolicy(ctx);
 
   const [runs, employees, selected] = await Promise.all([
-    listRuns(ctx),
+    pageLoad(listRuns(ctx)),
     officer
       ? prisma.employeeProfile.findMany({
           where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
@@ -142,15 +142,32 @@ export default async function Page({
                   variant="ghost"
                 />
               )}
-              {['APPROVED', 'LOCKED', 'PAID'].includes(row.status) && (
-                <a
-                  className="lf-btn lf-btn--ghost"
-                  href={`/api/v1/workspaces/${workspaceSlug}/hr/payroll/${row.id}/wps`}
-                  title={wpsReady ? 'Download the WPS salary file' : 'Set the WPS identifiers in HR policy first'}
-                >
-                  WPS file
-                </a>
-              )}
+              {['APPROVED', 'LOCKED', 'PAID'].includes(row.status) &&
+                /**
+                 * Offered only once it can actually produce a file. The anchor
+                 * used to render regardless, with `wpsReady` changing nothing
+                 * but the tooltip — so on a workspace that has not set its WPS
+                 * identifiers (the default) clicking it replaced the whole app
+                 * with a raw JSON problem document the user had to Back out of.
+                 */
+                (wpsReady ? (
+                  <a
+                    className="lf-btn lf-btn--ghost"
+                    href={`/api/v1/workspaces/${workspaceSlug}/hr/payroll/${row.id}/wps`}
+                    download
+                    title="Download the WPS salary file"
+                  >
+                    WPS file
+                  </a>
+                ) : (
+                  <span
+                    className="lf-btn lf-btn--ghost"
+                    aria-disabled
+                    title="Set the WPS identifiers in HR policy first"
+                  >
+                    WPS file
+                  </span>
+                ))}
             </span>,
           ])}
         />

@@ -335,6 +335,9 @@ enum AuditEvent {
   CONSENT_WITHDRAWN
   AI_ANALYSIS_COMPLETED
   CALL_AUDIT_COMPLETED
+  /// That an agent replied to a customer — never what they said. See the note on
+  /// AuditEventName in lib/security/audit.ts.
+  MESSAGE_SENT
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +456,11 @@ model Tenant {
   commissionSlabs            CommissionSlab[]
   commissionSlabBands        CommissionSlabBand[]
   communications             Communication[]
+  conversations              Conversation[]
+  metaLeadFormRoutings       MetaLeadFormRouting[]
+  socialComments             SocialComment[]
+  socialAssignments          SocialAssignmentHistory[]
+  socialReplies              SocialReply[]
   communicationProviders     CommunicationProvider[]
   contacts                   Contact[]
   contests                   Contest[]
@@ -867,6 +875,8 @@ model Team {
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
+  metaRoutings MetaLeadFormRouting[]
+  socialComments SocialComment[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -922,6 +932,9 @@ model User {
   teams               UserTeam[]
   passwordResetTokens PasswordResetToken[]
   ownedLeads          Lead[]               @relation("LeadOwner")
+  ownedConversations  Conversation[]       @relation("ConversationOwner")
+  metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
+  socialComments      SocialComment[]      @relation("SocialCommentOwner")
   ownedOpps           Opportunity[]        @relation("OpportunityOwner")
   ownedAccounts       Account[]            @relation("AccountOwner")
   ownedContacts       Contact[]            @relation("ContactOwner")
@@ -1012,6 +1025,12 @@ model WorkspaceInvitation {
    * Agreed start date from the accepted offer, used instead of "today" on acceptance.
    */
   joiningDate    DateTime?
+  /**
+   * Full-time, contract, and so on. Carried from the invitation form, which
+   * asked for it and then had it dropped: the POST schema did not declare the
+   * field, so zod stripped it before anyone downstream could store it.
+   */
+  employmentType String?
   tokenHash      String    @unique
   expiresAt      DateTime
   acceptedAt     DateTime?
@@ -2697,6 +2716,7 @@ model LeadStage {
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
+  metaRoutings MetaLeadFormRouting[]
 }
 
 model Lead {
@@ -2780,6 +2800,7 @@ model Lead {
   opportunities  Opportunity[]
   documents      Document[]
   communications Communication[]
+  conversations  Conversation[]
   tickets        Ticket[]
   submissions    FormSubmission[]
 
@@ -2798,6 +2819,7 @@ model Lead {
   @@index([tenantId, deletedAt])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  socialComments SocialComment[]
 }
 
 model LeadCustomFieldDefinition {
@@ -3738,9 +3760,333 @@ model MessageTemplate {
 // COMMUNICATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Why a social enquiry changed hands.
+///
+/// Modelled on LeadAssignmentHistory but separate, because that one is
+/// Lead-shaped: it has a non-null `leadId` foreign key and a social enquiry has
+/// no Lead until somebody converts it. Forcing one in would mean inventing the
+/// very CRM record the two-layer design exists to withhold.
+model SocialAssignmentHistory {
+  id              String @id @default(cuid())
+  tenantId        String
+  socialCommentId String
+
+  fromOwnerId String?
+  toOwnerId   String?
+  teamId      String?
+  /// Which mechanism chose, so a retry can tell a human's decision from a rule's.
+  source      SocialAssignmentSource
+  method      DistributionMethod?
+  ruleId      String?
+  /// Human-readable, and the place a failure explains itself: "No eligible
+  /// members in Dubai Sales" is actionable where a null owner is not.
+  reason      String?
+  /// Null when the system assigned it.
+  assignedById String?
+
+  createdAt DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComment SocialComment @relation(fields: [socialCommentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, socialCommentId, createdAt])
+  @@index([tenantId, toOwnerId, createdAt])
+}
+
+enum SocialAssignmentSource {
+  /// The commenter already had a CRM owner; an established relationship is kept.
+  INHERITED_CUSTOMER_OWNER
+  EXPLICIT_USER
+  TEAM_DISTRIBUTION
+  GLOBAL_DISTRIBUTION
+  /// A person chose. This is the one a worker retry must never overwrite.
+  MANUAL
+  SYSTEM
+}
+
+/// A comment on a Facebook or Instagram post, captured as a possible enquiry.
+///
+/// Layer 1 of two, and the separation is the whole point: a post attracts
+/// "Beautiful 🔥" alongside "what's the payment plan?", and only the second is a
+/// customer. Everything supported lands here; a CRM Lead is created only when a
+/// human converts it or an explicitly configured policy says to. Writing every
+/// comment straight into Lead would poison the customer's database permanently.
+///
+/// `providerCommentId` is scoped by provider as well as tenant: Facebook and
+/// Instagram mint ids in separate spaces, so the pair is what actually
+/// identifies a comment. That unique is the idempotency key — Meta redelivers.
+model SocialComment {
+  id                      String  @id @default(cuid())
+  tenantId                String
+  integrationConnectionId String?
+
+  /// `facebook` or `instagram`. They share this model and nothing else: the two
+  /// payloads differ in field names, identity shape and lifecycle events.
+  provider          String
+  providerCommentId String
+  /// Facebook gives a page-scoped id and a display name; Instagram gives an
+  /// IG-scoped id and a username. Neither is an email, a phone or a legal name,
+  /// and nothing here may invent one.
+  providerAuthorId  String?
+  authorName        String?
+  commentText       String
+  commentCreatedAt  DateTime
+
+  /// What they commented on. "Price?" is unactionable without it.
+  providerMediaId String?
+  mediaType       String?
+  mediaPermalink  String?
+  parentCommentId String?
+  /// Instagram supplies ad id and title on ad comments; Facebook does not.
+  providerAdId    String?
+  providerAdTitle String?
+
+  status  SocialCommentStatus @default(NEW)
+  intent  SocialIntent        @default(UNSCORED)
+  /// 0–100. Meaningless without `intentReasons`, which is why they travel together.
+  intentScore Int?
+  /// Why the score is what it is. A bare number is not something a salesperson
+  /// can act on or disagree with.
+  intentReasons String[] @default([])
+  /// True once AI enrichment ran. False means rules-only, not "failed" — the
+  /// pipeline completes either way.
+  aiQualified Boolean @default(false)
+
+  ownerId  String?
+  teamId   String?
+  /// Layer 2, once someone converts. Null is the normal state.
+  linkedLeadId    String?
+  linkedContactId String?
+
+  repliedAt       DateTime?
+  providerReplyId String?
+  convertedAt     DateTime?
+
+  /// How the current owner was chosen. MANUAL is sticky: reprocessing must not
+  /// undo a manager's deliberate reassignment.
+  assignmentSource SocialAssignmentSource?
+  assignedAt       DateTime?
+  /// Why nobody owns it, when nobody does — surfaced in the unassigned queue.
+  assignmentNote   String?
+
+  /// When a reply is owed by. Measured from `commentCreatedAt` — the customer's
+  /// clock, not ours — so reassigning an enquiry never buys the desk more time.
+  /// Null when the comment is not a sales enquiry and nothing is owed.
+  slaDueAt DateTime?
+  /// Set once, when the manager was told this breached. The deduplication key:
+  /// a redelivered webhook or a retried job must not page anyone twice.
+  slaEscalatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User?    @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  assignments SocialAssignmentHistory[]
+  replies     SocialReply[]
+
+  @@unique([tenantId, provider, providerCommentId])
+  /// The queue: newest first, filtered by status and intent.
+  @@index([tenantId, status, commentCreatedAt(sort: Desc)])
+  @@index([tenantId, intent, status])
+  @@index([tenantId, ownerId, status])
+  /// "Which post produced enquiries" — the attribution question this feature exists to answer.
+  @@index([tenantId, providerMediaId])
+  /// Recognising a returning commenter without relying on a username, which changes.
+  @@index([tenantId, provider, providerAuthorId])
+  /// The overdue sweep and the urgency ordering both read this.
+  @@index([tenantId, slaDueAt])
+}
+
+/**
+ * Every answer sent to a social enquiry, append-only.
+ *
+ * Separate from `SocialComment.repliedAt` rather than replacing it: that field
+ * is the *first* response, which is what the SLA measures and what the reply
+ * capability treats as spending Meta's single private reply. A conversation can
+ * have several public replies afterwards, and the trail is what makes
+ * response-time reporting and "who actually answered this" answerable.
+ */
+model SocialReply {
+  id              String @id @default(cuid())
+  tenantId        String
+  socialCommentId String
+
+  /// PUBLIC and PRIVATE go through Meta. EXTERNAL is a person recording that
+  /// they phoned or messaged the customer some other way — the customer was
+  /// answered, and the clock should reflect that even though we did not send it.
+  kind    SocialReplyKind
+  /// Phone, WhatsApp, Email… only meaningful for EXTERNAL.
+  channel String?
+  body    String
+
+  /// Meta's id for what we published. Null for EXTERNAL, and null when the
+  /// provider is simulated.
+  providerReplyId String?
+  /// False when the connection was in demo mode, so nobody mistakes a
+  /// demonstration for something the customer received.
+  delivered       Boolean @default(true)
+
+  /// Whether a person wrote it or edited a suggestion. AI never sends on its own.
+  aiAssisted Boolean @default(false)
+
+  sentById  String?
+  createdAt DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComment SocialComment @relation(fields: [socialCommentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, socialCommentId, createdAt])
+}
+
+enum SocialReplyKind {
+  PUBLIC
+  PRIVATE
+  EXTERNAL
+}
+
+enum SocialCommentStatus {
+  NEW
+  REVIEWED
+  ASSIGNED
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  DISMISSED
+  SPAM
+}
+
+enum SocialIntent {
+  HIGH
+  MEDIUM
+  LOW
+  IRRELEVANT
+  SPAM
+  /// Ingested but not yet classified — a comment is never blocked on scoring.
+  UNSCORED
+}
+
+/// What a Facebook Lead Ad form becomes when its leads reach the CRM.
+///
+/// The webhook already knows the form id; it had nowhere to look up what that
+/// form *means*, so every Meta lead landed on the tenant's default stage with no
+/// owner. This is that lookup, and it is deliberately thin: stage, priority and
+/// source reuse LeadStage, Priority and RecordSource rather than defining
+/// Meta-only copies of them.
+///
+/// There is no assignment-strategy column. `assignedUserId` and `assignedTeamId`
+/// name a destination; with neither set the lead falls through to the existing
+/// DistributionRule engine, which already does round-robin, load and territory
+/// and is what the distribution queue consults today. A second strategy enum
+/// here would be a parallel implementation of a solved problem.
+model MetaLeadFormRouting {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Meta's own form id — the key the webhook arrives holding.
+  providerFormId String
+  /// The Page the form belongs to; kept for display and for scoping a resync.
+  providerPageId String?
+  formName       String
+
+  /// Off means leads from this form are recorded but not turned into Leads.
+  enabled  Boolean      @default(true)
+  source   RecordSource @default(AD_LEAD_FORM)
+  stageId  String?
+  priority Priority     @default(MEDIUM)
+
+  assignedUserId String?
+  assignedTeamId String?
+  /// Whether the resulting owner is notified. Team managers follow the
+  /// workspace's existing notification policy rather than a flag here.
+  notifyOwner    Boolean @default(true)
+
+  lastLeadAt DateTime?
+  lastSyncAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stage        LeadStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  assignedUser User?      @relation("MetaRoutingOwner", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedTeam Team?      @relation(fields: [assignedTeamId], references: [id], onDelete: SetNull)
+
+  /// The webhook lookup, and the guarantee that one tenant's form maps once.
+  /// Scoped by tenant so two workspaces may legitimately hold the same form id.
+  @@unique([tenantId, providerFormId])
+  @@index([tenantId, enabled])
+}
+
+/// A threaded exchange with one customer on one channel.
+///
+/// Communication already records every individual message and already links to
+/// lead/contact/account/opportunity, so this deliberately adds only what a row
+/// per message cannot express: which messages belong together, who owns the
+/// thread, and what the provider calls it.
+///
+/// `externalId` is whatever identifies the thread at the provider — the WhatsApp
+/// phone number, a Messenger PSID, an Instagram IGSID. It is scoped by tenant
+/// and channel, never global, so two workspaces messaging the same customer keep
+/// separate threads. That uniqueness is also the idempotency key: a repeated
+/// inbound webhook finds the existing thread instead of opening a second one.
+///
+/// There is no ConversationParticipant model. Every channel here is one business
+/// to one customer; a participant table would be a join with exactly two rows
+/// and no query asking for it. Add one when a channel actually carries groups.
+model Conversation {
+  id          String              @id @default(cuid())
+  tenantId    String
+  channel     ChannelType
+  /// Provider key from lib/integrations/registry.ts, e.g. `meta`.
+  providerKey String?
+  /// The provider's identifier for this thread. See the note above.
+  externalId  String
+  /// Display handle for an unlinked thread — a phone number or @username —
+  /// so an inbox row is readable before anyone attaches it to a customer.
+  displayName String?
+
+  /// CRM links, all optional: a thread from an unknown number is exactly the
+  /// case §29 describes, and it must be storable before anyone identifies it.
+  leadId        String?
+  contactId     String?
+  accountId     String?
+  opportunityId String?
+
+  /// Null means unassigned, which the inbox filters on.
+  ownerId       String?
+  status        ConversationStatus @default(OPEN)
+  lastMessageAt DateTime?
+  /// Denormalised so the conversation list does not count rows per thread.
+  unreadCount   Int                @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  owner          User?           @relation("ConversationOwner", fields: [ownerId], references: [id])
+  communications Communication[]
+
+  @@unique([tenantId, channel, externalId])
+  @@index([tenantId, status, lastMessageAt(sort: Desc)])
+  @@index([tenantId, ownerId, status])
+  @@index([tenantId, leadId])
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  ARCHIVED
+}
+
 model Communication {
   id                String                 @id @default(cuid())
   tenantId          String
+  conversationId    String?
   channel           ChannelType
   direction         CommunicationDirection
   status            CommunicationStatus    @default(QUEUED)
@@ -3777,11 +4123,15 @@ model Communication {
 
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt(sort: Desc)])
   @@index([tenantId, channel, status])
   @@index([tenantId, providerMessageId])
+  /// Backs the message pane's cursor pagination (§55): newest first, older on scroll.
+  @@index([tenantId, conversationId, createdAt(sort: Desc)])
 }
 
 model CommunicationProvider {

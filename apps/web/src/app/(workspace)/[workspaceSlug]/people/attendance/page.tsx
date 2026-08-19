@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access';
 import { myEmployee } from '@/services/hr/leave';
@@ -38,8 +39,8 @@ export default async function Page({
 
   const today = new Date();
   const defaultFrom = new Date(today.getTime() - 29 * 86_400_000);
-  const from = query.from ? new Date(query.from) : defaultFrom;
-  const to = query.to ? new Date(query.to) : today;
+  const from = queryDate(query.from, defaultFrom);
+  const to = queryDate(query.to, today);
   const toEnd = new Date(to);
   toEnd.setHours(23, 59, 59, 999);
 

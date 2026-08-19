@@ -64,7 +64,7 @@ export default function IntegrationBoard({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <HealthSummary providers={providers} aiConfigured={aiConfigured} />
+      <HealthSummary providers={providers} deploymentKey={aiConfigured} />
 
       {categories.map((category) => (
         <section key={category}>
@@ -93,15 +93,22 @@ export default function IntegrationBoard({
   );
 }
 
-function HealthSummary({ providers, aiConfigured }: { providers: ProviderCard[]; aiConfigured: boolean }) {
-  const rows = [
-    ...providers.map((p) => ({ label: p.label, status: p.status, detail: p.errorMessage ?? relative(p.lastSyncAt) })),
-    {
-      label: 'Gemini',
-      status: aiConfigured ? 'CONNECTED' : 'NOT_CONFIGURED',
-      detail: aiConfigured ? 'Deployment key present' : 'GEMINI_API_KEY is not set on this deployment',
-    },
-  ];
+/**
+ * Gemini used to be appended here by hand, reading the deployment's env var.
+ * It is a registry provider now, so it arrives with the others — and reports
+ * whether *this workspace* has a key rather than whether the server does.
+ */
+function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]; deploymentKey: boolean }) {
+  const rows = providers.map((p) => ({
+    label: p.label,
+    status: p.status,
+    detail:
+      p.errorMessage ??
+      // A workspace with no key of its own still gets AI, on the shared one.
+      (p.key === 'gemini' && p.status === 'NOT_CONFIGURED' && deploymentKey
+        ? 'Using this deployment’s shared key'
+        : relative(p.lastSyncAt)),
+  }));
 
   return (
     <div className="lf-card" style={{ padding: 18 }}>
@@ -112,11 +119,15 @@ function HealthSummary({ providers, aiConfigured }: { providers: ProviderCard[];
         {rows.map((row) => (
           <div
             key={row.label}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 'var(--lf-text-sm)' }}
+            // The fixed 180px label plus a badge plus a detail string overflowed
+            // the page at 390px. Wrapping costs nothing on a wide screen, where
+            // the rows still line up, and the label only claims its column when
+            // there is room for one.
+            style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 'var(--lf-text-sm)', flexWrap: 'wrap' }}
           >
             <Badge tone={TONE[row.status] ?? 'slate'}>{row.status.replace('_', ' ').toLowerCase()}</Badge>
-            <span style={{ fontWeight: 500, minWidth: 180 }}>{row.label}</span>
-            <span style={{ color: 'var(--lf-ink-3)' }}>{row.detail}</span>
+            <span style={{ fontWeight: 500, minWidth: 'min(180px, 100%)' }}>{row.label}</span>
+            <span style={{ color: 'var(--lf-ink-3)', overflowWrap: 'anywhere' }}>{row.detail}</span>
           </div>
         ))}
       </div>
@@ -284,7 +295,16 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           <code
             style={{
               display: 'block',
-              overflowX: 'auto',
+              /**
+               * A callback URL is one unbreakable token, so its min-content
+               * width is the whole string — `overflowX: auto` alone never got
+               * the chance to scroll, because the element simply forced its
+               * grid wider and took the page with it. That went unnoticed while
+               * APP_URL was `localhost:3000`; a real public hostname is long
+               * enough to push the page 291px sideways at 390px.
+               */
+              overflowWrap: 'anywhere',
+              minWidth: 0,
               padding: '8px 10px',
               fontSize: 'var(--lf-text-xs)',
               background: 'var(--lf-surface-2)',

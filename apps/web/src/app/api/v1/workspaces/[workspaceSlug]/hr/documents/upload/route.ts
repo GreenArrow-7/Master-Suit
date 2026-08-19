@@ -56,15 +56,32 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
     if (!employeeId || !kind)
       throw new AppError(422, 'validation-failed', 'An employee and a document kind are required.');
 
-    const issuedAtRaw = String(form.get('issuedAt') ?? '');
-    const expiresAtRaw = String(form.get('expiresAt') ?? '');
+    /**
+     * Parsed before anything is stored.
+     *
+     * `new Date('31/12/2026')` is an Invalid Date rather than an error, and it
+     * stayed quiet all the way to Prisma, which rejected it with a
+     * PrismaClientValidationError — not an AppError, so the caller got a bare
+     * 500 with nothing to act on. Worse, `uploadDocument` writes the bytes to
+     * object storage before it writes the row, so every such attempt left the
+     * file behind with no record pointing at it.
+     */
+    const optionalDate = (field: string): Date | undefined => {
+      const raw = String(form.get(field) ?? '');
+      if (!raw) return undefined;
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AppError(422, 'validation-failed', `${field} is not a date we can read. Use YYYY-MM-DD.`);
+      }
+      return parsed;
+    };
 
     const document = await uploadDocument(ctx, {
       employeeId,
       kind,
       number: String(form.get('number') ?? '') || undefined,
-      issuedAt: issuedAtRaw ? new Date(issuedAtRaw) : undefined,
-      expiresAt: expiresAtRaw ? new Date(expiresAtRaw) : undefined,
+      issuedAt: optionalDate('issuedAt'),
+      expiresAt: optionalDate('expiresAt'),
       filename: file.name,
       contentType: file.type || 'application/octet-stream',
       bytes: Buffer.from(await file.arrayBuffer()),

@@ -312,7 +312,17 @@ function tenantGuard(base: PrismaClient) {
 
 function build(url: string) {
   try {
-    const adapter = new PrismaPg({ connectionString: url });
+    /**
+     * Bounded, because node-postgres defaults `connectionTimeoutMillis` to 0 —
+     * "wait forever". With Postgres unreachable, every request that touched the
+     * database hung open instead of failing: no error, no page, just a spinner
+     * until the browser gave up. A person watching that reasonably calls it a
+     * crash, and it hides the one fact that would have explained it.
+     *
+     * Five seconds is far longer than a healthy connection ever needs, and
+     * short enough that an outage surfaces as an error somebody can read.
+     */
+    const adapter = new PrismaPg({ connectionString: url, connectionTimeoutMillis: 5_000 });
     const base = new PrismaClient({
       adapter,
       log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],

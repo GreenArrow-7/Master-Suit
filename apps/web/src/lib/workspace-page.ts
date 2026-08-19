@@ -96,6 +96,33 @@ export async function requirePageAccess(options: WorkspacePageOptions) {
  * The API path still throws: `assertPermission` is unchanged, and route
  * handlers must answer with a 403 body, not a rendered page.
  */
+/**
+ * Runs a page's data load, and refuses the same way the page gate does.
+ *
+ * The gate below only knows the coarse permission a route declares; several
+ * services then apply a stricter rule of their own — the compliance register
+ * needs `employee:VIEW` at TEAM, payroll needs `payroll:VIEW` at ORGANIZATION —
+ * and throw when the caller falls short. Thrown from inside a server component
+ * that has already passed the gate, that 403 lands on the generic error
+ * boundary, so somebody whose role simply does not cover the screen was told
+ * "Something went wrong on our side" and offered a Try again button that could
+ * never work. It reads as the application crashing, which is exactly how it was
+ * reported.
+ *
+ * Converting it to the same `forbidden()` interrupt `assertPageAccess` uses
+ * gets the honest answer on screen and keeps genuine faults on the error page
+ * where they belong. The API path is untouched: route handlers still receive a
+ * thrown 403 and answer with a body.
+ */
+export async function pageLoad<T>(load: Promise<T>): Promise<T> {
+  try {
+    return await load;
+  } catch (err) {
+    if ((err as { status?: number } | null)?.status === 403) forbidden();
+    throw err;
+  }
+}
+
 function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
   if (options.permission === SELF_SERVICE) return;
   try {

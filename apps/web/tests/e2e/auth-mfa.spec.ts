@@ -100,13 +100,13 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await expect(code).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
+    // Six digits auto-submit (LoginForm.onCodeChange); a click would send
+    // the same wrong code twice and spend two throttled attempts.
     await code.fill('000000');
-    await page.getByRole('button', { name: 'Verify and sign in' }).click();
     await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
     await code.fill(currentCode(secret));
-    await page.getByRole('button', { name: 'Verify and sign in' }).click();
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
   });
   test('a recovery code signs in when the authenticator is gone, and only once', async ({ page }) => {

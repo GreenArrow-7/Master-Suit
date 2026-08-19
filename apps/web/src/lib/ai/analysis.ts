@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { geminiKey, geminiModel } from './gemini';
 import { withRetry, isTransient } from '../integrations/retry';
 import { redact } from './redact';
 
@@ -10,6 +11,8 @@ import { redact } from './redact';
 const AI_TIMEOUT_MS = 60_000;
 
 export interface AnalysisInput {
+  /** Whose key to run on. Absent falls back to the deployment key. */
+  tenantId?: string;
   transcript: string;
   talkingPoints?: { label: string; isRequired: boolean }[];
   qualifications?: { question: string; expectedAnswer?: string }[];
@@ -115,18 +118,18 @@ function buildPrompt(input: AnalysisInput): string {
 export async function analyzeTranscript(
   input: AnalysisInput,
 ): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = await geminiKey(input.tenantId);
   if (!apiKey) {
     // Demo fallback: a deterministic keyword pass, stamped as simulation so the
     // stored row can never masquerade as a model verdict.
     const { simulateAnalysis, SIMULATED_MODEL_ID } = await import('./simulated');
     const started = Date.now();
     const result = simulateAnalysis(input);
-    logger.info('GEMINI_API_KEY not set — returning simulated analysis');
+    logger.info('no Gemini key for this workspace — returning simulated analysis');
     return { result, modelId: SIMULATED_MODEL_ID, processingMs: Date.now() - started };
   }
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await geminiModel(input.tenantId);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = buildPrompt(input);

@@ -18,7 +18,7 @@
  * Leaving the old refresh tokens alive would make the reset pointless in exactly
  * the case it matters — an account that has already been taken over.
  */
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword, type PasswordPolicy } from '@/lib/auth/password';
@@ -45,12 +45,61 @@ function assertPolicy(plain: string, policy: PasswordPolicy) {
 }
 
 /**
+ * Characters that survive being read down a phone line.
+ *
+ * No O/0, no I/l/1: this password is dictated to someone, and a lookalike costs
+ * a second call. The set is still large enough that 20 characters is far more
+ * entropy than a password which exists for one login.
+ */
+const LOWER = 'abcdefghijkmnopqrstuvwxyz';
+const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const DIGIT = '23456789';
+const SYMBOL = '-_';
+const TEMPORARY_LENGTH = 20;
+
+const pick = (alphabet: string) => alphabet[randomInt(alphabet.length)]!;
+
+/**
  * A temporary password the administrator reads out and the user replaces. Shown
  * once, in the browser, at the moment it is created — hand it over in person or
  * by phone, not by email.
+ *
+ * Built to satisfy the policy rather than hoping it does. The previous version
+ * was random base64url plus random hex, which could legitimately contain no
+ * digit at all — about one call in three thousand — and the reset then failed
+ * its own strength check with "Include a number." Rare enough to look like a
+ * flaky test, common enough to have hit CI.
  */
-export const generateTemporaryPassword = () =>
-  `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+export function generateTemporaryPassword(): string {
+  // One of each class up front, so no policy toggle can be missed.
+  const required = [pick(LOWER), pick(UPPER), pick(DIGIT), pick(SYMBOL)];
+  const all = LOWER + UPPER + DIGIT + SYMBOL;
+  const chars = [...required];
+  while (chars.length < TEMPORARY_LENGTH) chars.push(pick(all));
+
+  // Fisher-Yates, so the guaranteed characters are not always the first four.
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+  }
+  return chars.join('');
+}
+
+/**
+ * The membership that carries this account's login.
+ *
+ * `User.workspaceMembership` is genuinely optional — `salesUserId` is a
+ * nullable unique, and rows predating the membership backfill still have none.
+ * Every administration action here works on the *login*, so a `!` turned a
+ * legitimate "this account has no login" into `Cannot read properties of
+ * undefined` and a bare 500.
+ */
+function loginOf<T>(target: { workspaceMembership: T | null }): NonNullable<T> {
+  if (!target.workspaceMembership) {
+    throw Conflict('That account has no login. Invite the person, or recreate the account.');
+  }
+  return target.workspaceMembership as NonNullable<T>;
+}
 
 /** The workspace user being administered, with the role rank the guards compare. */
 async function loadTarget(ctx: Ctx, userId: string) {
@@ -174,12 +223,23 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
+  /**
+   * The credential lives on PlatformUser, reached through the membership — and
+   * `User.workspaceMembership` is genuinely optional (`salesUserId` is a
+   * nullable unique). A `!` here turned "this account has no login" into
+   * `Cannot read properties of undefined`, so an administrator pressing Reset
+   * password on such a row got a bare 500 instead of being told what is wrong.
+   */
+  if (!target.workspaceMembership) {
+    throw Conflict('That account has no login to reset. Invite them, or recreate the account.');
+  }
+
   const password = temporaryPassword ?? generateTemporaryPassword();
   assertPolicy(password, await passwordPolicy(ctx.tenantId));
   const passwordHash = await hashPassword(password);
 
   await prisma.platformUser.update({
-    where: { id: target.workspaceMembership!.platformUserId },
+    where: { id: target.workspaceMembership.platformUserId },
     data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
   });
 
@@ -216,7 +276,7 @@ export async function unlockUser(ctx: Ctx, userId: string) {
 
   await withTx(ctx.tenantId, async (tx) => {
     await tx.platformUser.update({
-      where: { id: target.workspaceMembership!.platformUserId },
+      where: { id: loginOf(target).platformUserId },
       data: { failedLoginCount: 0, lockedUntil: null },
     });
   });
@@ -249,7 +309,7 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   await withTx(ctx.tenantId, async (tx) => {
     await tx.user.update({ where: { tenantId: ctx.tenantId, id: target.id }, data: { status } });
     await tx.workspaceMembership.update({
-      where: { id: target.workspaceMembership!.id },
+      where: { id: loginOf(target).id },
       data: { status: active ? 'ACTIVE' : 'SUSPENDED' },
     });
   });
@@ -283,6 +343,12 @@ export async function revokeUserSessions(ctx: Ctx, userId: string) {
 /** Everything an administrator needs to judge one account, in one call. */
 export async function accountDetail(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
+  /**
+   * Read-only, so a missing login is reported rather than refused. An account
+   * left without a membership is exactly the anomaly an administrator opens
+   * this screen to see; 500ing on it hides the one row worth looking at.
+   */
+  const membership = target.workspaceMembership;
   const [sessions, employee, loginHistory] = await Promise.all([
     /**
      * Read from PlatformSession, which is where sessions actually live.
@@ -292,19 +358,23 @@ export async function accountDetail(ctx: Ctx, userId: string) {
      * an account saw "no active sessions" for a user who was signed in on three
      * devices — and would have judged a suspected compromise on that.
      */
-    prisma.platformSession.findMany({
-      where: {
-        platformUserId: target.workspaceMembership!.platformUserId,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      select: { id: true, ipAddress: true, userAgent: true, lastSeenAt: true, expiresAt: true },
-      orderBy: { lastSeenAt: 'desc' },
-    }),
-    prisma.employeeProfile.findFirst({
-      where: { tenantId: ctx.tenantId, membershipId: target.workspaceMembership!.id, deletedAt: null },
-      select: { id: true, employeeNumber: true, employmentStatus: true, managerMembershipId: true },
-    }),
+    membership
+      ? prisma.platformSession.findMany({
+          where: {
+            platformUserId: membership.platformUserId,
+            revokedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, ipAddress: true, userAgent: true, lastSeenAt: true, expiresAt: true },
+          orderBy: { lastSeenAt: 'desc' },
+        })
+      : [],
+    membership
+      ? prisma.employeeProfile.findFirst({
+          where: { tenantId: ctx.tenantId, membershipId: membership.id, deletedAt: null },
+          select: { id: true, employeeNumber: true, employmentStatus: true, managerMembershipId: true },
+        })
+      : null,
     // v21 §1 access panel: the account's recent sign-ins, successful and
     // failed, so an administrator judging a suspected compromise sees the
     // pattern rather than just the last-login timestamp.
@@ -316,21 +386,23 @@ export async function accountDetail(ctx: Ctx, userId: string) {
     }),
   ]);
 
-  const platformUser = target.workspaceMembership!.platformUser;
+  const platformUser = membership?.platformUser ?? null;
   return {
     userId: target.id,
     fullName: target.fullName,
     email: target.email,
     status: target.status,
     role: { id: target.roleId, key: target.role.key, name: target.role.name, rank: target.role.rank },
-    membershipStatus: target.workspaceMembership!.status,
-    lockedUntil: platformUser.lockedUntil,
-    failedLoginCount: platformUser.failedLoginCount,
-    lastLoginAt: platformUser.lastLoginAt,
-    mfaEnabled: platformUser.mfaEnabled,
-    recoveryCodesRemaining: platformUser.mfaRecoveryCodes.length,
+    membershipStatus: membership?.status ?? null,
+    /** False only when the account has no login at all — see `loginOf`. */
+    hasLogin: Boolean(membership),
+    lockedUntil: platformUser?.lockedUntil ?? null,
+    failedLoginCount: platformUser?.failedLoginCount ?? 0,
+    lastLoginAt: platformUser?.lastLoginAt ?? null,
+    mfaEnabled: platformUser?.mfaEnabled ?? false,
+    recoveryCodesRemaining: platformUser?.mfaRecoveryCodes.length ?? 0,
     /** Null means the account is still on an administrator-issued temporary password. */
-    passwordChangedAt: platformUser.passwordChangedAt,
+    passwordChangedAt: platformUser?.passwordChangedAt ?? null,
     activeSessions: sessions,
     loginHistory: loginHistory.map((row) => ({
       event: row.event,
@@ -385,7 +457,7 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
     include: { role: true },
   });
   await prisma.workspaceMembership.update({
-    where: { id: target.workspaceMembership!.id },
+    where: { id: loginOf(target).id },
     data: { roleSnapshot: role.key },
   });
 
@@ -492,7 +564,9 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
   if (!role) throw NotFound('Role');
   if (role.rank <= ctx.actor.roleRank) throw Forbidden('You cannot grant a role at or above your own level.');
 
-  if (await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, email, deletedAt: null }, select: { id: true } })) {
+  if (
+    await prisma.user.findFirst({ where: { tenantId: ctx.tenantId, email, deletedAt: null }, select: { id: true } })
+  ) {
     throw Conflict('Somebody in this workspace already uses that work email.');
   }
   if (

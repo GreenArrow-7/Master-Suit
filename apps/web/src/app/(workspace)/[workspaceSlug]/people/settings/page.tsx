@@ -1,5 +1,5 @@
 import { resolveWorkspacePage } from '@/lib/workspace-page';
-import HrPolicyForm, { type Definition } from '@/components/workspace/HrPolicyForm';
+import HrPolicyForm from '@/components/workspace/HrPolicyForm';
 import { isHrAdmin } from '@/services/hr/leave';
 import { getHrPolicy, GROUP_LABELS, HR_SETTINGS, type SettingGroup } from '@/services/hr/settings';
 
@@ -13,7 +13,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     .map((key) => ({
       key,
       label: GROUP_LABELS[key],
-      definitions: HR_SETTINGS.filter((setting) => setting.group === key) as unknown as Definition[],
+      definitions: HR_SETTINGS.filter((setting) => setting.group === key),
     }))
     .filter((group) => group.definitions.length > 0);
 

@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/db';
-import type { Ctx } from '@/lib/security/rbac';
 
 export interface DuplicateMatch {
   id: string;
@@ -22,10 +21,15 @@ export interface DuplicateProbe {
  * tenant rather than the actor's visibility scope: a rep must be told a lead is a
  * duplicate even when the existing record belongs to another team. The response
  * carries only reference and name, never the other record's contact details.
+ *
+ * Takes a tenantId rather than a Ctx because the public form endpoint is
+ * anonymous and has no actor, and a website enquiry needs this check most of
+ * all — it was the one path creating a fresh lead for every repeat visitor.
+ * Nothing here ever read anything else off the context.
  */
-export async function findDuplicates(ctx: Ctx, probe: DuplicateProbe): Promise<DuplicateMatch[]> {
+export async function findDuplicates(tenantId: string, probe: DuplicateProbe): Promise<DuplicateMatch[]> {
   const rules = await prisma.duplicateRule.findMany({
-    where: { tenantId: ctx.tenantId, objectType: 'LEAD', isActive: true },
+    where: { tenantId, objectType: 'LEAD', isActive: true },
     orderBy: { position: 'asc' },
   });
 
@@ -38,7 +42,7 @@ export async function findDuplicates(ctx: Ctx, probe: DuplicateProbe): Promise<D
 
     const rows = await prisma.lead.findMany({
       where: {
-        tenantId: ctx.tenantId,
+        tenantId,
         isMerged: false,
         ...(probe.excludeId ? { NOT: { id: probe.excludeId } } : {}),
         ...where,

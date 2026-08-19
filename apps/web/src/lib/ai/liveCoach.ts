@@ -1,5 +1,6 @@
 import { logger } from '../logger';
 import { redact } from './redact';
+import { geminiKey, geminiModel } from './gemini';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -52,13 +53,21 @@ const HEURISTICS: [RegExp, CoachHint['kind'], string][] = [
     'OBJECTION',
     'Hesitation — offer a concrete low-commitment next step such as a site visit.',
   ],
-  [/competitor|other (project|property|agent)/i, 'OBJECTION', 'Comparison raised — ask what matters most to them before countering.'],
+  [
+    /competitor|other (project|property|agent)/i,
+    'OBJECTION',
+    'Comparison raised — ask what matters most to them before countering.',
+  ],
   [/school|family|kids/i, 'TIP', 'Family needs mentioned — highlight community amenities and nearby schools.'],
   [/invest|roi|rental|yield/i, 'TIP', 'Investment angle — quote typical rental yields and handover timelines.'],
   [/interested|sounds good|when can/i, 'SENTIMENT', 'Positive signal — move towards booking a viewing.'],
   [/site visit|viewing|see (it|the)/i, 'ACTION', 'Viewing interest — propose two concrete time slots now.'],
   [/budget/i, 'TIP', 'Budget surfaced — confirm the range and anchor options inside it.'],
-  [/angry|unhappy|complain|frustrat/i, 'SENTIMENT', 'Frustration detected — slow down, acknowledge, and summarise their concern.'],
+  [
+    /angry|unhappy|complain|frustrat/i,
+    'SENTIMENT',
+    'Frustration detected — slow down, acknowledge, and summarise their concern.',
+  ],
 ];
 
 export function heuristicHints(windowText: string): CoachHint[] {
@@ -70,11 +79,11 @@ export function heuristicHints(windowText: string): CoachHint[] {
   return hints;
 }
 
-export async function coachTick(windowText: string): Promise<CoachHint[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
+export async function coachTick(windowText: string, tenantId?: string): Promise<CoachHint[]> {
+  const apiKey = await geminiKey(tenantId);
   if (!apiKey) return heuristicHints(windowText);
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const model = await geminiModel(tenantId);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const prompt = [
     'You are a live sales-call coach. The agent is on a call right now.',
@@ -139,7 +148,10 @@ export function demoScript(agentName: string, customerName: string): ScriptTurn[
       speaker: 'Agent',
       text: 'You enquired about our Marina Vista launch last week. I wanted to understand what you are looking for so I can point you at the right options.',
     },
-    { speaker: 'Customer', text: 'Right, yes. We are looking for a two or three bedroom apartment, ideally near good schools.' },
+    {
+      speaker: 'Customer',
+      text: 'Right, yes. We are looking for a two or three bedroom apartment, ideally near good schools.',
+    },
     { speaker: 'Agent', text: 'Understood. Is this to live in or as an investment?' },
     { speaker: 'Customer', text: 'To live in. Though resale value matters to us too.' },
     { speaker: 'Agent', text: 'And do you have a budget range in mind so I only show you realistic options?' },
@@ -159,7 +171,10 @@ export function demoScript(agentName: string, customerName: string): ScriptTurn[
       text: `That timing fits handover, ${first}. There is also an escrow-registered guarantee on completion, so the date is protected.`,
     },
     { speaker: 'Customer', text: 'OK. And what about service charges? A friend got burnt on those.' },
-    { speaker: 'Agent', text: 'Fair concern — they are capped at 14 dirhams per square foot, written into the SPA, not an estimate.' },
+    {
+      speaker: 'Agent',
+      text: 'Fair concern — they are capped at 14 dirhams per square foot, written into the SPA, not an estimate.',
+    },
     { speaker: 'Customer', text: 'That is more reasonable than I expected, honestly.' },
     {
       speaker: 'Agent',

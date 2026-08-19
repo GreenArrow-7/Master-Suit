@@ -5,7 +5,7 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import { myEmployee } from '@/services/hr/leave';
 import { isRosterApprover, isRosterPlanner, listShiftChanges, rosterFor } from '@/services/hr/roster';
-import { addDays, dayKey, toDay } from '@/services/hr/rules';
+import { addDays, dayKey, toDay, queryDate } from '@/services/hr/rules';
 
 export default async function Page({
   params,
@@ -25,7 +25,7 @@ export default async function Page({
 
   // Weeks start on the workspace's Monday. A roster is read a week at a time;
   // anything longer stops being a grid you can scan.
-  const anchor = week ? toDay(new Date(week)) : startOfWeek(new Date());
+  const anchor = week ? toDay(queryDate(week, startOfWeek(new Date()))) : startOfWeek(new Date());
   const days = Array.from({ length: 7 }, (_, index) => addDays(anchor, index));
 
   const today = toDay(new Date());

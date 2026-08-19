@@ -12,7 +12,15 @@ import { prisma } from '@/lib/db';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { haversineM, insideGeofence, toDay, withinTimeWindow, zonedParts } from './rules';
+import {
+  haversineM,
+  insideGeofence,
+  toDay,
+  withinTimeWindow,
+  zonedParts,
+  AT_WORK_STATUSES,
+  type EmploymentStatus,
+} from './rules';
 import {
   analyse,
   bestMatch,
@@ -149,7 +157,7 @@ export async function validatePunch(
   policy?: HrPolicy,
 ): Promise<PunchContext> {
   const effective = policy ?? (await getHrPolicy(ctx));
-  if (!['ACTIVE', 'NOTICE', 'ONBOARDING'].includes(employee.employmentStatus)) {
+  if (!AT_WORK_STATUSES.includes(employee.employmentStatus as EmploymentStatus)) {
     throw new PunchRejected('EMPLOYMENT_INACTIVE', 'You have no active employment record.', 'REJECTED_DUPLICATE');
   }
 
