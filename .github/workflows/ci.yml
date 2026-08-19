@@ -156,10 +156,41 @@ jobs:
         run: npm run test:server
 
       # ── Gate 6 ────────────────────────────────────────────────────────────
-      - name: E2E
+      #
+      # The browser is cached and installed in its own step, because this is
+      # where CI kept failing without a test ever running.
+      #
+      # `playwright install --with-deps` shells out to apt-get. When the Azure
+      # Ubuntu mirror went unreachable it retried, fell back to archive.ubuntu.com,
+      # and then sat silent for 24 minutes until the 30-minute job timeout killed
+      # the run — taking Build and Audit with it. Nothing was wrong with the code
+      # and no test had started.
+      #
+      # So: cache the browser on its version, install without touching apt, and
+      # reach for apt only if Chromium genuinely cannot launch. The bounded
+      # timeout means a stall costs six minutes and names itself, instead of
+      # eating the job's whole budget.
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Playwright browser
+        timeout-minutes: 6
         run: |
-          npx playwright install --with-deps chromium
-          npx playwright test
+          npx playwright install chromium
+          # The runner image already ships Chromium's shared libraries. Only if
+          # that turns out to be false is apt worth the risk.
+          node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
+
+      - name: E2E
+        timeout-minutes: 15
+        run: npx playwright test
 
       # ── Gate 7 ────────────────────────────────────────────────────────────
       - name: Build
