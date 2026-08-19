@@ -626,6 +626,94 @@ body {
     padding: 24px 24px var(--lf-fab-safe);
   }
 }
+/* `.lf-overflow` — the ••• disclosure for secondary actions.
+
+   Built on <details> so there is no open/closed state to keep in sync, it is
+   keyboard reachable by default, and it dismisses itself. */
+.lf-overflow {
+  position: relative;
+}
+.lf-overflow > summary {
+  list-style: none;
+  cursor: pointer;
+  /* Square: it holds three dots, not a word. */
+  padding-inline: var(--lf-space-3);
+}
+.lf-overflow > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-overflow__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  display: grid;
+  gap: var(--lf-space-2);
+  min-width: 190px;
+  padding: var(--lf-space-3);
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  box-shadow: var(--lf-shadow-2);
+}
+/* Stacked, full-width and tappable rather than a row of chips. */
+.lf-overflow__menu > * {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 40px;
+}
+
+/* ── Phone: scroll strips and action rows ─────────────────────────────────
+   A tab strip that scrolls is right; one that appears to stop mid-word is not.
+   Inside the page's 16px padding the last visible tab is sliced with no hint
+   that more exists, so on a phone the strip bleeds to both screen edges and
+   fades at the trailing edge — the two signals that say "keep going".
+
+   Action rows get the same treatment rather than wrapping into a second and
+   third row of buttons above the content they act on.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .lf-tabs {
+    /* Cancel the page gutter so the strip runs edge to edge, then restore it
+       as padding so the first and last tab still line up with the content. */
+    margin-inline: calc(-1 * var(--lf-space-4));
+    padding-inline: var(--lf-space-4);
+    scroll-snap-type: x proximity;
+    /* The fade is the affordance: content continues past the edge. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .lf-tab {
+    scroll-snap-align: start;
+    /* Comfortably tappable without turning the strip into a toolbar. */
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .lf-list-header {
+    gap: var(--lf-space-3);
+  }
+  .lf-list-header__actions {
+    /* One scrolling row instead of two or three wrapped ones. The primary
+       action is burgundy and sits last, where the thumb already is. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * var(--lf-space-4));
+    padding-inline: var(--lf-space-4);
+  }
+  .lf-list-header__actions::-webkit-scrollbar {
+    display: none;
+  }
+  .lf-list-header__actions > * {
+    flex: none;
+  }
+  .lf-list-header__actions .lf-btn {
+    min-height: 40px;
+  }
+}
+
 /* ── Phone navigation and app bar ─────────────────────────────────────────
    A phone got the desktop chrome: a top bar carrying search, workspace name,
    plan, density, theme, help, notifications, sign-out and Create, wrapping
