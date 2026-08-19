@@ -112,8 +112,10 @@ export default async function LeadsPage({
         count={pageRows.length}
 
         capped={hasMore}
-        actions={
-          <span style={{ position: 'relative', display: 'flex', gap: 'var(--lf-space-2)' }}>
+        // Adding a lead is what someone came here to do; import, export and
+        // column choice are housekeeping and fold behind the disclosure.
+        secondaryActions={
+          <>
             {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
             {can(ctx, 'leads', 'EXPORT') && (
               <a
@@ -126,12 +128,14 @@ export default async function LeadsPage({
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="LEAD" current={columns.map((column) => column.key)} />
             )}
-            {can(ctx, 'leads', 'CREATE') && (
-              <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
-                Add lead
-              </SalesLink>
-            )}
-          </span>
+          </>
+        }
+        actions={
+          can(ctx, 'leads', 'CREATE') ? (
+            <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
+              Add lead
+            </SalesLink>
+          ) : undefined
         }
       />
 
