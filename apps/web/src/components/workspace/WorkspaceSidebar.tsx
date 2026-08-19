@@ -90,6 +90,15 @@ export default function WorkspaceSidebar({
     window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
   }, [activeModule, slug]);
 
+  // The bottom tab bar's Menu button asks for the drawer. An event rather than
+  // lifted state: the drawer's open/closed is nobody else's business, and one
+  // button does not justify a context provider around the whole workspace.
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener('lf:open-nav', open);
+    return () => window.removeEventListener('lf:open-nav', open);
+  }, []);
+
   // The open drawer closes on Escape, like any dismissible surface.
   useEffect(() => {
     if (!mobileOpen) return;
