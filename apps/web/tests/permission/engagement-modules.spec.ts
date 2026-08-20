@@ -7,11 +7,44 @@
  *
  * These assertions guard both directions of that fix: the routes must be reachable,
  * and the mirror must not hand a role more than it already had on leads.
+ *
+ * ── Why the first assertion names its actions instead of reading `leads` ────
+ *
+ * It used to assert "every action `leads` carries". That was a proxy for the
+ * migration's list, and it is not a safe one: `POST /api/v1/platform/workspaces`
+ * seeds a baseline catalogue when a workspace is provisioned, and its module
+ * list includes `leads` and `calls` but not `events` — so creating a workspace
+ * adds `MANAGE_USERS` and `MANAGE_CONFIGURATION` to two of the three modules
+ * this test compares. Against a database where that route has run, the old
+ * assertion failed on `events` for a reason that has nothing to do with the
+ * fix it guards.
+ *
+ * In CI it happened to stay green only because `Integration (server)` runs
+ * after `Test`. A test that passes because of step ordering is a test waiting
+ * to fail, so it now names the ten record actions the migration is actually
+ * responsible for.
  */
 import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 
 const ENGAGEMENT = ['calls', 'events'] as const;
+
+/**
+ * Exactly what `20260805000000_sales_engagement_flow` inserts for both modules.
+ * These ten are what make /api/v1/calls/** and /api/v1/events/** reachable.
+ */
+const RECORD_ACTIONS = [
+  'VIEW',
+  'CREATE',
+  'EDIT',
+  'DELETE',
+  'EXPORT',
+  'IMPORT',
+  'ASSIGN',
+  'REASSIGN',
+  'BULK_UPDATE',
+  'VIEW_SENSITIVE_FIELDS',
+] as const;
 
 /** Raw, because the tenant guard refuses an unscoped read and this needs every tenant. */
 async function tenantIds(): Promise<string[]> {
@@ -20,20 +53,18 @@ async function tenantIds(): Promise<string[]> {
 }
 
 describe('calls and events permission catalogue', () => {
-  it('carries every action the leads module carries', async () => {
-    const leadActions = await prisma.permission.findMany({
-      where: { module: 'leads' },
-      select: { action: true },
-    });
-    expect(leadActions.length).toBeGreaterThan(0);
-
+  it('carries every record action the engagement migration inserts', async () => {
     for (const permissionModule of ENGAGEMENT) {
-      const actions = await prisma.permission.findMany({
+      const rows = await prisma.permission.findMany({
         where: { module: permissionModule },
         select: { action: true },
       });
-      const missing = leadActions.map((p) => p.action).filter((action) => !actions.some((a) => a.action === action));
-      expect(missing, `${module} is missing actions`).toEqual([]);
+      const present = new Set(rows.map((row) => row.action as string));
+      const missing = RECORD_ACTIONS.filter((action) => !present.has(action));
+      // `permissionModule`, not `module` — the old message interpolated Node's
+      // module object and printed "[object Object] is missing actions", which
+      // told a reader nothing about which of the two had failed.
+      expect(missing, `${permissionModule} is missing actions`).toEqual([]);
     }
   });
 

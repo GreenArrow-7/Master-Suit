@@ -70,6 +70,14 @@ export async function buildSupportActor(
     // that does slip through to an audit row is obviously platform staff.
     id: `platform:${platformUserId}`,
     tenantId,
+    // What the chrome shows for staff inside a customer workspace — the staff
+    // member's own name stays out of the customer-facing shell deliberately.
+    fullName: 'Platform staff',
+    email: '',
+    // From `roleKey` above, not from `fullControl`. Main's side of this merge
+    // derived both from the grant, which is the behaviour the comment above
+    // exists to describe as wrong: an un-elevated OWNER reported as
+    // `platform_support`, putting the wrong name on every audit row they wrote.
     roleId: roleKey,
     roleKey,
     roleRank: 0,

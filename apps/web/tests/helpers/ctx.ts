@@ -10,6 +10,8 @@ import type { Ctx, Actor, PermissionMap } from '@/lib/security/rbac';
 
 export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: string }): Actor {
   return {
+    fullName: 'Test Actor',
+    email: 'actor@test.local',
     roleId: 'role_default',
     roleKey: 'admin',
     roleRank: 0,

@@ -52,6 +52,22 @@ const config: NextConfig = {
      * This is the framework's own interrupt for exactly this case.
      */
     authInterrupts: true,
+    /**
+     * `staleTimes: { dynamic: N }` is deliberately NOT set.
+     *
+     * It was tried, to spare each tab click a full RSC round trip through the
+     * layout's auth and workspace queries. It cannot be had safely here: this
+     * codebase navigates after a mutation with `router.push` and relies on the
+     * dynamic staleTime of 0 to re-render the destination. Only 9 of 22 push
+     * sites pair the call with `router.refresh()`, so a non-zero window serves
+     * the pre-mutation payload at the other 13 — a deleted lead still listed,
+     * a just-logged call missing from the list — and every new push site
+     * inherits the trap.
+     *
+     * The navigation cost this was aimed at is addressed at the source instead
+     * (see the layout's query reductions and the Link fixes in the top bar);
+     * tests/e2e/request-budget.spec.ts holds that line.
+     */
   },
 };
 

@@ -351,6 +351,80 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
   return { userId: target.id, status };
 }
 
+/**
+ * Removes an account from the workspace.
+ *
+ * A soft delete, like every other removable record here: `deletedAt` is set and
+ * the tenant guard's read filter takes the row out of every list, but the row
+ * survives so that leads it owned, activities it logged and audit entries
+ * naming it still resolve to a person rather than a dangling id. Nothing calls
+ * `user.delete`.
+ *
+ * Scoped to *this workspace*. The PlatformUser behind the login is untouched:
+ * one identity can hold memberships in several workspaces, and removing someone
+ * from one must not close their account in the others. What ends here is the
+ * membership — status REMOVED — and every session it was carrying.
+ *
+ * The HR record is deliberately left alone. An EmployeeProfile carries
+ * attendance, leave and payroll history that has to outlive the login; ending
+ * employment is offboarding's job, and doing it silently from the user
+ * directory would destroy records nobody asked to lose.
+ *
+ * Deactivating is the reversible neighbour of this and usually the right
+ * choice — `setUserActive(ctx, id, false)`. This exists for the account that
+ * should never have been created: the duplicate, the test account, the
+ * contractor who never started.
+ */
+export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
+  const target = await loadTarget(ctx, userId);
+  // Same ladder as suspension: never yourself, never at or above your own rank.
+  assertMayAdminister(ctx, target);
+
+  const membership = loginOf(target);
+
+  /**
+   * The primary administrator is the workspace's named owner, and unlike a rank
+   * this is a single designated row — promoting a second administrator does not
+   * replace it. Refused outright rather than guarded by a count.
+   */
+  if (membership.isPrimaryAdmin) {
+    throw Conflict(
+      'This is the workspace’s primary administrator. Transfer that designation to somebody else before removing the account.',
+    );
+  }
+
+  if (target.role.rank <= ADMIN_ROLE_RANK && (await otherActiveAdmins(ctx.tenantId, target.id)) === 0) {
+    throw Conflict(
+      'This is the last active administrator. Promote someone else before removing this account, or the workspace locks itself out.',
+    );
+  }
+
+  const removedAt = new Date();
+  await withTx(ctx.tenantId, async (tx) => {
+    await tx.user.update({
+      where: { tenantId: ctx.tenantId, id: target.id },
+      // DEACTIVATED as well as deleted: `status` is what the login path reads,
+      // so a half-applied delete still refuses the sign-in.
+      data: { deletedAt: removedAt, status: 'DEACTIVATED' },
+    });
+    await tx.workspaceMembership.update({
+      where: { id: membership.id },
+      data: { status: 'REMOVED', removedAt },
+    });
+  });
+
+  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ACCOUNT_REMOVED');
+  await audit(ctx, {
+    event: 'RECORD_DELETED',
+    objectType: 'user',
+    recordId: target.id,
+    previousValue: { status: target.status, deletedAt: null },
+    newValue: { status: 'DEACTIVATED', deletedAt: removedAt.toISOString() },
+    metadata: { action: 'account.removed', reason },
+  });
+  return { userId: target.id, removed: true };
+}
+
 /** Signs an account out everywhere without changing anything else about it. */
 export async function revokeUserSessions(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);

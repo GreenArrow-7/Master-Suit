@@ -240,14 +240,13 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         ])
       : null;
 
-  const [people, sales, mine, approvals, security, calls, viewer] = await Promise.all([
+  const [people, sales, mine, approvals, security, calls] = await Promise.all([
     peopleQuery,
     salesQuery,
     mineQuery,
     approvalsQuery,
     securityQuery,
     callsQuery,
-    prisma.user.findFirst({ where: { id: ctx.actor.id, tenantId: ctx.tenantId }, select: { fullName: true } }),
   ]);
 
   // ponytail: ratio of averages, not average of per-call ratios — exact only
@@ -277,7 +276,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
     new Intl.DateTimeFormat('en-AE', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dubai' }).format(new Date()),
   );
   const daypart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-  const firstName = viewer?.fullName?.split(/\s+/)[0];
+  // Off the actor buildActor already loaded — this page fetched the same row a
+  // third time. Empty for platform staff, whose actor is labelled rather than
+  // named: greeting a support session "Good morning, Platform" is nobody's name.
+  const firstName = ctx.actor.id.startsWith('platform:') ? '' : ctx.actor.fullName.split(/\s+/)[0];
 
   /**
    * The attention row: every queue that is somebody's overdue work, one chip

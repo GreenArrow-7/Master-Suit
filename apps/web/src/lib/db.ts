@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from './env';
 import { invalidateActors } from './auth/actorCache';
+import { logger } from './logger';
 import { recordTenantGuardTrip } from './metrics';
 
 const globalForPrisma = globalThis as unknown as {
@@ -426,7 +427,18 @@ function build(url: string) {
     const adapter = new PrismaPg({ connectionString: url, connectionTimeoutMillis: 5_000 });
     const base = new PrismaClient({
       adapter,
-      log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      log:
+        env.NODE_ENV === 'development'
+          ? [{ emit: 'event', level: 'query' }, 'warn', 'error']
+          : [{ emit: 'event', level: 'query' }, 'error'],
+    });
+
+    // Only queries at or over the threshold are logged — quiet in production by
+    // design. Params are deliberately omitted: they can carry PII.
+    base.$on('query', (e) => {
+      if (e.duration >= env.SLOW_QUERY_MS) {
+        logger.warn({ ms: e.duration, query: e.query }, 'slow query');
+      }
     });
 
     return base.$extends(tenantGuard(base));

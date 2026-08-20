@@ -53,10 +53,22 @@ export const requestCtx = cache(async (): Promise<Ctx> =>
   resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid()),
 );
 
-/** Same reasoning for the workspace record, which both callers also load. */
-export const requestWorkspace = cache(async (ctx: Ctx, slug: string, module?: ProductModule) =>
-  requireWorkspace(ctx, slug, module),
-);
+/**
+ * Same reasoning for the workspace record, which both callers also load.
+ *
+ * The record load is cached on (ctx, slug) alone. `cache` keys on the full
+ * argument list, so when the module rode along as a third argument the layout's
+ * two-argument call and a page's three-argument call were different keys — and
+ * the heavy tenant query ran twice per navigation. The entitlement check runs
+ * outside the cache instead; it is already Redis-cached for a minute.
+ */
+const workspaceRecord = cache(async (ctx: Ctx, slug: string) => requireWorkspace(ctx, slug));
+
+export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductModule) {
+  const workspace = await workspaceRecord(ctx, slug);
+  if (module) await assertModuleEntitlement(workspace.id, module);
+  return workspace;
+}
 
 export async function resolveWorkspacePage(workspaceSlug: string, options: WorkspacePageOptions) {
   const ctx = await requestCtx();

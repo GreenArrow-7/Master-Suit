@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 
 /**
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
@@ -53,6 +54,7 @@ export default function TopBar({
   creatable?: string[];
 } = {}) {
   const pathname = usePathname();
+  const router = useRouter();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -96,9 +98,13 @@ export default function TopBar({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch unread count on mount
+  // Fetch unread count once per mount, and only where the badge can render:
+  // People hides the whole actions bar and platform has no notifications, so a
+  // fetch there is a full auth resolve whose answer nothing displays.
+  const fetchedUnread = useRef(false);
   useEffect(() => {
-    if (module === 'platform') return;
+    if (module !== 'sales' || fetchedUnread.current) return;
+    fetchedUnread.current = true;
     fetch('/api/v1/notifications?unread=true')
       .then((r) => r.json())
       .then((d) => setUnreadCount(d.unreadCount ?? 0))
@@ -255,7 +261,7 @@ export default function TopBar({
           const dashHref = module === 'platform' ? '/platform' : `${basePath}/dashboard`;
           const active = pathname === dashHref;
           return (
-            <a
+            <Link
               href={dashHref}
               className="lf-btn lf-btn--ghost lf-btn--sm"
               aria-current={active ? 'page' : undefined}
@@ -277,7 +283,7 @@ export default function TopBar({
                 <path d="M3 10.5 12 3l9 7.5 M5 9.5V21h5v-6h4v6h5V9.5" />
               </svg>
               Dashboard
-            </a>
+            </Link>
           );
         })()}
         {workspaceName && (
@@ -451,7 +457,13 @@ export default function TopBar({
                         }}
                         onClick={() => {
                           if (!n.readAt) markRead([n.id]);
-                          if (n.actionUrl) window.location.href = n.actionUrl;
+                          if (n.actionUrl) {
+                            setNotiOpen(false);
+                            // Soft navigation keeps the layout (and this badge)
+                            // mounted; anything non-internal falls back to a load.
+                            if (n.actionUrl.startsWith('/')) router.push(n.actionUrl);
+                            else window.location.href = n.actionUrl;
+                          }
                         }}
                       >
                         <div
@@ -545,7 +557,7 @@ export default function TopBar({
                         {item.group}
                       </div>
                     )}
-                    <a
+                    <Link
                       href={item.href}
                       style={{
                         display: 'block',
@@ -556,9 +568,11 @@ export default function TopBar({
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      // A soft navigation no longer tears the menu down; close it.
+                      onClick={() => setCreateOpen(false)}
                     >
                       {item.label}
-                    </a>
+                    </Link>
                   </div>
                 ))}
               </div>

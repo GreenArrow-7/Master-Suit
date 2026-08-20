@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Props {
@@ -20,6 +20,14 @@ export default function CallActions({
   hasAnalysis,
   hasRecording,
 }: Props) {
+  // Lets the analysis poll below notice the component is gone.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -107,13 +115,16 @@ export default function CallActions({
       await api(`/api/v1/calls/${callId}/analysis`, 'POST');
       // The analysis runs in the background; poll until it leaves PROCESSING so
       // the panel updates without a manual reload.
-      for (let attempt = 0; attempt < 16; attempt++) {
+      for (let attempt = 0; attempt < 16 && alive.current; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
+        if (!alive.current) return;
+        if (document.hidden) continue;
         const res = await fetch(`/api/v1/calls/${callId}/analysis`);
         if (!res.ok) continue;
         const data = await res.json();
         if (data.status && data.status !== 'PROCESSING') break;
       }
+      if (!alive.current) return;
       router.refresh();
     } catch (e: any) {
       setError(e.message);

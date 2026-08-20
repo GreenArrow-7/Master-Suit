@@ -188,6 +188,8 @@ const schema = z.object({
   // planning, it is a claim — it comes back with the worker that reads it.
   UPLOAD_MAX_MB: z.coerce.number().int().positive().default(25),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
+  /** Queries at or above this duration are logged; only slow ones, so safe in production. */
+  SLOW_QUERY_MS: z.coerce.number().int().positive().default(200),
 });
 
 /** Providers that must be real before the server serves a request. */

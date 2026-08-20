@@ -130,22 +130,14 @@ async function loadShell(workspaceSlug: string) {
     // per navigation instead of two of each.
     const ctx = await requestCtx();
     const workspace = await requestWorkspace(ctx, workspaceSlug);
-    const signedInAs = await prisma.user.findFirst({
-      where: { tenantId: ctx.tenantId, id: ctx.actor.id },
-      select: {
-        fullName: true,
-        email: true,
-        // Read through to the identity that actually holds the credential.
-        workspaceMembership: { select: { platformUser: { select: { passwordChangedAt: true } } } },
-      },
-    });
     const now = new Date();
     const modules = workspace.moduleEntitlements
       .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state) && (!item.endsAt || item.endsAt > now))
       .map((item) => item.module);
     const memberships = await prisma.workspaceMembership.findMany({
       where: { salesUserId: ctx.actor.id, status: 'ACTIVE', tenant: { deletedAt: null } },
-      include: { tenant: true },
+      // The switcher renders two strings; the full Tenant row is ~30 columns.
+      select: { tenant: { select: { slug: true, displayName: true } } },
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
@@ -168,17 +160,24 @@ async function loadShell(workspaceSlug: string) {
        * or on paper, the weakest credential the system ever mints. The workspace's
        * `maxAgeDays` is the other, and until now it was a setting that did nothing.
        *
-       * `signedInAs` being absent is deliberately *not* expiry: a platform support
-       * actor has no workspace User row at all, and a missing chain must not read
-       * as a password that needs changing — it would trap them in a redirect to a
-       * screen they have no account on.
+       * `undefined` is deliberately *not* expiry: a platform support actor has no
+       * workspace User row at all, and an absent timestamp must not read as a
+       * password that needs changing — it would trap them in a redirect to a
+       * screen they have no account on. `null` is the opposite and does mean
+       * expiry, which is why this tests for `undefined` rather than falsiness.
+       *
+       * Not `ctx.mustChangePassword`: that field is `passwordChangedAt === null`
+       * and nothing more, so it carries the temporary-password half of the rule
+       * and not the expiry half. Using it here would leave `maxAgeDays` a setting
+       * that does nothing again, silently and on every workspace page.
+       *
+       * The timestamp comes off the context this navigation already resolved, so
+       * the membership lookup this used to make is gone rather than moved.
        */
-      mustChangePassword: signedInAs?.workspaceMembership
-        ? passwordExpired(
-            signedInAs.workspaceMembership.platformUser.passwordChangedAt,
-            await passwordPolicy(workspace.id),
-          )
-        : false,
+      mustChangePassword:
+        ctx.passwordChangedAt !== undefined
+          ? passwordExpired(ctx.passwordChangedAt, await passwordPolicy(workspace.id))
+          : false,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:
@@ -194,7 +193,9 @@ async function loadShell(workspaceSlug: string) {
         can(ctx, key, 'CREATE'),
       ),
       user: {
-        name: signedInAs?.fullName ?? signedInAs?.email ?? (supportMode ? 'Platform staff' : 'Signed in'),
+        // buildActor carries the name from the row it loads anyway; the support
+        // actor names itself 'Platform staff'.
+        name: ctx.actor.fullName || ctx.actor.email || 'Signed in',
         role: ctx.actor.roleKey,
       },
     };
