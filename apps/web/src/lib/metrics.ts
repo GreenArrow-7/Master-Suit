@@ -134,6 +134,8 @@ const HELP: Record<string, string> = {
   masterapp_table_rows_estimate:
     'Estimated rows in a table that grows with usage and is swept by nothing. From pg_class.reltuples, not count(*).',
   masterapp_table_bytes: 'Total size of a table including its indexes and TOAST.',
+  masterapp_platform_write_grants:
+    'Break-glass grants of write access into a customer workspace that are live right now. Steady state is zero.',
   masterapp_build_info:
     'Always 1. The labels are the payload: which commit this process is running, and when it was built.',
 };

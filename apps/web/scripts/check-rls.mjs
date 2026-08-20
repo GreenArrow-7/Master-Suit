@@ -52,6 +52,11 @@ const BOOTSTRAP = new Set([
   'WorkspaceMembership',
   'PlatformAuditEvent',
   'AuthenticationFactor',
+  // Control-plane data about platform *staff*, resolved before any tenant
+  // context exists: the lookup that decides whether the actor may write is the
+  // one that would have to set app.tenant_id, so a policy here would make it
+  // match nothing. Reached only through requirePlatformOwner.
+  'PlatformAccessGrant',
 ]);
 
 const url = process.env.RLS_DATABASE_URL || process.env.DATABASE_URL;

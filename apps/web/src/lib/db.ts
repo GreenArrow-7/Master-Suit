@@ -48,6 +48,9 @@ const GLOBAL_MODELS = new Set([
   'SubscriptionModule',
   // Operator key-value settings; carries no tenantId at all.
   'PlatformSetting',
+  // Control-plane, and resolved *before* any tenant context exists: it is the
+  // lookup that decides whether platform staff may write into a workspace.
+  'PlatformAccessGrant',
 ]);
 
 /**

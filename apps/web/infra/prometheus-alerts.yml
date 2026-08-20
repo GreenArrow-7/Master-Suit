@@ -145,6 +145,27 @@ groups:
         annotations:
           summary: 'Master Suite is not answering scrapes'
 
+  - name: master-suite-platform
+    rules:
+      # Not a failure, and not necessarily wrong — but somebody on the platform
+      # team currently has write access into a customer's workspace, and that
+      # should be a thing an operator can see without reading an audit trail.
+      #
+      # The grant expires on its own (four hours at the outside), so this fires
+      # on one that has been open for most of its life rather than on the fact of
+      # one existing.
+      - alert: PlatformWriteAccessOpen
+        expr: masterapp_platform_write_grants > 0
+        for: 2h
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Platform staff have held write access into a customer workspace for two hours'
+          description: >-
+            Break-glass grants are time-boxed and self-expiring, so this is not an escalation
+            on its own. Check who and why: PlatformAuditEvent carries
+            PLATFORM_WRITE_ACCESS_OPENED with the stated reason on the customer's own trail.
+            If the work is finished, hand it back rather than waiting for the clock.
+
   - name: master-suite-cost
     rules:
       # Not a failure — a bill. Included because the assessment's finding was

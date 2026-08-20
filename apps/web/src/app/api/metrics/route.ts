@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/lib/db';
+import { liveGrantCount } from '@/lib/auth/platform-access';
 import { logger } from '@/lib/logger';
 import { increment, render, setBuildInfo, setGauge } from '@/lib/metrics';
 import { QUEUE_NAMES } from '@/lib/queue';
@@ -120,6 +121,12 @@ async function collectTableSizes(): Promise<void> {
     setGauge('masterapp_table_rows_estimate', row.rows, { table: row.table });
     setGauge('masterapp_table_bytes', row.bytes, { table: row.table });
   }
+
+  // Steady state is zero. Anything else means somebody on the platform team
+  // currently has write access into a customer's workspace — which is legitimate
+  // and time-boxed, and is still a thing an operator should be able to see
+  // without reading an audit trail.
+  setGauge('masterapp_platform_write_grants', await liveGrantCount());
 }
 
 export async function GET(req: Request) {

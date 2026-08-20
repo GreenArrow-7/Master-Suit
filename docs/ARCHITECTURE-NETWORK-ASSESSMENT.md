@@ -1503,7 +1503,7 @@ window. No Key Vault, no injection at start, no automatic rotation.
 | M-2 | All intra-VM traffic is plaintext; Redis has no `AUTH` | `sslmode=disable` in every compose `DATABASE_URL`; no `requirepass` |
 | M-3 | Exotel and Knowlarity webhooks are authenticated by a URL secret only — the body is unauthenticated | `lib/integrations/telephony/`, and the registry marks them `unsignedCallbacks` |
 | M-4 | Password reuse window and max age are configurable and inert | §6, A1 |
-| M-5 | Platform `OWNER` has unrestricted write into every tenant with no break-glass or time limit | `support-actor.ts` |
+| M-5 | ~~Platform `OWNER` has unrestricted write into every tenant with no break-glass or time limit~~ **Mostly fixed 2026-08-20.** An OWNER inside a workspace is now read-only like SUPPORT until they open a `PlatformAccessGrant`: a stated reason (minimum length), a capped window (30 min default, 4 h maximum), and a row on the *customer's* audit trail. Expiry is enforced on read, so access ends on time with nothing having to sweep it. **Second-person approval is deliberately not enforced** — a platform with one owner could not satisfy it and would be locked out of its own product; see the decisions block in the roadmap | `support-actor.ts`, `platform-access.ts` |
 | M-6 | The app role holds `GRANT CREATE ON SCHEMA public` so it can create per-tenant sequences | `20260806000000` migration — narrow and knowing, but it is a privilege the runtime otherwise would not need |
 | M-7 | 34 of 153 route files bypass the kernel; each correct today, each a place a gate can be dropped | Enumerated in §4 |
 | M-8 | Gemini API key travels in the URL query string | `lib/ai/analysis.ts`, `assistant/service.ts`, `integrations/verify.ts` |
@@ -2229,6 +2229,7 @@ Five things change and nothing else has to:
 > | P1-10 | Lead scoring: build the rule engine, or delete `ScoringRule`, `LeadScoreHistory` and the `ORDER BY score`? | Both are defensible and they differ by weeks of work. The schema shipped without an engine, so the product currently promises something it does not do |
 > | P1-11 | Billing: connect a payment provider, or take the billing language off the product surface? | `SubscriptionPlan`/`TenantSubscription` model plans and limits and the UI talks about billing, but nothing charges anybody |
 > | P2-4 | Retention for `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` — how long, and may they be deleted at all? | An audit trail's retention is usually set by a regulator, not by a database. Partitioning is the *second* step; without a policy it turns one growing table into many. Growth is now measured so the decision has numbers behind it |
+> | P3-12 | Break-glass: should a second person have to approve write access into a customer workspace? | The time limit is enforced. Approval is not, because it depends on a fact about your organisation: a platform with one owner cannot satisfy it and would be locked out. Turn it on by requiring an approver on `PlatformAccessGrant` once there are two people who could be one |
 >
 > Everything else in P0–P2 that could be done from the code has been.
 
@@ -2247,7 +2248,7 @@ Five things change and nothing else has to:
 | P3-9 | ~~Honour `humanCorrected` in the analysis worker~~ **done** | AI3 |
 | P3-10 | Dispatch outbound tenant webhooks, or drop the models | §14 |
 | P3-11 | ~~Neutralise leading `=`/`+`/`-`/`@` in the WPS SIF export~~ **done** — by refusing, not escaping. See L-4 | L-4 |
-| P3-12 | Break-glass approval and a time limit on platform-owner write access into a tenant | M-5 |
+| P3-12 | ~~Break-glass … and a time limit on platform-owner write access into a tenant~~ **time limit done**; approval is a decision, not an implementation — see below | M-5 |
 
 ---
 

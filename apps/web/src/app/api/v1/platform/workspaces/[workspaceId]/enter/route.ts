@@ -43,7 +43,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
           requestId,
           ipAddress: ctx.ip,
           userAgent: ctx.userAgent,
-          metadata: { slug: workspace.slug, mode: 'platform_support_readonly' },
+          // Read-only is now the truth for every platform role, including
+          // OWNER. It was not before: this same line recorded
+          // `platform_support_readonly` for a session that could delete the
+          // customer's payroll. Write access is a separate, audited act — see
+          // the sibling `access` route.
+          metadata: { slug: workspace.slug, mode: 'platform_readonly' },
         },
       });
     });

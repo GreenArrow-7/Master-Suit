@@ -563,6 +563,7 @@ model Tenant {
   webhookDeliveries          WebhookDelivery[]
   webhookEvents              WebhookEvent[]
   referenceCounters          TenantReferenceCounter[]
+  platformAccessGrants       PlatformAccessGrant[]
 
   @@index([status])
 }
@@ -703,6 +704,36 @@ model TenantReferenceCounter {
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, objectType])
+}
+
+/// Break-glass: a time-boxed, reasoned grant of *write* access into one customer
+/// workspace for one member of platform staff.
+///
+/// Platform OWNER used to hold every permission in every tenant at all times,
+/// with no record of why and no expiry. Opening a workspace to read a customer's
+/// data and opening it to change that data are different acts, and only one of
+/// them should be ambient.
+model PlatformAccessGrant {
+  id             String    @id @default(cuid())
+  tenantId       String
+  platformUserId String
+  /// Free text, required and minimum-length checked. A grant with no stated
+  /// reason is the thing this exists to stop.
+  reason         String
+  grantedAt      DateTime  @default(now())
+  /// Capped at the ceiling in lib/auth/platform-access.ts. Access ends here
+  /// whether or not anybody remembers to close it.
+  expiresAt      DateTime
+  /// Set when it is handed back early, which is the expected path.
+  revokedAt      DateTime?
+  /// The request that opened it, so the PlatformAuditEvent pair join up.
+  requestId      String?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, tenantId, expiresAt])
+  @@index([tenantId, grantedAt])
 }
 
 model BillingEvent {
@@ -1013,6 +1044,7 @@ model PlatformUser {
   sessions              PlatformSession[]
   platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
+  accessGrants          PlatformAccessGrant[]
 
   @@index([status, platformRole])
 }
