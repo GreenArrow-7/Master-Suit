@@ -131,6 +131,8 @@ const HELP: Record<string, string> = {
     'Jobs pushed back because their tenant was at its per-tenant concurrency ceiling. Not an error — a sustained rate means that ceiling is the binding constraint for someone.',
   masterapp_ai_tokens_total: 'Gemini tokens consumed, by feature and whose key paid for them.',
   masterapp_up: 'Always 1. Present so a scrape that returns no series is distinguishable from a process that is down.',
+  masterapp_build_info:
+    'Always 1. The labels are the payload: which commit this process is running, and when it was built.',
 };
 
 /** The whole registry, rendered. */
@@ -218,6 +220,33 @@ export function recordTenantGuardTrip(model: string, operation: string) {
  * curve, and a sustained rate is the signal to raise the ceiling — or to look at
  * which workspace is generating that much work, which the database can answer.
  */
+/**
+ * Which commit is serving.
+ *
+ * Nothing could answer that before. Deployments built from the working tree on
+ * the VM, so the only record of what was running was whatever `git log` said on
+ * the host at the moment you looked — which is the *next* release as soon as
+ * somebody has pulled. During an incident that is the first question and there
+ * was no way to ask it.
+ *
+ * `_info` metrics are the Prometheus convention for this: the value is always 1
+ * and the labels carry the payload, so `masterapp_build_info` joins onto any
+ * other series by instance. It lives on the token-gated metrics endpoint rather
+ * than on `/api/health`, which is unauthenticated and deliberately reveals no
+ * versions — a build number is free reconnaissance to anyone who can read a
+ * changelog.
+ *
+ * Stamped into the image by infra/Dockerfile from a build arg. `unknown` means
+ * the image was built outside scripts/release.sh, which is itself worth seeing.
+ */
+export function setBuildInfo() {
+  setGauge('masterapp_build_info', 1, {
+    commit: process.env.BUILD_COMMIT ?? 'unknown',
+    built_at: process.env.BUILD_TIME ?? 'unknown',
+    role: process.env.PROCESS_ROLE ?? 'web',
+  });
+}
+
 export function recordQueueDeferred(queue: string) {
   increment('masterapp_queue_deferred_total', { queue });
 }

@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
-import { increment, render, setGauge } from '@/lib/metrics';
+import { increment, render, setBuildInfo, setGauge } from '@/lib/metrics';
 import { QUEUE_NAMES } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
@@ -104,6 +104,9 @@ export async function GET(req: Request) {
   // Always present, so a scrape returning no series is distinguishable from a
   // process that is down — which are the same empty body otherwise.
   setGauge('masterapp_up', 1);
+  // And which commit is answering. The first question during an incident, and
+  // one this deployment could not answer at all before.
+  setBuildInfo();
 
   return new Response(render(), {
     status: 200,

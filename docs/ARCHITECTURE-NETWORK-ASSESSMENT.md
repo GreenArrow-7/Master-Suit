@@ -1566,6 +1566,10 @@ known encryption key.
 | 3 | `dc run --rm migrate` | Migrations run **before** the new image starts |
 | 4 | `dc up -d` | Rolling only in the sense that Compose restarts containers |
 
+> **Superseded 2026-08-20** by `scripts/release.sh <staging\|production>`, which does all four
+> against a commit-tagged image, refuses a build from a dirty tree (the tag would name a commit the
+> image does not contain), and records what was deployed so there is something to roll back to.
+
 `docs/DEPLOY-AZURE.md` is explicit that step 3 before step 4 is correct for additive migrations
 and **unsafe for a drop or rename**, because the old container is still serving during it.
 
@@ -1576,6 +1580,15 @@ and **unsafe for a drop or rename**, because the old container is still serving 
 (add-then-migrate-then-drop across releases), and a genuine reversal means writing a *forward*
 migration. For the application, rollback means rebuilding a previous commit — there is no image
 registry and no tagged artifact to roll back to.
+
+> **Fixed 2026-08-20.** Images are tagged `master-suite/web:<commit>` and stay in the host's image
+> store, so `scripts/release.sh rollback production` starts the previous release with no rebuild
+> and no registry — running it twice returns you to where you started. Production also no longer
+> chooses its own commit: with no argument it promotes the tag staging is running, and since both
+> Compose projects share one Docker daemon it starts that image rather than rebuilding the same
+> source, so "staging first" means the same *bytes*. The database is deliberately not rolled back,
+> for the reason stated above. `masterapp_build_info{commit,built_at,role}` on the token-gated
+> metrics endpoint answers "what is running", which nothing could before.
 
 ### Health checks
 

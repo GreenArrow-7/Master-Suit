@@ -79,6 +79,33 @@ describe('the endpoint', () => {
     expect(body).toContain('masterapp_up 1');
   });
 
+  it('reports which commit is answering', async () => {
+    // The first question during an incident, and one this deployment could not
+    // answer at all: images were built from the working tree on the VM, so the
+    // only record of what was running was `git log` on the host — which is the
+    // next release the moment somebody pulls.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    process.env.BUILD_COMMIT = 'abc123def456';
+    process.env.BUILD_TIME = '2026-08-20T12:00:00Z';
+    try {
+      const body = await (await scrape('the-real-token')).text();
+      expect(body).toContain('commit="abc123def456"');
+      expect(body).toContain('built_at="2026-08-20T12:00:00Z"');
+    } finally {
+      delete process.env.BUILD_COMMIT;
+      delete process.env.BUILD_TIME;
+    }
+  });
+
+  it('says unknown rather than nothing for an image built outside the release script', async () => {
+    // Absence would look like the metric was not implemented. `unknown` is a
+    // fact worth seeing: this image did not come through scripts/release.sh.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    delete process.env.BUILD_COMMIT;
+    const body = await (await scrape('the-real-token')).text();
+    expect(body).toContain('commit="unknown"');
+  });
+
   it('reports every queue, including the ones with no consumer', async () => {
     process.env.METRICS_TOKEN = 'the-real-token';
     const body = await (await scrape('the-real-token')).text();

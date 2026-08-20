@@ -174,18 +174,27 @@ to be unset.
 ```bash
 cd /opt/master-saas && git pull
 
-cd apps/web/infra
-dcs build && dcs run --rm migrate && dcs up -d      # 1. staging
+apps/web/scripts/release.sh staging       # 1. build this commit, migrate, start
 #    exercise it: sign in, one CRM read, whatever the release touches
-dc  build && dc  run --rm migrate && dc  up -d      # 2. production — gated
+apps/web/scripts/release.sh production    # 2. promote — gated
 ```
 
-Step 2's `run --rm migrate` is where the gate fires. If step 1 was skipped, or a
-migration was edited between the two, it exits 1 and nothing is applied.
+Step 2's migrate is where the staging-first gate fires. If step 1 was skipped, or
+a migration was edited between the two, it exits 1 and nothing is applied.
 
-The gate covers migrations, not images: it cannot tell whether the *application*
-you are about to deploy is the one staging ran. Deploying from the same commit
-is what makes that true, which is what `git pull` in both steps is doing.
+**The gate covers migrations; `release.sh` covers the image.** Step 2 with no
+argument does not choose a commit — it takes the tag staging is running, and
+because both Compose projects share one Docker daemon on this VM it starts *that
+image* rather than building its own copy of the same source. So "staging first"
+means the same bytes, not merely the same branch name.
+
+On separate hosts that needs a registry: push after the staging build and pull
+before the production start. The tag scheme (`master-suite/web:<commit>`) does not
+change, and neither does anything else here.
+
+`scripts/release.sh status` lists what each environment is on and which images
+are still startable. Rollback is `scripts/release.sh rollback <environment>`, and
+it deliberately does not roll the database back — see `docs/DEPLOY-AZURE.md`.
 
 ## Restoring production data into staging
 

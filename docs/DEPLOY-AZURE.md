@@ -330,20 +330,69 @@ procedure.
 
 ```bash
 cd /opt/master-saas && git pull
-cd apps/web/infra
-dc build
-dc run --rm migrate
-dc up -d
+
+apps/web/scripts/release.sh staging       # build, migrate, start — tagged by commit
+#   exercise staging
+apps/web/scripts/release.sh production    # promote the tag staging is running
 ```
+
+`release.sh` replaces the four-command sequence that used to be here
+(`git pull && dc build && dc run --rm migrate && dc up -d`). Those commands were
+each correct; what they lacked was any record of what was running. Compose
+auto-names an image after the project and service and overwrites it on every
+build, so the previous release stopped existing the moment the next one was
+built — and rebuilding it takes 10–20 minutes on this VM, which is 10–20 minutes
+into an incident before anything improves.
+
+Images are now tagged `master-suite/web:<commit>` and stay in the daemon's image
+store, so the last few releases are all startable. `release.sh status` lists
+them.
+
+**Production does not choose its own commit.** With no argument it takes the tag
+staging is running, and because both Compose projects share one Docker daemon on
+this VM, it *starts that image* rather than building its own copy of the same
+source. That is the difference between the same commit and the same bytes, and it
+is the whole point of promoting. (On separate hosts this needs a registry — push
+after the staging build, pull before the production start; the tag scheme is
+unchanged.)
 
 Migrations run before the new image starts, which is the correct order for
 additive migrations. A migration that drops or renames a column is not safe this
-way — the old container is still serving during it.
+way — the old container is still serving during it. That step is also the
+staging-first gate: it refuses any migration that has not already finished
+against staging with the same checksum (`docs/DEPLOY-STAGING.md`).
 
-`dc run --rm migrate` is also the gate: it refuses any migration that has not
-already finished against staging with the same checksum. Deploy the same commit
-to staging first (`docs/DEPLOY-STAGING.md`), or the step exits 1 and applies
-nothing.
+### Rollback
+
+```bash
+apps/web/scripts/release.sh rollback production
+```
+
+Starts the previously deployed tag. No rebuild, no registry, no network — the
+image is already on the host. Running it twice returns you to where you started,
+so an unnecessary rollback is not a one-way door.
+
+**It does not roll back the database, deliberately.** `migrate deploy` has no
+down-path, and migrations are written backward-compatible where practical
+(add-then-migrate-then-drop across releases) precisely so the application can go
+back without the schema going back. If a release shipped a migration the previous
+code cannot live with, the answer is a forward fix — see `docs/ENVIRONMENTS.md`.
+
+### What is actually running
+
+```bash
+curl -s -H "Authorization: Bearer $METRICS_TOKEN" http://web:3000/api/metrics | grep build_info
+# masterapp_build_info{built_at="2026-08-20T09:14:02Z",commit="9094365a0421",role="web"} 1
+```
+
+The first question during an incident, and one this deployment could not answer
+at all before: images were built from the working tree, so the only record of
+what was serving was whatever `git log` said on the host — which is the *next*
+release as soon as somebody has pulled.
+
+It is on the token-gated metrics endpoint rather than on `/api/health`, which is
+unauthenticated and deliberately reveals no versions. `commit="unknown"` means
+the image was built outside `release.sh`, which is itself worth seeing.
 
 ## What this deployment is not
 

@@ -55,6 +55,21 @@ FROM node:22-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
+# ── Which commit is this? ───────────────────────────────────────────────────
+#
+# Nothing in a running container could answer that. Deployments built from the
+# working tree on the VM, so the only record of what was serving was whatever
+# `git log` said on the host at the moment you looked — which is the *next*
+# release once somebody has pulled.
+#
+# Passed in by scripts/release.sh and surfaced as `masterapp_build_info` on the
+# metrics endpoint. Declared as an ARG with no default so a build that forgets it
+# is visibly `unknown` rather than quietly wrong.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 RUN addgroup -g 1001 -S leadflow && adduser -u 1001 -S leadflow -G leadflow
 
 COPY --from=build --chown=leadflow:leadflow /app/.next/standalone ./
@@ -102,6 +117,14 @@ FROM node:22-alpine AS worker
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PROCESS_ROLE=worker
+
+# Same stamp as the web stage. A deployment where web and worker are on
+# different commits is a real and confusing state; both reporting their own
+# commit is what makes it visible.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
 
 RUN addgroup -g 1001 -S leadflow && adduser -u 1001 -S leadflow -G leadflow
 

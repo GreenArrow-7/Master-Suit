@@ -13,10 +13,26 @@
 # no production number should ever be quoted from a dev server.
 services:
   web:
+    # ── A name and a tag, so there is something to roll back to ──────────────
+    #
+    # Compose otherwise auto-names an image after the project and service and
+    # overwrites it on every build, so the previous release ceased to exist the
+    # moment the next one was built. `docs/…-ASSESSMENT.md` §13 recorded the
+    # consequence plainly: "rollback means rebuilding a previous commit — there
+    # is no image registry and no tagged artifact to roll back to."
+    #
+    # IMAGE_TAG is the commit, set by scripts/release.sh. The old image stays in
+    # the daemon's store under its own tag, so rolling back is starting the tag
+    # that was running an hour ago — no rebuild, no registry, and on a single VM
+    # no network hop either.
+    image: master-suite/web:${IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: infra/Dockerfile
       target: production
+      args:
+        GIT_SHA: ${IMAGE_TAG:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     command: ['node', 'server.js']
     environment:
       NODE_ENV: production
@@ -66,10 +82,14 @@ services:
     # image, which contains only next build's standalone output, told to run
     # `node dist/workers/index.js`, which no build produces — meant this
     # container exited on start in every deployment that used this overlay.
+    image: master-suite/worker:${IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: infra/Dockerfile
       target: worker
+      args:
+        GIT_SHA: ${IMAGE_TAG:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     environment:
       NODE_ENV: production
       PROCESS_ROLE: worker
