@@ -159,6 +159,16 @@ describe('the signals that matter', () => {
     expect(out).toMatch(/# HELP masterapp_tenant_guard_trips_total .*alert on this/);
   });
 
+  it('counts a deferred job by queue and not by tenant', async () => {
+    const { recordQueueDeferred } = await import('@/lib/metrics');
+    recordQueueDeferred('ai');
+    recordQueueDeferred('ai');
+    const out = render();
+    expect(out).toContain('masterapp_queue_deferred_total{queue="ai"} 2');
+    // A per-tenant label here would grow without bound with the customer list.
+    expect(out).not.toMatch(/masterapp_queue_deferred_total\{[^}]*tenant/);
+  });
+
   it('separates errors by code, so a 500 spike is distinguishable from a 403 one', () => {
     recordError('leads', 'VIEW', 'forbidden', 403);
     recordError('leads', 'VIEW', 'internal-error', 500);

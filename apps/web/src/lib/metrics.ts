@@ -127,6 +127,8 @@ const HELP: Record<string, string> = {
   masterapp_queue_oldest_waiting_seconds:
     'Age of the oldest waiting job. Rising steadily means the queue has no consumer — this is the signal the dead worker would have shown.',
   masterapp_queue_workers: 'Consumers attached to a queue. Zero on a live queue means nothing is draining it.',
+  masterapp_queue_deferred_total:
+    'Jobs pushed back because their tenant was at its per-tenant concurrency ceiling. Not an error — a sustained rate means that ceiling is the binding constraint for someone.',
   masterapp_ai_tokens_total: 'Gemini tokens consumed, by feature and whose key paid for them.',
   masterapp_up: 'Always 1. Present so a scrape that returns no series is distinguishable from a process that is down.',
 };
@@ -205,6 +207,19 @@ export function recordError(module: string, action: string, code: string, status
  */
 export function recordTenantGuardTrip(model: string, operation: string) {
   increment('masterapp_tenant_guard_trips_total', { model, operation });
+}
+
+/**
+ * A job was pushed back to the delayed set because its tenant already held its
+ * share of the worker.
+ *
+ * Deliberately labelled by queue and not by tenant: a per-tenant series here
+ * would grow without bound with the customer list. This is the platform-wide
+ * curve, and a sustained rate is the signal to raise the ceiling — or to look at
+ * which workspace is generating that much work, which the database can answer.
+ */
+export function recordQueueDeferred(queue: string) {
+  increment('masterapp_queue_deferred_total', { queue });
 }
 
 export function recordAiTokens(feature: string, keySource: string, tokens: number) {

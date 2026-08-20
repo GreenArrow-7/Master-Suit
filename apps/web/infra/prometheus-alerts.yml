@@ -85,6 +85,22 @@ groups:
             The `ai` queue runs at concurrency 2 platform-wide, so it is the first to
             back up under load.
 
+      # Not a failure — a ceiling doing its job. It is here because the number
+      # it reports is the one an operator needs before raising PER_TENANT in
+      # workers/ai.ts, and because a rate that never falls means somebody's work
+      # is permanently rationed rather than briefly queued.
+      - alert: QueueDeferralsSustained
+        expr: sum(rate(masterapp_queue_deferred_total[30m])) by (queue) > 1
+        for: 2h
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Jobs on {{ $labels.queue }} have been hitting the per-tenant ceiling for two hours'
+          description: >-
+            A workspace has held its full share of this worker continuously. That is the
+            fairness cap working — everyone else kept their slots — but it also means that
+            tenant's backlog is not clearing. Raise the per-tenant ceiling, raise global
+            concurrency, or find out what is generating the volume.
+
       - alert: QueueFailuresAccumulating
         expr: masterapp_queue_failed > 50
         for: 15m
