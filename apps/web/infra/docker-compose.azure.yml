@@ -161,6 +161,11 @@ services:
     # is dropped: a service that turns camera frames into biometric vectors
     # should have no route from the host at all.
     ports: !reset []
+    environment:
+      # Refuses to start without FACE_SERVICE_TOKEN. Unset, the service accepted
+      # every caller silently — indistinguishable from a configured one until
+      # somebody found the port.
+      FACE_SERVICE_ENV: production
     restart: unless-stopped
 
 volumes:

@@ -100,6 +100,11 @@ services:
     environment:
       FACE_MODEL_DIR: /models
       FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:-}
+      # Declared, not defaulted. With no token set the service accepts every
+      # caller, which is fine on a laptop and an open biometric engine anywhere
+      # else — so it refuses to start unauthenticated unless something says
+      # `development` out loud. The azure overlay says `production`.
+      FACE_SERVICE_ENV: development
     volumes: ['facemodels:/models']
     # Bound to loopback only. Local development runs the web app on the host, so
     # it needs a port — but a service that turns camera frames into biometric

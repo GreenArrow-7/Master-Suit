@@ -113,29 +113,99 @@ const querySchema = z
   .passthrough();
 
 /**
- * What each read needs, beyond the module entitlement.
+ * The permission each read needs **beyond** the kernel's gate, for every
+ * resource — with no gaps possible.
  *
- * The kernel gate is `employee:VIEW` — the floor for reaching HR at all — and
- * anything narrower is asserted here. Before this, one `hrms:VIEW` opened every
- * resource below at workspace scope, so an employee who could see their own
- * payslip could also list every colleague, every attendance record and every
+ * The kernel gate is `employee:VIEW`, the floor for reaching HR at all, and
+ * anything narrower is asserted here. Before that split, one `hrms:VIEW` opened
+ * every resource below at workspace scope, so an employee who could see their
+ * own payslip could also list every colleague, every attendance record and every
  * work location.
+ *
+ * ── Why this is a total Record and not a Partial ────────────────────────────
+ *
+ * It used to be `Partial<Record<string, ...>>`, which made "this resource needs
+ * nothing extra" and "nobody wrote an entry for this resource" the same thing —
+ * indistinguishable at the keyboard and at review. Adding a case to the switch
+ * below without adding a line here compiled cleanly and silently published that
+ * resource to anyone holding `employee:VIEW`.
+ *
+ * That is precisely the shape of F-01 in security/SECURITY_FINDINGS.md: a new
+ * module re-derived an authorization decision its siblings had already made, and
+ * the gap was invisible because nothing forced the question to be asked.
+ *
+ * Keyed by the resource union rather than by `string`, every case must now say
+ * what it needs. Add a resource to the enum and this object fails to compile
+ * until someone decides.
  */
-const RESOURCE_PERMISSION: Partial<Record<string, [string, 'VIEW' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION']>> = {
-  'attendance-review': ['attendance', 'APPROVE'],
-  'exception-requests': ['attendance', 'APPROVE'],
-  'temporary-requests': ['attendance', 'APPROVE'],
+
+/**
+ * "The kernel's `employee:VIEW` is the whole route-level gate, deliberately."
+ *
+ * Not an absence of protection — an explicit statement that protection lives one
+ * layer down, and the case body says which of the two it is:
+ *
+ *   * the service asserts its own permission (`listRequisitions` throws without
+ *     `mayReadRecruitment`, `reviewsFor` without `performance:VIEW`, and so on); or
+ *   * the query narrows to the caller (`employeeScope`, `attendanceScope`,
+ *     `leaveScope`), so workspace scope is never what is returned; or
+ *   * the rows are workspace reference data with no personal content —
+ *     departments, shifts, holidays, leave types, the competency framework.
+ *
+ * A sentinel rather than `undefined`, so choosing it is a positive act.
+ */
+const FLOOR = Symbol('employee:VIEW is the whole gate');
+
+type HrResource = z.infer<typeof paramsSchema>['resource'];
+type ExtraPermission = readonly [string, 'VIEW' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION'];
+
+const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = {
+  departments: FLOOR,
+  designations: FLOOR,
+  employees: FLOOR,
+  attendance: FLOOR,
+  shifts: FLOOR,
+  leave: FLOOR,
+  holidays: FLOOR,
+  documents: FLOOR,
+  'work-locations': FLOOR,
+  'leave-types': FLOOR,
+  'leave-balances': FLOOR,
   'leave-pending': ['leave', 'APPROVE'],
-  // `overtime` itself is intentionally absent: an employee reads their own
-  // claims, and `listOvertime` narrows the query to them. Only the approval
-  // queue needs the signing authority.
+  'leave-calendar': FLOOR,
+  checklist: FLOOR,
+  lifecycle: FLOOR,
+  'expiring-documents': FLOOR,
+  settlement: FLOOR,
+  'attendance-days': FLOOR,
+  'attendance-punches': FLOOR,
+  'attendance-review': ['attendance', 'APPROVE'],
+  'face-status': FLOOR,
+  'location-assignments': FLOOR,
+  settings: ['employee', 'EDIT'],
+  'temporary-requests': ['attendance', 'APPROVE'],
+  'exception-requests': ['attendance', 'APPROVE'],
+  'exception-reasons': FLOOR,
+  overtime: FLOOR,
   'overtime-pending': ['overtime', 'APPROVE'],
-  // `payslips` and `compensation` are absent on purpose: both are self-service
-  // for your own record, and the service refuses anyone else's without
-  // `payroll:VIEW`. The run-level reads are never self-service.
   'payroll-runs': ['payroll', 'VIEW'],
   'payroll-run': ['payroll', 'VIEW'],
-  settings: ['employee', 'EDIT'],
+  payslips: FLOOR,
+  compensation: FLOOR,
+  roster: FLOOR,
+  'shift-changes': FLOOR,
+  requisitions: FLOOR,
+  candidates: FLOOR,
+  candidate: FLOOR,
+  pipeline: FLOOR,
+  'review-cycles': FLOOR,
+  reviews: FLOOR,
+  goals: FLOOR,
+  competencies: FLOOR,
+  pips: FLOOR,
+  'performance-summary': FLOOR,
+  reports: FLOOR,
+  report: FLOOR,
 };
 
 export const GET = route(
@@ -143,7 +213,7 @@ export const GET = route(
   async ({ ctx, params, query }) => {
     await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
     const extra = RESOURCE_PERMISSION[params.resource];
-    if (extra) assertPermission(ctx, extra[0], extra[1]);
+    if (extra !== FLOOR) assertPermission(ctx, extra[0], extra[1]);
 
     switch (params.resource) {
       case 'departments':

@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import os
+import sys
 import threading
 from typing import List, Optional
 
@@ -93,12 +95,45 @@ def diagnose(exc: Optional[Exception] = None) -> str:
     return f"The face engine failed to start: {exc}" if exc else "The face engine failed to start."
 
 
+# Read once, at import, so the refusal below happens at start rather than on the
+# first check-in of the day.
+_TOKEN = os.environ.get("FACE_SERVICE_TOKEN", "")
+_ENV = os.environ.get("FACE_SERVICE_ENV", "development").strip().lower()
+
+if not _TOKEN and _ENV != "development":
+    # An unauthenticated biometric engine is not a degraded mode, it is an open
+    # one: anything that can reach the port submits frames and receives face
+    # embeddings. This used to be a silent pass-through, so a deployment that
+    # forgot the variable looked identical to one that set it.
+    sys.stderr.write(
+        "\n[face] Refusing to start: FACE_SERVICE_TOKEN is unset and "
+        f"FACE_SERVICE_ENV is {_ENV!r}.\n"
+        "       This service turns camera frames into biometric vectors; it must not\n"
+        "       accept unauthenticated requests outside local development. Set a long\n"
+        "       random FACE_SERVICE_TOKEN, matching the web application's.\n\n"
+    )
+    raise SystemExit(1)
+
+
 def authorise(authorization: str = Header(default="")):
-    """Shared-secret gate. Unset token means development on a private network."""
-    expected = os.environ.get("FACE_SERVICE_TOKEN", "")
-    if not expected:
+    """Shared-secret gate, compared in constant time.
+
+    `!=` on a string returns as soon as two bytes differ, so the time it takes to
+    refuse tells the caller how much of the prefix was right — enough, over many
+    requests, to recover the token a byte at a time. `compare_digest` takes the
+    same time whatever the input.
+
+    An unset token is accepted only in development, and the process refuses to
+    start unauthenticated anywhere else (see above), so this branch is reachable
+    only on a laptop.
+    """
+    if not _TOKEN:
         return
-    if authorization != f"Bearer {expected}":
+    # `hmac.compare_digest` requires bytes-like or ASCII-only str; a header with
+    # non-ASCII would otherwise raise TypeError and surface as a 500 rather than
+    # the 401 it is.
+    supplied = authorization.encode("utf-8", "replace")
+    if not hmac.compare_digest(supplied, f"Bearer {_TOKEN}".encode("utf-8")):
         raise HTTPException(401, "Bad or missing face-service token.")
 
 

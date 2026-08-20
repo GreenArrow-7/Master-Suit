@@ -40,6 +40,16 @@ which frame failed and why instead of losing the batch.
 ## Security
 
 Bind it to loopback or an internal network only. A service that turns camera
-frames into biometric vectors has no business being reachable from outside. Set
-`FACE_SERVICE_TOKEN` and the app will send it as a bearer token; leaving it unset
-is for local development on a private network.
+frames into biometric vectors has no business being reachable from outside.
+
+`FACE_SERVICE_TOKEN` is the shared secret the application sends as a bearer
+token. It is compared with `hmac.compare_digest`, not `!=`: a byte-by-byte
+comparison returns as soon as two bytes differ, and the time it takes to refuse
+tells the caller how much of the prefix was right — enough, over many requests,
+to recover the token a byte at a time.
+
+Leaving the token unset is for local development, and only local development.
+`FACE_SERVICE_ENV` says which this is: anything other than `development` makes
+the process **refuse to start** without a token rather than accepting every
+caller silently, which is what it used to do. The compose files set it —
+`development` in the base file, `production` in the Azure overlay.
