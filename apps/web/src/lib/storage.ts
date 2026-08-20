@@ -10,8 +10,10 @@
 import {
   CreateBucketCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -84,4 +86,93 @@ export async function moveObject(fromKey: string, toKey: string, contentType: st
   await putObject(toKey, body, contentType);
   await deleteObject(fromKey).catch(() => {});
   return toKey;
+}
+
+/** One stored object, as much of it as a retention sweep needs. */
+export interface StoredObject {
+  key: string;
+  lastModified: Date | null;
+  size: number;
+}
+
+/**
+ * Every object under a prefix, following continuation tokens.
+ *
+ * `IsTruncated` is the trap here: a single ListObjectsV2 returns at most 1,000
+ * keys and says so in a field it is easy not to read. A retention sweep that
+ * ignores it silently stops deleting once a workspace passes a thousand
+ * captures — which is the point at which deleting them starts to matter.
+ */
+export async function listObjects(prefix: string): Promise<StoredObject[]> {
+  await ensureBucket();
+  const objects: StoredObject[] = [];
+  let token: string | undefined;
+  do {
+    const page = await s3.send(
+      new ListObjectsV2Command({ Bucket: env.S3_BUCKET, Prefix: prefix, ContinuationToken: token }),
+    );
+    for (const item of page.Contents ?? []) {
+      if (!item.Key) continue;
+      objects.push({ key: item.Key, lastModified: item.LastModified ?? null, size: item.Size ?? 0 });
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return objects;
+}
+
+/**
+ * The immediate "directories" under a prefix.
+ *
+ * `Delimiter` makes S3 collapse everything below the next `/` into a
+ * CommonPrefix, so listing tenants costs one page per thousand tenants rather
+ * than one entry per stored object.
+ */
+export async function listPrefixes(prefix: string): Promise<string[]> {
+  await ensureBucket();
+  const prefixes: string[] = [];
+  let token: string | undefined;
+  do {
+    const page = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: env.S3_BUCKET,
+        Prefix: prefix,
+        Delimiter: '/',
+        ContinuationToken: token,
+      }),
+    );
+    for (const item of page.CommonPrefixes ?? []) if (item.Prefix) prefixes.push(item.Prefix);
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return prefixes;
+}
+
+/**
+ * Deletes many objects, in the batches the API accepts.
+ *
+ * 1,000 per request is S3's documented maximum and MinIO enforces it too, so a
+ * sweep that passed a whole workspace's captures in one call would fail with
+ * MalformedXML rather than delete anything.
+ *
+ * Returns how many were actually removed, because the caller reports a count
+ * and `Deleted` is the only honest source for it — a key the bucket policy
+ * refuses comes back under `Errors`, not as a failure of the request.
+ */
+export async function deleteObjects(keys: string[]): Promise<number> {
+  if (keys.length === 0) return 0;
+  await ensureBucket();
+  let removed = 0;
+  for (let i = 0; i < keys.length; i += 1000) {
+    const batch = keys.slice(i, i + 1000);
+    const result = await s3.send(
+      new DeleteObjectsCommand({
+        Bucket: env.S3_BUCKET,
+        Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: false },
+      }),
+    );
+    removed += result.Deleted?.length ?? 0;
+    for (const error of result.Errors ?? []) {
+      logger.warn({ key: error.Key, code: error.Code, message: error.Message }, 'storage: object could not be deleted');
+    }
+  }
+  return removed;
 }

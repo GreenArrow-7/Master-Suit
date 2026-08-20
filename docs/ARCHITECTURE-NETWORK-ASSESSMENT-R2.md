@@ -1847,15 +1847,15 @@ application.**
 #### P2 — Scale · as volume grows
 
 |      | Item                                                                                                  | Reference |
-| ---- | ----------------------------------------------------------------------------------------------------- | --------- |
-| P2-1 | Managed Postgres with PITR; managed Redis with TLS and AUTH; object storage off the VM                | W-1       |
-| P2-2 | Move attendance captures to object storage — the prerequisite for a multi-replica web tier            | W-4       |
-| P2-3 | Version the entitlement cache instead of `SCAN`-sweeping it, as the actor cache already does          | §18       |
-| P2-4 | Retention policy for `AuditLog` / `HrAttendancePunch` / `PlatformAuditEvent`, then partition by month | W-7       |
-| P2-5 | Turn on the PgBouncer overlay                                                                         | §9.4      |
-| P2-6 | Infrastructure as code for the host                                                                   | W-9       |
-| P2-7 | A manually-triggered deploy job calling `release.sh`                                                  | W-10      |
-| P2-8 | TLS or mTLS between services once anything leaves the single host                                     | M-6       |
+| ---- | --------------------------------------------------------------------------------------------------------- | --------- |
+| P2-1 | Managed Postgres with PITR; managed Redis with TLS and AUTH; object storage off the VM                    | W-1       |
+| P2-2 | Move attendance captures to object storage — **done**, the multi-replica blocker is now the load balancer | W-4       |
+| P2-3 | Version the entitlement cache instead of `SCAN`-sweeping it, as the actor cache already does              | §18       |
+| P2-4 | Retention policy for `AuditLog` / `HrAttendancePunch` / `PlatformAuditEvent`, then partition by month     | W-7       |
+| P2-5 | Turn on the PgBouncer overlay                                                                             | §9.4      |
+| P2-6 | Infrastructure as code for the host                                                                       | W-9       |
+| P2-7 | A manually-triggered deploy job calling `release.sh`                                                      | W-10      |
+| P2-8 | TLS or mTLS between services once anything leaves the single host                                         | M-6       |
 
 #### P3 — Optimization
 

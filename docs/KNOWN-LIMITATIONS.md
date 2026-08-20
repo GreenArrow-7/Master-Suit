@@ -271,6 +271,15 @@ following items still prevent an unconditional commercial-production claim:
   workspace some way past it before the first records anything; and no plan ships
   with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
   number.
+- **The web tier is stateless now.** Attendance captures — encrypted frames from
+  face punches — were written to a local directory, which meant a second web
+  replica would take punches whose evidence only the first replica could read.
+  They go to the same object storage as every other uploaded file now, still
+  encrypted before they leave the process. Reads fall back to the old directory
+  so captures stored before the change stay readable, and retention sweeps both;
+  `scripts/migrate-attendance-captures.mjs` moves the backlog across. What
+  remains before actually running two replicas: a load balancer, and the managed
+  Postgres and Redis that a second host implies.
 - **Redis requires a password now; everything behind the edge is still
   plaintext.** `requirepass` was set in no Compose file at all, and Redis carries
   queue payloads and cached actor permissions. Every stack sets it now, including
