@@ -256,10 +256,34 @@ Two things to understand before doing any of this:
 
 ## Monitoring it
 
-`infra/prometheus-alerts.yml` applies unchanged; point a second scrape job at
-this project's web container with staging's own `METRICS_TOKEN`. A staging
-deployment firing `QueueHasNoConsumer` or `TenantGuardTripped` before production
-does is the entire point of having one.
+This project runs its own Prometheus and Alertmanager — `docker-compose.staging.yml`
+clears the `observability` profile the same way `docker-compose.azure.yml` does,
+so bringing staging up brings its monitoring up with it. They are on loopback,
+one port above production's:
+
+```bash
+ssh -L 9091:127.0.0.1:9091 -L 9094:127.0.0.1:9094 azureuser@<vm>
+# http://localhost:9091/alerts   — Prometheus, what is firing and why
+# http://localhost:9094          — Alertmanager, what was grouped and sent
+```
+
+`infra/prometheus-alerts.yml` applies unchanged, and every alert this project
+raises carries `environment="staging"` — that label is the whole reason
+Prometheus is given `APP_ENV`. A staging deployment firing `QueueHasNoConsumer`
+or `TenantGuardTripped` before production does is the entire point of having one.
+
+Alerts are delivered into **Mailpit**, on `127.0.0.1:8026`, not to a person. The
+notification is composed, grouped, routed and sent for real — it just lands
+where a rehearsal belongs. Two settings make that work and both are in
+`docker-compose.staging.yml` rather than in the env file, because
+`environment:` outranks `env_file:` and a value copied over from
+`.env.production` would otherwise win: `SMTP_HOST: mailpit`, and
+`ALERT_SMTP_REQUIRE_TLS: 'false'` because Mailpit offers no STARTTLS. Left at the
+default, every alert would fail to deliver and Alertmanager would log the
+failure rather than raise one — the quietest possible way for monitoring to be
+broken.
+
+See `docs/OBSERVABILITY.md`.
 
 ## What this is not
 

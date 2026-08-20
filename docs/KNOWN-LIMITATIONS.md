@@ -271,7 +271,8 @@ following items still prevent an unconditional commercial-production claim:
   workspace some way past it before the first records anything; and no plan ships
   with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
   number.
-- **There are metrics now; there are still no traces and no log shipping.**
+- **There are metrics and alerting now; there are still no traces and no log
+  shipping.**
   Nothing in the application exported a metric, emitted a span or reported an
   exception, and the logs were not collected either — so the worker exiting on
   start went unnoticed for months, and a `TenantGuardError` would have been an
@@ -279,7 +280,10 @@ following items still prevent an unconditional commercial-production claim:
   404 without one) now serves request rate and latency by module, error rate by
   code, per-queue depth, backlog age and **consumer count**, AI tokens by
   feature, and a tenant-guard trip counter; `infra/prometheus-alerts.yml` carries
-  eight rules against them. The queue-consumer gauge is collected by asking Redis
+  ten rules against them, and both deployment overlays now start a Prometheus
+  that scrapes the endpoint and an Alertmanager that delivers what fires — until
+  that landed, the rules were a file rather than a running system.
+  The queue-consumer gauge is collected by asking Redis
   what is attached rather than by counting enqueues, which is the only way that
   failure is visible — a counter maintained by the enqueue path looks healthy
   throughout, because jobs really are being enqueued.

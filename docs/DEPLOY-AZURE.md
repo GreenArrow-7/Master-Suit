@@ -496,16 +496,17 @@ name:
   backups, PITR and patching. Moving to it changes only `DATABASE_URL` and
   `MIGRATION_DATABASE_URL`, plus running that migration once against it — the
   role model the application requires is the same either way.
-- **Metrics yes, traces and error reporting no.** `GET /api/metrics` serves
-  Prometheus exposition — request rate and latency by module, error rate by code,
-  queue depth, backlog age and consumer count per queue, AI tokens by feature,
-  and the tenant-guard trip counter. `infra/prometheus-alerts.yml` has eight
-  rules, each corresponding to a failure this deployment has actually had. Set
-  `METRICS_TOKEN` (`node scripts/generate-secrets.mjs` fills it in) and point a
-  scraper at `web:3000` on the compose network — Caddy blocks the path from the
-  public interface. What is still missing: distributed tracing, a stack-trace
-  reporter, and log shipping. `pino` writes structured JSON to stdout; nothing
-  collects it, so it still dies with the container.
+- **Metrics and alerting yes, traces and error reporting no.** `GET /api/metrics`
+  serves Prometheus exposition — request rate and latency by module, error rate
+  by code, queue depth, backlog age and consumer count per queue, AI tokens by
+  feature, and the tenant-guard trip counter. This overlay now starts a
+  Prometheus that scrapes it and an Alertmanager that delivers what fires;
+  `infra/prometheus-alerts.yml` has ten rules, each corresponding to a failure
+  this deployment has actually had. Set `METRICS_TOKEN` and `ALERT_EMAIL_TO` in
+  `.env.production` — both containers refuse to start without them. See
+  `docs/OBSERVABILITY.md`. What is still missing: distributed tracing, a
+  stack-trace reporter, and log shipping. `pino` writes structured JSON to
+  stdout; nothing collects it, so it still dies with the container.
 - **SMS and e-signature do not work.** See step 7.
 
 `docs/KNOWN-LIMITATIONS.md` and `docs/SECURITY-REMEDIATION.md` are the two to

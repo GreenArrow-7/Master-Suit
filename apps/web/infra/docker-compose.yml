@@ -166,4 +166,105 @@ services:
     deploy:
       replicas: 2
 
-volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {} }
+  # ── Observability ─────────────────────────────────────────────────────────
+  #
+  # `GET /api/metrics` has existed since P1-1 and nothing has ever read it. The
+  # assessment scored monitoring 45/100 for exactly that reason: "the alert
+  # rules are a file, not a running system". These two services are what turns
+  # the file into a system.
+  #
+  # ── Why they are here, behind a profile, rather than in an overlay ─────────
+  #
+  # Behind a profile because development has nowhere for an alert to go.
+  # `npm run secrets` does write a METRICS_TOKEN into .env, so the scrape would
+  # work — but Alertmanager refuses to start without a relay and a recipient,
+  # and it refuses on purpose: alert rules with no destination read as monitored
+  # while delivering nothing. In development that refusal would take
+  # `docker compose up` down with it, over two containers a developer has no use
+  # for. So development does not start them, and says so in one word.
+  #
+  # Here, and not in a docker-compose.observability.yml, because both deployment
+  # overlays clear the profile themselves — `profiles: !reset []` in
+  # docker-compose.azure.yml and docker-compose.staging.yml. A separate file
+  # would have to be remembered on every `docker compose` line in every runbook,
+  # and infra/docker-compose.pgbouncer.yml is already the example of what that
+  # becomes. A control that depends on remembering a fourth `-f` lasts exactly
+  # as long as nobody is in a hurry.
+  #
+  # ── The base image is load-bearing ────────────────────────────────────────
+  #
+  # Both images are built on busybox, so `/bin/sh`, `sed` and `wget` are present
+  # and the entrypoint scripts and healthchecks below work. If a future tag
+  # moves to a distroless base, these break at start rather than silently — the
+  # container will exit with "no such file or directory", which is the failure
+  # mode wanted.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: ['observability']
+    # Neither Prometheus nor Alertmanager expands environment variables in its
+    # own configuration, and the scrape credential must not appear in argv. The
+    # entrypoint renders both into a tmpfs. See prometheus-entrypoint.sh.
+    entrypoint: ['/bin/sh', '/etc/prometheus/entrypoint.sh']
+    environment:
+      # `:-` and not `:?` on every one of these: Compose interpolates the whole
+      # file before it decides which profiles are active, so a `:?` here would
+      # abort `docker compose up` in development over a service development does
+      # not start. The overlays that do start it restate these with `:?`.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      APP_ENV: ${APP_ENV:-development}
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - ./prometheus-entrypoint.sh:/etc/prometheus/entrypoint.sh:ro
+      - promdata:/prometheus
+    # The rendered config and the bearer token, in memory only. Neither reaches
+    # this host's disk and neither survives the container.
+    tmpfs: ['/run/prom']
+    restart: unless-stopped
+    depends_on: [web]
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9090/-/healthy']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    profiles: ['observability']
+    entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
+    environment:
+      # The relay this deployment already sends product mail through. Alerts go
+      # out the same way, which means one thing to configure and one thing that
+      # can be wrong — and docker-compose.azure.yml already refuses to start
+      # with SMTP_HOST unset.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_PAGE_EMAIL_TO: ${ALERT_PAGE_EMAIL_TO:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      # Staging relays through Mailpit, which speaks plain SMTP and offers no
+      # STARTTLS; the staging overlay sets this to false. Production leaves it.
+      ALERT_SMTP_REQUIRE_TLS: ${ALERT_SMTP_REQUIRE_TLS:-true}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USER: ${SMTP_USER:-}
+      APP_ENV: ${APP_ENV:-development}
+    volumes:
+      - ./alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - amdata:/alertmanager
+    # The generated config and the relay password. Same reasoning as above; the
+    # password is handed to Alertmanager by `smtp_auth_password_file` so it is
+    # never an argument either.
+    tmpfs: ['/run/am']
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9093/-/healthy']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {}, promdata: {}, amdata: {} }

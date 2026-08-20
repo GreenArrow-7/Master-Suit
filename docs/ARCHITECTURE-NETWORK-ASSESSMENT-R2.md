@@ -12,6 +12,13 @@
 >
 > Where a finding has moved, this document says so and names the change, so the
 > two revisions can be read as a before and after rather than as two opinions.
+>
+> **One finding has been closed since this was written: P0-1 / W-2, "metrics
+> exist and nothing scrapes them".** The scores below are left as assessed at
+> `f1dd84e` rather than rewritten, for the same reason revision 1 was left
+> alone — an assessment that edits itself is no longer a record of anything.
+> The places a reader would otherwise act on the stale finding are annotated
+> inline. See `docs/OBSERVABILITY.md` for what now runs.
 
 Everything below was read out of the codebase or measured against a live
 database and a rendered Compose configuration. Where something cannot be
@@ -52,6 +59,11 @@ machine with no failover. The most consequential remaining weakness is
 evidence that anybody is watching them, because the metrics endpoint it grew has
 no scraper pointed at it in any environment this repository describes.
 
+> **Closed since this was written.** A Prometheus and an Alertmanager now run in
+> both deployment overlays, and CI fails the build if either overlay stops
+> starting them. That leaves the single virtual machine as the most consequential
+> remaining weakness. See `docs/OBSERVABILITY.md`.
+
 ### What changed since revision 1
 
 | Revision 1 finding                                                            | Status now                                                                                                                                       |
@@ -59,7 +71,7 @@ no scraper pointed at it in any environment this repository describes.
 | Worker unrunnable in the production stack; every queue silently unconsumed    | **Fixed.** A `worker` image stage runs the TypeScript through `tsx`; the entrypoint asserts every consumer attaches and exits non-zero otherwise |
 | Retention sweep deleted nothing (RLS-blind raw SQL) and logged success        | **Fixed.** Runs under `withPlatformTx`, deletes the object before the row, batches to exhaustion, scheduled daily                                |
 | Base Compose: `trust` auth, `0.0.0.0` bindings, prod overlay unbootable alone | **Fixed.** scram-sha-256 and loopback everywhere; every `DATABASE_URL` names the NOBYPASSRLS role                                                |
-| No metrics, traces or error reporting anywhere                                | **Fixed.** `GET /api/metrics` in Prometheus exposition format, 9 alert rules. **No scraper is configured** — see W-2                             |
+| No metrics, traces or error reporting anywhere                                | **Fixed.** `GET /api/metrics`, Prometheus exposition, 10 alert rules. A scraper was still missing at `f1dd84e` (W-2), and is not now             |
 | No staging environment                                                        | **Fixed.** `infra/docker-compose.staging.yml`, plus a gate that refuses a production migration unrehearsed in staging                            |
 | Backups covered the database and not the object store; nothing scheduled      | **Fixed.** Both, encrypted, on three systemd timers, with a restore verifier                                                                     |
 | AI spend uncapped and unattributed                                            | **Fixed.** Metered per workspace, capped on the shared key only                                                                                  |
@@ -1519,8 +1531,16 @@ under 150 lines and each carries its reasoning.
 
 ### W-2 · Metrics exist and nothing scrapes them
 
+> **Closed after this assessment.** `infra/docker-compose.yml` now defines
+> `prometheus` and `alertmanager` behind an `observability` profile that both
+> deployment overlays clear, so a production or staging stack cannot be brought
+> up without them. CI gate 3c (`npm run check:observability`) fails the build if
+> either overlay stops clearing it, if the scrape job is renamed out from under
+> `ApplicationDown`, or if a consumed queue drops out of `QueueHasNoConsumer`.
+> The finding below is left as written, as the state at `f1dd84e`.
+
 - **Problem** `GET /api/metrics` serves nine signal families and
-  `infra/prometheus-alerts.yml` holds nine rules. **No Prometheus, Grafana,
+  `infra/prometheus-alerts.yml` holds ten rules. **No Prometheus, Grafana,
   Alertmanager or scrape configuration exists anywhere in the repository or in
   any Compose file.**
 - **Evidence** No `prometheus` service in any of the five Compose files; the
@@ -1652,7 +1672,7 @@ on the same host.
 | Auth       | **Was the first strain; no longer.** The permission build is cached — measured 13.28 ms → 0.15 ms                                                                                                                                     |
 | AI         | **Was untenable at concurrency 2; no longer.** Global 6 with a per-tenant ceiling of 2, so one tenant's backlog occupies at most a third of the worker. Measured: a second tenant's job ran at position 40 of 41 before, 2 of 3 after |
 | Storage    | Object storage on the VM disk is the practical limit here                                                                                                                                                                             |
-| Monitoring | **Now the binding constraint.** The signals exist; nothing consumes them (W-2)                                                                                                                                                        |
+| Monitoring | **Was the binding constraint at `f1dd84e`;** a scraper and an alert router have since been deployed (W-2)                                                                                                                              |
 
 ### 1,000 organizations — needs infrastructure, not code
 
@@ -1681,7 +1701,7 @@ customers' data does not.
 
 ```mermaid
 flowchart LR
-  A["1 · Monitoring has no consumer<br/>(now — any scale)"] -->
+  A["1 · Monitoring has no consumer<br/>(closed since this assessment)"] -->
   B["2 · Single VM, no failover<br/>(now — any scale)"] -->
   C["3 · Object storage on the VM disk<br/>(~50 orgs)"] -->
   D["4 · Attendance captures on local disk<br/>(blocks a 2nd web host)"] -->
@@ -1707,10 +1727,19 @@ PgBouncer × RLS, and the per-tenant sequence catalog — are no longer on this 
 | **AI**                   | **86** |  74 | Genuinely well-architected: per-tenant BYO keys, redaction at the boundary that now catches spoken numbers, schema-constrained output, claim-before-bill idempotency, honest labelled simulation, tools that run the caller's own permissions, per-workspace metering with a plan ceiling, per-tenant fairness. Loses points for lead scoring being modelled and unimplemented, and for no streaming             |
 | **DevOps**               | **74** |  41 | Commit-tagged images, promotion of the exact artifact staging ran, one-command reversible rollback, a staging-first migration gate with checksum matching, encrypted scheduled backups with a weekly restore verification and a freshness check, 19 CI gates. Loses points for no CD, no infrastructure as code, and a manual off-host backup copy                                                               |
 | **Multi-tenancy**        | **93** |  88 | Three independent layers, `FORCE` everywhere, a NOBYPASSRLS runtime role with `CREATE` revoked, transaction-local settings that survive a transaction pooler, and a CI gate that reads the catalog rather than a list. The bootstrap exemptions are each justified and enumerated                                                                                                                                |
-| **Monitoring**           | **45** |  12 | From nothing to a complete instrumentation layer: Prometheus exposition, nine alert rules each matching a failure this codebase has actually had, build info, queue consumer counts read from Redis, table growth gauges. **Capped at 45 because nothing scrapes it.** The alert rules are a file, not a running system                                                                                          |
-| **Production readiness** | **73** |  46 | Deployable to a real customer today with an accepted single-host risk, provided somebody stands up a scraper. The remaining blockers are operational, not architectural                                                                                                                                                                                                                                          |
+| **Monitoring**           | **45** |  12 | From nothing to a complete instrumentation layer: Prometheus exposition, ten alert rules each matching a failure this codebase has actually had, build info, queue consumer counts read from Redis, table growth gauges. **Capped at 45 because nothing scrapes it.** The alert rules are a file, not a running system.                                                                                          |
+| **Production readiness** | **73** |  46 | Deployable to a real customer today with an accepted single-host risk, provided somebody stands up a scraper. The remaining blockers are operational, not architectural.                                                                                                                                                                                                                                         |
 
 **Overall: 73 / 100** (revision 1: 46).
+
+> **Since this assessment.** Monitoring's cap was the missing scraper, and that
+> is now closed: `prometheus` and `alertmanager` run in both deployment overlays
+> and CI gate 3c fails the build if either stops starting them. Re-scored on
+> that alone, **Monitoring is 78** — short of full marks for no tracing, no
+> error reporting, no log shipping, and a monitoring stack sharing a host with
+> what it watches — and **production readiness is 78**. The table is left at the
+> numbers assessed against `f1dd84e`; an assessment that edits itself is no
+> longer a record of anything. See `docs/OBSERVABILITY.md`.
 
 ---
 
@@ -1795,7 +1824,7 @@ application.**
 
 |      | Item                                                                                                                       | Reference |
 | ---- | -------------------------------------------------------------------------------------------------------------------------- | --------- |
-| P0-1 | Deploy Prometheus + Alertmanager and point them at `/api/metrics` with `METRICS_TOKEN`; load `infra/prometheus-alerts.yml` | W-2       |
+| P0-1 | Deploy Prometheus + Alertmanager against `/api/metrics` — **done**, `docs/OBSERVABILITY.md`                                | W-2       |
 | P0-2 | Automate the off-host backup copy and prove one **full** restore, including the object store                               | W-1, §9.3 |
 | P0-3 | Set `requirepass` on Redis in every Compose file                                                                           | M-5       |
 

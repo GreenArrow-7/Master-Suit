@@ -13,11 +13,18 @@
 # application role in both — so this file no longer *rescues* them. What is left
 # is genuinely specific to a host with a public IP:
 #
-#   1. Nothing is published to the host at all, not even on loopback. The base
+#   1. Nothing is published to the host except three administrative web UIs on
+#      loopback — MinIO's console, Prometheus and Alertmanager — each reached
+#      over an SSH tunnel and each listed below with the reason. Everything
+#      else, including Postgres and Redis, publishes nothing at all: the base
 #      file binds 127.0.0.1 so a developer running the app outside Docker can
-#      reach Postgres and MinIO; here everything runs inside the network, so
-#      even that is surface with no purpose. `docker compose exec` reaches them
-#      for administration without a listening socket.
+#      reach them, and here everything runs inside the network, so even that is
+#      surface with no purpose. `docker compose exec` reaches them for
+#      administration without a listening socket.
+#
+#      A UI is the exception because there is no `exec` equivalent for one. The
+#      alternative to a loopback port is no way to look at a firing alert, which
+#      is how a monitoring stack becomes decoration.
 #
 #   2. Real credentials, from .env.production, replacing the base file's
 #      development defaults.
@@ -234,6 +241,43 @@ services:
       # somebody found the port.
       FACE_SERVICE_ENV: production
     restart: unless-stopped
+
+  # ── Observability ──────────────────────────────────────────────────────────
+  #
+  # The base file defines both behind `profiles: ['observability']`. Clearing the
+  # profile here is what starts them, and it is done in this file rather than by
+  # adding a fourth `-f` to the runbook so that a production stack cannot be
+  # brought up without its scraper. Layering this file *is* opting in.
+  #
+  # Reach either over SSH — they hold the same reconnaissance value that keeps
+  # /api/metrics off the public interface in the first place, and Prometheus has
+  # no authentication of its own:
+  #
+  #   ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 azureuser@<vm>
+  #
+  prometheus:
+    profiles: !reset []
+    ports: ['127.0.0.1:9090:9090']
+    environment:
+      # `:?` here, where the base file has `:-`. This stack is a real
+      # environment, and a Prometheus with no credential scrapes a 404 and pages
+      # about it. `npm run secrets` writes this value; the same one must be in
+      # .env.production for web and worker, because it is the token the metrics
+      # route compares against.
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.production — run `npm run secrets .env.production`}
+      APP_ENV: ${APP_ENV:?set APP_ENV=production in apps/web/.env.production}
+
+  alertmanager:
+    profiles: !reset []
+    ports: ['127.0.0.1:9093:9093']
+    environment:
+      # Same `:?` reasoning, and the same reasoning as SMTP_HOST on web above: a
+      # deployment that cannot deliver its alerts must refuse to start rather
+      # than hold them. Alert rules firing into nothing is worse than no rules —
+      # it reads as monitored.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?set ALERT_EMAIL_TO in apps/web/.env.production — the address that receives alerts}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production}
+      APP_ENV: ${APP_ENV:?set APP_ENV=production in apps/web/.env.production}
 
 volumes:
   caddydata: {}

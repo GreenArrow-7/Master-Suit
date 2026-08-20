@@ -171,6 +171,20 @@ jobs:
       - name: README schema counts
         run: node scripts/schema-stats.mjs --check
 
+      # ── Gate 3c — the monitoring stack and the thing it monitors ───────────
+      #
+      # Every failure this catches is a silent one. A renamed scrape job turns
+      # ApplicationDown into a rule that can never fire; a queue missing from
+      # QueueHasNoConsumer is a queue whose worker can exit unnoticed, which is
+      # exactly how the worker process came to be dead in production for months;
+      # an overlay that stops clearing the `observability` profile is a
+      # deployment that quietly runs with no scraper at all.
+      #
+      # None of those break a test or a build. They only show up as monitoring
+      # that was never going to say anything.
+      - name: Observability drift
+        run: npm run check:observability
+
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #
       # A skipped test is a failure here. `describe.skip` and `it.skip` are the

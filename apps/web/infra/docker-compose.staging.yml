@@ -218,6 +218,65 @@ services:
       FACE_SERVICE_ENV: staging
     restart: unless-stopped
 
+  # ── Observability ──────────────────────────────────────────────────────────
+  #
+  # Staging gets the same scraper and the same alert rules as production, on the
+  # same reasoning as everything else in this file: a rule that has never fired
+  # anywhere is a rule nobody has tested. `QueueHasNoConsumer` is a good example
+  # — it names nine queues by hand, and the way to find out that the list has
+  # drifted from src/lib/queue.ts is for it to be wrong here first.
+  #
+  # Ports are one above production's, because both projects may run on the same
+  # VM and a loopback port is a loopback port whichever project claimed it:
+  #
+  #   ssh -L 9091:127.0.0.1:9091 -L 9094:127.0.0.1:9094 azureuser@<vm>
+  #
+  prometheus:
+    profiles: !reset []
+    ports: ['127.0.0.1:9091:9090']
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.staging — run `npm run secrets .env.staging`}
+      # Literal, not interpolated, exactly as web and worker above: this is the
+      # label every alert out of this project carries, and it is the only thing
+      # telling a 3am recipient that the page is staging's.
+      APP_ENV: staging
+      # Staging is not a place to keep a month of history. Two weeks covers the
+      # window a migration rehearsal and a restore drill live in.
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-14d}
+
+  alertmanager:
+    profiles: !reset []
+    ports: ['127.0.0.1:9094:9093']
+    environment:
+      APP_ENV: staging
+      # Into Mailpit, on purpose. Staging holds restored production data and has
+      # none of production's operational attention; what it must not do is mail
+      # a real person at 3am because a rehearsal misbehaved. The alert is still
+      # composed, routed, grouped and delivered for real — it lands in the
+      # Mailpit UI on 127.0.0.1:8026, which is where the delivery is verified.
+      #
+      # Restated rather than left to ../.env.staging for the reason this file
+      # keeps repeating: `environment:` outranks `env_file:`, so a value copied
+      # in from .env.production would otherwise be the one that won.
+      SMTP_HOST: mailpit
+      SMTP_PORT: '1025'
+      SMTP_USER: ''
+      SMTP_PASSWORD: ''
+      # Mailpit offers no STARTTLS. Left at the default `true`, every alert this
+      # project ever raised would fail to deliver — and Alertmanager logs that
+      # failure rather than raising one, which is the quietest possible way for
+      # a monitoring stack to be broken.
+      ALERT_SMTP_REQUIRE_TLS: 'false'
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-staging-alerts@staging.invalid}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-Master Suite (staging) <no-reply@staging.invalid>}
+      # Deliberately blank. A chat webhook configured for production must not be
+      # inherited by a staging project that shares the env file's shape — the
+      # first thing staging would do is post a rehearsal into the on-call
+      # channel.
+      ALERT_WEBHOOK_URL: ''
+    depends_on:
+      mailpit: { condition: service_healthy }
+
 volumes:
   caddydata: {}
   caddyconfig: {}
