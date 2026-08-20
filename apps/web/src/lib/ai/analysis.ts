@@ -11,6 +11,16 @@ import { redact } from './redact';
  */
 const AI_TIMEOUT_MS = 60_000;
 
+/**
+ * Bumped by hand whenever `buildPrompt` or RESPONSE_SCHEMA changes.
+ *
+ * Stored on every AIAnalysis row. `modelId` records which model answered; this
+ * records what it was asked, and without it a summary written six months ago
+ * cannot be explained once the prompt has moved on. Two rows disagreeing is
+ * then a fact about the prompt rather than a mystery about the model.
+ */
+export const ANALYSIS_PROMPT_VERSION = 'call-analysis/2026-08-19';
+
 export interface AnalysisInput {
   /** Whose key to run on. Absent falls back to the deployment key. */
   tenantId?: string;
@@ -29,6 +39,8 @@ export interface AnalysisResult {
   buyingSignals: string[];
   risks: string[];
   nextSteps: string[];
+  /** What the rep committed to doing, as imperatives the CRM can turn into tasks. */
+  actionItems: string[];
   topicsDiscussed: string[];
   topicsMissed: string[];
   sentiment: string;
@@ -48,6 +60,7 @@ const RESPONSE_SCHEMA = {
     buyingSignals: { type: 'array' as const, items: { type: 'string' as const } },
     risks: { type: 'array' as const, items: { type: 'string' as const } },
     nextSteps: { type: 'array' as const, items: { type: 'string' as const } },
+    actionItems: { type: 'array' as const, items: { type: 'string' as const } },
     topicsDiscussed: { type: 'array' as const, items: { type: 'string' as const } },
     topicsMissed: { type: 'array' as const, items: { type: 'string' as const } },
     sentiment: { type: 'string' as const },
@@ -64,6 +77,7 @@ const RESPONSE_SCHEMA = {
     'buyingSignals',
     'risks',
     'nextSteps',
+    'actionItems',
     'topicsDiscussed',
     'topicsMissed',
     'sentiment',
@@ -84,6 +98,7 @@ function buildPrompt(input: AnalysisInput): string {
     '- Mark any finding you are not confident about in the "uncertainItems" array.',
     '- Never present uncertain findings as established facts.',
     '- Keep the summary factual and under 300 words.',
+    '- "actionItems" are only things the REP said they would do, phrased as imperatives. Empty if none.',
     '',
   ];
 

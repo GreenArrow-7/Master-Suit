@@ -11,6 +11,7 @@ import {
   type CallJob,
   type TranscribeJob,
 } from '@/services/shared/callIntelligence';
+import { scorePracticeSession, type PracticeScoreJob } from '@/services/shared/practiceScoring';
 
 /**
  * ── Concurrency, and why it is now two numbers ──────────────────────────────
@@ -90,6 +91,8 @@ async function dispatch(job: { name: string; data: unknown }) {
       return analyseCall(job.data as CallJob);
     case 'audit':
       return runCallAudit(job.data as AuditJob);
+    case 'practice-score':
+      return scorePracticeSession(job.data as PracticeScoreJob);
     default:
       logger.warn({ jobName: job.name }, 'unknown ai job');
       return undefined;

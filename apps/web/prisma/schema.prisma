@@ -452,6 +452,7 @@ model Tenant {
   cannedResponses            CannedResponse[]
   clientProfiles             ClientProfile[]
   clientRequirements         ClientRequirement[]
+  coachingNotes              CoachingNote[]
   commissions                Commission[]
   commissionSlabs            CommissionSlab[]
   commissionSlabBands        CommissionSlabBand[]
@@ -516,6 +517,8 @@ model Tenant {
   nominations                Nomination[]
   nominationVotes            NominationVote[]
   notifications              Notification[]
+  objections                 Objection[]
+  objectionMatches           ObjectionMatch[]
   opportunities              Opportunity[]
   opportunityCollaborators   OpportunityCollaborator[]
   opportunityProducts        OpportunityProduct[]
@@ -528,6 +531,8 @@ model Tenant {
   pipelineStages             PipelineStage[]
   posts                      Post[]
   postReactions              PostReaction[]
+  practiceSessions           PracticeSession[]
+  practiceScores             PracticeScore[]
   products                   Product[]
   projects                   Project[]
   projectFavourites          ProjectFavourite[]
@@ -803,6 +808,10 @@ model OrganizationSetting {
   /// flagged for a human. Not blocked: a genuine visit from a passenger seat on
   /// a motorway looks exactly like this.
   visitMaxTravelKph     Int      @default(160)
+  /// Roleplay sessions one rep may start per day. A practice turn is a billed
+  /// model call, so the cap is the workspace's spend control, not a difficulty
+  /// setting. 0 turns practice off.
+  practiceDailyCap      Int      @default(10)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -994,6 +1003,8 @@ model User {
   notifications       Notification[]
   targets             EmployeeTarget[]
   calls               Call[]                @relation("CallerUser")
+  practiceSessions    PracticeSession[]     @relation("PracticeUser")
+  coachingNotes       CoachingNote[]        @relation("CoachingAuthor")
   workspaceMembership WorkspaceMembership?
 
   @@unique([tenantId, email])
@@ -5042,6 +5053,9 @@ model Call {
   analysis   AIAnalysis?
   callAudits CallAudit[]
 
+  objectionMatches ObjectionMatch[]
+  coachingNotes    CoachingNote[]
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, providerName, externalCallId])
@@ -5098,6 +5112,10 @@ model Transcript {
   tenantId   String
   callId     String   @unique
   content    String
+  /// Speaker-attributed segments, when the provider diarises:
+  /// `[{ speaker: "0", text: "...", startSec: 1.2 }]`. Empty when it does not —
+  /// the flat `content` is always authoritative, this is an extra view of it.
+  segments   Json     @default("[]")
   language   String   @default("en")
   provider   String?
   confidence Float?
@@ -5124,6 +5142,17 @@ model AIAnalysis {
   buyingSignals   Json           @default("[]")
   risks           Json           @default("[]")
   nextSteps       Json           @default("[]")
+  /// Concrete things the rep committed to doing, distinct from `commitments`
+  /// (what either side said) and `nextSteps` (the recommended play).
+  actionItems     Json           @default("[]")
+  /// Share of speech that was the rep, 0-1, computed from the transcript rather
+  /// than asked of the model — a ratio a model guesses at is not a measurement.
+  /// Null when the transcript carries no speaker attribution at all.
+  talkRatio       Float?
+  /// Which prompt produced this row. `modelId` says which model answered; this
+  /// says what it was asked, so a summary can be explained after the prompt has
+  /// moved on. Bumped by hand in src/lib/ai/analysis.ts.
+  promptVersion   String?
   topicsDiscussed Json           @default("[]")
   topicsMissed    Json           @default("[]")
   sentiment       String?
@@ -7239,4 +7268,170 @@ model PlatformSetting {
   value     String
   updatedBy String?
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATION INTELLIGENCE — objection playbook, roleplay practice, coaching
+//
+// Built on the call-intelligence tables that already exist: Recording holds the
+// audio, Transcript the text, AIAnalysis the structured insight and CallAudit
+// the scorecard result. Nothing below duplicates those — it adds the three
+// things they had no home for: what the workspace considers an objection, a
+// rep practising against one, and a manager writing to the rep about a call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A workspace's objection playbook entry.
+///
+/// `triggerPhrases` is what the customer says; `recommendedResponses` is what
+/// the workspace has decided a good answer sounds like. Both are the tenant's
+/// own words, which is why matching against them is deterministic (see
+/// src/lib/ai/callMetrics.ts) rather than asked of a model: an objection the
+/// workspace wrote down should be found the same way every time, including on
+/// a deployment with no model key at all.
+model Objection {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  name                 String
+  description          String?
+  tags                 String[]  @default([])
+  triggerPhrases       String[]  @default([])
+  recommendedResponses String[]  @default([])
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  updatedById          String?
+  deletedAt            DateTime?
+
+  matches ObjectionMatch[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+/// One playbook entry found in one call's transcript.
+///
+/// Rewritten wholesale each time the call is analysed, so a playbook edit
+/// followed by a re-analysis produces the current answer rather than a union of
+/// every answer the playbook has ever given.
+model ObjectionMatch {
+  id          String   @id @default(cuid())
+  tenantId    String
+  callId      String
+  objectionId String
+  /// The trigger phrase that fired, and the line it fired on. Kept so a manager
+  /// can see *why* the call was flagged rather than trusting the label.
+  phrase      String
+  snippet     String
+  /// Whether the rep's own turns after that line drew on the recommended
+  /// response. A heuristic — see the note on `addressed` in callMetrics.ts.
+  addressed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  call      Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  objection Objection @relation(fields: [objectionId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, callId, objectionId, phrase])
+  @@index([tenantId, callId])
+  @@index([tenantId, objectionId])
+}
+
+enum PracticeScenario {
+  OPENER
+  DISCOVERY
+  OBJECTION
+  CLOSE
+}
+
+enum PracticeStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+/// A rep's text-based mock call against an AI prospect.
+///
+/// `turns` is the whole conversation as an ordered array of
+/// `{ role: "REP" | "PROSPECT", text, at }`. A row per turn would buy queries
+/// nobody runs — a session is only ever read whole, to replay it or to score it.
+model PracticeSession {
+  id          String           @id @default(cuid())
+  tenantId    String
+  userId      String
+  scenario    PracticeScenario
+  /// Set when the scenario is OBJECTION: which playbook entry to rehearse.
+  objectionId String?
+  /// The persona and situation handed to the model, frozen at start so a later
+  /// edit to the brief cannot change what an old session is scored against.
+  brief       String
+  turns       Json             @default("[]")
+  status      PracticeStatus   @default(IN_PROGRESS)
+  startedAt   DateTime         @default(now())
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  score PracticeScore?
+
+  user User @relation("PracticeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, startedAt(sort: Desc)])
+  @@index([tenantId, scenario, startedAt(sort: Desc)])
+}
+
+/// The rubric result for a finished practice session. One per session.
+model PracticeScore {
+  id           String         @id @default(cuid())
+  tenantId     String
+  sessionId    String         @unique
+  status       AnalysisStatus @default(PENDING)
+  overallScore Float?
+  maxScore     Float?
+  /// `[{ label, score, maxScore, comment }]` — the same shape CallAudit uses, so
+  /// the score table renders both.
+  rubricScores Json           @default("[]")
+  strengths    Json           @default("[]")
+  improvements Json           @default("[]")
+  modelId      String?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
+
+/// A manager's written coaching on a call.
+///
+/// Deliberately not a comment on the AIAnalysis row: coaching is about the
+/// conversation, and it must survive a re-analysis that replaces every field of
+/// the model's verdict.
+model CoachingNote {
+  id         String    @id @default(cuid())
+  tenantId   String
+  callId     String
+  authorId   String
+  body       String
+  /// Set when the rep marks the note as acted on. Null is the open state.
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  call   Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  author User @relation("CoachingAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, callId, createdAt(sort: Desc)])
+  @@index([tenantId, authorId])
 }

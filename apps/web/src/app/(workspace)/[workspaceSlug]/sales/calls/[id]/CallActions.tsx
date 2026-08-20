@@ -9,9 +9,17 @@ interface Props {
   callStatus: string;
   hasTranscript: boolean;
   hasAnalysis: boolean;
+  hasRecording: boolean;
 }
 
-export default function CallActions({ callId, hasConsent, callStatus, hasTranscript, hasAnalysis }: Props) {
+export default function CallActions({
+  callId,
+  hasConsent,
+  callStatus,
+  hasTranscript,
+  hasAnalysis,
+  hasRecording,
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -113,6 +121,28 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     setBusy('');
   }
 
+  async function uploadRecording(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy('recording');
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      // Multipart PUT: the server scans, stores and queues transcription itself.
+      const res = await fetch(`/api/v1/calls/${callId}/recording/media`, { method: 'PUT', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? `Upload failed (${res.status})`);
+      }
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+    setBusy('');
+  }
+
   async function createFollowUp(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy('followup');
@@ -205,6 +235,28 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             </button>
           </div>
         </form>
+      )}
+
+      {/* Recording upload — consent gate mirrors the server's */}
+      {hasConsent && (
+        <label
+          className="lf-btn lf-btn--secondary"
+          style={{ marginBottom: 8, display: 'block', textAlign: 'center', cursor: 'pointer' }}
+        >
+          {busy === 'recording' ? 'Uploading…' : hasRecording ? 'Replace Recording' : 'Upload Recording'}
+          <input
+            type="file"
+            accept="audio/*,video/*"
+            style={{ display: 'none' }}
+            onChange={uploadRecording}
+            disabled={!!busy}
+          />
+        </label>
+      )}
+      {!hasConsent && !isActive && (
+        <p className="lf-hint" style={{ marginBottom: 8 }}>
+          Recordings and transcripts need recorded consent first.
+        </p>
       )}
 
       {/* Transcript upload */}

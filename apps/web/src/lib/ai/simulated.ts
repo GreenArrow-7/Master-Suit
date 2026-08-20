@@ -1,5 +1,6 @@
 import type { AnalysisInput, AnalysisResult } from './analysis';
 import type { AuditInput, AuditResult, CriterionScore } from './audit';
+import { parseTranscript, type TranscriptLine as Line } from './callMetrics';
 
 /**
  * Deterministic keyword-driven stand-ins for the Gemini calls, used when no
@@ -43,24 +44,6 @@ const SIGNALS = {
   negative: ['no', 'not', "can't", 'cannot', 'problem', 'issue', 'unhappy', 'bad', 'expensive'],
 } as const;
 
-interface Line {
-  speaker: string;
-  text: string;
-  lower: string;
-}
-
-function parseLines(transcript: string): Line[] {
-  return transcript
-    .split('\n')
-    .map((raw) => raw.trim())
-    .filter(Boolean)
-    .map((raw) => {
-      const match = raw.match(/^(?:\[[\d:.]+\]\s*)?([A-Za-z ][A-Za-z .-]{0,30}):\s*(.+)$/);
-      if (match) return { speaker: match[1].trim(), text: match[2], lower: match[2].toLowerCase() };
-      return { speaker: '', text: raw, lower: raw.toLowerCase() };
-    });
-}
-
 const pick = (lines: Line[], words: readonly string[], limit = 4): string[] => {
   const hits: string[] = [];
   for (const line of lines) {
@@ -76,7 +59,7 @@ const count = (lines: Line[], words: readonly string[]): number =>
   lines.reduce((total, line) => total + (words.some((w) => line.lower.includes(w)) ? 1 : 0), 0);
 
 export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
-  const lines = parseLines(input.transcript);
+  const lines = parseTranscript(input.transcript);
   const objections = pick(lines, SIGNALS.objection);
   const commitments = pick(lines, SIGNALS.commitment);
   const buyingSignals = pick(lines, SIGNALS.buying);
@@ -113,6 +96,13 @@ export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
     buyingSignals,
     risks: objections.slice(0, 2),
     nextSteps: commitments.length ? commitments : ['Follow up with the client on the discussed points.'],
+    // The rep's own commitments, not the client's: a simulated action item that
+    // puts the client's words in the rep's task list is worse than an empty list.
+    actionItems: pick(
+      lines.filter((l) => l.side !== 'OTHER'),
+      SIGNALS.commitment,
+      3,
+    ),
     topicsDiscussed,
     topicsMissed,
     sentiment,
@@ -137,7 +127,7 @@ const CRITERION_SIGNALS: [pattern: RegExp, words: readonly string[]][] = [
 ];
 
 export function simulateAudit(input: AuditInput): AuditResult {
-  const lines = parseLines(input.transcript);
+  const lines = parseTranscript(input.transcript);
 
   const criteriaScores: CriterionScore[] = input.criteria.map((criterion) => {
     const signal = CRITERION_SIGNALS.find(([pattern]) => pattern.test(criterion.label));

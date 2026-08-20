@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { NotFound, Conflict } from '@/lib/errors';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
-import { claimAnalysis, analyseAndAudit } from '@/services/shared/callIntelligence';
+import { ANALYSIS_STALE_MS, analyseAndAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -16,21 +16,31 @@ const params = z.object({ id: z.string().cuid() });
  * gave up. The work now runs on the `ai` queue with backoff and a recorded
  * failure message, and this returns the row so the caller can poll GET.
  *
- * The row is still claimed *here* rather than in the worker, so a second press
- * of the button is refused immediately with a 409 instead of silently queueing a
- * second billed model call.
+ * The claim lives in `analyseCall`, and only there. This route used to claim
+ * the row itself (set PROCESSING) before enqueueing, which read as a fast 409
+ * on a double click — but the worker then ran `claimAnalysis` a second time,
+ * found the row already PROCESSING, and *skipped the work it was queued for*.
+ * Every explicit re-run stranded the row in PROCESSING forever. The route now
+ * only refuses when a run is visibly in flight; duplicate submissions converge
+ * in the claim (and in the payload-hashed jobId), not here.
  */
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
-    const [call, transcript] = await Promise.all([
+    const [call, transcript, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.transcript.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
+      prisma.aIAnalysis.findFirst({
+        where: { callId: params.id, tenantId: ctx.tenantId },
+        select: { status: true, updatedAt: true },
+      }),
     ]);
 
     if (!call) throw NotFound('Call');
     if (!transcript) throw NotFound('Transcript — upload a transcript before requesting analysis');
-    if (!(await claimAnalysis(ctx.tenantId, params.id))) {
+    // Mirrors the claim's staleness rule: a live run is refused, an abandoned
+    // one (dead process) is allowed through so the button can repair it.
+    if (existing?.status === 'PROCESSING' && existing.updatedAt.getTime() > Date.now() - ANALYSIS_STALE_MS) {
       throw Conflict('Analysis is already in progress for this call.');
     }
 
@@ -38,8 +48,8 @@ export const POST = route(
       await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
     } else {
       // No worker is draining the queue (dev/demo box). Run the chain in the
-      // background of this request; the claim above still guards double-runs
-      // and the row records FAILED on error, exactly as the worker path does.
+      // background of this request; analyseCall claims the row before any paid
+      // work and records FAILED on error, exactly as the worker path does.
       const tenantId = ctx.tenantId;
       const callId = params.id;
       void analyseAndAudit(tenantId, callId).catch((err) =>
