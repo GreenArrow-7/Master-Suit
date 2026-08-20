@@ -289,24 +289,42 @@ BACKUP_PASSPHRASE='<from your secret store>' ../scripts/backup.sh /var/backups/m
 az storage blob upload-batch -d master-suite-backups -s /var/backups/master-suite/<stamp>
 ```
 
-In cron, at 02:30 — an hour before the retention sweep at 03:00, so a backup
-always precedes the deletions you would need it to undo:
-
-```cron
-30 2 * * * cd /opt/master-saas/apps/web/infra && BACKUP_PASSPHRASE=... ../scripts/backup.sh /var/backups/master-suite >> /var/log/master-suite-backup.log 2>&1
-```
-
-Then prove it, weekly, against the backup the server actually took:
+On a schedule — installed rather than documented, because a cron line in a
+runbook is a suggestion somebody once wrote down:
 
 ```bash
-BACKUP_PASSPHRASE='...' ../scripts/restore-verify.sh /var/backups/master-suite/<stamp>
+sudo /opt/master-saas/apps/web/scripts/install-backup-schedule.sh /var/backups/master-suite
+$EDITOR /etc/master-suite/backup.env      # set BACKUP_PASSPHRASE
+systemctl start master-suite-backup.service   # take one now and watch it
 ```
 
-That restores into a scratch database, drops it again, and reconciles row
-counts, the migration ledger and the object inventory against the manifest. It
-never touches the live database. An untested backup is a hope, not a control —
-see `docs/BACKUP-RECOVERY.md` for what each check catches and for the full
-restore procedure.
+Three timers, all `Persistent=true` so a VM that was off during the window runs
+at the next boot rather than skipping the day in silence:
+
+| Timer | When | What |
+| --- | --- | --- |
+| `master-suite-backup` | 02:30 daily | database + bucket, encryption **required** |
+| `master-suite-restore-verify` | Sun 04:00 | restores `latest` into a scratch database and reconciles it |
+| `master-suite-backup-status` | 09:00 daily | fails if the newest complete backup is over 48h old |
+
+02:30 is half an hour before the maintenance worker's retention sweep at 03:00,
+so a backup always precedes the deletions you would need it to undo. Retention
+is 30 days, pruned by `backup.sh` after a successful run, with a floor of three
+backups kept whatever their age — an age-only rule would delete everything you
+had left on the day you noticed the schedule had broken.
+
+The third timer is there because the first two cannot report the failure that
+matters most. A backup that *stops firing* — masked unit, disabled timer, host
+off, clock moved — produces no failed service, because no service ran. So after
+this, one command answers "are we backed up?":
+
+```bash
+systemctl --failed
+```
+
+An untested backup is a hope, not a control — see `docs/BACKUP-RECOVERY.md` for
+what each check catches, for the retention rules, and for the full restore
+procedure.
 
 ## Updating
 

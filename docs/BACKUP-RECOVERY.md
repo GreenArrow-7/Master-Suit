@@ -48,14 +48,84 @@ az storage blob upload-batch -d master-suite-backups -s /var/backups/master-suit
 
 ### Schedule
 
-```cron
-# 02:30 UTC daily, an hour before the retention sweep at 03:00 so a backup
-# always precedes the deletions it would need to be restored from.
-30 2 * * * cd /opt/master-saas/apps/web/infra && BACKUP_PASSPHRASE=... ../scripts/backup.sh /var/backups/master-suite >> /var/log/master-suite-backup.log 2>&1
+Installed, not documented:
+
+```bash
+sudo apps/web/scripts/install-backup-schedule.sh /var/backups/master-suite
 ```
 
-Retention: 30 days, enforced by the object-storage lifecycle policy on the
-destination container rather than by deleting locally.
+That writes six systemd units and starts three timers:
+
+| Timer | When | What it does |
+| --- | --- | --- |
+| `master-suite-backup` | 02:30 daily | `backup.sh`, with encryption required |
+| `master-suite-restore-verify` | Sun 04:00 | `restore-verify.sh` against `latest` |
+| `master-suite-backup-status` | 09:00 daily | fails if the newest backup is stale |
+
+02:30 is half an hour before the maintenance worker's retention sweep at 03:00,
+so a backup always precedes the deletions you would need it to undo. Sunday
+04:00 is after both.
+
+The passphrase and the retention settings live in `/etc/master-suite/backup.env`
+(mode 600, root-owned), not in the unit files — unit files are world-readable
+and `systemctl cat` prints them.
+
+**The scheduled run refuses to write an unencrypted backup.** The unit sets
+`BACKUP_REQUIRE_ENCRYPTION=1`, and `backup.sh` checks it in the preflight rather
+than at the encryption step: refusing after the dump and mirror have run would
+waste the hour *and* leave a plaintext copy of every customer's record sitting in
+the destination directory, which is the outcome the flag exists to prevent.
+
+#### Why systemd and not the cron line that used to be here
+
+Three properties cron does not have, each matching a way a backup schedule
+silently stops working:
+
+- `Persistent=true` — a VM that was off at 02:30 runs the backup at the next
+  boot. Cron skips the day and says nothing.
+- `systemctl --failed` — a failed run is visible in one command and stays
+  visible. Cron mails root, on a host with no MTA.
+- `systemctl list-timers` — "when did this last run, when does it next run" is a
+  question with an answer.
+
+#### Retention
+
+30 days, enforced by `backup.sh` itself after a successful run, with two guards
+because a prune is the only step here that destroys data:
+
+- It runs only once a manifest has been written, so a failed backup can never be
+  the thing that clears the older ones.
+- `BACKUP_KEEP_MIN` (default 3) backups survive whatever their age. If the
+  schedule broke forty days ago, an age-only rule would delete every backup in
+  existence on the day somebody noticed.
+
+Only directories matching the `20260820T023000Z` stamp pattern are considered —
+a partial transfer, a mount point or an operator's notes directory in the same
+root is left alone. Set `BACKUP_RETENTION_DAYS` in `/etc/master-suite/backup.env`.
+
+If you also ship backups to object storage, keep a lifecycle policy on that
+container as well; this prunes the local copies only.
+
+#### Noticing that backups have stopped
+
+A backup job that stops running is silent by construction — nothing errors, and
+the directory that was there yesterday is still there, just not getting any
+newer. The usual way it is discovered is during a restore.
+
+`scripts/backup-status.sh` asks the one question the backup unit cannot answer
+about itself: is there a *complete* backup on disk newer than
+`BACKUP_MAX_AGE_HOURS` (default 48)? A failing run shows as a failed service; a
+timer that never fired at all — masked, disabled, host off, clock moved —
+produces no failed service, because no service ran.
+
+```bash
+systemctl --failed                                  # on the VM
+apps/web/scripts/backup-status.sh /var/backups/master-suite   # by hand
+```
+
+It also refuses to count a run with no manifest, or a manifest with no dump
+beside it, as the newest backup — a half-finished run must not hide the fact
+that the last complete one is older.
 
 ---
 
@@ -165,3 +235,31 @@ written against MinIO's documented client and has not been run against a live
 bucket. Run one full `backup.sh` → `restore-verify.sh` cycle on the deployment
 before relying on it, and check that the object count in `manifest.txt` is not
 zero — a silently empty mirror is the failure mode to look for.
+
+### The schedule, and what has been proved about it
+
+Verified on 2026-08-20, off the deployment:
+
+- **Retention.** Against forged directory sets: eight runs spanning 60 days
+  pruned to five, the 29-day-old one kept and the 31/45/60-day ones removed;
+  non-matching directories untouched. With every backup older than the window,
+  `BACKUP_KEEP_MIN` held the newest three rather than deleting all five.
+- **Encryption requirement.** `BACKUP_REQUIRE_ENCRYPTION=1` with no passphrase
+  exits 1 in the preflight, before the destination directory is created.
+- **Freshness check.** All seven branches exercised — missing root, empty root,
+  a run with no manifest, a manifest with no dump, healthy, stale past the
+  threshold, and stale-but-verified.
+- **Installer.** Run against a temporary unit directory: six units written with
+  every placeholder substituted, `/etc/master-suite` at 700, the env file at 600,
+  the backup root at 750, and a re-run preserving an existing passphrase.
+  `systemd-analyze verify` passes on all six units.
+
+**What has not been proved:** `systemctl enable --now` and an actual timer
+firing. The verification host has no running systemd (`systemctl
+is-system-running` reports `offline`), so that step was exercised with a stub.
+On the deployment, confirm it with:
+
+```bash
+systemctl list-timers 'master-suite-*'
+systemctl start master-suite-backup.service && journalctl -u master-suite-backup -f
+```

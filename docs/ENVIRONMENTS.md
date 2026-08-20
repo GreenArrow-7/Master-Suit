@@ -91,7 +91,12 @@ is how data gets lost.
 
 Production runs automated `pg_dump` (or the platform's native snapshotting)
 on a schedule with **30-day retention**, plus WAL archiving where the
-infrastructure offers point-in-time recovery. The restore drill:
+infrastructure offers point-in-time recovery. On the single-VM deployment that
+schedule is three systemd timers installed by
+`apps/web/scripts/install-backup-schedule.sh` — nightly backup with encryption
+required, weekly restore verification, and a daily freshness check that fails
+when the newest complete backup is stale. `docs/BACKUP-RECOVERY.md` has the
+detail. The restore drill:
 
 1. Restore the snapshot to a **new** database instance (never over the live one).
 2. `prisma migrate status` against it — the ledger must be clean.

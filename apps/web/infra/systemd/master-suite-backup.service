@@ -1,0 +1,37 @@
+# Takes the nightly backup. Started by master-suite-backup.timer.
+#
+# Installed by scripts/install-backup-schedule.sh, which substitutes the paths
+# below. Read that script before editing these by hand — it rewrites them.
+[Unit]
+Description=Master Suite backup (database + object store)
+Documentation=file://__REPO_DIR__/docs/DEPLOY-AZURE.md
+# The stack has to be up: backup.sh reaches Postgres and MinIO through
+# `docker compose exec`, and works out the compose network from a running
+# container. A backup attempted while Docker is starting fails with a confusing
+# error rather than a useful one.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# infra/, because every compose invocation in these scripts uses relative paths
+# to ../.env.production and the overlay files.
+WorkingDirectory=__APP_DIR__/infra
+# Mode 600, root-owned, holding BACKUP_PASSPHRASE. Kept out of the unit file
+# because unit files are world-readable and `systemctl cat` prints them.
+EnvironmentFile=__CONFIG__
+# The whole point of the scheduled run: it is meant to be shipped off this
+# machine, so it must not be written in plaintext. backup.sh refuses rather than
+# falling back to an unencrypted dump.
+Environment=BACKUP_REQUIRE_ENCRYPTION=1
+ExecStart=__APP_DIR__/scripts/backup.sh __BACKUP_ROOT__
+# A backup is IO-heavy and runs while the application is serving. Deprioritised
+# so a slow disk delays the backup rather than the customer.
+Nice=10
+IOSchedulingClass=idle
+# Long enough for a database that has grown, short enough that a wedged run does
+# not still be holding the lock when tomorrow's fires.
+TimeoutStartSec=4h
+
+[Install]
+WantedBy=multi-user.target

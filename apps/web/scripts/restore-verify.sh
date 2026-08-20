@@ -141,6 +141,10 @@ done < <(${DC} exec -T postgres psql -U "${PG_USER}" -d "${CHECK_DB}" -qtA \
 
 echo
 if [ "${FAILURES}" -eq 0 ]; then
+  # A marker beside the backup it proved, so scripts/backup-status.sh can report
+  # how long ago the restore path was last exercised. Written only on success —
+  # a failed verification must not leave evidence that one happened.
+  : > "${SRC}/.verified-at" 2>/dev/null || true
   say "RESTORE VERIFIED — ${SRC}"
   exit 0
 fi

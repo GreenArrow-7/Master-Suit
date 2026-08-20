@@ -1,0 +1,27 @@
+# Proves the newest backup actually restores. Weekly.
+#
+# An untested backup is a hope, not a control — and "test restoration quarterly"
+# written in a runbook had never once been done, which is the normal fate of a
+# drill that costs somebody an afternoon.
+#
+# Safe to run against production at any time: restore-verify.sh works in a
+# scratch `<db>_restorecheck` database that it creates and drops, and never
+# touches the live one.
+[Unit]
+Description=Master Suite restore verification
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__APP_DIR__/infra
+EnvironmentFile=__CONFIG__
+# `latest` is the symlink backup.sh maintains, so this always verifies the
+# backup the server most recently took rather than one somebody picked.
+ExecStart=__APP_DIR__/scripts/restore-verify.sh __BACKUP_ROOT__/latest
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=4h
+
+[Install]
+WantedBy=multi-user.target

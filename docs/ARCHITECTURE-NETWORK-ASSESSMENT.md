@@ -24,6 +24,26 @@ Python.
 > | **W-4 / H-2** — base compose `trust` auth and `0.0.0.0` publishing; prod overlay unbootable | **Fixed.** Base compose is scram-sha-256 with loopback-only bindings; every `DATABASE_URL` across all four files now names the NOBYPASSRLS application role. |
 > | **W-7 / H-4** — retention unscheduled, orphaning objects | **Fixed**, and it was worse than reported: the sweep read RLS-forced tables with no tenant context, so it deleted *nothing* and returned zeros. It now runs under `withPlatformTx`, deletes the object before the row, batches to exhaustion, and purges spent sessions (**H-5**). A daily `maintenance` worker runs it. Covered by `tests/tenant/retention.spec.ts`. |
 >
+> Eleven P1 findings have since been fixed on the same branch:
+>
+> | Finding | Status |
+> | --- | --- |
+> | **P1-1** — no metrics, traces or error reporting | **Fixed.** `GET /api/metrics` serves Prometheus exposition, token-gated and 404 without one. Queue depth, backlog age and *consumer count* are read from Redis at scrape time — a counter kept by the enqueue path looks healthy in exactly the dead-worker failure. `infra/prometheus-alerts.yml` has 8 rules, each matching a failure this codebase has had. Verified by starting and stopping a worker and watching `masterapp_queue_workers` go 0 → 1 → 0. |
+> | **P1-2** — AI spend uncapped and unattributed | **Fixed.** Tokens metered per workspace into `WorkspaceUsage` under `ai_tokens:YYYY-MM`; a `PlanLimit` ceiling applies to the shared deployment key only, since a workspace on its own Gemini key is already paying its own bill. |
+> | **P1-3** — nothing enforced tenant isolation or schema drift in CI | **Fixed**, and it found a real defect on its first run: `HrOvertimeRequest` carried a policy with no `FORCE` and no `app.platform_admin` branch — `docs/KNOWN-LIMITATIONS.md` had printed that defective SQL as the *correct* fix. Two CI gates now: `prisma migrate diff --exit-code` and `scripts/check-rls.mjs` (175 tables, catalog-driven). |
+> | **P1-4** — backups automated in prose only | **Fixed.** `scripts/install-backup-schedule.sh` installs three systemd timers; 30-day retention is pruned by `backup.sh` with a keep-three floor; the scheduled run refuses to write unencrypted; `scripts/backup-status.sh` fails when the newest complete backup goes stale, which is the only way a timer that stopped firing is visible at all. |
+> | **P1-5** — no staging environment exists | **Fixed.** `infra/docker-compose.staging.yml`, plus `scripts/check-staging-first.mjs` in the production migrate service, which refuses any pending migration that has not already finished in staging *with the same checksum*. See W-14. |
+> | **P1-6** — password reuse window and max age unenforced | **Fixed.** `PasswordHistory` (24 entries, argon2-verified) and `passwordChangedAt` expiry. |
+> | **P1-7** — field-level-security tests absent | **Fixed.** 22 specs, and writing them surfaced two live defects: `FIELD_MAP` in `filterTree.ts` registers only `LEAD`, so `filter` 400s on every other list route for every caller. |
+> | **P1-8** — face-service token compared with `!=` | **Fixed.** `compare_digest`, and the service refuses to start unauthenticated outside `development`. |
+> | **P1-9** — `RESOURCE_PERMISSION` was `Partial` | **Fixed.** Total over the enum, so an undeclared resource is a compile error. The same audit found `ACTION_PERMISSION` `Partial` on a **write** route, where 19 undeclared actions reached only the floor `employee:VIEW` gate. |
+> | **P1-13** — `/api/v1/notifications` had no self-service scope | **Fixed.** |
+> | **W-3 (backup half)** | See P1-4. The single point of failure itself stands as assessed. |
+>
+> **P1-10 (lead scoring) and P1-11 (billing) are not fixed and are not oversights** — each
+> has two legitimate opposite answers with very different scope, and both are the product
+> owner's call rather than an implementer's. See the roadmap at the end.
+>
 > Everything else in this document stands as assessed.
 
 ---
@@ -1856,6 +1876,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** Any host failure is a total outage with no failover. `pg_dump` is the only recovery, with no PITR, and the MinIO volume is not in the documented backup command at all — recordings and HR documents have **no backup**.
 - **Severity** 🟠 High
 - **Recommendation** Move Postgres to a managed instance (changes two connection strings), move object storage off the VM, and add the object store to the backup procedure. Test one restore.
+- **Partly fixed (2026-08-20)** The backup half. `scripts/backup.sh` takes the database *and* mirrors the bucket, with a manifest; `scripts/restore-verify.sh` restores into a scratch database and reconciles against it; `scripts/install-backup-schedule.sh` installs three systemd timers (nightly backup with encryption **required**, weekly restore verification, daily freshness check), and 30-day retention is pruned by the script rather than promised by a document. The single point of failure itself stands as assessed: it is still one VM, still with no failover and no PITR.
 
 ### W-4 · Configuration safety depends on file layering order
 

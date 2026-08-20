@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#
+# Fails when the backups have stopped arriving.
+#
+# ── The failure this exists for ─────────────────────────────────────────────
+#
+# A backup job that stops running is silent by construction. Nothing errors,
+# nothing pages, the directory that was there yesterday is still there — it is
+# just not getting any newer. The usual way this is discovered is during a
+# restore, which is the one moment it cannot be fixed.
+#
+# `backup.sh` failing is covered by the systemd unit's own status, and by the
+# OnFailure= handler in infra/systemd. This covers the case that status cannot:
+# the timer never fired at all. A masked or disabled unit, a host that was off,
+# a clock that moved — none of those produce a failed service, because no
+# service ran.
+#
+# So this asks the only question that cannot be answered by the job itself: is
+# there a complete backup on disk that is newer than BACKUP_MAX_AGE_HOURS?
+#
+#   scripts/backup-status.sh [/var/backups/master-suite]
+#
+# Exit 0 healthy · 1 stale, missing or incomplete. Run by
+# master-suite-backup-status.timer daily, so `systemctl --failed` on the VM
+# answers "are we backed up?" without anybody reading a log.
+
+set -Eeuo pipefail
+
+ROOT="${1:-/var/backups/master-suite}"
+MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-48}"
+
+say()  { printf '[backup-status] %s\n' "$1"; }
+fail() { printf '[backup-status] FAIL  %s\n' "$1" >&2; exit 1; }
+
+[ -d "${ROOT}" ] || fail "${ROOT} does not exist. Backups have never run here, or the disk is not mounted."
+
+# Same pattern backup.sh writes and prunes by, so a partial transfer or an
+# operator's notes directory cannot be mistaken for a backup.
+mapfile -t ALL < <(find "${ROOT}" -mindepth 1 -maxdepth 1 -type d \
+  -regextype posix-extended -regex '.*/[0-9]{8}T[0-9]{6}Z$' -printf '%f\n' | sort)
+
+[ "${#ALL[@]}" -gt 0 ] || fail "no backup directories in ${ROOT}."
+
+NEWEST="${ALL[-1]}"
+NEWEST_AT="$(date -u -d "${NEWEST:0:8} ${NEWEST:9:2}:${NEWEST:11:2}:${NEWEST:13:2}" +%s)"
+AGE_HOURS=$(( ( $(date -u +%s) - NEWEST_AT ) / 3600 ))
+
+# A directory with no manifest is a run that died partway through. Counting it
+# as the newest backup would hide the fact that the last *complete* one is
+# older — which is exactly the number this is here to report.
+[ -s "${ROOT}/${NEWEST}/manifest.txt" ] ||
+  fail "the newest run ${NEWEST} has no manifest — it did not finish. Check journalctl -u master-suite-backup."
+
+# Encrypted or not, one of these two must be present, or the manifest is
+# describing a backup whose payload is gone.
+[ -s "${ROOT}/${NEWEST}/database.dump" ] || [ -s "${ROOT}/${NEWEST}/database.dump.gpg" ] ||
+  fail "the newest run ${NEWEST} has a manifest but no database dump."
+
+say "${#ALL[@]} backup(s) retained, newest ${NEWEST} (${AGE_HOURS}h old)"
+
+if [ "${AGE_HOURS}" -gt "${MAX_AGE_HOURS}" ]; then
+  fail "the newest backup is ${AGE_HOURS}h old, over the ${MAX_AGE_HOURS}h threshold.
+        The schedule has stopped: systemctl status master-suite-backup.timer"
+fi
+
+# Reported, not enforced. Whether a verify has run recently is a judgement about
+# how much the restore path is trusted, and a hard failure here would make the
+# status check red for a reason that is not "we have no backup".
+LATEST_VERIFY="$(find "${ROOT}" -maxdepth 2 -name '.verified-at' -printf '%T@\n' 2>/dev/null | sort -n | tail -1)"
+if [ -n "${LATEST_VERIFY}" ]; then
+  say "last restore verification: $(( ( $(date -u +%s) - ${LATEST_VERIFY%.*} ) / 86400 ))d ago"
+else
+  say "note: no restore has been verified yet — scripts/restore-verify.sh, or the weekly timer."
+fi
