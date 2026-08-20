@@ -23,6 +23,7 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword, type PasswordPolicy } from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
+import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -194,13 +195,19 @@ export async function changeOwnPassword(ctx: Ctx, currentPassword: string, newPa
     throw Forbidden('That is not your current password.');
   }
   if (currentPassword === newPassword) throw Conflict('The new password must be different from the current one.');
-  assertPolicy(newPassword, await passwordPolicy(ctx.tenantId));
+  const policy = await passwordPolicy(ctx.tenantId);
+  assertPolicy(newPassword, policy);
+  // Before the write, so a refused password never becomes the credential. The
+  // check above only catches reusing the *current* one; this is the workspace's
+  // `reuseWindow`, which nothing read until now.
+  await assertNotReused(identity.id, newPassword, policy);
 
   const passwordHash = await hashPassword(newPassword);
   await prisma.platformUser.update({
     where: { id: identity.id },
     data: { passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null },
   });
+  await recordPreviousPassword(identity.id, identity.passwordHash);
 
   await revokeAllSessions(ctx.tenantId, ctx.actor.id, undefined, 'PASSWORD_CHANGED');
   await audit(ctx, {
@@ -238,10 +245,28 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   assertPolicy(password, await passwordPolicy(ctx.tenantId));
   const passwordHash = await hashPassword(password);
 
+  /**
+   * The old hash is *recorded* but the reuse window is not *enforced* here.
+   *
+   * An administrator resetting an account must always succeed: refusing because
+   * the generated string collided with history — or because an administrator
+   * typed one the user had before — turns a recovery path into a lockout. The
+   * row is still filed, so the user cannot then set their password back to the
+   * temporary one they were just given.
+   */
+  // Read here rather than widened into `loadTarget`'s select: that record flows
+  // out to account screens, and its comment says why `passwordHash` is kept out
+  // of it. One narrow read is cheaper than a credential on every response.
+  const previous = await prisma.platformUser.findUnique({
+    where: { id: target.workspaceMembership.platformUserId },
+    select: { passwordHash: true },
+  });
+
   await prisma.platformUser.update({
     where: { id: target.workspaceMembership.platformUserId },
     data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
   });
+  await recordPreviousPassword(target.workspaceMembership.platformUserId, previous?.passwordHash ?? null);
 
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'PASSWORD_RESET');
   await audit(ctx, {

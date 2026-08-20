@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { passwordPolicy } from '@/services/identity/accounts';
+import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
@@ -102,7 +104,11 @@ export default async function WorkspaceLayout({
       />
       <div className="lf-content-column">
         {shell.supportMode && (
-          <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} readOnly={shell.supportReadOnly} />
+          <SupportModeBanner
+            workspaceId={shell.workspaceId}
+            workspaceName={shell.displayName}
+            readOnly={shell.supportReadOnly}
+          />
         )}
         <WorkspaceTopBar
           slug={shell.slug}
@@ -152,10 +158,27 @@ async function loadShell(workspaceSlug: string) {
       supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
-      // Null means the account has not yet replaced the password it was issued.
-      // Strictly null: a platform support actor has no workspace User row at
-      // all, and the missing chain must not read as an unchanged password.
-      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt === null,
+      /**
+       * The server-side half of the forced-change gate, and the one that counts:
+       * the login response only *suggests* a destination, and typing any other
+       * URL used to walk straight past it.
+       *
+       * Two conditions, one predicate. Null `passwordChangedAt` means the account
+       * is still on the password an administrator issued — handed over by voice
+       * or on paper, the weakest credential the system ever mints. The workspace's
+       * `maxAgeDays` is the other, and until now it was a setting that did nothing.
+       *
+       * `signedInAs` being absent is deliberately *not* expiry: a platform support
+       * actor has no workspace User row at all, and a missing chain must not read
+       * as a password that needs changing — it would trap them in a redirect to a
+       * screen they have no account on.
+       */
+      mustChangePassword: signedInAs?.workspaceMembership
+        ? passwordExpired(
+            signedInAs.workspaceMembership.platformUser.passwordChangedAt,
+            await passwordPolicy(workspace.id),
+          )
+        : false,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:

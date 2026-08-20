@@ -239,6 +239,18 @@ following items still prevent an unconditional commercial-production claim:
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.
+- **The password policy's `reuseWindow` and `maxAgeDays` are now enforced.** Both
+  were typed on `PasswordPolicy` from the start and `reuseWindow` was offered on
+  the workspace settings screen with a 0..24 validator; nothing read either, so
+  an administrator who turned them on got a setting that saved, redisplayed, and
+  did nothing. `20260820110000_password_history` adds the table there was nothing
+  to compare against, `services/identity/passwordHistory.ts` enforces both, and
+  `maxAgeDays` is settable for the first time. Expiry and the existing
+  temporary-password gate now flow through one predicate rather than two
+  lookalike checks. What remains: reuse is enforced on user-chosen passwords —
+  self-service change and forgot-password redemption — and recorded but not
+  enforced on an administrator's reset, because refusing a recovery path on a
+  history collision turns it into a lockout.
 - Platform-owner MFA data is modeled, but enrollment, recovery and a mandatory
   production MFA policy are not complete.
 - Production providers, object-store retention, backup restoration, incident

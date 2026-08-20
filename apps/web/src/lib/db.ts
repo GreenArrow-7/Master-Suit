@@ -35,6 +35,12 @@ const GLOBAL_MODELS = new Set([
   'PlatformSession',
   'PlatformAuditEvent',
   'AuthenticationFactor',
+  // Previous credentials, keyed by PlatformUser. A password belongs to the
+  // identity, not to any one of its workspace memberships — duplicating it per
+  // tenant is how two copies of one password drift apart. Reached only through
+  // services/identity/passwordHistory.ts, which is always already scoped to a
+  // single platformUserId.
+  'PasswordHistory',
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
