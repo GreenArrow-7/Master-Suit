@@ -188,9 +188,11 @@ following items still prevent an unconditional commercial-production claim:
   schema but no migration ever created them, so any code touching them failed at
   runtime while typechecking cleanly. `20260805000000_hr_lifecycle_and_schema_drift`
   closes the gap and re-runs the catalog-driven RLS block for the new tables.
-  Nothing enforces that the schema and the migrations agree — a CI step running
+  **Now enforced.** CI gate 0a runs
   `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma
-  --exit-code` would catch the next one.
+  --exit-code` against the database it has just replayed every migration into, so
+  the schema and the migration history are compared directly. `npm run check:drift`
+  runs the same check locally.
 - **Copying the catalog-driven RLS sweep into a new migration is a live trap, and
   it has now fired once.** Several HR migrations end by re-running the sweep from
   `20260803230000_rls_full_coverage`, each carrying its own inline copy of the
@@ -204,18 +206,36 @@ following items still prevent an unconditional commercial-production claim:
   tenant is known. The first draft of `20260808140000_hr_overtime` did exactly
   this; it was caught by `tests/tenant/rls.spec.ts` and
   `tests/integration/invitation-flow.spec.ts` failing together, and the shipped
-  version instead names the single table it creates:
+  version instead named the single table it creates.
+
+  **And the replacement was wrong too, in a different way, and went unnoticed
+  from 2026-08-08 until 2026-08-20.** The snippet this document used to print as
+  the fix is itself the defect:
 
   ```sql
+  -- What shipped. Correct-looking, and missing both of the things
+  -- 20260806000000 had added six migrations earlier.
   ALTER TABLE "HrOvertimeRequest" ENABLE ROW LEVEL SECURITY;
-  CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL ...
+  CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL TO master_saas_app
+    USING ("tenantId" = nullif(current_setting('app.tenant_id', true), ''));
   ```
 
-  **A migration that adds tables should write a policy for those tables only.**
-  The sweep belongs in the migration whose job is coverage, not in every
-  migration that follows it. The three places that must stay in step — the
-  `bootstrap` array, `GLOBAL_UNIQUE_FIELDS` in `src/lib/db.ts`, and the expected
-  list in `tests/tenant/rls.spec.ts` — are still only kept in step by hand.
+  No `FORCE`, so the owning role bypassed the policy; and no
+  `app.platform_admin` branch, so `withPlatformTx` — the control plane, and the
+  retention sweep — matched nothing on that table at all. Neither test suite
+  could see it, because both check tenant-to-tenant isolation and this broke
+  neither. `20260820100000_hr_overtime_rls_parity` fixes it.
+
+  **A migration that adds tables should write a policy for those tables only** —
+  and CI gate 0b (`npm run check:rls`) now asserts the result against the
+  Postgres catalog: every `tenantId` table enabled, FORCED, policied, with both
+  clauses testing `app.tenant_id` and carrying the `app.platform_admin` branch,
+  and no policy scoped `TO` a single role. It found `HrOvertimeRequest` on its
+  first run.
+
+  Two of the three hand-kept lists remain hand-kept — `GLOBAL_UNIQUE_FIELDS` in
+  `src/lib/db.ts` and the expected list in `tests/tenant/rls.spec.ts`. The third,
+  the `bootstrap` array, is now cross-checked against the catalog by the gate.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.

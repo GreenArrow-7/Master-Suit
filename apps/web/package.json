@@ -20,6 +20,8 @@
     "test": "vitest run",
     "test:tenant": "vitest run tests/tenant",
     "test:permission": "vitest run tests/permission",
+    "check:rls": "node scripts/check-rls.mjs",
+    "check:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
     "test:e2e": "playwright test",
     "secrets": "node scripts/generate-secrets.mjs",
     "setup": "node scripts/generate-secrets.mjs && npm run docker:up && node scripts/wait-for-db.mjs && prisma migrate deploy && npm run db:seed",

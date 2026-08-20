@@ -96,6 +96,33 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # ── Gate 0a — schema/migration drift ──────────────────────────────────
+      #
+      # `schema.prisma` and `prisma/migrations` are two descriptions of one
+      # database and nothing kept them in step. HrLeaveBalance, HrChecklistTask,
+      # HrOffboardingCase, HrSettlementSnapshot and HrEmployeeLocationAssignment
+      # were all declared in the schema with no migration creating them, so every
+      # code path touching them typechecked cleanly and failed at runtime.
+      #
+      # The database here has just had every migration replayed into it, so
+      # comparing it against the schema compares exactly those two things. Exit
+      # code 2 means "they differ".
+      - name: Schema drift
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      # ── Gate 0b — tenant isolation is still intact ────────────────────────
+      #
+      # RLS is the layer that holds when the other two are bypassed, and it is
+      # the one that can be silently removed: a migration re-running the catalog
+      # sweep with a stale copy of the policy body drops FORCE across every
+      # tenant table, and `\d` still shows a policy on each of them.
+      #
+      # This asserts against the catalog rather than against a list somebody
+      # maintains. It found HrOvertimeRequest missing both FORCE and the
+      # app.platform_admin branch on its first run.
+      - name: Tenant isolation
+        run: node scripts/check-rls.mjs
+
       # The server integration specs sign in as a member of the `manath-homes`
       # workspace, which only exists once the demo data is seeded. The seed
       # refuses to run against NODE_ENV=production, so it cannot touch a real
