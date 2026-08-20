@@ -109,7 +109,30 @@ dc run --rm migrate
 
 `migrate` is a one-off container built from the Dockerfile's `build` stage: the
 production image contains only the standalone server, with no Prisma CLI in it.
-It runs `prisma migrate deploy` as the owning role.
+It runs `scripts/check-staging-first.mjs` and then `prisma migrate deploy` as the
+owning role.
+
+**The first run will refuse.** `check-staging-first.mjs` enforces the order
+`docs/ENVIRONMENTS.md` requires — staging first, then production — and exits 1
+when `STAGING_DATABASE_URL` is unset, rather than treating an absent variable as
+permission. Either stand staging up (`docs/DEPLOY-STAGING.md`, about twenty
+minutes) and set:
+
+```
+STAGING_DATABASE_URL=postgresql://leadflow:<staging password>@host.docker.internal:5433/leadflow_staging
+```
+
+or decide out loud that this deployment has no staging:
+
+```
+ALLOW_UNSTAGED_MIGRATION=yes
+```
+
+Both go in `.env.production`. The second means every migration in every release
+meets production-shaped data for the first time in production, and
+`migrate deploy` has no down-path — so a migration that takes a lock it cannot
+get, or drops a column something still reads, is repaired forward, live, with
+customers on it.
 
 Migration `20260806000000_rls_force_and_platform_admin` creates the
 `master_saas_app` role, grants it, and marks every tenant table FORCE ROW LEVEL
@@ -225,6 +248,30 @@ unconfigured. The example file sets them to `unconfigured` to make that visible
 rather than pretending. Implement the adapter before promising either to a
 tenant.
 
+### `SMTP_HOST` had to be restated in the Azure overlay
+
+Worth knowing about, because the symptom was invisible. `docker-compose.prod.yml`
+sets `SMTP_HOST: mailpit` in its `environment:` block — correct for the local
+production-build rehearsal in `docs/PERFORMANCE.md`, which is the only stack that
+runs that overlay on its own. But `environment:` outranks `env_file:`
+unconditionally, so on this deployment that value won over whatever
+`.env.production` said, and every password-reset mail, invitation and
+notification was delivered into a Mailpit container on the VM and never left it.
+
+Nothing failed. The transport is real, the send succeeds, the audit row records a
+delivered message; the only symptom is customers who never receive the reset
+link, which reads as flaky email rather than as a misconfiguration — and a
+locked-out account has no other way back in.
+
+`docker-compose.azure.yml` now restates `EMAIL_PROVIDER`, `SMTP_HOST` and
+`SMTP_PORT` from `.env.production`, with `SMTP_HOST` marked required, so a
+deployment with no relay configured refuses to start instead of swallowing its
+own mail. Confirm yours with:
+
+```bash
+dc config | grep -A1 SMTP_HOST
+```
+
 ## 8. Backups
 
 Nothing here backs itself up, and **two** stores hold customer data: PostgreSQL,
@@ -274,6 +321,11 @@ dc up -d
 Migrations run before the new image starts, which is the correct order for
 additive migrations. A migration that drops or renames a column is not safe this
 way — the old container is still serving during it.
+
+`dc run --rm migrate` is also the gate: it refuses any migration that has not
+already finished against staging with the same checksum. Deploy the same commit
+to staging first (`docs/DEPLOY-STAGING.md`), or the step exits 1 and applies
+nothing.
 
 ## What this deployment is not
 

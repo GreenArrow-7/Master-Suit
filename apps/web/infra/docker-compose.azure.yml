@@ -82,6 +82,30 @@ services:
       # role that can drop a policy.
       MIGRATION_DATABASE_URL: ''
       SHADOW_DATABASE_URL: ''
+      # env_file passes the whole file in, and STAGING_DATABASE_URL is in it for
+      # the migrate service below. The serving process has no use for a second
+      # environment's connection string, so it does not get to hold one.
+      STAGING_DATABASE_URL: ''
+      # ── Mail, and why these three have to be restated here ─────────────────
+      #
+      # The production overlay sets SMTP_HOST: mailpit in its `environment:`
+      # block, for the local production-build rehearsal that
+      # `scripts/start-local-prod.mjs` runs. `environment:` outranks `env_file:`
+      # unconditionally, so on this deployment that value won over whatever
+      # .env.production said — and every password-reset mail, every invitation
+      # and every notification was delivered into a Mailpit container on the VM
+      # and never left it.
+      #
+      # Nothing failed. The transport is real, the send succeeds, the audit row
+      # records a delivered message. The only symptom is customers who never
+      # receive the reset link, which reads as "our email is flaky" rather than
+      # as a misconfiguration, and a locked-out account has no other way back in.
+      #
+      # `:?` rather than a default: a deployment with no relay configured must
+      # refuse to start rather than swallow its own mail.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production — production mail must not go to the local mailbox}
+      SMTP_PORT: ${SMTP_PORT:-587}
     volumes:
       - attendance:/app/storage/attendance
     depends_on:
@@ -94,6 +118,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
       MIGRATION_DATABASE_URL: ''
       SHADOW_DATABASE_URL: ''
+      STAGING_DATABASE_URL: ''
+      # The same restatement as web, and it matters more here: the notification
+      # and campaign queues are where most mail is actually sent from, so a
+      # worker still pointed at mailpit swallows it in bulk.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production — production mail must not go to the local mailbox}
+      SMTP_PORT: ${SMTP_PORT:-587}
     volumes:
       - attendance:/app/storage/attendance
     depends_on:
@@ -118,7 +149,30 @@ services:
     env_file: ['../.env.production']
     environment:
       NODE_ENV: production
-    command: ['npx', 'prisma', 'migrate', 'deploy']
+      # The staging project's database, read only to answer "has this migration
+      # already succeeded there?". Set it in .env.production:
+      #
+      #   STAGING_DATABASE_URL=postgresql://leadflow:...@host.docker.internal:5433/leadflow_staging
+      #
+      # 5433 is where docker-compose.staging.yml publishes staging's Postgres on
+      # this host's loopback. If staging lives on its own VM, put that VM's
+      # address here instead — nothing else changes.
+      STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-}
+      ALLOW_UNSTAGED_MIGRATION: ${ALLOW_UNSTAGED_MIGRATION:-}
+    # Compose projects do not share a network, so reaching the staging project's
+    # published loopback port means going out through the host gateway.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # The gate, then the migration — one command, so the enforced path is the
+    # path the runbook already documents rather than a second thing to remember.
+    #
+    # `check-staging-first.mjs` refuses to apply anything that has not already
+    # finished in staging with the same checksum. docs/ENVIRONMENTS.md has
+    # required "staging first, then production" all along; this is the first
+    # thing that makes it true. It exits 1 with STAGING_DATABASE_URL unset, so a
+    # deployment with no staging has to say ALLOW_UNSTAGED_MIGRATION=yes out
+    # loud — the same idiom as ALLOW_DEMO_SEED.
+    command: ['sh', '-c', 'node scripts/check-staging-first.mjs && npx prisma migrate deploy']
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -137,6 +191,14 @@ services:
   redis:
     ports: !reset []
 
+  mailpit:
+    # Still in the stack, because the production overlay's `depends_on` requires
+    # it and Compose has no way to remove a service from a file beneath. Its
+    # ports are dropped so it holds no host socket; with the SMTP settings above
+    # restated, nothing sends to it any more. It costs about 20 MB and receives
+    # nothing.
+    ports: !reset []
+
   minio:
     # No presigned URLs are handed to browsers anywhere in the application — the
     # web process streams objects itself — so MinIO needs no route from outside.
@@ -153,6 +215,11 @@ services:
     restart: unless-stopped
 
   clamav:
+    # Loopback, but still a listening socket on the host for a service the
+    # application reaches over the compose network. The header at the top of this
+    # file claims nothing is published here, not even on loopback; this is the one
+    # service that was still contradicting it.
+    ports: !reset []
     restart: unless-stopped
 
   face:

@@ -1944,6 +1944,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** Every migration's first contact with production-shaped data is production.
 - **Severity** 🟡 Medium
 - **Recommendation** A second Compose project on the same VM with `APP_ENV=staging` and its own database is enough to make the documented order real.
+- **Fixed (2026-08-20)** `infra/docker-compose.staging.yml` — a second Compose project (`name: master-suite-staging`, database `leadflow_staging`, its own secrets in `.env.staging`, Caddy on loopback with no public name). The order is now enforced rather than mandated: `scripts/check-staging-first.mjs` runs inside the production `migrate` service and refuses any pending migration that has not already finished in staging **with the same checksum** — which also catches a migration rehearsed in staging and then edited, where Prisma itself would not complain. `docs/DEPLOY-STAGING.md` is the runbook.
 
 ### W-15 · Business logic concentrated in two very large route files
 

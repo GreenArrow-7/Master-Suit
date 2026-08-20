@@ -42,7 +42,14 @@ services:
     restart: unless-stopped
     depends_on:
       mailpit: { condition: service_healthy }
-    ports: ['3000:3000']
+    # Loopback, like everything in the base file. The only stack that runs this
+    # overlay without a deployment overlay on top is the local production
+    # rehearsal in docs/PERFORMANCE.md, reached at localhost:3000 either way —
+    # and both deployment overlays (azure, staging) drop the mapping entirely,
+    # because web is reached through Caddy there. `0.0.0.0:3000` was publishing a
+    # production build with real credentials on every interface of whatever
+    # machine ran it.
+    ports: ['127.0.0.1:3000:3000']
     healthcheck:
       test:
         [
