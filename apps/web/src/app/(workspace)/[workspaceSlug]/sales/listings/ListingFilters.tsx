@@ -19,6 +19,9 @@ export default function ListingFilters({
   const params = useSearchParams();
 
   function set(key: string, value: string | null) {
+    // Blur commits unconditionally, so tabbing through untouched inputs was a
+    // fresh server render per field. Same value → no navigation.
+    if ((params.get(key) ?? '') === (value ?? '')) return;
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
     else next.delete(key);

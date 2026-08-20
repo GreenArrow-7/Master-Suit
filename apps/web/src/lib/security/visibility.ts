@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { prisma, type TxClient } from '../db';
 import { Forbidden } from '../errors';
 import type { Ctx, Scope, Action } from './rbac';
@@ -56,11 +57,24 @@ export async function visibilityWhere(
 
 /**
  * The set of user ids whose records the actor may see at the given scope.
- * Cached 5 minutes at `t:{tid}:vis:{uid}:{scope}` — invalidated on team, branch or
- * manager change. Deliberately returns ids rather than a nested query so the
- * planner sees a plain IN list against the (tenantId, ownerId, …) indexes.
+ *
+ * Memoized per request via React `cache` below — a dashboard render asks for
+ * the leads scope several times, and each uncached answer for a TEAM viewer is
+ * a team-tree walk plus a member lookup. (An earlier comment here claimed a
+ * 5-minute Redis cache; none ever existed, and a cross-request cache would let
+ * a team change linger — per-request is the honest window.) Deliberately
+ * returns ids rather than a nested query so the planner sees a plain IN list
+ * against the (tenantId, ownerId, …) indexes.
  */
-export async function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb = prisma): Promise<string[]> {
+export function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb = prisma): Promise<string[]> {
+  return ownerIdsMemo(ctx, scope, db);
+}
+
+// Outside a React request scope (workers, route handlers) `cache` simply does
+// not memoize; behaviour there is unchanged.
+const ownerIdsMemo = cache(resolveOwnerIdsUncached);
+
+async function resolveOwnerIdsUncached(ctx: Ctx, scope: Scope, db: VisibilityDb): Promise<string[]> {
   const self = ctx.actor.id;
 
   switch (scope) {

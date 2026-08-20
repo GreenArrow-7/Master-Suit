@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
+import { AppError, Forbidden, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
@@ -89,6 +89,20 @@ export function route<
         // from "deliberately Sales". Platform-level surfaces — users, roles,
         // profile, notifications — belong to no product module.
         if (spec.productModule) await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+        /**
+         * Self-service is a person acting on their own record, so a machine
+         * credential cannot satisfy it.
+         *
+         * `selfService` waives the permission check entirely — that is its
+         * point. An API key authenticates through this same path and inherits
+         * `actor.id = key.createdById`, so without this line any key in the
+         * tenant reaches every self-service route regardless of its role or its
+         * deliberately narrowed scopes: the creator's notification feed, and
+         * worse, identity/self, which changes a password and enrols a second
+         * factor. That contradicts this file's own rule that a key can never
+         * exceed its role and scopes only narrow further.
+         */
+        if (spec.selfService && ctx.apiKeyId) throw Forbidden('This endpoint requires a signed-in session.');
         if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
       } else if (!spec.anonymous) throw Unauthorized();
 
@@ -124,7 +138,15 @@ export function route<
       }
 
       logger.info(
-        { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
+        {
+          requestId,
+          method: req.method,
+          path: url.pathname,
+          module: spec.module,
+          action: spec.action,
+          ms: Date.now() - started,
+          tenantId: ctx?.tenantId,
+        },
         'request',
       );
 

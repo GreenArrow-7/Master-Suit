@@ -886,6 +886,7 @@ model Team {
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
+  @@index([tenantId, parentTeamId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2833,6 +2834,7 @@ model Lead {
   @@index([tenantId, deletedAt])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, ownerId, updatedAt(sort: Desc)])
 }
 
 model LeadCustomFieldDefinition {
@@ -5057,6 +5059,7 @@ model Call {
   @@index([tenantId, campaignId, createdAt(sort: Desc)])
   @@index([tenantId, eventId, createdAt(sort: Desc)])
   @@index([tenantId, status])
+  @@index([tenantId, startedAt])
 }
 
 model Recording {
@@ -5235,6 +5238,7 @@ model CallAudit {
 
   @@index([tenantId, callId])
   @@index([tenantId, scorecardId])
+  @@index([tenantId, status, humanReviewed])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

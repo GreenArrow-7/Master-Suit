@@ -166,6 +166,8 @@ const schema = z.object({
   IMPORT_CHUNK_SIZE: z.coerce.number().int().positive().default(5_000),
   UPLOAD_MAX_MB: z.coerce.number().int().positive().default(25),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
+  /** Queries at or above this duration are logged; only slow ones, so safe in production. */
+  SLOW_QUERY_MS: z.coerce.number().int().positive().default(200),
 });
 
 /** Providers that must be real before the server serves a request. */

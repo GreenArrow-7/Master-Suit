@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -203,9 +204,9 @@ export default function FaceEnrolmentConsole({
             Reset enrollment
           </button>
         )}
-        <a className="lf-btn lf-btn--secondary" href={activityHref}>
+        <Link className="lf-btn lf-btn--secondary" href={activityHref}>
           View recognition activity
-        </a>
+        </Link>
       </div>
 
       {!consented && (
