@@ -59,11 +59,33 @@ test.describe('Mobile viewport', () => {
       await page.goto(`/${workspace.slug}/${path}`);
       await expect(page.locator('main h1, main h2').first()).toBeVisible({ timeout: 60_000 });
 
-      const overflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth,
-      }));
-      expect(overflow.scrollWidth, `${path} must not overflow sideways`).toBeLessThanOrEqual(overflow.innerWidth);
+      /**
+       * Polled, not sampled once.
+       *
+       * `h1` being visible means the server's HTML arrived; it does not mean the
+       * page has finished laying out. `people/work-locations` mounts a map, and a
+       * client component that sizes itself after mount can be transiently wider
+       * than the viewport for a frame or two — which made this assertion fail in
+       * CI on a page that is fine, once, and pass on a re-run with nothing
+       * changed.
+       *
+       * A *persistent* overflow still fails: the poll expires and reports the
+       * last measurement. What it stops failing on is the gap between "the
+       * heading exists" and "the page has settled", which is not what this test
+       * is about.
+       */
+      await expect
+        .poll(
+          async () => {
+            const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+              scrollWidth: document.documentElement.scrollWidth,
+              innerWidth: window.innerWidth,
+            }));
+            return scrollWidth - innerWidth;
+          },
+          { message: `${path} must not overflow sideways`, timeout: 10_000 },
+        )
+        .toBeLessThanOrEqual(0);
     }
   });
 
