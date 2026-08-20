@@ -1,0 +1,146 @@
+# Alert rules for Master Suite.
+#
+# Load into Prometheus with `rule_files: ['prometheus-alerts.yml']`, alongside a
+# scrape job pointed at the web container:
+#
+#   scrape_configs:
+#     - job_name: master-suite
+#       metrics_path: /api/metrics
+#       authorization:
+#         credentials_file: /etc/prometheus/metrics-token   # METRICS_TOKEN
+#       static_configs:
+#         - targets: ['web:3000']
+#
+# The scraper must reach `web:3000` on the compose network rather than through
+# Caddy: the Caddyfile blocks /api/metrics from the public interface, because a
+# route map and error rates are reconnaissance even when the data behind them is
+# not.
+#
+# ── How these were chosen ───────────────────────────────────────────────────
+#
+# Every rule here corresponds to a failure this codebase has actually had, or
+# to one the assessment identified as invisible. None of them is a threshold
+# somebody liked the look of. Where a rule would be noisy, it says so and why the
+# noise is worth it.
+
+groups:
+  - name: master-suite-isolation
+    rules:
+      # ── The one that matters most ──────────────────────────────────────────
+      #
+      # A query reached the database layer with no tenant filter. Nothing leaked
+      # — the guard refused it, and Postgres would have refused it after — but
+      # the query was relying on row-level security alone, and the next one like
+      # it might touch a table whose policy is wrong. That is not hypothetical:
+      # HrOvertimeRequest carried a policy with no FORCE and no
+      # app.platform_admin branch from 2026-08-08 until it was found by a CI
+      # gate on 2026-08-20.
+      #
+      # `> 0` over five minutes, and page for it. There is no acceptable rate.
+      - alert: TenantGuardTripped
+        expr: increase(masterapp_tenant_guard_trips_total[5m]) > 0
+        for: 0m
+        labels: { severity: page }
+        annotations:
+          summary: 'Tenant guard refused {{ $labels.model }}.{{ $labels.operation }}'
+          description: >-
+            A repository issued a query with no tenantId filter. Layer 2 caught it, so no
+            data was exposed — but that query was one policy mistake away from crossing a
+            tenant boundary. Find the call site and pass ctx.tenantId.
+
+  - name: master-suite-queues
+    rules:
+      # ── The signal that would have caught the dead worker ─────────────────
+      #
+      # The worker container ran `node dist/workers/index.js` against an image
+      # containing no dist/, exited instantly on every deployment, and nothing
+      # noticed for months: no other service depends on it, so `docker compose
+      # up -d` reported success while every queue went unconsumed.
+      #
+      # Collected by asking Redis what is attached, not by counting enqueues — a
+      # counter the enqueue path maintains looks perfectly healthy in exactly
+      # this failure, because jobs really were being enqueued.
+      - alert: QueueHasNoConsumer
+        expr: masterapp_queue_workers{queue=~"ai|media|webhook|notifications|sla|distribution|automation|campaign|maintenance"} == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: 'Nothing is draining the {{ $labels.queue }} queue'
+          description: >-
+            No BullMQ consumer is attached. Without `ai` no call analysis completes; without
+            `media` recordings never leave the vendor; without `webhook` inbound Meta leads
+            are stored and never applied; without `maintenance` no retention window is
+            enforced. Check `docker compose logs worker` for "workers started".
+
+      # Slower and surer than the above: a queue with a consumer that is wedged
+      # looks alive by worker count and dead by this.
+      - alert: QueueBacklogAgeing
+        expr: masterapp_queue_oldest_waiting_seconds > 900
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Oldest job on {{ $labels.queue }} is over 15 minutes old'
+          description: >-
+            Jobs are being enqueued faster than they are drained, or a consumer is stuck.
+            The `ai` queue runs at concurrency 2 platform-wide, so it is the first to
+            back up under load.
+
+      - alert: QueueFailuresAccumulating
+        expr: masterapp_queue_failed > 50
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} failed jobs on {{ $labels.queue }}'
+          description: >-
+            Jobs have exhausted their retries. BullMQ keeps the vendor's own error message
+            on the row; read it before re-queueing.
+
+  - name: master-suite-requests
+    rules:
+      - alert: ServerErrorRateHigh
+        expr: >-
+          sum(rate(masterapp_requests_total{status="5xx"}[5m]))
+            / clamp_min(sum(rate(masterapp_requests_total[5m])), 0.001) > 0.02
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: 'Over 2% of requests are returning 5xx'
+          description: >-
+            Break down by masterapp_errors_total to see which module and code. A spike in
+            `internal-error` is an unhandled exception; `tenant-guard` is the isolation
+            alert above wearing a different hat.
+
+      # Deliberately not a p99. This application server-renders pages, so the
+      # tail is dominated by the widest list query a customer happens to run,
+      # and a p99 alert would fire on one slow report every day. The p95 moving
+      # past two seconds is a real regression.
+      - alert: RequestLatencyDegraded
+        expr: >-
+          histogram_quantile(0.95, sum(rate(masterapp_request_duration_seconds_bucket[10m])) by (le, module)) > 2
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'p95 latency on {{ $labels.module }} is over 2s'
+
+      - alert: ApplicationDown
+        expr: up{job="master-suite"} == 0 or absent(masterapp_up)
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: 'Master Suite is not answering scrapes'
+
+  - name: master-suite-cost
+    rules:
+      # Not a failure — a bill. Included because the assessment's finding was
+      # that AI spend was both uncapped and unattributed, and the cap alone only
+      # tells you after a workspace has hit it.
+      - alert: AiSpendSpiking
+        expr: sum(rate(masterapp_ai_tokens_total{key_source="deployment"}[1h])) > 100000
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'AI usage on the shared key is over 100k tokens/hour'
+          description: >-
+            Attribution is per workspace in WorkspaceUsage under the ai_tokens:YYYY-MM
+            metric — query it to find which one. Workspaces on their own Gemini key are
+            excluded here by the key_source label, since that spend is theirs.

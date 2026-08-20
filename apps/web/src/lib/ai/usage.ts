@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { Forbidden } from '../errors';
 import { logger } from '../logger';
+import { recordAiTokens } from '../metrics';
 import type { GeminiCredential } from './gemini';
 
 /**
@@ -133,6 +134,10 @@ export async function recordAiUsage(
     { tenantId, tokens, model: context.model, feature: context.feature, keySource: credential.source },
     'ai usage',
   );
+  // Deliberately not labelled by tenant: a per-tenant series here would grow
+  // unbounded with the customer list. The database row carries the attribution;
+  // this is the platform-wide spend curve.
+  recordAiTokens(context.feature, credential.source, tokens);
 
   try {
     const metric = usageMetric();

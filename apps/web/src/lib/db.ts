@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from './env';
+import { recordTenantGuardTrip } from './metrics';
 
 const globalForPrisma = globalThis as unknown as {
   __prisma?: ReturnType<typeof build>;
@@ -283,6 +284,10 @@ function tenantGuard(base: PrismaClient) {
               (GLOBAL_UNIQUE_FIELDS[model] ?? []).some((f) => where[f] !== undefined);
 
             if (!scoped) {
+              // Counted at the throw, not at the catch: a caller that swallows
+              // this would otherwise hide the one signal that says a repository
+              // is relying on row-level security alone.
+              recordTenantGuardTrip(model, operation);
               throw new TenantGuardError(
                 `${model}.${operation} was issued without a tenantId filter. ` +
                   `Pass ctx.tenantId — see docs/05-SECURITY.md §3.`,
@@ -302,6 +307,7 @@ function tenantGuard(base: PrismaClient) {
             const rows = operation === 'create' ? [args?.data] : (args?.data ?? []);
             for (const row of rows as IncomingRow[]) {
               if (row && row.tenantId === undefined && row.tenant === undefined) {
+                recordTenantGuardTrip(model, operation);
                 throw new TenantGuardError(`${model}.${operation} was issued without a tenantId value.`);
               }
             }

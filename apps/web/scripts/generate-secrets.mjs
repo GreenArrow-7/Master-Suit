@@ -10,7 +10,10 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 
-const KEYS = ['FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'];
+// METRICS_TOKEN is here rather than left to the operator for the same reason
+// the other two are: a secret nobody generates is a secret somebody types, and
+// an unset one silently 404s the scrape endpoint rather than failing loudly.
+const KEYS = ['FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER', 'METRICS_TOKEN'];
 
 /**
  * Which env files to write. Defaults to both; name them to narrow it.

@@ -1,0 +1,169 @@
+/**
+ * P1-1 — nothing in this application exported a metric.
+ *
+ * `docs/DEPLOY-AZURE.md` said it plainly: "No metrics, traces or error
+ * reporting. docker compose logs is what you have." And the logs were not
+ * shipped anywhere either, so they died with the container.
+ *
+ * The two signals worth reading here are the ones that would have caught real
+ * defects this codebase actually had:
+ *
+ *   * `masterapp_queue_workers` — the worker container exited on start for
+ *     months and nothing in the web process knew. A counter maintained by the
+ *     enqueue path would have looked healthy throughout; only asking Redis
+ *     "is anything attached to this queue" shows it.
+ *   * `masterapp_tenant_guard_trips_total` — a repository issuing a query with
+ *     no tenant filter. It does not mean data leaked, the guard refused it; it
+ *     means the query reached the database relying on RLS alone, and the next
+ *     one like it might hit a table whose policy is wrong. That has happened
+ *     once already, on HrOvertimeRequest.
+ */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  __resetMetricsForTests,
+  increment,
+  observe,
+  recordError,
+  recordRequest,
+  recordTenantGuardTrip,
+  render,
+  setGauge,
+} from '@/lib/metrics';
+import { GET as metricsRoute } from '@/app/api/metrics/route';
+
+const scrape = (token?: string) =>
+  metricsRoute(
+    new Request('http://localhost/api/metrics', {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    }),
+  );
+
+beforeEach(() => __resetMetricsForTests());
+afterEach(() => {
+  delete process.env.METRICS_TOKEN;
+});
+
+describe('the endpoint', () => {
+  it('is absent when no token is configured, rather than refusing', async () => {
+    // 404, not 401. An endpoint that is absent cannot be probed for how it
+    // responds to a wrong credential — the same shape as /api/v1/dev/outbox.
+    const response = await scrape('anything');
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('');
+  });
+
+  it('refuses a wrong token', async () => {
+    process.env.METRICS_TOKEN = 'the-real-token';
+    expect((await scrape('not-the-token')).status).toBe(404);
+    expect((await scrape()).status).toBe(404);
+  });
+
+  it('refuses a token that is merely a prefix of the real one', async () => {
+    process.env.METRICS_TOKEN = 'the-real-token';
+    expect((await scrape('the-real-toke')).status).toBe(404);
+    expect((await scrape('the-real-token-and-more')).status).toBe(404);
+  });
+
+  it('serves the exposition format to a correct token', async () => {
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const response = await scrape('the-real-token');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(response.headers.get('content-type')).toContain('version=0.0.4');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('always emits masterapp_up, so an empty scrape is distinguishable from a dead process', async () => {
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+    expect(body).toContain('masterapp_up 1');
+  });
+
+  it('reports every queue, including the ones with no consumer', async () => {
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+
+    // The signal that would have caught the dead worker. `ai`, `media` and
+    // `webhook` are the three whose absence costs the most.
+    for (const queue of ['ai', 'media', 'webhook', 'maintenance', 'notifications']) {
+      expect(body).toContain(`masterapp_queue_workers{queue="${queue}"}`);
+      expect(body).toContain(`masterapp_queue_depth{queue="${queue}"}`);
+      expect(body).toContain(`masterapp_queue_oldest_waiting_seconds{queue="${queue}"}`);
+    }
+  });
+});
+
+describe('exposition format', () => {
+  it('emits HELP and TYPE once per metric, whatever the label count', () => {
+    increment('masterapp_requests_total', { module: 'leads', action: 'VIEW', status: '2xx' });
+    increment('masterapp_requests_total', { module: 'calls', action: 'VIEW', status: '2xx' });
+    const out = render();
+    expect(out.match(/# HELP masterapp_requests_total/g)).toHaveLength(1);
+    expect(out.match(/# TYPE masterapp_requests_total counter/g)).toHaveLength(1);
+  });
+
+  it('sorts labels, so one series cannot appear under two keys', () => {
+    increment('masterapp_requests_total', { status: '2xx', module: 'leads', action: 'VIEW' });
+    increment('masterapp_requests_total', { module: 'leads', action: 'VIEW', status: '2xx' });
+    const out = render();
+    expect(out).toContain('masterapp_requests_total{action="VIEW",module="leads",status="2xx"} 2');
+  });
+
+  it('escapes label values rather than emitting a broken line', () => {
+    increment('masterapp_errors_total', { module: 'a"b', action: 'c\\d', code: 'e\nf', status: '500' });
+    const out = render();
+    expect(out).toContain('a\\"b');
+    expect(out).toContain('c\\\\d');
+    expect(out).toContain('e\\nf');
+    // One line per series, whatever was in the labels.
+    expect(out.split('\n').filter((l) => l.startsWith('masterapp_errors_total{'))).toHaveLength(1);
+  });
+
+  it('renders a histogram with cumulative buckets, a sum and a count', () => {
+    observe('masterapp_request_duration_seconds', 0.02, { module: 'leads', action: 'VIEW' });
+    observe('masterapp_request_duration_seconds', 0.4, { module: 'leads', action: 'VIEW' });
+    const out = render();
+    // 0.02 falls in every bucket from 0.025 up; 0.4 from 0.5 up. Cumulative.
+    expect(out).toContain('le="0.01"} 0');
+    expect(out).toContain('le="0.025"} 1');
+    expect(out).toContain('le="0.5"} 2');
+    expect(out).toContain('le="+Inf"} 2');
+    expect(out).toMatch(/masterapp_request_duration_seconds_count\{[^}]*\} 2/);
+    expect(out).toMatch(/masterapp_request_duration_seconds_sum\{[^}]*\} 0\.42/);
+  });
+
+  it('keeps status a class rather than a code, so cardinality stays flat', () => {
+    recordRequest('leads', 'VIEW', 404, 12);
+    recordRequest('leads', 'VIEW', 409, 12);
+    const out = render();
+    expect(out).toContain('status="4xx"} 2');
+    expect(out).not.toContain('status="404"');
+  });
+
+  it('gauges replace rather than accumulate', () => {
+    setGauge('masterapp_queue_depth', 5, { queue: 'ai' });
+    setGauge('masterapp_queue_depth', 2, { queue: 'ai' });
+    expect(render()).toContain('masterapp_queue_depth{queue="ai"} 2');
+  });
+});
+
+describe('the signals that matter', () => {
+  it('counts a tenant guard trip by model and operation', () => {
+    recordTenantGuardTrip('Lead', 'findMany');
+    recordTenantGuardTrip('Lead', 'findMany');
+    recordTenantGuardTrip('Call', 'update');
+    const out = render();
+    expect(out).toContain('masterapp_tenant_guard_trips_total{model="Lead",operation="findMany"} 2');
+    expect(out).toContain('masterapp_tenant_guard_trips_total{model="Call",operation="update"} 1');
+    // The HELP text is where the alerting rule lives, so it is asserted too.
+    expect(out).toMatch(/# HELP masterapp_tenant_guard_trips_total .*alert on this/);
+  });
+
+  it('separates errors by code, so a 500 spike is distinguishable from a 403 one', () => {
+    recordError('leads', 'VIEW', 'forbidden', 403);
+    recordError('leads', 'VIEW', 'internal-error', 500);
+    const out = render();
+    expect(out).toContain('code="forbidden",module="leads",status="403"');
+    expect(out).toContain('code="internal-error",module="leads",status="500"');
+  });
+});

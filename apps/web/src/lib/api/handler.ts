@@ -10,6 +10,7 @@ import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
 import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { recordError, recordRequest } from '../metrics';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
   module: string;
@@ -123,10 +124,9 @@ export function route<
         });
       }
 
-      logger.info(
-        { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
-        'request',
-      );
+      const ms = Date.now() - started;
+      recordRequest(spec.module, spec.action, 200, ms);
+      logger.info({ requestId, module: spec.module, action: spec.action, ms, tenantId: ctx?.tenantId }, 'request');
 
       /**
        * A handler that streams bytes returns its own Response.
@@ -143,7 +143,17 @@ export function route<
 
       return NextResponse.json(result ?? { ok: true }, { headers: { 'x-request-id': requestId } });
     } catch (err) {
-      return toResponse(err, requestId, { module: spec.module, action: spec.action, tenantId: ctx?.tenantId });
+      const response = toResponse(err, requestId, {
+        module: spec.module,
+        action: spec.action,
+        tenantId: ctx?.tenantId,
+      });
+      // Counted here rather than inside toResponse: this is the one place that
+      // sees both the outcome and how long reaching it took, and a slow 500 is a
+      // different problem from a fast one.
+      recordRequest(spec.module, spec.action, response.status, Date.now() - started);
+      recordError(spec.module, spec.action, errorCode(err), response.status);
+      return response;
     }
   };
 }
@@ -193,6 +203,14 @@ function parse<T extends ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
     }
     throw e;
   }
+}
+
+/** The label for an error series: stable, low-cardinality, never a message. */
+function errorCode(err: unknown): string {
+  if (err instanceof ZodError) return 'validation-failed';
+  if (err instanceof TenantGuardError) return 'tenant-guard';
+  if (err instanceof AppError) return err.code;
+  return 'internal-error';
 }
 
 function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {

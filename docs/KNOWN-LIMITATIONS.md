@@ -265,6 +265,23 @@ following items still prevent an unconditional commercial-production claim:
   workspace some way past it before the first records anything; and no plan ships
   with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
   number.
+- **There are metrics now; there are still no traces and no log shipping.**
+  Nothing in the application exported a metric, emitted a span or reported an
+  exception, and the logs were not collected either — so the worker exiting on
+  start went unnoticed for months, and a `TenantGuardError` would have been an
+  error-level line in a stdout nobody reads. `GET /api/metrics` (token-gated,
+  404 without one) now serves request rate and latency by module, error rate by
+  code, per-queue depth, backlog age and **consumer count**, AI tokens by
+  feature, and a tenant-guard trip counter; `infra/prometheus-alerts.yml` carries
+  eight rules against them. The queue-consumer gauge is collected by asking Redis
+  what is attached rather than by counting enqueues, which is the only way that
+  failure is visible — a counter maintained by the enqueue path looks healthy
+  throughout, because jobs really are being enqueued.
+  What remains: **no distributed tracing**, **no stack-trace reporting** (a
+  vendor choice, deliberately not made here), and **no log shipping** — pino
+  writes structured JSON to stdout and nothing collects it, so logs still die
+  with the container. Metrics are also per-process and in memory, so more than
+  one web replica needs a scraper that reaches each of them.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.
