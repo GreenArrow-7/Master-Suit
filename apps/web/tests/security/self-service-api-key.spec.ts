@@ -1,13 +1,17 @@
 /**
- * A self-service route answers "your own record", so only a person may reach it.
+ * A notification feed answers "your own record", so only a person may read it.
  *
  * `selfService: true` waives the permission check by design — that is what lets
- * an HR-only employee read their own notifications and change their own
- * password without holding a Sales grant. An API key authenticates through the
- * same kernel and inherits `actor.id = key.createdById`, so without an explicit
- * refusal every key in the tenant reached every self-service route regardless of
- * its role or its deliberately narrowed scopes: the creator's notification feed,
- * and `identity/self`, which changes a password and enrols a second factor.
+ * an HR-only employee read their own notifications without holding a Sales
+ * grant. An API key authenticates through the same kernel and inherits
+ * `actor.id = key.createdById`, so without the route's own refusal any key in
+ * the tenant would reach the creator's feed regardless of its scopes, and could
+ * mark their alerts read.
+ *
+ * Scope note: this is enforced by /api/v1/notifications itself, not by the
+ * handler kernel. The other self-service routes (identity/self, hr/self) still
+ * accept API keys, deliberately and unchanged — so this spec covers
+ * notifications only and must not be read as a platform-wide guarantee.
  *
  * The key issued below holds the tenant's full administrator role — the most
  * generous credential the fixture can mint — so a pass here is not "the key was
@@ -37,7 +41,7 @@ afterAll(async () => {
   await fixture.cleanup();
 });
 
-describe('SELFSVC-001: self-service routes refuse machine credentials', () => {
+describe('SELFSVC-001: the notifications feed refuses machine credentials', () => {
   it('lets a signed-in session read its own notifications', async () => {
     const res = await get(listNotifications, '/api/v1/notifications?unread=true', fixture.a.cookie);
     expect(res.status).toBe(200);
