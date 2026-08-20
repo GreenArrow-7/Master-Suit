@@ -43,14 +43,17 @@ following items still prevent an unconditional commercial-production claim:
   per-object rule scoping, every masking strategy, and the refusal to filter or
   sort on a hidden field. That last one is the case that matters — masking is
   worthless if a caller can recover the value by bisecting a filter over it.
-- **Filtering works on leads and nowhere else.** `FIELD_MAP` in
-  `src/lib/api/filterTree.ts` registers an allow-list for `LEAD` only; the
-  comment beneath it says "OPPORTUNITY, ACCOUNT, TASK, TICKET, ACTIVITY maps
-  follow the same shape", and none of them were written. Every list route still
-  accepts a `filter` parameter, validates it, and checks it against field
-  security — and then rejects it with `400 unknown-object` for every caller.
-  Found by the positive control in the field-security suite, which asserts the
-  400 explicitly so the test fails the day a map is added.
+- **Filtering now works on the four objects whose routes offer it.** This
+  entry used to read "filtering works on leads and nowhere else": `FIELD_MAP` in
+  `src/lib/api/filterTree.ts` registered an allow-list for `LEAD` only, so
+  `/api/v1/opportunities`, `/contacts` and `/accounts` each accepted a `filter`
+  parameter, validated it, checked it against field security, and then rejected
+  it with `400 unknown-object` for every caller. The three maps are written.
+  `tests/unit/filter-field-maps.spec.ts` now checks each entry against
+  `prisma/schema.prisma` — path, nullability, list-ness — and fails if any route
+  compiles a filter against an object with no map, which is the gap itself as a
+  test. TASK, TICKET and ACTIVITY have no route offering `filter`, so they have
+  no map; the gate is what makes that a decision rather than an oversight.
 - **The Python HRMS has been archived out of the repository.** It ran nothing and
   was referenced by nothing; HRMS runs natively in the Next.js app against
   PostgreSQL. All 139 files, including the SQLite database, now live in

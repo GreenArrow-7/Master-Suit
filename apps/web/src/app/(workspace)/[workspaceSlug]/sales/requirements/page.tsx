@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import Badge from '@/components/ui/Badge';
@@ -24,7 +25,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
   const status = ['OPEN', 'MATCHED', 'FULFILLED', 'CLOSED'].includes(params.status ?? '') ? params.status : undefined;
 
   const rows = await prisma.clientRequirement.findMany({
-    where: { ...scope, deletedAt: null, ...(status ? { status: status as never } : {}) },
+    where: mergeWhere(scope, { deletedAt: null }, status ? { status: status as never } : null),
     orderBy: { updatedAt: 'desc' },
     take: 100,
   });

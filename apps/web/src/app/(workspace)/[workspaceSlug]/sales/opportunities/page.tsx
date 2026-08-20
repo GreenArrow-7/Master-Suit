@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
@@ -18,7 +19,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
   const scope = await visibilityWhere(ctx, 'opportunities', 'VIEW', { includeUnassigned: true });
   const search = params.q ? { name: { contains: params.q, mode: 'insensitive' as const } } : {};
-  const where = { ...scope, ...search };
+  const where = mergeWhere(scope, search);
 
   const rules = await loadFieldRules(ctx, 'OPPORTUNITY');
 

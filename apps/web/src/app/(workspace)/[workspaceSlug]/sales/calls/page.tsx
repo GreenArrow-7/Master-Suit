@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
@@ -35,7 +36,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   // same way the audits page already does.
   const scope = await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' });
   const tab = TABS.find(([, key]) => key === (params.tab ?? '')) ?? TABS[0];
-  const where = { ...scope, ...tab[2], deletedAt: null };
+  const where = mergeWhere(scope, tab[2], { deletedAt: null });
 
   const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
   const [rows, total, stats] = await Promise.all([

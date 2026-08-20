@@ -213,14 +213,22 @@ describe('through the route it is actually wired into', () => {
     // from the filter being rejected for some unrelated reason.
     expect(response.status).not.toBe(403);
 
-    // It is a 400, and that is a separate defect with its own entry in
-    // docs/KNOWN-LIMITATIONS.md: FIELD_MAP in lib/api/filterTree.ts registers
-    // only LEAD, so `filter` on any other list route is rejected as
-    // "unknown-object" for every caller. Asserted rather than skipped, so this
-    // test starts failing the day somebody adds the OPPORTUNITY map — which is
-    // when the line above should become `toBe(200)`.
-    expect(response.status).toBe(400);
-    expect(response.body.detail).toMatch(/no filter map registered/i);
+    // It used to be a 400: FIELD_MAP registered only LEAD, so `filter` on any
+    // other list route was rejected as "unknown-object" for every caller. The
+    // OPPORTUNITY map exists now, and this line is the one the previous comment
+    // said to change on the day it did.
+    expect(response.status).toBe(200);
+
+    // And the filter is applied, not merely accepted — the seeded opportunity is
+    // 1_250_000, so a `> 1_000_000` filter must keep it while a `> 2_000_000`
+    // filter must not. Without this, registering a map that compiled to nothing
+    // would pass.
+    expect(response.body.data.length).toBeGreaterThan(0);
+
+    const narrower = encodeFilter({ op: 'AND', children: [{ field: 'amount', cmp: 'gt', value: 2000000 }] });
+    const empty = await get(listOpportunities, `/api/v1/opportunities?filter=${narrower}`, cookies.open);
+    expect(empty.status).toBe(200);
+    expect(empty.body.data).toEqual([]);
   });
 
   it('drops an uneditable field from a create payload instead of writing it', async () => {

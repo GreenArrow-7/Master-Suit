@@ -1,4 +1,5 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
+import { mergeWhere } from '@/lib/api/where';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { ulid } from 'ulid';
@@ -87,7 +88,7 @@ async function handle(req: Request, requestId: string) {
   const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date()) : {};
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
 
-  const where = { ...scope, ...extra, ...search };
+  const where = mergeWhere(scope, extra, search);
   const [setting, rules] = await Promise.all([
     prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
     loadFieldRules(ctx, 'LEAD'),

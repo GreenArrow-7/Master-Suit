@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
@@ -61,7 +62,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const [rows, taskTypes, assignees] = await Promise.all([
     prisma.task.findMany({
-      where: { ...scope, deletedAt: null, ...tabWhere(params.tab, now) },
+      where: mergeWhere(scope, { deletedAt: null }, tabWhere(params.tab, now)),
       orderBy: tabOrder(params.tab),
       take: 100,
       select: {

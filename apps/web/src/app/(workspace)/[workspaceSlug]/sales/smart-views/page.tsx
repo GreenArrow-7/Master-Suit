@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { compileFilterTree, type FilterNode } from '@/lib/api/filterTree';
+import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import { prisma } from '@/lib/db';
@@ -108,7 +109,11 @@ export default async function SmartViewsPage({
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
-  const where = { ...scope, ...filterWhere, ...search };
+  // Spreading these would have discarded the visibility clause outright: the
+  // "cold" view's filter *is* an `OR`, and so is `scope`'s ownership
+  // restriction. See lib/api/where.ts — this was the one place the leak needed
+  // no crafted request at all, only the button.
+  const where = mergeWhere(scope, filterWhere, search);
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
