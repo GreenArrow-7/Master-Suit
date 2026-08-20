@@ -1,5 +1,6 @@
 import { logger } from '../logger';
-import { geminiKey, geminiModel } from './gemini';
+import { geminiCredential, geminiModel } from './gemini';
+import { assertAiBudget, recordAiUsage } from './usage';
 import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
@@ -97,7 +98,8 @@ const AUDIT_SCHEMA = {
 };
 
 export async function auditCall(input: AuditInput): Promise<AuditResult> {
-  const apiKey = await geminiKey(input.tenantId);
+  const credential = await geminiCredential(input.tenantId);
+  const apiKey = credential.key;
   if (!apiKey) {
     // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
     const { simulateAudit } = await import('./simulated');
@@ -106,6 +108,7 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   }
 
   const model = await geminiModel(input.tenantId);
+  await assertAiBudget(input.tenantId, credential);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const data = await withRetry(
@@ -137,6 +140,8 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
     },
     { maxAttempts: 3, retryOn: isTransient },
   );
+  await recordAiUsage(input.tenantId, credential, data.usageMetadata, { feature: 'call-audit', model });
+
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty response from Gemini');
 

@@ -17,13 +17,33 @@
  */
 import { connectionCredentials, connectionMetadata } from '../integrations/connection';
 
+/**
+ * Which key, and — the part that matters for budgeting — whose it is.
+ *
+ * A workspace running on its own key spends its own quota against its own
+ * Google bill. A workspace running on the deployment's key spends *ours*, and
+ * nothing anywhere counted that: one tenant's backlog could exhaust the budget
+ * for every tenant, and no record existed of which one did.
+ *
+ * So the source travels with the key. `lib/ai/usage.ts` meters both and enforces
+ * a ceiling on only one of them — capping a workspace's spend on its own
+ * credential would be charging them for a limit they are already paying past.
+ */
+export type GeminiCredential = { key: string; source: 'workspace' | 'deployment' } | { key: null; source: 'simulated' };
+
 /** Resolved per call rather than cached: a key can be rotated mid-session. */
-export async function geminiKey(tenantId?: string | null): Promise<string | null> {
+export async function geminiCredential(tenantId?: string | null): Promise<GeminiCredential> {
   if (tenantId) {
     const credentials = await connectionCredentials(tenantId, 'gemini').catch(() => null);
-    if (credentials?.apiKey) return credentials.apiKey;
+    if (credentials?.apiKey) return { key: credentials.apiKey, source: 'workspace' };
   }
-  return process.env.GEMINI_API_KEY || null;
+  const deployment = process.env.GEMINI_API_KEY;
+  return deployment ? { key: deployment, source: 'deployment' } : { key: null, source: 'simulated' };
+}
+
+/** The key alone, for callers that only need to know whether one exists. */
+export async function geminiKey(tenantId?: string | null): Promise<string | null> {
+  return (await geminiCredential(tenantId)).key;
 }
 
 /**

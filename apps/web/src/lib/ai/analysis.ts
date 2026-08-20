@@ -1,5 +1,6 @@
 import { logger } from '../logger';
-import { geminiKey, geminiModel } from './gemini';
+import { geminiCredential, geminiModel } from './gemini';
+import { assertAiBudget, recordAiUsage } from './usage';
 import { withRetry, isTransient } from '../integrations/retry';
 import { redact } from './redact';
 
@@ -118,7 +119,8 @@ function buildPrompt(input: AnalysisInput): string {
 export async function analyzeTranscript(
   input: AnalysisInput,
 ): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
-  const apiKey = await geminiKey(input.tenantId);
+  const credential = await geminiCredential(input.tenantId);
+  const apiKey = credential.key;
   if (!apiKey) {
     // Demo fallback: a deterministic keyword pass, stamped as simulation so the
     // stored row can never masquerade as a model verdict.
@@ -130,6 +132,8 @@ export async function analyzeTranscript(
   }
 
   const model = await geminiModel(input.tenantId);
+  // Before the billed call, which is the only place a ceiling can act.
+  await assertAiBudget(input.tenantId, credential);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = buildPrompt(input);
@@ -167,6 +171,8 @@ export async function analyzeTranscript(
   );
 
   const processingMs = Date.now() - started;
+
+  await recordAiUsage(input.tenantId, credential, data.usageMetadata, { feature: 'call-analysis', model });
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty response from Gemini');

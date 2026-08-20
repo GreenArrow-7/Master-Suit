@@ -250,6 +250,21 @@ following items still prevent an unconditional commercial-production claim:
   Two of the three hand-kept lists remain hand-kept — `GLOBAL_UNIQUE_FIELDS` in
   `src/lib/db.ts` and the expected list in `tests/tenant/rls.spec.ts`. The third,
   the `bootstrap` array, is now cross-checked against the catalog by the gate.
+- **AI spend is metered per workspace and capped on the shared key.** Nothing
+  counted tokens before — not per tenant, not in aggregate — so one workspace
+  transcribing a backlog could exhaust the deployment's Gemini budget for
+  everyone, with no record afterwards of which one had. All four surfaces
+  (analysis, audit, live coach, assistant) now record `usageMetadata` into
+  `WorkspaceUsage` under a month-keyed metric, and `assertAiBudget` refuses
+  further work past the plan's `ai_tokens_monthly` limit. Two deliberate
+  asymmetries: a workspace on its **own** Gemini key is metered but never capped
+  — its quota, its bill — and the live coach degrades to heuristic hints rather
+  than throwing, because interrupting somebody mid-call with a billing error is
+  not a trade worth making. What remains: the ceiling is approximate, since usage
+  is recorded after each response and a burst of concurrent jobs can carry a
+  workspace some way past it before the first records anything; and no plan ships
+  with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
+  number.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.

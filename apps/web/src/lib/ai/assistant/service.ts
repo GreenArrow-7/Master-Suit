@@ -1,5 +1,6 @@
 import { logger } from '@/lib/logger';
-import { geminiKey, geminiModel } from '../gemini';
+import { geminiCredential, geminiModel, type GeminiCredential } from '../gemini';
+import { assertAiBudget, recordAiUsage } from '../usage';
 import type { Ctx } from '@/lib/security/rbac';
 import { TOOLS, toolByName, type ProposedAction, type ToolSource } from './tools';
 
@@ -57,7 +58,14 @@ const SYSTEM = (ctx: Ctx, page: AssistantContext | undefined, today: string) =>
 /** Convert our ToolDefs to Gemini functionDeclarations. */
 const declarations = TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
-async function geminiTurn(contents: unknown[], system: string, key: string, model: string) {
+async function geminiTurn(
+  contents: unknown[],
+  system: string,
+  key: string,
+  model: string,
+  tenantId: string,
+  credential: GeminiCredential,
+) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
@@ -78,6 +86,9 @@ async function geminiTurn(contents: unknown[], system: string, key: string, mode
     throw err;
   }
   const data = await res.json();
+  // Per round, not per query: the loop below can call the model six times, and
+  // metering only the last one would under-count a multi-step answer fivefold.
+  await recordAiUsage(tenantId, credential, data.usageMetadata, { feature: 'assistant', model });
   return (data.candidates?.[0]?.content?.parts ?? []) as {
     text?: string;
     functionCall?: { name: string; args: any };
@@ -133,8 +144,12 @@ export async function* runAssistant(
   try {
     // Resolved once per query rather than per round: the workspace's own key
     // when it has connected one, the deployment's otherwise.
-    const key = await geminiKey(ctx.tenantId);
+    const credential = await geminiCredential(ctx.tenantId);
+    const key = credential.key;
     const model = key ? await geminiModel(ctx.tenantId) : '';
+    // Once per query rather than per round: a conversation already under way
+    // should finish rather than stop half-answered at round four.
+    if (key) await assertAiBudget(ctx.tenantId, credential);
 
     if (key) {
       // ── Gemini function-calling loop ────────────────────────────────────
@@ -145,7 +160,7 @@ export async function* runAssistant(
       const system = SYSTEM(ctx, page, today);
 
       for (let round = 0; round < 6; round++) {
-        const parts = await geminiTurn(contents, system, key, model);
+        const parts = await geminiTurn(contents, system, key, model, ctx.tenantId, credential);
         const calls = parts.filter((p) => p.functionCall);
         if (calls.length === 0) {
           const text = parts.map((p) => p.text ?? '').join('') || "I couldn't find that information in the CRM.";

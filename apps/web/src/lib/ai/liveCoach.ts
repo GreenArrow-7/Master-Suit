@@ -1,6 +1,7 @@
 import { logger } from '../logger';
 import { redact } from './redact';
-import { geminiKey, geminiModel } from './gemini';
+import { geminiCredential, geminiModel } from './gemini';
+import { assertAiBudget, recordAiUsage } from './usage';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -80,10 +81,24 @@ export function heuristicHints(windowText: string): CoachHint[] {
 }
 
 export async function coachTick(windowText: string, tenantId?: string): Promise<CoachHint[]> {
-  const apiKey = await geminiKey(tenantId);
+  const credential = await geminiCredential(tenantId);
+  const apiKey = credential.key;
   if (!apiKey) return heuristicHints(windowText);
 
   const model = await geminiModel(tenantId);
+  /**
+   * Over budget falls back to the heuristic hints rather than throwing.
+   *
+   * This one runs on an open SSE stream during a live call. Every other AI
+   * surface can refuse and let the caller try later; interrupting somebody
+   * mid-conversation with a billing error is not a trade worth making, and the
+   * keyword hints are what an unconfigured workspace gets anyway.
+   */
+  try {
+    await assertAiBudget(tenantId, credential);
+  } catch {
+    return heuristicHints(windowText);
+  }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const prompt = [
     'You are a live sales-call coach. The agent is on a call right now.',
@@ -113,6 +128,7 @@ export async function coachTick(windowText: string, tenantId?: string): Promise<
     });
     if (!res.ok) throw new Error(`Gemini live-coach error: ${res.status}`);
     const data = await res.json();
+    await recordAiUsage(tenantId, credential, data.usageMetadata, { feature: 'live-coach', model });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) return [];
     const parsed = JSON.parse(text) as { hints: { kind: CoachHint['kind']; text: string }[] };
