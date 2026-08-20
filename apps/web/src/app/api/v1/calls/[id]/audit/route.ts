@@ -44,19 +44,13 @@ export const POST = route(
     if (!scorecard) throw NotFound('Active scorecard');
     if (existing?.status === 'PROCESSING') throw Conflict('This audit is already in progress.');
 
-    // Claimed here for the same reason as the analysis: a second press must be
-    // refused now, not deduplicated later by a worker that has already started.
-    const row = existing
-      ? await prisma.callAudit.update({
-          where: { id: existing.id, tenantId: ctx.tenantId },
-          data: { status: 'PROCESSING', errorMessage: null },
-        })
-      : await prisma.callAudit.create({
-          data: { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId, status: 'PROCESSING' },
-        });
-
+    // NOT claimed here. This route used to set the row PROCESSING itself, and
+    // runCallAudit then saw a PROCESSING row and skipped the very work it was
+    // queued for — every manual re-score stranded the audit in PROCESSING.
+    // The worker claims the row before any paid work; duplicate submissions
+    // converge on the payload-hashed jobId.
     await enqueue('ai', 'audit', { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId });
-    return row;
+    return existing ?? { callId: params.id, scorecardId: body.scorecardId, status: 'PENDING' };
   },
 );
 

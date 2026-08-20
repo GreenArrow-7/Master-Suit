@@ -9,6 +9,7 @@ import {
   type CallJob,
   type TranscribeJob,
 } from '@/services/shared/callIntelligence';
+import { scorePracticeSession, type PracticeScoreJob } from '@/services/shared/practiceScoring';
 
 /**
  * Concurrency is 2, not the BullMQ default of 1.
@@ -29,6 +30,8 @@ export function startAiWorker() {
           return analyseCall(job.data as CallJob);
         case 'audit':
           return runCallAudit(job.data as AuditJob);
+        case 'practice-score':
+          return scorePracticeSession(job.data as PracticeScoreJob);
         default:
           logger.warn({ jobName: job.name }, 'unknown ai job');
       }

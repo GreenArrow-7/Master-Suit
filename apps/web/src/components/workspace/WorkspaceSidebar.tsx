@@ -265,6 +265,9 @@ export default function WorkspaceSidebar({
           { label: 'Reports', href: `/${slug}/sales/reports`, icon: 'report', permission: 'reports' },
           { label: 'Dashboards', href: `/${slug}/sales/dashboards`, icon: 'report', permission: 'dashboards' },
           { label: 'Call audits', href: `/${slug}/sales/call-audits`, icon: 'shield', permission: 'calls' },
+          { label: 'Coaching', href: `/${slug}/sales/coaching`, icon: 'people', permission: 'calls' },
+          { label: 'Playbook', href: `/${slug}/sales/playbook`, icon: 'document', permission: 'calls' },
+          { label: 'Practice', href: `/${slug}/sales/practice`, icon: 'activity', permission: 'calls' },
         ],
       },
     ];
