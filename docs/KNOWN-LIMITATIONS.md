@@ -33,10 +33,24 @@ following items still prevent an unconditional commercial-production claim:
   control-plane case — a telephony vendor posting to a URL knows nothing about
   workspaces — and each is guarded by a hashed bearer secret and tenant-scoped
   administrative reads instead.
-- **`tests/permission/field.spec.ts` was deleted, not fixed.** It asserted
-  against `/api/v1/leads/export` and `/api/v1/reports/run`, neither of which
-  exists, using fabricated fixtures. Field-level permission behaviour
-  (`loadFieldRules`/`applyFieldSecurity`) is therefore currently untested.
+- **Field-level security is tested again.** `tests/permission/field.spec.ts` had
+  been deleted rather than fixed — it asserted against `/api/v1/leads/export` and
+  `/api/v1/reports/run`, neither of which exists — which left `loadFieldRules`,
+  `applyFieldSecurity`, `stripUneditableFields` and `assertFilterableFields`
+  entirely uncovered. `tests/permission/field-security.spec.ts` replaces it,
+  written against `/api/v1/opportunities`, which is where field security is
+  actually wired: hiding, masking, the strip-on-write path, per-role and
+  per-object rule scoping, every masking strategy, and the refusal to filter or
+  sort on a hidden field. That last one is the case that matters — masking is
+  worthless if a caller can recover the value by bisecting a filter over it.
+- **Filtering works on leads and nowhere else.** `FIELD_MAP` in
+  `src/lib/api/filterTree.ts` registers an allow-list for `LEAD` only; the
+  comment beneath it says "OPPORTUNITY, ACCOUNT, TASK, TICKET, ACTIVITY maps
+  follow the same shape", and none of them were written. Every list route still
+  accepts a `filter` parameter, validates it, and checks it against field
+  security — and then rejects it with `400 unknown-object` for every caller.
+  Found by the positive control in the field-security suite, which asserts the
+  400 explicitly so the test fails the day a map is added.
 - **The Python HRMS has been archived out of the repository.** It ran nothing and
   was referenced by nothing; HRMS runs natively in the Next.js app against
   PostgreSQL. All 139 files, including the SQLite database, now live in
