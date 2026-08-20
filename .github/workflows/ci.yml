@@ -209,6 +209,21 @@ jobs:
       - name: Redis auth
         run: npm run check:redis-auth
 
+      # ── Gate 3e — the face service's authentication gate ───────────────────
+      #
+      # The only thing between the network and a service that turns camera
+      # frames into biometric vectors is one bearer token, and that comparison
+      # has already been wrong twice: once accepting everything when the
+      # variable was unset, once using `!=` and leaking the token through
+      # timing. Rotation support added a third way to be wrong — short-circuiting
+      # on the first of two candidates — so it is tested rather than trusted.
+      #
+      # Plain python3, no pytest and nothing to install: apps/face/tokens.py
+      # imports `hmac` and stops, precisely so this can run on a runner that has
+      # never seen onnxruntime.
+      - name: Face token gate
+        run: python3 ../face/test_tokens.py
+
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #
       # A skipped test is a failure here. `describe.skip` and `it.skip` are the

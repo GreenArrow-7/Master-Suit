@@ -525,8 +525,8 @@ name:
   by code, queue depth, backlog age and consumer count per queue, AI tokens by
   feature, and the tenant-guard trip counter. This overlay now starts a
   Prometheus that scrapes it and an Alertmanager that delivers what fires;
-  `infra/prometheus-alerts.yml` has ten rules, each corresponding to a failure
-  this deployment has actually had. Set `METRICS_TOKEN` and `ALERT_EMAIL_TO` in
+  `infra/prometheus-alerts.yml` has eleven rules, each corresponding to a failure
+  this deployment has actually had, or to a secret nobody would otherwise rotate. Set `METRICS_TOKEN` and `ALERT_EMAIL_TO` in
   `.env.production` — both containers refuse to start without them. See
   `docs/OBSERVABILITY.md`. What is still missing: distributed tracing, a
   stack-trace reporter, and log shipping. `pino` writes structured JSON to

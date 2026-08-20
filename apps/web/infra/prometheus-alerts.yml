@@ -166,6 +166,34 @@ groups:
             PLATFORM_WRITE_ACCESS_OPENED with the stated reason on the customer's own trail.
             If the work is finished, hand it back rather than waiting for the clock.
 
+  - name: master-suite-secrets
+    rules:
+      # A stale shared secret is not an incident, which is exactly why it needs an
+      # alert: nothing else will ever raise it. The face sidecar turns camera
+      # frames into biometric vectors and its only authentication is this one
+      # bearer token, so its age is worth a ticket.
+      #
+      # The threshold is published by the application rather than written here:
+      # this file is mounted read-only into the Prometheus container, and a
+      # deployment that wants a 30-day window should be able to set
+      # FACE_TOKEN_MAX_AGE_DAYS and be respected without a rebuild.
+      #
+      # A deployment that has never rotated reports its age as the threshold plus
+      # one, so this fires there too. That is deliberate: "no stamp" and "rotated
+      # yesterday" must not look the same.
+      - alert: FaceServiceTokenStale
+        expr: masterapp_secret_age_days >= masterapp_secret_max_age_days
+        for: 1h
+        labels: { severity: ticket }
+        annotations:
+          summary: 'The {{ $labels.secret }} shared secret is overdue for rotation'
+          description: >-
+            Rotate it with apps/web/scripts/rotate-face-token.sh, which does the three
+            ordered steps — face accepts both, web sends the new one, face stops accepting
+            the old one — so no check-in fails while it runs. An age of exactly the
+            threshold plus one on a deployment that has never rotated means
+            FACE_SERVICE_TOKEN_ROTATED_AT is unset, not that the rotation is one day late.
+
   - name: master-suite-cost
     rules:
       # Not a failure — a bill. Included because the assessment's finding was

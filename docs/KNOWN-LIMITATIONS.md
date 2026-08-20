@@ -301,7 +301,7 @@ following items still prevent an unconditional commercial-production claim:
   404 without one) now serves request rate and latency by module, error rate by
   code, per-queue depth, backlog age and **consumer count**, AI tokens by
   feature, and a tenant-guard trip counter; `infra/prometheus-alerts.yml` carries
-  ten rules against them, and both deployment overlays now start a Prometheus
+  eleven rules against them, and both deployment overlays now start a Prometheus
   that scrapes the endpoint and an Alertmanager that delivers what fires — until
   that landed, the rules were a file rather than a running system.
   The queue-consumer gauge is collected by asking Redis

@@ -128,6 +128,14 @@ services:
     environment:
       FACE_MODEL_DIR: /models
       FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:-}
+      # The token being rotated out, accepted alongside the current one for the
+      # length of a rotation. Empty except during one. Without it, rotating the
+      # shared secret means a window where the application sends a token this
+      # service no longer accepts, every check-in is a 401, and nobody can start
+      # their shift — which is why it never got rotated. The overlays inherit
+      # both variables from here. See apps/face/tokens.py and
+      # scripts/rotate-face-token.sh.
+      FACE_SERVICE_TOKEN_PREVIOUS: ${FACE_SERVICE_TOKEN_PREVIOUS:-}
       # Declared, not defaulted. With no token set the service accepts every
       # caller, which is fine on a laptop and an open biometric engine anywhere
       # else — so it refuses to start unauthenticated unless something says

@@ -54,7 +54,7 @@ matters; the rest are inputs to it.
 | 4.2 | `WEBHOOK_SIGNING_PEPPER` | Inbound webhook signatures fail until partners update | ☐ | ☐ |
 | 4.3 | Database credentials | Downtime unless rotated with a rolling restart | ☐ | ☐ |
 | 4.4 | S3 credentials | Uploads and downloads fail | ☐ | ☐ |
-| 4.5 | `FACE_SERVICE_TOKEN` | Face check-in fails closed until both sides updated | ☐ | ☐ |
+| 4.5 | `FACE_SERVICE_TOKEN` | **None, if rotated with the script.** `scripts/rotate-face-token.sh <env-file>` does the three ordered steps — face accepts both, web sends the new one, face stops accepting the old one — so no check-in fails while it runs. Rotating by hand still fails closed until both sides restart | ☐ | ☐ |
 
 There is no secret whose rotation signs users out. `SESSION_SECRET` used to be
 listed here as doing exactly that, and it did not: sessions are rows in
@@ -66,6 +66,15 @@ with `revokeSessions` for a whole workspace.
 
 **4.2 is destructive and needs a written migration path before it is ever done.**
 Rotating that key without re-encrypting is data loss, not a rotation.
+
+**4.5 is the only one with a schedule attached.** The face sidecar turns camera
+frames into biometric vectors and its only authentication is that one bearer
+token, so its age is published as `masterapp_secret_age_days` and
+`FaceServiceTokenStale` raises a ticket past `FACE_TOKEN_MAX_AGE_DAYS` (90 by
+default). A deployment that has never rotated reports an age of the threshold
+plus one, so it fires there too — "no stamp" and "rotated yesterday" must not
+look the same. There is deliberately no timer doing it unattended: the rotation
+restarts the service attendance depends on, twice.
 
 ## 5. Monitoring and alerts
 

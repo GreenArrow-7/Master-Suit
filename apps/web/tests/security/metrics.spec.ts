@@ -30,6 +30,7 @@ import {
   setGauge,
 } from '@/lib/metrics';
 import { GET as metricsRoute } from '@/app/api/metrics/route';
+import { secretAgeDays } from '@/lib/metrics';
 
 const scrape = (token?: string) =>
   metricsRoute(
@@ -117,6 +118,19 @@ describe('the endpoint', () => {
       expect(body).toContain(`masterapp_table_rows_estimate{table="${table}"}`);
       expect(body).toContain(`masterapp_table_bytes{table="${table}"}`);
     }
+  });
+
+  it('publishes the age of the face-service token, and the threshold beside it', async () => {
+    // The face sidecar's only authentication is one bearer token, and until it
+    // could accept an outgoing token alongside the current one there was no way
+    // to change it without failing every check-in mid-shift. The mechanism
+    // exists; this gauge and FaceServiceTokenStale are what make anyone use it.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+    expect(body).toContain('masterapp_secret_age_days{secret="face_service_token"}');
+    // The threshold travels with the metric so the rule file — mounted read-only
+    // — carries no hard-coded number.
+    expect(body).toContain('masterapp_secret_max_age_days{secret="face_service_token"}');
   });
 
   it('reports every queue, including the ones with no consumer', async () => {
@@ -215,5 +229,40 @@ describe('the signals that matter', () => {
     const out = render();
     expect(out).toContain('code="forbidden",module="leads",status="403"');
     expect(out).toContain('code="internal-error",module="leads",status="500"');
+  });
+});
+
+describe('secret age', () => {
+  const DAY = 86_400_000;
+  const now = Date.parse('2026-08-20T12:00:00Z');
+
+  it('counts whole days since the stamp', () => {
+    expect(secretAgeDays('2026-08-10', 91, now)).toBe(10);
+  });
+
+  it('reports a deployment that has never rotated as overdue, not as nothing', () => {
+    // The alternative is skipping the series, and a missing series looks exactly
+    // like a scrape that failed — which would leave the alert green forever on
+    // precisely the deployments where the token is oldest.
+    expect(secretAgeDays(undefined, 91, now)).toBe(91);
+    expect(secretAgeDays('', 91, now)).toBe(91);
+  });
+
+  it('treats an unparseable stamp the same way', () => {
+    expect(secretAgeDays('not-a-date', 91, now)).toBe(91);
+    expect(secretAgeDays('2026-13-45', 91, now)).toBe(91);
+  });
+
+  it('never reports a negative age', () => {
+    // A stamp in the future is somebody's clock. Reported as zero rather than a
+    // negative number, which would read as "rotated very recently indeed".
+    expect(secretAgeDays('2026-09-01', 91, now)).toBe(0);
+  });
+
+  it('is exactly at the threshold on the day it becomes stale', () => {
+    // The alert is `>=`, so this is the day it fires — pinned because an
+    // off-by-one here is a day of silence nobody would notice.
+    const ninety = new Date(now - 90 * DAY).toISOString().slice(0, 10);
+    expect(secretAgeDays(ninety, 91, now)).toBe(90);
   });
 });

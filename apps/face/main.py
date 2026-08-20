@@ -22,11 +22,12 @@ from __future__ import annotations
 
 import base64
 import binascii
-import hmac
 import os
 import sys
 import threading
 from typing import List, Optional
+
+from tokens import accepts, refusal
 
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -98,42 +99,24 @@ def diagnose(exc: Optional[Exception] = None) -> str:
 # Read once, at import, so the refusal below happens at start rather than on the
 # first check-in of the day.
 _TOKEN = os.environ.get("FACE_SERVICE_TOKEN", "")
+_TOKEN_PREVIOUS = os.environ.get("FACE_SERVICE_TOKEN_PREVIOUS", "")
 _ENV = os.environ.get("FACE_SERVICE_ENV", "development").strip().lower()
 
-if not _TOKEN and _ENV != "development":
-    # An unauthenticated biometric engine is not a degraded mode, it is an open
-    # one: anything that can reach the port submits frames and receives face
-    # embeddings. This used to be a silent pass-through, so a deployment that
-    # forgot the variable looked identical to one that set it.
-    sys.stderr.write(
-        "\n[face] Refusing to start: FACE_SERVICE_TOKEN is unset and "
-        f"FACE_SERVICE_ENV is {_ENV!r}.\n"
-        "       This service turns camera frames into biometric vectors; it must not\n"
-        "       accept unauthenticated requests outside local development. Set a long\n"
-        "       random FACE_SERVICE_TOKEN, matching the web application's.\n\n"
-    )
+# The rules live in tokens.py, which imports nothing but `hmac`, so
+# test_tokens.py can exercise them without loading FastAPI and the ONNX graphs.
+# See that module for why a second token exists at all.
+_REFUSAL = refusal(_TOKEN, _TOKEN_PREVIOUS, _ENV)
+if _REFUSAL:
+    sys.stderr.write(f"\n[face] Refusing to start: {_REFUSAL}\n\n")
     raise SystemExit(1)
 
 
 def authorise(authorization: str = Header(default="")):
-    """Shared-secret gate, compared in constant time.
-
-    `!=` on a string returns as soon as two bytes differ, so the time it takes to
-    refuse tells the caller how much of the prefix was right — enough, over many
-    requests, to recover the token a byte at a time. `compare_digest` takes the
-    same time whatever the input.
-
-    An unset token is accepted only in development, and the process refuses to
-    start unauthenticated anywhere else (see above), so this branch is reachable
-    only on a laptop.
-    """
-    if not _TOKEN:
-        return
-    # `hmac.compare_digest` requires bytes-like or ASCII-only str; a header with
-    # non-ASCII would otherwise raise TypeError and surface as a 500 rather than
-    # the 401 it is.
-    supplied = authorization.encode("utf-8", "replace")
-    if not hmac.compare_digest(supplied, f"Bearer {_TOKEN}".encode("utf-8")):
+    """Shared-secret gate. See tokens.py for the comparison and the rotation."""
+    if not accepts(authorization, _TOKEN, _TOKEN_PREVIOUS):
+        # Deliberately one message for every refusal. "Bad token" and "no token"
+        # and "retired token" are the same answer to a caller who should not be
+        # here, and telling them apart is a hint about what to try next.
         raise HTTPException(401, "Bad or missing face-service token.")
 
 

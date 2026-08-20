@@ -53,3 +53,34 @@ Leaving the token unset is for local development, and only local development.
 the process **refuse to start** without a token rather than accepting every
 caller silently, which is what it used to do. The compose files set it —
 `development` in the base file, `production` in the Azure overlay.
+
+### Rotating the token
+
+`FACE_SERVICE_TOKEN_PREVIOUS` holds the token being retired, and is accepted
+alongside the current one for as long as it is set. It exists because rotating a
+single shared value means a window in which the application is sending a token
+this service no longer accepts — every check-in a 401, nobody able to start
+their shift. The honest consequence was that the token never got rotated.
+
+Three ordered steps, no window:
+
+1. **face** — `FACE_SERVICE_TOKEN=<new>`, `FACE_SERVICE_TOKEN_PREVIOUS=<old>`,
+   restart. Both are accepted; the application is still sending `<old>`.
+2. **web** — `FACE_SERVICE_TOKEN=<new>`, restart. Now sending `<new>`.
+3. **face** — clear `FACE_SERVICE_TOKEN_PREVIOUS`, restart. `<old>` is dead.
+
+`apps/web/scripts/rotate-face-token.sh <env-file>` does all three, and refuses to
+start a rotation while one is already in progress. Step 3 is not optional: a
+previous token left set is a second live credential nobody is watching, which is
+most of what the rotation was for. The service refuses to start if the two
+variables hold the same value, which is a rotation that rotated nothing.
+
+The comparison checks both candidates every time and combines the results
+afterwards rather than returning on the first match — a short-circuit would make
+a request accepted by the current token measurably faster than one accepted by
+the previous token, which is a timing signal about which credential the caller
+holds.
+
+`python3 apps/face/test_tokens.py` exercises all of it, and runs in CI. It
+imports `tokens.py`, which pulls in `hmac` and nothing else, so checking the gate
+does not mean loading FastAPI and the ONNX graphs.

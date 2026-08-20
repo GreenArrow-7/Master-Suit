@@ -165,6 +165,21 @@ const schema = z.object({
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),
   FACE_SERVICE_TOKEN: z.string().optional(),
+  /**
+   * The day the face-service token was last rotated, `YYYY-MM-DD`.
+   *
+   * Written by `scripts/rotate-face-token.sh`, read only to publish the token's
+   * age as a metric. Unset means "never rotated since this was introduced",
+   * which is reported as an age rather than as no data — a missing series is
+   * indistinguishable from a scrape that failed, and the whole point is that a
+   * secret nobody rotates should be visible rather than silent.
+   */
+  FACE_SERVICE_TOKEN_ROTATED_AT: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  /** How old the face-service token may get before FaceServiceTokenStale fires. */
+  FACE_TOKEN_MAX_AGE_DAYS: z.coerce.number().int().positive().default(90),
   FACE_SERVICE_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   /** Cosine similarity against the enrolled templates. Tune on your own staff and lighting. */
   FACE_MATCH_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),

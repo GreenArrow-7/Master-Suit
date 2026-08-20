@@ -3,8 +3,9 @@ import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/lib/db';
 import { liveGrantCount } from '@/lib/auth/platform-access';
+import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import { increment, render, setBuildInfo, setGauge } from '@/lib/metrics';
+import { increment, render, secretAgeDays, setBuildInfo, setGauge } from '@/lib/metrics';
 import { QUEUE_NAMES } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
@@ -129,6 +130,35 @@ async function collectTableSizes(): Promise<void> {
   setGauge('masterapp_platform_write_grants', await liveGrantCount());
 }
 
+/**
+ * How old the face-service shared secret is, in days.
+ *
+ * The face sidecar's only authentication is one bearer token, and until
+ * `apps/face/tokens.py` learned to accept an outgoing token alongside the
+ * current one there was no way to change it without failing every check-in
+ * mid-shift. The mechanism exists now; this is what makes anyone use it.
+ *
+ * Deliberately a metric rather than a timer. Rotating restarts the service
+ * attendance depends on, twice, so it is an attended operation — but "attended"
+ * degrades into "never" unless something notices. `FaceServiceTokenStale` is
+ * that something.
+ *
+ * A deployment that has never rotated has no stamp, and is reported as the
+ * threshold plus one rather than skipped: an absent series looks exactly like a
+ * scrape that failed, and would leave the alert green forever on precisely the
+ * deployments that need it most.
+ */
+function collectSecretAges(): void {
+  const overdue = env.FACE_TOKEN_MAX_AGE_DAYS + 1;
+  setGauge('masterapp_secret_age_days', secretAgeDays(env.FACE_SERVICE_TOKEN_ROTATED_AT, overdue), {
+    secret: 'face_service_token',
+  });
+  // Published alongside it so the alert expression carries no hard-coded number
+  // and a deployment that shortens its window is respected without editing the
+  // rule file, which is mounted read-only.
+  setGauge('masterapp_secret_max_age_days', env.FACE_TOKEN_MAX_AGE_DAYS, { secret: 'face_service_token' });
+}
+
 export async function GET(req: Request) {
   if (!authorised(req)) return new Response(null, { status: 404 });
 
@@ -152,6 +182,10 @@ export async function GET(req: Request) {
 
   // Always present, so a scrape returning no series is distinguishable from a
   // process that is down — which are the same empty body otherwise.
+  // Read from configuration, not from the database or Redis, so it is published
+  // even on the scrape where collection above timed out.
+  collectSecretAges();
+
   setGauge('masterapp_up', 1);
   // And which commit is answering. The first question during an incident, and
   // one this deployment could not answer at all before.

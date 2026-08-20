@@ -244,6 +244,26 @@ export function recordTenantGuardTrip(model: string, operation: string) {
  * Stamped into the image by infra/Dockerfile from a build arg. `unknown` means
  * the image was built outside scripts/release.sh, which is itself worth seeing.
  */
+/**
+ * How many days old a secret is, given the day it was last rotated.
+ *
+ * Pure, and exported, so the rule can be tested without standing up the metrics
+ * route: `env` is parsed once at module load, so a test cannot vary
+ * FACE_SERVICE_TOKEN_ROTATED_AT through `process.env` after the fact.
+ *
+ * A missing or unparseable stamp is reported as `overdueDays` — the threshold
+ * plus one — rather than skipped. An absent series is indistinguishable from a
+ * scrape that failed, so skipping would leave the alert green forever on exactly
+ * the deployments that have never rotated anything.
+ */
+export function secretAgeDays(stamp: string | undefined, overdueDays: number, now = Date.now()): number {
+  const rotated = stamp ? Date.parse(`${stamp}T00:00:00Z`) : Number.NaN;
+  if (Number.isNaN(rotated)) return overdueDays;
+  // Clamped at zero: a stamp in the future is somebody's clock, not a negative
+  // age, and a negative gauge here would read as "rotated very recently".
+  return Math.max(0, Math.floor((now - rotated) / 86_400_000));
+}
+
 export function setBuildInfo() {
   setGauge('masterapp_build_info', 1, {
     commit: process.env.BUILD_COMMIT ?? 'unknown',
