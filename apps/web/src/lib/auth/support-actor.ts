@@ -49,6 +49,10 @@ export async function buildSupportActor(
     // that does slip through to an audit row is obviously platform staff.
     id: `platform:${platformUserId}`,
     tenantId,
+    // What the chrome shows for staff inside a customer workspace — the staff
+    // member's own name stays out of the customer-facing shell deliberately.
+    fullName: 'Platform staff',
+    email: '',
     roleId: fullControl ? 'platform_owner' : 'platform_support',
     roleKey: fullControl ? 'platform_owner' : 'platform_support',
     roleRank: 0,

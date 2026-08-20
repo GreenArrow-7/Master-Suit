@@ -89,6 +89,19 @@ export function route<
         // from "deliberately Sales". Platform-level surfaces — users, roles,
         // profile, notifications — belong to no product module.
         if (spec.productModule) await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+        /**
+         * `selfService` waives the permission check entirely — that is its
+         * point, and it is worth knowing what that means for an API key.
+         *
+         * A key authenticates through this same path and inherits
+         * `actor.id = key.createdById`, so it reaches a self-service route as
+         * its creator, with no permission check, whatever its scopes narrow it
+         * to. A route that declares `selfService` and does not want machine
+         * callers has to say so itself — see the check at the top of
+         * api/v1/notifications. It is deliberately not enforced here: the
+         * existing self-service routes (identity/self, hr/self) predate that
+         * decision and are left as they were.
+         */
         if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
       } else if (!spec.anonymous) throw Unauthorized();
 
@@ -124,7 +137,15 @@ export function route<
       }
 
       logger.info(
-        { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
+        {
+          requestId,
+          method: req.method,
+          path: url.pathname,
+          module: spec.module,
+          action: spec.action,
+          ms: Date.now() - started,
+          tenantId: ctx?.tenantId,
+        },
         'request',
       );
 

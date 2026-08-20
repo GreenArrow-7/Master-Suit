@@ -27,9 +27,21 @@ export async function issueApiKey(
 }
 
 export async function authenticateApiKey(raw: string, req: Request, requestId: string): Promise<Ctx> {
+  /**
+   * The secret is the remainder, not the fourth field.
+   *
+   * `issueApiKey` mints it with `randomBytes(32).toString('base64url')`, and the
+   * base64url alphabet contains `_`. Requiring exactly four fields therefore
+   * rejected any key whose secret happened to contain one — about half of every
+   * key ever issued, refused as "Invalid API key" from the moment it was
+   * created, with nothing to distinguish it from a forgery. Splitting off the
+   * three fixed fields and rejoining the rest accepts both shapes, so keys that
+   * already work keep working.
+   */
   const parts = raw.split('_');
-  if (parts.length !== 4 || parts[0] !== 'lf' || parts[1] !== 'live') throw Unauthorized('Invalid API key.');
-  const [, , prefix, secret] = parts;
+  if (parts.length < 4 || parts[0] !== 'lf' || parts[1] !== 'live') throw Unauthorized('Invalid API key.');
+  const prefix = parts[2];
+  const secret = parts.slice(3).join('_');
 
   const key = await prisma.aPIKey.findFirst({
     where: { prefix },
@@ -65,6 +77,9 @@ export async function authenticateApiKey(raw: string, req: Request, requestId: s
   const actor: Actor = {
     id: key.createdById ?? key.id,
     tenantId: key.tenantId,
+    // An API key is not a person; the label names the credential instead.
+    fullName: key.name ?? 'API key',
+    email: '',
     roleId: role.id,
     roleKey: role.key,
     roleRank: role.rank,

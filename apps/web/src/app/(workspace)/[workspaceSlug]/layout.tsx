@@ -124,22 +124,14 @@ async function loadShell(workspaceSlug: string) {
     // per navigation instead of two of each.
     const ctx = await requestCtx();
     const workspace = await requestWorkspace(ctx, workspaceSlug);
-    const signedInAs = await prisma.user.findFirst({
-      where: { tenantId: ctx.tenantId, id: ctx.actor.id },
-      select: {
-        fullName: true,
-        email: true,
-        // Read through to the identity that actually holds the credential.
-        workspaceMembership: { select: { platformUser: { select: { passwordChangedAt: true } } } },
-      },
-    });
     const now = new Date();
     const modules = workspace.moduleEntitlements
       .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state) && (!item.endsAt || item.endsAt > now))
       .map((item) => item.module);
     const memberships = await prisma.workspaceMembership.findMany({
       where: { salesUserId: ctx.actor.id, status: 'ACTIVE', tenant: { deletedAt: null } },
-      include: { tenant: true },
+      // The switcher renders two strings; the full Tenant row is ~30 columns.
+      select: { tenant: { select: { slug: true, displayName: true } } },
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
@@ -152,10 +144,9 @@ async function loadShell(workspaceSlug: string) {
       supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
-      // Null means the account has not yet replaced the password it was issued.
-      // Strictly null: a platform support actor has no workspace User row at
-      // all, and the missing chain must not read as an unchanged password.
-      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt === null,
+      // resolveCtx read passwordChangedAt off the session row it already held;
+      // strictly true only for real members — a support actor never carries it.
+      mustChangePassword: ctx.mustChangePassword === true,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:
@@ -171,7 +162,9 @@ async function loadShell(workspaceSlug: string) {
         can(ctx, key, 'CREATE'),
       ),
       user: {
-        name: signedInAs?.fullName ?? signedInAs?.email ?? (supportMode ? 'Platform staff' : 'Signed in'),
+        // buildActor carries the name from the row it loads anyway; the support
+        // actor names itself 'Platform staff'.
+        name: ctx.actor.fullName || ctx.actor.email || 'Signed in',
         role: ctx.actor.roleKey,
       },
     };
