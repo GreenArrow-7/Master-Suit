@@ -493,7 +493,6 @@ model Tenant {
   hrPipCheckpoints           HrPipCheckpoint[]
   hrReviewCompetencyScores   HrReviewCompetencyScore[]
   importJobs                 ImportJob[]
-  integrations               Integration[]
   integrationConnections     IntegrationConnection[]
   landingPages               LandingPage[]
   landingPageVersions        LandingPageVersion[]
@@ -559,8 +558,6 @@ model Tenant {
   unitInventories            UnitInventory[]
   unitPlans                  UnitPlan[]
   userTeams                  UserTeam[]
-  webhooks                   Webhook[]
-  webhookDeliveries          WebhookDelivery[]
   webhookEvents              WebhookEvent[]
   referenceCounters          TenantReferenceCounter[]
   platformAccessGrants       PlatformAccessGrant[]
@@ -4815,31 +4812,6 @@ model ExportJob {
   @@index([tenantId, status, createdAt(sort: Desc)])
 }
 
-model Integration {
-  id               String    @id @default(cuid())
-  tenantId         String
-  key              String
-  name             String
-  category         String
-  authMethod       String
-  configEncrypted  String?
-  fieldMappings    Json      @default("{}")
-  isActive         Boolean   @default(false)
-  lastSyncAt       DateTime?
-  lastSyncStatus   String?
-  lastErrorAt      DateTime?
-  lastErrorMessage String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-  updatedById      String?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, key])
-  @@index([tenantId, category, isActive])
-}
-
 model APIKey {
   id              String    @id @default(cuid())
   tenantId        String
@@ -4861,51 +4833,6 @@ model APIKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, revokedAt])
-}
-
-model Webhook {
-  id               String    @id @default(cuid())
-  tenantId         String
-  name             String
-  targetUrl        String
-  events           String[]
-  signingSecretEnc String
-  isActive         Boolean   @default(true)
-  maxRetries       Int       @default(5)
-  lastDeliveryAt   DateTime?
-  lastStatusCode   Int?
-  failureCount     Int       @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-
-  deliveries WebhookDelivery[]
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, isActive])
-}
-
-model WebhookDelivery {
-  id           String    @id @default(cuid())
-  tenantId     String
-  webhookId    String
-  event        String
-  payload      Json
-  attempt      Int       @default(1)
-  statusCode   Int?
-  responseBody String?
-  errorMessage String?
-  deliveredAt  DateTime?
-  nextRetryAt  DateTime?
-  createdAt    DateTime  @default(now())
-
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, webhookId, createdAt(sort: Desc)])
-  @@index([nextRetryAt])
 }
 
 model Notification {

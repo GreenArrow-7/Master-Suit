@@ -2240,13 +2240,13 @@ Five things change and nothing else has to:
 | P3-1 | Close the CSP gap — build-step hashing of the inline bootstrap, or nonce support when Next provides it | M-1 |
 | P3-2 | Consolidate the kernel bypasses behind a shared `resolveGuardedCtx` prologue | W-10 |
 | P3-3 | Split `LeadDetail.tsx` and the two HR dispatch routes | W-15 |
-| P3-4 | Remove dead configuration and dependencies; drop the legacy `Integration` table | W-12 |
+| P3-4 | ~~Remove dead configuration and dependencies; drop the legacy `Integration` table~~ **done** — configuration in P2-2, tables in `20260820180000_drop_unbuilt_models` | W-12 |
 | P3-5 | Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code | W-13 |
 | P3-6 | Re-enable the `format:check` gate in the same PR that reformats | L-7 |
 | P3-7 | Implement SMS and e-signature adapters, or remove the settings that imply they exist | §14 |
 | P3-8 | ~~Number-word normalisation in the AI redactor~~ **done** | AI4 |
 | P3-9 | ~~Honour `humanCorrected` in the analysis worker~~ **done** | AI3 |
-| P3-10 | Dispatch outbound tenant webhooks, or drop the models | §14 |
+| P3-10 | ~~Dispatch outbound tenant webhooks, or drop the models~~ **dropped.** `Webhook` and `WebhookDelivery` had no dispatcher, no way to register one, and no code that had ever written a row — while `Webhook.signingSecretEnc` read as a place secrets were kept. Building the feature because the schema exists is the wrong order; it comes back with a dispatcher | §14 |
 | P3-11 | ~~Neutralise leading `=`/`+`/`-`/`@` in the WPS SIF export~~ **done** — by refusing, not escaping. See L-4 | L-4 |
 | P3-12 | ~~Break-glass … and a time limit on platform-owner write access into a tenant~~ **time limit done**; approval is a decision, not an implementation — see below | M-5 |
 
