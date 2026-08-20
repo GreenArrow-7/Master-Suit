@@ -121,6 +121,15 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
+  /**
+   * Extra hosts the media worker may fetch a recording from, comma-separated.
+   *
+   * Added to the provider's own defaults rather than replacing them. A leading
+   * dot means "and its subdomains": `.twiliocdn.com` matches
+   * `media.twiliocdn.com` and not `nottwiliocdn.com`. Exists so a vendor moving
+   * CDN does not require a deploy here to keep ingesting recordings.
+   */
+  RECORDING_URL_ALLOWED_HOSTS: z.string().default(''),
   SMS_PROVIDER: z.string().default('mock'),
   /** Offer letters, contracts and policy acknowledgements. `mock` is blocked in production. */
   ESIGNATURE_PROVIDER: z.string().default('mock'),

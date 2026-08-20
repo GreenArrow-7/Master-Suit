@@ -10,6 +10,8 @@
  * Idempotent: a recording already holding an object key is left alone, so a
  * retried job or a duplicated webhook does not re-download megabytes.
  */
+import { env } from '@/lib/env';
+import { assertFetchableUrl } from '@/lib/security/outboundUrl';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
@@ -56,9 +58,34 @@ export async function ingestRecording(job: IngestRecordingJob): Promise<{ ingest
     connection.webhookKey,
   );
 
-  const res = await fetch(job.url, {
+  /**
+   * Where this URL points is not something the vendor gets to decide.
+   *
+   * It arrived in a webhook, and while that webhook is signed for Twilio and
+   * Plivo, Exotel and Knowlarity cannot sign at all — they are authenticated by
+   * an unguessable URL key. This process is the worker, inside the Compose
+   * network, so an unchecked fetch reaches `postgres:5432`, `minio:9000`, the
+   * face engine, and on a cloud host the metadata service on 169.254.169.254.
+   *
+   * `assertFetchableUrl` requires https, an allowed host, and public addresses
+   * for every record the host resolves to. See lib/security/outboundUrl.ts for
+   * what that does and does not cover.
+   */
+  const allowedHosts = [
+    ...(provider.mediaHosts?.() ?? []),
+    ...env.RECORDING_URL_ALLOWED_HOSTS.split(',')
+      .map((host) => host.trim())
+      .filter(Boolean),
+  ];
+  const url = await assertFetchableUrl(job.url, allowedHosts);
+
+  const res = await fetch(url, {
     headers: provider.mediaHeaders?.() ?? {},
     signal: AbortSignal.timeout(120_000),
+    // Not optional. An allowed host that 302s to http://169.254.169.254/ walks
+    // straight past every check above, because the checks ran against the first
+    // URL and `fetch` follows redirects by default.
+    redirect: 'error',
   });
   // Thrown, not returned: the queue's backoff is the retry, and vendors publish
   // the media a little after they announce it.

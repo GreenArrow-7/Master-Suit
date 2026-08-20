@@ -6,8 +6,17 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-  // Content-Security-Policy is NOT here. It carries a per-request script nonce,
-  // which a static header cannot express — see src/middleware.ts.
+  // Content-Security-Policy is NOT here, and the reason is not the one this
+  // comment used to give. It claimed a per-request nonce set by a
+  // `src/middleware.ts` — there is no such file (the proxy is `src/proxy.ts`)
+  // and it deliberately emits no nonce, because Next 16.2.12 does not stamp one
+  // onto its own script tags in a production build and a nonce makes browsers
+  // ignore `'unsafe-inline'`, which renders the app inert.
+  //
+  // The CSP is built in src/proxy.ts, per request, and still carries
+  // `script-src 'unsafe-inline'`. docs/KNOWN-LIMITATIONS.md records that as the
+  // open gap it is. A reader auditing the CSP was previously told the opposite
+  // of the truth by this line.
 ];
 
 const config: NextConfig = {

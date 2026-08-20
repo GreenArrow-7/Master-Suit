@@ -1,4 +1,5 @@
 import type { Worker } from 'bullmq';
+import type { QueueName } from '@/lib/queue';
 import { logger } from '@/lib/logger';
 import { startAiWorker } from './ai';
 import { startAutomationWorker } from './automation';
@@ -37,14 +38,23 @@ import { startWebhookWorker } from './webhook';
  *      than sitting "up" and idle. This is the property that makes
  *      `restart: unless-stopped` mean something.
  *
- *   3. **Names the queues it did not wire.** `messaging`, `import` and `export`
- *      are declared in lib/queue.ts with retry policies and have no consumer;
- *      jobs enqueued to them sit in Redis forever. That is a known gap rather
- *      than a defect, and it is logged at every start so it stays known.
+ *   3. **Refuses to compile with a queue nobody drains.** `CONSUMERS` is keyed
+ *      by `QueueName`, so adding a queue to lib/queue.ts without a worker here
+ *      is a type error rather than jobs sitting in Redis forever. This replaced
+ *      a start-up log that named three such queues — `messaging`, `import` and
+ *      `export` — which were declared with retry policies, had no consumer, and
+ *      stayed that way precisely because a log line is not a build failure.
+ *      They have since been deleted; the type is what keeps the gap from
+ *      reopening.
  */
 
-/** Every queue lib/queue.ts can enqueue to, and who drains it. */
-const CONSUMERS: Record<string, () => Worker> = {
+/**
+ * Every queue lib/queue.ts can enqueue to, and who drains it.
+ *
+ * `Record<QueueName, ...>` is exhaustive both ways: a queue with no worker and a
+ * worker for a queue that no longer exists are each a compile error.
+ */
+const CONSUMERS: Record<QueueName, () => Worker> = {
   automation: startAutomationWorker,
   distribution: startDistributionWorker,
   sla: startSlaWorker,
@@ -55,12 +65,6 @@ const CONSUMERS: Record<string, () => Worker> = {
   webhook: startWebhookWorker,
   maintenance: startMaintenanceWorker,
 };
-
-/**
- * Declared in lib/queue.ts, deliberately unconsumed. Listed here so the gap is
- * stated at every boot instead of being discovered when a job never runs.
- */
-const UNCONSUMED = ['messaging', 'import', 'export'] as const;
 
 /** Redis answering should take milliseconds. Ten seconds is a dead dependency. */
 const READY_TIMEOUT_MS = 10_000;
@@ -113,7 +117,7 @@ async function start() {
   }
 
   logger.info(
-    { queues: workers.map((w) => w.name), unconsumed: UNCONSUMED, schedulers: ['campaign-sweep', 'retention-daily'] },
+    { queues: workers.map((w) => w.name), schedulers: ['campaign-sweep', 'retention-daily'] },
     'workers started',
   );
 }
