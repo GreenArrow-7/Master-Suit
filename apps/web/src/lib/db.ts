@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from './env';
+import { invalidateActors } from './auth/actorCache';
 import { recordTenantGuardTrip } from './metrics';
 
 const globalForPrisma = globalThis as unknown as {
@@ -144,6 +145,77 @@ const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMan
 
 export class TenantGuardError extends Error {}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Keeping the permission cache honest
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Models whose rows feed `buildActor`, and therefore what a user may do.
+ *
+ * Hooked here rather than at the write sites on purpose. There are dozens of
+ * places that touch a role, an assignment or a user's status — the role editor,
+ * the invitation flow, deactivation, the org-chart move, seeds, the platform
+ * console — and the failure mode of forgetting one is *a revoked permission that
+ * still works*. A list of call sites has to be maintained; a list of models is
+ * checked by the type of every query that passes through this client.
+ */
+const ACTOR_MODELS = new Set([
+  'Role', // isActive and rank
+  'RolePermission', // granted and scope
+  'MembershipRole', // in-window assignments
+  'WorkspaceMembership', // which sales user a platform user is
+  'User', // see ACTOR_USER_FIELDS below
+  'UserTeam', // teamIds
+]);
+
+/**
+ * The one model with no tenant: the permission catalogue. Renaming a permission
+ * changes the `module:ACTION` keys every cached map is keyed by, so it has to
+ * invalidate every tenant at once.
+ */
+const GLOBAL_ACTOR_MODEL = 'Permission';
+
+/**
+ * `User` is written constantly — `lastLoginAt` alone would invalidate a whole
+ * tenant's cache on every sign-in — so it is the one model filtered by field.
+ * These are the columns `buildActor` actually reads.
+ *
+ * `managerId` is here because it decides `managedUserIds`, which means moving
+ * one person under a new manager invalidates the tenant, and the *manager's*
+ * cached actor is rebuilt with the new report. That is the case a per-user
+ * invalidation would have got wrong.
+ */
+const ACTOR_USER_FIELDS = new Set(['status', 'deletedAt', 'roleId', 'branchId', 'regionId', 'managerId']);
+
+function touchesActor(model: string, operation: string, args: GuardedArgs): boolean {
+  if (!CREATE_OPS.has(operation) && !FILTERED_WRITE_OPS.has(operation)) return false;
+  if (model !== 'User') return true;
+
+  // `create`/`createMany` put rows in `data`; `upsert` splits them across
+  // `create` and `update`. A field in any of them is a field being written.
+  const rows: unknown[] = [args?.data, args?.create, args?.update];
+  if (Array.isArray(args?.data)) rows.push(...args.data);
+  return rows.some(
+    (row) => row && typeof row === 'object' && Object.keys(row).some((field) => ACTOR_USER_FIELDS.has(field)),
+  );
+}
+
+/**
+ * The tenant a write belongs to, for invalidation only.
+ *
+ * The guard above has already established that a scoped write carries one, so
+ * this is a read of a value that is known to be there. `undefined` means it
+ * could not be determined — a write reached through a global-unique field, say —
+ * and the caller invalidates every tenant rather than none. Over-invalidating
+ * costs a rebuild; under-invalidating leaves a revoked permission working.
+ */
+function tenantOfWrite(args: GuardedArgs): string | undefined {
+  const candidates = [args?.where?.tenantId, (args?.data as IncomingRow | undefined)?.tenantId];
+  for (const value of candidates) if (typeof value === 'string' && value) return value;
+  const first = Array.isArray(args?.data) ? (args.data[0] as IncomingRow | undefined)?.tenantId : undefined;
+  return typeof first === 'string' && first ? first : undefined;
+}
+
 /**
  * Defence in depth, layer 2 of 3.
  *
@@ -165,6 +237,9 @@ export class TenantGuardError extends Error {}
 interface GuardedArgs {
   where?: Record<string, unknown> & { tenantId?: unknown };
   data?: unknown;
+  /** `upsert` carries its rows here rather than in `data`. */
+  create?: unknown;
+  update?: unknown;
   /**
    * Caller opt-in to see soft-deleted rows. Stripped before the query reaches
    * Prisma, which would reject it as an unknown argument.
@@ -315,7 +390,18 @@ function tenantGuard(base: PrismaClient) {
 
           if (args) delete args.__includeDeleted;
 
-          return runPinned(base, model, operation, args, query);
+          const invalidates = model === GLOBAL_ACTOR_MODEL || ACTOR_MODELS.has(model);
+          const result = await runPinned(base, model, operation, args, query);
+
+          // After the write, never before: invalidating first would leave a
+          // window in which a rebuild caches the pre-write answer under the new
+          // version. Awaited rather than fired and forgotten, so a request that
+          // revokes a permission cannot return before the revocation is visible
+          // to the next one.
+          if (invalidates && touchesActor(model, operation, args)) {
+            await invalidateActors(model === GLOBAL_ACTOR_MODEL ? undefined : tenantOfWrite(args));
+          }
+          return result;
         },
       },
     },

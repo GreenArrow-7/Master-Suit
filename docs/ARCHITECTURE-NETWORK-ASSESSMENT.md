@@ -2000,7 +2000,7 @@ ClamAV and the face models sharing RAM with Postgres.
 | Storage | MinIO on the VM disk. Recordings dominate; 60 GB will not last |
 | Background jobs | One worker container (`replicas: 2` in the prod overlay). Adequate |
 | Network | One Caddy, one web container. Fine at this volume |
-| Auth | Every request does a session lookup, a membership lookup, a role+permission build and a `MembershipRole` query. **Uncached.** Measurable but survivable |
+| Auth | Every request does a session lookup, a membership lookup, a role+permission build and a `MembershipRole` query. **Uncached.** Measurable but survivable — the permission build is cached as of 2026-08-20; the session lookup deliberately is not, so signing someone out stays immediate |
 | Tenant isolation | Unaffected by tenant count |
 | Logging | Already failing — nothing is collected |
 | Monitoring | Already failing |
@@ -2012,7 +2012,7 @@ ClamAV and the face models sharing RAM with Postgres.
 | **Database** | Single instance, no read replica in use. `AuditLog` and `HrAttendancePunch` grow unbounded with no partitioning; the schema header discusses partitioning but no migration implements it |
 | **Per-tenant sequences** | ~10,000 relations in `pg_class`. Catalog bloat, slow `pg_dump` |
 | **Connection pool** | 1,000 tenants × concurrent users against `max_connections=200` needs PgBouncer — and PgBouncer in transaction mode is **incompatible with the current RLS approach**, because `set_config(..., true)` is transaction-local but the batched `$transaction` pattern assumes it lands on the same connection. This needs design work, not configuration |
-| **Auth** | The per-request permission build becomes a real cost. It needs a cache keyed on `(userId, roleVersion)` with explicit invalidation |
+| **Auth** | ~~The per-request permission build becomes a real cost. It needs a cache keyed on `(userId, roleVersion)` with explicit invalidation~~ — **fixed 2026-08-20.** `lib/auth/actorCache.ts`: the version lives in the cached *value*, so invalidating a tenant is one `INCR` rather than the `SCAN` sweep flagged two rows down. Invalidation is hooked into the Prisma client, not the write sites, so a revoked permission cannot outlive the write that revoked it. Measured 13.28 ms → 0.15 ms per build |
 | **AI** | Concurrency 2 is untenable. Needs per-tenant queues or a fair scheduler; without one, a single tenant's backlog starves everyone |
 | **Storage** | Must move off the VM |
 | **Auth/session** | `PlatformSession` grows monotonically — no cleanup exists anywhere (H-5) |
