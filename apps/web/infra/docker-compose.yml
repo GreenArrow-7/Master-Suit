@@ -44,11 +44,39 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    # ── requirepass, in development too ──────────────────────────────────────
+    #
+    # Redis carries queue payloads and cached actor permissions, and it had no
+    # password anywhere. On one host the bridge network is a real mitigation and
+    # it is also the assumption that breaks first the moment anything moves to a
+    # second machine.
+    #
+    # The default is the same well-known development credential the Postgres role
+    # already uses here, and development gets one *at all* for the same reason
+    # staging sends its alerts through Mailpit rather than switching them off: a
+    # path no environment exercises is a path nobody notices is broken. The two
+    # deployment overlays replace it with `:?` and refuse to start without a real
+    # one.
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--maxmemory-policy',
+        'noeviction',
+        '--requirepass',
+        '${REDIS_PASSWORD:-leadflow}',
+      ]
+    environment:
+      # For the healthcheck below, which runs inside this container.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-leadflow}
     ports: ['127.0.0.1:6379:6379']
     volumes: ['redisdata:/data']
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      # `REDISCLI_AUTH` rather than `-a`: the flag prints "Using a password with
+      # -a is insecure" to stderr on every probe. `$$` escapes Compose's own
+      # interpolation so the shell inside the container expands it.
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
       interval: 5s
       retries: 10
 
@@ -131,7 +159,7 @@ services:
       # to — lib/startup-check.ts refuses to boot as a superuser, correctly.
       # Its password is set by 20260806000000; scram-sha-256 now checks it.
       DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379/0
       S3_ENDPOINT: http://minio:9000
       FACE_SERVICE_URL: http://face:8000
       ANTIVIRUS_PROVIDER: clamav
@@ -158,7 +186,7 @@ services:
     environment:
       PROCESS_ROLE: worker
       DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379/0
     env_file: [../.env]
     depends_on:
       postgres: { condition: service_healthy }

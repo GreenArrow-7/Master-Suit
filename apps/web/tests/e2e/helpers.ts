@@ -18,7 +18,7 @@ import { RUN_TAG } from './run-tag';
  * Call from `test.beforeAll` in each spec file.
  */
 export async function resetLoginThrottle() {
-  const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379/0', { maxRetriesPerRequest: 2 });
+  const redis = new Redis(process.env.REDIS_URL ?? 'redis://:leadflow@localhost:6379/0', { maxRetriesPerRequest: 2 });
   try {
     /**
      * `rl:` is the prefix lib/security/ratelimit.ts puts on every bucket.

@@ -103,6 +103,10 @@ row-level security.
 
 ### Footprint
 
+Staging generates its own `REDIS_PASSWORD` along with the rest — `npm run secrets
+.env.staging` — and never copies production's. Rotating one environment's
+credential must not touch another's.
+
 Two full stacks on one VM means two Postgres, two Redis, two MinIO, two ClamAV
 (~2 GB resident each, for the signature database) and two face containers. On
 the 4 vCPU / 16 GB VM in `docs/DEPLOY-AZURE.md` that fits, with little room

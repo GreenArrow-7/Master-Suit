@@ -44,7 +44,7 @@ services:
       # ever usable with docker-compose.azure.yml layered on top to restate this
       # one value. An overlay that cannot run without a third file is a trap.
       DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379
       # A real SMTP transport pointed at the local mailbox. Not a mock: the
       # message is composed, sent and delivered for real — it just lands in
       # Mailpit instead of somebody's inbox.
@@ -94,7 +94,7 @@ services:
       NODE_ENV: production
       PROCESS_ROLE: worker
       DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379
     # Meaningful now that the entrypoint exits non-zero when a queue cannot
     # attach: Compose restarts it, and a genuinely broken configuration shows up
     # as a crash loop instead of a container that is "up" and consuming nothing.

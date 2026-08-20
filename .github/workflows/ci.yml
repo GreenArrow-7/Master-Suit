@@ -37,14 +37,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
 
     env:
       # NODE_ENV is deliberately NOT set here.
@@ -70,6 +62,28 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+
+      # ── Redis, started as a step rather than a service container ────────────
+      #
+      # Every Compose file in this repository sets `--requirepass`, including the
+      # development one, so that no environment leaves the AUTH path unexercised.
+      # CI has to match, or the one place the whole suite runs is the one place
+      # a password is never sent.
+      #
+      # A service container cannot do it: GitHub Actions exposes `image`, `env`,
+      # `ports` and `options`, and the official redis image takes its password as
+      # a *command argument*, which there is no field for. `docker run` has one.
+      - name: Redis
+        run: |
+          docker run -d --name ci-redis -p 6379:6379 redis:7-alpine \
+            redis-server --requirepass leadflow
+          for i in $(seq 1 30); do
+            if docker exec -e REDISCLI_AUTH=leadflow ci-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "redis ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::redis did not become ready"; docker logs ci-redis; exit 1
 
       - name: Install
         run: npm ci
@@ -184,6 +198,16 @@ jobs:
       # that was never going to say anything.
       - name: Observability drift
         run: npm run check:observability
+
+      # ── Gate 3d — Redis has a password, everywhere, and it agrees ──────────
+      #
+      # Both failures this catches present as jobs that never run rather than as
+      # a configuration error: a Compose file that drops `--requirepass`, and an
+      # env file whose REDIS_URL still carries yesterday's password. The second
+      # is the likelier one, because the password is written twice — bare for
+      # the container's `--requirepass`, and as userinfo for the application.
+      - name: Redis auth
+        run: npm run check:redis-auth
 
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #

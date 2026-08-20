@@ -170,7 +170,7 @@ PORT=3000
 # ── Data ────────────────────────────────────────────────
 DATABASE_URL=postgresql://leadflow:pw@postgres:5432/leadflow?schema=public&connection_limit=20
 DATABASE_REPLICA_URL=                 # optional read replica for reports
-REDIS_URL=redis://redis:6379/0
+REDIS_URL=redis://:<REDIS_PASSWORD>@redis:6379/0
 
 # ── Secrets (32-byte base64) ────────────────────────────
 FIELD_ENCRYPTION_KEY=                 # AES-256-GCM for provider/integration configs

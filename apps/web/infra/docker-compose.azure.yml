@@ -84,6 +84,12 @@ services:
       # otherwise win over the real credential in .env.production. Both now name
       # `master_saas_app`; only the password and host differ.
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      # Composed from REDIS_PASSWORD rather than read from the env file, so the
+      # password and the URL cannot drift apart. Restated here for the same
+      # reason DATABASE_URL is: `environment:` outranks `env_file:` whatever the
+      # order, so the production overlay's development default would otherwise
+      # win over the real credential.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}@redis:6379/0
       # Deliberately blank. lib/env.ts accepts empty, and startup-check skips its
       # "same connection" comparison — the runtime has no business holding the
       # role that can drop a policy.
@@ -123,6 +129,7 @@ services:
     env_file: !override ['../.env.production']
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}@redis:6379/0
       MIGRATION_DATABASE_URL: ''
       SHADOW_DATABASE_URL: ''
       STAGING_DATABASE_URL: ''
@@ -197,6 +204,13 @@ services:
 
   redis:
     ports: !reset []
+    environment:
+      # `:?` where the base file has a development default. Redis carries queue
+      # payloads and cached actor permissions; on a host with a public IP the
+      # bridge network is the only thing between them and anything else that
+      # ends up on this machine, and "the network is private" is the assumption
+      # that breaks first.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}
 
   mailpit:
     # Still in the stack, because the production overlay's `depends_on` requires

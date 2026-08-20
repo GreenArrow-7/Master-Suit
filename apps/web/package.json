@@ -35,6 +35,7 @@
     "docker:logs": "docker compose -p master-saas -f infra/docker-compose.yml logs -f",
     "check:test-data": "node scripts/check-test-data.mjs",
     "check:observability": "node scripts/check-observability.mjs",
+    "check:redis-auth": "node scripts/check-redis-auth.mjs",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

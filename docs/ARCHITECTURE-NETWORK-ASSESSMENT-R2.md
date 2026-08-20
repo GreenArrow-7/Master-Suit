@@ -13,8 +13,8 @@
 > Where a finding has moved, this document says so and names the change, so the
 > two revisions can be read as a before and after rather than as two opinions.
 >
-> **One finding has been closed since this was written: P0-1 / W-2, "metrics
-> exist and nothing scrapes them".** The scores below are left as assessed at
+> **Two findings have been closed since this was written: P0-1 / W-2, "metrics
+> exist and nothing scrapes them", and P0-3 / M-5, "Redis has no AUTH".** The scores below are left as assessed at
 > `f1dd84e` rather than rewritten, for the same reason revision 1 was left
 > alone — an assessment that edits itself is no longer a record of anything.
 > The places a reader would otherwise act on the stale finding are annotated
@@ -851,6 +851,10 @@ flowchart TB
 - **Redis has no password.** `requirepass` is not set in any Compose file. On the
   Compose network that is the same argument as above; it is the weakest instance
   of it, because Redis carries queue payloads and cached actor permissions.
+  _Closed since this assessment: every Compose file sets `--requirepass`,
+  including the development one, and the two deployment overlays require a real
+  value rather than defaulting. CI gate 3d fails the build if a file drops it or
+  if an env file's `REDIS_URL` stops matching its `REDIS_PASSWORD`._
 
 ---
 
@@ -1305,7 +1309,7 @@ than at the next sign-in.
 | M-2 | **`FIELD_MAP` in `filterTree.ts` registers only `LEAD`.** Every other list route 400s on `filter` for every caller                                                                                                                                          | A documented API feature does not work                                                                          | Register the remaining resources, or remove `filter` from those routes' contracts                           |
 | M-3 | **Three declared queues have no consumer** (`messaging`, `import`, `export`)                                                                                                                                                                                | A job enqueued to them is never run. Nothing enqueues to them today, so this is latent                          | Delete them, or build the consumers                                                                         |
 | M-4 | **Break-glass has no UI.** The API exists; the platform console has no button                                                                                                                                                                               | An owner needing a write must call the API by hand, which is the kind of friction that gets a control removed   | Add the control to the workspace-open screen                                                                |
-| M-5 | **Redis has no AUTH.** `requirepass` is unset in every Compose file                                                                                                                                                                                         | On one host, contained by the bridge network. It carries queue payloads and cached actor permissions            | Set `requirepass`; it is one line and one URL change                                                        |
+| M-5 | ~~**Redis has no AUTH.** `requirepass` is unset in every Compose file~~ **Closed** — set in every stack, and required rather than defaulted in both deployment overlays | On one host, contained by the bridge network. It carries queue payloads and cached actor permissions            | Set `requirepass`; it is one line and one URL change                                                        |
 | M-6 | **Intra-VM traffic is plaintext** — Caddy→web, →Postgres, →Redis, →MinIO, →clamav, →face                                                                                                                                                                    | Contained today by everything being on one host                                                                 | Required before anything moves to a second machine                                                          |
 | M-7 | **Face service authentication is a shared header secret** with no rotation path                                                                                                                                                                             | A leaked token is a biometric engine open to anything on the network                                            | Rotate on a schedule; consider mTLS when the sidecar leaves the host                                        |
 | M-8 | **`next.config.ts` documents a CSP nonce and a `src/middleware.ts` that do not exist** — the file is `src/proxy.ts` and it deliberately has no nonce                                                                                                        | A reader auditing the CSP is told the opposite of the truth                                                     | One-line comment fix                                                                                        |
@@ -1826,7 +1830,7 @@ application.**
 | ---- | -------------------------------------------------------------------------------------------------------------------------- | --------- |
 | P0-1 | Deploy Prometheus + Alertmanager against `/api/metrics` — **done**, `docs/OBSERVABILITY.md`                                | W-2       |
 | P0-2 | Automate the off-host backup copy and prove one **full** restore, including the object store                               | W-1, §9.3 |
-| P0-3 | Set `requirepass` on Redis in every Compose file                                                                           | M-5       |
+| P0-3 | Set `requirepass` on Redis in every Compose file — **done**                                                                | M-5       |
 
 #### P1 — Production · before paying customers
 

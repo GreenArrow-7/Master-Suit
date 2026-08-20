@@ -54,12 +54,27 @@ chmod 600 .env.production
 node scripts/generate-secrets.mjs .env.production
 ```
 
-If Node is not installed on the host, generate the two keys with Docker instead
-and paste them in:
+That writes `FIELD_ENCRYPTION_KEY`, `WEBHOOK_SIGNING_PEPPER`, `METRICS_TOKEN`
+and `REDIS_PASSWORD`, and rewrites `REDIS_URL` to carry the Redis password it
+just generated. The password is written in two places because the container
+needs it bare for `--requirepass` and the application needs it inside a URL;
+letting the script derive one from the other is what keeps them in step, and
+`npm run check:redis-auth` fails the build if a hand edit separates them.
+
+`REDIS_PASSWORD` is `base64url`, not `base64`, and that matters: `+`, `/` and
+`=` are not valid in a URL's userinfo unescaped, so a base64 password produces a
+`REDIS_URL` the application rejects at boot.
+
+If Node is not installed on the host, generate the keys with Docker instead and
+paste them in — `base64` for the first three, `base64url` for `REDIS_PASSWORD`:
 
 ```bash
 docker run --rm node:22-alpine node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+docker run --rm node:22-alpine node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
+
+Then put that same password into `REDIS_URL`:
+`redis://:<REDIS_PASSWORD>@redis:6379/0`.
 
 Then edit `.env.production` and set, at minimum:
 
@@ -489,6 +504,12 @@ name:
   it with the application. There is no failover and no point-in-time recovery —
   only the daily backup you scheduled above, which means the worst case is
   losing up to a day of work.
+- **Intra-VM traffic is plaintext.** Postgres, Redis, MinIO, ClamAV and the face
+  engine all speak unencrypted on the Compose bridge. Redis at least now requires
+  a password — it carries queue payloads and cached actor permissions, and it had
+  none — but the bridge being private is still the assumption everything behind
+  the edge rests on, and it is the first thing that stops being true if any of
+  this moves to a second machine.
 - **Secrets sit in a file.** `.env.production`, mode 600, on the VM. Real secret
   management means Azure Key Vault and injection at start. The file is at least
   never copied into an image.

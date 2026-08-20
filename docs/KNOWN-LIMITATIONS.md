@@ -271,6 +271,15 @@ following items still prevent an unconditional commercial-production claim:
   workspace some way past it before the first records anything; and no plan ships
   with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
   number.
+- **Redis requires a password now; everything behind the edge is still
+  plaintext.** `requirepass` was set in no Compose file at all, and Redis carries
+  queue payloads and cached actor permissions. Every stack sets it now, including
+  the development one — a path no environment exercises is a path nobody notices
+  is broken — and both deployment overlays refuse to start without a real value
+  rather than falling back to the development default. What remains: Postgres,
+  Redis, MinIO, ClamAV and the face engine all still speak unencrypted on the
+  Compose bridge. On one host that is a real mitigation; it is also the first
+  assumption to break if any of this moves to a second machine.
 - **There are metrics and alerting now; there are still no traces and no log
   shipping.**
   Nothing in the application exported a metric, emitted a span or reported an
