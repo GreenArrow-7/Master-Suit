@@ -30,31 +30,27 @@ export async function cached<T>(key: string, ttlSeconds: number, load: () => Pro
 }
 
 /**
- * Deletes every key matching a pattern.
+ * There is no pattern-based invalidation here, deliberately.
  *
- * ── The `publish` that used to be the last line ─────────────────────────────
- *
- * It announced each invalidation on a `cache:invalidate` channel that nothing
- * has ever subscribed to. That reads as a cross-replica invalidation bus — the
- * mechanism a second web replica would need if any cache lived in its memory —
- * and it is not one. Removed rather than given a subscriber, because there is
- * nothing for a subscriber to do: every cache in this application already lives
- * in Redis, which all replicas share, so deleting the key here *is* the
+ * There used to be: an `invalidate(pattern)` that ran a `SCAN`. Two things were
+ * wrong with it. It also `publish`ed each invalidation on a `cache:invalidate`
+ * channel nothing had ever subscribed to, which read as a cross-replica
+ * invalidation bus and was not one — every cache in this application lives in
+ * Redis, which all replicas share, so deleting the key here *is* the
  * cross-replica invalidation.
  *
- * ── SCAN, and where it stops being adequate ─────────────────────────────────
+ * And the sweep itself was the wrong shape at any size. A `SCAN MATCH` costs
+ * O(*whole keyspace*) rather than O(matching keys), because Redis walks every
+ * key to find the ones that match — so deleting a tenant's two entitlement keys
+ * visited every cached actor, every live rate-limit window and all of BullMQ's
+ * bookkeeping on the way.
  *
- * A `SCAN` sweep is O(keyspace) per call. That is fine for the entitlement cache
- * — one key per tenant per module, invalidated when somebody edits a
- * subscription — and it is why the permission cache in lib/auth/actorCache.ts
- * does *not* use this: at one key per signed-in user, sweeping to invalidate a
- * tenant is the wrong shape. That cache versions its values instead, so
- * invalidating is a single INCR. Prefer that pattern for anything that grows
- * with the user count rather than the tenant count.
+ * Both callers could name their keys instead, and now do:
+ * `invalidateEntitlements` over a closed module list, and `ratelimit.clear`
+ * over a window and its predecessor. `lib/auth/actorCache.ts` covers the case
+ * where keys genuinely cannot be enumerated — one per signed-in user — by
+ * versioning the values, so invalidation is a single `INCR`.
+ *
+ * Prefer one of those two shapes. `tests/unit/no-keyspace-sweep.spec.ts` fails
+ * the build if a `SCAN` comes back.
  */
-export async function invalidate(pattern: string) {
-  const stream = redis.scanStream({ match: pattern, count: 200 });
-  for await (const keys of stream) {
-    if ((keys as string[]).length) await redis.del(...(keys as string[]));
-  }
-}

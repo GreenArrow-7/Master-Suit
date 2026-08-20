@@ -14,8 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { invalidate } from '@/lib/redis';
-import { limits } from '@/lib/security/ratelimit';
+import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { createPlatformSessionToken } from '../helpers/session';
 import { post } from '../helpers/request';
 import { POST as actions } from '@/app/api/v1/platform/users/[userId]/actions/route';
@@ -43,8 +42,8 @@ let membershipId = '';
  * account lock, precisely so an operator stops mistaking one for the other.
  */
 async function signIn(email: string, password: string) {
-  await invalidate(`rl:${limits.loginPerAccount(email).key}:*`);
-  await invalidate(`rl:${limits.loginPerIp('unknown').key}:*`);
+  await clearLimit(limits.loginPerAccount(email));
+  await clearLimit(limits.loginPerIp('unknown'));
   const req = new Request('http://localhost/api/v1/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

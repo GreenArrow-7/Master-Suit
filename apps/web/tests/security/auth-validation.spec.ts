@@ -9,8 +9,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it, beforeAll } from 'vitest';
-import { invalidate } from '@/lib/redis';
-import { limits } from '@/lib/security/ratelimit';
+import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { POST as login } from '@/app/api/v1/auth/login/route';
 import { POST as forgot } from '@/app/api/v1/auth/forgot-password/route';
 import { POST as reset } from '@/app/api/v1/auth/reset-password/route';
@@ -34,7 +33,7 @@ async function raw(handler: (r: Request) => Promise<Response>, path: string, bod
 beforeAll(async () => {
   // The one well-formed login below reaches the rate limiter; keep the shared
   // dev 'unknown' bucket clear so a full run does not answer 429 here.
-  await invalidate(`rl:${limits.loginPerIp('unknown').key}:*`);
+  await clearLimit(limits.loginPerIp('unknown'));
 });
 
 describe('AUTH-001: auth routes reject malformed input with 4xx, never 500', () => {
@@ -64,7 +63,7 @@ describe('AUTH-001: auth routes reject malformed input with 4xx, never 500', () 
   });
 
   it('login: well-formed unknown account still answers 401, not 422/500 (no enumeration)', async () => {
-    await invalidate(`rl:${limits.loginPerIp('unknown').key}:*`);
+    await clearLimit(limits.loginPerIp('unknown'));
     const res = await raw(
       login,
       '/api/v1/auth/login',

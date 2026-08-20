@@ -25,8 +25,8 @@
  * the names below (`PASSWORD_RESET`, `ACCOUNT_UNLOCKED`, …) needed no migration.
  */
 import { prisma, withPlatformTx } from '@/lib/db';
-import { invalidate, redis } from '@/lib/redis';
-import { limits } from '@/lib/security/ratelimit';
+import { redis } from '@/lib/redis';
+import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword } from '@/lib/auth/password';
 import { generateTemporaryPassword } from '@/services/identity/accounts';
@@ -522,8 +522,7 @@ export async function unlockAccount(ctx: PlatformCtx, userId: string) {
 
 /** Drops the account's sign-in throttle windows. Per-IP limits are not touched. */
 async function clearSignInThrottle(email: string) {
-  const { key } = limits.loginPerAccount(email);
-  await invalidate(`rl:${key}:*`).catch(() => {});
+  await clearLimit(limits.loginPerAccount(email)).catch(() => {});
 }
 
 /**
