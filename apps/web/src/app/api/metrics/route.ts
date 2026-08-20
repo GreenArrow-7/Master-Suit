@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
+import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { increment, render, setBuildInfo, setGauge } from '@/lib/metrics';
 import { QUEUE_NAMES } from '@/lib/queue';
@@ -80,6 +81,47 @@ async function collectQueues(): Promise<void> {
   );
 }
 
+/**
+ * Tables that grow with usage and are swept by nothing.
+ *
+ * `lib/jobs/retention.ts` covers recordings, webhook events, expired sessions,
+ * attendance captures and soft-deleted rows. These three it does not touch, and
+ * they are append-only: every permission check that writes an audit row, every
+ * clock-in, every platform action. Section 18 of the assessment puts them at
+ * roughly 1,000 organizations before partitioning is wanted.
+ *
+ * Whether they should be *deleted* is a compliance question rather than an
+ * engineering one — audit trails are usually kept to a schedule somebody's
+ * regulator sets — so this reports growth instead of assuming a policy. It makes
+ * "when do we need to act" a graph rather than a guess.
+ */
+const UNBOUNDED_TABLES = ['AuditLog', 'HrAttendancePunch', 'PlatformAuditEvent', 'WebhookEvent', 'Recording'];
+
+/**
+ * Estimated rows, from the planner's own statistics.
+ *
+ * `reltuples` rather than `count(*)`: an exact count is a full scan of the
+ * largest tables in the database, on every scrape, which would make the metrics
+ * endpoint the heaviest query in the product. The estimate is refreshed by
+ * autovacuum and is accurate to a few percent — far more precision than a growth
+ * curve needs.
+ */
+async function collectTableSizes(): Promise<void> {
+  const rows = await prisma.$queryRawUnsafe<{ table: string; rows: number; bytes: number }[]>(
+    `SELECT c.relname                            AS table,
+            GREATEST(c.reltuples, 0)::float8     AS rows,
+            pg_total_relation_size(c.oid)::float8 AS bytes
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = ANY($1::text[])`,
+    UNBOUNDED_TABLES,
+  );
+  for (const row of rows) {
+    setGauge('masterapp_table_rows_estimate', row.rows, { table: row.table });
+    setGauge('masterapp_table_bytes', row.bytes, { table: row.table });
+  }
+}
+
 export async function GET(req: Request) {
   if (!authorised(req)) return new Response(null, { status: 404 });
 
@@ -88,15 +130,15 @@ export async function GET(req: Request) {
   // what was gathered rather than failing the whole response.
   try {
     await Promise.race([
-      collectQueues(),
+      Promise.all([collectQueues(), collectTableSizes()]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('collect timed out')), COLLECT_TIMEOUT_MS)),
     ]);
   } catch (err) {
-    logger.warn({ err }, 'metrics: queue collection failed');
+    logger.warn({ err }, 'metrics: collection failed');
     increment('masterapp_errors_total', {
       module: 'metrics',
       action: 'COLLECT',
-      code: 'queue-unreachable',
+      code: 'collect-failed',
       status: '0',
     });
   }

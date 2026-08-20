@@ -11,6 +11,9 @@ node_modules/
 # is copied from .env.production, and rotating one environment must never touch
 # another. `.env.staging.example` beside it is the template.
 .env.staging
+# PgBouncer's credential file: SCRAM verifiers for the application role, copied
+# from pg_authid. The .example beside it is the template.
+infra/pgbouncer-userlist.txt
 *.log
 # Scratch verification scripts and logs from local test runs
 .verify/

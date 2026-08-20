@@ -131,6 +131,9 @@ const HELP: Record<string, string> = {
     'Jobs pushed back because their tenant was at its per-tenant concurrency ceiling. Not an error — a sustained rate means that ceiling is the binding constraint for someone.',
   masterapp_ai_tokens_total: 'Gemini tokens consumed, by feature and whose key paid for them.',
   masterapp_up: 'Always 1. Present so a scrape that returns no series is distinguishable from a process that is down.',
+  masterapp_table_rows_estimate:
+    'Estimated rows in a table that grows with usage and is swept by nothing. From pg_class.reltuples, not count(*).',
+  masterapp_table_bytes: 'Total size of a table including its indexes and TOAST.',
   masterapp_build_info:
     'Always 1. The labels are the payload: which commit this process is running, and when it was built.',
 };

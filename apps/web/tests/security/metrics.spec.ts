@@ -106,6 +106,19 @@ describe('the endpoint', () => {
     expect(body).toContain('commit="unknown"');
   });
 
+  it('reports the size of the tables nothing sweeps', async () => {
+    // AuditLog, HrAttendancePunch and PlatformAuditEvent are append-only and the
+    // retention job does not touch them — deleting an audit trail is a
+    // compliance decision, not an engineering one. So growth is reported rather
+    // than assumed away, which makes "when do we need to partition" a graph.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+    for (const table of ['AuditLog', 'HrAttendancePunch', 'PlatformAuditEvent']) {
+      expect(body).toContain(`masterapp_table_rows_estimate{table="${table}"}`);
+      expect(body).toContain(`masterapp_table_bytes{table="${table}"}`);
+    }
+  });
+
   it('reports every queue, including the ones with no consumer', async () => {
     process.env.METRICS_TOKEN = 'the-real-token';
     const body = await (await scrape('the-real-token')).text();

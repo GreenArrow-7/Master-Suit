@@ -394,6 +394,92 @@ It is on the token-gated metrics endpoint rather than on `/api/health`, which is
 unauthenticated and deliberately reveals no versions. `commit="unknown"` means
 the image was built outside `release.sh`, which is itself worth seeing.
 
+## Connection pooling
+
+Not needed yet, and shipped anyway so that it is not a research project on the
+day it becomes needed:
+
+```bash
+cp infra/pgbouncer-userlist.txt.example infra/pgbouncer-userlist.txt
+# fill in the SCRAM verifier — the command is in the file
+chmod 600 infra/pgbouncer-userlist.txt
+
+dc -f docker-compose.pgbouncer.yml up -d
+# then point DATABASE_URL (only) at pgbouncer:6432 and restart web + worker
+```
+
+`max_connections=200` against pools of 20 (web) and 10 (worker) is comfortable to
+roughly 1,000 organizations, so nothing here is urgent.
+
+**A correction worth knowing about.** The architecture assessment recorded
+transaction pooling as incompatible with this schema's row-level security and
+said it needed design work. That was wrong, in the opposite direction:
+`set_config('app.tenant_id', …, true)` is *transaction-local*, and a transaction
+pooler pins one server connection for a transaction's duration — so the setting
+lands and expires on the same connection, before it can be handed to anybody
+else. Session-level `set_config(…, false)` is what would leak, and nothing in the
+application does that. The whole 1,305-test suite was run against PgBouncer 1.22
+in `pool_mode = transaction` and passed; `tests/tenant/pooling.spec.ts` guards the
+property in CI, with the unsafe variant demonstrated alongside so the safe
+assertion is known to be capable of failing.
+
+`MIGRATION_DATABASE_URL` stays pointed at `postgres:5432`. Migrations take locks,
+run DDL and sometimes sit in long transactions — they want a real connection, and
+PgBouncer's `idle_transaction_timeout` would eventually cut one off.
+
+## Secrets in files rather than variables
+
+Every credential currently arrives as a process environment variable —
+`.env.production` is passed into the containers wholesale. That is readable by
+anything that can run `docker inspect`, visible in `/proc/<pid>/environ` to every
+process sharing the namespace, and captured verbatim by most crash reporters.
+
+Any key in `lib/env.ts` can instead be read from a file by appending `_FILE`:
+
+```yaml
+services:
+  web:
+    environment:
+      FIELD_ENCRYPTION_KEY_FILE: /run/secrets/field_key
+    secrets: [field_key]
+secrets:
+  field_key: { file: ./secrets/field_key }
+```
+
+The file wins where both are set, so secrets move one at a time rather than in a
+single change. A named file that cannot be read fails the boot — falling back to
+the variable would mean a deployment that believes it moved a secret into a vault
+and quietly did not.
+
+This is the shape every secret manager already speaks: Docker secrets mount at
+`/run/secrets/<name>`, Kubernetes mounts a Secret as a volume, and Azure Key
+Vault's CSI driver writes files. None of them needs an SDK in the application —
+point `*_FILE` at the mount path.
+
+Rotation is still manual. `scripts/rotate-field-encryption-key.mjs` re-wraps what
+that one key seals; the others are a value change and a restart.
+
+## Moving to managed services
+
+Nothing in the application has to change — verified, not assumed:
+
+| Move | What changes |
+| --- | --- |
+| Managed PostgreSQL | `DATABASE_URL` and `MIGRATION_DATABASE_URL`. `sslmode=require` is accepted by the adapter as-is. Run `20260806000000` once against the new instance: it creates `master_saas_app` and marks every tenant table FORCE ROW LEVEL SECURITY, and the boot check refuses to serve without it |
+| Managed Redis with TLS and AUTH | `REDIS_URL`. `rediss://user:secret@host:6380` parses to TLS on with credentials — ioredis reads both out of the URL |
+| Object storage off the VM | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET` and the two keys. The application speaks S3 and hands out no presigned URLs, so any S3-compatible endpoint works unchanged |
+
+What does **not** move by configuration: attendance captures. `ATTENDANCE_CAPTURE_DIR`
+is a local directory, so biometric check-in images are written to whichever
+container handled the request. Two web replicas on one host share the named
+volume and are fine; two hosts are not, and that is the single thing standing
+between this and a stateless multi-replica web tier. Everything else that was
+ever in memory — rate limits, entitlements, the permission cache — is in Redis
+and shared. Moving captures to the existing S3 client is the prerequisite for
+horizontal scale, and it is a real change rather than a setting: it touches
+`services/hr/captureVault.ts`, the retention sweep that purges them, and needs a
+migration for captures already on disk.
+
 ## What this deployment is not
 
 Worth being clear about, because the shortcuts are deliberate and each one has a

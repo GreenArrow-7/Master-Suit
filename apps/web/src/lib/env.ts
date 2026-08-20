@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
 /**
@@ -212,7 +213,58 @@ export function mockProviders(value: Record<string, string>): string[] {
   return PROVIDER_KEYS.filter((key) => String(value[key] ?? '').toLowerCase() === 'mock');
 }
 
-const parsed = schema.safeParse(process.env);
+/**
+ * `<KEY>_FILE` — a secret read from a file rather than from the environment.
+ *
+ * ── Why a variable is the wrong place for a secret ──────────────────────────
+ *
+ * The deployment keeps every credential in `.env.production` and passes the file
+ * into the containers, so each one arrives as a process environment variable.
+ * That is readable by anything that can run `docker inspect`, appears in
+ * `/proc/<pid>/environ` to every process sharing the namespace, and is captured
+ * verbatim by most crash reporters — none of which is true of a file with
+ * restrictive permissions.
+ *
+ * ── Why this is the shape a secret manager wants ────────────────────────────
+ *
+ * It is the convention every one of them already speaks: Docker secrets mount at
+ * `/run/secrets/<name>`, Kubernetes mounts a Secret as a volume, and Azure Key
+ * Vault's CSI driver writes files. All of them can already be pointed at
+ * `FIELD_ENCRYPTION_KEY_FILE=/run/secrets/field_key` with no adapter and no SDK
+ * in the application.
+ *
+ * The variable form still works and is still what a laptop uses. `_FILE` simply
+ * takes precedence where both are set, so migrating one secret at a time is a
+ * change to the deployment rather than to the code.
+ *
+ * Read synchronously and at import, because this runs before anything is served
+ * and a secret that arrives late is a secret half the process does not have.
+ */
+export function resolveSecretFiles(source: Record<string, string | undefined>): Record<string, string | undefined> {
+  const resolved: Record<string, string | undefined> = { ...source };
+  for (const [key, path] of Object.entries(source)) {
+    if (!key.endsWith('_FILE') || !path) continue;
+    const target = key.slice(0, -'_FILE'.length);
+    // Only for keys this application actually declares. Without that, a stray
+    // `LANG_FILE` in the environment would try to read a file and fail the boot
+    // over something that is not ours.
+    if (!(target in schema.shape)) continue;
+    try {
+      // Trailing newline trimmed: every editor and most secret managers add one,
+      // and a base64 key with `\n` on the end fails its length check with a
+      // message that says nothing about a newline.
+      resolved[target] = readFileSync(path, 'utf8').trim();
+    } catch (error) {
+      throw new Error(
+        `Could not read ${key}=${path} for ${target}: ${(error as Error).message}\n` +
+          '  A secret mounted as a file must exist and be readable by the process at start.',
+      );
+    }
+  }
+  return resolved;
+}
+
+const parsed = schema.safeParse(resolveSecretFiles(process.env));
 
 if (!parsed.success) {
   // Fail at boot, not at the first request that happens to need the variable.

@@ -29,10 +29,32 @@ export async function cached<T>(key: string, ttlSeconds: number, load: () => Pro
   return value;
 }
 
+/**
+ * Deletes every key matching a pattern.
+ *
+ * ── The `publish` that used to be the last line ─────────────────────────────
+ *
+ * It announced each invalidation on a `cache:invalidate` channel that nothing
+ * has ever subscribed to. That reads as a cross-replica invalidation bus — the
+ * mechanism a second web replica would need if any cache lived in its memory —
+ * and it is not one. Removed rather than given a subscriber, because there is
+ * nothing for a subscriber to do: every cache in this application already lives
+ * in Redis, which all replicas share, so deleting the key here *is* the
+ * cross-replica invalidation.
+ *
+ * ── SCAN, and where it stops being adequate ─────────────────────────────────
+ *
+ * A `SCAN` sweep is O(keyspace) per call. That is fine for the entitlement cache
+ * — one key per tenant per module, invalidated when somebody edits a
+ * subscription — and it is why the permission cache in lib/auth/actorCache.ts
+ * does *not* use this: at one key per signed-in user, sweeping to invalidate a
+ * tenant is the wrong shape. That cache versions its values instead, so
+ * invalidating is a single INCR. Prefer that pattern for anything that grows
+ * with the user count rather than the tenant count.
+ */
 export async function invalidate(pattern: string) {
   const stream = redis.scanStream({ match: pattern, count: 200 });
   for await (const keys of stream) {
     if ((keys as string[]).length) await redis.del(...(keys as string[]));
   }
-  await redis.publish('cache:invalidate', pattern);
 }

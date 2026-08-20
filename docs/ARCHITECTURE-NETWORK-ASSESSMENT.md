@@ -2024,7 +2024,7 @@ ClamAV and the face models sharing RAM with Postgres.
 | --- | --- |
 | **Database** | Single instance, no read replica in use. `AuditLog` and `HrAttendancePunch` grow unbounded with no partitioning; the schema header discusses partitioning but no migration implements it |
 | **Per-tenant sequences** | ~10,000 relations in `pg_class`. Catalog bloat, slow `pg_dump` |
-| **Connection pool** | 1,000 tenants × concurrent users against `max_connections=200` needs PgBouncer — and PgBouncer in transaction mode is **incompatible with the current RLS approach**, because `set_config(..., true)` is transaction-local but the batched `$transaction` pattern assumes it lands on the same connection. This needs design work, not configuration |
+| **Connection pool** | 1,000 tenants × concurrent users against `max_connections=200` needs PgBouncer. ~~PgBouncer in transaction mode is **incompatible with the current RLS approach**… This needs design work, not configuration~~ — **this was wrong, corrected 2026-08-20.** Transaction-local is precisely what makes it *safe*: a transaction pooler pins one server connection for a transaction's duration, so `BEGIN; set_config(…, true); …; COMMIT` lands whole on one connection and the setting is discarded at COMMIT. Verified by running the entire 1,305-test suite against PgBouncer 1.22 in `pool_mode = transaction` — all passed. It is configuration, and `infra/docker-compose.pgbouncer.yml` now ships it |
 | **Auth** | ~~The per-request permission build becomes a real cost. It needs a cache keyed on `(userId, roleVersion)` with explicit invalidation~~ — **fixed 2026-08-20.** `lib/auth/actorCache.ts`: the version lives in the cached *value*, so invalidating a tenant is one `INCR` rather than the `SCAN` sweep flagged two rows down. Invalidation is hooked into the Prisma client, not the write sites, so a revoked permission cannot outlive the write that revoked it. Measured 13.28 ms → 0.15 ms per build |
 | **AI** | ~~Concurrency 2 is untenable. Needs per-tenant queues or a fair scheduler; without one, a single tenant's backlog starves everyone~~ — **fixed 2026-08-20.** Global concurrency 6 with a per-tenant ceiling of 2 (`lib/queueFairness.ts`), so one workspace holds at most a third of the worker however long its backlog is. Slots are a Redis sorted set pruned by age, not a counter, so a killed worker's slot heals instead of costing that tenant a slot permanently. Measured against a 40-job backlog: the second tenant's job ran at position 40 of 41 before, 2 of 3 after |
 | **Storage** | Must move off the VM |
@@ -2050,7 +2050,7 @@ flowchart LR
   B --> C["3 · Object storage on the VM disk<br/>(~50 orgs)"]
   C --> D["4 · AI worker concurrency 2<br/>(~100 orgs)"]
   D --> E["5 · Per-request permission build<br/>(~300 orgs)"]
-  E --> F["6 · Connection pool / PgBouncer × RLS<br/>(~1,000 orgs)"]
+  E --> F["6 · Connection pool<br/>(~1,000 orgs · PgBouncer, shipped)"]
   F --> G["7 · AuditLog and punch tables unpartitioned<br/>(~1,000 orgs)"]
   G --> H["8 · Per-tenant sequence catalog<br/>(~1,000 orgs)"]
   H --> I["9 · Single database instance<br/>(~5,000 orgs)"]
@@ -2211,16 +2211,26 @@ Five things change and nothing else has to:
 
 | | Item | Reference |
 | --- | --- | --- |
-| P2-1 | Managed Postgres with PITR; managed Redis with TLS and AUTH; object storage off the VM | W-3, M-2 |
+| P2-1 | Managed Postgres with PITR; managed Redis with TLS and AUTH; object storage off the VM — **application side done 2026-08-20**: verified that `sslmode=require`, `rediss://user:pass@host` and any S3 endpoint are accepted unchanged, so this is connection strings and procurement. See `docs/DEPLOY-AZURE.md` | W-3, M-2 |
 | P2-2 | Bring `prismaRead` into use for reports and exports | W-12 |
 | P2-3 | Replace per-tenant sequences with a counter table; revoke `CREATE ON SCHEMA public` | W-8 |
-| P2-4 | Partition `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` by month; add a session-cleanup job | §18 |
+| P2-4 | ~~add a session-cleanup job~~ **done** (P0-2). Partitioning: **not started, and the order was wrong** — those three tables have no retention policy at all, and partitioning an ever-growing table produces an ever-growing set of partitions. Whether an audit trail may be deleted is a compliance question, so growth is now *measured* (`masterapp_table_rows_estimate`, `masterapp_table_bytes`) rather than assumed. **Needs a decision** — see the roadmap note below | §18 |
 | P2-5 | Cache the per-request permission build on `(userId, roleVersion)` with explicit invalidation | §18 |
 | P2-6 | Per-tenant fairness on the `ai` queue; raise concurrency behind it | §18 |
-| P2-7 | Stateless multi-replica web tier behind a managed load balancer | §20 |
-| P2-8 | PgBouncer, after redesigning the `set_config` pattern for pooled connections | §18 |
-| P2-9 | Secret manager with injection at start; automated rotation | H-5 |
+| P2-7 | Stateless multi-replica web tier behind a managed load balancer — **audited 2026-08-20**: nothing in memory is load-bearing any more (rate limits, entitlements and the permission cache are all in Redis; the dead `cache:invalidate` publish that read as a cross-replica bus is removed). The one blocker is `ATTENDANCE_CAPTURE_DIR`, a local directory holding biometric captures. Moving it to the existing S3 client is the prerequisite | §20 |
+| P2-8 | ~~PgBouncer, after redesigning the `set_config` pattern for pooled connections~~ — **the premise was wrong.** No redesign is needed; `infra/docker-compose.pgbouncer.yml` ships the configuration. See §18 | §18 |
+| P2-9 | Secret manager with injection at start; automated rotation — **application side done 2026-08-20**: any key may be supplied as `<KEY>_FILE`, the convention Docker secrets, Kubernetes volumes and the Key Vault CSI driver all already speak. Provisioning the vault and automating rotation remain | H-5 |
 | P2-10 | CD: tagged images, promotion from staging, documented rollback | W-2, §13 |
+
+> **Decisions this roadmap cannot make for you (2026-08-20).**
+>
+> | | Question | Why it is not an implementer's call |
+> | --- | --- | --- |
+> | P1-10 | Lead scoring: build the rule engine, or delete `ScoringRule`, `LeadScoreHistory` and the `ORDER BY score`? | Both are defensible and they differ by weeks of work. The schema shipped without an engine, so the product currently promises something it does not do |
+> | P1-11 | Billing: connect a payment provider, or take the billing language off the product surface? | `SubscriptionPlan`/`TenantSubscription` model plans and limits and the UI talks about billing, but nothing charges anybody |
+> | P2-4 | Retention for `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` — how long, and may they be deleted at all? | An audit trail's retention is usually set by a regulator, not by a database. Partitioning is the *second* step; without a policy it turns one growing table into many. Growth is now measured so the decision has numbers behind it |
+>
+> Everything else in P0–P2 that could be done from the code has been.
 
 #### P3 — Optimization
 
