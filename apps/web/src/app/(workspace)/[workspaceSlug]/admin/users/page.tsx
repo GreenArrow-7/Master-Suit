@@ -85,6 +85,9 @@ export default async function UsersPage({
     : [];
   const consented = new Set(consents.map((row) => row.employeeId));
   const mayManage = can(ctx, 'users', 'MANAGE_USERS');
+  // Removal is its own grant, so a workspace can let somebody reset passwords
+  // without letting them delete the account. The route checks it again.
+  const mayDelete = can(ctx, 'users', 'DELETE');
 
   return (
     <div className="lf-page-stack">
@@ -191,6 +194,7 @@ export default async function UsersPage({
                           userName={row.fullName}
                           employeeId={employee?.id ?? null}
                           workspaceSlug={workspaceSlug}
+                          mayDelete={mayDelete}
                         />
                       )}
                     </td>
