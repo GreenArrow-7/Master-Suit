@@ -56,6 +56,33 @@ let fixture: Fixture;
 let callId: string;
 let leadId: string;
 
+/**
+ * Waits for a claimed row to reach a terminal status.
+ *
+ * The routes here run their work inline when no worker is attached and enqueue
+ * when one is — so whether this process or a background one executes depends on
+ * the machine, not the test. Both are guarded by the same claim, so exactly one
+ * runs; the loser returns early. Asserting immediately after driving the work
+ * therefore passed only where a worker happened to be running (a developer with
+ * `npm run worker` up) and raced in CI, where nothing drains the queue and the
+ * route's own inline run is the executor.
+ *
+ * A stranded PROCESSING row never settles, so this still fails on the very
+ * regression the re-run test exists to catch — it just fails on a timeout
+ * instead of on a snapshot taken mid-flight.
+ */
+async function settles(
+  read: () => Promise<{ status: string } | null>,
+  { tries = 40, waitFor = ['COMPLETED', 'FAILED', 'INSUFFICIENT_DATA'] } = {},
+): Promise<{ status: string } | null> {
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const row = await read();
+    if (row && waitFor.includes(row.status)) return row;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return read();
+}
+
 beforeAll(async () => {
   fixture = await seedTwoTenants();
   leadId = fixture.a.leadIds[0];
@@ -151,9 +178,10 @@ describe('ingest → transcribe → analyse → follow-up', () => {
     );
     expect(objection.status).toBe(200);
 
-    await analyseCall({ tenantId: fixture.a.tenantId, callId }).catch(() => {
-      // As above: an inline run may have claimed it first. Assert on rows.
-    });
+    // May lose the claim to an inline run the transcript route already started;
+    // either executor is fine, the end state is what is asserted.
+    await analyseCall({ tenantId: fixture.a.tenantId, callId }).catch(() => {});
+    await settles(() => prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } }));
 
     const analysis = await prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } });
     expect(analysis).not.toBeNull();
@@ -180,21 +208,14 @@ describe('ingest → transcribe → analyse → follow-up', () => {
     const rerun = await post(requestAnalysis, `/api/v1/calls/${callId}/analysis`, {}, fixture.a.cookie, {
       id: callId,
     });
-    expect(rerun.status).toBe(200);
+    // 200 accepts the re-run; 409 means one is genuinely in flight already,
+    // which is the route doing its job. The bug being guarded against produced
+    // neither — it accepted the request and then nothing ever ran.
+    expect([200, 409]).toContain(rerun.status);
 
-    // The route may have started an inline run; this direct call races it and
-    // the claim converges the pair to exactly one execution — either racer may
-    // be the one that runs. What must hold is the end state: COMPLETED, never
-    // a stranded PROCESSING.
-    await analyseCall({ tenantId: fixture.a.tenantId, callId });
-    let status = '';
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const row = await prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } });
-      status = row!.status;
-      if (status !== 'PROCESSING') break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    expect(status).toBe('COMPLETED');
+    await analyseCall({ tenantId: fixture.a.tenantId, callId }).catch(() => {});
+    const row = await settles(() => prisma.aIAnalysis.findFirst({ where: { callId, tenantId: fixture.a.tenantId } }));
+    expect(row?.status).toBe('COMPLETED');
   });
 
   it('drafts a follow-up the rep can edit, then sends and logs it', async () => {
@@ -294,9 +315,18 @@ describe('practice → score', () => {
     );
     expect(finished.status).toBe(200);
 
-    // Drive the scoring worker directly, then read the row it wrote.
-    await scorePracticeSession({ tenantId: fixture.a.tenantId, sessionId }).catch(() => {});
-    const score = await prisma.practiceScore.findFirst({ where: { sessionId, tenantId: fixture.a.tenantId } });
+    /**
+     * Scoring runs wherever the deployment puts it: inline from the route when
+     * no worker is attached, or on the `ai` queue when one is. Give the route's
+     * own run a moment to claim and finish; if the row is still sitting there,
+     * nothing is draining the queue, so run the worker function here.
+     */
+    const readScore = () => prisma.practiceScore.findFirst({ where: { sessionId, tenantId: fixture.a.tenantId } });
+    if (!(await settles(readScore, { tries: 8 }))?.status.startsWith('COMPLETED')) {
+      await scorePracticeSession({ tenantId: fixture.a.tenantId, sessionId }).catch(() => {});
+      await settles(readScore);
+    }
+    const score = await readScore();
     expect(score).not.toBeNull();
     expect(score!.status).toBe('COMPLETED');
     expect(score!.modelId).toBe('demo-simulation');
