@@ -349,7 +349,8 @@ export default async function LeadershipPage({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <strong>Funnel</strong>
               <span className="lf-hint">
-                &ldquo;Open now&rdquo; is a live snapshot; &ldquo;Entered&rdquo; counts moves within the period.
+                &ldquo;Open now&rdquo; is a live snapshot; &ldquo;Arrived&rdquo; counts moves into the stage within the
+                period.
               </span>
             </div>
             {stages.length === 0 ? (
@@ -363,7 +364,7 @@ export default async function LeadershipPage({
                     <tr>
                       <th>Stage</th>
                       <th style={{ textAlign: 'right' }}>Open now</th>
-                      <th style={{ textAlign: 'right' }}>Entered this period</th>
+                      <th style={{ textAlign: 'right' }}>Arrived this period</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -376,7 +377,7 @@ export default async function LeadershipPage({
                         <td data-label="Open now" style={{ textAlign: 'right' }} className="lf-num">
                           {s.open}
                         </td>
-                        <td data-label="Entered this period" style={{ textAlign: 'right' }} className="lf-num">
+                        <td data-label="Arrived this period" style={{ textAlign: 'right' }} className="lf-num">
                           {/* Open without arrivals is a stalled pipeline, which the
                               snapshot alone would show as a healthy one. */}
                           {s.entered === 0 && s.open > 0 ? (
