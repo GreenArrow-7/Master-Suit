@@ -1973,6 +1973,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** Onboarding cost, and a reader who cannot tell which parts of the documentation to trust.
 - **Severity** 🔵 Low
 - **Recommendation** Regenerate the counts in CI, or delete the table.
+- **Fixed (2026-08-20)** `scripts/schema-stats.mjs` generates them between markers and CI runs `--check`, so the README cannot drift again; the emitted shape matches what prettier would produce, so the two gates cannot disagree. The README itself is rewritten — it described a Phase-1 skeleton with `nextReference` as a stub, under a product name the application no longer uses. `docs/KNOWN-LIMITATIONS.md`'s `/auth/refresh` claim is corrected: `authFetch` does refresh on a 401, single-flight; what is still true is that nothing refreshes on a *timer*.
 
 ### W-14 · No staging environment exists
 
@@ -2242,7 +2243,7 @@ Five things change and nothing else has to:
 | P3-2 | ~~Consolidate the kernel bypasses behind a shared `resolveGuardedCtx` prologue~~ **done** — and it found four more unlimited routes than W-10 recorded | W-10 |
 | P3-3 | Split `LeadDetail.tsx` and the two HR dispatch routes | W-15 |
 | P3-4 | ~~Remove dead configuration and dependencies; drop the legacy `Integration` table~~ **done** — configuration in P2-2, tables in `20260820180000_drop_unbuilt_models` | W-12 |
-| P3-5 | Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code | W-13 |
+| P3-5 | ~~Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code~~ **done**, with the counts generated and gated rather than re-pasted | W-13 |
 | P3-6 | ~~Re-enable the `format:check` gate in the same PR that reformats~~ **done** — and the 678 was mostly `.next-prod`, missing from `.prettierignore`. The real number was 99 | L-7 |
 | P3-7 | Implement SMS and e-signature adapters, or remove the settings that imply they exist | §14 |
 | P3-8 | ~~Number-word normalisation in the AI redactor~~ **done** | AI4 |

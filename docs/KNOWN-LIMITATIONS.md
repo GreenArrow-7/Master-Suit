@@ -179,9 +179,15 @@ following items still prevent an unconditional commercial-production claim:
     an event fires once, so an approval ignored for a week is never chased
     again; and **notification preferences are not implemented**, so a user
     cannot opt out of anything.
-  - Session rotation exists at `/api/v1/auth/refresh` but **no client calls it
-    automatically**; nothing in the UI refreshes on a timer yet, so in practice
-    tokens live until they expire.
+  - ~~Session rotation exists at `/api/v1/auth/refresh` but **no client calls it
+    automatically**~~ — **out of date, corrected 2026-08-20.** `lib/auth/client.ts`
+    refreshes on a 401 and retries the request once, sharing a single in-flight
+    refresh across concurrent callers (ten parallel refreshes would rotate ten
+    times, and nine would present an already-rotated token — which the server
+    correctly treats as theft and answers by revoking every session). What is
+    still true is that nothing refreshes on a *timer*: a session that goes idle
+    is not extended in the background, which is the intended behaviour rather
+    than a gap.
   - H28 covers the shell being usable on a phone. It has been verified by reading
     the CSS and the components, **not on a real handset** — no device testing has
     been done.

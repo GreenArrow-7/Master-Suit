@@ -160,6 +160,17 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      # ── Gate 3b — the README's schema counts ──────────────────────────────
+      #
+      # It claimed "79 models, 25 enums, 119 indexes" against a schema holding
+      # 192, 103 and 332. The first file a newcomer opens was wrong, and a reader
+      # who catches one wrong number stops trusting the rest of the page.
+      #
+      # Counting by hand and pasting the result is how it got that way, so the
+      # numbers are generated between markers and this checks the paste.
+      - name: README schema counts
+        run: node scripts/schema-stats.mjs --check
+
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #
       # A skipped test is a failure here. `describe.skip` and `it.skip` are the
