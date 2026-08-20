@@ -562,6 +562,7 @@ model Tenant {
   webhooks                   Webhook[]
   webhookDeliveries          WebhookDelivery[]
   webhookEvents              WebhookEvent[]
+  referenceCounters          TenantReferenceCounter[]
 
   @@index([status])
 }
@@ -682,6 +683,26 @@ model WorkspaceUsage {
 
   @@unique([tenantId, metric])
   @@index([tenantId, measuredAt])
+}
+
+/// Human-readable per-tenant record references: LD-000142, OP-000019.
+///
+/// One row per (tenant, object type), holding the last number handed out. This
+/// replaced one Postgres *sequence* per tenant per object type — ten types, so
+/// ten thousand tenants meant up to a hundred thousand relations in pg_class,
+/// a file each, a slower pg_dump, and a schema-level CREATE privilege on the
+/// runtime role that nothing else in the application needed.
+model TenantReferenceCounter {
+  tenantId   String
+  objectType String
+  /// The last number issued, not the next one. Allocation is a single
+  /// `UPDATE ... SET counter = counter + 1 RETURNING counter`, so two concurrent
+  /// creates cannot read the same value.
+  counter    Int      @default(0)
+  updatedAt  DateTime @default(now()) @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, objectType])
 }
 
 model BillingEvent {
@@ -870,13 +891,13 @@ model Team {
   childTeams Team[]      @relation("TeamHierarchy")
   members    UserTeam[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metaRoutings   MetaLeadFormRouting[]
+  socialComments SocialComment[]
 
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
-  metaRoutings MetaLeadFormRouting[]
-  socialComments SocialComment[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -931,20 +952,20 @@ model User {
 
   teams               UserTeam[]
   passwordResetTokens PasswordResetToken[]
-  ownedLeads          Lead[]               @relation("LeadOwner")
-  ownedConversations  Conversation[]       @relation("ConversationOwner")
+  ownedLeads          Lead[]                @relation("LeadOwner")
+  ownedConversations  Conversation[]        @relation("ConversationOwner")
   metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
-  socialComments      SocialComment[]      @relation("SocialCommentOwner")
-  ownedOpps           Opportunity[]        @relation("OpportunityOwner")
-  ownedAccounts       Account[]            @relation("AccountOwner")
-  ownedContacts       Contact[]            @relation("ContactOwner")
-  activities          Activity[]           @relation("ActivityOwner")
-  tasks               Task[]               @relation("TaskOwner")
-  tickets             Ticket[]             @relation("TicketAgent")
-  campaigns           Campaign[]           @relation("CampaignOwner")
+  socialComments      SocialComment[]       @relation("SocialCommentOwner")
+  ownedOpps           Opportunity[]         @relation("OpportunityOwner")
+  ownedAccounts       Account[]             @relation("AccountOwner")
+  ownedContacts       Contact[]             @relation("ContactOwner")
+  activities          Activity[]            @relation("ActivityOwner")
+  tasks               Task[]                @relation("TaskOwner")
+  tickets             Ticket[]              @relation("TicketAgent")
+  campaigns           Campaign[]            @relation("CampaignOwner")
   notifications       Notification[]
   targets             EmployeeTarget[]
-  calls               Call[]               @relation("CallerUser")
+  calls               Call[]                @relation("CallerUser")
   workspaceMembership WorkspaceMembership?
 
   @@unique([tenantId, email])
@@ -2645,7 +2666,9 @@ model Role {
   name         String
   description  String?
   isSystem     Boolean         @default(false)
-  /** A deactivated role grants nothing and cannot be assigned, but keeps its history. */
+  /**
+   * A deactivated role grants nothing and cannot be assigned, but keeps its history.
+   */
   isActive     Boolean         @default(true)
   rank         Int             @default(100)
   defaultScope VisibilityScope @default(OWN)
@@ -2739,11 +2762,11 @@ model LeadStage {
 
   leads Lead[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metaRoutings MetaLeadFormRouting[]
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
-  metaRoutings MetaLeadFormRouting[]
 }
 
 model Lead {
@@ -2831,7 +2854,8 @@ model Lead {
   tickets        Ticket[]
   submissions    FormSubmission[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComments SocialComment[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
@@ -2846,7 +2870,6 @@ model Lead {
   @@index([tenantId, deletedAt])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
-  socialComments SocialComment[]
 }
 
 model LeadCustomFieldDefinition {
@@ -3798,16 +3821,16 @@ model SocialAssignmentHistory {
   tenantId        String
   socialCommentId String
 
-  fromOwnerId String?
-  toOwnerId   String?
-  teamId      String?
+  fromOwnerId  String?
+  toOwnerId    String?
+  teamId       String?
   /// Which mechanism chose, so a retry can tell a human's decision from a rule's.
-  source      SocialAssignmentSource
-  method      DistributionMethod?
-  ruleId      String?
+  source       SocialAssignmentSource
+  method       DistributionMethod?
+  ruleId       String?
   /// Human-readable, and the place a failure explains itself: "No eligible
   /// members in Dubai Sales" is actionable where a null owner is not.
-  reason      String?
+  reason       String?
   /// Null when the system assigned it.
   assignedById String?
 
@@ -3868,19 +3891,19 @@ model SocialComment {
   providerAdId    String?
   providerAdTitle String?
 
-  status  SocialCommentStatus @default(NEW)
-  intent  SocialIntent        @default(UNSCORED)
+  status        SocialCommentStatus @default(NEW)
+  intent        SocialIntent        @default(UNSCORED)
   /// 0–100. Meaningless without `intentReasons`, which is why they travel together.
-  intentScore Int?
+  intentScore   Int?
   /// Why the score is what it is. A bare number is not something a salesperson
   /// can act on or disagree with.
-  intentReasons String[] @default([])
+  intentReasons String[]            @default([])
   /// True once AI enrichment ran. False means rules-only, not "failed" — the
   /// pipeline completes either way.
-  aiQualified Boolean @default(false)
+  aiQualified   Boolean             @default(false)
 
-  ownerId  String?
-  teamId   String?
+  ownerId         String?
+  teamId          String?
   /// Layer 2, once someone converts. Null is the normal state.
   linkedLeadId    String?
   linkedContactId String?
@@ -3899,7 +3922,7 @@ model SocialComment {
   /// When a reply is owed by. Measured from `commentCreatedAt` — the customer's
   /// clock, not ours — so reassigning an enquiry never buys the desk more time.
   /// Null when the comment is not a sales enquiry and nothing is owed.
-  slaDueAt DateTime?
+  slaDueAt       DateTime?
   /// Set once, when the manager was told this breached. The deduplication key:
   /// a redelivered webhook or a retried job must not page anyone twice.
   slaEscalatedAt DateTime?
@@ -3907,10 +3930,10 @@ model SocialComment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  owner      User?    @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User?                     @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  team        Team?                     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  linkedLead  Lead?                     @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
   assignments SocialAssignmentHistory[]
   replies     SocialReply[]
 
@@ -3929,7 +3952,6 @@ model SocialComment {
 
 /**
  * Every answer sent to a social enquiry, append-only.
- *
  * Separate from `SocialComment.repliedAt` rather than replacing it: that field
  * is the *first* response, which is what the SLA measures and what the reply
  * capability treats as spending Meta's single private reply. A conversation can
@@ -4064,7 +4086,7 @@ model MetaLeadFormRouting {
 /// to one customer; a participant table would be a join with exactly two rows
 /// and no query asking for it. Add one when a channel actually carries groups.
 model Conversation {
-  id          String              @id @default(cuid())
+  id          String      @id @default(cuid())
   tenantId    String
   channel     ChannelType
   /// Provider key from lib/integrations/registry.ts, e.g. `meta`.

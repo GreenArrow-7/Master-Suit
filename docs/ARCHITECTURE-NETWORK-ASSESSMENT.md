@@ -1917,6 +1917,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** 10,000 tenants ⇒ up to 100,000 relations in `pg_class`. Catalog bloat, slower `pg_dump`, a file per sequence, and a schema-level `CREATE` privilege on the runtime role that nothing else needs.
 - **Severity** 🟡 Medium now, 🟠 High at 1,000+ tenants
 - **Recommendation** Replace with one `(tenantId, objectType, counter)` table updated `RETURNING` inside the same transaction, or a single sequence with a per-tenant offset. Then revoke `CREATE`.
+- **Fixed (2026-08-20)** `TenantReferenceCounter`, allocated with a single `UPDATE ... SET counter = counter + 1 RETURNING counter`; `20260820140000_reference_counter_table` backfills from each sequence's own `last_value` (not from `MAX(reference)`, which would rewind to the highest *surviving* row and reissue a number a deleted record carried), drops the sequences, and revokes `CREATE ON SCHEMA public` from both `master_saas_app` and `PUBLIC`. The audit also found a **live concurrency fault** the assessment had not: allocation was check-then-create across two statements, so two concurrent first-creates for one tenant both issued `CREATE SEQUENCE` and the loser's whole transaction failed with a `pg_class` unique violation — reproduced on two connections, and covered now by `tests/tenant/reference.spec.ts`.
 
 ### W-9 · Copy-pasted RLS sweeps in migrations
 
