@@ -2,7 +2,16 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { buildSupportActor } from '@/lib/auth/support-actor';
-import { MAX_GRANT_MINUTES, activeGrant, openGrant, revokeGrants } from '@/lib/auth/platform-access';
+import {
+  DEFAULT_GRANT_MINUTES,
+  MAX_GRANT_MINUTES,
+  MIN_REASON,
+  activeGrant,
+  openGrant,
+  revokeGrants,
+} from '@/lib/auth/platform-access';
+import { GET as accessGet } from '@/app/api/v1/platform/workspaces/[workspaceId]/access/route';
+import { createPlatformSessionToken } from '../helpers/session';
 
 /**
  * Platform write access into a customer workspace must not be ambient.
@@ -35,6 +44,10 @@ beforeAll(async () => {
       normalizedEmail: `bg-owner-${suffix}@example.test`,
       fullName: 'Platform Owner',
       platformRole: 'OWNER',
+      // resolvePlatformCtx refuses anything but ACTIVE, and the column defaults
+      // to INVITED. The library-level tests below never noticed because they
+      // never went through a session; the route tests do.
+      status: 'ACTIVE',
     },
   });
   ownerId = owner.id;
@@ -166,5 +179,72 @@ describe('the read-only platform roles', () => {
       expect(await canWrite(role)).toBe(false);
       expect(await canRead(role)).toBe(true);
     }
+  });
+});
+
+describe('the contract the console reads', () => {
+  /**
+   * The platform console had no break-glass button until this landed, and an
+   * owner who needed a write had to call the endpoint by hand (M-4). Friction
+   * like that does not make people more careful; it makes the control the thing
+   * that gets removed.
+   *
+   * The button is a client component, so everything it needs to render honestly
+   * — the minimum reason length, the window, and whether *this* caller may
+   * elevate at all — has to come from the API. These assertions are what stop
+   * the console and the server disagreeing: a form that accepts what the server
+   * rejects, or a button shown to somebody it will 403.
+   */
+  const read = async (platformUserId: string) =>
+    accessGet(
+      new Request(`http://localhost/api/v1/platform/workspaces/${tenantId}/access`, {
+        headers: { cookie: await createPlatformSessionToken(platformUserId, tenantId) },
+      }),
+      { params: Promise.resolve({ workspaceId: tenantId }) },
+    );
+
+  it('tells the console the same minimum the API enforces', async () => {
+    const body = await (await read(ownerId)).json();
+    expect(body.minReason).toBe(MIN_REASON);
+    expect(body.defaultMinutes).toBe(DEFAULT_GRANT_MINUTES);
+    expect(body.maxMinutes).toBe(MAX_GRANT_MINUTES);
+  });
+
+  it('is refused outright to a read-only platform role, on the read as well as the write', async () => {
+    // Worth pinning because the route used to carry a comment claiming SUPPORT
+    // and SECURITY_AUDITOR reach the owner check inside POST and are turned away
+    // there. They do not: requirePlatformOwner is `role === 'OWNER'`, so they
+    // never see any verb on this endpoint — which is also why the console needs
+    // no read-only variant. The check inside POST is a second line kept for the
+    // day that gate is widened, not the one doing the work today.
+    const auditor = await prisma.platformUser.create({
+      data: {
+        email: `bg-auditor-${suffix}@example.test`,
+        normalizedEmail: `bg-auditor-${suffix}@example.test`,
+        fullName: 'Security Auditor',
+        platformRole: 'SECURITY_AUDITOR',
+        status: 'ACTIVE',
+      },
+    });
+    try {
+      const response = await read(auditor.id);
+      expect(response.status).toBe(403);
+      expect((await response.json()).detail).toMatch(/platform-owner access is required/i);
+    } finally {
+      await withPlatformTx((tx) => tx.platformUser.delete({ where: { id: auditor.id } }));
+    }
+  });
+
+  it('reports the live grant with the reason and the expiry the countdown needs', async () => {
+    await openGrant({
+      platformUserId: ownerId,
+      tenantId,
+      reason: 'Ticket 8812 — repair the duplicated payroll run.',
+      minutes: 15,
+      requestId: 'test',
+    });
+    const body = await (await read(ownerId)).json();
+    expect(body.grant.reason).toContain('Ticket 8812');
+    expect(Date.parse(body.grant.expiresAt)).toBeGreaterThan(Date.now());
   });
 });

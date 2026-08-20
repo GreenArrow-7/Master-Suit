@@ -311,8 +311,12 @@ following items still prevent an unconditional commercial-production claim:
   What remains: **no distributed tracing**, **no stack-trace reporting** (a
   vendor choice, deliberately not made here), and **no log shipping** — pino
   writes structured JSON to stdout and nothing collects it, so logs still die
-  with the container. Metrics are also per-process and in memory, so more than
-  one web replica needs a scraper that reaches each of them.
+  with the container — though they no longer grow without limit while they live:
+  every container rotates at 10 MB × 5 via the `x-logging` anchor in each Compose
+  file, and the observability gate fails the build if a service is added without
+  it. Docker's unrotated default was on the same disk Postgres writes to.
+  Metrics are also per-process and in memory, so more than one web replica needs
+  a scraper that reaches each of them.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.

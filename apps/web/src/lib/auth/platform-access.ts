@@ -37,8 +37,14 @@ import { Forbidden, Invalid } from '../errors';
 export const DEFAULT_GRANT_MINUTES = 30;
 export const MAX_GRANT_MINUTES = 240;
 
-/** Long enough to be a sentence. "fix" is not a reason; it is a word. */
-const MIN_REASON = 12;
+/**
+ * Long enough to be a sentence. "fix" is not a reason; it is a word.
+ *
+ * Exported so the console can refuse the same input the API refuses, and say so
+ * before the round trip rather than after. Two copies of this number would drift
+ * into a form that accepts what the server rejects.
+ */
+export const MIN_REASON = 12;
 
 export interface AccessGrant {
   id: string;

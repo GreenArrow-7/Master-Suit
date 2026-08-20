@@ -73,8 +73,20 @@
 
 name: master-suite-staging
 
+# Anchors do not cross files, so this repeats the base file's rotation for the
+# services only this overlay declares. Without it `caddy` — which writes an
+# access line per request, the highest-volume log in the stack — would be the one
+# container on the host with an unbounded log. See docker-compose.yml for why
+# switching driver means replacing this block rather than overriding a line.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   caddy:
+    logging: *logging
     image: caddy:2-alpine
     restart: unless-stopped
     # Loopback, and port 80 only. No ACME: there is no public name to validate,
@@ -139,6 +151,7 @@ services:
   # The gate lives on the production migrate service in docker-compose.azure.yml
   # and reads the ledger this service writes.
   migrate:
+    logging: *logging
     build:
       context: ..
       dockerfile: infra/Dockerfile

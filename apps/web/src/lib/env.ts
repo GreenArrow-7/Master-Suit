@@ -42,7 +42,18 @@ export const b64 = z.string().superRefine((value, ctx) => {
   }
 });
 
-const schema = z.object({
+/**
+ * Exported so tests can parse `.env.example` through it.
+ *
+ * `.env` is created by copying `.env.example` — that is what `npm run secrets`
+ * does, and what CI's "Generate .env" step does — so a key declared there that
+ * this schema rejects makes every process refuse to start, on a fresh checkout
+ * and in CI, while a developer whose `.env` predates the key sees nothing wrong.
+ * That is exactly how `FACE_SERVICE_TOKEN_ROTATED_AT=` got through review:
+ * `z.string().regex(…).optional()` accepts *absent* and rejects *empty*, and the
+ * example file declares keys with no value.
+ */
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /**
    * Which environment this deployment IS, as distinct from how Node was built.
@@ -174,10 +185,19 @@ const schema = z.object({
    * indistinguishable from a scrape that failed, and the whole point is that a
    * secret nobody rotates should be visible rather than silent.
    */
-  FACE_SERVICE_TOKEN_ROTATED_AT: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  FACE_SERVICE_TOKEN_ROTATED_AT: z.preprocess(
+    // An empty string is "not set", not a malformed date. `.env` is created by
+    // copying `.env.example`, which declares the key with no value, so without
+    // this the regex rejects `FACE_SERVICE_TOKEN_ROTATED_AT=` and the whole
+    // environment fails to parse — every process refusing to start because a
+    // secret has never been rotated. CI found it; the local `.env` predates the
+    // variable and so omitted it entirely, which is the one case that passes.
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'FACE_SERVICE_TOKEN_ROTATED_AT must be a date like 2026-08-20, or empty.')
+      .optional(),
+  ),
   /** How old the face-service token may get before FaceServiceTokenStale fires. */
   FACE_TOKEN_MAX_AGE_DAYS: z.coerce.number().int().positive().default(90),
   FACE_SERVICE_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
@@ -274,7 +294,7 @@ export function resolveSecretFiles(source: Record<string, string | undefined>): 
     // Only for keys this application actually declares. Without that, a stray
     // `LANG_FILE` in the environment would try to read a file and fail the boot
     // over something that is not ours.
-    if (!(target in schema.shape)) continue;
+    if (!(target in envSchema.shape)) continue;
     try {
       // Trailing newline trimmed: every editor and most secret managers add one,
       // and a base64 key with `\n` on the end fails its length check with a
@@ -290,7 +310,7 @@ export function resolveSecretFiles(source: Record<string, string | undefined>): 
   return resolved;
 }
 
-const parsed = schema.safeParse(resolveSecretFiles(process.env));
+const parsed = envSchema.safeParse(resolveSecretFiles(process.env));
 
 if (!parsed.success) {
   // Fail at boot, not at the first request that happens to need the variable.

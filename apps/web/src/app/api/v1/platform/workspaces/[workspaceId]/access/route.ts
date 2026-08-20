@@ -7,6 +7,7 @@ import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_GRANT_MINUTES,
   MAX_GRANT_MINUTES,
+  MIN_REASON,
   activeGrant,
   openGrant,
   revokeGrants,
@@ -49,9 +50,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
     const { workspaceId } = await params;
     const workspace = await workspaceOr404(workspaceId);
 
-    // SUPPORT and SECURITY_AUDITOR reach requirePlatformOwner for read-only work
-    // and must not be able to elevate. Their read-only status is the reason a
-    // customer accepts them looking at all.
+    // Unreachable while requirePlatformOwner is `role === 'OWNER'`, and kept
+    // anyway. SUPPORT and SECURITY_AUDITOR are read-only by design — that is the
+    // reason a customer accepts them looking at their data at all — and if the
+    // gate above is ever widened to let them read this endpoint, the widening
+    // must not silently hand them a write grant too. A comment here used to
+    // claim they already reach this line; they do not.
     if (ctx.platformRole !== 'OWNER') {
       throw Forbidden('Only the platform owner can take write access into a customer workspace.');
     }
@@ -97,7 +101,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ workspac
     const { workspaceId } = await params;
     const grant = await activeGrant(ctx.platformUserId, workspaceId);
     return NextResponse.json(
-      { grant, defaultMinutes: DEFAULT_GRANT_MINUTES, maxMinutes: MAX_GRANT_MINUTES },
+      {
+        grant,
+        defaultMinutes: DEFAULT_GRANT_MINUTES,
+        maxMinutes: MAX_GRANT_MINUTES,
+        // So the console can enforce the same minimum this API does, and say so
+        // before the round trip. A form that accepts what the server rejects is
+        // a form that teaches people the control is broken.
+        //
+        // No `mayElevate` alongside it: requirePlatformOwner admits OWNER and
+        // nobody else, and the platform layout gates the whole console the same
+        // way, so a caller who can read this response can always open a grant.
+        // A field that is constant is not a capability check, it is a decoration
+        // that would eventually be trusted as one.
+        minReason: MIN_REASON,
+      },
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {

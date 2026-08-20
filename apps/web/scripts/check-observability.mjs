@@ -197,6 +197,11 @@ function serviceBlock(body, svc) {
   return next < 0 ? rest : rest.slice(0, next + 1);
 }
 
+/** Services the base file declares — an overlay only *modifies* these. */
+const baseServices = new Set(
+  [...compose.slice(compose.indexOf('\nservices:')).matchAll(/^ {2}([a-z][a-z0-9-]*):$/gm)].map((m) => m[1]),
+);
+
 for (const overlay of ['docker-compose.azure.yml', 'docker-compose.staging.yml']) {
   const body = read(join(INFRA, overlay));
   for (const svc of ['prometheus', 'alertmanager']) {
@@ -205,6 +210,43 @@ for (const overlay of ['docker-compose.azure.yml', 'docker-compose.staging.yml']
       fail(`${overlay} has no ${svc} service — that deployment would run without it.`);
     } else if (!block.includes('profiles: !reset []')) {
       fail(`${overlay} does not clear the observability profile for ${svc} — that deployment would run without it.`);
+    }
+  }
+}
+
+// ── 6. Every container's log is bounded ─────────────────────────────────────
+//
+// Nothing configured logging at all, which meant Docker's default: `json-file`,
+// unrotated. On a single-VM deployment that is the same disk Postgres writes to,
+// and a service that logs a line per request fills it — a database that cannot
+// write because a log file ate the volume is an outage caused entirely by
+// observability. `caddy` is the one that would get there first.
+//
+// Checked per file rather than on the merged config, because YAML anchors do not
+// cross files: a service declared in an overlay cannot reference the base file's
+// `&logging`, and the failure is silent — the container starts, and grows.
+const LOGGED_FILES = [
+  'docker-compose.yml',
+  'docker-compose.azure.yml',
+  'docker-compose.staging.yml',
+  'docker-compose.pgbouncer.yml',
+];
+
+for (const file of LOGGED_FILES) {
+  const body = read(join(INFRA, file));
+  const servicesAt = body.indexOf('\nservices:');
+  if (servicesAt < 0) continue;
+  const declared = [...body.slice(servicesAt).matchAll(/^ {2}([a-z][a-z0-9-]*):$/gm)].map((m) => m[1]);
+  for (const svc of declared) {
+    const block = serviceBlock(body.slice(servicesAt), svc);
+    // A service an overlay only *modifies* inherits the base file's logging, and
+    // a block that adds one key is not the place to restate it. Only a service
+    // this file introduces needs its own.
+    const introduced = file === 'docker-compose.yml' || !baseServices.has(svc);
+    if (introduced && block !== null && !/^\s*logging: \*logging$/m.test(block)) {
+      fail(
+        `${file}: service "${svc}" has no \`logging: *logging\` — its log would grow without limit on the deployment's own disk.`,
+      );
     }
   }
 }

@@ -182,8 +182,22 @@ credential files, and the staging shape.
   to a query.
 - **No stack-trace reporting.** Choosing a vendor is a decision nobody has made
   yet; `AppError` and `pino` carry the information, nothing collects it.
-- **No log shipping.** `pino` writes structured JSON to stdout and it dies with
-  the container.
+- **No log shipping, but the logs no longer eat the disk.** `pino` writes
+  structured JSON to stdout and nothing collects it, so it still dies with the
+  container — choosing a destination is a decision nobody has made, the same
+  shape as the backup remote in `docs/BACKUP-RECOVERY.md`. What *has* changed is
+  that every container now rotates at 10 MB × 5 (`x-logging` in each Compose
+  file). Before that Docker's unrotated default applied, on the same disk
+  Postgres writes to, with `caddy` logging a line per request — a database that
+  cannot write because a log file filled the volume is an outage caused entirely
+  by observability. `scripts/check-observability.mjs` fails the build if a
+  service is added without it, per file, because YAML anchors do not cross files
+  and an overlay-only service silently misses the base file's.
+
+  When a destination is chosen, the `x-logging` anchor is the single place to
+  change per file. Note that its options are `json-file`'s: Docker refuses to
+  start a container given options its driver does not know, so switching driver
+  means replacing the block rather than overriding one line of it.
 - **Metrics are per-process and in memory.** One `web` container is scraped. A
   second replica needs a scrape target per replica, not a load-balanced one.
 - **Prometheus and Alertmanager are on the same VM as the thing they watch.**

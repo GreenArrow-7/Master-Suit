@@ -530,7 +530,11 @@ name:
   `.env.production` — both containers refuse to start without them. See
   `docs/OBSERVABILITY.md`. What is still missing: distributed tracing, a
   stack-trace reporter, and log shipping. `pino` writes structured JSON to
-  stdout; nothing collects it, so it still dies with the container.
+  stdout; nothing collects it, so it still dies with the container. It does not
+  fill the disk on the way, though — every container rotates at 10 MB × 5, set by
+  the `x-logging` anchor in each Compose file. Before that the default was
+  `json-file` with no rotation, on this VM's single volume, with Caddy writing a
+  line per request.
 - **SMS and e-signature do not work.** See step 7.
 
 `docs/KNOWN-LIMITATIONS.md` and `docs/SECURITY-REMEDIATION.md` are the two to

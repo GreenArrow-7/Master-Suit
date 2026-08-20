@@ -10,8 +10,40 @@
 # could reach the interface. `docker-compose.azure.yml` closed them again with
 # `!reset []`, which meant the safety of a deployment depended on remembering to
 # layer a third file. A base file should not need rescuing.
+# ── Log rotation, on every service ──────────────────────────────────────────
+#
+# Nothing here configured logging at all, which means Docker's default:
+# `json-file`, **unrotated**. On a single-VM deployment that is the same disk
+# Postgres writes to, and a chatty week — one request line per request, plus
+# every slow-query warning — fills it. A database that cannot write because a
+# log file ate the volume is an outage caused entirely by observability.
+#
+# 10 MB × 5 is roughly the last few hundred thousand request lines per service,
+# which is the window `docker compose logs` is actually used for during an
+# incident, and about 500 MB in the worst case across the stack.
+#
+# ── What this does not do ───────────────────────────────────────────────────
+#
+# It does not ship anything off the host. Rotation bounds the disk; it does not
+# survive `docker compose down`, and the assessment's W-3 is still open. When a
+# destination is chosen, this anchor is the one place to change — every service
+# below references it, so pointing the stack at syslog, gelf, Loki or a hosted
+# collector is an edit here rather than ten.
+#
+# Note that the options below are `json-file`'s. A different driver takes
+# different options and Docker refuses to start a container given options its
+# driver does not know, so switching driver means replacing this whole block,
+# not overriding one line of it. That is on purpose: a half-substituted logging
+# config that fails at `up` is worse than one that is edited deliberately.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   postgres:
+    logging: *logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: leadflow
@@ -43,6 +75,7 @@ services:
       retries: 10
 
   redis:
+    logging: *logging
     image: redis:7-alpine
     # ── requirepass, in development too ──────────────────────────────────────
     #
@@ -81,6 +114,7 @@ services:
       retries: 10
 
   minio:
+    logging: *logging
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
@@ -94,6 +128,7 @@ services:
   # nothing leaves the machine, which is the point — a local run that can post
   # real mail to real addresses is a worse accident than one that cannot send.
   mailpit:
+    logging: *logging
     image: axllent/mailpit:latest
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 'true'
@@ -109,6 +144,7 @@ services:
   # freshclam keeps them current, which is why the healthcheck allows a long start:
   # the first signature download is several hundred megabytes.
   clamav:
+    logging: *logging
     image: clamav/clamav:stable
     environment:
       CLAMAV_NO_MILTERD: 'true'
@@ -124,6 +160,7 @@ services:
   # Deliberately NOT published to the host — a service that turns camera frames
   # into biometric vectors has no business being reachable from outside.
   face:
+    logging: *logging
     build: { context: ../../face, dockerfile: Dockerfile }
     environment:
       FACE_MODEL_DIR: /models
@@ -159,6 +196,7 @@ services:
       start_period: 300s
 
   web:
+    logging: *logging
     build: { context: .., dockerfile: infra/Dockerfile, target: production }
     environment:
       PROCESS_ROLE: web
@@ -182,6 +220,7 @@ services:
       redis: { condition: service_healthy }
 
   worker:
+    logging: *logging
     # `target: worker`, and no `command:` override.
     #
     # This used to build the default (web) stage and run
@@ -235,6 +274,7 @@ services:
   # container will exit with "no such file or directory", which is the failure
   # mode wanted.
   prometheus:
+    logging: *logging
     image: prom/prometheus:v3.1.0
     profiles: ['observability']
     # Neither Prometheus nor Alertmanager expands environment variables in its
@@ -267,6 +307,7 @@ services:
       start_period: 20s
 
   alertmanager:
+    logging: *logging
     image: prom/alertmanager:v0.28.0
     profiles: ['observability']
     entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
