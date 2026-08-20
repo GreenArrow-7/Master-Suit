@@ -1,3 +1,4 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { ulid } from 'ulid';
@@ -5,13 +6,9 @@ import { AppError, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { resolveCtx } from '@/lib/auth/session';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { audit } from '@/lib/security/audit';
-import { consume, limits } from '@/lib/security/ratelimit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 
@@ -78,10 +75,10 @@ export async function GET(req: Request) {
 }
 
 async function handle(req: Request, requestId: string) {
-  const ctx = await resolveCtx(req, requestId);
-  await assertModuleEntitlement(ctx.tenantId, 'SALES');
-  assertPermission(ctx, 'leads', 'EXPORT');
-  await consume(limits.sessionUser(ctx.actor.id));
+  const ctx = await resolveGuardedCtx(req, requestId, {
+    productModule: 'SALES',
+    permission: ['leads', 'EXPORT'],
+  });
 
   const url = new URL(req.url);
   const params = query.parse(Object.fromEntries(url.searchParams));

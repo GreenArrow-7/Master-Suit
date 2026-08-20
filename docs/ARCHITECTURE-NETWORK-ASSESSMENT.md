@@ -1947,6 +1947,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** Each is correct today. Each is a place a future edit drops a gate the kernel would have enforced, and one already has no rate limit (WPS bulk bank-detail export).
 - **Severity** 🟡 Medium
 - **Recommendation** Extract the shared prologue into `resolveGuardedCtx(req, spec)` that the bypasses call, so authenticate/entitle/permit/limit is one function even where the response is not JSON.
+- **Fixed (2026-08-20)** `lib/api/guarded.ts`. Eight of the ten converted; the two left are pre-authorisation by nature (sign-out, and an OAuth callback arriving with a state token rather than a workspace context) and are named in `tests/security/guarded-prologue.spec.ts`, which fails if a ninth appears. **The missing rate limit was worse than recorded**: not only the WPS export but *every* HR bypass — payslip PDFs, HR document download and upload, HR report exports — was unlimited. The limit now defaults to the per-session bucket and there is no way to ask for none, which is the point.
 
 ### W-11 · Tight coupling between the notification surface and the Sales module
 
@@ -2238,7 +2239,7 @@ Five things change and nothing else has to:
 | | Item | Reference |
 | --- | --- | --- |
 | P3-1 | Close the CSP gap — build-step hashing of the inline bootstrap, or nonce support when Next provides it | M-1 |
-| P3-2 | Consolidate the kernel bypasses behind a shared `resolveGuardedCtx` prologue | W-10 |
+| P3-2 | ~~Consolidate the kernel bypasses behind a shared `resolveGuardedCtx` prologue~~ **done** — and it found four more unlimited routes than W-10 recorded | W-10 |
 | P3-3 | Split `LeadDetail.tsx` and the two HR dispatch routes | W-15 |
 | P3-4 | ~~Remove dead configuration and dependencies; drop the legacy `Integration` table~~ **done** — configuration in P2-2, tables in `20260820180000_drop_unbuilt_models` | W-12 |
 | P3-5 | Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code | W-13 |

@@ -1,3 +1,4 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { ulid } from 'ulid';
@@ -5,9 +6,7 @@ import { AppError, Invalid, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { resolveCtx } from '@/lib/auth/session';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -274,8 +273,7 @@ async function handle(req: Request, params: { resource: string }, requestId: str
   const resource = RESOURCES[params.resource];
   if (!resource) throw NotFound('Export');
 
-  const ctx = await resolveCtx(req, requestId);
-  await assertModuleEntitlement(ctx.tenantId, 'SALES');
+  const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'SALES' });
   // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
   // of the building are different authorities, and every module here already
   // defines the second.
