@@ -1244,8 +1244,8 @@ caller's own permission context. A tool the caller lacks permission for returns
 | --- | --- | --- |
 | AI1 | No token accounting or spend cap. A workspace on the shared deployment key can consume unbounded budget; nothing meters it | 🟠 High (commercial) |
 | AI2 | API key travels in the URL query string. Google's documented pattern, but keys land in any proxy or egress log that records URLs | 🟡 Medium |
-| AI3 | Re-analysis overwrites human corrections — `humanCorrected` is recorded but not honoured by the worker | 🟡 Medium |
-| AI4 | Redaction is regex-only; spelled-out numbers survive, and the file says so | 🟡 Medium |
+| AI3 | ~~Re-analysis overwrites human corrections — `humanCorrected` is recorded but not honoured by the worker~~ **Fixed 2026-08-20.** `AIAnalysis.correctedFields` records *which* fields a person edited, so a re-run overwrites the rest and leaves those; a pre-migration row with the flag and no list is read as "protect everything". `rawOutput` still carries the model's complete answer | 🟡 Medium |
+| AI4 | ~~Redaction is regex-only; spelled-out numbers survive, and the file says so~~ **Fixed 2026-08-20.** A run of digit-words is normalised for *detection* and the span redacted where it stands — the transcript is never rewritten as digits. Threshold of 8 digits, `double`/`triple` understood, and "a hundred and fifty thousand dirhams" deliberately left alone | 🟡 Medium |
 | AI5 | The assistant is gated on `leads:VIEW` + the SALES entitlement, so an HR-only workspace has no assistant at all | 🔵 Low |
 
 ---
@@ -1519,7 +1519,7 @@ window. No Key Vault, no injection at start, no automatic rotation.
 | L-1 | API key lookup is `findFirst` on a 4-byte prefix with no uniqueness constraint — a collision makes one key permanently unusable |
 | L-2 | `SameSite=Lax` is the only CSRF control; no token or double-submit exists |
 | L-3 | TOTP has no replay cache, so a code works throughout its ±1-window acceptance band |
-| L-4 | WPS SIF export does not neutralise leading `=`/`+`/`-`/`@` — the correct helper already exists in `leads/export` |
+| L-4 | ~~WPS SIF export does not neutralise leading `=`/`+`/`-`/`@`~~ **Fixed 2026-08-20**, and not with that helper: an apostrophe prefix is right for a report a human reads and wrong for a bank file, since `'AE0703…` is not an IBAN. The field is refused instead — at the policy form, on read, and at the export |
 | L-5 | `/api/v1/notifications` is gated on `leads:VIEW`, so an HR-only role cannot read its own notifications |
 | L-6 | The WPS bulk bank-detail export inherits no rate limit, because it bypasses the kernel |
 | L-7 | `prettier` gate disabled in CI; 678 files fail it |
@@ -2243,10 +2243,10 @@ Five things change and nothing else has to:
 | P3-5 | Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code | W-13 |
 | P3-6 | Re-enable the `format:check` gate in the same PR that reformats | L-7 |
 | P3-7 | Implement SMS and e-signature adapters, or remove the settings that imply they exist | §14 |
-| P3-8 | Number-word normalisation in the AI redactor | AI4 |
-| P3-9 | Honour `humanCorrected` in the analysis worker | AI3 |
+| P3-8 | ~~Number-word normalisation in the AI redactor~~ **done** | AI4 |
+| P3-9 | ~~Honour `humanCorrected` in the analysis worker~~ **done** | AI3 |
 | P3-10 | Dispatch outbound tenant webhooks, or drop the models | §14 |
-| P3-11 | Neutralise leading `=`/`+`/`-`/`@` in the WPS SIF export using the existing helper | L-4 |
+| P3-11 | ~~Neutralise leading `=`/`+`/`-`/`@` in the WPS SIF export~~ **done** — by refusing, not escaping. See L-4 | L-4 |
 | P3-12 | Break-glass approval and a time limit on platform-owner write access into a tenant | M-5 |
 
 ---

@@ -1,0 +1,36 @@
+-- Record which fields a person corrected, so re-analysis stops destroying them.
+--
+-- ── What happened before ────────────────────────────────────────────────────
+--
+-- `humanCorrected` was set by PATCH /api/v1/calls/:id/analysis and read by
+-- nothing except the UI badge. The worker wrote every column on every run, so
+-- re-analysing a call replaced a person's corrected summary with the model's —
+-- silently, and with no way to get the original back.
+--
+-- The route's own comment described this as a reason re-analysis is an explicit
+-- action rather than an automatic one. That is a rationalisation, not a control:
+-- an explicit action still destroys the correction, and the person clicking it
+-- has no idea that it will.
+--
+-- ── Why a list of fields rather than a flag ─────────────────────────────────
+--
+-- The flag says *that* somebody corrected the analysis, not *what*, which left
+-- the worker two equally poor options: overwrite everything (data loss), or
+-- refuse to re-analyse a corrected call at all (a call that can never be
+-- improved because one field was once edited).
+--
+-- With the field names, a re-run does the obvious right thing: the summary a
+-- person wrote survives, and the fields nobody asserted anything about get the
+-- new model output. `rawOutput` still holds the model's complete answer, so
+-- nothing the model said is lost either — it simply does not win.
+
+ALTER TABLE "AIAnalysis" ADD COLUMN "correctedFields" TEXT[] NOT NULL DEFAULT '{}';
+
+-- Existing corrected rows: nothing recorded which fields were edited, and
+-- guessing would be worse than admitting it. `humanCorrected = true` with an
+-- empty list means "somebody corrected this, we do not know what" — and
+-- services/shared/callIntelligence.ts treats that case as "protect everything",
+-- which is the safe reading of a missing record.
+--
+-- New corrections carry the list, so the conservative behaviour applies only to
+-- rows that predate this migration.

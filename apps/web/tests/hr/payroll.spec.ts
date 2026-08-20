@@ -34,7 +34,7 @@ import {
 } from '@/services/hr/payroll';
 import { decideOvertime, requestOvertime } from '@/services/hr/overtime';
 import { generateSif } from '@/services/hr/wps';
-import { DEFAULT_POLICY } from '@/services/hr/settings';
+import { DEFAULT_POLICY, updateHrPolicy } from '@/services/hr/settings';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { PermissionMap } from '@/lib/security/rbac';
 
@@ -150,6 +150,11 @@ const CHECKER = [
   ['employee', 'VIEW'],
 ] as const;
 const STAFF = [['employee', 'VIEW']] as const;
+/** `isHrAdmin` is `employee:EDIT` at ORGANIZATION — what HR policy changes require. */
+const HR_ADMIN = [
+  ['employee', 'VIEW'],
+  ['employee', 'EDIT'],
+] as const;
 const OT_APPROVER = [
   ['overtime', 'APPROVE'],
   ['employee', 'VIEW'],
@@ -476,5 +481,112 @@ describe('WPS export', () => {
   it('refuses an exporter without the permission', async () => {
     const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId, status: 'PAID' } });
     await expect(generateSif(ctxFor('worker', STAFF), run.id)).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+/**
+ * A SIF is a text file a bank parses mechanically — but a payroll team opens it
+ * in Excel first, to check a run before instructing a transfer. Excel and Sheets
+ * execute a cell beginning `=`, `+`, `-` or `@`, so `=HYPERLINK(…)` in an
+ * identifier is a phishing link arriving inside the company's own payroll file,
+ * at the moment somebody is about to move money.
+ *
+ * `wpsEmployerId` is a free-text HR policy setting, which makes this reachable
+ * today by a tenant's own HR administrator.
+ *
+ * The fix refuses rather than escapes, and these cases are why: the apostrophe
+ * that `lib/csv.ts` prefixes is right for a report a human reads and wrong for a
+ * bank file, because `'AE0703…` is not an IBAN. A blunted attack here would be a
+ * corrupted payment instruction.
+ */
+describe('WPS export · spreadsheet formula injection', () => {
+  const storeEmployer = (employerId: string, agentId = 'ADCB-01') =>
+    prisma.organizationSetting.upsert({
+      where: { tenantId },
+      update: { hrPolicy: { wpsEmployerId: employerId, wpsEmployerBankAgentId: agentId } },
+      create: { tenantId, hrPolicy: { wpsEmployerId: employerId, wpsEmployerBankAgentId: agentId } },
+    });
+
+  // Deliberately short. A full `=HYPERLINK("http://evil","Payroll")` is 38
+  // characters and would be refused by `maxLength: 32` before the pattern was
+  // consulted — which is a refusal, but not a test of the guard being added.
+  const ATTACKS = ['=1+1', '+1+1', '-2+3', '@SUM(A1)', 'MOL,1234'];
+
+  afterAll(() => storeEmployer('MOL-1234'));
+
+  it('refuses the value where an administrator can fix it, with a message they can act on', async () => {
+    // Layer 1, and the only one that reaches a person. "must match
+    // /^[A-Za-z0-9][A-Za-z0-9 \/_-]*$/" is not something somebody responsible
+    // for payroll can act on, and a validation message nobody can act on gets
+    // worked around rather than fixed.
+    for (const attack of ATTACKS) {
+      // The actionable text is on the field error, not on the AppError's own
+      // message — which is "1 field failed validation" and reaches the form as a
+      // per-field message rather than a banner.
+      await expect(updateHrPolicy(ctxFor('officer', HR_ADMIN), { wpsEmployerId: attack })).rejects.toMatchObject({
+        status: 422,
+        errors: [
+          expect.objectContaining({
+            field: 'wpsEmployerId',
+            message: expect.stringMatching(/letters, digits, spaces, hyphens/),
+          }),
+        ],
+      });
+    }
+  });
+
+  it('discards a value that reached the database another way', async () => {
+    // Layer 2. A restored backup, an older release, or a direct SQL write —
+    // `resolvePolicy` re-validates on read, so the formula never reaches the
+    // file even though nothing refused it on the way in. The export then fails
+    // with the "not configured" message, which is the truth: the stored value
+    // was thrown away.
+    const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId, status: 'PAID' } });
+    for (const attack of ATTACKS) {
+      await storeEmployer(attack);
+      await expect(generateSif(ctxFor('checker', CHECKER), run.id)).rejects.toThrow(
+        /Set the WPS employer \(MOL\) identifier/,
+      );
+    }
+  });
+
+  it('refuses at the export itself for a field with no policy layer in front of it', async () => {
+    // Layer 3, and the only layer the per-employee identifiers have: there is no
+    // settings validator between the database and the file for these.
+    //
+    // Excluded rather than escaped. The apostrophe that lib/csv.ts prefixes is
+    // right for a report a human reads and wrong for a bank file — `'AE0703…` is
+    // not an IBAN, so blunting the attack would corrupt a payment instruction.
+    await storeEmployer('MOL-1234');
+    const before = await prisma.employeeProfile.findFirstOrThrow({
+      where: { tenantId, id: employees.worker! },
+      select: { wpsPersonId: true },
+    });
+    await prisma.employeeProfile.update({
+      where: { tenantId, id: employees.worker! },
+      data: { wpsPersonId: '=HYPERLINK("http://evil","Open payslip")' },
+    });
+
+    const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId, status: 'APPROVED' } });
+    // The only payable employee was excluded, so there is no file — the correct
+    // outcome, and a loud one rather than a silently short file.
+    await expect(generateSif(ctxFor('checker', CHECKER), run.id)).rejects.toThrow(/bank details a WPS file requires/);
+
+    await prisma.employeeProfile.update({
+      where: { tenantId, id: employees.worker! },
+      data: { wpsPersonId: before.wpsPersonId },
+    });
+  });
+
+  it('still accepts the identifiers a real bank issues', async () => {
+    // The guard is worth nothing if it refuses legitimate data. Emirates ID
+    // labour-card numbers carry hyphens, IBANs are alphanumeric, and routing
+    // codes carry hyphens and slashes.
+    await storeEmployer('MOL-1234', 'ADCB-01');
+    const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId, status: 'APPROVED' } });
+    const sif = await generateSif(ctxFor('checker', CHECKER), run.id);
+    expect(sif.included).toBeGreaterThan(0);
+    expect(sif.content).toContain('784-1990-1234567-1');
+    expect(sif.content).toContain('AE070331234567890123456');
   });
 });

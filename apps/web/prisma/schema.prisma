@@ -5174,6 +5174,11 @@ model AIAnalysis {
   uncertainItems  Json           @default("[]")
   rawOutput       Json?
   humanCorrected  Boolean        @default(false)
+  /// Exactly which fields a person edited, so a re-run overwrites the rest and
+  /// leaves these alone. `humanCorrected` on its own says *that* somebody
+  /// corrected the analysis and not *what*, which left the worker with only two
+  /// options — overwrite everything, or refuse to re-analyse at all.
+  correctedFields String[]       @default([])
   correctedById   String?
   correctedAt     DateTime?
   errorMessage    String?
