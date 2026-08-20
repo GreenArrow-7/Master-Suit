@@ -61,7 +61,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           <>
             {rows.length === 50 ? 'First 50 records' : `${rows.length} record${rows.length === 1 ? '' : 's'}`} in your
             scope
-            {pipelineTotal > 0 && ` · ${rows[0]?.currency ?? 'AED'} ${pipelineTotal.toLocaleString('en-AE')} open pipeline`}
+            {pipelineTotal > 0 &&
+              ` · ${rows[0]?.currency ?? 'AED'} ${pipelineTotal.toLocaleString('en-AE')} open pipeline`}
           </>
         }
         actions={

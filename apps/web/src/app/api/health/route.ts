@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic';
  * at /live and routing probes here.
  */
 export async function GET() {
-  const deadline = (ms: number) => new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+  const deadline = (ms: number) =>
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
   const checks: Record<string, 'up' | 'down'> = { database: 'down', redis: 'down' };
 
   await Promise.allSettled([

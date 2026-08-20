@@ -26,11 +26,7 @@ const TABS: [string, string, Record<string, unknown>][] = [
   ['Scheduled', 'scheduled', { status: 'SCHEDULED' }],
 ];
 
-export default async function CallsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string; page?: string }>;
-}) {
+export default async function CallsPage({ searchParams }: { searchParams: Promise<{ tab?: string; page?: string }> }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);

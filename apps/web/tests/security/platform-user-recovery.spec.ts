@@ -233,10 +233,22 @@ describe('unlock', () => {
 
 describe('account standing and membership', () => {
   it('deactivation stops authentication; reactivation restores it', async () => {
-    await post(actions, `/api/v1/platform/users/${userId}/actions`, { action: 'set-active', active: false }, ownerCookie, { userId });
+    await post(
+      actions,
+      `/api/v1/platform/users/${userId}/actions`,
+      { action: 'set-active', active: false },
+      ownerCookie,
+      { userId },
+    );
     expect((await signIn(`rec.user.${suffix}@platform.test`, REPLACEMENT)).status).toBe(401);
 
-    await post(actions, `/api/v1/platform/users/${userId}/actions`, { action: 'set-active', active: true }, ownerCookie, { userId });
+    await post(
+      actions,
+      `/api/v1/platform/users/${userId}/actions`,
+      { action: 'set-active', active: true },
+      ownerCookie,
+      { userId },
+    );
     expect((await signIn(`rec.user.${suffix}@platform.test`, REPLACEMENT)).status).toBe(200);
   });
 

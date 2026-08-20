@@ -159,8 +159,8 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
             <span style={{ display: 'block', marginTop: 2 }}>{user.canSignIn.reason}</span>
             {user.throttle.throttled && (
               <span style={{ display: 'block', marginTop: 6 }}>
-                Separately, the per-account sign-in throttle is closed ({user.throttle.used}/{user.throttle.max} attempts
-                in this window, resets {user.throttle.resetsAt}). Unlocking clears it.
+                Separately, the per-account sign-in throttle is closed ({user.throttle.used}/{user.throttle.max}{' '}
+                attempts in this window, resets {user.throttle.resetsAt}). Unlocking clears it.
               </span>
             )}
           </div>
@@ -177,7 +177,8 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
               <p className="lf-secret">{issued}</p>
               <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-xs)' }}>
                 Read it out in person or by phone — not by email or chat. It is not stored in readable form and cannot
-                be shown again. {user.mustChangePassword ? 'The user must set their own before anything else opens.' : ''}
+                be shown again.{' '}
+                {user.mustChangePassword ? 'The user must set their own before anything else opens.' : ''}
               </p>
             </section>
           )}
@@ -208,7 +209,9 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
               <div>
                 <dt>MFA</dt>
                 <dd>
-                  <Badge tone={MFA_TONE[user.mfaState] ?? 'slate'}>{user.mfaState.replaceAll('_', ' ').toLowerCase()}</Badge>
+                  <Badge tone={MFA_TONE[user.mfaState] ?? 'slate'}>
+                    {user.mfaState.replaceAll('_', ' ').toLowerCase()}
+                  </Badge>
                 </dd>
               </div>
               <div>
@@ -577,9 +580,11 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
                       {armed === `remove-${membership.id}` ? (
                         <>
                           <span style={{ fontSize: 'var(--lf-text-xs)', flexBasis: '100%' }}>
-                            <strong>Remove {user.email} from {membership.workspace}?</strong> Their access ends. Leads,
-                            deals and activity they own stay in the workspace under their name — nothing is deleted —
-                            but restoring access means re-adding the membership.
+                            <strong>
+                              Remove {user.email} from {membership.workspace}?
+                            </strong>{' '}
+                            Their access ends. Leads, deals and activity they own stay in the workspace under their name
+                            — nothing is deleted — but restoring access means re-adding the membership.
                           </span>
                           <button
                             type="button"
@@ -639,7 +644,9 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
           <section>
             <h3 className="lf-section-title">Recent account events</h3>
             {user.events.length === 0 ? (
-              <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>Nothing recorded yet.</p>
+              <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+                Nothing recorded yet.
+              </p>
             ) : (
               <ul className="lf-eventlist">
                 {user.events.map((event) => (
@@ -647,9 +654,7 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
                     <span>
                       {event.event.replaceAll('_', ' ').toLowerCase()}
                       {event.reason ? ` — ${event.reason.replaceAll('_', ' ').toLowerCase()}` : ''}
-                      {event.byOperator && (
-                        <span style={{ color: 'var(--lf-ink-3)' }}> · by an operator</span>
-                      )}
+                      {event.byOperator && <span style={{ color: 'var(--lf-ink-3)' }}> · by an operator</span>}
                     </span>
                     <time>{event.occurredAt}</time>
                   </li>

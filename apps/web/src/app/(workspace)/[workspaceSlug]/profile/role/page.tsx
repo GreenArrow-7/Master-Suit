@@ -142,7 +142,8 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
     if (!MODULE_LABEL[module]) continue;
     const entry = access.get(module) ?? { write: false };
     if (action === 'VIEW') entry.view = grant.scope;
-    if (['CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'MANAGE_CONFIGURATION', 'MANAGE_USERS'].includes(action)) entry.write = true;
+    if (['CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'MANAGE_CONFIGURATION', 'MANAGE_USERS'].includes(action))
+      entry.write = true;
     access.set(module, entry);
   }
   const rows = [...access.entries()]

@@ -40,11 +40,56 @@ const ACCOUNTS: [string, string, string][] = [
   ['Crescent Peak Realty', 'BROKERAGE', 'Real Estate'],
 ];
 
-const CONTACT_FIRST = ['Salim', 'Ingrid', 'Ravi', 'Dana', 'Khalid', 'Mei', 'Arjun', 'Lubna', 'Peter', 'Huda', 'Sanjay', 'Grace', 'Mansour', 'Olga'];
-const CONTACT_LAST = ['Al Nuaimi', 'Bergström', 'Krishnan', 'Haroun', 'Bin Saeed', 'Tan', 'Kapoor', 'Aziz', 'Vermeer', 'Qassim', 'Rao', 'Mensah', 'Al Otaiba', 'Sokolova'];
-const CONTACT_TITLES = ['Managing Director', 'Head of Acquisitions', 'Portfolio Manager', 'Investment Director', 'Sales Director', 'Chief Financial Officer', 'Development Manager', 'Partner'];
+const CONTACT_FIRST = [
+  'Salim',
+  'Ingrid',
+  'Ravi',
+  'Dana',
+  'Khalid',
+  'Mei',
+  'Arjun',
+  'Lubna',
+  'Peter',
+  'Huda',
+  'Sanjay',
+  'Grace',
+  'Mansour',
+  'Olga',
+];
+const CONTACT_LAST = [
+  'Al Nuaimi',
+  'Bergström',
+  'Krishnan',
+  'Haroun',
+  'Bin Saeed',
+  'Tan',
+  'Kapoor',
+  'Aziz',
+  'Vermeer',
+  'Qassim',
+  'Rao',
+  'Mensah',
+  'Al Otaiba',
+  'Sokolova',
+];
+const CONTACT_TITLES = [
+  'Managing Director',
+  'Head of Acquisitions',
+  'Portfolio Manager',
+  'Investment Director',
+  'Sales Director',
+  'Chief Financial Officer',
+  'Development Manager',
+  'Partner',
+];
 
-const PROJECTS = ['Marina Vista Residences', 'Creek Gate Towers', 'The Palm Crescent Collection', 'Downtown Skyline One', 'Hillside Terraces'];
+const PROJECTS = [
+  'Marina Vista Residences',
+  'Creek Gate Towers',
+  'The Palm Crescent Collection',
+  'Downtown Skyline One',
+  'Hillside Terraces',
+];
 const AREAS = ['Dubai Marina', 'Creek Harbour', 'Palm Jumeirah', 'Downtown Dubai', 'Dubai Hills'];
 const BEDS = ['one-bedroom', 'two-bedroom', 'three-bedroom'];
 const PRICES_M = ['1.2', '1.6', '2.1', '2.8', '3.4'];
@@ -79,9 +124,15 @@ const FOLLOW_UP_TITLES = [
 // per-criterion evidence quotes, timestamped the way the auditor formats them
 const EVIDENCE: Record<string, string[]> = {
   Greeting: ['[00:04] "Good morning, this is {agent} calling from Manath Homes."'],
-  Introduction: ['[00:11] "Am I speaking with {customer}?"', '[00:19] "You enquired about apartments earlier this week."'],
+  Introduction: [
+    '[00:11] "Am I speaking with {customer}?"',
+    '[00:19] "You enquired about apartments earlier this week."',
+  ],
   Discovery: ['[01:02] "Is this for your own use or an investment?"', '[01:38] "What is drawing you to that area?"'],
-  'Needs identification': ['[02:10] "Do you have a budget range in mind?"', '[02:41] "Somewhere around the budget the customer stated."'],
+  'Needs identification': [
+    '[02:10] "Do you have a budget range in mind?"',
+    '[02:41] "Somewhere around the budget the customer stated."',
+  ],
   'Product explanation': ['[03:22] "Units from that price with a 60/40 payment plan and handover as stated."'],
   'Objection handling': ['[04:15] "That is a fair concern — let me walk you through the escrow protections."'],
   'Communication clarity': ['[05:02] "Just to make sure I have this right…" — recaps the requirements accurately.'],
@@ -242,10 +293,20 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
   // 8 open across the four working stages, 4 won, 2 lost — the won ones
   // trace back to converted leads so the lead → deal chain is walkable.
   const oppStageKeys = [
-    'qualification', 'qualification', 'needs_analysis', 'needs_analysis',
-    'proposal', 'proposal', 'negotiation', 'negotiation',
-    'closed_won', 'closed_won', 'closed_won', 'closed_won',
-    'closed_lost', 'closed_lost',
+    'qualification',
+    'qualification',
+    'needs_analysis',
+    'needs_analysis',
+    'proposal',
+    'proposal',
+    'negotiation',
+    'negotiation',
+    'closed_won',
+    'closed_won',
+    'closed_won',
+    'closed_won',
+    'closed_lost',
+    'closed_lost',
   ];
   const oppRows: any[] = [];
   for (let i = 0; i < oppStageKeys.length; i++) {
@@ -281,7 +342,13 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       source: 'MANUAL',
       lossReasonId: lost?.id ?? null,
       lossNotes: lost ? `Lost to ${lost.name.toLowerCase()} after final round.` : null,
-      notes: chance(0.4) ? pick(['Decision expected after board meeting.', 'Wants two parking bays included.', 'Comparing with a Creek Harbour launch.']) : null,
+      notes: chance(0.4)
+        ? pick([
+            'Decision expected after board meeting.',
+            'Wants two parking bays included.',
+            'Comparing with a Creek Harbour launch.',
+          ])
+        : null,
       stageEnteredAt: businessDate(21),
       createdAt,
     });
@@ -306,7 +373,12 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       isActive: true,
       criteria: {
         create: CRITERIA.map(([label, weight, isRequired, description], i) => ({
-          tenantId, label, weight, isRequired, description, position: i,
+          tenantId,
+          label,
+          weight,
+          isRequired,
+          description,
+          position: i,
         })),
       },
     },
@@ -350,9 +422,33 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
   });
   await db.campaignTalkingPoint.createMany({
     data: [
-      { tenantId, campaignId: running.id, scriptId: script.id, label: '60/40 payment plan', description: '40% due only on handover — lead with affordability.', isRequired: true, position: 0 },
-      { tenantId, campaignId: running.id, scriptId: script.id, label: 'Projected 7–8% rental yield', description: 'Always say "projected", never "guaranteed".', isRequired: true, position: 1 },
-      { tenantId, campaignId: running.id, scriptId: script.id, label: 'Q4 2027 handover', description: 'Escrow-protected construction milestones.', isRequired: false, position: 2 },
+      {
+        tenantId,
+        campaignId: running.id,
+        scriptId: script.id,
+        label: '60/40 payment plan',
+        description: '40% due only on handover — lead with affordability.',
+        isRequired: true,
+        position: 0,
+      },
+      {
+        tenantId,
+        campaignId: running.id,
+        scriptId: script.id,
+        label: 'Projected 7–8% rental yield',
+        description: 'Always say "projected", never "guaranteed".',
+        isRequired: true,
+        position: 1,
+      },
+      {
+        tenantId,
+        campaignId: running.id,
+        scriptId: script.id,
+        label: 'Q4 2027 handover',
+        description: 'Escrow-protected construction milestones.',
+        isRequired: false,
+        position: 2,
+      },
     ],
   });
   await db.campaignMember.createMany({
@@ -398,7 +494,15 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
   // so Today's Calls, the outcome mix and the upcoming queue all have data.
   type CallRow = { id: string; leadId: string | null; contactName: string; callerName: string; outcome: string | null };
   const callRows: CallRow[] = [];
-  const completedOutcomes = ['CONNECTED', 'INTERESTED', 'QUALIFIED', 'CALLBACK_REQUESTED', 'NOT_INTERESTED', 'VOICEMAIL', 'CONVERTED'] as const;
+  const completedOutcomes = [
+    'CONNECTED',
+    'INTERESTED',
+    'QUALIFIED',
+    'CALLBACK_REQUESTED',
+    'NOT_INTERESTED',
+    'VOICEMAIL',
+    'CONVERTED',
+  ] as const;
   for (let i = 0; i < 25; i++) {
     const caller = sellers[i % sellers.length]!;
     const onContact = i % 5 === 4; // every fifth call targets an account contact
@@ -448,12 +552,25 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         createdAt: status === 'SCHEDULED' ? new Date() : startedAt,
       },
     });
-    callRows.push({ id: call.id, leadId: onContact ? null : lead.id, contactName: who, callerName: caller.name, outcome });
+    callRows.push({
+      id: call.id,
+      leadId: onContact ? null : lead.id,
+      contactName: who,
+      callerName: caller.name,
+      outcome,
+    });
   }
 
   // 9. Consent + transcripts for the first 10 completed calls ────────────────
   const spoken = callRows.slice(0, 10);
-  const transcriptMeta: { call: CallRow; project: string; area: string; beds: string; priceM: string; handover: string }[] = [];
+  const transcriptMeta: {
+    call: CallRow;
+    project: string;
+    area: string;
+    beds: string;
+    priceM: string;
+    handover: string;
+  }[] = [];
   for (const call of spoken) {
     const meta = {
       call,
@@ -506,25 +623,60 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
             : `The customer is not proceeding at this time; price was the main blocker and no next step was agreed.`),
         clientNeeds: [
           `${m.beds[0]!.toUpperCase()}${m.beds.slice(1)} apartment in ${m.area}`,
-          pick(['Rental yield above 7%', 'Handover before 2028', 'Waterfront or skyline view', 'Post-handover payment flexibility']),
+          pick([
+            'Rental yield above 7%',
+            'Handover before 2028',
+            'Waterfront or skyline view',
+            'Post-handover payment flexibility',
+          ]),
         ],
         objections: positive
-          ? [pick(['Concerned about service charges', 'Wants to compare with a competing launch', 'Prefers a higher floor than currently released'])]
+          ? [
+              pick([
+                'Concerned about service charges',
+                'Wants to compare with a competing launch',
+                'Prefers a higher floor than currently released',
+              ]),
+            ]
           : ['Price above stated budget', 'Prefers ready property over off-plan'],
         commitments: positive
-          ? [`${m.call.callerName} to send the payment plan by email today`, 'Customer agreed to a follow-up call this week']
+          ? [
+              `${m.call.callerName} to send the payment plan by email today`,
+              'Customer agreed to a follow-up call this week',
+            ]
           : [],
         buyingSignals: positive
-          ? [pick(['Asked whether the booking amount is refundable', 'Asked about unit availability on higher floors', 'Requested the payment schedule in writing'])]
+          ? [
+              pick([
+                'Asked whether the booking amount is refundable',
+                'Asked about unit availability on higher floors',
+                'Requested the payment schedule in writing',
+              ]),
+            ]
           : [],
-        risks: [pick(['Customer is also speaking to two other brokers', 'Financing is not yet pre-approved', 'Decision depends on a partner who was not on the call'])],
+        risks: [
+          pick([
+            'Customer is also speaking to two other brokers',
+            'Financing is not yet pre-approved',
+            'Decision depends on a partner who was not on the call',
+          ]),
+        ],
         nextSteps: positive
-          ? ['Send brochure and payment plan', pick(['Book a site visit for the weekend', 'Follow up Thursday at 11:00', 'Share floor plans on WhatsApp'])]
+          ? [
+              'Send brochure and payment plan',
+              pick([
+                'Book a site visit for the weekend',
+                'Follow up Thursday at 11:00',
+                'Share floor plans on WhatsApp',
+              ]),
+            ]
           : ['Move to nurture list; re-contact at the next price release'],
         topicsDiscussed: ['Budget', 'Payment plan', 'Location', 'Handover date'],
         topicsMissed: [pick(['Service charges', 'Mortgage options', 'Snagging and handover process'])],
         sentiment: positive ? pick(['positive', 'neutral']) : 'negative',
-        sentimentScore: positive ? Math.round((0.55 + rnd() * 0.4) * 100) / 100 : Math.round((0.1 + rnd() * 0.25) * 100) / 100,
+        sentimentScore: positive
+          ? Math.round((0.55 + rnd() * 0.4) * 100) / 100
+          : Math.round((0.1 + rnd() * 0.25) * 100) / 100,
         suggestedStatus: m.call.outcome,
         complianceFlags: i === 6 ? ['Recording disclosure came late in the call'] : [],
         uncertainItems: chance(0.5) ? ['Exact handover quarter mentioned by the customer was unclear'] : [],
@@ -561,9 +713,17 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         ],
         risks: overallScore < 70 ? ['Yield was mentioned without the word "projected"'] : [],
         suggestions: [
-          pick(['Confirm budget earlier in the call', 'Offer two concrete slots when proposing a site visit', 'Slow down when quoting figures']),
+          pick([
+            'Confirm budget earlier in the call',
+            'Offer two concrete slots when proposing a site visit',
+            'Slow down when quoting figures',
+          ]),
         ],
-        nextAction: pick(['Send the payment plan and book the site visit', 'Schedule a coaching review of the objection segment', 'Call back Thursday as agreed']),
+        nextAction: pick([
+          'Send the payment plan and book the site visit',
+          'Schedule a coaching review of the objection segment',
+          'Call back Thursday as agreed',
+        ]),
         humanReviewed: i < 2,
         reviewedById: i < 2 ? director.id : null,
         reviewedAt: i < 2 ? businessDate(5) : null,
@@ -645,21 +805,37 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     // current month, 30–90% done
     const current = await db.employeeTarget.create({
       data: {
-        tenantId, userId: seller.id, metric, period: 'MONTHLY',
-        targetValue, periodStart: monthStart(0), periodEnd: monthEnd(0),
+        tenantId,
+        userId: seller.id,
+        metric,
+        period: 'MONTHLY',
+        targetValue,
+        periodStart: monthStart(0),
+        periodEnd: monthEnd(0),
       },
     });
     targetCount++;
     const dom = Math.max(1, new Date().getDate());
     const days = [...new Set([1, Math.ceil(dom / 2), dom])];
-    await writeProgress(current.id, seller.id, monthStart(0), days, Math.max(1, Math.round((targetValue * int(30, 90)) / 100)));
+    await writeProgress(
+      current.id,
+      seller.id,
+      monthStart(0),
+      days,
+      Math.max(1, Math.round((targetValue * int(30, 90)) / 100)),
+    );
 
     if (i < 4) {
       // next month, planned, nothing achieved yet
       await db.employeeTarget.create({
         data: {
-          tenantId, userId: seller.id, metric, period: 'MONTHLY',
-          targetValue, periodStart: monthStart(1), periodEnd: monthEnd(1),
+          tenantId,
+          userId: seller.id,
+          metric,
+          period: 'MONTHLY',
+          targetValue,
+          periodStart: monthStart(1),
+          periodEnd: monthEnd(1),
         },
       });
       targetCount++;
@@ -667,8 +843,13 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       // last month, finished at or above target
       const past = await db.employeeTarget.create({
         data: {
-          tenantId, userId: seller.id, metric, period: 'MONTHLY',
-          targetValue, periodStart: monthStart(-1), periodEnd: monthEnd(-1),
+          tenantId,
+          userId: seller.id,
+          metric,
+          period: 'MONTHLY',
+          targetValue,
+          periodStart: monthStart(-1),
+          periodEnd: monthEnd(-1),
         },
       });
       targetCount++;
@@ -683,12 +864,40 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     const user = recipients[i % recipients.length]!;
     const lead = assignedLeads[(i * 13) % assignedLeads.length]!;
     const kind = pick(['LEAD_ASSIGNED', 'TASK_OVERDUE', 'SLA_BREACHED', 'TARGET_PROGRESS', 'CALL_MISSED'] as const);
-    const spec: Record<typeof kind, { title: string; body: string; objectType: string | null; priority: 'MEDIUM' | 'HIGH' | 'URGENT' }> = {
-      LEAD_ASSIGNED: { title: 'New lead assigned', body: `${lead.fullName} was assigned to you.`, objectType: 'leads', priority: 'MEDIUM' },
-      TASK_OVERDUE: { title: 'Follow-up overdue', body: `"${pick(FOLLOW_UP_TITLES)}" for ${lead.fullName} is past due.`, objectType: 'tasks', priority: 'HIGH' },
-      SLA_BREACHED: { title: 'SLA breached', body: `First contact for ${lead.fullName} has breached its SLA.`, objectType: 'leads', priority: 'URGENT' },
-      TARGET_PROGRESS: { title: 'Target update', body: `You are at ${int(30, 90)}% of your monthly target.`, objectType: null, priority: 'MEDIUM' },
-      CALL_MISSED: { title: 'Missed call', body: `Missed call from ${lead.fullName} (${lead.phone ?? 'unknown number'}).`, objectType: 'calls', priority: 'MEDIUM' },
+    const spec: Record<
+      typeof kind,
+      { title: string; body: string; objectType: string | null; priority: 'MEDIUM' | 'HIGH' | 'URGENT' }
+    > = {
+      LEAD_ASSIGNED: {
+        title: 'New lead assigned',
+        body: `${lead.fullName} was assigned to you.`,
+        objectType: 'leads',
+        priority: 'MEDIUM',
+      },
+      TASK_OVERDUE: {
+        title: 'Follow-up overdue',
+        body: `"${pick(FOLLOW_UP_TITLES)}" for ${lead.fullName} is past due.`,
+        objectType: 'tasks',
+        priority: 'HIGH',
+      },
+      SLA_BREACHED: {
+        title: 'SLA breached',
+        body: `First contact for ${lead.fullName} has breached its SLA.`,
+        objectType: 'leads',
+        priority: 'URGENT',
+      },
+      TARGET_PROGRESS: {
+        title: 'Target update',
+        body: `You are at ${int(30, 90)}% of your monthly target.`,
+        objectType: null,
+        priority: 'MEDIUM',
+      },
+      CALL_MISSED: {
+        title: 'Missed call',
+        body: `Missed call from ${lead.fullName} (${lead.phone ?? 'unknown number'}).`,
+        objectType: 'calls',
+        priority: 'MEDIUM',
+      },
     };
     const createdAt = businessDate(4);
     notificationRows.push({
@@ -743,7 +952,9 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     await db.eventInvitee.createMany({
       data: invitees.map((lead, j) => {
         const rsvpStatus = isPast
-          ? j === 0 ? ('NO_SHOW' as const) : ('ATTENDED' as const)
+          ? j === 0
+            ? ('NO_SHOW' as const)
+            : ('ATTENDED' as const)
           : pick(['CONFIRMED', 'PENDING', 'TENTATIVE'] as const);
         return {
           tenantId,
@@ -774,8 +985,13 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     const lead = assignedLeads[(i * 17) % assignedLeads.length]!;
     const contact = contacts[i % contacts.length]!;
     const status =
-      i === 27 ? 'FAILED' : i === 28 ? 'FAILED' : i === 29 ? 'BOUNCED'
-        : pick(['SENT', 'DELIVERED', 'DELIVERED', 'READ', 'REPLIED'] as const);
+      i === 27
+        ? 'FAILED'
+        : i === 28
+          ? 'FAILED'
+          : i === 29
+            ? 'BOUNCED'
+            : pick(['SENT', 'DELIVERED', 'DELIVERED', 'READ', 'REPLIED'] as const);
     const direction = chance(0.75) ? 'OUTBOUND' : 'INBOUND';
     const sentAt = businessDate(30);
     const delivered = status !== 'FAILED' && status !== 'BOUNCED';
@@ -792,7 +1008,15 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         channel === 'EMAIL' || i === 29
           ? ((onContact ? contact.email : lead.email) ?? 'unknown@example.com')
           : ((onContact ? contact.phone : lead.phone) ?? mobile()),
-      subject: channel === 'EMAIL' ? pick(['Marina Vista payment plan', 'Your site visit is confirmed', 'Floor plans as requested', 'Following up on our call']) : null,
+      subject:
+        channel === 'EMAIL'
+          ? pick([
+              'Marina Vista payment plan',
+              'Your site visit is confirmed',
+              'Floor plans as requested',
+              'Following up on our call',
+            ])
+          : null,
       body: pick([
         'Sharing the payment plan we discussed — 60/40 with handover Q4 2027.',
         'Confirming your site visit for Saturday at 11:00. See you at the sales centre.',
@@ -800,7 +1024,12 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         'Thanks for your time today — summary of next steps inside.',
       ]),
       errorCode: status === 'FAILED' ? 'ERR_PROVIDER' : status === 'BOUNCED' ? 'HARD_BOUNCE' : null,
-      errorMessage: status === 'FAILED' ? 'Provider rejected the message.' : status === 'BOUNCED' ? 'Mailbox does not exist.' : null,
+      errorMessage:
+        status === 'FAILED'
+          ? 'Provider rejected the message.'
+          : status === 'BOUNCED'
+            ? 'Mailbox does not exist.'
+            : null,
       queuedAt: sentAt,
       sentAt: delivered ? sentAt : null,
       deliveredAt: delivered ? new Date(sentAt.getTime() + 60_000) : null,
@@ -827,12 +1056,48 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       successMessage: 'Thank you — a consultant will call you within one business day.',
       fields: {
         create: [
-          { tenantId, key: 'full_name', label: 'Full name', type: 'TEXT' as const, position: 0, isRequired: true, mapsToField: 'fullName' },
-          { tenantId, key: 'phone', label: 'Phone', type: 'PHONE' as const, position: 1, isRequired: true, mapsToField: 'phone' },
-          { tenantId, key: 'email', label: 'Email', type: 'EMAIL' as const, position: 2, isRequired: true, mapsToField: 'email' },
-          { tenantId, key: 'message', label: 'What are you looking for?', type: 'LONG_TEXT' as const, position: 3, isRequired: false },
           {
-            tenantId, key: 'budget_range', label: 'Budget range', type: 'DROPDOWN' as const, position: 4, isRequired: false,
+            tenantId,
+            key: 'full_name',
+            label: 'Full name',
+            type: 'TEXT' as const,
+            position: 0,
+            isRequired: true,
+            mapsToField: 'fullName',
+          },
+          {
+            tenantId,
+            key: 'phone',
+            label: 'Phone',
+            type: 'PHONE' as const,
+            position: 1,
+            isRequired: true,
+            mapsToField: 'phone',
+          },
+          {
+            tenantId,
+            key: 'email',
+            label: 'Email',
+            type: 'EMAIL' as const,
+            position: 2,
+            isRequired: true,
+            mapsToField: 'email',
+          },
+          {
+            tenantId,
+            key: 'message',
+            label: 'What are you looking for?',
+            type: 'LONG_TEXT' as const,
+            position: 3,
+            isRequired: false,
+          },
+          {
+            tenantId,
+            key: 'budget_range',
+            label: 'Budget range',
+            type: 'DROPDOWN' as const,
+            position: 4,
+            isRequired: false,
             options: { choices: ['Under AED 1M', 'AED 1M – 2M', 'AED 2M – 4M', 'Above AED 4M'] },
           },
         ],
@@ -877,10 +1142,41 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       state: 'DRAFT',
       fields: {
         create: [
-          { tenantId, key: 'full_name', label: 'Full name', type: 'TEXT' as const, position: 0, isRequired: true, mapsToField: 'fullName' },
-          { tenantId, key: 'phone', label: 'Phone', type: 'PHONE' as const, position: 1, isRequired: true, mapsToField: 'phone' },
-          { tenantId, key: 'email', label: 'Email', type: 'EMAIL' as const, position: 2, isRequired: false, mapsToField: 'email' },
-          { tenantId, key: 'preferred_date', label: 'Preferred date', type: 'DATE' as const, position: 3, isRequired: true },
+          {
+            tenantId,
+            key: 'full_name',
+            label: 'Full name',
+            type: 'TEXT' as const,
+            position: 0,
+            isRequired: true,
+            mapsToField: 'fullName',
+          },
+          {
+            tenantId,
+            key: 'phone',
+            label: 'Phone',
+            type: 'PHONE' as const,
+            position: 1,
+            isRequired: true,
+            mapsToField: 'phone',
+          },
+          {
+            tenantId,
+            key: 'email',
+            label: 'Email',
+            type: 'EMAIL' as const,
+            position: 2,
+            isRequired: false,
+            mapsToField: 'email',
+          },
+          {
+            tenantId,
+            key: 'preferred_date',
+            label: 'Preferred date',
+            type: 'DATE' as const,
+            position: 3,
+            isRequired: true,
+          },
         ],
       },
     },
@@ -888,7 +1184,11 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
 
   // 18. Landing pages ────────────────────────────────────────────────────────
   const marinaBlocks = [
-    { type: 'hero', heading: 'Marina Vista Residences', subheading: 'Waterfront living from AED 1.2M — 60/40 payment plan' },
+    {
+      type: 'hero',
+      heading: 'Marina Vista Residences',
+      subheading: 'Waterfront living from AED 1.2M — 60/40 payment plan',
+    },
     { type: 'features', items: ['Handover Q4 2027', 'Projected 7–8% rental yield', 'Escrow-protected milestones'] },
     { type: 'form', formKey: 'property-enquiry' },
   ];
@@ -920,11 +1220,19 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     },
   });
 
-  console.log(`\n  ${accounts.length} accounts · ${contacts.length} contacts · 1 pipeline (${PIPELINE_STAGES.length} stages) · ${lossReasons.length} loss reasons`);
+  console.log(
+    `\n  ${accounts.length} accounts · ${contacts.length} contacts · 1 pipeline (${PIPELINE_STAGES.length} stages) · ${lossReasons.length} loss reasons`,
+  );
   console.log(`  ${oppRows.length} opportunities (8 open · 4 won · 2 lost)`);
-  console.log(`  1 scorecard (${CRITERIA.length} criteria) · ${callRows.length} calls · ${spoken.length} transcripts · 8 analyses · 6 audits`);
-  console.log(`  ${followUpRows.length} follow-ups · ${targetCount} targets · ${notificationRows.length} notifications`);
-  console.log(`  ${eventSpecs.length} events (${inviteeCount} invitees) · 3 campaigns · ${commRows.length} communications · 2 forms · 2 landing pages`);
+  console.log(
+    `  1 scorecard (${CRITERIA.length} criteria) · ${callRows.length} calls · ${spoken.length} transcripts · 8 analyses · 6 audits`,
+  );
+  console.log(
+    `  ${followUpRows.length} follow-ups · ${targetCount} targets · ${notificationRows.length} notifications`,
+  );
+  console.log(
+    `  ${eventSpecs.length} events (${inviteeCount} invitees) · 3 campaigns · ${commRows.length} communications · 2 forms · 2 landing pages`,
+  );
 }
 
 // ── transcript generator ────────────────────────────────────────────────────
@@ -940,48 +1248,88 @@ function makeTranscript(
   const a = (s: string) => t.push(`Agent: ${s}`);
   const c = (s: string) => t.push(`Customer: ${s}`);
 
-  a(`Good ${pick(['morning', 'afternoon'])}, this is ${agent} calling from Manath Homes. Am I speaking with ${customer}?`);
+  a(
+    `Good ${pick(['morning', 'afternoon'])}, this is ${agent} calling from Manath Homes. Am I speaking with ${customer}?`,
+  );
   c(`Yes, this is ${customer}. What is this regarding?`);
-  a(`Thanks for taking the call. You enquired about apartments in ${o.area} ${pick(['earlier this week', 'a few days ago', 'last week'])} — is now a good time for two quick minutes?`);
+  a(
+    `Thanks for taking the call. You enquired about apartments in ${o.area} ${pick(['earlier this week', 'a few days ago', 'last week'])} — is now a good time for two quick minutes?`,
+  );
   c(pick(['Sure, go ahead.', "I have a few minutes before a meeting, so let's keep it short.", "Yes, that's fine."]));
   a('Perfect. Just so you know, this call is recorded for quality purposes — is that alright?');
   c("That's fine.");
   a('Great. May I ask — would this be for your own use, or as an investment?');
-  c(pick([
-    'Mainly an investment. I want something that rents well.',
-    `For my family — we are renting in ${pick(['Al Barsha', 'Mirdif', 'JVC'])} at the moment.`,
-    'A bit of both, honestly. I would live in it first and rent it out later.',
-  ]));
+  c(
+    pick([
+      'Mainly an investment. I want something that rents well.',
+      `For my family — we are renting in ${pick(['Al Barsha', 'Mirdif', 'JVC'])} at the moment.`,
+      'A bit of both, honestly. I would live in it first and rent it out later.',
+    ]),
+  );
   a(`Understood. And do you have a budget range in mind for ${o.area}?`);
   c(`Somewhere around ${o.priceM} million, give or take.`);
-  a(`That fits well. We have just released ${o.project} in ${o.area} — ${o.beds} units from AED ${o.priceM} million, a ${pick(['60/40', '70/30'])} payment plan, and handover in ${o.handover}.`);
-  c(pick(['What floor plans are available?', 'Is that the price for a mid floor?', 'What are the service charges like?']));
-  a(pick([
-    'We have three layouts, all with balconies; I can send the floor plans right after this call.',
-    'That is the starting price for the lower floors — the view premium is around five percent per band.',
-    'Service charges are estimated at fourteen dirhams per square foot, which is competitive for the area.',
-  ]));
+  a(
+    `That fits well. We have just released ${o.project} in ${o.area} — ${o.beds} units from AED ${o.priceM} million, a ${pick(['60/40', '70/30'])} payment plan, and handover in ${o.handover}.`,
+  );
+  c(
+    pick([
+      'What floor plans are available?',
+      'Is that the price for a mid floor?',
+      'What are the service charges like?',
+    ]),
+  );
+  a(
+    pick([
+      'We have three layouts, all with balconies; I can send the floor plans right after this call.',
+      'That is the starting price for the lower floors — the view premium is around five percent per band.',
+      'Service charges are estimated at fourteen dirhams per square foot, which is competitive for the area.',
+    ]),
+  );
 
   if (chance(0.5)) {
     c('To be honest, off-plan makes me a little nervous. What happens if the project is delayed?');
-    a('A fair concern. Payments sit in an escrow account regulated by RERA and are released against construction milestones, so your money moves only as the building does.');
+    a(
+      'A fair concern. Payments sit in an escrow account regulated by RERA and are released against construction milestones, so your money moves only as the building does.',
+    );
     c('Okay, that does help.');
   } else {
     c(`That is a bit above what I wanted to spend. I was hoping to stay under ${o.priceM} million.`);
-    a(`Understood — with the ${pick(['60/40', '70/30'])} plan, only a portion is due before handover, which is why most buyers find the monthly outlay manageable. I can also show you a smaller layout that starts lower.`);
+    a(
+      `Understood — with the ${pick(['60/40', '70/30'])} plan, only a portion is due before handover, which is why most buyers find the monthly outlay manageable. I can also show you a smaller layout that starts lower.`,
+    );
     c('Alright, I would want to see the numbers in writing.');
   }
 
-  a(`Of course. And is rental yield a factor for you? ${o.area} has been projecting seven to eight percent on ${o.beds} units.`);
-  c(pick(['Yield matters, yes — that is the whole point.', 'Less so than the view, but it matters.', 'I have read those numbers; are they realistic?']));
+  a(
+    `Of course. And is rental yield a factor for you? ${o.area} has been projecting seven to eight percent on ${o.beds} units.`,
+  );
+  c(
+    pick([
+      'Yield matters, yes — that is the whole point.',
+      'Less so than the view, but it matters.',
+      'I have read those numbers; are they realistic?',
+    ]),
+  );
   a('I will include the latest rental comparables in the pack so you can judge the assumptions yourself.');
 
   if (chance(0.6)) {
-    a(`Would you like to visit the sales centre? We have slots ${pick(['Saturday at 11:00', 'Sunday at 16:00', 'Thursday at 17:30'])} — the show apartment is worth seeing in person.`);
-    c(pick(['Saturday could work. Send me the details.', 'Let me check with my wife and confirm tomorrow.', 'Yes, book it — I will move things around.']));
-    a('Done. I will send the confirmation on WhatsApp with the location pin, plus the brochure and payment plan by email today.');
+    a(
+      `Would you like to visit the sales centre? We have slots ${pick(['Saturday at 11:00', 'Sunday at 16:00', 'Thursday at 17:30'])} — the show apartment is worth seeing in person.`,
+    );
+    c(
+      pick([
+        'Saturday could work. Send me the details.',
+        'Let me check with my wife and confirm tomorrow.',
+        'Yes, book it — I will move things around.',
+      ]),
+    );
+    a(
+      'Done. I will send the confirmation on WhatsApp with the location pin, plus the brochure and payment plan by email today.',
+    );
   } else {
-    a('Shall I send you the brochure, floor plans and the full payment schedule by email, and give you a call back once you have had a look?');
+    a(
+      'Shall I send you the brochure, floor plans and the full payment schedule by email, and give you a call back once you have had a look?',
+    );
     c(pick(['Yes, send everything and call me Thursday.', 'Email is best. Give me a few days with it.']));
     a(`Will do — everything goes out today, and I will follow up ${pick(['Thursday at 11:00', 'early next week'])}.`);
   }
@@ -1116,10 +1464,50 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
 
     await db.notification.createMany({
       data: [
-        { tenantId, userId: user.id, kind: 'LEAD_ASSIGNED', title: 'New lead assigned', body: `${slice[0]!.fullName} was assigned to you.`, objectType: 'leads', recordId: slice[0]!.id, priority: 'MEDIUM', readAt: null },
-        { tenantId, userId: user.id, kind: 'TASK_OVERDUE', title: 'Follow-up overdue', body: `A follow-up for ${slice[1]!.fullName} is past due.`, objectType: 'tasks', recordId: null, priority: 'HIGH', readAt: null },
-        { tenantId, userId: user.id, kind: 'SLA_BREACHED', title: 'SLA breached', body: `First contact for ${slice[2]!.fullName} breached its SLA.`, objectType: 'leads', recordId: slice[2]!.id, priority: 'URGENT', readAt: null },
-        { tenantId, userId: user.id, kind: 'TARGET_PROGRESS', title: 'Target update', body: 'You are at 62% of your calls-connected target for this month.', objectType: null, recordId: null, priority: 'MEDIUM', readAt: new Date() },
+        {
+          tenantId,
+          userId: user.id,
+          kind: 'LEAD_ASSIGNED',
+          title: 'New lead assigned',
+          body: `${slice[0]!.fullName} was assigned to you.`,
+          objectType: 'leads',
+          recordId: slice[0]!.id,
+          priority: 'MEDIUM',
+          readAt: null,
+        },
+        {
+          tenantId,
+          userId: user.id,
+          kind: 'TASK_OVERDUE',
+          title: 'Follow-up overdue',
+          body: `A follow-up for ${slice[1]!.fullName} is past due.`,
+          objectType: 'tasks',
+          recordId: null,
+          priority: 'HIGH',
+          readAt: null,
+        },
+        {
+          tenantId,
+          userId: user.id,
+          kind: 'SLA_BREACHED',
+          title: 'SLA breached',
+          body: `First contact for ${slice[2]!.fullName} breached its SLA.`,
+          objectType: 'leads',
+          recordId: slice[2]!.id,
+          priority: 'URGENT',
+          readAt: null,
+        },
+        {
+          tenantId,
+          userId: user.id,
+          kind: 'TARGET_PROGRESS',
+          title: 'Target update',
+          body: 'You are at 62% of your calls-connected target for this month.',
+          objectType: null,
+          recordId: null,
+          priority: 'MEDIUM',
+          readAt: new Date(),
+        },
       ],
     });
     seeded++;
@@ -1149,7 +1537,12 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
   const sdr = demoUsers.find((u) => u.email?.startsWith('sdr@'));
   if (sdr) {
     const early = await db.lead.findMany({
-      where: { tenantId, deletedAt: null, ownerId: { not: sdr.id }, stage: { key: { in: ['new', 'attempted', 'contacted'] } } },
+      where: {
+        tenantId,
+        deletedAt: null,
+        ownerId: { not: sdr.id },
+        stage: { key: { in: ['new', 'attempted', 'contacted'] } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 12,
       select: { id: true },
@@ -1160,6 +1553,8 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
   }
 
   if (seeded > 0) {
-    console.log(`  demo spotlight: ${seeded} demo login(s) given owned leads, follow-ups, a target, calls and notifications`);
+    console.log(
+      `  demo spotlight: ${seeded} demo login(s) given owned leads, follow-ups, a target, calls and notifications`,
+    );
   }
 }

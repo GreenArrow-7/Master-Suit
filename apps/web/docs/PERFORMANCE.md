@@ -50,12 +50,12 @@ anyway, so the guarantee is visible at the file you are actually reading.
 
 Neither datastore. Both are sub-millisecond from the application process:
 
-| Probe | p50 | p95 |
-|---|---|---|
-| PostgreSQL `SELECT 1` | 0.4 ms | 1.2 ms |
-| PostgreSQL `count(*) from "User"` | 0.8 ms | 4.2 ms |
-| Redis `PING` | 0.4 ms | 1.0 ms |
-| PostgreSQL connect | 19 ms (cold), 6 ms warm |
+| Probe                             | p50                     | p95    |
+| --------------------------------- | ----------------------- | ------ |
+| PostgreSQL `SELECT 1`             | 0.4 ms                  | 1.2 ms |
+| PostgreSQL `count(*) from "User"` | 0.8 ms                  | 4.2 ms |
+| Redis `PING`                      | 0.4 ms                  | 1.0 ms |
+| PostgreSQL connect                | 19 ms (cold), 6 ms warm |
 
 IPv4 and IPv6 connect identically (6 ms each), so the usual Windows
 `localhost` → `::1` penalty is not in play either.
@@ -64,13 +64,13 @@ The time is in the **Turbopack development server**. Same machine, same
 database, same seeded data, same requests — the only variable is `next dev`
 versus a `next build` artefact:
 
-| Route | dev p50 | prod p50 | dev p95 | prod p95 | p50 speedup |
-|---|---|---|---|---|---|
-| Check-in | 620 ms | **170 ms** | 1019 ms | **305 ms** | 3.6x |
-| Users | 1000 ms | **161 ms** | 1571 ms | **209 ms** | 6.2x |
-| Leave | 1735 ms | **218 ms** | 2451 ms | **341 ms** | 8.0x |
-| Attendance | 968 ms | **148 ms** | 1097 ms | **184 ms** | 6.5x |
-| Roles | 966 ms | **180 ms** | 1849 ms | **267 ms** | 5.4x |
+| Route      | dev p50 | prod p50   | dev p95 | prod p95   | p50 speedup |
+| ---------- | ------- | ---------- | ------- | ---------- | ----------- |
+| Check-in   | 620 ms  | **170 ms** | 1019 ms | **305 ms** | 3.6x        |
+| Users      | 1000 ms | **161 ms** | 1571 ms | **209 ms** | 6.2x        |
+| Leave      | 1735 ms | **218 ms** | 2451 ms | **341 ms** | 8.0x        |
+| Attendance | 968 ms  | **148 ms** | 1097 ms | **184 ms** | 6.5x        |
+| Roles      | 966 ms  | **180 ms** | 1849 ms | **267 ms** | 5.4x        |
 
 Warm requests, 12–15 samples each, authenticated, full HTML read to completion.
 Reproduce with `.verify/routetimes.mjs`.
@@ -103,10 +103,10 @@ Two mitigations, in order of preference:
 
 ## Configurations
 
-| File | Purpose |
-|---|---|
-| `infra/docker-compose.yml` | Base: postgres, redis, minio, clamav, face, web, worker |
-| `infra/docker-compose.dev.yml` | Local postgres + redis, hot reload, named volumes for build output |
+| File                            | Purpose                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| `infra/docker-compose.yml`      | Base: postgres, redis, minio, clamav, face, web, worker                               |
+| `infra/docker-compose.dev.yml`  | Local postgres + redis, hot reload, named volumes for build output                    |
 | `infra/docker-compose.prod.yml` | `next build` artefact served by the standalone server; no dev server, no source mount |
 
 ```bash

@@ -458,7 +458,9 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
         (assignment.roleId !== ctx.actor.roleId && (await isAdminCapable(ctx.tenantId, ctx.actor.roleId))) ||
         (await hasOtherAdminAssignment(ctx, assignment.id));
       if (!keepsAdmin) {
-        throw Conflict('This is your last administrative role. Hand administration to someone else before revoking it.');
+        throw Conflict(
+          'This is your last administrative role. Hand administration to someone else before revoking it.',
+        );
       }
     }
   } else {

@@ -81,7 +81,10 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     ['Consent', consent?.grantedAt ? `Given ${stamp(consent.grantedAt)} · ${consent.policyVersion}` : 'Not given'],
     ['Enrollment', enrolled ? `Enrolled · ${enrolledCount} templates` : 'Not enrolled'],
     ['Templates updated', templates._max.createdAt ? stamp(templates._max.createdAt) : '—'],
-    ['Last verification', lastVerification ? `${stamp(lastVerification.serverTime)} · ${lastVerification.result}` : '—'],
+    [
+      'Last verification',
+      lastVerification ? `${stamp(lastVerification.serverTime)} · ${lastVerification.result}` : '—',
+    ],
   ];
 
   return (

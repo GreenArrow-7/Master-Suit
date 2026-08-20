@@ -93,17 +93,16 @@ describe('conflictsFor', () => {
     policy: DEFAULT_POLICY,
   };
 
-  const codes = (input: Partial<typeof base>) =>
-    conflictsFor({ ...base, ...input }).map((conflict) => conflict.code);
+  const codes = (input: Partial<typeof base>) => conflictsFor({ ...base, ...input }).map((conflict) => conflict.code);
 
   it('accepts a clean assignment', () => {
     expect(codes({})).toEqual([]);
   });
 
   it('refuses the same shift twice on one day', () => {
-    expect(codes({ existing: [{ workDate: day('2026-03-04'), shiftId: 'shift-a', startTime: '09:00', endTime: '17:00' }] })).toContain(
-      'DUPLICATE',
-    );
+    expect(
+      codes({ existing: [{ workDate: day('2026-03-04'), shiftId: 'shift-a', startTime: '09:00', endTime: '17:00' }] }),
+    ).toContain('DUPLICATE');
   });
 
   it('refuses a second shift that overlaps the first', () => {
@@ -403,7 +402,11 @@ describe('visibility', () => {
 
   it('refuses an employee asking for a colleague’s', async () => {
     await expect(
-      rosterFor(ctxFor('amina', STAFF), { from: day('2026-01-01'), to: day('2026-12-31'), employeeId: employees.bilal }),
+      rosterFor(ctxFor('amina', STAFF), {
+        from: day('2026-01-01'),
+        to: day('2026-12-31'),
+        employeeId: employees.bilal,
+      }),
     ).rejects.toMatchObject({ status: 403 });
   });
 });

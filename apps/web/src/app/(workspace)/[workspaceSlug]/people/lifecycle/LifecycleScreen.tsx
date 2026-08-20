@@ -171,7 +171,13 @@ export default function LifecycleScreen({
             <label className="lf-label" htmlFor="ob-emp">
               Employee
             </label>
-            <select id="ob-emp" className="lf-input" value={onboardEmployee} onChange={(e) => setOnboardEmployee(e.target.value)} required>
+            <select
+              id="ob-emp"
+              className="lf-input"
+              value={onboardEmployee}
+              onChange={(e) => setOnboardEmployee(e.target.value)}
+              required
+            >
               {people.map((person) => (
                 <option key={person.employeeId} value={person.employeeId}>
                   {person.name} · {person.employeeNumber}
@@ -202,7 +208,13 @@ export default function LifecycleScreen({
               <label className="lf-label" htmlFor="of-emp">
                 Employee
               </label>
-              <select id="of-emp" className="lf-input" value={off.employeeId} onChange={(e) => setOff((f) => ({ ...f, employeeId: e.target.value }))} required>
+              <select
+                id="of-emp"
+                className="lf-input"
+                value={off.employeeId}
+                onChange={(e) => setOff((f) => ({ ...f, employeeId: e.target.value }))}
+                required
+              >
                 {people.map((person) => (
                   <option key={person.employeeId} value={person.employeeId}>
                     {person.name} · {person.employeeNumber}
@@ -214,25 +226,51 @@ export default function LifecycleScreen({
               <label className="lf-label" htmlFor="of-notice">
                 Notice given on
               </label>
-              <input id="of-notice" className="lf-input" type="date" value={off.noticeGivenOn} onChange={(e) => setOff((f) => ({ ...f, noticeGivenOn: e.target.value }))} required />
+              <input
+                id="of-notice"
+                className="lf-input"
+                type="date"
+                value={off.noticeGivenOn}
+                onChange={(e) => setOff((f) => ({ ...f, noticeGivenOn: e.target.value }))}
+                required
+              />
             </div>
             <div className="lf-field">
               <label className="lf-label" htmlFor="of-period">
                 Notice period (days)
               </label>
-              <input id="of-period" className="lf-input" type="number" min={0} max={180} value={off.noticePeriodDays} onChange={(e) => setOff((f) => ({ ...f, noticePeriodDays: e.target.value }))} />
+              <input
+                id="of-period"
+                className="lf-input"
+                type="number"
+                min={0}
+                max={180}
+                value={off.noticePeriodDays}
+                onChange={(e) => setOff((f) => ({ ...f, noticePeriodDays: e.target.value }))}
+              />
             </div>
             <div className="lf-field">
               <label className="lf-label" htmlFor="of-last">
                 Last working day (optional)
               </label>
-              <input id="of-last" className="lf-input" type="date" value={off.lastWorkingOn} onChange={(e) => setOff((f) => ({ ...f, lastWorkingOn: e.target.value }))} />
+              <input
+                id="of-last"
+                className="lf-input"
+                type="date"
+                value={off.lastWorkingOn}
+                onChange={(e) => setOff((f) => ({ ...f, lastWorkingOn: e.target.value }))}
+              />
             </div>
             <div className="lf-field">
               <label className="lf-label" htmlFor="of-type">
                 Type
               </label>
-              <select id="of-type" className="lf-input" value={off.separationType} onChange={(e) => setOff((f) => ({ ...f, separationType: e.target.value }))}>
+              <select
+                id="of-type"
+                className="lf-input"
+                value={off.separationType}
+                onChange={(e) => setOff((f) => ({ ...f, separationType: e.target.value }))}
+              >
                 <option value="RESIGNATION">Resignation</option>
                 <option value="TERMINATION">Termination</option>
               </select>
@@ -241,7 +279,12 @@ export default function LifecycleScreen({
               <label className="lf-label" htmlFor="of-reason">
                 Reason
               </label>
-              <input id="of-reason" className="lf-input" value={off.reason} onChange={(e) => setOff((f) => ({ ...f, reason: e.target.value }))} />
+              <input
+                id="of-reason"
+                className="lf-input"
+                value={off.reason}
+                onChange={(e) => setOff((f) => ({ ...f, reason: e.target.value }))}
+              />
             </div>
           </div>
           <p className="lf-life__helper">
@@ -281,7 +324,9 @@ export default function LifecycleScreen({
                   <tr key={`${row.phase}-${row.employeeId}`}>
                     <td data-label="Employee">
                       <a href={`?employee=${row.employeeId}`}>{row.name}</a>
-                      <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>{row.employeeNumber}</div>
+                      <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>
+                        {row.employeeNumber}
+                      </div>
                     </td>
                     <td data-label="Phase">{row.phase}</td>
                     <td data-label="When">{row.when ?? '—'}</td>

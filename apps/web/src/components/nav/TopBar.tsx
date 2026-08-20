@@ -146,7 +146,12 @@ export default function TopBar({
           // looked complete while only navigating away.
           [
             { label: 'Lead', href: `${basePath}/sales/leads/new`, module: 'leads', group: 'Sales' },
-            { label: 'Opportunity', href: `${basePath}/sales/opportunities/new`, module: 'opportunities', group: 'Sales' },
+            {
+              label: 'Opportunity',
+              href: `${basePath}/sales/opportunities/new`,
+              module: 'opportunities',
+              group: 'Sales',
+            },
             { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts', group: 'Sales' },
             { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts', group: 'Sales' },
             { label: 'Call', href: `${basePath}/sales/calls/new`, module: 'calls', group: 'Engage' },
@@ -189,57 +194,57 @@ export default function TopBar({
           search (labelled "Search employees"), so a topbar twin would give two
           controls one accessible name — and the pair overflows a 375px phone. */}
       {module !== 'people' && (
-      <form
-        className="lf-shell-search"
-        action={target.href}
-        method="get"
-        role="search"
-        onSubmit={(event) => {
-          // An empty query would navigate to the list with `?q=`, which reads as
-          // a search that matched nothing rather than no search at all.
-          if (!search.current?.value.trim()) event.preventDefault();
-        }}
-      >
-        <svg
-          aria-hidden="true"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--lf-ink-3)"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-        >
-          <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
-        </svg>
-        <input
-          ref={search}
-          name="q"
-          type="search"
-          className="lf-input"
-          placeholder={target.placeholder}
-          aria-label={target.label}
-          style={{ paddingRight: 46, paddingLeft: 30 }}
-        />
-        <kbd
-          style={{
-            position: 'absolute',
-            right: 8,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            padding: '2px 6px',
-            borderRadius: 'var(--lf-radius-sm)',
-            border: '1px solid var(--lf-line-2)',
-            background: 'var(--lf-surface-2)',
-            fontFamily: 'var(--lf-font-mono)',
-            fontSize: 'var(--lf-text-2xs)',
-            color: 'var(--lf-ink-3)',
+        <form
+          className="lf-shell-search"
+          action={target.href}
+          method="get"
+          role="search"
+          onSubmit={(event) => {
+            // An empty query would navigate to the list with `?q=`, which reads as
+            // a search that matched nothing rather than no search at all.
+            if (!search.current?.value.trim()) event.preventDefault();
           }}
         >
-          ⌘K
-        </kbd>
-      </form>
+          <svg
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--lf-ink-3)"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+          >
+            <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            ref={search}
+            name="q"
+            type="search"
+            className="lf-input"
+            placeholder={target.placeholder}
+            aria-label={target.label}
+            style={{ paddingRight: 46, paddingLeft: 30 }}
+          />
+          <kbd
+            style={{
+              position: 'absolute',
+              right: 8,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              padding: '2px 6px',
+              borderRadius: 'var(--lf-radius-sm)',
+              border: '1px solid var(--lf-line-2)',
+              background: 'var(--lf-surface-2)',
+              fontFamily: 'var(--lf-font-mono)',
+              fontSize: 'var(--lf-text-2xs)',
+              color: 'var(--lf-ink-3)',
+            }}
+          >
+            ⌘K
+          </kbd>
+        </form>
       )}
 
       <div className="lf-shell-actions" hidden={module === 'people'}>
@@ -255,9 +260,7 @@ export default function TopBar({
               className="lf-btn lf-btn--ghost lf-btn--sm"
               aria-current={active ? 'page' : undefined}
               style={
-                active
-                  ? { background: 'var(--lf-wine-050)', color: 'var(--lf-wine-700)', fontWeight: 600 }
-                  : undefined
+                active ? { background: 'var(--lf-wine-050)', color: 'var(--lf-wine-700)', fontWeight: 600 } : undefined
               }
             >
               <svg
@@ -512,58 +515,55 @@ export default function TopBar({
 
         {/* Create dropdown — absent entirely for roles that can create nothing. */}
         {CREATE_ITEMS.length > 0 && (
-        <div ref={createRef} style={{ position: 'relative' }}>
-          <button className="lf-btn lf-btn--sm" onClick={() => setCreateOpen((o) => !o)}>
-            + Create
-          </button>
+          <div ref={createRef} style={{ position: 'relative' }}>
+            <button className="lf-btn lf-btn--sm" onClick={() => setCreateOpen((o) => !o)}>
+              + Create
+            </button>
 
-          {createOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: 6,
-                minWidth: 180,
-                background: 'var(--lf-surface)',
-                border: '1px solid var(--lf-line)',
-                borderRadius: 'var(--lf-radius-md)',
-                boxShadow: 'var(--lf-shadow-lg)',
-                zIndex: 100,
-                padding: '4px 0',
-              }}
-            >
-              {CREATE_ITEMS.map((item, index) => (
-                <div key={item.href}>
-                  {/* A group label when the group changes — after role filtering,
+            {createOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 6,
+                  minWidth: 180,
+                  background: 'var(--lf-surface)',
+                  border: '1px solid var(--lf-line)',
+                  borderRadius: 'var(--lf-radius-md)',
+                  boxShadow: 'var(--lf-shadow-lg)',
+                  zIndex: 100,
+                  padding: '4px 0',
+                }}
+              >
+                {CREATE_ITEMS.map((item, index) => (
+                  <div key={item.href}>
+                    {/* A group label when the group changes — after role filtering,
                       so an SDR who can only create leads sees no lone headings. */}
-                  {item.group && item.group !== CREATE_ITEMS[index - 1]?.group && (
-                    <div
-                      className="lf-eyebrow"
-                      style={{ padding: index === 0 ? '8px 16px 3px' : '10px 16px 3px' }}
+                    {item.group && item.group !== CREATE_ITEMS[index - 1]?.group && (
+                      <div className="lf-eyebrow" style={{ padding: index === 0 ? '8px 16px 3px' : '10px 16px 3px' }}>
+                        {item.group}
+                      </div>
+                    )}
+                    <a
+                      href={item.href}
+                      style={{
+                        display: 'block',
+                        padding: '8px 16px',
+                        fontSize: 'var(--lf-text-sm)',
+                        color: 'var(--lf-ink-1)',
+                        textDecoration: 'none',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
-                      {item.group}
-                    </div>
-                  )}
-                  <a
-                    href={item.href}
-                    style={{
-                      display: 'block',
-                      padding: '8px 16px',
-                      fontSize: 'var(--lf-text-sm)',
-                      color: 'var(--lf-ink-1)',
-                      textDecoration: 'none',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {item.label}
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                      {item.label}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </header>

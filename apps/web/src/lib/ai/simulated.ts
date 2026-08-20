@@ -90,7 +90,9 @@ export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
 
   const talkingPoints = input.talkingPoints ?? [];
   const textLower = input.transcript.toLowerCase();
-  const topicsDiscussed = talkingPoints.filter((tp) => textLower.includes(tp.label.toLowerCase())).map((tp) => tp.label);
+  const topicsDiscussed = talkingPoints
+    .filter((tp) => textLower.includes(tp.label.toLowerCase()))
+    .map((tp) => tp.label);
   const topicsMissed = talkingPoints
     .filter((tp) => tp.isRequired && !textLower.includes(tp.label.toLowerCase()))
     .map((tp) => tp.label);

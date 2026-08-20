@@ -59,7 +59,12 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
       { kind: 'row', label: 'Paid to you', value: money(payslip.netPay) },
       { kind: 'gap' },
       ...(payslip.overtimeMinutes
-        ? [{ kind: 'text', text: `Includes ${(payslip.overtimeMinutes / 60).toFixed(2)} hours of approved overtime.` } as PdfLine]
+        ? [
+            {
+              kind: 'text',
+              text: `Includes ${(payslip.overtimeMinutes / 60).toFixed(2)} hours of approved overtime.`,
+            } as PdfLine,
+          ]
         : []),
       ...(payslip.unpaidDays
         ? [{ kind: 'text', text: `${payslip.unpaidDays} day(s) of unpaid leave were deducted.` } as PdfLine]

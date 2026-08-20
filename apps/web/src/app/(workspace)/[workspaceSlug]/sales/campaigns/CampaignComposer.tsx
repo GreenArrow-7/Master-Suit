@@ -34,10 +34,11 @@ export default function CampaignComposer() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
 
-  const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((f) => ({
+      ...f,
+      [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value,
+    }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,12 +87,22 @@ export default function CampaignComposer() {
     <form
       onSubmit={submit}
       className="lf-card"
-      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      style={{
+        padding: 'var(--lf-space-5)',
+        display: 'grid',
+        gap: 'var(--lf-space-4)',
+        marginBottom: 'var(--lf-space-4)',
+      }}
       noValidate
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>New campaign</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -109,7 +120,13 @@ export default function CampaignComposer() {
         <input id="c-name" className="lf-input" value={form.name} onChange={set('name')} required autoFocus />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <div className="lf-field">
           <label className="lf-label" htmlFor="c-type">
             Type
@@ -154,7 +171,14 @@ export default function CampaignComposer() {
           <label className="lf-label" htmlFor="c-budget">
             Budget (AED)
           </label>
-          <input id="c-budget" className="lf-input" type="number" min={0} value={form.budget} onChange={set('budget')} />
+          <input
+            id="c-budget"
+            className="lf-input"
+            type="number"
+            min={0}
+            value={form.budget}
+            onChange={set('budget')}
+          />
         </div>
       </div>
 

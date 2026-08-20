@@ -187,9 +187,11 @@ describe('deactivation instead of deletion', () => {
 
     const holder = await createWorkspaceUser({
       tenantId,
-      roleId: (await prisma.role.create({
-        data: { tenantId, key: `none-${suffix}`, name: 'None', rank: 85, defaultScope: 'OWN' },
-      })).id,
+      roleId: (
+        await prisma.role.create({
+          data: { tenantId, key: `none-${suffix}`, name: 'None', rank: 85, defaultScope: 'OWN' },
+        })
+      ).id,
       email: `holder-${suffix}@rails.test`,
       fullName: 'Holder',
     });

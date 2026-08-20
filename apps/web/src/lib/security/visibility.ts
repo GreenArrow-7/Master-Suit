@@ -81,9 +81,7 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb =
       // The actor's own branch, plus any branch a BRANCH-scoped role
       // assignment names — a manager covering a second branch sees it without
       // being moved there.
-      const branchIds = unique(
-        [ctx.actor.branchId, ...ctx.actor.grantedBranchIds].filter((id): id is string => !!id),
-      );
+      const branchIds = unique([ctx.actor.branchId, ...ctx.actor.grantedBranchIds].filter((id): id is string => !!id));
       if (branchIds.length === 0) return [self];
       const rows = await db.user.findMany({
         where: { tenantId: ctx.tenantId, branchId: { in: branchIds } },
@@ -93,9 +91,7 @@ export async function resolveOwnerIds(ctx: Ctx, scope: Scope, db: VisibilityDb =
     }
 
     case 'REGION': {
-      const regionIds = unique(
-        [ctx.actor.regionId, ...ctx.actor.grantedRegionIds].filter((id): id is string => !!id),
-      );
+      const regionIds = unique([ctx.actor.regionId, ...ctx.actor.grantedRegionIds].filter((id): id is string => !!id));
       if (regionIds.length === 0) return [self];
       const branches = await db.branch.findMany({
         where: { tenantId: ctx.tenantId, regionId: { in: regionIds } },

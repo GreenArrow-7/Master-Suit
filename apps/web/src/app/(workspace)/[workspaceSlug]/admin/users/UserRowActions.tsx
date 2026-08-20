@@ -63,11 +63,19 @@ export default function UserRowActions({
 
   return (
     <div className="lf-users__actions">
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setOpen((was) => !was)}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => setOpen((was) => !was)}
+      >
         Reset password
       </button>
       {employeeId && (
-        <a className="lf-btn lf-btn--secondary lf-btn--sm" href={`/${workspaceSlug}/people/employees/${employeeId}/face`}>
+        <a
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          href={`/${workspaceSlug}/people/employees/${employeeId}/face`}
+        >
           Face enrolment
         </a>
       )}
@@ -117,8 +125,16 @@ export default function UserRowActions({
                   onChange={(event) => setConfirmed(event.target.value)}
                   required
                 />
-                {tooShort && <p className="lf-users__once" data-bad>Too short — 12 characters minimum.</p>}
-                {mismatch && <p className="lf-users__once" data-bad>The two entries do not match.</p>}
+                {tooShort && (
+                  <p className="lf-users__once" data-bad>
+                    Too short — 12 characters minimum.
+                  </p>
+                )}
+                {mismatch && (
+                  <p className="lf-users__once" data-bad>
+                    The two entries do not match.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -127,7 +143,12 @@ export default function UserRowActions({
             <button className="lf-btn lf-btn--sm" type="submit" disabled={busy || !ready}>
               {busy ? 'Resetting…' : 'Reset password'}
             </button>
-            <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+            <button
+              type="button"
+              className="lf-btn lf-btn--secondary lf-btn--sm"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+            >
               Cancel
             </button>
           </div>

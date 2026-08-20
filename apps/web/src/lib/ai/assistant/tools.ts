@@ -49,8 +49,7 @@ const denied = (what: string): ToolResult => ({ data: { error: `You do not have 
 const str = { type: 'string' as const };
 const num = { type: 'number' as const };
 
-const fmtDate = (d: Date | null | undefined) =>
-  d ? d.toISOString().slice(0, 16).replace('T', ' ') : null;
+const fmtDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 16).replace('T', ' ') : null);
 
 const leadBrief = (l: any) => ({
   id: l.id,
@@ -193,7 +192,7 @@ export const TOOLS: ToolDef[] = [
       if (!can(ctx, 'leads', 'VIEW')) return denied('leads');
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
-      const since = new Date(Date.now() - (Math.min(Number(args.days) || 30, 365)) * 864e5);
+      const since = new Date(Date.now() - Math.min(Number(args.days) || 30, 365) * 864e5);
       const [activities, calls, tasks, followUps] = await Promise.all([
         prisma.activity.findMany({
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, occurredAt: { gte: since } },
@@ -283,7 +282,9 @@ export const TOOLS: ToolDef[] = [
           by: c.caller.fullName,
           analysed: c.analysis?.status === 'COMPLETED',
         })),
-        sources: rows.slice(0, 5).map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, href: `/calls/${c.id}` })),
+        sources: rows
+          .slice(0, 5)
+          .map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, href: `/calls/${c.id}` })),
       };
     },
   },
@@ -317,7 +318,10 @@ export const TOOLS: ToolDef[] = [
       });
       if (!call) return { data: { error: 'No matching call found in the CRM.' } };
       const lead = call.leadId
-        ? await prisma.lead.findFirst({ where: { tenantId: ctx.tenantId, id: call.leadId }, select: { fullName: true } })
+        ? await prisma.lead.findFirst({
+            where: { tenantId: ctx.tenantId, id: call.leadId },
+            select: { fullName: true },
+          })
         : null;
       const a = call.analysis;
       const audit = call.callAudits[0];
@@ -388,7 +392,14 @@ export const TOOLS: ToolDef[] = [
           contacts: { take: 5, select: { id: true, fullName: true, jobTitle: true, phone: true } },
           opportunities: {
             take: 5,
-            select: { id: true, name: true, status: true, amount: true, expectedCloseDate: true, stage: { select: { name: true } } },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              amount: true,
+              expectedCloseDate: true,
+              stage: { select: { name: true } },
+            },
           },
         },
       });
@@ -445,7 +456,14 @@ export const TOOLS: ToolDef[] = [
         },
       });
       return {
-        data: rows.map((c) => ({ id: c.id, name: c.fullName, title: c.jobTitle, email: c.email, phone: c.phone, company: c.account?.name ?? null })),
+        data: rows.map((c) => ({
+          id: c.id,
+          name: c.fullName,
+          title: c.jobTitle,
+          email: c.email,
+          phone: c.phone,
+          company: c.account?.name ?? null,
+        })),
         sources: rows.slice(0, 6).map((c) => ({ label: `Contact · ${c.fullName}`, href: `/contacts/${c.id}` })),
       };
     },
@@ -462,7 +480,10 @@ export const TOOLS: ToolDef[] = [
       const where: Record<string, unknown> = { ...scope };
       if (args.status) where.status = String(args.status).toUpperCase();
       if (args.closingWithinDays) {
-        where.expectedCloseDate = { gte: new Date(), lte: new Date(Date.now() + Number(args.closingWithinDays) * 864e5) };
+        where.expectedCloseDate = {
+          gte: new Date(),
+          lte: new Date(Date.now() + Number(args.closingWithinDays) * 864e5),
+        };
         where.status = 'OPEN';
       }
       if (args.q) {
@@ -637,26 +658,54 @@ export const TOOLS: ToolDef[] = [
       const leadScope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
       const [overdueFups, todayFups, overdueTasks, breached, hot, events, todayCalls] = await Promise.all([
         prisma.followUpTask.findMany({
-          where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] }, dueAt: { lt: now } },
+          where: {
+            tenantId: ctx.tenantId,
+            ownerId: ctx.actor.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+            dueAt: { lt: now },
+          },
           orderBy: { dueAt: 'asc' },
           take: 5,
           select: { title: true, dueAt: true, leadId: true },
         }),
         prisma.followUpTask.count({
-          where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] }, dueAt: { gte: todayStart, lte: todayEnd } },
+          where: {
+            tenantId: ctx.tenantId,
+            ownerId: ctx.actor.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+            dueAt: { gte: todayStart, lte: todayEnd },
+          },
         }),
         prisma.task.count({
           where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: 'OPEN', dueAt: { lt: now } },
         }),
-        prisma.lead.findMany({ where: { ...leadScope, slaState: 'BREACHED' }, take: 5, select: LEAD_SELECT, orderBy: { updatedAt: 'desc' } }),
-        prisma.lead.findMany({ where: { ...leadScope, score: { gte: 70 } }, orderBy: { score: 'desc' }, take: 5, select: LEAD_SELECT }),
+        prisma.lead.findMany({
+          where: { ...leadScope, slaState: 'BREACHED' },
+          take: 5,
+          select: LEAD_SELECT,
+          orderBy: { updatedAt: 'desc' },
+        }),
+        prisma.lead.findMany({
+          where: { ...leadScope, score: { gte: 70 } },
+          orderBy: { score: 'desc' },
+          take: 5,
+          select: LEAD_SELECT,
+        }),
         prisma.event.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) } },
+          where: {
+            tenantId: ctx.tenantId,
+            deletedAt: null,
+            startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
+          },
           orderBy: { startAt: 'asc' },
           take: 4,
           select: { title: true, startAt: true },
         }),
-        prisma.call.count({ where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } } }),
+        prisma.call.count({
+          where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } },
+        }),
       ]);
       return {
         data: {
@@ -697,7 +746,13 @@ export const TOOLS: ToolDef[] = [
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, analysis: { isNot: null } },
           orderBy: { createdAt: 'desc' },
           take: 3,
-          select: { id: true, createdAt: true, analysis: { select: { summary: true, objections: true, commitments: true, sentiment: true, nextSteps: true } } },
+          select: {
+            id: true,
+            createdAt: true,
+            analysis: {
+              select: { summary: true, objections: true, commitments: true, sentiment: true, nextSteps: true },
+            },
+          },
         }),
         prisma.task.findMany({
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
@@ -705,7 +760,12 @@ export const TOOLS: ToolDef[] = [
           select: { title: true, dueAt: true },
         }),
         prisma.followUpTask.findMany({
-          where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] } },
+          where: {
+            tenantId: ctx.tenantId,
+            leadId: lead.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+          },
           take: 5,
           select: { title: true, dueAt: true },
         }),
@@ -713,7 +773,11 @@ export const TOOLS: ToolDef[] = [
       return {
         data: {
           profile: leadBrief(lead),
-          recentActivity: activities.map((a) => ({ at: fmtDate(a.occurredAt), kind: a.type.name, detail: (a.outcome ?? a.notes ?? '').slice(0, 140) })),
+          recentActivity: activities.map((a) => ({
+            at: fmtDate(a.occurredAt),
+            kind: a.type.name,
+            detail: (a.outcome ?? a.notes ?? '').slice(0, 140),
+          })),
           previousCalls: calls.map((c) => ({
             at: fmtDate(c.createdAt),
             summary: c.analysis?.summary?.slice(0, 280),

@@ -128,7 +128,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         <div className="lf-card">
           <EmptyState
             title="No tasks match"
-            description={canCreate ? 'Adjust the filter, or create a task with the button above.' : 'Adjust the filter.'}
+            description={
+              canCreate ? 'Adjust the filter, or create a task with the button above.' : 'Adjust the filter.'
+            }
           />
         </div>
       ) : (
@@ -153,9 +155,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                   <tr key={t.id}>
                     <td style={{ fontWeight: 500 }}>{t.title}</td>
                     <td>{t.type?.name ?? '—'}</td>
-                    <td>
-                      {t.lead ? <SalesLink href={`/leads/${t.lead.id}`}>{t.lead.fullName}</SalesLink> : '—'}
-                    </td>
+                    <td>{t.lead ? <SalesLink href={`/leads/${t.lead.id}`}>{t.lead.fullName}</SalesLink> : '—'}</td>
                     <td>{t.owner?.fullName ?? '—'}</td>
                     <td style={{ color: overdue ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)' }}>
                       {fmt(t.dueAt)}

@@ -66,7 +66,5 @@ export default function WorkspaceTable({
 
   if (searchable === false || (searchable !== true && rows.length < SEARCHABLE_FROM)) return table;
 
-  return (
-    <TableSearch placeholder={searchPlaceholder ?? `Search these ${rows.length} rows…`}>{table}</TableSearch>
-  );
+  return <TableSearch placeholder={searchPlaceholder ?? `Search these ${rows.length} rows…`}>{table}</TableSearch>;
 }

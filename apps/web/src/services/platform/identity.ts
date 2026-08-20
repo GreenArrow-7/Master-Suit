@@ -313,7 +313,11 @@ async function hasPassword(id: string) {
  */
 function canSignIn(
   user: { status: string; lockedUntil: Date | null; platformRole: string },
-  memberships: { status: string; tenant: { status: string; deletedAt: Date | null }; salesUser: SalesUserShape | null }[],
+  memberships: {
+    status: string;
+    tenant: { status: string; deletedAt: Date | null };
+    salesUser: SalesUserShape | null;
+  }[],
   now: Date,
 ): { ok: boolean; reason: string } {
   if (user.lockedUntil && user.lockedUntil > now) {
@@ -600,7 +604,12 @@ export async function setPlatformRole(ctx: PlatformCtx, userId: string, platform
     });
   });
 
-  await record(ctx, 'ROLE_CHANGED', target, { result: 'ok', scope: 'platform', from: target.platformRole, to: platformRole });
+  await record(ctx, 'ROLE_CHANGED', target, {
+    result: 'ok',
+    scope: 'platform',
+    from: target.platformRole,
+    to: platformRole,
+  });
   return { userId: target.id, platformRole };
 }
 
@@ -634,7 +643,13 @@ export async function changeWorkspaceRole(ctx: PlatformCtx, membershipId: string
     ctx,
     'ROLE_CHANGED',
     { id: membership.platformUserId, email: membership.platformUser.email },
-    { result: 'ok', scope: 'workspace', workspace: membership.tenant.slug, from: membership.roleSnapshot, to: role.key },
+    {
+      result: 'ok',
+      scope: 'workspace',
+      workspace: membership.tenant.slug,
+      from: membership.roleSnapshot,
+      to: role.key,
+    },
     membership.tenantId,
   );
   return { membershipId: membership.id, role: role.key };
@@ -648,7 +663,11 @@ export async function changeWorkspaceRole(ctx: PlatformCtx, membershipId: string
  * only the membership fixes one of them and leaves the symptom, so this sets the
  * membership and its workspace user together.
  */
-export async function setMembershipStatus(ctx: PlatformCtx, membershipId: string, status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED') {
+export async function setMembershipStatus(
+  ctx: PlatformCtx,
+  membershipId: string,
+  status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED',
+) {
   const membership = await membershipFor(membershipId);
   const now = new Date();
 

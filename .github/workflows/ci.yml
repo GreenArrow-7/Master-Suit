@@ -145,17 +145,20 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # ── Gate 3 — format check: deliberately absent ────────────────────────
+      # ── Gate 3 — format check ─────────────────────────────────────────────
       #
-      # `npm run format:check` fails on 678 files today, including files
-      # untouched for weeks (tsconfig.json, long-standing tests): the codebase
-      # predates prettier enforcement, and no branch had ever reached this gate
-      # (the typecheck OOM ahead of it masked that it is unpassable). Enforcing
-      # it now would force a 678-file reformat commit into whichever PR happens
-      # to run first, while several feature branches are in flight — the most
-      # conflict-generating change possible. Re-add the gate in the same PR
-      # that runs `npm run format` across the whole repository, once the
-      # in-flight branches have landed. (2026-08-15)
+      # Absent since 2026-08-15, when `npm run format:check` failed on 678 files
+      # and enforcing it would have forced a 678-file reformat into whichever PR
+      # ran first, while several branches were in flight.
+      #
+      # Most of that 678 was not source. `.prettierignore` did not list
+      # `.next-prod` — the local production build's output directory, which
+      # vendors dependencies with their own sources — so once anybody had run a
+      # production build the check was measuring third-party packages. With that
+      # one line added the real number was 99 files, reformatted in the same
+      # commit that re-enables this. (2026-08-20)
+      - name: Format check
+        run: npm run format:check
 
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #

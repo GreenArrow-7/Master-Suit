@@ -41,7 +41,11 @@ export class MockSmsProvider implements SmsProvider {
       { provider: 'mock', action: 'send', to: message.to, reference: message.referenceId },
       'sms (mock adapter — no message was actually sent)',
     );
-    return { provider: 'mock', status: 'queued', providerMessageId: `mock_sms_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+    return {
+      provider: 'mock',
+      status: 'queued',
+      providerMessageId: `mock_sms_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    };
   }
 }
 

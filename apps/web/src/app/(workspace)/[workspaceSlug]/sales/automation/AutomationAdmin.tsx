@@ -36,10 +36,11 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY, taskTypeKey: taskTypeKeys[0] ?? '' });
 
-  const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((f) => ({
+      ...f,
+      [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value,
+    }));
 
   function actionSpec() {
     switch (form.action) {
@@ -101,12 +102,22 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
     <form
       onSubmit={submit}
       className="lf-card"
-      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      style={{
+        padding: 'var(--lf-space-5)',
+        display: 'grid',
+        gap: 'var(--lf-space-4)',
+        marginBottom: 'var(--lf-space-4)',
+      }}
       noValidate
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>New automation</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -124,7 +135,13 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
         <input id="a-name" className="lf-input" value={form.name} onChange={set('name')} required autoFocus />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <div className="lf-field">
           <label className="lf-label" htmlFor="a-object">
             When a…
@@ -163,7 +180,13 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
       </div>
 
       {form.action === 'create_task' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--lf-space-4)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+            gap: 'var(--lf-space-4)',
+          }}
+        >
           <div className="lf-field">
             <label className="lf-label" htmlFor="a-tasktitle">
               Task title
@@ -186,7 +209,14 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
             <label className="lf-label" htmlFor="a-due">
               Due in (minutes)
             </label>
-            <input id="a-due" className="lf-input" type="number" min={1} value={form.dueInMinutes} onChange={set('dueInMinutes')} />
+            <input
+              id="a-due"
+              className="lf-input"
+              type="number"
+              min={1}
+              value={form.dueInMinutes}
+              onChange={set('dueInMinutes')}
+            />
           </div>
         </div>
       )}
@@ -215,7 +245,11 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
       </label>
 
       <div>
-        <button className="lf-btn" type="submit" disabled={busy || (form.action === 'create_task' && !form.taskTypeKey)}>
+        <button
+          className="lf-btn"
+          type="submit"
+          disabled={busy || (form.action === 'create_task' && !form.taskTypeKey)}
+        >
           {busy ? 'Creating…' : 'Create automation'}
         </button>
       </div>
@@ -244,7 +278,12 @@ export function AutomationRowActions({ id, state }: { id: string; state: string 
 
   if (state === 'PUBLISHED') {
     return (
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setState('PAUSED')}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => setState('PAUSED')}
+      >
         Pause
       </button>
     );

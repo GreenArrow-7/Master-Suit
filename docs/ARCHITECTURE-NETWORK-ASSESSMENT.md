@@ -2242,7 +2242,7 @@ Five things change and nothing else has to:
 | P3-3 | Split `LeadDetail.tsx` and the two HR dispatch routes | W-15 |
 | P3-4 | ~~Remove dead configuration and dependencies; drop the legacy `Integration` table~~ **done** — configuration in P2-2, tables in `20260820180000_drop_unbuilt_models` | W-12 |
 | P3-5 | Regenerate `apps/web/README.md`; reconcile `docs/KNOWN-LIMITATIONS.md` with the code | W-13 |
-| P3-6 | Re-enable the `format:check` gate in the same PR that reformats | L-7 |
+| P3-6 | ~~Re-enable the `format:check` gate in the same PR that reformats~~ **done** — and the 678 was mostly `.next-prod`, missing from `.prettierignore`. The real number was 99 | L-7 |
 | P3-7 | Implement SMS and e-signature adapters, or remove the settings that imply they exist | §14 |
 | P3-8 | ~~Number-word normalisation in the AI redactor~~ **done** | AI4 |
 | P3-9 | ~~Honour `humanCorrected` in the analysis worker~~ **done** | AI3 |

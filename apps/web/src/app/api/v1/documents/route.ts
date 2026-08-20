@@ -81,7 +81,13 @@ export async function POST(req: Request) {
     if (scan.verdict !== 'CLEAN') {
       // The row records the attempt; tell the uploader plainly.
       return NextResponse.json(
-        { ...document, detail: scan.verdict === 'INFECTED' ? 'The file failed the malware scan and was not stored.' : 'The malware scanner was unavailable; try again.' },
+        {
+          ...document,
+          detail:
+            scan.verdict === 'INFECTED'
+              ? 'The file failed the malware scan and was not stored.'
+              : 'The malware scanner was unavailable; try again.',
+        },
         { status: 422, headers: { 'x-request-id': requestId } },
       );
     }
