@@ -45,6 +45,14 @@ Python.
 > owner's call rather than an implementer's. See the roadmap at the end.
 >
 > Everything else in this document stands as assessed.
+>
+> **A second assessment now exists.** `docs/ARCHITECTURE-NETWORK-ASSESSMENT-R2.md`
+> re-reads the tree at `f1dd84e`, after all of the above landed. It reaches
+> materially different conclusions — overall production readiness 73/100 against
+> this document's 46 — and identifies a gap this one could not: the metrics layer
+> built in response to W-2 has no scraper pointed at it in any environment, so the
+> instrumentation is a capability rather than a control. Read R2 for the current
+> state; this document remains the record of what was found at `aede392`.
 
 ---
 
