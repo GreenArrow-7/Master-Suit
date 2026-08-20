@@ -352,7 +352,6 @@ model Tenant {
   primaryDomain  String?
   status         String    @default("ACTIVE")
   planCode       String    @default("standard")
-  dataRegion     String    @default("me-central-1")
   leadCeiling    Int       @default(1000000)
   industry       String?
   companySize    String?

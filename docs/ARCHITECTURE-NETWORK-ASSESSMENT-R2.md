@@ -1319,7 +1319,7 @@ than at the next sign-in.
 |     | Finding                                                                                                                           |
 | --- | --------------------------------------------------------------------------------------------------------------------------------- |
 | L-1 | No CSRF token. `SameSite=Lax` covers the classic case; latent if a subdomain is ever added                                        |
-| L-2 | `Tenant.dataRegion` is written by the seed and read by nothing                                                                    |
+| L-2 | ~~`Tenant.dataRegion` is written by the seed and read by nothing~~ **Closed** — dropped; the system does not do per-tenant residency and the column implied it did |
 | L-3 | Two 1,000-line HR dispatch routes (`hr/[resource]`, `hr/actions/[action]`) — now type-safe via total permission maps, still large |
 | L-4 | The WPS SIF layout is one bank's dialect; `SIF_LAYOUTS` is versioned but holds one entry                                          |
 | L-5 | No `X-Frame-Options` — superseded by `frame-ancestors 'none'`, so this is informational                                           |
@@ -1866,7 +1866,7 @@ application.**
 | P3-3 | Split the two HR dispatch routes                                                                   | W-6       |
 | P3-4 | Implement SMS and e-signature adapters, or remove the settings that imply they exist               | §14       |
 | P3-5 | A second SIF layout, once a second bank is onboarded                                               | L-4       |
-| P3-6 | Remove `Tenant.dataRegion` or give it meaning                                                      | L-2       |
+| P3-6 | Remove `Tenant.dataRegion` or give it meaning — **removed**                                        | L-2       |
 | P3-7 | A CSRF token, if a subdomain is ever added                                                         | L-1       |
 
 #### Decisions this roadmap cannot make

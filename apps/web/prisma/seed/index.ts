@@ -472,7 +472,6 @@ async function main() {
       legalName: DEMO_WORKSPACE.legalName,
       displayName: DEMO_WORKSPACE.displayName,
       primaryDomain: DEMO_WORKSPACE.primaryDomain,
-      dataRegion: 'me-central-1',
       settings: {
         create: {
           productName: DEMO_WORKSPACE.displayName,
