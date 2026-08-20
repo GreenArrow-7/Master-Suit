@@ -19,21 +19,30 @@
  * the floor for reaching the module at all.
  */
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prismaRead } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Action, Ctx } from '@/lib/security/rbac';
 import { can } from '@/lib/security/rbac';
 import { addDays, dayKey, toDay } from './rules';
 
+/**
+ * Every query in this module goes to `prismaRead` — the replica when
+ * `DATABASE_REPLICA_URL` is set, the primary otherwise.
+ *
+ * These are the reads that can afford to be a moment behind: a report is a
+ * roll-up over a date range, and one computed 200ms ago is the same report. They
+ * are also the heaviest reads in the product — groupBy over a quarter of leads
+ * or attendance punches — which is exactly the traffic worth keeping off the
+ * connections that are serving writes.
+ *
+ * `prismaRead` refuses write operations, in every configuration including the
+ * no-replica fallback, so a write added here fails on the first run rather than
+ * only where a replica exists. See lib/db.ts.
+ */
+
 export type ReportGroup =
-  | 'employees'
-  | 'attendance'
-  | 'leave'
-  | 'lifecycle'
-  | 'payroll'
-  | 'recruitment'
-  | 'performance';
+  'employees' | 'attendance' | 'leave' | 'lifecycle' | 'payroll' | 'recruitment' | 'performance';
 
 export type FilterKey = 'from' | 'to' | 'departmentId' | 'locationId' | 'employeeId' | 'status' | 'cycleId';
 
@@ -91,7 +100,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['employee', 'VIEW'],
     filters: [],
     async run(ctx) {
-      const rows = await prisma.employeeProfile.findMany({
+      const rows = await prismaRead.employeeProfile.findMany({
         where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
         select: { joinedOn: true, department: { select: { name: true } } },
       });
@@ -129,17 +138,17 @@ export const REPORTS: ReportDefinition[] = [
     async run(ctx, filters) {
       const { from, to } = window(filters);
       const [joiners, leavers, headcount] = await Promise.all([
-        prisma.employeeProfile.findMany({
+        prismaRead.employeeProfile.findMany({
           where: { tenantId: ctx.tenantId, joinedOn: { gte: from, lte: to } },
           select: { employeeNumber: true, joinedOn: true, department: { select: { name: true } } },
           take: MAX_ROWS,
         }),
-        prisma.employeeProfile.findMany({
+        prismaRead.employeeProfile.findMany({
           where: { tenantId: ctx.tenantId, exitedOn: { gte: from, lte: to } },
           select: { employeeNumber: true, exitedOn: true, department: { select: { name: true } } },
           take: MAX_ROWS,
         }),
-        prisma.employeeProfile.count({
+        prismaRead.employeeProfile.count({
           where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
         }),
       ]);
@@ -178,7 +187,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['employee', 'VIEW'],
     filters: [],
     async run(ctx) {
-      const rows = await prisma.employeeProfile.findMany({
+      const rows = await prismaRead.employeeProfile.findMany({
         where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'PROBATION' },
         select: { employeeNumber: true, joinedOn: true, designation: true, department: { select: { name: true } } },
         orderBy: { joinedOn: 'asc' },
@@ -213,7 +222,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to', 'employeeId'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrAttendanceRecord.findMany({
+      const rows = await prismaRead.hrAttendanceRecord.findMany({
         where: {
           tenantId: ctx.tenantId,
           workDate: { gte: from, lte: to },
@@ -263,7 +272,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrAttendancePunch.findMany({
+      const rows = await prismaRead.hrAttendancePunch.findMany({
         where: {
           tenantId: ctx.tenantId,
           serverTime: { gte: from, lte: addDays(to, 1) },
@@ -309,7 +318,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrOvertimeRequest.findMany({
+      const rows = await prismaRead.hrOvertimeRequest.findMany({
         where: { tenantId: ctx.tenantId, workDate: { gte: from, lte: to }, status: 'APPROVED' },
         select: {
           minutes: true,
@@ -356,7 +365,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['leave', 'APPROVE'],
     filters: ['employeeId'],
     async run(ctx, filters) {
-      const rows = await prisma.hrLeaveBalance.findMany({
+      const rows = await prismaRead.hrLeaveBalance.findMany({
         where: { tenantId: ctx.tenantId, employeeId: filters.employeeId },
         include: { employee: { select: { employeeNumber: true } }, leaveType: { select: { name: true } } },
         take: MAX_ROWS,
@@ -388,7 +397,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrLeaveRequest.findMany({
+      const rows = await prismaRead.hrLeaveRequest.findMany({
         where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from } },
         include: {
           leaveType: { select: { name: true, paid: true } },
@@ -429,7 +438,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['employee', 'VIEW'],
     filters: ['status'],
     async run(ctx, filters) {
-      const rows = await prisma.hrChecklistTask.findMany({
+      const rows = await prismaRead.hrChecklistTask.findMany({
         where: { tenantId: ctx.tenantId, phase: filters.status as 'ONBOARDING' | 'OFFBOARDING' | undefined },
         include: { employee: { select: { employeeNumber: true } } },
         take: MAX_ROWS,
@@ -472,7 +481,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['to'],
     async run(ctx, filters) {
       const horizon = filters.to ?? addDays(new Date(), 90);
-      const rows = await prisma.hrEmployeeDocument.findMany({
+      const rows = await prismaRead.hrEmployeeDocument.findMany({
         where: { tenantId: ctx.tenantId, expiresAt: { not: null, lte: horizon } },
         include: { employee: { select: { employeeNumber: true } } },
         orderBy: { expiresAt: 'asc' },
@@ -507,7 +516,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrPayslip.findMany({
+      const rows = await prismaRead.hrPayslip.findMany({
         where: { tenantId: ctx.tenantId, run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } } },
         include: {
           employee: { select: { employeeNumber: true, department: { select: { name: true } } } },
@@ -548,7 +557,7 @@ export const REPORTS: ReportDefinition[] = [
     filters: ['from', 'to'],
     async run(ctx, filters) {
       const { from, to } = window(filters);
-      const rows = await prisma.hrPayslip.findMany({
+      const rows = await prismaRead.hrPayslip.findMany({
         where: { tenantId: ctx.tenantId, run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } } },
         include: { employee: { select: { department: { select: { name: true } } } } },
         take: MAX_ROWS,
@@ -592,7 +601,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['recruitment', 'VIEW'],
     filters: [],
     async run(ctx) {
-      const rows = await prisma.hrRequisition.findMany({
+      const rows = await prismaRead.hrRequisition.findMany({
         where: { tenantId: ctx.tenantId, status: { in: ['OPEN', 'ON_HOLD'] } },
         include: { department: { select: { name: true } }, _count: { select: { candidates: true } } },
         take: MAX_ROWS,
@@ -627,7 +636,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['recruitment', 'VIEW'],
     filters: [],
     async run(ctx) {
-      const rows = await prisma.hrCandidate.groupBy({
+      const rows = await prismaRead.hrCandidate.groupBy({
         by: ['stage'],
         where: { tenantId: ctx.tenantId },
         _count: { _all: true },
@@ -657,7 +666,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['performance', 'VIEW'],
     filters: ['cycleId'],
     async run(ctx, filters) {
-      const rows = await prisma.hrReview.groupBy({
+      const rows = await prismaRead.hrReview.groupBy({
         by: ['finalRating'],
         where: { tenantId: ctx.tenantId, cycleId: filters.cycleId, finalRating: { not: null } },
         _count: { _all: true },
@@ -687,7 +696,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['performance', 'VIEW'],
     filters: ['cycleId'],
     async run(ctx, filters) {
-      const rows = await prisma.hrReview.findMany({
+      const rows = await prismaRead.hrReview.findMany({
         where: { tenantId: ctx.tenantId, cycleId: filters.cycleId, status: { not: 'COMPLETE' } },
         include: {
           employee: { select: { employeeNumber: true } },
@@ -729,7 +738,7 @@ export const REPORTS: ReportDefinition[] = [
     permission: ['performance', 'VIEW'],
     filters: [],
     async run(ctx) {
-      const rows = await prisma.hrPip.findMany({
+      const rows = await prismaRead.hrPip.findMany({
         where: { tenantId: ctx.tenantId },
         include: {
           employee: { select: { employeeNumber: true } },

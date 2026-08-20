@@ -106,7 +106,13 @@ const schema = z.object({
   S3_ACCESS_KEY_ID: z.string(),
   S3_SECRET_ACCESS_KEY: z.string(),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
-  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  // SIGNED_URL_TTL_SECONDS was here and was read nowhere. No presigned URL is
+  // ever handed to a browser in this application — the web process streams
+  // objects itself, behind the same permission and field-security gates the rest
+  // of the product uses, which is why the bucket needs no public route at all.
+  // An operator lowering that TTL was hardening nothing. Removed rather than
+  // wired, along with the @aws-sdk/s3-request-presigner dependency that was
+  // installed and never imported; both come back with the first presigned URL.
 
   EMAIL_PROVIDER: z.enum(['mock', 'smtp']).default('mock'),
   SMTP_HOST: z.string().optional(),
@@ -171,9 +177,14 @@ const schema = z.object({
    */
   METRICS_TOKEN: z.string().optional(),
 
+  /** Enforced on the API-key path in lib/api/handler.ts. Sessions have their own ceiling. */
   API_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),
+  /** Enforced by csvStream in lib/csv.ts, and by the lead export's own loop. */
   EXPORT_MAX_ROWS: z.coerce.number().int().positive().default(500_000),
-  IMPORT_CHUNK_SIZE: z.coerce.number().int().positive().default(5_000),
+  // IMPORT_CHUNK_SIZE was here and was read nowhere, because there is no
+  // importer: the `import` queue is declared in lib/queue.ts and has no
+  // consumer. A setting for a feature that does not exist is not forward
+  // planning, it is a claim — it comes back with the worker that reads it.
   UPLOAD_MAX_MB: z.coerce.number().int().positive().default(25),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 });

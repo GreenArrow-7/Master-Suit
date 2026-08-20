@@ -1950,6 +1950,7 @@ Each as **Problem → Evidence → Impact → Severity → Recommendation**.
 - **Impact** An operator who raises `API_RATE_LIMIT_PER_MIN` believes they changed something. The read replica appears supported and is not.
 - **Severity** 🔵 Low each, 🟡 Medium in aggregate — inert configuration is a correctness illusion.
 - **Recommendation** Wire them or delete them. `prismaRead` is the valuable one: point exports and reports at it.
+- **Fixed (2026-08-20)** Wired: `prismaRead` now serves both report services and both export routes (39 call sites), and it **refuses write operations in every configuration including the no-replica fallback** — otherwise a write added to a report module works everywhere except production, which is the one place a replica exists. `EXPORT_MAX_ROWS` is enforced in `csvStream` and the lead export's own loop, with `truncated` recorded on the audit row; `API_RATE_LIMIT_PER_MIN` now drives the API-key ceiling that was a hardcoded `600`. Deleted: `SIGNED_URL_TTL_SECONDS` and the `@aws-sdk/s3-request-presigner` dependency (no presigned URL is ever issued — the web process streams objects itself), and `IMPORT_CHUNK_SIZE` (there is no importer; the `import` queue has no consumer). `Tenant.dataRegion` is left in place: dropping a column that carries values in production is a different risk class from removing an inert setting, and it is still never read.
 
 ### W-13 · Documentation drift at the entry point
 

@@ -7,6 +7,7 @@ import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
+import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
 import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
@@ -79,7 +80,18 @@ export function route<
       if (spec.rateLimit) {
         await consume({ key: `route:${spec.module}:${spec.action}:${ctx?.actor.id ?? ip}`, ...spec.rateLimit });
       } else if (ctx) {
-        await consume(ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, 600) : limits.sessionUser(ctx.actor.id));
+        // `API_RATE_LIMIT_PER_MIN` rather than the literal 600 it defaulted to.
+        // The setting was declared in lib/env.ts and read nowhere, so an
+        // operator who raised or lowered it changed nothing at all — and the
+        // number they saw in .env.production matched what was actually enforced
+        // only by coincidence, until one of the two moved.
+        //
+        // It governs the API-key path only. A browser session is a different
+        // shape of traffic — one screen can issue a dozen requests — and
+        // limits.sessionUser's separate ceiling is deliberate, not an oversight.
+        await consume(
+          ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, env.API_RATE_LIMIT_PER_MIN) : limits.sessionUser(ctx.actor.id),
+        );
       }
 
       // 3. Authorize — before the handler body runs ────────────────────────────

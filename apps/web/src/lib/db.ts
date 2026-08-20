@@ -364,8 +364,75 @@ function build(url: string) {
 export const prisma = globalForPrisma.__prisma ?? build(env.DATABASE_URL);
 if (env.NODE_ENV !== 'production') globalForPrisma.__prisma = prisma;
 
-/** Read replica for reports and exports; falls back to primary when unset. */
-export const prismaRead = env.DATABASE_REPLICA_URL ? build(env.DATABASE_REPLICA_URL) : prisma;
+/**
+ * Read replica for reports and exports; falls back to the primary when unset.
+ *
+ * ── It was built and never used ─────────────────────────────────────────────
+ *
+ * `DATABASE_REPLICA_URL` has been in `lib/env.ts` and this line has constructed
+ * a second client from it since the beginning, and nothing in `src/` ever
+ * imported the result. An operator setting that variable got a second connection
+ * pool that answered no queries — configuration that looks load-bearing and
+ * does nothing, which is worse than absent, because it reads as a capability
+ * the deployment has.
+ *
+ * ── What may and may not use it ─────────────────────────────────────────────
+ *
+ * A replica is behind the primary — usually by milliseconds, occasionally by a
+ * lot when the primary is under the write load that made you want a replica.
+ * So the rule is not "reads go here", it is **"reads whose answer may be a
+ * moment stale go here"**:
+ *
+ *   yes   reports, CSV exports, analytics roll-ups — a leaderboard computed
+ *         200ms ago is the same leaderboard
+ *   no    session and permission lookups (a revoked session must be revoked
+ *         now), duplicate checks before an insert, anything read back after a
+ *         write in the same request, anything a uniqueness decision rests on
+ *
+ * ── Why it refuses writes even with no replica configured ───────────────────
+ *
+ * The `$extends` below throws on every write operation, and it is applied in
+ * *both* branches — including the fallback where this is the primary client.
+ *
+ * That is deliberate. Without it, a write added to a report module would work
+ * perfectly in development and on any deployment with no replica, and fail only
+ * where a replica exists — which is production, at the moment someone is already
+ * dealing with load. A guard that only bites in the configuration you cannot
+ * test is not a guard. This one fails the same way everywhere, on the first run.
+ */
+const READ_ONLY_OPS_REFUSED = new Set([...CREATE_OPS, ...FILTERED_WRITE_OPS, '$executeRaw', '$executeRawUnsafe']);
+
+function readOnly<T extends { $extends: (ext: never) => unknown }>(client: T) {
+  return client.$extends({
+    name: 'read-only',
+    query: {
+      $allOperations({
+        model,
+        operation,
+        args,
+        query,
+      }: {
+        model?: string;
+        operation: string;
+        args: unknown;
+        query: (args: unknown) => Promise<unknown>;
+      }) {
+        if (READ_ONLY_OPS_REFUSED.has(operation)) {
+          throw new ReadReplicaWriteError(
+            `${model ? `${model}.` : ''}${operation} was issued through prismaRead. ` +
+              'That client is for reports and exports; a replica cannot accept writes. Use `prisma`.',
+          );
+        }
+        return query(args);
+      },
+    },
+  } as never) as T;
+}
+
+/** A write reached the read client. Distinct from TenantGuardError: different bug, different fix. */
+export class ReadReplicaWriteError extends Error {}
+
+export const prismaRead = readOnly(env.DATABASE_REPLICA_URL ? build(env.DATABASE_REPLICA_URL) : prisma);
 
 export type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
