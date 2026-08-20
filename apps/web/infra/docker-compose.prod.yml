@@ -21,7 +21,13 @@ services:
     environment:
       NODE_ENV: production
       PROCESS_ROLE: web
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      # This said `leadflow:leadflow` — the owning role, which is a superuser on
+      # this cluster. lib/startup-check.ts refuses to serve as a superuser,
+      # because a superuser bypasses every row-level-security policy in the
+      # schema, so `base + prod` could not start at all: the overlay was only
+      # ever usable with docker-compose.azure.yml layered on top to restate this
+      # one value. An overlay that cannot run without a third file is a trap.
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
       REDIS_URL: redis://redis:6379
       # A real SMTP transport pointed at the local mailbox. Not a mock: the
       # message is composed, sent and delivered for real — it just lands in
@@ -38,23 +44,33 @@ services:
       mailpit: { condition: service_healthy }
     ports: ['3000:3000']
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/api/health/live'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3000/api/health/live'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 30s
 
   worker:
+    # `target: worker` and no `command:`. The previous pair — the `production`
+    # image, which contains only next build's standalone output, told to run
+    # `node dist/workers/index.js`, which no build produces — meant this
+    # container exited on start in every deployment that used this overlay.
     build:
       context: ..
       dockerfile: infra/Dockerfile
-      target: production
-    command: ['node', 'dist/workers/index.js']
+      target: worker
     environment:
       NODE_ENV: production
       PROCESS_ROLE: worker
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
       REDIS_URL: redis://redis:6379
+    # Meaningful now that the entrypoint exits non-zero when a queue cannot
+    # attach: Compose restarts it, and a genuinely broken configuration shows up
+    # as a crash loop instead of a container that is "up" and consuming nothing.
     restart: unless-stopped
     deploy:
       replicas: 2

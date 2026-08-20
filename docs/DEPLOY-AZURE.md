@@ -151,6 +151,28 @@ Watch the application come up:
 dc logs -f web
 ```
 
+**Then check the worker, every time.** Nothing depends on it, so `dc ps` reports
+a healthy stack whether or not it is consuming anything — which is how this
+deployment ran for months with every queue dead:
+
+```bash
+dc logs worker | grep 'workers started'
+```
+
+That line must appear and must list nine queues:
+
+```
+"queues":["automation","distribution","sla","media","ai","notifications","campaign","webhook","maintenance"]
+```
+
+If it is absent the container has exited; `dc logs worker` will say which queue
+could not attach. The process now exits non-zero rather than idling, so a
+persistent failure shows as a restart loop instead of silence. Without this
+container: Facebook leads are stored and never become leads, every AI analysis
+stays PENDING, call recordings never leave the vendor's servers, SLA timers
+never fire, approval emails are never sent, and nothing enforces any retention
+window.
+
 A refusal from `[startup]` is deliberate and names its own cause. The four you
 might hit:
 
@@ -205,16 +227,39 @@ tenant.
 
 ## 8. Backups
 
-Nothing here backs itself up. The minimum worth having on day one:
+Nothing here backs itself up, and **two** stores hold customer data: PostgreSQL,
+and the MinIO bucket holding every call recording, HR document and biometric
+capture. The database carries only their metadata — restore it alone and you get
+rows pointing at files that are gone.
+
+The `pg_dump` one-liner that used to be here covered the first and not the
+second, which meant every recording and document on this VM existed in exactly
+one place. `scripts/backup.sh` takes both:
 
 ```bash
-dc exec -T postgres pg_dump -U leadflow -Fc leadflow > /var/backups/leadflow-$(date +%F).dump
+cd /opt/master-saas/apps/web/infra
+BACKUP_PASSPHRASE='<from your secret store>' ../scripts/backup.sh /var/backups/master-suite
+az storage blob upload-batch -d master-suite-backups -s /var/backups/master-suite/<stamp>
 ```
 
-Put that in cron, ship the output off the VM (`az storage blob upload`), and
-restore it once into a scratch database to prove the dump is real. An untested
-backup is a hope, not a control. `docs/BACKUP-RECOVERY.md` covers the fuller
-picture, including the MinIO volume, which this command does not touch.
+In cron, at 02:30 — an hour before the retention sweep at 03:00, so a backup
+always precedes the deletions you would need it to undo:
+
+```cron
+30 2 * * * cd /opt/master-saas/apps/web/infra && BACKUP_PASSPHRASE=... ../scripts/backup.sh /var/backups/master-suite >> /var/log/master-suite-backup.log 2>&1
+```
+
+Then prove it, weekly, against the backup the server actually took:
+
+```bash
+BACKUP_PASSPHRASE='...' ../scripts/restore-verify.sh /var/backups/master-suite/<stamp>
+```
+
+That restores into a scratch database, drops it again, and reconciles row
+counts, the migration ledger and the object inventory against the manifest. It
+never touches the live database. An untested backup is a hope, not a control —
+see `docs/BACKUP-RECOVERY.md` for what each check catches and for the full
+restore procedure.
 
 ## Updating
 
@@ -237,7 +282,8 @@ name:
 
 - **Single point of failure.** One VM. Postgres, Redis and object storage share
   it with the application. There is no failover and no point-in-time recovery —
-  only whatever `pg_dump` you scheduled above.
+  only the daily backup you scheduled above, which means the worst case is
+  losing up to a day of work.
 - **Secrets sit in a file.** `.env.production`, mode 600, on the VM. Real secret
   management means Azure Key Vault and injection at start. The file is at least
   never copied into an image.

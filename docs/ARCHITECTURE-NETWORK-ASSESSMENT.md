@@ -13,6 +13,19 @@ Python.
 > proposal. Section 20 is the only forward-looking part, and it is confined to changes that
 > resolve problems identified in sections 1–19.
 
+> **Remediation status (2026-08-20, after this assessment).** The document below is a
+> point-in-time record of `aede392` and is deliberately left as written. Four of its P0 findings
+> have since been fixed on `claude/master-suite-architecture-f2d7u3`:
+>
+> | Finding | Status |
+> | --- | --- |
+> | **W-1 / C-1** — worker unrunnable in the production stack | **Fixed.** A `worker` image stage runs the TypeScript through `tsx`; both compose files target it and no longer override `command`. The entrypoint now waits for every queue to attach and exits non-zero if any cannot. Verified: attaches all 9 queues, arms both schedulers, exits 1 with a named failure when Redis is unreachable. |
+> | **W-3 (part)** — object storage had no backup | **Fixed.** `scripts/backup.sh` takes the database *and* mirrors the bucket, with a manifest; `scripts/restore-verify.sh` restores into a scratch database and reconciles. Database half verified end to end; the `mc mirror` half is written and unexercised. |
+> | **W-4 / H-2** — base compose `trust` auth and `0.0.0.0` publishing; prod overlay unbootable | **Fixed.** Base compose is scram-sha-256 with loopback-only bindings; every `DATABASE_URL` across all four files now names the NOBYPASSRLS application role. |
+> | **W-7 / H-4** — retention unscheduled, orphaning objects | **Fixed**, and it was worse than reported: the sweep read RLS-forced tables with no tenant context, so it deleted *nothing* and returned zeros. It now runs under `withPlatformTx`, deletes the object before the row, batches to exhaustion, and purges spent sessions (**H-5**). A daily `maintenance` worker runs it. Covered by `tests/tenant/retention.spec.ts`. |
+>
+> Everything else in this document stands as assessed.
+
 ---
 
 ## Executive summary

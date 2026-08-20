@@ -1,3 +1,15 @@
+# Base stack. Layer docker-compose.dev.yml or .prod.yml over it; the Azure
+# overlay goes last.
+#
+# ── Every published port here binds 127.0.0.1, and that is load-bearing ──────
+#
+# Local development runs the web app on the host, so these have to be reachable
+# from it — but only from it. They used to bind 0.0.0.0, which on any machine
+# with a routable address (a cloud VM, a laptop on a café network, a host whose
+# Docker bridge is exposed) published an unauthenticated database to whoever
+# could reach the interface. `docker-compose.azure.yml` closed them again with
+# `!reset []`, which meant the safety of a deployment depended on remembering to
+# layer a third file. A base file should not need rescuing.
 services:
   postgres:
     image: postgres:16-alpine
@@ -5,7 +17,14 @@ services:
       POSTGRES_USER: leadflow
       POSTGRES_PASSWORD: leadflow
       POSTGRES_DB: leadflow
-      POSTGRES_HOST_AUTH_METHOD: trust
+      # `trust` was here. It accepts ANY password from any host that can open
+      # the port — so the password in DATABASE_URL was decorative, and the
+      # sole thing standing between the network and every tenant's data was the
+      # port binding above. Two mistakes that only compound. scram-sha-256 is
+      # what the Azure overlay already set for production; the local stack now
+      # authenticates the same way it will when it is deployed.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
     command:
       - postgres
       - -c
@@ -16,7 +35,7 @@ services:
       - max_connections=200
       - -c
       - random_page_cost=1.1
-    ports: ['5432:5432']
+    ports: ['127.0.0.1:5432:5432']
     volumes: ['pgdata:/var/lib/postgresql/data']
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U leadflow']
@@ -26,7 +45,7 @@ services:
   redis:
     image: redis:7-alpine
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
-    ports: ['6379:6379']
+    ports: ['127.0.0.1:6379:6379']
     volumes: ['redisdata:/data']
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
@@ -39,7 +58,7 @@ services:
     environment:
       MINIO_ROOT_USER: leadflow
       MINIO_ROOT_PASSWORD: leadflow123
-    ports: ['9000:9000', '9001:9001']
+    ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
     volumes: ['miniodata:/data']
 
   # A local mailbox, so EMAIL_PROVIDER can be a real `smtp` rather than `mock`.
@@ -99,10 +118,14 @@ services:
       start_period: 300s
 
   web:
-    build: { context: .., dockerfile: infra/Dockerfile }
+    build: { context: .., dockerfile: infra/Dockerfile, target: production }
     environment:
       PROCESS_ROLE: web
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      # The application role, not the owner. `master_saas_app` is NOBYPASSRLS and
+      # owns nothing, which is the only role row-level security actually applies
+      # to — lib/startup-check.ts refuses to boot as a superuser, correctly.
+      # Its password is set by 20260806000000; scram-sha-256 now checks it.
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       FACE_SERVICE_URL: http://face:8000
@@ -110,17 +133,26 @@ services:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
     env_file: [../.env]
-    ports: ['3000:3000']
+    # Loopback like everything else. The overlays widen it where a public
+    # interface is actually wanted — nothing but Caddy binds one in production.
+    ports: ['127.0.0.1:3000:3000']
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
 
   worker:
-    build: { context: .., dockerfile: infra/Dockerfile }
-    command: ['node', 'dist/workers/index.js']
+    # `target: worker`, and no `command:` override.
+    #
+    # This used to build the default (web) stage and run
+    # `node dist/workers/index.js` against it. No build in this repository
+    # produces `dist/` — see the worker stage in infra/Dockerfile — so the
+    # container exited immediately, every time, and nothing noticed because no
+    # other service depends on it. The image now carries its own correct
+    # entrypoint; overriding it here is what let the two drift apart.
+    build: { context: .., dockerfile: infra/Dockerfile, target: worker }
     environment:
       PROCESS_ROLE: worker
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
       REDIS_URL: redis://redis:6379/0
     env_file: [../.env]
     depends_on:

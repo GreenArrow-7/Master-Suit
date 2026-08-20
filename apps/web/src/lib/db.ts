@@ -404,13 +404,25 @@ export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): P
  *
  * Every caller must already be behind `requirePlatformOwner`.
  */
-export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
+export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   return inTenantTx.run(
     true,
     () =>
-      prisma.$transaction(async (tx: TxClient) => {
-        await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
-        return fn(tx);
-      }) as Promise<T>,
+      prisma.$transaction(
+        async (tx: TxClient) => {
+          await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
+          return fn(tx);
+        },
+        /**
+         * Prisma's default interactive-transaction timeout is 5 seconds, which
+         * is right for a request and wrong for a maintenance sweep: the
+         * retention job deletes in batches across every tenant, and a batch that
+         * runs long aborts with P2028 rather than finishing.
+         *
+         * Passed through rather than raised globally, so a control-plane write
+         * on the request path still fails fast instead of holding a connection.
+         */
+        options?.timeoutMs ? { timeout: options.timeoutMs } : undefined,
+      ) as Promise<T>,
   );
 }

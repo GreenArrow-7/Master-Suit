@@ -34,7 +34,15 @@ services:
       # which necessarily says localhost, because local development also runs
       # the app straight on the host — can never reach into the container and
       # point it at a port that means something different there.
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      #
+      # `master_saas_app`, not the owning role, and that matters more in
+      # development than anywhere else. The owner bypasses every row-level
+      # security policy in the schema, so developing against it means a query
+      # that forgot its tenant filter works perfectly on a laptop and returns
+      # another customer's rows in production. Developing as the role the
+      # policies actually apply to is what makes the isolation suite meaningful
+      # rather than ceremonial.
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
       REDIS_URL: redis://redis:6379
       # Turbopack polls when inotify events do not cross the bind mount, which
       # they often do not on Windows and macOS.
@@ -51,6 +59,10 @@ services:
     ports: ['3000:3000']
 
   worker:
+    # `target: development` and `npm run worker` — the dev server's hot-reload
+    # equivalent for the queue consumers, running the same tsx entrypoint the
+    # `worker` image stage uses. This was the only overlay whose worker command
+    # was ever correct; the other two pointed at a `dist/` no build produces.
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -59,7 +71,7 @@ services:
     environment:
       NODE_ENV: development
       PROCESS_ROLE: worker
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
       REDIS_URL: redis://redis:6379
     volumes:
       - ..:/app
