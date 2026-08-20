@@ -452,6 +452,7 @@ model Tenant {
   cannedResponses            CannedResponse[]
   clientProfiles             ClientProfile[]
   clientRequirements         ClientRequirement[]
+  coachingNotes              CoachingNote[]
   commissions                Commission[]
   commissionSlabs            CommissionSlab[]
   commissionSlabBands        CommissionSlabBand[]
@@ -517,6 +518,8 @@ model Tenant {
   nominations                Nomination[]
   nominationVotes            NominationVote[]
   notifications              Notification[]
+  objections                 Objection[]
+  objectionMatches           ObjectionMatch[]
   opportunities              Opportunity[]
   opportunityCollaborators   OpportunityCollaborator[]
   opportunityProducts        OpportunityProduct[]
@@ -529,6 +532,8 @@ model Tenant {
   pipelineStages             PipelineStage[]
   posts                      Post[]
   postReactions              PostReaction[]
+  practiceSessions           PracticeSession[]
+  practiceScores             PracticeScore[]
   products                   Product[]
   projects                   Project[]
   projectFavourites          ProjectFavourite[]
@@ -754,6 +759,10 @@ model OrganizationSetting {
   /// flagged for a human. Not blocked: a genuine visit from a passenger seat on
   /// a motorway looks exactly like this.
   visitMaxTravelKph     Int      @default(160)
+  /// Roleplay sessions one rep may start per day. A practice turn is a billed
+  /// model call, so the cap is the workspace's spend control, not a difficulty
+  /// setting. 0 turns practice off.
+  practiceDailyCap      Int      @default(10)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -870,13 +879,13 @@ model Team {
   childTeams Team[]      @relation("TeamHierarchy")
   members    UserTeam[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metaRoutings   MetaLeadFormRouting[]
+  socialComments SocialComment[]
 
   @@unique([tenantId, code])
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
-  metaRoutings MetaLeadFormRouting[]
-  socialComments SocialComment[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -931,20 +940,22 @@ model User {
 
   teams               UserTeam[]
   passwordResetTokens PasswordResetToken[]
-  ownedLeads          Lead[]               @relation("LeadOwner")
-  ownedConversations  Conversation[]       @relation("ConversationOwner")
+  ownedLeads          Lead[]                @relation("LeadOwner")
+  ownedConversations  Conversation[]        @relation("ConversationOwner")
   metaRoutings        MetaLeadFormRouting[] @relation("MetaRoutingOwner")
-  socialComments      SocialComment[]      @relation("SocialCommentOwner")
-  ownedOpps           Opportunity[]        @relation("OpportunityOwner")
-  ownedAccounts       Account[]            @relation("AccountOwner")
-  ownedContacts       Contact[]            @relation("ContactOwner")
-  activities          Activity[]           @relation("ActivityOwner")
-  tasks               Task[]               @relation("TaskOwner")
-  tickets             Ticket[]             @relation("TicketAgent")
-  campaigns           Campaign[]           @relation("CampaignOwner")
+  socialComments      SocialComment[]       @relation("SocialCommentOwner")
+  ownedOpps           Opportunity[]         @relation("OpportunityOwner")
+  ownedAccounts       Account[]             @relation("AccountOwner")
+  ownedContacts       Contact[]             @relation("ContactOwner")
+  activities          Activity[]            @relation("ActivityOwner")
+  tasks               Task[]                @relation("TaskOwner")
+  tickets             Ticket[]              @relation("TicketAgent")
+  campaigns           Campaign[]            @relation("CampaignOwner")
   notifications       Notification[]
   targets             EmployeeTarget[]
-  calls               Call[]               @relation("CallerUser")
+  calls               Call[]                @relation("CallerUser")
+  practiceSessions    PracticeSession[]     @relation("PracticeUser")
+  coachingNotes       CoachingNote[]        @relation("CoachingAuthor")
   workspaceMembership WorkspaceMembership?
 
   @@unique([tenantId, email])
@@ -2618,7 +2629,9 @@ model Role {
   name         String
   description  String?
   isSystem     Boolean         @default(false)
-  /** A deactivated role grants nothing and cannot be assigned, but keeps its history. */
+  /**
+   * A deactivated role grants nothing and cannot be assigned, but keeps its history.
+   */
   isActive     Boolean         @default(true)
   rank         Int             @default(100)
   defaultScope VisibilityScope @default(OWN)
@@ -2712,11 +2725,11 @@ model LeadStage {
 
   leads Lead[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metaRoutings MetaLeadFormRouting[]
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
-  metaRoutings MetaLeadFormRouting[]
 }
 
 model Lead {
@@ -2804,7 +2817,8 @@ model Lead {
   tickets        Ticket[]
   submissions    FormSubmission[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  socialComments SocialComment[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
@@ -2819,7 +2833,6 @@ model Lead {
   @@index([tenantId, deletedAt])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
-  socialComments SocialComment[]
 }
 
 model LeadCustomFieldDefinition {
@@ -3771,16 +3784,16 @@ model SocialAssignmentHistory {
   tenantId        String
   socialCommentId String
 
-  fromOwnerId String?
-  toOwnerId   String?
-  teamId      String?
+  fromOwnerId  String?
+  toOwnerId    String?
+  teamId       String?
   /// Which mechanism chose, so a retry can tell a human's decision from a rule's.
-  source      SocialAssignmentSource
-  method      DistributionMethod?
-  ruleId      String?
+  source       SocialAssignmentSource
+  method       DistributionMethod?
+  ruleId       String?
   /// Human-readable, and the place a failure explains itself: "No eligible
   /// members in Dubai Sales" is actionable where a null owner is not.
-  reason      String?
+  reason       String?
   /// Null when the system assigned it.
   assignedById String?
 
@@ -3841,19 +3854,19 @@ model SocialComment {
   providerAdId    String?
   providerAdTitle String?
 
-  status  SocialCommentStatus @default(NEW)
-  intent  SocialIntent        @default(UNSCORED)
+  status        SocialCommentStatus @default(NEW)
+  intent        SocialIntent        @default(UNSCORED)
   /// 0–100. Meaningless without `intentReasons`, which is why they travel together.
-  intentScore Int?
+  intentScore   Int?
   /// Why the score is what it is. A bare number is not something a salesperson
   /// can act on or disagree with.
-  intentReasons String[] @default([])
+  intentReasons String[]            @default([])
   /// True once AI enrichment ran. False means rules-only, not "failed" — the
   /// pipeline completes either way.
-  aiQualified Boolean @default(false)
+  aiQualified   Boolean             @default(false)
 
-  ownerId  String?
-  teamId   String?
+  ownerId         String?
+  teamId          String?
   /// Layer 2, once someone converts. Null is the normal state.
   linkedLeadId    String?
   linkedContactId String?
@@ -3872,7 +3885,7 @@ model SocialComment {
   /// When a reply is owed by. Measured from `commentCreatedAt` — the customer's
   /// clock, not ours — so reassigning an enquiry never buys the desk more time.
   /// Null when the comment is not a sales enquiry and nothing is owed.
-  slaDueAt DateTime?
+  slaDueAt       DateTime?
   /// Set once, when the manager was told this breached. The deduplication key:
   /// a redelivered webhook or a retried job must not page anyone twice.
   slaEscalatedAt DateTime?
@@ -3880,10 +3893,10 @@ model SocialComment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  owner      User?    @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  team       Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  linkedLead Lead?    @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User?                     @relation("SocialCommentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  team        Team?                     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  linkedLead  Lead?                     @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
   assignments SocialAssignmentHistory[]
   replies     SocialReply[]
 
@@ -3902,7 +3915,6 @@ model SocialComment {
 
 /**
  * Every answer sent to a social enquiry, append-only.
- *
  * Separate from `SocialComment.repliedAt` rather than replacing it: that field
  * is the *first* response, which is what the SLA measures and what the reply
  * capability treats as spending Meta's single private reply. A conversation can
@@ -4037,7 +4049,7 @@ model MetaLeadFormRouting {
 /// to one customer; a participant table would be a join with exactly two rows
 /// and no query asking for it. Add one when a channel actually carries groups.
 model Conversation {
-  id          String              @id @default(cuid())
+  id          String      @id @default(cuid())
   tenantId    String
   channel     ChannelType
   /// Provider key from lib/integrations/registry.ts, e.g. `meta`.
@@ -5034,6 +5046,9 @@ model Call {
   analysis   AIAnalysis?
   callAudits CallAudit[]
 
+  objectionMatches ObjectionMatch[]
+  coachingNotes    CoachingNote[]
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, providerName, externalCallId])
@@ -5090,6 +5105,10 @@ model Transcript {
   tenantId   String
   callId     String   @unique
   content    String
+  /// Speaker-attributed segments, when the provider diarises:
+  /// `[{ speaker: "0", text: "...", startSec: 1.2 }]`. Empty when it does not —
+  /// the flat `content` is always authoritative, this is an extra view of it.
+  segments   Json     @default("[]")
   language   String   @default("en")
   provider   String?
   confidence Float?
@@ -5116,6 +5135,17 @@ model AIAnalysis {
   buyingSignals   Json           @default("[]")
   risks           Json           @default("[]")
   nextSteps       Json           @default("[]")
+  /// Concrete things the rep committed to doing, distinct from `commitments`
+  /// (what either side said) and `nextSteps` (the recommended play).
+  actionItems     Json           @default("[]")
+  /// Share of speech that was the rep, 0-1, computed from the transcript rather
+  /// than asked of the model — a ratio a model guesses at is not a measurement.
+  /// Null when the transcript carries no speaker attribution at all.
+  talkRatio       Float?
+  /// Which prompt produced this row. `modelId` says which model answered; this
+  /// says what it was asked, so a summary can be explained after the prompt has
+  /// moved on. Bumped by hand in src/lib/ai/analysis.ts.
+  promptVersion   String?
   topicsDiscussed Json           @default("[]")
   topicsMissed    Json           @default("[]")
   sentiment       String?
@@ -7226,4 +7256,170 @@ model PlatformSetting {
   value     String
   updatedBy String?
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATION INTELLIGENCE — objection playbook, roleplay practice, coaching
+//
+// Built on the call-intelligence tables that already exist: Recording holds the
+// audio, Transcript the text, AIAnalysis the structured insight and CallAudit
+// the scorecard result. Nothing below duplicates those — it adds the three
+// things they had no home for: what the workspace considers an objection, a
+// rep practising against one, and a manager writing to the rep about a call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A workspace's objection playbook entry.
+///
+/// `triggerPhrases` is what the customer says; `recommendedResponses` is what
+/// the workspace has decided a good answer sounds like. Both are the tenant's
+/// own words, which is why matching against them is deterministic (see
+/// src/lib/ai/callMetrics.ts) rather than asked of a model: an objection the
+/// workspace wrote down should be found the same way every time, including on
+/// a deployment with no model key at all.
+model Objection {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  name                 String
+  description          String?
+  tags                 String[]  @default([])
+  triggerPhrases       String[]  @default([])
+  recommendedResponses String[]  @default([])
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  createdById          String?
+  updatedById          String?
+  deletedAt            DateTime?
+
+  matches ObjectionMatch[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+/// One playbook entry found in one call's transcript.
+///
+/// Rewritten wholesale each time the call is analysed, so a playbook edit
+/// followed by a re-analysis produces the current answer rather than a union of
+/// every answer the playbook has ever given.
+model ObjectionMatch {
+  id          String   @id @default(cuid())
+  tenantId    String
+  callId      String
+  objectionId String
+  /// The trigger phrase that fired, and the line it fired on. Kept so a manager
+  /// can see *why* the call was flagged rather than trusting the label.
+  phrase      String
+  snippet     String
+  /// Whether the rep's own turns after that line drew on the recommended
+  /// response. A heuristic — see the note on `addressed` in callMetrics.ts.
+  addressed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  call      Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  objection Objection @relation(fields: [objectionId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, callId, objectionId, phrase])
+  @@index([tenantId, callId])
+  @@index([tenantId, objectionId])
+}
+
+enum PracticeScenario {
+  OPENER
+  DISCOVERY
+  OBJECTION
+  CLOSE
+}
+
+enum PracticeStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+/// A rep's text-based mock call against an AI prospect.
+///
+/// `turns` is the whole conversation as an ordered array of
+/// `{ role: "REP" | "PROSPECT", text, at }`. A row per turn would buy queries
+/// nobody runs — a session is only ever read whole, to replay it or to score it.
+model PracticeSession {
+  id          String           @id @default(cuid())
+  tenantId    String
+  userId      String
+  scenario    PracticeScenario
+  /// Set when the scenario is OBJECTION: which playbook entry to rehearse.
+  objectionId String?
+  /// The persona and situation handed to the model, frozen at start so a later
+  /// edit to the brief cannot change what an old session is scored against.
+  brief       String
+  turns       Json             @default("[]")
+  status      PracticeStatus   @default(IN_PROGRESS)
+  startedAt   DateTime         @default(now())
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  score PracticeScore?
+
+  user User @relation("PracticeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, startedAt(sort: Desc)])
+  @@index([tenantId, scenario, startedAt(sort: Desc)])
+}
+
+/// The rubric result for a finished practice session. One per session.
+model PracticeScore {
+  id           String         @id @default(cuid())
+  tenantId     String
+  sessionId    String         @unique
+  status       AnalysisStatus @default(PENDING)
+  overallScore Float?
+  maxScore     Float?
+  /// `[{ label, score, maxScore, comment }]` — the same shape CallAudit uses, so
+  /// the score table renders both.
+  rubricScores Json           @default("[]")
+  strengths    Json           @default("[]")
+  improvements Json           @default("[]")
+  modelId      String?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
+
+/// A manager's written coaching on a call.
+///
+/// Deliberately not a comment on the AIAnalysis row: coaching is about the
+/// conversation, and it must survive a re-analysis that replaces every field of
+/// the model's verdict.
+model CoachingNote {
+  id         String    @id @default(cuid())
+  tenantId   String
+  callId     String
+  authorId   String
+  body       String
+  /// Set when the rep marks the note as acted on. Null is the open state.
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  call   Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  author User @relation("CoachingAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, callId, createdAt(sort: Desc)])
+  @@index([tenantId, authorId])
 }

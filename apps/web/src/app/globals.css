@@ -79,10 +79,24 @@ body {
   display: flex;
   flex-direction: column;
 }
+/**
+ * Bottom padding clears the assistant button, it is not decoration.
+ *
+ * `.lf-ai-fab` is `position: fixed` at `bottom: 18px` and 52px tall, so it
+ * occupies the last 70px of the viewport at every scroll position. With 40px of
+ * padding the final rows of a long table came to rest underneath it with no
+ * further scroll available to reveal them — permanently hidden data, and on a
+ * wide table the horizontal scrollbar underneath it could not be dragged
+ * either. The safe area is the FAB's own footprint plus breathing room, so the
+ * end of a page always clears it.
+ *
+ * Kept as a token because the FAB's size and offset are defined elsewhere;
+ * anything else that docks bottom-right must reserve the same gutter.
+ */
 .lf-page-main {
   flex: 1;
   min-width: 0;
-  padding: 28px 32px 40px;
+  padding: 28px 32px var(--lf-fab-safe);
 }
 .lf-page-stack {
   display: grid;
@@ -597,7 +611,7 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .lf-page-main {
-    padding: 24px;
+    padding: 24px 24px var(--lf-fab-safe);
   }
 }
 @media (max-width: 760px) {

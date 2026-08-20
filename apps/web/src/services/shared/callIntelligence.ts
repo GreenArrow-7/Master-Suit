@@ -18,7 +18,9 @@ import { getObject } from '@/lib/storage';
 import { analyzeTranscript } from '@/lib/ai/analysis';
 import { auditCall } from '@/lib/ai/audit';
 import { connectionCredentials } from '@/lib/integrations/connection';
-import { getTranscriptionProvider } from '@/lib/integrations/transcription';
+import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
+import { matchObjections, segmentsToTranscript, talkToListen, type DiarisedSegment } from '@/lib/ai/callMetrics';
+import { ANALYSIS_PROMPT_VERSION } from '@/lib/ai/analysis';
 
 export interface CallJob {
   tenantId: string;
@@ -75,27 +77,46 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
   }
 
   const credentials = await connectionCredentials(tenantId, 'transcription');
-  if (!credentials?.provider) return skipped('no speech-to-text provider connected');
+  const provider = transcriptionProviderFor(credentials);
+  if (!provider) return skipped('no speech-to-text provider connected');
 
-  const result = await getTranscriptionProvider(credentials.provider, credentials).transcribe({
+  const result = await getTranscriptionProvider(provider, credentials ?? {}).transcribe({
     audio: await getObject(recording.storageKey),
     mimeType: recording.mimeType,
     language: job.language ?? 'en',
   });
   if (!result.text) return skipped('no speech recognised');
 
+  /**
+   * Speaker attribution is what makes the rest of the pipeline work: the
+   * talk-to-listen ratio counts words per side, and the objection matcher only
+   * looks at the customer's lines. A diarising provider hands back both a flat
+   * transcript and per-speaker segments, so the attributed rendering becomes the
+   * stored `content` and the raw segments are kept beside it.
+   */
+  const segments = (result.segments ?? []) as DiarisedSegment[];
+  const call = await prisma.call.findFirst({ where: { id: callId, tenantId }, select: { direction: true } });
+  const content = segments.length ? segmentsToTranscript(segments, call?.direction) : result.text;
+
   await prisma.transcript.upsert({
     where: { callId, tenantId },
     create: {
       tenantId,
       callId,
-      content: result.text,
+      content,
+      segments: segments as unknown as object,
       language: job.language ?? 'en',
       provider: result.provider,
       confidence: result.confidence,
-      wordCount: result.text.split(/\s+/).filter(Boolean).length,
+      wordCount: content.split(/\s+/).filter(Boolean).length,
     },
-    update: { content: result.text, provider: result.provider, confidence: result.confidence },
+    update: {
+      content,
+      segments: segments as unknown as object,
+      provider: result.provider,
+      confidence: result.confidence,
+      wordCount: content.split(/\s+/).filter(Boolean).length,
+    },
   });
 
   await enqueue('ai', 'analyse', { tenantId, callId });
@@ -112,6 +133,17 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
  * a job replayed while the first is still running, therefore produce one model
  * call rather than two — which matters because the second one is also billed.
  */
+/**
+ * A PROCESSING row older than this is treated as abandoned, not in flight.
+ *
+ * The claim below refuses to double-run a live analysis — but a process that
+ * died between claiming and finishing leaves PROCESSING behind forever, and
+ * with the claim honouring it forever, no re-run could ever repair the row.
+ * One model round-trip is capped at 60s with three attempts; fifteen minutes
+ * is far past anything still alive.
+ */
+export const ANALYSIS_STALE_MS = 15 * 60_000;
+
 export async function claimAnalysis(tenantId: string, callId: string): Promise<boolean> {
   const created = await prisma.aIAnalysis.createMany({
     data: [{ tenantId, callId, status: 'PROCESSING' }],
@@ -120,7 +152,15 @@ export async function claimAnalysis(tenantId: string, callId: string): Promise<b
   if (created.count > 0) return true;
 
   const claimed = await prisma.aIAnalysis.updateMany({
-    where: { callId, tenantId, status: { not: 'PROCESSING' } },
+    where: {
+      callId,
+      tenantId,
+      OR: [
+        { status: { not: 'PROCESSING' } },
+        // Abandoned by a dead process — reclaimable, see ANALYSIS_STALE_MS.
+        { status: 'PROCESSING', updatedAt: { lt: new Date(Date.now() - ANALYSIS_STALE_MS) } },
+      ],
+    },
     data: { status: 'PROCESSING', errorMessage: null },
   });
   return claimed.count > 0;
@@ -138,6 +178,18 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
   if (!transcript) return skipped('no transcript');
 
   if (!(await claimAnalysis(tenantId, callId))) return skipped('analysis already in progress');
+
+  /**
+   * The playbook pass runs before the model call, not after, and its failure
+   * mode is deliberately different: it needs no provider, no key and no quota,
+   * so a workspace whose model is down still gets "these objections came up and
+   * here is what we say about them" — the part of this screen a manager acts on.
+   */
+  await matchPlaybook(tenantId, callId, transcript.content).catch((err) =>
+    logger.warn({ err, callId }, 'objection playbook matching failed'),
+  );
+
+  const talk = talkToListen(transcript.content);
 
   try {
     const context = await campaignContext(tenantId, call.campaignId);
@@ -163,6 +215,12 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
         buyingSignals: result.buyingSignals,
         risks: result.risks,
         nextSteps: result.nextSteps,
+        actionItems: result.actionItems ?? [],
+        // Measured from the transcript, never taken from the model. Null when
+        // the transcript carries no speaker attribution at all — an absent
+        // ratio must stay absent rather than render as a balanced call.
+        talkRatio: talk.ratio,
+        promptVersion: ANALYSIS_PROMPT_VERSION,
         topicsDiscussed: result.topicsDiscussed,
         topicsMissed: result.topicsMissed,
         sentiment: result.sentiment,
@@ -220,9 +278,12 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
   if (!scorecard) return skipped('no active scorecard');
 
   // One audit per call per scorecard. A replayed job re-scores the existing row
-  // rather than stacking a second score against the same employee.
+  // rather than stacking a second score against the same employee. Stale
+  // PROCESSING (a dead process) is reclaimable — same rule as claimAnalysis.
   const existing = await prisma.callAudit.findFirst({ where: { callId, tenantId, scorecardId } });
-  if (existing?.status === 'PROCESSING') return skipped('audit already in progress');
+  if (existing?.status === 'PROCESSING' && existing.updatedAt.getTime() > Date.now() - ANALYSIS_STALE_MS) {
+    return skipped('audit already in progress');
+  }
 
   const row = existing
     ? await prisma.callAudit.update({
@@ -275,6 +336,36 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
     });
     throw err;
   }
+}
+
+// ── 2b. Objection playbook ───────────────────────────────────────────────────
+
+/**
+ * Rewrites a call's playbook matches from the current playbook.
+ *
+ * Delete-then-insert rather than upsert, because the answer is a function of the
+ * playbook as it is *now*: an entry that was retired, renamed or given different
+ * trigger phrases must stop matching, and an upsert would leave its old finding
+ * on the call forever. The unique key on (tenant, call, objection, phrase) makes
+ * the insert safe against a concurrent re-run.
+ */
+export async function matchPlaybook(tenantId: string, callId: string, transcript: string): Promise<number> {
+  const playbook = await prisma.objection.findMany({
+    where: { tenantId, isActive: true, deletedAt: null },
+    select: { id: true, name: true, triggerPhrases: true, recommendedResponses: true },
+  });
+  if (playbook.length === 0) return 0;
+
+  const hits = matchObjections(transcript, playbook);
+
+  await prisma.objectionMatch.deleteMany({ where: { tenantId, callId } });
+  if (hits.length === 0) return 0;
+
+  const written = await prisma.objectionMatch.createMany({
+    data: hits.map((hit) => ({ tenantId, callId, ...hit })),
+    skipDuplicates: true,
+  });
+  return written.count;
 }
 
 // ── Shared ───────────────────────────────────────────────────────────────────
