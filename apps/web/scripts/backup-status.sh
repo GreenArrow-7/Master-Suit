@@ -63,6 +63,29 @@ if [ "${AGE_HOURS}" -gt "${MAX_AGE_HOURS}" ]; then
         The schedule has stopped: systemctl status master-suite-backup.timer"
 fi
 
+# ── Did it leave the machine? ───────────────────────────────────────────────
+#
+# Enforced, unlike the verification below, and the difference is deliberate. A
+# backup that never left is not a weaker backup — on the failure it exists for,
+# the host being gone, it is no backup at all. So when a remote is configured
+# and the newest complete run has no `.shipped-at`, that is the same class of
+# problem as no backup existing.
+#
+# Only when one is configured: a deployment that has deliberately not set
+# BACKUP_REMOTE gets the warning backup.sh already prints, not a red status
+# check every morning for a choice somebody made.
+if [ -n "${BACKUP_REMOTE:-}" ]; then
+  if [ -f "${ROOT}/${NEWEST}/.shipped-at" ]; then
+    say "shipped off-host: $(cat "${ROOT}/${NEWEST}/.shipped-at")"
+  else
+    fail "the newest backup ${NEWEST} has never been shipped off this machine.
+        BACKUP_REMOTE is set, so this should have happened automatically:
+        journalctl -u master-suite-backup, then scripts/backup-ship.sh ${ROOT}/${NEWEST}"
+  fi
+else
+  say "note: BACKUP_REMOTE is unset — nothing has left this machine."
+fi
+
 # Reported, not enforced. Whether a verify has run recently is a judgement about
 # how much the restore path is trusted, and a hard failure here would make the
 # status check red for a reason that is not "we have no backup".

@@ -503,7 +503,10 @@ name:
 - **Single point of failure.** One VM. Postgres, Redis and object storage share
   it with the application. There is no failover and no point-in-time recovery —
   only the daily backup you scheduled above, which means the worst case is
-  losing up to a day of work.
+  losing up to a day of work. That backup is copied off the machine
+  automatically and the copy is verified (`BACKUP_REMOTE`, see
+  `docs/BACKUP-RECOVERY.md`); restoring *from* that copy is still a drill
+  somebody runs rather than a timer.
 - **Intra-VM traffic is plaintext.** Postgres, Redis, MinIO, ClamAV and the face
   engine all speak unencrypted on the Compose bridge. Redis at least now requires
   a password — it carries queue payloads and cached actor permissions, and it had

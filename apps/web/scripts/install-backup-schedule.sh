@@ -72,9 +72,23 @@ BACKUP_KEEP_MIN=3
 # How stale the newest backup may get before the daily freshness check fails.
 # 48 rather than 24 so a single missed night is not a page, while two are.
 BACKUP_MAX_AGE_HOURS=48
+
+# Where the backup is copied to once it is written. Until this is set, every
+# backup lives on the same disk as the thing it backs up — which on the failure
+# backups exist for, the host being gone, is no backup at all. The scheduled
+# unit sets BACKUP_REQUIRE_REMOTE=1, so it refuses to run until this has a
+# value. Any of:
+#
+#   /mnt/nas/master-suite            a mount, a second volume
+#   backups@host:/srv/master-suite   rsync over ssh
+#   s3://bucket/prefix               any S3-compatible store, via the aws CLI
+#   rclone:remote:path               anything rclone speaks
+#
+# The copy is verified after it lands — see scripts/backup-ship.sh.
+BACKUP_REMOTE=
 ENVFILE
   chmod 600 "${CONFIG}"
-  say "wrote ${CONFIG} — set BACKUP_PASSPHRASE in it before the first run."
+  say "wrote ${CONFIG} — set BACKUP_PASSPHRASE and BACKUP_REMOTE in it before the first run."
 else
   say "keeping existing ${CONFIG}"
 fi
@@ -113,7 +127,9 @@ cat <<NEXT
   2. Take one now and watch it:   systemctl start master-suite-backup.service
                                   journalctl -u master-suite-backup -f
   3. Prove it restores:           systemctl start master-suite-restore-verify.service
-  4. Ship ${BACKUP_ROOT} off this machine. A backup on the same disk as
+  4. Confirm BACKUP_REMOTE is set in ${CONFIG}. Backups are copied there and
+     verified automatically; the daily status check fails if one has not left
+     the machine. Older text used to ask you to do this by hand — see
      the thing it backs up is a copy, not a backup — nothing installed here does
      that step for you.
 

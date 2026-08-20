@@ -86,6 +86,16 @@ if [ "${BACKUP_REQUIRE_ENCRYPTION:-0}" = "1" ]; then
   command -v gpg >/dev/null || fail "BACKUP_REQUIRE_ENCRYPTION=1 but gpg is not installed."
 fi
 
+# Same reasoning, same place: the scheduled unit sets BACKUP_REQUIRE_REMOTE=1,
+# and discovering an hour later that there is nowhere to ship to leaves a
+# complete backup sitting on the disk it was meant to leave — which is the state
+# this whole flag exists to make impossible.
+if [ "${BACKUP_REQUIRE_REMOTE:-0}" = "1" ]; then
+  [ -n "${BACKUP_REMOTE:-}" ] ||
+    fail "BACKUP_REQUIRE_REMOTE=1 but BACKUP_REMOTE is unset. A backup on the same disk as the
+          thing it backs up is a copy, not a backup. Set it in /etc/master-suite/backup.env."
+fi
+
 mkdir -p "${DEST}/objects"
 
 # ── 1. Database ─────────────────────────────────────────────────────────────
@@ -159,7 +169,19 @@ else
   say "         Acceptable only while it stays on a disk already trusted with live data."
 fi
 
-# ── 5. Retention ────────────────────────────────────────────────────────────
+# ── 5. Off the machine ──────────────────────────────────────────────────────
+# Before retention, not after: if the shipment fails, `set -e` stops here and
+# nothing is pruned. Pruning after a failed shipment would be the one ordering
+# that can lose data — deleting old local backups on the night the new one did
+# not leave.
+if [ -n "${BACKUP_REMOTE:-}" ]; then
+  "$(dirname "$0")/backup-ship.sh" "${DEST}" || fail "the backup was written but could not be shipped off this machine."
+else
+  say "WARNING: BACKUP_REMOTE is unset — this backup has not left the machine."
+  say "         A backup on the same disk as the thing it backs up is a copy, not a backup."
+fi
+
+# ── 6. Retention ────────────────────────────────────────────────────────────
 # Only reached because every step above succeeded — `set -e` and the explicit
 # `fail`s see to that. A prune that can run after a failed dump would turn one
 # bad night into the loss of every backup.
@@ -193,5 +215,10 @@ done
 say "retained $((KEPT - PRUNED)) backup(s), pruned ${PRUNED}"
 
 say "done: ${DEST}"
-say "next: ship it off this machine, then prove it with"
-say "      scripts/restore-verify.sh ${DEST}"
+if [ -n "${BACKUP_REMOTE:-}" ]; then
+  say "next: prove it with  scripts/restore-verify.sh ${DEST}"
+else
+  say "next: ship it off this machine — set BACKUP_REMOTE and re-run, or"
+  say "      scripts/backup-ship.sh ${DEST}"
+  say "      then prove it with  scripts/restore-verify.sh ${DEST}"
+fi

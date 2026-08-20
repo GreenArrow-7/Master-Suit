@@ -13,8 +13,9 @@
 > Where a finding has moved, this document says so and names the change, so the
 > two revisions can be read as a before and after rather than as two opinions.
 >
-> **Two findings have been closed since this was written: P0-1 / W-2, "metrics
-> exist and nothing scrapes them", and P0-3 / M-5, "Redis has no AUTH".** The scores below are left as assessed at
+> **Findings closed since this was written: P0-1 / W-2 ("metrics exist and
+> nothing scrapes them"), P0-3 / M-5 ("Redis has no AUTH"), P2-2, P2-3, P3-6,
+> and the off-host half of P0-2.** The scores below are left as assessed at
 > `f1dd84e` rather than rewritten, for the same reason revision 1 was left
 > alone — an assessment that edits itself is no longer a record of anything.
 > The places a reader would otherwise act on the stale finding are annotated
@@ -1829,7 +1830,7 @@ application.**
 |      | Item                                                                                                                       | Reference |
 | ---- | -------------------------------------------------------------------------------------------------------------------------- | --------- |
 | P0-1 | Deploy Prometheus + Alertmanager against `/api/metrics` — **done**, `docs/OBSERVABILITY.md`                                | W-2       |
-| P0-2 | Automate the off-host backup copy and prove one **full** restore, including the object store                               | W-1, §9.3 |
+| P0-2 | Automate the off-host backup copy — **done**; proving a restore *from* that copy is still a drill, not a timer             | W-1, §9.3 |
 | P0-3 | Set `requirepass` on Redis in every Compose file — **done**                                                                | M-5       |
 
 #### P1 — Production · before paying customers

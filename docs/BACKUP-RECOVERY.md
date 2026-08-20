@@ -39,12 +39,57 @@ warns loudly and continues — unencrypted is acceptable only while the backup
 stays on a disk you already trust with the live data, which is to say only for
 the minutes before you ship it.
 
-**Ship it off the machine.** A backup on the same disk as the thing it backs up
-is a copy, not a backup:
+### Off the machine
+
+A backup on the same disk as the thing it backs up is a copy, not a backup: the
+most likely reason to need it — the VM is gone — is also the reason it would not
+be there. This used to be a line in this document asking you to run an upload by
+hand, which is a step that happens until the week it does not, with nothing
+anywhere noticing.
+
+Set `BACKUP_REMOTE` and `backup.sh` copies each run off the machine itself, then
+checks that it arrived:
 
 ```bash
-az storage blob upload-batch -d master-suite-backups -s /var/backups/master-suite/<stamp>
+BACKUP_REMOTE=s3://master-suite-backups/prod   # or any of the forms below
 ```
+
+| Form | Uses | For |
+| --- | --- | --- |
+| `/mnt/nas/master-suite` | `cp` | a mount, a second volume, a USB disk |
+| `file:///mnt/nas/master-suite` | `cp` | the same, written explicitly |
+| `backups@host:/srv/master-suite` | `rsync` over ssh | another machine you control |
+| `s3://bucket/prefix` | `aws s3 sync` | S3, MinIO, any S3-compatible store |
+| `rclone:remote:path` | `rclone` | Azure Blob, B2, GCS, Dropbox — anything rclone speaks |
+
+**The verification is the point, not the upload.** `aws s3 sync` and `rsync` both
+exit 0 for a transfer that moved less than everything — a full disk at the far
+end, a truncated object, a prefix typo that wrote somewhere nobody will look. So
+every mode re-reads what landed and compares it against the manifest: full
+checksums where the destination is readable from here, manifest round-trip plus
+per-artefact sizes for object stores.
+
+The manifest is copied **last**, after everything else has landed. A shipment
+interrupted halfway therefore leaves a directory with no manifest, and both
+`restore-verify.sh` and `backup-ship.sh` refuse a backup without one — so an
+incomplete copy can never be mistaken for a complete one.
+
+To re-ship a run by hand, or to check that an older copy is still intact:
+
+```bash
+scripts/backup-ship.sh /var/backups/master-suite/<stamp>                 # ship and verify
+BACKUP_SHIP_VERIFY_ONLY=1 scripts/backup-ship.sh /var/backups/...        # verify what is there
+```
+
+The second is worth running occasionally on its own. Bit rot on a cheap remote
+disk is real, and no upload-time check can catch something that decayed after it
+arrived.
+
+The scheduled unit sets `BACKUP_REQUIRE_REMOTE=1`, so a scheduled backup with no
+destination configured refuses at preflight rather than after an hour of
+dumping. And `backup-status.sh` **fails** — not warns — when the newest complete
+backup has no `.shipped-at`, because a backup that never left is not a weaker
+backup, it is no backup at all for the failure it exists for.
 
 ### Schedule
 
@@ -158,6 +203,28 @@ Exit 0 means all six checks passed:
 The last check is the one worth understanding: it fails both when the backup is
 missing objects the database expects, and when rows were deleted without their
 objects. Those are opposite bugs and this catches them from opposite sides.
+
+### Prove the copy you would actually use
+
+The weekly timer verifies the backup on **this** disk. In the disaster this
+exists for, that disk is gone and the copy you restore from is the off-host one
+— so at least once, prove that copy restores, not just the local original:
+
+```bash
+# a path-shaped BACKUP_REMOTE (a mount, a second volume) needs no fetch:
+scripts/restore-verify.sh /mnt/nas/master-suite/<stamp>
+
+# an object store: pull one back first, then verify it exactly as above
+aws s3 sync s3://master-suite-backups/prod/<stamp> /tmp/drill/<stamp>
+scripts/restore-verify.sh /tmp/drill/<stamp>
+```
+
+This is not yet a timer. `backup-ship.sh` proves the bytes arrived and stayed
+intact, and `restore-verify.sh` proves a backup is a database — but the
+composition of the two, on a schedule, needs a fetch step per remote type and a
+place to put a full copy. Until it exists this is a drill somebody runs, which
+is exactly the kind of instruction this document is elsewhere trying to replace
+with a unit file. Treat it as the known gap it is.
 
 ---
 

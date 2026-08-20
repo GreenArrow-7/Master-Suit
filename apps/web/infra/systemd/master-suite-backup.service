@@ -24,6 +24,10 @@ EnvironmentFile=__CONFIG__
 # machine, so it must not be written in plaintext. backup.sh refuses rather than
 # falling back to an unencrypted dump.
 Environment=BACKUP_REQUIRE_ENCRYPTION=1
+# Same shape, same reason: a scheduled backup that quietly stays on this disk is
+# the failure mode the schedule was installed to prevent. Refuses at preflight,
+# before an hour of dumping, rather than after.
+Environment=BACKUP_REQUIRE_REMOTE=1
 ExecStart=__APP_DIR__/scripts/backup.sh __BACKUP_ROOT__
 # A backup is IO-heavy and runs while the application is serving. Deprioritised
 # so a slow disk delays the backup rather than the customer.
