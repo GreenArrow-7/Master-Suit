@@ -160,17 +160,34 @@ export const envSchema = z.object({
    * CDN does not require a deploy here to keep ingesting recordings.
    */
   RECORDING_URL_ALLOWED_HOSTS: z.string().default(''),
-  SMS_PROVIDER: z.string().default('mock'),
-  /** Offer letters, contracts and policy acknowledgements. `mock` is blocked in production. */
-  ESIGNATURE_PROVIDER: z.string().default('mock'),
+  // SMS_PROVIDER and ESIGNATURE_PROVIDER were here, with a seam apiece in
+  // lib/integrations and a mock adapter behind each. Nothing in the application
+  // ever called either factory — the only import of either module was its own
+  // test — so the settings described a capability the product did not have, and
+  // the boot check below then refused to start production until an operator set
+  // them to a vendor string that would have thrown "Unknown provider" the first
+  // time anything used it. `.env.production.example` said so out loud.
+  //
+  // Same rule as IMPORT_CHUNK_SIZE further down: a setting for a feature that
+  // does not exist is not forward planning, it is a claim. Both come back with
+  // the code that reads them, and an interface designed against a real vendor's
+  // API beats one guessed at in advance.
   WHATSAPP_PROVIDER: z.string().default('mock'),
   /** `clamav` in any deployed environment; `mock` is test-only and blocked in production. */
   ANTIVIRUS_PROVIDER: z.string().default('mock'),
   CLAMAV_HOST: z.string().default('127.0.0.1'),
   CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
   ANTIVIRUS_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  AI_PROVIDER: z.string().default('mock'),
-  AI_API_KEY: z.string().optional(),
+  // AI_PROVIDER and AI_API_KEY were here and neither was read anywhere. Which
+  // model runs is not a choice this setting made: lib/ai/gemini.ts resolves a
+  // key per workspace, falling back to GEMINI_API_KEY on the deployment, and
+  // *no key* is what selects the simulated path — never a provider string. So
+  // AI_PROVIDER=mock blocked a production boot while deciding nothing, and an
+  // operator who set it to `gemini` and forgot the key still got simulation.
+  //
+  // Deliberately not repointed at GEMINI_API_KEY. Whether a deployment must
+  // hold its own key is an owner's call and the design says otherwise — a
+  // tenant bringing its own key is the intended path, and gemini.ts prefers it.
   /**
    * The key call analysis, call audits and live coaching actually read. Unset
    * means those features run in clearly-labelled simulation mode — fine for a
@@ -286,14 +303,7 @@ export const envSchema = z.object({
 });
 
 /** Providers that must be real before the server serves a request. */
-export const PROVIDER_KEYS = [
-  'EMAIL_PROVIDER',
-  'SMS_PROVIDER',
-  'ESIGNATURE_PROVIDER',
-  'WHATSAPP_PROVIDER',
-  'ANTIVIRUS_PROVIDER',
-  'AI_PROVIDER',
-] as const;
+export const PROVIDER_KEYS = ['EMAIL_PROVIDER', 'WHATSAPP_PROVIDER', 'ANTIVIRUS_PROVIDER'] as const;
 
 /**
  * `next build` sets NODE_ENV=production and evaluates this module while

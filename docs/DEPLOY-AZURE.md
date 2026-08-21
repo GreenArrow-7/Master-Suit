@@ -292,17 +292,31 @@ tell the difference:
 | --- | --- |
 | `EMAIL_PROVIDER=smtp` | Real (nodemailer). Configure it — password resets are undeliverable otherwise. |
 | `ANTIVIRUS_PROVIDER=clamav` | Real, and running in this stack. |
-| `TELEPHONY_PROVIDER=hmac` | Real. |
 | `WHATSAPP_PROVIDER=meta` | Real (Meta Cloud API), configured per tenant in the integrations UI. |
-| `SMS_PROVIDER`, `ESIGNATURE_PROVIDER`, `AI_PROVIDER` | **No adapter exists.** |
 
-For the last three, `src/lib/integrations/*.ts` has a `switch` with a `mock` case
-and a commented placeholder where a vendor would go. Any non-`mock` value gets
-past the boot check and then throws `Unknown provider` the first time the feature
-is used — so SMS and e-signature are effectively unavailable, not merely
-unconfigured. The example file sets them to `unconfigured` to make that visible
-rather than pretending. Implement the adapter before promising either to a
-tenant.
+Three settings are gone from this table and from every `.env` example, because
+none of them was read by anything:
+
+* **`SMS_PROVIDER`** and **`ESIGNATURE_PROVIDER`** selected a seam in
+  `src/lib/integrations` that had a `mock` adapter, a commented vendor slot and
+  no caller anywhere in the application. Setting them changed nothing except
+  whether the process agreed to start; the example file said as much, telling
+  you to write `unconfigured` to get past a check that protected nothing. SMS
+  and e-signature remain **unavailable, not merely unconfigured** — that has not
+  changed, only the settings implying otherwise. They come back with the code
+  that sends a message or opens a signing envelope.
+* **`AI_PROVIDER`** (and `AI_API_KEY` beside it) selected nothing either.
+  `src/lib/ai/gemini.ts` takes the workspace's own key first and the
+  deployment's `GEMINI_API_KEY` second, and having *no* key is what puts the AI
+  features into their labelled simulation — never a provider string. An operator
+  who set `AI_PROVIDER=gemini` and forgot the key still got simulation.
+* **`TELEPHONY_PROVIDER`** was already removed from `.env.example` for the same
+  reason and had survived in the deployed copies: which vendor a workspace calls
+  with is per-tenant, in `organizationSetting.telephonyProvider`.
+
+Configure AI, if you want it, by setting `GEMINI_API_KEY` here or by connecting
+a key per workspace under Settings → Integrations. The second is the intended
+path — a tenant on its own key gets its own quota and its own bill.
 
 ### `SMTP_HOST` had to be restated in the Azure overlay
 

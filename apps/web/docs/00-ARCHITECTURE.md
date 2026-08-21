@@ -160,6 +160,12 @@ leadflow-crm/
 
 ## 8. Environment variables
 
+The authoritative list is `apps/web/.env.example`, which is the literal input
+`npm run secrets` copies and every process parses at boot; a unit test checks it
+against the schema in both directions, so a key here that is not there is a
+drifted copy rather than a second source. This section is the shape of the
+configuration, not its inventory.
+
 ```dotenv
 # ── Core ────────────────────────────────────────────────
 NODE_ENV=production
@@ -198,18 +204,19 @@ S3_FORCE_PATH_STYLE=true
 SIGNED_URL_TTL_SECONDS=300
 
 # ── Providers (mock by default; change the key to go live) ─
-EMAIL_PROVIDER=mock                   # mock | smtp | ses | sendgrid
-SMS_PROVIDER=mock                     # mock | twilio | unifonic
-WHATSAPP_PROVIDER=mock                # mock | meta_cloud | 360dialog
-TELEPHONY_PROVIDER=mock
-ANTIVIRUS_PROVIDER=mock
-AI_PROVIDER=mock                      # mock | anthropic
-AI_API_KEY=
+# Only the three that a process actually reads. SMS_PROVIDER,
+# ESIGNATURE_PROVIDER, TELEPHONY_PROVIDER, AI_PROVIDER and AI_API_KEY were
+# listed here and none of them was read anywhere: the first two had a seam with
+# no caller, telephony is a per-tenant choice in organizationSetting, and which
+# model runs is decided by whether a Gemini key exists.
+EMAIL_PROVIDER=mock                   # mock | smtp
+WHATSAPP_PROVIDER=mock                # mock | meta
+ANTIVIRUS_PROVIDER=mock               # mock | clamav
+GEMINI_API_KEY=                       # unset runs the AI features as labelled simulation
 
 # ── Limits ──────────────────────────────────────────────
 API_RATE_LIMIT_PER_MIN=600
 EXPORT_MAX_ROWS=500000
-IMPORT_CHUNK_SIZE=5000
 UPLOAD_MAX_MB=25
 
 # ── Observability ───────────────────────────────────────

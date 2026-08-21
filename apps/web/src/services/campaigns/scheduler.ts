@@ -80,9 +80,19 @@ export async function sweepDueCampaigns(now = new Date()) {
       summary.sent += sentTotal;
     }
 
-    // Started — even a WhatsApp campaign with nothing eligible to send, and
-    // every VOICE/EMAIL/SMS campaign whose channel is worked by other flows
-    // (the dialer queue reads RUNNING campaigns, not the clock).
+    // Started — even a WhatsApp campaign with nothing eligible to send.
+    //
+    // A VOICE campaign is started for the dialer, which works its
+    // `CampaignContact` rows whenever an agent opens it; the route selects the
+    // campaign's status and does not read it, so RUNNING is a label here rather
+    // than a gate. Whether a COMPLETED campaign should still be diallable is an
+    // open question and not one this sweep should answer quietly.
+    //
+    // An EMAIL or SMS campaign is started too, and nothing works it: there is no
+    // sender and no worker for either, and `EmailCampaign` is a table with no
+    // code behind it. This comment used to say all three were "worked by other
+    // flows", which was true of one of them. The composer and the send route now
+    // say the same thing to the operator rather than leaving it here.
     await prisma.campaign.update({
       where: { id: campaign.id, tenantId: campaign.tenantId },
       data: { status: 'RUNNING' },

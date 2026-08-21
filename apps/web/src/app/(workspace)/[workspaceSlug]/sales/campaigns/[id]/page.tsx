@@ -60,6 +60,13 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
   const delivered = (delivery.DELIVERED ?? 0) + (delivery.READ ?? 0);
   const attempted = deliveryRows.reduce((sum, row) => sum + row._count._all, 0);
 
+  // Only WhatsApp campaigns can be sent — services/campaigns/send hard-codes the
+  // channel, and the API refuses the rest rather than quietly sending WhatsApp
+  // to an SMS campaign's audience. Rendering the card here anyway would be the
+  // same promise made one step earlier, so the page asks the same question the
+  // server does. An unset channel is a pre-default row and still sends.
+  const sendable = !campaign.channel || campaign.channel === 'WHATSAPP';
+
   // Mirrors the server-side eligibility rule in /api/v1/campaigns/[id]/send so the
   // button never promises to reach leads that consent will exclude.
   const eligible = await prisma.lead.count({
@@ -106,7 +113,20 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
 
       {can(ctx, 'campaigns', 'EDIT') && (
         <div style={{ display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-5)' }}>
-          <CampaignSend campaignId={campaign.id} eligible={eligible} />
+          {sendable ? (
+            <CampaignSend campaignId={campaign.id} eligible={eligible} />
+          ) : (
+            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+                Promotional send
+              </div>
+              <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+                {campaign.channel === 'VOICE'
+                  ? 'This is a calling campaign. Its audience is worked from the dialer, not sent to — “Open dialer” above.'
+                  : `This is a ${campaign.channel?.toLowerCase()} campaign, and nothing sends those yet. Only WhatsApp campaigns can be sent from here.`}
+              </p>
+            </section>
+          )}
           <AudiencePicker campaignId={campaign.id} />
         </div>
       )}

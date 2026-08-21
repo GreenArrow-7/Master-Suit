@@ -53,22 +53,21 @@ const GENERATED: Record<string, string> = {
   WEBHOOK_SIGNING_PEPPER: Buffer.from([...Array(32)].map((_, i) => (i * 53 + 7) % 251)).toString('base64'),
 };
 
-describe.each(['.env.example', '.env.test.example', '.env.production.example', '.env.staging.example'])(
-  '%s',
-  (file) => {
-    it('parses against the schema every process boots with', () => {
-      const declared = parseEnvFile(file);
-      const result = envSchema.safeParse({ ...declared, ...GENERATED });
+const EXAMPLES = ['.env.example', '.env.test.example', '.env.production.example', '.env.staging.example'];
 
-      // Report the offending keys, not "invalid": this failing at all means
-      // somebody is one push away from a red CI they cannot reproduce.
-      const issues = result.success
-        ? []
-        : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
-      expect(issues).toEqual([]);
-    });
-  },
-);
+describe.each(EXAMPLES)('%s', (file) => {
+  it('parses against the schema every process boots with', () => {
+    const declared = parseEnvFile(file);
+    const result = envSchema.safeParse({ ...declared, ...GENERATED });
+
+    // Report the offending keys, not "invalid": this failing at all means
+    // somebody is one push away from a red CI they cannot reproduce.
+    const issues = result.success
+      ? []
+      : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+    expect(issues).toEqual([]);
+  });
+});
 
 describe('the example files and the schema agree in both directions', () => {
   it('declares every variable the schema requires', () => {
@@ -82,20 +81,24 @@ describe('the example files and the schema agree in both directions', () => {
     expect(missing).toEqual([]);
   });
 
-  it('declares nothing that no longer has a consumer', () => {
-    /**
-     * A key in the example that nothing reads is a variable somebody will set
-     * and expect to have an effect — the CSP-nonce comment problem in
-     * configuration form. This check found `TELEPHONY_PROVIDER=mock` sitting in
-     * the list beside SMS_PROVIDER and WHATSAPP_PROVIDER, which *are* read at
-     * boot; the telephony vendor is a per-tenant choice in
-     * organizationSetting.telephonyProvider and no process-wide setting can
-     * decide it.
-     *
-     * Not every key belongs to lib/env.ts, so the ones read elsewhere are listed
-     * with where they are read. Adding a name here is a claim that something
-     * consumes it, and one worth having to write down.
-     */
+  /**
+   * A key in an example file that nothing reads is a variable somebody will set
+   * and expect to have an effect — the CSP-nonce comment problem in
+   * configuration form. This check found `TELEPHONY_PROVIDER=mock` sitting in
+   * the list beside `SMS_PROVIDER` and `WHATSAPP_PROVIDER`; the telephony vendor
+   * is a per-tenant choice in organizationSetting.telephonyProvider and no
+   * process-wide setting can decide it.
+   *
+   * It ran over `.env.example` alone, which is why the same `TELEPHONY_PROVIDER`
+   * line survived in `.env.test.example` and `SMS_PROVIDER=unconfigured` in the
+   * two deployed ones — an operator reads the file for the environment they are
+   * deploying, and those are the copies that mislead. Every example file now.
+   *
+   * Not every key belongs to lib/env.ts, so the ones read elsewhere are listed
+   * with where they are read. Adding a name here is a claim that something
+   * consumes it, and one worth having to write down.
+   */
+  it.each(EXAMPLES)('%s declares nothing that no longer has a consumer', (file) => {
     const READ_ELSEWHERE: Record<string, string> = {
       PORT: 'Next itself, and prisma/seed',
       SHADOW_DATABASE_URL: 'prisma.config.ts, for `migrate dev`',
@@ -104,9 +107,24 @@ describe('the example files and the schema agree in both directions', () => {
       PLATFORM_OWNER_PASSWORD: 'prisma/seed and the e2e helpers',
       PLATFORM_OWNER_MFA_SECRET: 'prisma/seed and scripts/owner-mfa.mjs',
       FACE_SERVICE_TOKEN_PREVIOUS: 'apps/face/tokens.py, during a token rotation',
+      RLS_DATABASE_URL: 'scripts/check-rls.mjs and the tenant suites; never the app',
+      POSTGRES_PASSWORD: 'Compose, for the postgres image’s own superuser',
+      ALERT_EMAIL_TO: 'infra/alertmanager-entrypoint.sh',
+      ALERT_PAGE_EMAIL_TO: 'infra/alertmanager-entrypoint.sh, for severity=page',
+      ALERT_EMAIL_FROM: 'infra/alertmanager-entrypoint.sh',
+      ALERT_WEBHOOK_URL: 'infra/alertmanager-entrypoint.sh',
+      PROMETHEUS_RETENTION: 'infra/prometheus-entrypoint.sh',
+      APP_DOMAIN: 'infra/Caddyfile, via the azure overlay',
+      ACME_EMAIL: 'infra/Caddyfile, for the Let’s Encrypt account',
+      // The one entry here whose consumer is a person rather than a process:
+      // DEPLOY-AZURE.md and DEPLOY-STAGING.md have the operator run `ALTER ROLE
+      // master_saas_app PASSWORD '<APP_DB_PASSWORD …>'` by hand, and the same
+      // value appears inside DATABASE_URL. Nothing reads the variable, so this
+      // is a claim that the runbook does — check the runbook before deleting it.
+      APP_DB_PASSWORD: 'docs/DEPLOY-AZURE.md and docs/DEPLOY-STAGING.md, by hand',
     };
     const accounted = new Set([...Object.keys(envSchema.shape), ...Object.keys(READ_ELSEWHERE)]);
-    const orphans = Object.keys(parseEnvFile('.env.example')).filter((name) => !accounted.has(name));
+    const orphans = Object.keys(parseEnvFile(file)).filter((name) => !accounted.has(name));
     expect(orphans).toEqual([]);
   });
 });

@@ -9,11 +9,21 @@ import { useRouter } from 'next/navigation';
  * scripts, WhatsApp send, dialer).
  */
 const TYPES = ['OUTBOUND', 'CALLING', 'NURTURE', 'EVENT', 'PROMOTION'] as const;
+
+/**
+ * The channel, and what picking it actually gets you today.
+ *
+ * All four were offered with nothing to distinguish them, and only two are
+ * worked: WhatsApp by services/campaigns/send, Calls by the dialer. Email and
+ * SMS had no sender and no worker, so a campaign created on either sat at
+ * RUNNING forever — and pressing Send on it used to send WhatsApp. Saying so at
+ * the point of choice is cheaper than the discovery afterwards.
+ */
 const CHANNELS = [
-  ['WHATSAPP', 'WhatsApp'],
-  ['VOICE', 'Calls'],
-  ['EMAIL', 'Email'],
-  ['SMS', 'SMS'],
+  ['WHATSAPP', 'WhatsApp', 'Sent from the campaign page, or by the scheduler, using an approved template.'],
+  ['VOICE', 'Calls', 'Worked from the dialer: load a queue and the floor calls through it.'],
+  ['EMAIL', 'Email', 'Records the campaign only — nothing sends email campaigns yet.'],
+  ['SMS', 'SMS', 'Records the campaign only — nothing sends SMS yet.'],
 ] as const;
 
 const EMPTY = {
@@ -151,6 +161,9 @@ export default function CampaignComposer() {
               </option>
             ))}
           </select>
+          <p className="lf-hint" style={{ margin: '4px 0 0' }}>
+            {CHANNELS.find(([value]) => value === form.channel)?.[2]}
+          </p>
         </div>
 
         <div className="lf-field">
