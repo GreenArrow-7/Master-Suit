@@ -26,12 +26,25 @@
 # that actually happen.
 #
 # The strongest proof is not here: it is restore-verify.sh run against a copy
-# pulled back from the remote, which the weekly unit does. This script proves
-# the bytes are there; that one proves they are a database.
+# pulled *back* from the remote. This script proves the bytes are there; that
+# one proves they are a database.
+#
+# That sentence used to end "which the weekly unit does", and the weekly unit
+# did not. It ran restore-verify.sh against `<backup-root>/latest` — the local
+# directory — so what had been proven restorable was the copy on the disk that
+# is gone in the disaster this whole feature exists for. Nothing had ever pulled
+# a backup back. `--pull` below is the missing half, and
+# `restore-verify.sh --prefer-remote` is what the unit runs now.
 #
 # ── Usage ───────────────────────────────────────────────────────────────────
 #
 #   BACKUP_REMOTE=... scripts/backup-ship.sh /var/backups/master-suite/20260820T031500Z
+#
+#   # Fetch one back — into a directory this creates, never over the original:
+#   BACKUP_REMOTE=... BACKUP_SHIP_PULL=/var/tmp/pulled scripts/backup-ship.sh 20260820T031500Z
+#
+#   # What is actually on the remote, which is the first question in a disaster:
+#   BACKUP_REMOTE=... BACKUP_SHIP_LIST=1 scripts/backup-ship.sh
 #
 # BACKUP_REMOTE takes any of:
 #
@@ -45,16 +58,25 @@
 # set. Run by hand to re-ship a backup that failed to leave.
 set -Eeuo pipefail
 
-SRC="${1:?usage: backup-ship.sh <backup-directory>}"
+PULL_TO="${BACKUP_SHIP_PULL:-}"
+LIST_ONLY="${BACKUP_SHIP_LIST:-0}"
+
+SRC="${1:-}"
+[ "${LIST_ONLY}" = "1" ] || SRC="${1:?usage: backup-ship.sh <backup-directory>}"
 SRC="${SRC%/}"
+# For a pull the argument is a stamp, not a directory: the local copy is exactly
+# what a real disaster no longer has, so requiring one would make this work only
+# when it is not needed.
 STAMP="$(basename "${SRC}")"
 REMOTE="${BACKUP_REMOTE:?BACKUP_REMOTE is not set — there is nowhere to ship to.}"
 
 fail() { printf '\n[ship] %s\n\n' "$1" >&2; exit 1; }
 say()  { printf '[ship] %s\n' "$1"; }
 
-[ -d "${SRC}" ]                  || fail "no such backup directory: ${SRC}"
-[ -f "${SRC}/manifest.txt" ]     || fail "${SRC} has no manifest.txt — refusing to ship an incomplete backup."
+if [ -z "${PULL_TO}" ] && [ "${LIST_ONLY}" != "1" ]; then
+  [ -d "${SRC}" ]                || fail "no such backup directory: ${SRC}"
+  [ -f "${SRC}/manifest.txt" ]   || fail "${SRC} has no manifest.txt — refusing to ship an incomplete backup."
+fi
 
 # The manifest is written last by backup.sh, so its presence means the dump, the
 # mirror and the encryption all finished. Shipping a directory mid-write would
@@ -71,6 +93,75 @@ case "${REMOTE}" in
   *:*)               MODE=rsync  ;;
   *) fail "BACKUP_REMOTE=${REMOTE} is not a destination this understands. See the header of this script." ;;
 esac
+remote_dir() {
+  case "${MODE}" in
+    rclone) local d="${REMOTE#rclone:}"; printf '%s/%s' "${d%/}" "$1" ;;
+    *)      printf '%s/%s' "${REMOTE%/}" "$1" ;;
+  esac
+}
+
+# ── What is on the remote ───────────────────────────────────────────────────
+#
+# The first question in an actual disaster, and until now one with no answer
+# from here: the operator had to know the transport and drive it by hand at the
+# worst possible moment. Newest last, matching the stamp order everything else
+# in this feature sorts by.
+if [ "${LIST_ONLY}" = "1" ]; then
+  case "${MODE}" in
+    local)  find "${REMOTE%/}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort ;;
+    rsync)  ${BACKUP_SSH:-ssh} "${REMOTE%%:*}" "ls -1 '${REMOTE#*:}'" 2>/dev/null | sort ;;
+    s3)     need aws
+            aws s3 ls "${REMOTE%/}/" 2>/dev/null | awk '$1=="PRE"{gsub("/","",$2); print $2}' | sort ;;
+    rclone) need rclone
+            rclone lsd "$(remote_dir '')" 2>/dev/null | awk '{print $NF}' | sort ;;
+  esac
+  exit 0
+fi
+
+# ── Fetching one back ───────────────────────────────────────────────────────
+#
+# The half that was missing. `backup-ship.sh` could put a backup off-host and
+# prove the bytes landed; nothing could bring one home, so nothing had ever
+# demonstrated that the off-host copy is a restorable database rather than a
+# directory of the right size.
+#
+# Into a directory of its own, never over the source: a pull that overwrote the
+# local backup would destroy the good copy with the one under suspicion.
+#
+# What comes back is checked by restore-verify.sh against the manifest that came
+# back with it, which is internal consistency rather than fidelity to the
+# original — a remote holding a consistently-corrupted pair would pass that
+# check. What catches it is the step after: the row counts are reconciled
+# against a database actually restored from those bytes, and a truncated dump
+# cannot produce the manifest's counts.
+if [ -n "${PULL_TO}" ]; then
+  OUT="${PULL_TO%/}/${STAMP}"
+  [ -e "${OUT}" ] && fail "${OUT} already exists — refusing to pull over it."
+  mkdir -p "${OUT}" || fail "cannot create ${OUT}"
+  FROM="$(remote_dir "${STAMP}")"
+  say "pulling ${STAMP} back from ${FROM} ..."
+  case "${MODE}" in
+    local)  [ -d "${FROM}" ] || fail "${FROM} does not exist on the remote."
+            cp -a "${FROM}/." "${OUT}/" || fail "could not copy ${FROM}" ;;
+    rsync)  need rsync
+            rsync -a -e "${BACKUP_SSH:-ssh}" "${FROM}/" "${OUT}/" || fail "rsync from ${FROM} failed." ;;
+    s3)     need aws
+            aws s3 sync "${FROM}/" "${OUT}/" --only-show-errors || fail "aws s3 sync from ${FROM} failed." ;;
+    rclone) need rclone
+            rclone copy "${FROM}/" "${OUT}/" || fail "rclone copy from ${FROM} failed." ;;
+  esac
+
+  # The same rule the ship path applies in the other direction, and for the same
+  # reason: the manifest is placed last, so a copy without one is a shipment
+  # that never finished. Better to say so here than to have restore-verify.sh
+  # discover it after decrypting a hundred gigabytes.
+  [ -f "${OUT}/manifest.txt" ] || fail "the copy at ${FROM} has no manifest.txt — it is incomplete. Do not restore from it."
+
+  say "pulled $(find "${OUT}" -type f | wc -l | tr -d ' ') artefact(s) into ${OUT}"
+  printf '%s\n' "${OUT}"
+  exit 0
+fi
+
 # Verification without copying: confirms a shipment that already happened is
 # still intact. Worth having on its own — "is last night's copy still there and
 # still the right bytes" is a question with an answer, and bit rot on a cheap
@@ -78,7 +169,15 @@ esac
 # what makes the verification below testable in isolation.
 VERIFY_ONLY="${BACKUP_SHIP_VERIFY_ONLY:-0}"
 
-say "${VERIFY_ONLY:+re-}$([ "${VERIFY_ONLY}" = "1" ] && echo "verifying" || echo "shipping") ${STAMP} $([ "${VERIFY_ONLY}" = "1" ] && echo "at" || echo "to") ${REMOTE} (${MODE})"
+# `${VERIFY_ONLY:+re-}` was here and always expanded: the variable holds the
+# string "0" when off, which is non-empty, so every ordinary shipment announced
+# itself as a *re*-shipment. Harmless until somebody reads a log to work out
+# whether a backup left the machine once or twice.
+if [ "${VERIFY_ONLY}" = "1" ]; then
+  say "re-verifying ${STAMP} at ${REMOTE} (${MODE})"
+else
+  say "shipping ${STAMP} to ${REMOTE} (${MODE})"
+fi
 
 # Every artefact the backup produced, relative to SRC. Used both to copy and to
 # check, so the two cannot disagree about what "everything" means.

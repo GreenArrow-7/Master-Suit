@@ -224,6 +224,22 @@ jobs:
       - name: Face token gate
         run: python3 ../face/test_tokens.py
 
+      # ── Gate 3f — the backup can come home ────────────────────────────────
+      #
+      # scripts/backup-ship.sh and scripts/restore-verify.sh decide whether this
+      # deployment is recoverable, and had no tests at all. One of the things
+      # the header of the first asserted was false: that the weekly unit ran a
+      # restore against a copy pulled back from the remote. It ran one against
+      # the local directory, and nothing could pull a copy back, because that
+      # code did not exist.
+      #
+      # This drives the `local` transport end to end — ship, list, pull,
+      # compare — plus the four refusals. The s3, rclone and rsync branches need
+      # a real remote and are not covered; what is covered is the shell, which
+      # is where this feature's failures have actually lived.
+      - name: Backup round trip
+        run: scripts/test-backup-roundtrip.sh
+
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #
       # A skipped test is a failure here. `describe.skip` and `it.skip` are the

@@ -89,9 +89,21 @@ fi
 # Reported, not enforced. Whether a verify has run recently is a judgement about
 # how much the restore path is trusted, and a hard failure here would make the
 # status check red for a reason that is not "we have no backup".
-LATEST_VERIFY="$(find "${ROOT}" -maxdepth 2 -name '.verified-at' -printf '%T@\n' 2>/dev/null | sort -n | tail -1)"
-if [ -n "${LATEST_VERIFY}" ]; then
-  say "last restore verification: $(( ( $(date -u +%s) - ${LATEST_VERIFY%.*} ) / 86400 ))d ago"
+LATEST_MARKER="$(find "${ROOT}" -maxdepth 2 -name '.verified-at' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)"
+if [ -n "${LATEST_MARKER}" ]; then
+  MARKER_AGE="$(( ( $(date -u +%s) - ${LATEST_MARKER%% *} ) / 86400 ))"
+  MARKER_PATH="${LATEST_MARKER#* }"
+  # Which copy, not just when. "Verified 3 days ago" means two different things
+  # depending on whether the bytes had left this machine, and the weaker of the
+  # two is the one that was true for every verification before this existed.
+  # Markers written then hold nothing, hence the fallback.
+  PROVEN="$(awk '{print $2}' "${MARKER_PATH}" 2>/dev/null)"
+  say "last restore verification: ${MARKER_AGE}d ago (${PROVEN:-copy on this host})"
+  if [ -n "${BACKUP_REMOTE:-}" ] && [ "${PROVEN:-local}" != "off-host" ]; then
+    say "note: the last proven restore was of the copy on this host. The off-host copy is
+        the one that exists when this host does not — the weekly timer proves that one now,
+        or: scripts/restore-verify.sh --from-remote ${NEWEST}"
+  fi
 else
   say "note: no restore has been verified yet — scripts/restore-verify.sh, or the weekly timer."
 fi

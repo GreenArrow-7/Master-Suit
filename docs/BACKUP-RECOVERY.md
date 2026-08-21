@@ -104,7 +104,7 @@ That writes six systemd units and starts three timers:
 | Timer | When | What it does |
 | --- | --- | --- |
 | `master-suite-backup` | 02:30 daily | `backup.sh`, with encryption required |
-| `master-suite-restore-verify` | Sun 04:00 | `restore-verify.sh` against `latest` |
+| `master-suite-restore-verify` | Sun 04:00 | `restore-verify.sh --prefer-remote` — pulls `latest` back from `BACKUP_REMOTE` and restores **that** |
 | `master-suite-backup-status` | 09:00 daily | fails if the newest backup is stale |
 
 02:30 is half an hour before the maintenance worker's retention sweep at 03:00,
@@ -204,27 +204,52 @@ The last check is the one worth understanding: it fails both when the backup is
 missing objects the database expects, and when rows were deleted without their
 objects. Those are opposite bugs and this catches them from opposite sides.
 
-### Prove the copy you would actually use
+### The copy you would actually use is the one that gets proven
 
-The weekly timer verifies the backup on **this** disk. In the disaster this
+The weekly timer used to verify the backup on **this** disk. In the disaster it
 exists for, that disk is gone and the copy you restore from is the off-host one
-— so at least once, prove that copy restores, not just the local original:
+— so what had been proven restorable was the copy that will not be there.
+
+It fetches now. `restore-verify.sh --prefer-remote` pulls the run back from
+`BACKUP_REMOTE`, restores *that*, and deletes the fetched copy on the way out;
+the marker it leaves beside the local run records **which copy** was proven, and
+`backup-status.sh` reports it, because "verified 3 days ago" means two different
+things depending on whether the bytes had left the machine.
+
+With no remote configured it says so and falls back to the local copy rather
+than failing the timer — a deployment that has deliberately chosen not to ship
+should not go red every Sunday for a decision somebody made.
+
+By hand, and in an actual disaster:
 
 ```bash
-# a path-shaped BACKUP_REMOTE (a mount, a second volume) needs no fetch:
-scripts/restore-verify.sh /mnt/nas/master-suite/<stamp>
+# What is on the remote? The first question, and until recently one you had to
+# answer by knowing the transport and driving it yourself.
+BACKUP_REMOTE=s3://master-suite-backups/prod scripts/backup-ship.sh   # with BACKUP_SHIP_LIST=1
 
-# an object store: pull one back first, then verify it exactly as above
-aws s3 sync s3://master-suite-backups/prod/<stamp> /tmp/drill/<stamp>
-scripts/restore-verify.sh /tmp/drill/<stamp>
+# Prove a specific off-host run, with no local copy involved at all:
+BACKUP_PASSPHRASE='...' BACKUP_REMOTE=s3://master-suite-backups/prod \
+  scripts/restore-verify.sh --from-remote 20260820T031500Z
+
+# Fetch one without verifying it — into a new directory, never over the original:
+BACKUP_REMOTE=... BACKUP_SHIP_PULL=/var/tmp/drill scripts/backup-ship.sh 20260820T031500Z
 ```
 
-This is not yet a timer. `backup-ship.sh` proves the bytes arrived and stayed
-intact, and `restore-verify.sh` proves a backup is a database — but the
-composition of the two, on a schedule, needs a fetch step per remote type and a
-place to put a full copy. Until it exists this is a drill somebody runs, which
-is exactly the kind of instruction this document is elsewhere trying to replace
-with a unit file. Treat it as the known gap it is.
+`--from-remote` refuses when `BACKUP_REMOTE` is unset rather than quietly
+verifying the local copy: that flag is somebody asking for the off-host one
+specifically, and answering with the wrong copy would be a lie in the one
+situation where it matters most.
+
+**Cost.** The weekly run now transfers a full backup back and needs room for it
+in `$TMPDIR` while it works. That is the price of the proof, and it is paid
+weekly rather than daily on purpose — `backup-ship.sh` checks sizes and the
+manifest on every shipment, which is the cheap check; this is the expensive one.
+
+**What is still not covered.** `scripts/test-backup-roundtrip.sh` (CI gate 3f)
+drives ship → list → pull → compare and the four refusals on the `local`
+transport. The `s3`, `rclone` and `rsync` branches need a real remote and are
+exercised the first time you run the commands above — do that once, on the
+deployment, before you need to.
 
 ---
 
@@ -320,9 +345,29 @@ Verified on 2026-08-20, off the deployment:
   every placeholder substituted, `/etc/master-suite` at 700, the env file at 600,
   the backup root at 750, and a re-run preserving an existing passphrase.
   `systemd-analyze verify` passes on all six units.
+- **The off-host round trip** (2026-08-21, `scripts/test-backup-roundtrip.sh`,
+  CI gate 3f). On the `local` transport: a shipment lands with its manifest and
+  leaves a `.shipped-at`; the remote lists exactly the stamp shipped; a pull
+  brings back a tree that is byte-identical to what went out, nested objects
+  included; a remote copy with no manifest is refused; a pull refuses to land on
+  top of an existing directory; an unfinished source is refused *before* the
+  remote is touched, leaving nothing behind under a name that looks like a
+  backup; and `--from-remote` refuses when no remote is configured rather than
+  quietly proving the local copy. Each refusal was mutation-tested — removed one
+  at a time, each confirmed to fail the check that claims it.
 
-**What has not been proved:** `systemctl enable --now` and an actual timer
-firing. The verification host has no running systemd (`systemctl
+  The unfinished-source check is worth one note, because its first draft passed
+  for the wrong reason: without the preflight the script still exits non-zero,
+  having copied the artefacts and then failed to place a manifest that does not
+  exist. An exit-code assertion proved nothing. It asserts on the message and on
+  the remote being untouched instead.
+
+**What has not been proved:** the `s3`, `rclone` and `rsync` branches of the
+pull and the listing. They need those binaries and a real remote; the round-trip
+test covers `local` only. Run the three commands in "The copy you would actually
+use" once, on the deployment, before you need them.
+
+Also not proved: `systemctl enable --now` and an actual timer firing. The verification host has no running systemd (`systemctl
 is-system-running` reports `offline`), so that step was exercised with a stub.
 On the deployment, confirm it with:
 

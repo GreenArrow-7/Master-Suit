@@ -127,11 +127,14 @@ cat <<NEXT
   2. Take one now and watch it:   systemctl start master-suite-backup.service
                                   journalctl -u master-suite-backup -f
   3. Prove it restores:           systemctl start master-suite-restore-verify.service
-  4. Confirm BACKUP_REMOTE is set in ${CONFIG}. Backups are copied there and
-     verified automatically; the daily status check fails if one has not left
-     the machine. Older text used to ask you to do this by hand — see
-     the thing it backs up is a copy, not a backup — nothing installed here does
-     that step for you.
+  4. Set BACKUP_REMOTE in ${CONFIG}. Backups are copied there and verified as
+     they land, and the daily status check FAILS if the newest one has not left
+     the machine — a backup on the same disk as the thing it backs up is a copy,
+     not a backup.
+  5. The weekly verification pulls that off-host copy back and restores it, so
+     the thing being proven is the copy that survives this host. Prove one now:
+     scripts/restore-verify.sh --from-remote <stamp>
+     (BACKUP_SHIP_LIST=1 scripts/backup-ship.sh lists what is on the remote.)
 
 [install] Health, in one command:  systemctl --failed
 NEXT

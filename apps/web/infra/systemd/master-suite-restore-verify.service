@@ -18,10 +18,19 @@ WorkingDirectory=__APP_DIR__/infra
 EnvironmentFile=__CONFIG__
 # `latest` is the symlink backup.sh maintains, so this always verifies the
 # backup the server most recently took rather than one somebody picked.
-ExecStart=__APP_DIR__/scripts/restore-verify.sh __BACKUP_ROOT__/latest
+#
+# `--prefer-remote` pulls that run back from BACKUP_REMOTE and proves *that*
+# copy — the only one that exists in the failure backups are for. This unit used
+# to verify the local directory, which proved the backup and not the shipment;
+# a truncated dump of the right length, a passphrase that differs from the one
+# in the secret store, or a lifecycle rule that expired the objects all pass a
+# shipment check and fail a restore. With no remote configured it says so and
+# falls back to the local copy rather than failing the timer.
+ExecStart=__APP_DIR__/scripts/restore-verify.sh --prefer-remote __BACKUP_ROOT__/latest
 Nice=10
 IOSchedulingClass=idle
-TimeoutStartSec=4h
+# Six rather than four: the run now fetches the backup back before restoring it.
+TimeoutStartSec=6h
 
 [Install]
 WantedBy=multi-user.target
