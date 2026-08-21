@@ -53,6 +53,25 @@ export const b64 = z.string().superRefine((value, ctx) => {
  * `z.string().regex(…).optional()` accepts *absent* and rejects *empty*, and the
  * example file declares keys with no value.
  */
+/**
+ * An optional retention window in days, where empty means "no policy".
+ *
+ * `z.coerce.number()` turns `''` into `0`, so the bare
+ * `z.coerce.number().min(30).optional()` rejects the empty value that
+ * `.env.example` declares — and `.env` is a copy of `.env.example`, so every
+ * fresh checkout and every CI run would refuse to boot. That is the same failure
+ * `FACE_SERVICE_TOKEN_ROTATED_AT` shipped with; the difference is that
+ * tests/unit/env-example-parses.spec.ts caught this one before the push.
+ *
+ * The floor is a typo guard rather than a recommendation. Thirty days is not a
+ * retention policy anybody arrives at on purpose, and honouring a mistyped `3`
+ * costs an audit trail that cannot be recovered by correcting the variable.
+ */
+const retentionDays = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.coerce.number().int().min(30, 'a retention window must be at least 30 days, or empty to keep every row').optional(),
+);
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /**
@@ -211,6 +230,36 @@ export const envSchema = z.object({
   MAX_OFFLINE_SYNC_HOURS: z.coerce.number().int().positive().default(48),
   ATTENDANCE_CAPTURE_DIR: z.string().default('storage/attendance'),
   ATTENDANCE_CAPTURE_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
+
+  /**
+   * Retention for the three append-only tables, in days. Unset means keep.
+   *
+   * `AuditLog`, `HrAttendancePunch` and `PlatformAuditEvent` grow monotonically
+   * — nothing has ever deleted from them (W-7). The sweep that would is written
+   * and tested; what it does not have is a number, because how long an audit
+   * trail must be kept, and whether it may be deleted at all, is a compliance
+   * question and not an engineering one.
+   *
+   * So **absent means keep forever**, deliberately. A default here would delete
+   * somebody's audit trail on the strength of a number nobody chose, and the
+   * failure would be silent and irreversible — the one direction that cannot be
+   * undone by changing the setting later. An operator who wants deletion has to
+   * say so in days.
+   *
+   * The floor is a typo guard, not a policy: `AUDIT_LOG_RETENTION_DAYS=1` is not
+   * a retention decision anybody makes on purpose, and the cost of refusing a
+   * genuine one-day policy is a support conversation, while the cost of honouring
+   * a mistyped one is the trail.
+   *
+   * Each is separate because they have different owners and different legal
+   * weight. Attendance punches are employment records, and several jurisdictions
+   * set a statutory *minimum* on those. `PlatformAuditEvent` is the record of
+   * which of our own staff entered which customer's data, which is the one a
+   * customer has the strongest claim to.
+   */
+  AUDIT_LOG_RETENTION_DAYS: retentionDays,
+  ATTENDANCE_PUNCH_RETENTION_DAYS: retentionDays,
+  PLATFORM_AUDIT_RETENTION_DAYS: retentionDays,
 
   /**
    * Bearer token for GET /api/metrics. Unset means the endpoint 404s.

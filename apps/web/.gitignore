@@ -17,3 +17,6 @@ infra/pgbouncer-userlist.txt
 *.log
 # Scratch verification scripts and logs from local test runs
 .verify/
+
+# Redis snapshot, written by a redis-server started in this directory.
+dump.rdb

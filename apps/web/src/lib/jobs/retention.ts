@@ -1,7 +1,8 @@
 import { prisma, withPlatformTx } from '../db';
+import { env } from '../env';
 import { logger } from '../logger';
 import { deleteObject } from '../storage';
-import { purgeExpiredCaptures } from '@/services/hr/captureVault';
+import { deleteCapture, purgeExpiredCaptures } from '@/services/hr/captureVault';
 
 /**
  * Data retention: the sweep that makes every stated retention window real.
@@ -43,6 +44,34 @@ const TX_TIMEOUT_MS = 120_000;
 /** A sweep must terminate even if something keeps re-qualifying rows. */
 const MAX_BATCHES = 200;
 
+/**
+ * The append-only tables, their timestamp, and where their window comes from.
+ *
+ * `days()` is a function rather than a value because `env` is parsed once at
+ * module load and this list is built at module load too — reading the number
+ * here would freeze whatever was set when the file was first imported, which is
+ * the same shape of bug as a config value captured in a closure.
+ *
+ * `objectColumn` names a column holding an object key that must be deleted with
+ * the row. Only attendance punches have one; a punch carries the encrypted frame
+ * that is the evidence for it.
+ */
+const AUDIT_TABLES: {
+  name: string;
+  column: string;
+  objectColumn?: string;
+  days: () => number | undefined;
+}[] = [
+  { name: 'AuditLog', column: 'occurredAt', days: () => env.AUDIT_LOG_RETENTION_DAYS },
+  {
+    name: 'HrAttendancePunch',
+    column: 'serverTime',
+    objectColumn: 'capturePath',
+    days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
+  },
+  { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
+];
+
 export interface RetentionResult {
   expiredRecordings: number;
   /** Objects removed from the bucket. Lower than expiredRecordings when a
@@ -52,6 +81,14 @@ export interface RetentionResult {
   expiredSessions: number;
   attendanceCaptures: number;
   purgeSummary: Record<string, number>;
+  /**
+   * The three append-only tables, kept apart from `purgeSummary` on purpose.
+   *
+   * Those are soft-deleted business rows aging out; these are an audit trail
+   * being destroyed under a policy somebody chose. A number in the same bag as
+   * "old cancelled tasks" is a number nobody looks at twice.
+   */
+  auditSummary: Record<string, number>;
   /** True when a sweep hit MAX_BATCHES with work still queued. */
   truncated: boolean;
 }
@@ -65,6 +102,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     expiredSessions: 0,
     attendanceCaptures: 0,
     purgeSummary: {},
+    auditSummary: {},
     truncated: false,
   };
 
@@ -200,6 +238,96 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     const captures = await purgeExpiredCaptures();
     result.attendanceCaptures = captures.removed;
     if (captures.removed > 0) logger.info({ ...captures }, 'retention: purged attendance captures');
+  }
+
+  // ── 6. The three append-only tables ────────────────────────────────────────
+  //
+  // `AuditLog`, `HrAttendancePunch` and `PlatformAuditEvent` had nothing deleting
+  // from them at all — the assessment records the growth as W-7 and the
+  // metrics endpoint has been measuring it since. What was missing was never the
+  // sweep; it was the number, and the number is a compliance answer rather than
+  // an engineering one.
+  //
+  // So each window is opt-in and **absent means keep**. A deployment that has
+  // not decided deletes nothing here and says so once per run, which is the
+  // honest state — rather than a default quietly destroying a trail on the
+  // strength of a number nobody picked.
+  for (const table of AUDIT_TABLES) {
+    const days = table.days();
+    if (days === undefined) {
+      // Logged every run, not once at boot. "No retention policy" is a standing
+      // condition somebody should keep meeting rather than a fact that scrolled
+      // past on a restart six months ago.
+      logger.info({ table: table.name }, 'retention: no policy set, keeping every row');
+      continue;
+    }
+
+    const cutoff = new Date(now.getTime() - days * 86_400_000);
+    let deleted = 0;
+    let sweeps = 0;
+
+    for (;;) {
+      if (sweeps++ >= MAX_BATCHES) {
+        result.truncated = true;
+        logger.warn({ table: table.name, deleted }, 'retention: audit sweep hit its batch ceiling');
+        break;
+      }
+
+      // Selected then deleted by id, rather than `DELETE … WHERE occurredAt < $1
+      // LIMIT`, which Postgres does not accept — and a bare DELETE with no limit
+      // on a table that has never been swept is one statement holding a lock over
+      // millions of rows on the first run after a policy is set.
+      const due = await withPlatformTx(
+        (tx) =>
+          tx.$queryRawUnsafe<{ id: string; capturePath: string | null }[]>(
+            `SELECT id${table.objectColumn ? `, "${table.objectColumn}"` : ''} FROM "${table.name}"
+              WHERE "${table.column}" < $1
+              ORDER BY "${table.column}" ASC
+              LIMIT ${BATCH}`,
+            cutoff,
+          ),
+        { timeoutMs: TX_TIMEOUT_MS },
+      );
+
+      if (due.length === 0) break;
+      deleted += due.length;
+
+      if (dryRun) {
+        if (due.length < BATCH) break;
+        continue;
+      }
+
+      // Object before row, the same ordering and for the same reason as the
+      // recordings sweep above. A punch carries the encrypted frame that is the
+      // evidence for it; deleting the row first leaves the capture in the bucket
+      // with nothing pointing at it.
+      if (table.objectColumn) {
+        for (const row of due) {
+          if (!row.capturePath) continue;
+          try {
+            await deleteCapture(row.capturePath);
+          } catch (err) {
+            logger.error({ err, table: table.name, id: row.id }, 'retention: could not delete capture object');
+          }
+        }
+      }
+
+      const ids = due.map((row) => row.id);
+      await withPlatformTx(
+        (tx) => tx.$executeRawUnsafe(`DELETE FROM "${table.name}" WHERE id = ANY($1::text[])`, ids),
+        { timeoutMs: TX_TIMEOUT_MS },
+      );
+
+      if (due.length < BATCH) break;
+    }
+
+    result.auditSummary[table.name] = deleted;
+    if (deleted > 0) {
+      logger.warn(
+        { table: table.name, count: deleted, retentionDays: days, dryRun },
+        'retention: deleted audit rows under a configured policy',
+      );
+    }
   }
 
   logger.info({ dryRun, ...result }, 'retention cleanup complete');

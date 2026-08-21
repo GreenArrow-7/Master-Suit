@@ -32,6 +32,10 @@ vi.mock('@/lib/storage', () => ({
 // Capture purging walks the filesystem and belongs to its own suite.
 vi.mock('@/services/hr/captureVault', () => ({
   purgeExpiredCaptures: vi.fn(async () => ({ removed: 0, tenants: 0 })),
+  // Reached only when ATTENDANCE_PUNCH_RETENTION_DAYS is set, which it is not
+  // here — stubbed anyway, because a partial mock of a module the subject
+  // imports is a break waiting for whoever sets that variable.
+  deleteCapture: vi.fn(async () => {}),
 }));
 
 const { runRetentionCleanup } = await import('@/lib/jobs/retention');

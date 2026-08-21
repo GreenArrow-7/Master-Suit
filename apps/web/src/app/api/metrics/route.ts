@@ -159,6 +159,29 @@ function collectSecretAges(): void {
   setGauge('masterapp_secret_max_age_days', env.FACE_TOKEN_MAX_AGE_DAYS, { secret: 'face_service_token' });
 }
 
+/**
+ * The retention window on each append-only table, in days. Zero means none.
+ *
+ * These three tables grow monotonically and nothing deleted from them until the
+ * sweep in lib/jobs/retention.ts learned to — but only when given a number, and
+ * the number is a compliance answer nobody may pick on a deployment's behalf.
+ * "Nobody has decided yet" is therefore a real and open state, and this is what
+ * stops it being an invisible one.
+ *
+ * Zero is unambiguous here precisely because the schema sets a floor of 30: a
+ * window of zero days cannot be configured, so zero can only mean unset.
+ */
+function collectRetentionWindows(): void {
+  const windows: Record<string, number | undefined> = {
+    AuditLog: env.AUDIT_LOG_RETENTION_DAYS,
+    HrAttendancePunch: env.ATTENDANCE_PUNCH_RETENTION_DAYS,
+    PlatformAuditEvent: env.PLATFORM_AUDIT_RETENTION_DAYS,
+  };
+  for (const [table, days] of Object.entries(windows)) {
+    setGauge('masterapp_retention_window_days', days ?? 0, { table });
+  }
+}
+
 export async function GET(req: Request) {
   if (!authorised(req)) return new Response(null, { status: 404 });
 
@@ -185,6 +208,7 @@ export async function GET(req: Request) {
   // Read from configuration, not from the database or Redis, so it is published
   // even on the scrape where collection above timed out.
   collectSecretAges();
+  collectRetentionWindows();
 
   setGauge('masterapp_up', 1);
   // And which commit is answering. The first question during an incident, and

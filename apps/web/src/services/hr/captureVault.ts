@@ -162,6 +162,40 @@ export async function loadCapture(relative: string): Promise<Buffer> {
   }
 }
 
+/**
+ * Remove one capture, from whichever vault holds it.
+ *
+ * Used when the punch row itself is being deleted under a retention policy. The
+ * frame is the evidence for that punch and nothing else refers to it, so it goes
+ * with the row — and it goes *first*, for the reason the recordings sweep in
+ * lib/jobs/retention.ts gives: delete the row first and the object is left in
+ * the bucket with nothing pointing at it.
+ *
+ * Both vaults, because a deployment that upgraded into object storage has
+ * captures in each and a punch old enough to be swept is exactly the punch whose
+ * frame is most likely to still be on disk.
+ *
+ * Never throws for an absent object: a capture that is already gone is the
+ * outcome this was asked for.
+ */
+export async function deleteCapture(relative: string): Promise<void> {
+  await deleteObjects([objectKey(relative)]).catch((error) => {
+    logger.warn({ err: error, relative }, 'attendance capture: object could not be deleted');
+    return 0;
+  });
+
+  const full = path.resolve(root(), relative);
+  // The same guard loadCapture keeps: `relative` comes from a database column,
+  // and a column is not a promise. An unlink is the one place where being wrong
+  // about that is unrecoverable.
+  if (full !== root() && !full.startsWith(root() + path.sep)) {
+    throw new Error('Refusing to delete outside the attendance capture vault.');
+  }
+  await unlink(full).catch(() => {
+    /* not on disk, which is the normal case after migration */
+  });
+}
+
 /** Each workspace's own window, defaulting rather than skipping. */
 async function retentionCutoff(tenantId: string): Promise<number> {
   const settings = await prisma.organizationSetting

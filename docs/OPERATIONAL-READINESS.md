@@ -112,7 +112,7 @@ throttle disappears exactly when the system is already unhealthy.
 
 | # | Job | Implemented | Scheduled | Monitored |
 |---|---|---|---|---|
-| 7.1 | Retention cleanup (recordings, webhooks, soft-deletes, attendance captures) | Yes — `lib/jobs/retention.ts` | ☐ | ☐ |
+| 7.1 | Retention cleanup (recordings, webhooks, soft-deletes, attendance captures, and the three append-only tables when a window is set) | Yes — `lib/jobs/retention.ts` | ☐ | ☐ |
 | 7.2 | Expiring-document notification | Data available; **no job sends anything** | ☐ | ☐ |
 | 7.3 | Leave year-end carry-forward | Manual action in the UI | ☐ | ☐ |
 | 7.4 | Temporary-location request expiry | `expireTemporaryRequests` exists; **nothing calls it** | ☐ | ☐ |
@@ -125,11 +125,25 @@ throttle disappears exactly when the system is already unhealthy.
 | 8.1 | Attendance capture frames | Per workspace | By the retention job | Verified in a scratch run |
 | 8.2 | Face templates | Deleted on consent withdrawal and on exit | Yes | Verified |
 | 8.3 | Employee documents | **No retention policy at all** | ☐ | ☐ |
-| 8.4 | Audit log | **Retained indefinitely** | ☐ | ☐ |
+| 8.4 | `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` | Per deployment, in days — `AUDIT_LOG_RETENTION_DAYS`, `ATTENDANCE_PUNCH_RETENTION_DAYS`, `PLATFORM_AUDIT_RETENTION_DAYS` | By the retention job **only when a window is set**; empty means keep | `tests/tenant/audit-retention.spec.ts` |
 | 8.5 | Soft-deleted records | 90 days | Retention job | ☐ |
 
 **8.3 and 8.4 need a decision.** Passport scans and audit rows kept forever is a
 choice, and it should be a deliberate one rather than a default.
+
+For 8.4 the *mechanism* now exists and the decision does not. The three windows
+are empty out of the box and empty means keep every row — a default would delete
+somebody's audit trail on the strength of a number nobody chose, silently, in the
+one direction that cannot be undone by correcting the setting afterwards. Each is
+separate because the owners differ: attendance punches are employment records
+with statutory minimums in several jurisdictions, and `PlatformAuditEvent` is the
+record of which of our own staff entered which customer's workspace, which is the
+one a customer has the strongest claim to.
+
+The current state is visible from monitoring rather than only from a file:
+`masterapp_retention_window_days{table="…"}` reports the window in days, and zero
+means none is set. Zero is unambiguous because the schema floors a real window at
+30 days, so it cannot be configured.
 
 ## 9. Incident response and rollback
 

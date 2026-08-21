@@ -133,6 +133,19 @@ describe('the endpoint', () => {
     expect(body).toContain('masterapp_secret_max_age_days{secret="face_service_token"}');
   });
 
+  it('publishes the retention window on each append-only table, zero when none is set', async () => {
+    // The three tables grow forever and nothing deleted from them until the
+    // sweep learned to — but only when given a number, and that number is a
+    // compliance answer. "Nobody has decided" is a real state; this is what
+    // stops it being an invisible one. Zero is unambiguous because the schema
+    // floors a real window at 30 days.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+    for (const table of ['AuditLog', 'HrAttendancePunch', 'PlatformAuditEvent']) {
+      expect(body).toContain(`masterapp_retention_window_days{table="${table}"}`);
+    }
+  });
+
   it('reports every queue, including the ones with no consumer', async () => {
     process.env.METRICS_TOKEN = 'the-real-token';
     const body = await (await scrape('the-real-token')).text();
