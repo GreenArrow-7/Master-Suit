@@ -1,0 +1,83 @@
+#cloud-config
+#
+# First-boot configuration for a Master Suite host.
+#
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# W-9: the VM, its firewall and its disks are configured by hand, so the
+# deployment cannot be recreated from the repository. This is the host half of
+# that, and it deliberately contains almost nothing — every decision lives in
+# `infra/provision-host.sh`, which this file clones the repository and runs.
+#
+# One description of the host, not two. A cloud-init file that repeated the
+# provisioning steps would be a second copy that drifts from the first, and the
+# copy that drifts is always the one nobody runs — cloud-init executes once, at
+# first boot, so it is never the one you notice is wrong.
+#
+# ── Using it ────────────────────────────────────────────────────────────────
+#
+#   az vm create … --custom-data @apps/web/infra/cloud-init.yaml
+#
+# Any cloud that speaks cloud-init takes the same file: it is not Azure-specific
+# and neither is the script it calls. What *is* provider-specific — the VM, the
+# network security group, the DNS record — is not here, for the reason
+# provision-host.sh gives at length: an untested Terraform module reads like an
+# asset and behaves like a liability. docs/DEPLOY-AZURE.md keeps the `az`
+# commands that have actually been run.
+#
+# ── What it does not do ─────────────────────────────────────────────────────
+#
+# It writes no secret. `.env.production` is the operator's, and a host whose
+# first-boot data contains the database password is a host whose provisioning
+# metadata must be handled as a credential — readable, on most providers, from
+# the instance metadata service by anything running on the box.
+#
+# It does not start the stack. The first boot ends with a provisioned host and
+# no application, because starting one needs that file.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-plugin
+  - git
+  - ufw
+
+write_files:
+  # A marker the provisioner does not need but an operator does: "was this host
+  # built from the repository, or by hand?" is otherwise unanswerable six months
+  # later, and it is the first question when two hosts behave differently.
+  - path: /etc/master-suite-provisioned
+    permissions: '0644'
+    content: |
+      Provisioned from apps/web/infra/cloud-init.yaml at first boot.
+      The steps are in apps/web/infra/provision-host.sh, which is idempotent —
+      re-run it to bring this host back to the expected state, or with
+      PROVISION_CHECK_ONLY=1 to report drift without changing anything.
+
+runcmd:
+  # `|| true` on the clone: a private repository has no credentials at first
+  # boot, and a host that fails to come up at all is worse than one that comes up
+  # needing the checkout placed by hand. The provisioner is idempotent, so
+  # running it later loses nothing.
+  - [
+      sh,
+      -c,
+      'test -d /opt/master-suite || git clone --depth 1 https://github.com/GreenArrow-7/Master-Suit.git /opt/master-suite || true',
+    ]
+  - [
+      sh,
+      -c,
+      'test -x /opt/master-suite/apps/web/infra/provision-host.sh && /opt/master-suite/apps/web/infra/provision-host.sh || echo "provision-host.sh not present; run it once the checkout is in place"',
+    ]
+
+final_message: |
+  Host provisioned in $UPTIME seconds.
+
+  What is NOT done, deliberately:
+    * .env.production does not exist. Create it from .env.production.example
+      and run `npm run secrets`.
+    * Nothing is running. Continue from step 2 of docs/DEPLOY-AZURE.md.
+    * Port 22 is as open as the network security group leaves it. Re-run
+      provision-host.sh with SSH_ALLOW_FROM=<your address> to narrow it here too.

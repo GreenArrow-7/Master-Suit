@@ -30,6 +30,47 @@ is a standing invitation to a future misconfiguration.
 az network nsg rule create -g <rg> --nsg-name <nsg> -n allow-http --priority 100 --destination-port-ranges 80 443 --access Allow --protocol Tcp
 ```
 
+## 0. The host, from the repository
+
+The steps in sections 1 and 3 below are also a script, because a runbook is a
+description of a host and a script is the host:
+
+```bash
+sudo apps/web/infra/provision-host.sh                       # Docker, the deploy
+                                                            # account, directories,
+                                                            # ufw, the backup timers
+sudo SSH_ALLOW_FROM=203.0.113.4 apps/web/infra/provision-host.sh
+sudo PROVISION_CHECK_ONLY=1 apps/web/infra/provision-host.sh # report drift, change nothing
+```
+
+It is **idempotent**, which is the point rather than a nicety: cloud-init runs
+once at first boot, and the host running today did not have this file when it
+booted. A provisioner that only works on a fresh VM describes a machine nobody
+is running. Every step checks before it acts, so it is safe on the live host —
+and `PROVISION_CHECK_ONLY=1` exits non-zero when the host has drifted, which is
+the question "is this still true?" with an answer.
+
+For a *new* VM, `apps/web/infra/cloud-init.yaml` passes it as custom data:
+
+```bash
+az vm create … --custom-data @apps/web/infra/cloud-init.yaml
+```
+
+That file contains almost nothing on purpose. It clones the repository and runs
+the same script, so there is one description of the host rather than two, and
+the copy that drifts is never the one you notice — cloud-init runs once.
+
+**It writes no secret, and starts nothing.** `.env.production` is yours to
+create; a host whose first-boot data carries the database password is a host
+whose provisioning metadata is a credential, readable from the instance metadata
+service by anything on the box. Continue from section 2.
+
+**What is still by hand:** the VM, the network security group and the DNS record
+above. Those are provider resources and the honest tool is Terraform or Bicep —
+neither is in this repository, because a provider module that has never run
+against a real subscription reads like an asset and behaves like a liability.
+The `az` commands here have been run.
+
 ## 1. Docker Compose plugin
 
 Docker 29 is already installed. Confirm the Compose plugin came with it — the
