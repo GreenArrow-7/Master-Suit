@@ -351,6 +351,32 @@ apps/web/scripts/release.sh staging       # build, migrate, start — tagged by 
 apps/web/scripts/release.sh production    # promote the tag staging is running
 ```
 
+### Or from the pipeline
+
+The same script is callable from GitHub, under **Actions → Deploy → Run
+workflow**: pick the environment, `deploy` or `rollback`, and optionally a
+commit. It SSHes in and runs exactly the commands above, which is the point —
+there is one release path and the pipeline is a caller of it, not a second
+implementation that can drift.
+
+What it adds over running them yourself is the pair of checks nobody performs
+for themselves under pressure. It **refuses a commit whose `verify` check run
+was not green** — `release.sh` validates the tree, and nothing validated the
+tests — and it puts production behind `environment: production`, so a required
+reviewer configured on that environment holds the run until somebody approves.
+Staging is deliberately ungated: a rehearsal needing a second person is a
+rehearsal that stops happening.
+
+It needs `DEPLOY_HOST_<env>`, `DEPLOY_USER_<env>` and `DEPLOY_KEY_<env>` as
+repository secrets, and names whichever is missing rather than failing inside
+`ssh`. Set `DEPLOY_KNOWN_HOSTS_<env>` too — without it the run accepts the host
+key on first use and says so as a warning. `DEPLOY_PATH_<env>` is a repository
+*variable*, defaulting to `/opt/master-suite`.
+
+It stays manual on purpose. Deploying every green commit needs a rollback story
+faster than a person noticing, and the honest state of that is
+`release.sh rollback`, which is a person.
+
 `release.sh` replaces the four-command sequence that used to be here
 (`git pull && dc build && dc run --rm migrate && dc up -d`). Those commands were
 each correct; what they lacked was any record of what was running. Compose
