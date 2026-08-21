@@ -160,6 +160,48 @@ function collectSecretAges(): void {
 }
 
 /**
+ * How much of the database's connection budget is in use.
+ *
+ * This is the signal the PgBouncer overlay is the remedy for, and it did not
+ * exist — so the decision to put a pooler in front of the database was a guess
+ * either way. `infra/pgbouncer.ini` says plainly that a pooler is probably not
+ * needed yet, and estimates the headroom at roughly a thousand organizations;
+ * an estimate is what you use when you have no measurement.
+ *
+ * Read from `pg_stat_activity` at scrape time rather than counted by the pool,
+ * for the reason the queue gauges are read from Redis: the application's own
+ * view is of its own two pools, and the thing that runs out is Postgres's
+ * `max_connections` — shared with migrations, `psql`, the backup job and
+ * anything else on the host.
+ *
+ * The role is NOSUPERUSER, so `state` is NULL for backends belonging to other
+ * roles. Those are counted under `unknown` rather than dropped: a connection
+ * this process cannot classify still consumes a slot, and the total is what the
+ * alert is about.
+ */
+async function collectConnections(): Promise<void> {
+  const states = await prisma.$queryRawUnsafe<{ state: string | null; count: bigint }[]>(
+    `SELECT state, count(*)::bigint AS count
+       FROM pg_stat_activity
+      WHERE datname = current_database()
+      GROUP BY state`,
+  );
+  let total = 0;
+  for (const row of states) {
+    total += Number(row.count);
+    setGauge('masterapp_db_connections', Number(row.count), { state: row.state ?? 'unknown' });
+  }
+  setGauge('masterapp_db_connections_total', total);
+
+  const [limit] = await prisma.$queryRawUnsafe<{ setting: string }[]>(
+    `SELECT setting FROM pg_settings WHERE name = 'max_connections'`,
+  );
+  // Published rather than hard-coded in the alert, so a deployment that raises
+  // max_connections is respected without editing a rule file mounted read-only.
+  setGauge('masterapp_db_connections_max', Number(limit?.setting ?? 0));
+}
+
+/**
  * The retention window on each append-only table, in days. Zero means none.
  *
  * These three tables grow monotonically and nothing deleted from them until the
@@ -190,7 +232,7 @@ export async function GET(req: Request) {
   // what was gathered rather than failing the whole response.
   try {
     await Promise.race([
-      Promise.all([collectQueues(), collectTableSizes()]),
+      Promise.all([collectQueues(), collectTableSizes(), collectConnections()]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('collect timed out')), COLLECT_TIMEOUT_MS)),
     ]);
   } catch (err) {

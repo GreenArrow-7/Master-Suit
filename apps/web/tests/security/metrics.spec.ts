@@ -146,6 +146,21 @@ describe('the endpoint', () => {
     }
   });
 
+  it("reports the database's connection budget, which is what says the pooler is needed", async () => {
+    // The PgBouncer overlay ships verified-safe and opt-in, and its own comments
+    // estimate the headroom at roughly a thousand organizations. An estimate is
+    // what you use when nothing measures — so turning it on, or leaving it off,
+    // was a guess in both directions until this.
+    process.env.METRICS_TOKEN = 'the-real-token';
+    const body = await (await scrape('the-real-token')).text();
+    expect(body).toMatch(/masterapp_db_connections_total \d+/);
+    // The limit travels with the reading so the alert carries no hard-coded
+    // number and a raised max_connections is respected.
+    expect(body).toMatch(/masterapp_db_connections_max \d+/);
+    // At least this process's own connection is active while it answers.
+    expect(body).toContain('masterapp_db_connections{state=');
+  });
+
   it('reports every queue, including the ones with no consumer', async () => {
     process.env.METRICS_TOKEN = 'the-real-token';
     const body = await (await scrape('the-real-token')).text();

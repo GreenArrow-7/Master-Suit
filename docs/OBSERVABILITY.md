@@ -182,6 +182,19 @@ credential files, and the staging shape.
   to a query.
 - **No stack-trace reporting.** Choosing a vendor is a decision nobody has made
   yet; `AppError` and `pino` carry the information, nothing collects it.
+- **The PgBouncer decision now has a signal.** `infra/docker-compose.pgbouncer.yml`
+  ships a verified-safe pooler as an opt-in overlay, and `infra/pgbouncer.ini`
+  says plainly it is probably not needed yet — estimating the headroom at roughly
+  a thousand organizations. An estimate is what you use when nothing measures,
+  and nothing did: turning the overlay on, or leaving it off, was a guess in both
+  directions. `masterapp_db_connections_total` against
+  `masterapp_db_connections_max` is read from `pg_stat_activity` at scrape time,
+  and `DatabaseConnectionsHigh` fires above 80% sustained for fifteen minutes.
+  Read from Postgres rather than counted by the application's pools, because the
+  budget that runs out is shared with migrations, `psql` and the backup job.
+  The pooler is deliberately **not** enabled: doing so on a deployment nobody has
+  measured would be the same guess in the other direction.
+
 - **No log shipping, but the logs no longer eat the disk.** `pino` writes
   structured JSON to stdout and nothing collects it, so it still dies with the
   container — choosing a destination is a decision nobody has made, the same

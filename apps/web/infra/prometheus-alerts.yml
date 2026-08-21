@@ -166,6 +166,38 @@ groups:
             PLATFORM_WRITE_ACCESS_OPENED with the stated reason on the customer's own trail.
             If the work is finished, hand it back rather than waiting for the clock.
 
+  - name: master-suite-capacity
+    rules:
+      # The signal that says "now you need the pooler".
+      #
+      # infra/docker-compose.pgbouncer.yml ships a verified-safe PgBouncer as an
+      # opt-in overlay, and infra/pgbouncer.ini says plainly that it is probably
+      # not needed yet — estimating the headroom at roughly a thousand
+      # organizations. An estimate is what you use when nothing is measuring, and
+      # until this rule nothing was: turning the overlay on, or leaving it off,
+      # was a guess in both directions.
+      #
+      # The threshold travels with the metric rather than being written here,
+      # because a deployment that raises max_connections should be respected
+      # without editing a rule file that is mounted read-only.
+      #
+      # 80% for fifteen minutes, not a spike: connection exhaustion is a slope,
+      # and the remedy — a pooler in the data path — is not a change anybody
+      # should make from a momentary reading.
+      - alert: DatabaseConnectionsHigh
+        expr: masterapp_db_connections_total / masterapp_db_connections_max > 0.8
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Postgres is above 80% of max_connections'
+          description: >-
+            Sustained, this is what the PgBouncer overlay exists for — layer
+            infra/docker-compose.pgbouncer.yml and point DATABASE_URL at pgbouncer:6432,
+            leaving MIGRATION_DATABASE_URL on postgres:5432. Check first that the
+            connections are the application's: migrations, psql and the backup job share
+            this budget, and a stuck migration holding connections is a different problem
+            with a different fix. masterapp_db_connections by state says which.
+
   - name: master-suite-secrets
     rules:
       # A stale shared secret is not an incident, which is exactly why it needs an
