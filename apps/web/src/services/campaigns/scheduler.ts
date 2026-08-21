@@ -82,11 +82,12 @@ export async function sweepDueCampaigns(now = new Date()) {
 
     // Started — even a WhatsApp campaign with nothing eligible to send.
     //
-    // A VOICE campaign is started for the dialer, which works its
-    // `CampaignContact` rows whenever an agent opens it; the route selects the
-    // campaign's status and does not read it, so RUNNING is a label here rather
-    // than a gate. Whether a COMPLETED campaign should still be diallable is an
-    // open question and not one this sweep should answer quietly.
+    // A VOICE campaign is started for the dialer, and RUNNING is the gate that
+    // lets it be called: `claimNext` hands out nobody from a campaign in any
+    // other state, in the same statement as the claim. So this transition is
+    // what opens the floor on a scheduled calling campaign, and Pause, Complete
+    // and Cancel are what close it — which is what those buttons had always
+    // looked like they did.
     //
     // An EMAIL or SMS campaign is started too, and nothing works it: there is no
     // sender and no worker for either, and `EmailCampaign` is a table with no

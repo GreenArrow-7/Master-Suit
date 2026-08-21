@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { advance, endSession, resumeOrStart, sweepStaleClaims } from '@/services/dialer/session';
 import { loadQueue, queueStats } from '@/services/dialer/queue';
@@ -427,5 +427,116 @@ describe('loading a campaign queue', () => {
       select: { id: true },
     });
     expect(foreign).toHaveLength(0);
+  });
+});
+
+// ── Which campaigns get called at all ────────────────────────────────────────
+/**
+ * The dialer worked a campaign's list whatever state the campaign was in.
+ *
+ * Both the route and the page selected `campaign.status` and neither read it,
+ * so Cancel, Complete and Pause stopped nothing on the floor — and a DRAFT
+ * campaign, one nobody had pressed Start on, was dialled like a live one.
+ *
+ * The mid-shift case below is the one that matters and the reason the rule is
+ * enforced inside `claimNext`'s statement rather than at the two entrances: an
+ * agent who is already holding somebody must be handed nobody on their *next*
+ * press, without losing the disposition of the call they just made.
+ */
+describe('a campaign is called only while it is running', () => {
+  const setStatus = (status: string) =>
+    prisma.campaign.update({
+      where: { id: campaignId, tenantId: fixture.a.tenantId },
+      data: { status: status as never },
+    });
+
+  afterEach(() => setStatus('RUNNING'));
+
+  it('stops handing out people the moment the campaign is cancelled, mid-shift', async () => {
+    const started = await resumeOrStart(fixture.a.tenantId, AGENT_A, campaignId);
+    const held = started.contact!.id;
+    expect(held).toBeTruthy();
+
+    await setStatus('CANCELLED');
+
+    const next = await advance({
+      tenantId: fixture.a.tenantId,
+      userId: AGENT_A,
+      sessionId: started.session.id,
+      action: 'next',
+      outcome: 'NO_ANSWER',
+    });
+
+    // Nobody else. Without the condition inside the claim this is the next
+    // contact in the queue, which is the defect.
+    expect(next.contact).toBeNull();
+    expect(next.blockedBy).toMatch(/cancelled/i);
+
+    // And the call that already happened still counted. Enforcing the rule by
+    // throwing would have rolled this back — a real call losing its outcome is
+    // a worse trade than one extra dial.
+    const worked = await prisma.campaignContact.findFirstOrThrow({
+      where: { id: held, tenantId: fixture.a.tenantId },
+      select: { attempts: true, outcome: true, claimedBySessionId: true },
+    });
+    expect(worked.attempts).toBe(1);
+    expect(worked.outcome).toBe('NO_ANSWER');
+    expect(worked.claimedBySessionId).toBeNull();
+    expect(next.session.dialed).toBe(1);
+  });
+
+  it('refuses to open a dialer on a paused campaign, and says how to resume it', async () => {
+    await setStatus('PAUSED');
+
+    await expect(resumeOrStart(fixture.a.tenantId, AGENT_B, campaignId)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/paused.*resume/i),
+    });
+    // No session row left behind saying somebody started a shift on it.
+    expect(
+      await prisma.dialerSession.count({ where: { tenantId: fixture.a.tenantId, campaignId, userId: AGENT_B } }),
+    ).toBe(0);
+  });
+
+  it('refuses a campaign nobody has started', async () => {
+    // A behaviour change, and the intended one: DRAFT means the list is still
+    // being built. The way out is the Start button the campaign page already has.
+    await setStatus('DRAFT');
+
+    await expect(resumeOrStart(fixture.a.tenantId, AGENT_A, campaignId)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/not been started/i),
+    });
+  });
+
+  it('still lets the list be built before the campaign starts', async () => {
+    // Deliberately a different rule from the dialer's: a queue is curated first
+    // and the campaign is started afterwards, which is the order of the work.
+    await setStatus('DRAFT');
+    await prisma.campaignContact.deleteMany({ where: { tenantId: fixture.a.tenantId, campaignId } });
+    await makeLead('Built Before Start', '+971509000090');
+
+    const result = await loadQueue({
+      tenantId: fixture.a.tenantId,
+      actorId: fixture.a.userId,
+      campaignId,
+      stageIds: [fixture.a.stageId],
+    });
+
+    expect(result.loaded).toBeGreaterThan(0);
+  });
+
+  it('refuses to add anybody to a campaign that is over', async () => {
+    await setStatus('COMPLETED');
+    await makeLead('Too Late', '+971509000091');
+
+    await expect(
+      loadQueue({
+        tenantId: fixture.a.tenantId,
+        actorId: fixture.a.userId,
+        campaignId,
+        stageIds: [fixture.a.stageId],
+      }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
