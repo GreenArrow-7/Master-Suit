@@ -2,7 +2,14 @@ import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
-import { activeSessionFor, dialerPolicy, dialerRefusal, teamSessions } from '@/services/dialer/session';
+import {
+  activeSessionFor,
+  dialerPolicy,
+  dialerRefusal,
+  notDialledReason,
+  teamSessions,
+  usesDialer,
+} from '@/services/dialer/session';
 import { queueStats } from '@/services/dialer/queue';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -27,7 +34,7 @@ export default async function DialerPage({ params }: { params: Promise<{ id: str
 
   const campaign = await prisma.campaign.findFirst({
     where: { id, tenantId: ctx.tenantId, deletedAt: null },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, channel: true },
   });
   if (!campaign) notFound();
 
@@ -43,6 +50,12 @@ export default async function DialerPage({ params }: { params: Promise<{ id: str
     // Start button that the API would refuse.
     dialerRefusal(ctx.tenantId, campaign.id),
   ]);
+
+  // Two different noes, and the order matters: a campaign the dialer never
+  // works is a permanent one, so it is answered before the temporary question
+  // of whether this campaign may be called right now. The link to here is
+  // hidden in that case; somebody arriving by URL or bookmark still gets told.
+  const blocked = (await usesDialer(ctx.tenantId, campaign)) ? refusal : notDialledReason(campaign.channel);
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
@@ -60,13 +73,13 @@ export default async function DialerPage({ params }: { params: Promise<{ id: str
         </p>
       </header>
 
-      {refusal ? (
+      {blocked ? (
         <section className="lf-card" style={{ padding: 18 }}>
           <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', marginTop: 0 }}>
             Not calling this list
           </h2>
           <p className="lf-hint" style={{ margin: '6px 0 0' }}>
-            {refusal}
+            {blocked}
           </p>
           <p style={{ margin: '12px 0 0' }}>
             <SalesLink className="lf-btn lf-btn--sm lf-btn--secondary" href={`/campaigns/${campaign.id}`}>

@@ -63,6 +63,36 @@ const NOT_DIALLABLE: Record<string, string> = {
 };
 
 /**
+ * Whether the dialer works this campaign at all.
+ *
+ * Separate from `dialerRefusal` because the two are different kinds of no. A
+ * paused campaign is a *temporary* no — the screen says so and Resume is one
+ * button away, so the link into the dialer stays. A campaign the dialer will
+ * never work is a permanent one, and offering a door onto an empty room is the
+ * thing this answers.
+ *
+ * The channel alone would be the wrong test. `channel` is nullable and older
+ * rows have no value at all; `campaignType` carries CALLING independently of
+ * it; and a queue can be loaded onto any campaign through
+ * `POST /api/v1/campaigns/[id]/contacts`, which is a real workflow — calling a
+ * WhatsApp campaign's list as follow-up. So the *data* overrules the label:
+ * a campaign with contacts loaded is a campaign somebody is calling, whatever
+ * its channel says, and hiding the dialer would strand a live queue.
+ *
+ * The count is only asked when the label already says no, so the ordinary case
+ * costs nothing.
+ */
+export async function usesDialer(tenantId: string, campaign: { id: string; channel: string | null }): Promise<boolean> {
+  if (!campaign.channel || campaign.channel === 'VOICE') return true;
+  return (await prisma.campaignContact.count({ where: { tenantId, campaignId: campaign.id } })) > 0;
+}
+
+/** What to say to somebody who reached the dialer of a campaign it does not work. */
+export function notDialledReason(channel: string | null): string {
+  return `This is a ${channel?.toLowerCase() ?? 'non-calling'} campaign and nobody has loaded a calling queue for it. The dialer works a queue of contacts; this campaign's audience is worked from the campaign itself.`;
+}
+
+/**
  * `null` when the campaign may be called, otherwise the reason it may not.
  *
  * Advisory: it is what the screen shows. The rule is *enforced* inside

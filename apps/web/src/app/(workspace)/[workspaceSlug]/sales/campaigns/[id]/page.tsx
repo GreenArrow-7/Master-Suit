@@ -7,6 +7,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 import CampaignSend from './CampaignSend';
 import AudiencePicker from './AudiencePicker';
 import CampaignStatusActions from './CampaignStatusActions';
+import { usesDialer } from '@/services/dialer/session';
 
 export const metadata = { title: 'Campaign Detail' };
 
@@ -67,6 +68,12 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
   // server does. An unset channel is a pre-default row and still sends.
   const sendable = !campaign.channel || campaign.channel === 'WHATSAPP';
 
+  // And whether the dialer works this one at all. Not the same question as
+  // whether it may be called *right now* — that is the campaign's status, which
+  // the dialer page explains and Resume undoes. This is the permanent one, and
+  // it reads the queue rather than trusting the channel: see usesDialer.
+  const diallable = await usesDialer(ctx.tenantId, campaign);
+
   // Mirrors the server-side eligibility rule in /api/v1/campaigns/[id]/send so the
   // button never promises to reach leads that consent will exclude.
   const eligible = await prisma.lead.count({
@@ -101,7 +108,7 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* The dial queue lives here rather than under Calls: a queue belongs
               to the campaign that decided who is in it. */}
-          {can(ctx, 'dialer', 'VIEW') && (
+          {can(ctx, 'dialer', 'VIEW') && diallable && (
             <SalesLink className="lf-btn lf-btn--sm" href={`/campaigns/${campaign.id}/dialer`}>
               Open dialer
             </SalesLink>
@@ -123,7 +130,9 @@ export default async function CampaignDetailPage({ params: paramsPromise }: { pa
               <p style={{ margin: 0, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
                 {campaign.channel === 'VOICE'
                   ? 'This is a calling campaign. Its audience is worked from the dialer, not sent to — “Open dialer” above.'
-                  : `This is a ${campaign.channel?.toLowerCase()} campaign, and nothing sends those yet. Only WhatsApp campaigns can be sent from here.`}
+                  : `This is a ${campaign.channel?.toLowerCase()} campaign, and nothing sends those yet. Only WhatsApp campaigns can be sent from here.${
+                      diallable ? ' Its calling queue is worked from “Open dialer” above.' : ''
+                    }`}
               </p>
             </section>
           )}
