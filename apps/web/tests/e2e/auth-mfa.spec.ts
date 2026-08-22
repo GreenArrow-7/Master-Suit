@@ -66,6 +66,17 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await page.goto('/enroll-2fa');
 
     await expect(page.getByRole('heading', { name: 'Set up your authenticator' })).toBeVisible();
+
+    /**
+     * Enrolling from a full session re-authenticates before a secret is issued.
+     * Whoever finishes enrolment holds a factor on the account and leaves with
+     * the recovery codes, so a session borrowed for a minute must not be enough
+     * — the same rule that already guards changing the password. The forced
+     * first-run grant is exempt and is covered in tests/security/mfa-reauth.
+     */
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
     await expect(page.getByText('Enter this setup key:')).toBeVisible();
 
     // The setup key is the only copy the account holder ever receives.
