@@ -59,11 +59,27 @@ async function platformUserFor(ctx: Ctx, userId = ctx.actor.id) {
  * Step one: issue a secret and the otpauth URL the authenticator scans. Nothing
  * is switched on yet, and calling this again before confirming simply replaces
  * the pending secret.
+ *
+ * **Requires the account password**, for the same reason `changeOwnPassword`
+ * does: a borrowed unlocked laptop is otherwise a permanent account takeover.
+ * Enrolment is not a read — whoever completes it holds a factor on the account
+ * and walks away with the recovery codes, which are the way back in when the
+ * authenticator is lost. Without this, anyone holding a live session (or an API
+ * key, which authenticates as the key's creator) could enrol *their own*
+ * authenticator on somebody else's account, and the owner would have no way to
+ * tell it apart from their own enrolment.
+ *
+ * The first-run flow in api/v1/auth/enroll-2fa is the deliberate exception: the
+ * password was proven seconds earlier and its grant can reach nothing else.
  */
-export async function beginTotpEnrolment(ctx: Ctx) {
+export async function beginTotpEnrolment(ctx: Ctx, currentPassword: string) {
   const user = await platformUserFor(ctx);
   if (user.mfaEnabled)
     throw Conflict('Two-factor authentication is already enabled. Disable it first if you want to re-enrol.');
+
+  if (!user.passwordHash || !(await verifyPassword(user.passwordHash, currentPassword))) {
+    throw Forbidden('That password is not correct.');
+  }
 
   const secret = generateSecret();
   await prisma.platformUser.update({ where: { id: user.id }, data: { mfaSecret: encryptSecret(secret) } });

@@ -7,6 +7,7 @@ import { resolveCtx } from '@/lib/auth/session';
 import { can } from '@/lib/security/rbac';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { audit } from '@/lib/security/audit';
+import { safeReturnTo } from '@/lib/security/redirect';
 import { completeMetaOAuth, consumeMetaOAuthState, metaOAuthConfigured } from '@/services/meta/oauth';
 
 /**
@@ -24,8 +25,13 @@ import { completeMetaOAuth, consumeMetaOAuthState, metaOAuthConfigured } from '@
  */
 export const dynamic = 'force-dynamic';
 
+/**
+ * `returnTo` reaches this from the connect request's body, so it is caller-
+ * supplied; being carried in server-side state does not make it trusted, only
+ * harder to reach. safeReturnTo is what keeps it on this origin.
+ */
 function back(returnTo: string, params: Record<string, string>) {
-  const target = returnTo.startsWith('/') ? returnTo : '/';
+  const target = safeReturnTo(returnTo);
   const url = new URL(target, env.APP_URL);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return NextResponse.redirect(url);
