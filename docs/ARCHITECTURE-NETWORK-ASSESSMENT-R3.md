@@ -1182,14 +1182,14 @@ sequenceDiagram
 
 ### 🟡 Medium
 
-| #       | Finding                                                  | Evidence                                       | Impact                                                                                                                                                                                                                        |
-| ------- | -------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **M-1** | `script-src 'unsafe-inline'`                             | `src/proxy.ts:42`                              | XSS is uncontained by CSP. A nonce with `strict-dynamic` was tried and does not survive Next 16.2.12's inline bootstrap — **verified in a browser** by `tests/e2e/csp.spec.ts`, not assumed. Framework-blocked, not neglected |
-| **M-2** | Plaintext between services on the host                   | Connections 3–9 in §7                          | Contained today by everything being on one host. Becomes real the same day H-1 is fixed                                                                                                                                       |
-| **M-3** | Logs rotate and go nowhere                               | `x-logging` in three overlays; no shipper      | Post-incident analysis is limited to what is on the host. The lines are already structured JSON with a request id — **the missing piece is a destination nobody has chosen**                                                  |
-| **M-4** | No CSRF token                                            | `sameSite: 'lax'` only                         | Adequate for a single-origin app; stops being adequate the day a subdomain is added                                                                                                                                           |
-| **M-5** | Features modelled without implementation                 | `ScoringRule`, billing tables                  | The product claims things it does not do                                                                                                                                                                                      |
-| **M-6** | Object-store pagination unverified against a real bucket | `listObjects`, `listPrefixes`, `deleteObjects` | Exercised against a stand-in; pagination and 1,000-key batching are exactly what a stand-in cannot prove                                                                                                                      |
+| #       | Finding                                                                                          | Evidence                                       | Impact                                                                                                                                                                                                                        |
+| ------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M-1** | `script-src 'unsafe-inline'`                                                                     | `src/proxy.ts:42`                              | XSS is uncontained by CSP. A nonce with `strict-dynamic` was tried and does not survive Next 16.2.12's inline bootstrap — **verified in a browser** by `tests/e2e/csp.spec.ts`, not assumed. Framework-blocked, not neglected |
+| **M-2** | Plaintext between services on the host                                                           | Connections 3–9 in §7                          | Contained today by everything being on one host. Becomes real the same day H-1 is fixed                                                                                                                                       |
+| **M-3** | Logs rotate and go nowhere                                                                       | `x-logging` in three overlays; no shipper      | Post-incident analysis is limited to what is on the host. The lines are already structured JSON with a request id — **the missing piece is a destination nobody has chosen**                                                  |
+| **M-4** | No CSRF token                                                                                    | `sameSite: 'lax'` only                         | Adequate for a single-origin app; stops being adequate the day a subdomain is added                                                                                                                                           |
+| **M-5** | Features modelled without implementation                                                         | `ScoringRule`, billing tables                  | The product claims things it does not do                                                                                                                                                                                      |
+| **M-6** | ~~Object-store pagination unverified against a real bucket~~ — **substantially closed**, see W-9 | `listObjects`, `listPrefixes`, `deleteObjects` | Exercised against a stand-in; pagination and 1,000-key batching are exactly what a stand-in cannot prove                                                                                                                      |
 
 ### 🔵 Low
 
@@ -1519,6 +1519,24 @@ Concrete, with the evidence. Not compliments.
 
 ### W-8 · Two large dispatch routes
 
+> **Closed for the first of the two, after this assessment.** The reads moved to
+> `src/services/hr/reads.ts` and the wire contract to
+> `src/services/hr/dispatchContract.ts`; `route.ts` is 698 lines and its GET
+> handler is twelve. The permission decision deliberately stayed in the route.
+>
+> The finding below is left as written, but its diagnosis was incomplete and the
+> correction is worth more than the split: the obstacle was never the mechanics,
+> it was that **34 of the 46 branches were named by no test**, and the switch has
+> no `default`, so a dropped `case` answers `200 {"ok":true}` — a missing
+> resource is indistinguishable from a working one.
+> `tests/hr/dispatch-characterisation.spec.ts` drives all 46 and landed in its
+> own commit _before_ the move, so it could be seen passing first. It also found
+> three resources declared `FLOOR` whose real gate is a service assertion, which
+> a split reading only the map would have dropped.
+>
+> `hr/actions/[action]/route.ts` is unchanged: the write verbs share helpers and
+> have no equivalent characterisation yet. Net first, then the move.
+
 - **Problem** `hr/[resource]/route.ts` (1,089 lines) and `hr/actions/[action]/route.ts` (974 lines).
 - **Evidence** Line counts.
 - **Impact** Reduced since R1 — both permission maps are total over their enums, so an undeclared resource or action is a compile error rather than a silent fall-through. What remains is readability.
@@ -1526,6 +1544,21 @@ Concrete, with the evidence. Not compliments.
 - **Recommendation** Split by resource family when one is next changed.
 
 ### W-9 · Object-store calls unproven against a real bucket
+
+> **Substantially closed after this assessment.**
+> `tests/unit/storage-pagination.spec.ts` stands up an HTTP server speaking the
+> S3 wire protocol and points a **real** `S3Client` at it, so the SDK does its
+> own signing, XML parsing and response shaping and only the backend is in
+> memory: 2,300 objects across three pages, 1,500 common prefixes across two, a
+> 2,500-key delete split 1000/1000/500, and two keys the bucket refuses so
+> `Deleted` is counted rather than the input. Four mutations, four killed.
+>
+> Until then those loops had **never executed** — the only test mocked
+> `listObjects` at the module boundary, so the code that deletes a customer's
+> recordings had not been run by anything.
+>
+> What remains is narrower than the finding below: that MinIO and AWS behave the
+> way that server does. One manual run, unchanged as P1-4.
 
 - **Problem** `listObjects`, `listPrefixes`, `deleteObjects` run against a stand-in in CI.
 - **Evidence** No object-storage service in CI; MinIO needs a Docker daemon.
@@ -1668,7 +1701,7 @@ There is no CSRF token beyond `SameSite=Lax`.
 | 4   | Plaintext between services — a genuine mitigation today, void on a second host                                     | 🟡 Medium |
 | 5   | Lead scoring and billing modelled and unimplemented — the product claims them                                      | 🟡 Medium |
 | 6   | `AuditLog` and `HrAttendancePunch` grow without a policy — the sweep exists and waits for a number                 | 🟡 Medium |
-| 7   | Object-store pagination and 1,000-key batching unproven against a real bucket                                      | 🟡 Medium |
+| 7   | ~~Pagination and batching unproven~~ — **substantially closed**; the SDK now drives a real S3 server in tests      | 🔵 Low    |
 | 8   | Three backup transports (`s3`, `rclone`, `rsync`) proven only by hand                                              | 🟡 Medium |
 | 9   | No CSRF token — latent until a subdomain is added                                                                  | 🔵 Low    |
 | 10  | The VM itself is not described in the repository                                                                   | 🔵 Low    |
