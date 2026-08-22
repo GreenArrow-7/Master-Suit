@@ -137,6 +137,23 @@ jobs:
       - name: Tenant isolation
         run: node scripts/check-rls.mjs
 
+      # ── Gate 0c — raw SQL is inside a tenant transaction ──────────────────
+      #
+      # The gate above proves every tenant table has a policy. This proves the
+      # policies are given something to filter on. The tenant guard is blind to
+      # `$queryRaw`, so raw SQL rests on RLS alone, and RLS rests on
+      # `app.tenant_id` — which is set transaction-locally. A raw statement
+      # issued outside a transaction runs on a pooled connection where that
+      # setting is either absent, in which case the policy matches nothing and
+      # the caller is told it succeeded, or left over from another request, in
+      # which case it matches somebody else's rows.
+      #
+      # Nothing in the codebase does this today. It is here because the shape
+      # that would — a bulk DELETE with no model API to route through — is
+      # exactly the shape the retention sweeps take.
+      - name: Raw SQL scope
+        run: node scripts/check-raw-sql-scope.mjs
+
       # The server integration specs sign in as a member of the `manath-homes`
       # workspace, which only exists once the demo data is seeded. The seed
       # refuses to run against NODE_ENV=production, so it cannot touch a real

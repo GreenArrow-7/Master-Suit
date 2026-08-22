@@ -36,22 +36,30 @@ import { Client } from 'pg';
  * control-plane table that is cross-tenant by design and gated by
  * requirePlatformOwner instead.
  *
- * This list must match the `bootstrap` array in the RLS migrations. It is
+ * This must match the *effective* `bootstrap` array in the RLS migrations —
+ * effective because that sweep selects only tables carrying a `tenantId`, so an
+ * entry naming a table without one excludes nothing and never did. It is
  * deliberately spelled out rather than derived: adding a table here is a
  * security decision, and it should be a diff somebody reviews.
+ *
+ * Every entry is checked against the catalog below. Four used to be inert —
+ * `Session`, which is not a table at all (identity moved to PlatformSession),
+ * and `PlatformUser`, `AuthenticationFactor` and `PlatformSession`, which carry
+ * no `tenantId` and so were never candidates for the sweep. They are gone.
+ *
+ * A dead name in this list is not harmless. It is a dormant exemption: the day
+ * somebody adds a model called `Session` with a `tenantId`, it is excluded from
+ * row-level security by a decision nobody made, in a review nobody had. The
+ * stale-entry check below is what stops that.
  */
 const BOOTSTRAP = new Set([
-  'Session',
-  'PlatformSession',
   'APIKey',
   'IntegrationConnection',
   'PasswordResetToken',
   'RateLimitCounter',
   'WorkspaceInvitation',
-  'PlatformUser',
   'WorkspaceMembership',
   'PlatformAuditEvent',
-  'AuthenticationFactor',
   // Control-plane data about platform *staff*, resolved before any tenant
   // context exists: the lookup that decides whether the actor may write is the
   // one that would have to set app.tenant_id, so a policy here would make it
@@ -151,6 +159,29 @@ for (const row of rows) {
 
   if (row.role_scoped) {
     problems.push(`${row.table}: policy is scoped TO a role, so it does not apply to any other role`);
+  }
+}
+
+/**
+ * Every exemption must still be load-bearing.
+ *
+ * The check above validates the catalog against this list. Nothing validated
+ * the list against the catalog, so an entry could name a table that had been
+ * renamed, dropped, or that never carried a `tenantId` — and it would sit there
+ * looking like a considered security decision. Four did.
+ *
+ * `rows` is already every tenantId-bearing table in the schema, which is
+ * exactly the set an exemption can meaningfully apply to. Anything named here
+ * and absent from it exempts nothing today and is a trap tomorrow.
+ */
+const present = new Set(rows.map((row) => row.table));
+for (const table of BOOTSTRAP) {
+  if (!present.has(table)) {
+    problems.push(
+      `${table}: listed as a bootstrap exemption, but no table of that name carries a tenantId. ` +
+        `Either it was renamed or dropped, or it never needed exempting — remove it. ` +
+        `A dormant exemption becomes a live one the day something reuses the name.`,
+    );
   }
 }
 

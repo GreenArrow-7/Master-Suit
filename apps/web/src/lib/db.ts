@@ -25,8 +25,13 @@ globalForPrisma.__inTenantTx = inTenantTx;
 /**
  * Tables that are not tenant-scoped. Everything else MUST be filtered by tenantId.
  * Adding a model here is a security decision and needs review.
+ *
+ * Exported for tests/tenant/guard-exemptions.spec.ts alone. Application code must
+ * never import it to decide anything: a caller that branches on "is this model
+ * exempt" has reimplemented the guard's decision outside the guard, where the
+ * next person to edit this list will not find it.
  */
-const GLOBAL_MODELS = new Set([
+export const GLOBAL_MODELS = new Set([
   'Tenant',
   'Permission',
   'SubscriptionPlan',
@@ -61,9 +66,26 @@ const GLOBAL_MODELS = new Set([
  * bootstrap case where tenantId isn't known yet (that's what the lookup is
  * for) — not a missing safety check.
  */
-const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
-  Session: ['tokenHash'],
-  PlatformSession: ['tokenHash', 'id'],
+export const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
+  // Two entries were removed from here, both dead, both dead in a way that would
+  // have come back to life on somebody else's shift:
+  //
+  //   `Session: ['tokenHash']`      — there is no `Session` model. Identity moved
+  //     to PlatformSession and lib/auth/session.ts says the legacy branch is
+  //     "long gone". `Session` is about the most likely name a future model could
+  //     take, and the day somebody adds one with a `tenantId` it would inherit a
+  //     guard hole nobody chose.
+  //
+  //   `PlatformSession: ['tokenHash', 'id']` — unreachable. PlatformSession is in
+  //     GLOBAL_MODELS, and the guard returns on that check before it ever reads
+  //     this map, so the entry decided nothing. It would start deciding something
+  //     the moment PlatformSession left GLOBAL_MODELS — which is exactly the
+  //     change during which nobody is looking at this map.
+  //
+  // tests/tenant/guard-exemptions.spec.ts now fails on any entry that does not
+  // name a real model with a real single-column unique index, and on any model
+  // listed in both maps.
+
   // The reset link is the only thing the caller holds; the tenant is resolved
   // *from* it. Without this the guard threw on every reset attempt and the
   // endpoint answered 500 unconditionally — the migration's RLS bootstrap list
