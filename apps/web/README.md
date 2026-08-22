@@ -91,9 +91,10 @@ npm run test:e2e                       # playwright, against a production build 
 ## Where the documentation is
 
 - `docs/00-ARCHITECTURE.md` — the design, module by module
-- `docs/ARCHITECTURE-NETWORK-ASSESSMENT.md` — an assessment of what is actually
-  built, with its weaknesses and a prioritised roadmap. Start here if you want
-  the honest version
+- `docs/ARCHITECTURE-NETWORK-ASSESSMENT-R3.md` — the current assessment of what
+  is actually built, with its weaknesses and a prioritised roadmap. Start here
+  if you want the honest version. `-R2.md` and the unsuffixed original are the
+  two earlier readings, left as written so the three can be read as a sequence
 - `docs/KNOWN-LIMITATIONS.md` — what is deliberately not finished
 - `docs/ENVIRONMENTS.md` — the five environments and what separates them
 - `docs/DEPLOY-AZURE.md`, `docs/DEPLOY-STAGING.md` — running it

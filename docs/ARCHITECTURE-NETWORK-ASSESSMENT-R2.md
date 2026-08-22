@@ -21,6 +21,12 @@
 > alone — an assessment that edits itself is no longer a record of anything.
 > The places a reader would otherwise act on the stale finding are annotated
 > inline. See `docs/OBSERVABILITY.md` for what now runs.
+>
+> **Superseded as the current assessment by
+> `docs/ARCHITECTURE-NETWORK-ASSESSMENT-R3.md` (`07d39c8`, 2026-08-22)**, which
+> reads the tree twenty-five commits later. Every P0, P1 and P2 below is closed
+> there; the scores here are left at what was assessed against `f1dd84e`. Read
+> R3 for the current state and this one for how it got there.
 
 Everything below was read out of the codebase or measured against a live
 database and a rendered Compose configuration. Where something cannot be
