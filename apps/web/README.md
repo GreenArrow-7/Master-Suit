@@ -67,16 +67,26 @@ attribute saying so. `scripts/check-rls.mjs` is a CI gate over the live catalog.
 ## What runs the checks
 
 ```bash
-npm run typecheck        # tsc --noEmit
-npm run lint             # eslint
-npm run format:check     # prettier
-npm test                 # vitest — a skipped test fails the run in CI
-npm run test:e2e         # playwright, against a production build
-node scripts/check-rls.mjs   # every tenant table still enabled, forced and policied
+npm run verify           # every gate CI runs, in CI's order
+npm run verify -- --fast # the same, without the two slowest
+npm run verify -- --list # the plan, running nothing
 ```
 
-`.github/workflows/ci.yml` runs all of these plus a schema-drift gate
-(`prisma migrate diff --exit-code`), on every push and pull request.
+`.github/workflows/ci.yml` is the authority, and `scripts/verify.mjs` reads its
+steps rather than keeping a copy of them — so a gate added to CI either runs
+here too or forces somebody to write down why it cannot. There are fifteen of
+them; this list used to name five and claim that was all of them, which is how
+`prettier --check` came to be the thing CI failed on.
+
+Four are worth knowing individually, because they are the ones that fail for
+reasons a test cannot express:
+
+```bash
+node scripts/check-rls.mjs             # every tenant table enabled, forced and policied
+node scripts/check-raw-sql-scope.mjs   # raw SQL against those tables is inside a transaction
+npm run check:drift                    # schema.prisma and the migrations still agree
+npm run test:e2e                       # playwright, against a production build — not in `verify`
+```
 
 ## Where the documentation is
 

@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:tenant": "vitest run tests/tenant",
     "test:permission": "vitest run tests/permission",
+    "verify": "node scripts/verify.mjs",
     "check:rls": "node scripts/check-rls.mjs",
     "check:raw-sql": "node scripts/check-raw-sql-scope.mjs",
     "check:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
