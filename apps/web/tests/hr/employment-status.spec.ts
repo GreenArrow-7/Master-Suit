@@ -24,6 +24,9 @@ describe('employment status vocabulary', () => {
       'src/services/hr/lifecycle.ts',
       'src/services/hr/attendance.ts',
       'src/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route.ts',
+      // The reads moved out of that route into this module. A guard that does
+      // not follow the code it guards stops guarding anything.
+      'src/services/hr/reads.ts',
     ]) {
       expect(read(path), path).not.toContain('ON_NOTICE');
     }

@@ -3,7 +3,7 @@
  *
  * ── Why this exists ─────────────────────────────────────────────────────────
  *
- * `hr/[resource]/route.ts` is 1,089 lines and switches over 46 resources. Both
+ * `hr/[resource]/route.ts` was 1,089 lines and switched over 46 resources. Both
  * architecture assessments recorded its size as a readability problem and
  * recommended splitting it by resource family. The reason that had not been
  * done is not laziness — it is that **34 of the 46 branches were not named by
@@ -12,7 +12,10 @@
  * silent regression reaches payroll.
  *
  * So the untested branches were the real defect, and the file length was only
- * the visible one. This closes the real one first.
+ * the visible one. This file closed the real one, and the split followed: the
+ * reads now live in `services/hr/reads.ts` and the contract in
+ * `services/hr/dispatchContract.ts`. Everything below still drives the route,
+ * so it is checking the seam as well as the branches.
  *
  * ── What it asserts, and why that is the useful assertion ───────────────────
  *
@@ -298,10 +301,7 @@ describe('this file and the route agree about which resources exist', () => {
     // module's surface to suit the test.
     const { readFileSync } = await import('node:fs');
     const path = await import('node:path');
-    const source = readFileSync(
-      path.resolve(__dirname, '../../src/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route.ts'),
-      'utf8',
-    );
+    const source = readFileSync(path.resolve(__dirname, '../../src/services/hr/dispatchContract.ts'), 'utf8');
     const block =
       /resource:\s*z\s*\n?\s*\.enum\(\[([\s\S]*?)\]\)/.exec(source) ?? /z\.enum\(\[([\s\S]*?)\]\)/.exec(source);
     expect(block, 'could not find the resource enum in the route source').not.toBeNull();
