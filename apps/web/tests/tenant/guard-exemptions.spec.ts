@@ -53,9 +53,9 @@ let db: Client;
 
 /** Model names from the schema. No model carries `@@map`, so a model *is* a table. */
 const schemaModels = new Set(
-  [...readFileSync(path.resolve(__dirname, '../../prisma/schema.prisma'), 'utf8').matchAll(/^model\s+(\w+)\s*\{/gm)].map(
-    (m) => m[1]!,
-  ),
+  [
+    ...readFileSync(path.resolve(__dirname, '../../prisma/schema.prisma'), 'utf8').matchAll(/^model\s+(\w+)\s*\{/gm),
+  ].map((m) => m[1]!),
 );
 
 /** `Table.column` for every single-column unique or primary index that is not partial. */

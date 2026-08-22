@@ -96,8 +96,10 @@ function statementAt(source, from) {
     while (i < source.length) {
       const ch = source[i];
       if (ch === '\\') i += 1;
-      else if (ch === '$' && source[i + 1] === '{') { depth += 1; i += 1; }
-      else if (ch === '}' && depth > 0) depth -= 1;
+      else if (ch === '$' && source[i + 1] === '{') {
+        depth += 1;
+        i += 1;
+      } else if (ch === '}' && depth > 0) depth -= 1;
       else if (ch === '`' && depth === 0) return source.slice(start, i);
       i += 1;
     }
@@ -140,12 +142,16 @@ function tablesIn(statement) {
 function transactionalNames(source) {
   const names = new Set();
 
-  for (const match of source.matchAll(/\b(?:withTx|withPlatformTx|\$transaction)\s*\(\s*(?:[^)]*?,\s*)?(?:async\s*)?\(?\s*(\w+)\s*[),:]/g)) {
+  for (const match of source.matchAll(
+    /\b(?:withTx|withPlatformTx|\$transaction)\s*\(\s*(?:[^)]*?,\s*)?(?:async\s*)?\(?\s*(\w+)\s*[),:]/g,
+  )) {
     names.add(match[1]);
   }
   // `withTx(tenantId, async (tx) => …)` — the tenant argument is consumed by the
   // optional group above; this is the same shape written across lines.
-  for (const match of source.matchAll(/\b(?:withTx|withPlatformTx|\$transaction)\s*\([\s\S]{0,200}?(?:async\s*)?\(\s*(\w+)\s*[):]/g)) {
+  for (const match of source.matchAll(
+    /\b(?:withTx|withPlatformTx|\$transaction)\s*\([\s\S]{0,200}?(?:async\s*)?\(\s*(\w+)\s*[):]/g,
+  )) {
     names.add(match[1]);
   }
 
