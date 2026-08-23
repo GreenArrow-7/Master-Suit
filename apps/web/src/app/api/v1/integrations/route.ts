@@ -81,6 +81,92 @@ export const GET = route({ module: 'integrations', action: 'VIEW' }, async ({ ct
   };
 });
 
+/**
+ * The phrase is required, and it is a phrase rather than a boolean on purpose.
+ * `?confirm=true` is what a stray retry, a prefetch or a copied curl line sends
+ * by accident; this one has to be typed. Nothing here is recoverable — the rows
+ * hold the only copy of each key the workspace has, and the vendor will not
+ * hand them back.
+ */
+const CONFIRM_PHRASE = 'remove-all-credentials';
+
+const deleteQuery = z.object({
+  confirm: z.literal(CONFIRM_PHRASE),
+  /**
+   * Comma-separated provider keys to limit the purge to. Omitted means every
+   * connected provider in this workspace.
+   */
+  providers: z.string().max(500).optional(),
+});
+
+/**
+ * Remove stored credentials for every linked service at once — or for a named
+ * subset.
+ *
+ * Per-provider disconnect already deletes rather than flags, so this adds no
+ * new power; what it adds is doing it in one action instead of one dialog per
+ * provider, which is what somebody rotating a compromised set of keys actually
+ * needs. Deleting the row also retires each `webhookKey`, so callbacks already
+ * in flight stop authenticating.
+ */
+export const DELETE = route(
+  {
+    module: 'integrations',
+    action: 'MANAGE_CONFIGURATION',
+    query: deleteQuery,
+    auditEvent: 'INTEGRATION_MODIFIED',
+    /**
+     * The same budget as the other MANAGE_CONFIGURATION routes, deliberately.
+     * The limiter keys on `route:<module>:<action>:<actor>`, so PUT, POST and
+     * both DELETEs share one counter — a tighter max here would not protect
+     * this endpoint, it would lower the ceiling on saving a key. The control
+     * that stops an accidental purge is the phrase, which has to be typed.
+     */
+    rateLimit: { max: 30, windowSeconds: 300 },
+  },
+  async ({ ctx, query }) => {
+    const named = query.providers
+      ?.split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (named?.length) {
+      const unknown = named.filter((p) => !PROVIDERS.some((spec) => spec.key === p));
+      if (unknown.length) {
+        throw Invalid(
+          unknown.map((provider) => ({
+            field: 'providers',
+            code: 'unknown',
+            message: `There is no provider named ${provider}.`,
+          })),
+        );
+      }
+    }
+
+    const where = { tenantId: ctx.tenantId, ...(named?.length ? { provider: { in: named } } : {}) };
+
+    // Read first, so the response can name what went. "3 removed" leaves an
+    // administrator guessing which three, on the one action they cannot undo.
+    const removed = (await prisma.integrationConnection.findMany({ where, select: { provider: true } })).map(
+      (c) => c.provider,
+    );
+
+    await prisma.integrationConnection.deleteMany({ where });
+
+    // Same reason as the per-provider delete: a default pointing at a provider
+    // that is gone makes resolveTelephony refuse every call with a message
+    // about a vendor nobody can see any more.
+    if (removed.length) {
+      await prisma.organizationSetting.updateMany({
+        where: { tenantId: ctx.tenantId, telephonyProvider: { in: removed } },
+        data: { telephonyProvider: null },
+      });
+    }
+
+    return { removed, count: removed.length };
+  },
+);
+
 const patchBody = z
   .object({
     /** Null clears the choice and falls back to "the only connected vendor". */

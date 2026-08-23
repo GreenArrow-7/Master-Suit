@@ -1,7 +1,7 @@
 import { logger } from '@/lib/logger';
 import { geminiCredential, geminiModel, type GeminiCredential } from '../gemini';
 import { assertAiBudget, recordAiUsage } from '../usage';
-import { googleUsage } from '../provider';
+import { generateWithTools, type ModelToolCall, type Turn } from '../provider';
 import type { Ctx } from '@/lib/security/rbac';
 import { TOOLS, toolByName, type ProposedAction, type ToolSource } from './tools';
 
@@ -56,44 +56,31 @@ const SYSTEM = (ctx: Ctx, page: AssistantContext | undefined, today: string) =>
     '- For requests to create or change records, use the prepare tools; the user confirms in the UI. Never claim a change was made.',
   ].join('\n');
 
-/** Convert our ToolDefs to Gemini functionDeclarations. */
+/** Our ToolDefs, in the provider-neutral shape the transport declares. */
 const declarations = TOOLS.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
-async function geminiTurn(
-  contents: unknown[],
+async function modelTurn(
+  turns: Turn[],
   system: string,
   key: string,
   model: string,
   tenantId: string,
   credential: GeminiCredential,
 ) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    {
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        tools: [{ functionDeclarations: declarations }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
-      }),
-    },
-  );
-  if (!res.ok) {
-    const err: Error & { status?: number } = new Error(`Gemini error ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  const data = await res.json();
+  const response = await generateWithTools({
+    credential: { key, provider: credential.provider },
+    model,
+    system,
+    turns,
+    tools: declarations,
+    temperature: 0.2,
+    maxOutputTokens: 2048,
+    timeoutMs: AI_TIMEOUT_MS,
+  });
   // Per round, not per query: the loop below can call the model six times, and
   // metering only the last one would under-count a multi-step answer fivefold.
-  await recordAiUsage(tenantId, credential, googleUsage(data.usageMetadata), { feature: 'assistant', model });
-  return (data.candidates?.[0]?.content?.parts ?? []) as {
-    text?: string;
-    functionCall?: { name: string; args: any };
-  }[];
+  await recordAiUsage(tenantId, credential, response.usage, { feature: 'assistant', model });
+  return response;
 }
 
 /** Human-readable status line for a tool call, shown in the UI. */
@@ -153,31 +140,38 @@ export async function* runAssistant(
     if (key) await assertAiBudget(ctx.tenantId, credential);
 
     if (key) {
-      // ── Gemini function-calling loop ────────────────────────────────────
-      const contents: any[] = messages.map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content.slice(0, 4000) }],
-      }));
+      /**
+       * ── Tool-calling loop ───────────────────────────────────────────────
+       *
+       * The conversation is held in the provider-neutral `Turn[]` rather than
+       * in one vendor's message shape, so the same loop drives Google and
+       * OpenRouter. The part that must not be simplified away is the call id:
+       * an OpenAI-compatible API rejects a tool result whose `tool_call_id` it
+       * does not recognise, and a round that calls one tool twice — two lead
+       * searches with different filters, which this assistant does — produces
+       * two results that are told apart by nothing else.
+       */
+      const turns: Turn[] = messages.map((m) =>
+        m.role === 'assistant'
+          ? ({ role: 'model', text: m.content.slice(0, 4000) } as const)
+          : ({ role: 'user', text: m.content.slice(0, 4000) } as const),
+      );
       const system = SYSTEM(ctx, page, today);
 
       for (let round = 0; round < 6; round++) {
-        const parts = await geminiTurn(contents, system, key, model, ctx.tenantId, credential);
-        const calls = parts.filter((p) => p.functionCall);
-        if (calls.length === 0) {
-          const text = parts.map((p) => p.text ?? '').join('') || "I couldn't find that information in the CRM.";
-          yield { type: 'delta', text };
+        const response = await modelTurn(turns, system, key, model, ctx.tenantId, credential);
+        if (response.calls.length === 0) {
+          yield { type: 'delta', text: response.text || "I couldn't find that information in the CRM." };
           break;
         }
-        contents.push({ role: 'model', parts });
-        const responses = [];
-        for (const call of calls) {
-          yield { type: 'status', text: STATUS[call.functionCall!.name] ?? 'Looking that up…' };
-          const result = await runTool(call.functionCall!.name, call.functionCall!.args);
-          responses.push({
-            functionResponse: { name: call.functionCall!.name, response: { data: result.data } },
-          });
+        turns.push({ role: 'model', text: response.text || undefined, calls: response.calls });
+        const results: { id: string; name: string; data: unknown }[] = [];
+        for (const call of response.calls as ModelToolCall[]) {
+          yield { type: 'status', text: STATUS[call.name] ?? 'Looking that up…' };
+          const result = await runTool(call.name, call.args);
+          results.push({ id: call.id, name: call.name, data: result.data });
         }
-        contents.push({ role: 'user', parts: responses });
+        turns.push({ role: 'tool', results });
         if (round === 5) yield { type: 'delta', text: 'That took too many steps — try a more specific question.' };
       }
     } else {

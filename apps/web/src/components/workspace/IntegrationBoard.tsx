@@ -20,6 +20,13 @@ export interface ProviderCard {
   webhookUrl: string | null;
 }
 
+/**
+ * Must match `CONFIRM_PHRASE` in the route. Kept as a literal on both sides
+ * rather than shared through an import: this is a client component, and the
+ * route module it would import from reaches Prisma.
+ */
+const CONFIRM_PHRASE = 'remove-all-credentials';
+
 const CATEGORY_TITLES: Record<string, string> = {
   TELEPHONY: 'Telephony',
   MESSAGING: 'Messaging',
@@ -65,6 +72,8 @@ export default function IntegrationBoard({
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
       <HealthSummary providers={providers} deploymentKey={aiConfigured} />
+
+      <RemoveAllKeys providers={providers} canEdit={canEdit} />
 
       {categories.map((category) => (
         <section key={category}>
@@ -131,6 +140,112 @@ function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Clear every stored credential in this workspace at once.
+ *
+ * Disconnect on a single card already deletes the row rather than flagging it,
+ * so this grants no new power — it saves opening one panel per provider, which
+ * is what somebody rotating a leaked set of keys is actually doing, and what
+ * they least want to do half of.
+ *
+ * The phrase has to be typed. Nothing here comes back: the rows hold the only
+ * copy of each key the workspace has, and no vendor will reissue one on
+ * request. A button behind a `confirm()` is one misplaced Enter away from
+ * taking telephony, messaging and AI down together.
+ */
+function RemoveAllKeys({ providers, canEdit }: { providers: ProviderCard[]; canEdit: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+
+  const connected = providers.filter((p) => p.status !== 'NOT_CONFIGURED');
+  // Nothing stored means nothing to remove, and an enabled button that can only
+  // report "0 removed" reads as broken.
+  if (!canEdit || connected.length === 0) return null;
+
+  async function removeAll() {
+    setBusy(true);
+    setMessage(null);
+    const res = await fetch(`/api/v1/integrations?confirm=${CONFIRM_PHRASE}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+
+    if (!res.ok) {
+      setMessage({ tone: 'error', text: data.errors?.[0]?.message ?? data.detail ?? 'That change was refused.' });
+      return;
+    }
+    setMessage({
+      tone: 'ok',
+      text: data.count
+        ? `Removed ${data.count} key${data.count === 1 ? '' : 's'}: ${(data.removed as string[]).join(', ')}.`
+        : 'Nothing was stored.',
+    });
+    setTyped('');
+    setOpen(false);
+    router.refresh();
+  }
+
+  return (
+    <div className="lf-card" style={{ padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 280px' }}>
+          <strong>Stored API keys</strong>
+          <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+            {connected.length} service{connected.length === 1 ? '' : 's'} hold a credential:{' '}
+            {connected.map((p) => p.label).join(', ')}. Removing them cannot be undone — each vendor issues a new key,
+            it does not return the old one.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen((v) => !v)}
+          disabled={busy}
+        >
+          {open ? 'Cancel' : 'Remove all keys'}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 14, display: 'grid', gap: 10, maxWidth: 480 }}>
+          <label className="lf-label" htmlFor="remove-all-confirm">
+            Type <code>{CONFIRM_PHRASE}</code> to confirm
+          </label>
+          <input
+            id="remove-all-confirm"
+            className="lf-input"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <div>
+            <button
+              type="button"
+              className="lf-btn lf-btn--danger lf-btn--sm"
+              onClick={removeAll}
+              disabled={busy || typed.trim() !== CONFIRM_PHRASE}
+            >
+              {busy ? 'Removing…' : `Remove ${connected.length} key${connected.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message && (
+        <p
+          className={message.tone === 'error' ? 'lf-hint lf-hint--error' : 'lf-hint'}
+          role={message.tone === 'error' ? 'alert' : 'status'}
+        >
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }

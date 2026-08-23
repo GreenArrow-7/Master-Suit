@@ -1,7 +1,7 @@
 import { logger } from '../logger';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
-import { googleUsage } from './provider';
+import { generateStructured } from './provider';
 import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
@@ -110,43 +110,24 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
 
   const model = await geminiModel(input.tenantId);
   await assertAiBudget(input.tenantId, credential);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const data = await withRetry(
+  const response = await withRetry(
     'gemini-audit',
-    async () => {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildAuditPrompt(input) }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: AUDIT_SCHEMA,
-            temperature: 0.1,
-            maxOutputTokens: 4096,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        logger.error({ status: res.status, model }, 'Gemini audit API error');
-        const e: any = new Error(`Gemini API error: ${res.status}`);
-        e.status = res.status;
-        throw e;
-      }
-
-      return res.json();
-    },
+    () =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model,
+        prompt: buildAuditPrompt(input),
+        schema: AUDIT_SCHEMA,
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     { maxAttempts: 3, retryOn: isTransient },
   );
-  await recordAiUsage(input.tenantId, credential, googleUsage(data.usageMetadata), { feature: 'call-audit', model });
+  await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-
-  const parsed = JSON.parse(text);
+  const parsed = JSON.parse(response.text);
   const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
   const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
 

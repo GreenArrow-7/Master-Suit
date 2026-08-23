@@ -1,7 +1,7 @@
 import { logger } from '../logger';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
-import { googleUsage } from './provider';
+import { generateStructured } from './provider';
 import { withRetry, isTransient } from '../integrations/retry';
 import { redact } from './redact';
 
@@ -150,49 +150,29 @@ export async function analyzeTranscript(
   const model = await geminiModel(input.tenantId);
   // Before the billed call, which is the only place a ceiling can act.
   await assertAiBudget(input.tenantId, credential);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = buildPrompt(input);
   const started = Date.now();
 
-  const data = await withRetry(
+  const response = await withRetry(
     'gemini-analysis',
-    async () => {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-            temperature: 0.2,
-            maxOutputTokens: 4096,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text().catch(() => '');
-        logger.error({ status: res.status, model }, 'Gemini API error');
-        const e: any = new Error(`Gemini API error: ${res.status} — ${err.slice(0, 200)}`);
-        e.status = res.status;
-        throw e;
-      }
-
-      return res.json();
-    },
+    () =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model,
+        prompt,
+        schema: RESPONSE_SCHEMA,
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     { maxAttempts: 3, retryOn: isTransient },
   );
 
   const processingMs = Date.now() - started;
 
-  await recordAiUsage(input.tenantId, credential, googleUsage(data.usageMetadata), { feature: 'call-analysis', model });
+  await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-analysis', model });
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-
-  const result: AnalysisResult = JSON.parse(text);
+  const result: AnalysisResult = JSON.parse(response.text);
   return { result, modelId: model, processingMs };
 }

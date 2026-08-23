@@ -147,15 +147,18 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
 
 // ── Structured (JSON-schema) generation ──────────────────────────────────────
 
-export interface StructuredRequest {
+export interface TextRequest {
   credential: AiTransportCredential;
   model: string;
   prompt: string;
-  /** JSON Schema for the expected object. */
-  schema: object;
   temperature?: number;
   maxOutputTokens?: number;
   timeoutMs?: number;
+}
+
+export interface StructuredRequest extends TextRequest {
+  /** JSON Schema for the expected object. */
+  schema: object;
 }
 
 export interface StructuredResponse {
@@ -164,8 +167,24 @@ export interface StructuredResponse {
   usage: ModelUsage;
 }
 
-export async function generateStructured(request: StructuredRequest): Promise<StructuredResponse> {
-  const { credential, model, prompt, schema } = request;
+/**
+ * A prompt in, JSON out, against a schema the provider is asked to honour.
+ */
+export function generateStructured(request: StructuredRequest): Promise<StructuredResponse> {
+  return complete(request, request.schema);
+}
+
+/**
+ * A prompt in, prose out. Same transport, no schema — asking for JSON here
+ * would make the model wrap a sentence in quotes and braces, and the callers on
+ * this path (a suggested reply somebody reads and edits) want the sentence.
+ */
+export function generateText(request: TextRequest): Promise<StructuredResponse> {
+  return complete(request, undefined);
+}
+
+async function complete(request: TextRequest, schema: object | undefined): Promise<StructuredResponse> {
+  const { credential, model, prompt } = request;
   const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const temperature = request.temperature ?? 0.3;
   const maxOutputTokens = request.maxOutputTokens ?? 2048;
@@ -192,10 +211,12 @@ export async function generateStructured(request: StructuredRequest): Promise<St
         messages: [
           {
             role: 'user',
-            content: `${prompt}\n\nRespond with JSON only, matching this JSON Schema exactly:\n${JSON.stringify(schema)}`,
+            content: schema
+              ? `${prompt}\n\nRespond with JSON only, matching this JSON Schema exactly:\n${JSON.stringify(schema)}`
+              : prompt,
           },
         ],
-        response_format: { type: 'json_object' },
+        ...(schema ? { response_format: { type: 'json_object' } } : {}),
         temperature,
         max_tokens: maxOutputTokens,
       },
@@ -212,8 +233,7 @@ export async function generateStructured(request: StructuredRequest): Promise<St
     {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: schema,
+        ...(schema ? { responseMimeType: 'application/json', responseSchema: schema } : {}),
         temperature,
         maxOutputTokens,
       },
