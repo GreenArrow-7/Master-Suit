@@ -173,3 +173,56 @@ describe('the confirmation phrase', () => {
     expect(board).toMatch(/\/api\/v1\/integrations\?confirm=\$\{CONFIRM_PHRASE\}/);
   });
 });
+
+/**
+ * The per-provider control, asserted statically because the alternative is a
+ * browser and this is one button.
+ *
+ * It exists because removal was three steps behind a button labelled for the
+ * opposite intent: Configure → scroll past the credential form → Disconnect.
+ * Somebody who wants a key gone is looking at the card that says ERROR, and an
+ * action they cannot find is an action the product does not have.
+ */
+describe('the per-provider Remove key button', () => {
+  const board = readFileSync(path.resolve(__dirname, '../..', 'src/components/workspace/IntegrationBoard.tsx'), 'utf8');
+  /**
+   * Everything in ProviderPanel before its collapsible form — i.e. what shows
+   * without pressing Configure.
+   *
+   * Anchored to `function ProviderPanel(` rather than to the first `{open && (`
+   * in the file: RemoveAllKeys higher up has an `open` state and a block of its
+   * own, so the naive slice ended before ProviderPanel had even begun and every
+   * assertion below failed against a header that was not one.
+   */
+  const panel = board.slice(board.indexOf('function ProviderPanel('));
+  const header = panel.slice(0, panel.indexOf('{open && ('));
+
+  it('sits on the card header, not inside the form', () => {
+    expect(header).toContain('Remove key');
+  });
+
+  it('is offered only when there is a key to remove, and only to someone who may', () => {
+    expect(header).toMatch(/\{configured && canEdit && \(/);
+  });
+
+  it('asks twice before it removes', () => {
+    // One press arms, the second sends. A single-press destructive control next
+    // to Configure is a misclick away from a trip to the vendor console.
+    expect(header).toMatch(/confirmRemove \? send\('disconnect'\) : setConfirmRemove\(true\)/);
+    expect(header).toContain('Confirm — remove key');
+  });
+
+  it('leaves exactly one removal control on the card', () => {
+    // Two buttons for one destructive action, with different labels and
+    // different confirmations, made "which did I press" unanswerable.
+    expect(board.match(/send\('disconnect'\)/g)).toHaveLength(1);
+    expect(board).not.toContain('Disconnecting…');
+  });
+
+  it('reports the outcome with the form closed', () => {
+    // The button is reachable while collapsed, and an action that says nothing
+    // reads as an action that did nothing.
+    expect(board).toMatch(/\{message && !open && \(/);
+    expect(board).toContain('Key removed.');
+  });
+});

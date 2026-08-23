@@ -325,6 +325,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<'save' | 'test' | 'disconnect' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  /** Second press confirms; blurring the button forgets the first one. */
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const configured = provider.status !== 'NOT_CONFIGURED';
 
@@ -365,7 +367,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
       tone: verdict?.ok === false ? 'error' : 'ok',
       text:
         action === 'disconnect'
-          ? 'Disconnected.'
+          ? `Key removed. ${provider.label} is no longer configured for this workspace.`
           : verdict?.ok === true
             ? `Verified with ${provider.label}.${verdict.detail ? ` ${verdict.detail}` : ''}`
             : verdict?.ok === null
@@ -373,6 +375,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               : (verdict?.detail ?? 'Saved.'),
     });
     setValues({});
+    setConfirmRemove(false);
     router.refresh();
   }
 
@@ -399,10 +402,47 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           )}
         </div>
 
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
-          {open ? 'Close' : configured ? 'Configure' : 'Connect'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
+            {open ? 'Close' : configured ? 'Configure' : 'Connect'}
+          </button>
+          {/*
+            Removing a key used to mean Configure → scroll past the form →
+            Disconnect, which is three steps behind a button labelled for the
+            opposite intent. The moment somebody wants a key gone — it is wrong,
+            it leaked, it is 400ing — is the moment they are looking at this
+            card, so the action belongs on it.
+          */}
+          {configured && canEdit && (
+            <button
+              type="button"
+              className="lf-btn lf-btn--danger lf-btn--sm"
+              disabled={busy !== null}
+              onClick={() => (confirmRemove ? send('disconnect') : setConfirmRemove(true))}
+              // The second press is the confirmation. A dialog would be
+              // stronger, but this key is one card among many and re-entering
+              // it costs a visit to the vendor console, not a rebuild.
+              onBlur={() => setConfirmRemove(false)}
+            >
+              {busy === 'disconnect' ? 'Removing…' : confirmRemove ? 'Confirm — remove key' : 'Remove key'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/*
+        Shown here as well as inside the form, because the Remove button on the
+        header is reachable with the form closed — and an action that reports
+        nothing reads as an action that did nothing.
+      */}
+      {message && !open && (
+        <p
+          className={message.tone === 'error' ? 'lf-hint lf-hint--error' : 'lf-hint'}
+          role={message.tone === 'error' ? 'alert' : 'status'}
+        >
+          {message.text}
+        </p>
+      )}
 
       {provider.webhookUrl && (
         <div style={{ marginTop: 12 }}>
@@ -489,16 +529,12 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
                 {busy === 'test' ? 'Testing…' : 'Test connection'}
               </button>
             )}
-            {configured && (
-              <button
-                type="button"
-                className="lf-btn lf-btn--danger lf-btn--sm"
-                disabled={!canEdit || busy !== null}
-                onClick={() => send('disconnect')}
-              >
-                {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
-              </button>
-            )}
+            {/*
+              Removal lives on the card header now, not here. Two buttons for
+              one destructive action on one card is worse than either: they had
+              different labels and different confirmations, so which one a
+              person had pressed was not recoverable from what they remembered.
+            */}
           </div>
 
           {message && (
