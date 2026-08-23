@@ -226,3 +226,87 @@ describe('the per-provider Remove key button', () => {
     expect(board).toContain('Key removed.');
   });
 });
+
+/**
+ * Which commit is answering, shown on the page where the question arises.
+ *
+ * A provider card that does not match what somebody expects has two
+ * explanations — the setting is wrong, or the server is running older code —
+ * and nothing on the screen could tell them apart. That is not hypothetical: a
+ * key was pasted into a form whose Provider field did not exist in the running
+ * build, and every reading of the resulting 400 assumed it did.
+ */
+describe('the running build is visible on the integrations page', () => {
+  const read = (file: string) => readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+
+  it('is passed from the server page, not guessed on the client', () => {
+    const page = read('src/app/(workspace)/[workspaceSlug]/admin/integrations/page.tsx');
+    expect(page).toContain("import { buildId } from '@/lib/build'");
+    expect(page).toMatch(/build=\{buildId\(\)\}/);
+  });
+
+  it('is rendered on the Health card', () => {
+    const board = read('src/components/workspace/IntegrationBoard.tsx');
+    const health = board.slice(board.indexOf('function HealthSummary('));
+    expect(health).toMatch(/build \{build\}/);
+  });
+
+  /**
+   * The fallback is the whole point: BUILD_COMMIT is stamped by the Dockerfile
+   * and unset in a source checkout, which is exactly where somebody is asking
+   * whether their pull landed.
+   */
+  it('resolves to something in a source checkout, not "unknown"', async () => {
+    const { buildId } = await import('@/lib/build');
+    const id = buildId();
+    expect(id).not.toBe('unknown');
+    expect(id).toMatch(/^[0-9a-f]{7,40}$/);
+  });
+});
+
+/**
+ * A failing key check has to name the service that refused it.
+ *
+ * "gemini returned 403" is true and useless: it does not distinguish an
+ * OpenRouter token that was revoked from a Google key whose project has the
+ * Generative Language API switched off, and those are opposite fixes.
+ */
+describe('verification names the service that refused', () => {
+  const source = readFileSync(path.resolve(__dirname, '../..', 'src/lib/integrations/verify.ts'), 'utf8');
+  /**
+   * Comments stripped before matching, and the reason is a bug this spec had.
+   * The comment above the OpenRouter call quotes `vendor: 'openrouter'` to
+   * explain why it is not the registry key — so the assertion went on passing
+   * against a mutation that changed the actual argument back, because it was
+   * matching the prose. A test that a comment can satisfy is not a test.
+   *
+   * Block comments only. The first version also stripped `//` to end of line,
+   * which ate the `//` in every `https://` URL in the file and left the
+   * OpenRouter endpoint unfindable — so the model-ordering check below started
+   * comparing against -1. The offending comment is a block one; line comments
+   * here match nothing these assertions look for.
+   */
+  const verify = source.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('labels each request with the service it actually calls', () => {
+    expect(verify).toMatch(/vendor: 'openrouter'/);
+    expect(verify).toMatch(/vendor: 'google-ai-studio'/);
+    // And no longer hides either behind the registry key on those two calls.
+    expect(verify).not.toMatch(/generativelanguage[\s\S]{0,200}vendor: provider/);
+  });
+
+  it('explains a 403 differently for each', () => {
+    expect(verify).toMatch(/openrouter[\s\S]{0,400}?OpenRouter refused the key/);
+    expect(verify).toMatch(/google-ai-studio[\s\S]{0,400}?Google refused the key/);
+    // And points a misfiled OpenRouter key at the setting that fixes it.
+    expect(verify).toContain('set Provider to openrouter');
+  });
+
+  it('refuses an OpenRouter connection with no model before spending a request', () => {
+    const orBranch = verify.slice(verify.indexOf("if (c.provider === 'openrouter')"));
+    const modelCheck = orBranch.indexOf('!c.model');
+    const theCall = orBranch.indexOf('openrouter.ai/api/v1/key');
+    expect(modelCheck).toBeGreaterThan(-1);
+    expect(modelCheck).toBeLessThan(theCall);
+  });
+});

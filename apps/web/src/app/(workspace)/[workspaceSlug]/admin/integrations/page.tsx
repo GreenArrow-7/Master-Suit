@@ -5,6 +5,7 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
 import { channelCards } from '@/services/integrations/channelState';
@@ -88,6 +89,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
         defaultTelephonyProvider={chosen}
         aiConfigured={Boolean(process.env.GEMINI_API_KEY)}
         canEdit={can(ctx, 'integrations', 'MANAGE_CONFIGURATION')}
+        build={buildId()}
       />
     </>
   );

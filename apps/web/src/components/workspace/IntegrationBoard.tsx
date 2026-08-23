@@ -61,17 +61,20 @@ export default function IntegrationBoard({
   defaultTelephonyProvider,
   aiConfigured,
   canEdit,
+  build,
 }: {
   providers: ProviderCard[];
   defaultTelephonyProvider: string | null;
   aiConfigured: boolean;
   canEdit: boolean;
+  /** Commit the server is running. See HealthSummary for why it is here. */
+  build: string;
 }) {
   const categories = [...new Set(providers.map((p) => p.category))];
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <HealthSummary providers={providers} deploymentKey={aiConfigured} />
+      <HealthSummary providers={providers} deploymentKey={aiConfigured} build={build} />
 
       <RemoveAllKeys providers={providers} canEdit={canEdit} />
 
@@ -107,7 +110,15 @@ export default function IntegrationBoard({
  * It is a registry provider now, so it arrives with the others — and reports
  * whether *this workspace* has a key rather than whether the server does.
  */
-function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]; deploymentKey: boolean }) {
+function HealthSummary({
+  providers,
+  deploymentKey,
+  build,
+}: {
+  providers: ProviderCard[];
+  deploymentKey: boolean;
+  build: string;
+}) {
   const rows = providers.map((p) => ({
     label: p.label,
     status: p.status,
@@ -121,9 +132,29 @@ function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]
 
   return (
     <div className="lf-card" style={{ padding: 18 }}>
-      <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 12px' }}>
-        Health
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', margin: '0 0 12px' }}>
+        <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>
+          Health
+        </h2>
+        {/*
+          Which commit is answering, on the screen where the question keeps
+          coming up. A provider card that does not match what somebody expects
+          has two explanations — the setting is wrong, or the server is running
+          older code — and until now nothing here could tell them apart. It cost
+          most of an afternoon once: a key was pasted, the field it belonged in
+          did not exist yet, and every reading of the failure assumed it did.
+
+          `buildId()` reads BUILD_COMMIT on a deployment and falls back to
+          `git rev-parse --short HEAD` in a source checkout, so it is populated
+          in development, which is exactly where the confusion happens. It is
+          the same identifier the platform console shows, and a short sha is not
+          a secret — but it is behind an authenticated admin page rather than a
+          public endpoint, which is the line src/lib/metrics.ts already draws.
+        */}
+        <span className="lf-hint" style={{ fontVariantNumeric: 'tabular-nums' }} title="Commit this server is running">
+          build {build}
+        </span>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
         {rows.map((row) => (
           <div
