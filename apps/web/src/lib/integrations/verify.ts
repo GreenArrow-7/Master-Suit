@@ -69,6 +69,34 @@ export async function verifyConnection(provider: string, c: Record<string, strin
 
       case 'gemini': {
         /**
+         * OpenRouter keys are Bearer tokens against an OpenAI-compatible
+         * endpoint, so the check that proves a Google key says nothing about
+         * one. Verifying the wrong way round is worse than not verifying: the
+         * screen would read Connected for a key every feature is about to 400
+         * on, which is precisely the state this integration was already found
+         * in once.
+         */
+        if (c.provider === 'openrouter') {
+          const credits = await vendorFetch<{ data?: { label?: string; usage?: number; limit?: number | null } }>({
+            vendor: provider,
+            url: 'https://openrouter.ai/api/v1/key',
+            headers: { Authorization: `Bearer ${c.apiKey ?? ''}` },
+          });
+          if (!c.model) {
+            return {
+              ok: false,
+              detail:
+                'Key accepted, but no model is set. OpenRouter has no default — set one, e.g. google/gemini-2.0-flash-001.',
+            };
+          }
+          const remaining =
+            typeof credits.data?.limit === 'number'
+              ? `${(credits.data.limit - (credits.data.usage ?? 0)).toFixed(2)} credits remaining`
+              : 'no credit limit set';
+          return { ok: true, detail: `OpenRouter key valid — ${remaining}. Model ${c.model}.` };
+        }
+
+        /**
          * ListModels is the only read that proves a key without spending a
          * generation, and it doubles as the answer to Google retiring model
          * ids — the reply says which ones this key can actually use.

@@ -1,6 +1,7 @@
 import { logger } from '@/lib/logger';
 import { geminiCredential, geminiModel, type GeminiCredential } from '../gemini';
 import { assertAiBudget, recordAiUsage } from '../usage';
+import { googleUsage } from '../provider';
 import type { Ctx } from '@/lib/security/rbac';
 import { TOOLS, toolByName, type ProposedAction, type ToolSource } from './tools';
 
@@ -88,7 +89,7 @@ async function geminiTurn(
   const data = await res.json();
   // Per round, not per query: the loop below can call the model six times, and
   // metering only the last one would under-count a multi-step answer fivefold.
-  await recordAiUsage(tenantId, credential, data.usageMetadata, { feature: 'assistant', model });
+  await recordAiUsage(tenantId, credential, googleUsage(data.usageMetadata), { feature: 'assistant', model });
   return (data.candidates?.[0]?.content?.parts ?? []) as {
     text?: string;
     functionCall?: { name: string; args: any };

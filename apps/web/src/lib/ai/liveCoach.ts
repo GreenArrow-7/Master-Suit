@@ -2,6 +2,7 @@ import { logger } from '../logger';
 import { redact } from './redact';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
+import { googleUsage } from './provider';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -128,7 +129,7 @@ export async function coachTick(windowText: string, tenantId?: string): Promise<
     });
     if (!res.ok) throw new Error(`Gemini live-coach error: ${res.status}`);
     const data = await res.json();
-    await recordAiUsage(tenantId, credential, data.usageMetadata, { feature: 'live-coach', model });
+    await recordAiUsage(tenantId, credential, googleUsage(data.usageMetadata), { feature: 'live-coach', model });
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) return [];
     const parsed = JSON.parse(text) as { hints: { kind: CoachHint['kind']; text: string }[] };

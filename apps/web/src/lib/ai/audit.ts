@@ -1,6 +1,7 @@
 import { logger } from '../logger';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
+import { googleUsage } from './provider';
 import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
@@ -140,7 +141,7 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
     },
     { maxAttempts: 3, retryOn: isTransient },
   );
-  await recordAiUsage(input.tenantId, credential, data.usageMetadata, { feature: 'call-audit', model });
+  await recordAiUsage(input.tenantId, credential, googleUsage(data.usageMetadata), { feature: 'call-audit', model });
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty response from Gemini');

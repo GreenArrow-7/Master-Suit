@@ -3,6 +3,7 @@ import { Forbidden } from '../errors';
 import { logger } from '../logger';
 import { recordAiTokens } from '../metrics';
 import type { GeminiCredential } from './gemini';
+import type { ModelUsage } from './provider';
 
 /**
  * What each workspace spends on the model, and the ceiling on spending ours.
@@ -41,13 +42,6 @@ export function usageMetric(at: Date = new Date()): string {
 
 /** The plan limit key an operator sets on a SubscriptionPlan to cap this. */
 export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
-
-/** Gemini's own accounting, as returned on every generateContent response. */
-export interface UsageMetadata {
-  promptTokenCount?: number;
-  candidatesTokenCount?: number;
-  totalTokenCount?: number;
-}
 
 /**
  * The workspace's ceiling for this month, or null for "no limit configured".
@@ -119,12 +113,12 @@ export async function assertAiBudget(tenantId: string | null | undefined, creden
 export async function recordAiUsage(
   tenantId: string | null | undefined,
   credential: GeminiCredential,
-  usage: UsageMetadata | undefined,
+  usage: Partial<ModelUsage> | undefined,
   context: { feature: string; model: string },
 ): Promise<void> {
   if (!tenantId || credential.source === 'simulated') return;
 
-  const tokens = usage?.totalTokenCount ?? (usage?.promptTokenCount ?? 0) + (usage?.candidatesTokenCount ?? 0);
+  const tokens = usage?.totalTokens ?? (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0);
   if (!tokens) return;
 
   // Logged whatever happens next, so the attribution survives even if the write

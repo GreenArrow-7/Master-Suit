@@ -1,6 +1,7 @@
 import { logger } from '../logger';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
+import { googleUsage } from './provider';
 import { withRetry, isTransient } from '../integrations/retry';
 import { redact } from './redact';
 
@@ -187,7 +188,7 @@ export async function analyzeTranscript(
 
   const processingMs = Date.now() - started;
 
-  await recordAiUsage(input.tenantId, credential, data.usageMetadata, { feature: 'call-analysis', model });
+  await recordAiUsage(input.tenantId, credential, googleUsage(data.usageMetadata), { feature: 'call-analysis', model });
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Empty response from Gemini');

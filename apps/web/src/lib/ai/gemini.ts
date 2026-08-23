@@ -15,7 +15,9 @@
  * Neither present means the feature runs in clearly-labelled simulation, never
  * a silent failure — see `simulated.ts`.
  */
+import { logger } from '../logger';
 import { connectionCredentials, connectionMetadata } from '../integrations/connection';
+import type { AiProviderKey } from './provider';
 
 /**
  * Which key, and — the part that matters for budgeting — whose it is.
@@ -29,16 +31,64 @@ import { connectionCredentials, connectionMetadata } from '../integrations/conne
  * a ceiling on only one of them — capping a workspace's spend on its own
  * credential would be charging them for a limit they are already paying past.
  */
-export type GeminiCredential = { key: string; source: 'workspace' | 'deployment' } | { key: null; source: 'simulated' };
+export type GeminiCredential =
+  | { key: string; source: 'workspace' | 'deployment'; provider: AiProviderKey }
+  | { key: null; source: 'simulated'; provider: AiProviderKey };
+
+/**
+ * Which API the workspace's key speaks.
+ *
+ * A key is not self-describing. An OpenRouter key posted to Google's endpoint
+ * is a 400, and a 400 here means every AI feature falls back to simulation
+ * while Settings → Integrations still reads Connected — so the provider is a
+ * setting an administrator states beside the key, exactly as `transcription`
+ * already asks which engine its key belongs to.
+ *
+ * The deployment key is always Google: `GEMINI_API_KEY` is the name it has
+ * always had and the thing it has always held. Bringing another provider is a
+ * per-workspace choice.
+ */
+export async function geminiProvider(tenantId?: string | null): Promise<AiProviderKey> {
+  if (!tenantId) return 'google';
+  const settings = await connectionMetadata(tenantId, 'gemini').catch(() => ({}) as Record<string, unknown>);
+  return settings.provider === 'openrouter' ? 'openrouter' : 'google';
+}
 
 /** Resolved per call rather than cached: a key can be rotated mid-session. */
 export async function geminiCredential(tenantId?: string | null): Promise<GeminiCredential> {
   if (tenantId) {
     const credentials = await connectionCredentials(tenantId, 'gemini').catch(() => null);
-    if (credentials?.apiKey) return { key: credentials.apiKey, source: 'workspace' };
+    if (credentials?.apiKey) {
+      const provider = await geminiProvider(tenantId);
+      /**
+       * OpenRouter has no usable default model, so a key with no model beside it
+       * is misconfiguration rather than a fallback.
+       *
+       * Its ids are namespaced and versioned (`vendor/model-revision`) and the
+       * catalogue moves; there is no rolling alias to stand in the way
+       * `gemini-flash-latest` does for Google. Guessing one reproduces the
+       * failure this codebase has already had once — `gemini-2.0-flash` was
+       * hardcoded here, Google retired it, and every feature answered 404 into
+       * simulation behind a screen saying Connected. Refusing is louder.
+       */
+      if (provider === 'openrouter' && !(await configuredModel(tenantId))) {
+        logger.warn({ tenantId }, 'openrouter selected with no model configured; running simulated');
+        return { key: null, source: 'simulated', provider };
+      }
+      return { key: credentials.apiKey, source: 'workspace', provider };
+    }
   }
   const deployment = process.env.GEMINI_API_KEY;
-  return deployment ? { key: deployment, source: 'deployment' } : { key: null, source: 'simulated' };
+  return deployment
+    ? { key: deployment, source: 'deployment', provider: 'google' }
+    : { key: null, source: 'simulated', provider: 'google' };
+}
+
+/** The workspace's explicitly chosen model id, or null. */
+async function configuredModel(tenantId: string): Promise<string | null> {
+  const settings = await connectionMetadata(tenantId, 'gemini').catch(() => ({}) as Record<string, unknown>);
+  const model = settings.model;
+  return typeof model === 'string' && model.trim() ? model.trim() : null;
 }
 
 /** The key alone, for callers that only need to know whether one exists. */
@@ -55,9 +105,8 @@ export async function geminiKey(tenantId?: string | null): Promise<string | null
  */
 export async function geminiModel(tenantId?: string | null): Promise<string> {
   if (tenantId) {
-    const settings = await connectionMetadata(tenantId, 'gemini').catch(() => ({}) as Record<string, unknown>);
-    const model = settings.model;
-    if (typeof model === 'string' && model.trim()) return model.trim();
+    const model = await configuredModel(tenantId);
+    if (model) return model;
   }
   /**
    * A rolling alias, not a pinned id. Google retires numbered models on its own

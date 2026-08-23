@@ -19,9 +19,9 @@ import type { GeminiCredential } from '@/lib/ai/gemini';
 
 const suffix = randomBytes(4).toString('hex');
 
-const DEPLOYMENT: GeminiCredential = { key: 'deployment-key', source: 'deployment' };
-const WORKSPACE: GeminiCredential = { key: 'workspace-key', source: 'workspace' };
-const SIMULATED: GeminiCredential = { key: null, source: 'simulated' };
+const DEPLOYMENT: GeminiCredential = { key: 'deployment-key', source: 'deployment', provider: 'google' };
+const WORKSPACE: GeminiCredential = { key: 'workspace-key', source: 'workspace', provider: 'google' };
+const SIMULATED: GeminiCredential = { key: null, source: 'simulated', provider: 'google' };
 
 let cappedTenant = '';
 let uncappedTenant = '';
@@ -79,19 +79,19 @@ afterAll(async () => {
 
 describe('metering', () => {
   it('attributes a call to the workspace that made it', async () => {
-    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokenCount: 120 }, { feature: 'test', model: 'm' });
+    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokens: 120 }, { feature: 'test', model: 'm' });
     expect(await used(cappedTenant)).toBe(120);
     // And to that workspace only.
     expect(await used(uncappedTenant)).toBe(0);
   });
 
   it('accumulates across calls rather than overwriting', async () => {
-    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokenCount: 80 }, { feature: 'test', model: 'm' });
+    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokens: 80 }, { feature: 'test', model: 'm' });
     expect(await used(cappedTenant)).toBe(200);
   });
 
   it('meters a workspace on its own key too — attribution is not the same as billing', async () => {
-    await recordAiUsage(uncappedTenant, WORKSPACE, { totalTokenCount: 50 }, { feature: 'test', model: 'm' });
+    await recordAiUsage(uncappedTenant, WORKSPACE, { totalTokens: 50 }, { feature: 'test', model: 'm' });
     expect(await used(uncappedTenant)).toBe(50);
   });
 
@@ -99,7 +99,7 @@ describe('metering', () => {
     await recordAiUsage(
       uncappedTenant,
       WORKSPACE,
-      { promptTokenCount: 10, candidatesTokenCount: 5 },
+      { promptTokens: 10, completionTokens: 5 },
       { feature: 'test', model: 'm' },
     );
     expect(await used(uncappedTenant)).toBe(65);
@@ -107,7 +107,7 @@ describe('metering', () => {
 
   it('records nothing for a simulated answer, which costs nothing', async () => {
     const before = await used(cappedTenant);
-    await recordAiUsage(cappedTenant, SIMULATED, { totalTokenCount: 999 }, { feature: 'test', model: 'sim' });
+    await recordAiUsage(cappedTenant, SIMULATED, { totalTokens: 999 }, { feature: 'test', model: 'sim' });
     expect(await used(cappedTenant)).toBe(before);
   });
 
@@ -116,11 +116,11 @@ describe('metering', () => {
     // their result. Failing the feature because a counter did not increment
     // trades a working answer for an accurate ledger.
     await expect(
-      recordAiUsage('no-such-tenant', DEPLOYMENT, { totalTokenCount: 5 }, { feature: 'test', model: 'm' }),
+      recordAiUsage('no-such-tenant', DEPLOYMENT, { totalTokens: 5 }, { feature: 'test', model: 'm' }),
     ).resolves.toBeUndefined();
     await expect(recordAiUsage(null, DEPLOYMENT, undefined, { feature: 'test', model: 'm' })).resolves.toBeUndefined();
     await expect(
-      recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokenCount: 0 }, { feature: 'test', model: 'm' }),
+      recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokens: 0 }, { feature: 'test', model: 'm' }),
     ).resolves.toBeUndefined();
   });
 });
@@ -132,7 +132,7 @@ describe('the ceiling', () => {
   });
 
   it('refuses once the allowance is spent', async () => {
-    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokenCount: 900 }, { feature: 'test', model: 'm' });
+    await recordAiUsage(cappedTenant, DEPLOYMENT, { totalTokens: 900 }, { feature: 'test', model: 'm' });
     expect(await used(cappedTenant)).toBeGreaterThanOrEqual(1000);
     await expect(assertAiBudget(cappedTenant, DEPLOYMENT)).rejects.toThrow(/monthly AI allowance/i);
   });
@@ -145,7 +145,7 @@ describe('the ceiling', () => {
   });
 
   it('does not cap a plan with no allowance configured', async () => {
-    await recordAiUsage(uncappedTenant, DEPLOYMENT, { totalTokenCount: 10_000_000 }, { feature: 'test', model: 'm' });
+    await recordAiUsage(uncappedTenant, DEPLOYMENT, { totalTokens: 10_000_000 }, { feature: 'test', model: 'm' });
     // A platform that has not decided on a number must not refuse work because
     // of a default somebody guessed.
     await expect(assertAiBudget(uncappedTenant, DEPLOYMENT)).resolves.toBeUndefined();
