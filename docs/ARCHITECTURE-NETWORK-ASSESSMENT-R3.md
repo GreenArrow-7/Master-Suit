@@ -1459,6 +1459,27 @@ Concrete, with the evidence. Not compliments.
 
 ## 17. Architectural weaknesses
 
+> **Two findings this assessment did not record, made afterwards while closing
+> the ones it did.** Left here rather than folded into the list below, because
+> the list is what was found at `07d39c8` and rewriting it would make this
+> document a summary of later work instead of a reading of that commit.
+>
+> **Transaction fan-out on read-heavy pages.** Every Prisma read issued outside
+> a transaction is wrapped by `runPinned` in `$transaction([set_config, query])`
+> so the RLS policy has a tenant to filter on. Correct, and not free. Measured
+> on the People landing: **40 queries, 23 of which were `set_config` or
+> `COMMIT`** — 173 ms of 434 ms spent on bookkeeping, with no individual query
+> above 21 ms. `loadDashboard` now opens one transaction for the whole
+> fan-out (40 → 22 queries, 413 → 245 ms). **The pattern is general**: any page
+> issuing many standalone reads pays the same tax, and this assessment's §18
+> discussion of scale does not account for it.
+>
+> **An unbounded query in the manager dashboard.** `manager()` loaded every
+> employee id in scope with no `take`, then passed the array into three `IN (…)`
+> counts. Fixed as a relation filter. It had no test because no seeded persona
+> resolves to `manager`, which is also why neither this assessment nor R2 found
+> it — a reminder that "driven every demo login" is not the same as "covered".
+
 **Problem → Evidence → Impact → Severity → Recommendation.**
 
 ### W-1 · Single point of failure, by construction
