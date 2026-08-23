@@ -38,6 +38,27 @@ const config: NextConfig = {
    * navigation and the sign-out button rather than floating clear of them.
    */
   devIndicators: false,
+  /**
+   * Hosts allowed to reach `/_next/*` and `/__nextjs*` in development.
+   *
+   * Next 16 blocks cross-origin requests to its dev resources with a 403 —
+   * `server/lib/router-utils/block-cross-site-dev.js`, whose default allowlist
+   * is `localhost`, `*.localhost` and the dev server's own bind hostname. Served
+   * through a dev tunnel the browser's origin is the tunnel host, so the *page*
+   * still loads (same-origin asset GETs send no Origin header) while the two
+   * things that do send one break: the HMR websocket handshake, and the error
+   * overlay's POST to `/__nextjs_original-stack-frames`. Fast refresh silently
+   * stops and runtime errors lose their source mapping.
+   *
+   * `**`, not `*`: the matcher in `app-render/csrf-protection.js` lets `*` stand
+   * for exactly one label, and a tunnel host carries a cluster label
+   * (`<id>-3000.<cluster>.devtunnels.ms`) that `*.devtunnels.ms` therefore fails
+   * to match. `**` is the trailing-wildcard form and matches both shapes.
+   *
+   * Development only — Next ignores this in a production build. Add another
+   * entry here for a different tunnel provider.
+   */
+  allowedDevOrigins: ['**.devtunnels.ms'],
   // This repository intentionally lives inside a directory whose parent also
   // contains Node projects. Pinning the root prevents Turbopack from inferring
   // src/app (or a sibling application's lockfile) as the workspace root.
