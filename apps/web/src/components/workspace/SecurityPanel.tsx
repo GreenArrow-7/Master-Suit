@@ -25,6 +25,9 @@ export default function SecurityPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [enrolment, setEnrolment] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  // Enrolment re-authenticates: it hands out recovery codes, so it asks for
+  // the password the way changing the password does.
+  const [enrolPassword, setEnrolPassword] = useState('');
 
   async function call(action: string, body: Record<string, unknown> = {}) {
     setBusy(action);
@@ -184,19 +187,34 @@ export default function SecurityPanel({
         </div>
 
         {!status.enabled && !enrolment && (
-          <div>
-            <button
-              className="lf-btn"
-              type="button"
-              disabled={busy === 'two-factor-begin'}
-              onClick={async () => {
-                const result = await call('two-factor-begin');
-                if (result) setEnrolment({ secret: result.secret, otpauthUrl: result.otpauthUrl });
-              }}
-            >
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const result = await call('two-factor-begin', { currentPassword: enrolPassword });
+              if (result) {
+                setEnrolPassword('');
+                setEnrolment({ secret: result.secret, otpauthUrl: result.otpauthUrl });
+              }
+            }}
+          >
+            <div className="lf-field">
+              <label className="lf-label" htmlFor="panel-enrol-password">
+                Confirm your password to continue
+              </label>
+              <input
+                id="panel-enrol-password"
+                className="lf-input"
+                type="password"
+                autoComplete="current-password"
+                value={enrolPassword}
+                onChange={(event) => setEnrolPassword(event.target.value)}
+                required
+              />
+            </div>
+            <button className="lf-btn" type="submit" disabled={busy === 'two-factor-begin' || !enrolPassword}>
               {busy === 'two-factor-begin' ? 'Starting…' : 'Set up two-factor authentication'}
             </button>
-          </div>
+          </form>
         )}
 
         {enrolment && !status.enabled && (

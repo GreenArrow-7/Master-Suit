@@ -30,6 +30,9 @@ export default function SecurityScreen({
   const [recovery, setRecovery] = useState<string[] | null>(null);
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaNote, setMfaNote] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Enrolment now re-authenticates; this is that prompt, kept separate from
+  // the change-password form's own field below.
+  const [enrolPassword, setEnrolPassword] = useState('');
 
   // ── Consent ───────────────────────────────────────────────────────────────
   const [consentBusy, setConsentBusy] = useState(false);
@@ -52,11 +55,16 @@ export default function SecurityScreen({
     return data;
   }
 
-  async function beginEnrolment() {
+  async function beginEnrolment(event: React.FormEvent) {
+    event.preventDefault();
     setMfaBusy(true);
     setMfaNote(null);
     try {
-      const data = (await call(selfBase, 'two-factor-begin')) as { secret: string; otpauthUrl?: string };
+      const data = (await call(selfBase, 'two-factor-begin', { currentPassword: enrolPassword })) as {
+        secret: string;
+        otpauthUrl?: string;
+      };
+      setEnrolPassword('');
       setEnrolment(data);
     } catch (error) {
       setMfaNote({ text: (error as Error).message, bad: true });
@@ -195,9 +203,29 @@ export default function SecurityScreen({
         )}
 
         {!enrolment && !mfaEnabled && (
-          <button type="button" className="lf-btn" onClick={() => void beginEnrolment()} disabled={mfaBusy}>
-            {mfaBusy ? 'Preparing…' : 'Set up authenticator'}
-          </button>
+          <form className="lf-security__form" onSubmit={(event) => void beginEnrolment(event)}>
+            <div className="lf-field">
+              <label className="lf-label" htmlFor="enrol-password">
+                Confirm your password to continue
+              </label>
+              <input
+                id="enrol-password"
+                className="lf-input"
+                type="password"
+                autoComplete="current-password"
+                value={enrolPassword}
+                onChange={(event) => setEnrolPassword(event.target.value)}
+                required
+              />
+              <p className="lf-security__note">
+                Setting up an authenticator hands out recovery codes, so it asks for your password the way changing it
+                does.
+              </p>
+            </div>
+            <button type="submit" className="lf-btn" disabled={mfaBusy || !enrolPassword}>
+              {mfaBusy ? 'Preparing…' : 'Set up authenticator'}
+            </button>
+          </form>
         )}
       </section>
 
