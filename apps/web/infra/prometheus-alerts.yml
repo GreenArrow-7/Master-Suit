@@ -238,6 +238,8 @@ groups:
         annotations:
           summary: 'AI usage on the shared key is over 100k tokens/hour'
           description: >-
-            Attribution is per workspace in WorkspaceUsage under the ai_tokens:YYYY-MM
-            metric — query it to find which one. Workspaces on their own Gemini key are
-            excluded here by the key_source label, since that spend is theirs.
+            Per-workspace attribution is on the platform console at /platform/ai-usage,
+            which reads WorkspaceUsage under the ai_tokens:deployment:YYYY-MM metric —
+            the payer is in the key, so ai_tokens:workspace:YYYY-MM is the same
+            workspaces' own-key spend and is not this bill. Workspaces on their own
+            Gemini key are excluded from this alert by the key_source label.
