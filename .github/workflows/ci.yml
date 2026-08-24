@@ -316,8 +316,40 @@ jobs:
           node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
 
       - name: E2E
+        id: e2e
         timeout-minutes: 15
         run: npx playwright test
+
+      # Not a gate — the diagnosis for the one above.
+      #
+      # E2E is the only step here whose failure cannot be read from the job log
+      # by anything but a person with the Actions UI open: the log is long, the
+      # useful part is thousands of lines from the end, and the API routes that
+      # serve it are not reachable from every environment that needs to fix a
+      # red build. This suite has already gone red twice on failures nobody
+      # could see, each diagnosed by re-running it rather than by reading it.
+      #
+      # `playwright.config.ts` adds the `html` reporter under CI so there is a
+      # self-contained report to take; `use` already retains a trace and a
+      # screenshot on failure and the reporter copies both into it.
+      - name: E2E report
+        # Precisely "E2E ran and failed" — `failure()` alone would also fire
+        # when an earlier gate failed and E2E never ran, uploading nothing.
+        if: always() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          # The attempt number is load-bearing: re-running a failed job reuses
+          # the run id, and upload-artifact@v4 fails outright on a duplicate
+          # artifact name. Re-running is exactly what happens to this step.
+          name: playwright-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          # Repo-relative. `defaults.run.working-directory` applies to `run:`
+          # steps and not to an action's inputs, so `playwright-report/` on its
+          # own would resolve at the repository root and quietly upload nothing.
+          path: apps/web/playwright-report/
+          # Long enough to diagnose a red build, short enough that screenshots
+          # of a seeded workspace do not sit in the account for a quarter.
+          retention-days: 7
+          if-no-files-found: error
 
       # ── Gate 7 ────────────────────────────────────────────────────────────
       - name: Build
