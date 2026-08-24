@@ -100,6 +100,49 @@ const CONTRACTUAL_CODES = new Set(['BASIC', 'HOUSING', 'TRANSPORT', 'OTHER']);
 /** A field containing the delimiter would silently shift every column after it. */
 const cell = (value: string) => (/[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
+/**
+ * What may appear in a WPS identifier field, and why this rejects rather than
+ * escapes.
+ *
+ * ── The exposure ────────────────────────────────────────────────────────────
+ *
+ * A SIF is a text file a bank parses mechanically — but a payroll team opens it
+ * in Excel first, to eyeball a run before instructing a transfer. Excel and
+ * Sheets execute a cell beginning `=`, `+`, `-` or `@`, so `=HYPERLINK(…)` in an
+ * identifier is a phishing link that arrives inside the company's own payroll
+ * file, at the moment somebody is about to move money.
+ *
+ * `wpsEmployerId` and `wpsEmployerBankAgentId` are free-text HR policy settings,
+ * so this is reachable today by a tenant's own HR administrator. The per-employee
+ * fields have no edit surface yet, which is a reason to fix this before one
+ * arrives rather than after.
+ *
+ * ── Why not the csvCell helper the exports use ──────────────────────────────
+ *
+ * `lib/csv.ts` neutralises the same attack by prefixing an apostrophe, which
+ * Excel strips on display. That is right for a report a human reads and wrong
+ * here: the bank reads these fields literally, and `'AE070331…` is not an IBAN.
+ * Blunting the attack would corrupt the payment instruction.
+ *
+ * So the field is refused instead. Nothing legitimate is being rejected — a MOL
+ * establishment ID, a routing code, a labour-card number and an IBAN are all
+ * alphanumeric with at most spaces, hyphens and slashes, and none of them starts
+ * with an operator. A value outside this set is either an attack or data the
+ * bank would reject anyway, and both are better caught here than at the bank.
+ */
+const SIF_FIELD = /^[A-Za-z0-9][A-Za-z0-9 /_-]*$/;
+
+/** The reason a value is refused, or null when it is fine. */
+function sifFieldProblem(label: string, value: string): string | null {
+  if (!value) return `${label} is empty`;
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `${label} starts with "${value[0]}", which a spreadsheet executes as a formula`;
+  }
+  if (/[",\r\n\t]/.test(value)) return `${label} contains a delimiter or control character`;
+  if (!SIF_FIELD.test(value)) return `${label} contains characters a WPS identifier cannot hold`;
+  return null;
+}
+
 export interface SifResult {
   filename: string;
   content: string;
@@ -152,8 +195,16 @@ export async function generateSif(ctx: Ctx, runId: string, layoutKey: SifLayoutK
   if (!policy.wpsEmployerBankAgentId.trim())
     throw Conflict('Set the WPS employer bank agent identifier in HR policy before exporting.');
 
-  const daysInPeriod =
-    Math.round((run.periodEnd.getTime() - run.periodStart.getTime()) / 86_400_000) + 1;
+  // These go in the control record, which describes the whole batch — there is
+  // no partial file to fall back to, so a bad value fails the export rather than
+  // excluding a row. Both are free-text HR policy settings, which makes this the
+  // one path an attacker inside a tenant can currently reach.
+  const employerProblem =
+    sifFieldProblem('WPS employer (MOL) identifier', policy.wpsEmployerId.trim()) ??
+    sifFieldProblem('WPS employer bank agent identifier', policy.wpsEmployerBankAgentId.trim());
+  if (employerProblem) throw Conflict(`${employerProblem}. Correct it in HR policy before exporting.`);
+
+  const daysInPeriod = Math.round((run.periodEnd.getTime() - run.periodStart.getTime()) / 86_400_000) + 1;
 
   const rows: string[] = [];
   const excluded: SifResult['excluded'] = [];
@@ -176,6 +227,19 @@ export async function generateSif(ctx: Ctx, runId: string, layoutKey: SifLayoutK
     }
     if (payslip.netPay.lessThanOrEqualTo(0)) {
       excluded.push({ employeeId: employee.id, name, reason: 'Net pay is zero for this period' });
+      continue;
+    }
+
+    // Excluded, not escaped, and reported rather than dropped — the same
+    // treatment as a missing IBAN, because that is what this is: a field the
+    // file cannot legitimately carry. See SIF_FIELD above.
+    const unsafe = [
+      sifFieldProblem('WPS person identifier', employee.wpsPersonId!.trim()),
+      sifFieldProblem('IBAN', iban!.trim()),
+      sifFieldProblem('Bank agent identifier', employee.bankAgentId!.trim()),
+    ].filter(Boolean) as string[];
+    if (unsafe.length) {
+      excluded.push({ employeeId: employee.id, name, reason: unsafe.join('; ') });
       continue;
     }
 

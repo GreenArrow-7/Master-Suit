@@ -109,7 +109,9 @@ export default function FaceEnrolmentConsole({
     const following = ANGLES[next.length];
     setStep(next.length);
     setStatus({
-      text: following ? `Sample ${next.length} of ${ANGLES.length} captured. ${following.hint}` : 'All samples captured. Save the enrolment.',
+      text: following
+        ? `Sample ${next.length} of ${ANGLES.length} captured. ${following.hint}`
+        : 'All samples captured. Save the enrolment.',
     });
   }
 
@@ -153,7 +155,9 @@ export default function FaceEnrolmentConsole({
       const result = await call('face-reset', { employeeId, reason });
       setResetting(false);
       setReason('');
-      setStatus({ text: `Enrolment reset — ${result.templatesDeleted} templates deleted. This person cannot check in until they are enrolled again.` });
+      setStatus({
+        text: `Enrolment reset — ${result.templatesDeleted} templates deleted. This person cannot check in until they are enrolled again.`,
+      });
       router.refresh();
     } catch (error) {
       setStatus({ text: (error as Error).message, bad: true });
@@ -248,7 +252,12 @@ export default function FaceEnrolmentConsole({
             <button className="lf-btn" type="submit" disabled={busy || reason.trim().length < 5}>
               {busy ? 'Resetting…' : 'Reset enrollment'}
             </button>
-            <button type="button" className="lf-btn lf-btn--secondary" onClick={() => setResetting(false)} disabled={busy}>
+            <button
+              type="button"
+              className="lf-btn lf-btn--secondary"
+              onClick={() => setResetting(false)}
+              disabled={busy}
+            >
               Keep enrollment
             </button>
           </div>
@@ -262,7 +271,10 @@ export default function FaceEnrolmentConsole({
         </div>
         <ol className="lf-face__steps">
           {ANGLES.map((angle, index) => (
-            <li key={angle.key} data-state={index < samples.length ? 'done' : index === step && cameraOn ? 'now' : 'todo'}>
+            <li
+              key={angle.key}
+              data-state={index < samples.length ? 'done' : index === step && cameraOn ? 'now' : 'todo'}
+            >
               <span className="lf-face__step-n">{index + 1}</span>
               <span>
                 <strong>{angle.label}</strong>

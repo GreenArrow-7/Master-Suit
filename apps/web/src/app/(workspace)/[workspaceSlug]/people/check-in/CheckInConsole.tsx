@@ -36,7 +36,14 @@ interface Preflight {
   ok: boolean;
   code: string;
   message: string;
-  candidates: { name: string; distanceM: number; radiusM: number; inside: boolean; maxAccuracyM: number; accuracyOk: boolean }[];
+  candidates: {
+    name: string;
+    distanceM: number;
+    radiusM: number;
+    inside: boolean;
+    maxAccuracyM: number;
+    accuracyOk: boolean;
+  }[];
 }
 
 const FRAME_COUNT = 3;

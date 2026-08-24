@@ -7,10 +7,7 @@ export type QueueName =
   | 'automation'
   | 'distribution'
   | 'sla'
-  | 'messaging'
   | 'campaign'
-  | 'import'
-  | 'export'
   | 'webhook'
   | 'maintenance'
   /** Fetching call recordings out of a vendor and into our own bucket. */
@@ -20,14 +17,31 @@ export type QueueName =
   /** Email for in-app notifications that have already been written. */
   | 'notifications';
 
+/**
+ * Every queue, as a value rather than only a type.
+ *
+ * The metrics endpoint iterates this to ask Redis about each one. Deriving it
+ * from the same place the type comes from means a queue added to `QueueName`
+ * cannot be invisible to monitoring — which is the failure mode that let the
+ * whole worker process die unnoticed.
+ */
+export const QUEUE_NAMES = [
+  'automation',
+  'distribution',
+  'sla',
+  'campaign',
+  'webhook',
+  'maintenance',
+  'media',
+  'ai',
+  'notifications',
+] as const satisfies readonly QueueName[];
+
 const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   automation: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 } },
   distribution: { attempts: 3, backoff: { type: 'exponential', delay: 1_000 } },
   sla: { attempts: 3, backoff: { type: 'fixed', delay: 30_000 } },
-  messaging: { attempts: 5, backoff: { type: 'exponential', delay: 5_000 } },
   campaign: { attempts: 3, backoff: { type: 'exponential', delay: 30_000 } },
-  import: { attempts: 2, backoff: { type: 'fixed', delay: 60_000 } },
-  export: { attempts: 2, backoff: { type: 'fixed', delay: 60_000 } },
   webhook: { attempts: 5, backoff: { type: 'exponential', delay: 10_000 } },
   maintenance: { attempts: 1, backoff: { type: 'fixed', delay: 0 } },
   // Vendors publish recording media a little after they announce it, and some

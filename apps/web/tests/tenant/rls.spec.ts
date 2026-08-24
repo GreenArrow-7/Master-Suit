@@ -184,6 +184,11 @@ describe('postgres row-level security', () => {
         // the key in that URL is the only thing that can resolve the tenant.
         'IntegrationConnection',
         'PasswordResetToken',
+        // Break-glass grants: control-plane data about platform *staff*, and the
+        // lookup that decides whether they may write is the one that would have
+        // to set app.tenant_id. A policy here would make it match nothing, so an
+        // owner with a live grant would silently stay read-only.
+        'PlatformAccessGrant',
         'PlatformAuditEvent',
         'RateLimitCounter',
         // 'Session' was here until migration 20260808120000 dropped the table.

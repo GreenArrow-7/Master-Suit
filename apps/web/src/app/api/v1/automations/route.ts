@@ -15,7 +15,12 @@ const actionSpec = z.discriminatedUnion('action', [
     action: z.literal('create_task'),
     taskTypeKey: z.string().min(1).max(60),
     title: z.string().min(1).max(200),
-    dueInMinutes: z.coerce.number().int().min(1).max(60 * 24 * 30).default(30),
+    dueInMinutes: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(60 * 24 * 30)
+      .default(30),
   }),
   z.object({ action: z.literal('notify_owner'), template: z.string().min(1).max(200) }),
   z.object({ action: z.literal('notify_manager'), template: z.string().min(1).max(200) }),

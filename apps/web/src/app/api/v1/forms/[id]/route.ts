@@ -14,7 +14,14 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'forms', productModule: 'SALES', action: 'MANAGE_CONFIGURATION', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'forms',
+    productModule: 'SALES',
+    action: 'MANAGE_CONFIGURATION',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     const form = await prisma.form.findFirst({
       where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },

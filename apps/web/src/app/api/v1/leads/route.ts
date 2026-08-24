@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
+import { mergeWhere } from '@/lib/api/where';
 import { compileFilterTree, filterTreeSchema, referencedFields } from '@/lib/api/filterTree';
 import { prisma } from '@/lib/db';
 import {
@@ -61,12 +62,16 @@ export const GET = route(
 
     const cursor = decodeCursor(query.cursor);
 
-    const where = {
-      ...scopeWhere,
-      ...(tree ? compileFilterTree('LEAD', tree, ctx) : {}),
-      ...(query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : {}),
-      ...cursorWhere(cursor),
-    };
+    // mergeWhere, not object spread: three of these four fragments can carry a
+    // top-level `OR`, and a spread would keep only the last of them — which used
+    // to drop the ownership restriction on every paginated request. See
+    // lib/api/where.ts.
+    const where = mergeWhere(
+      scopeWhere,
+      tree ? compileFilterTree('LEAD', tree, ctx) : null,
+      query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : null,
+      cursorWhere(cursor),
+    );
 
     // limit + 1 tells us whether another page exists without a second query.
     const rows = await prisma.lead.findMany({

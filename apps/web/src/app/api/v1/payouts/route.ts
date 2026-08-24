@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
@@ -35,11 +36,11 @@ export const GET = route(
 
     const scope = await visibilityWhere(ctx, 'payouts', 'VIEW', { ownerField: 'userId' });
     const data = await prisma.payout.findMany({
-      where: {
-        ...scope,
-        ...(query.userId ? { userId: query.userId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-      },
+      where: mergeWhere(
+        scope,
+        query.userId ? { userId: query.userId } : null,
+        query.status ? { status: query.status } : null,
+      ),
       select: {
         id: true,
         reference: true,

@@ -187,8 +187,8 @@ export default async function Page({
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Ask to change one of my shifts</h2>
           <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-            Pick one of your upcoming shifts, then either a different shift or a colleague&apos;s day to swap into —
-            one or the other, not both. A manager decides it, and an approved swap moves both sides at once.
+            Pick one of your upcoming shifts, then either a different shift or a colleague&apos;s day to swap into — one
+            or the other, not both. A manager decides it, and an approved swap moves both sides at once.
           </p>
           <WorkspaceRecordForm
             endpoint={`${actions}/shift-change-request`}

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { mergeWhere } from '@/lib/api/where';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
@@ -50,7 +51,7 @@ export default async function SiteVisitsPage({
 
   const [rows, queues] = await Promise.all([
     prisma.siteVisit.findMany({
-      where: { ...scope, deletedAt: null, ...queueWhere },
+      where: mergeWhere(scope, { deletedAt: null }, queueWhere),
       orderBy: { scheduledAt: 'desc' },
       take: 100,
       select: {

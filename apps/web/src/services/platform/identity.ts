@@ -25,8 +25,8 @@
  * the names below (`PASSWORD_RESET`, `ACCOUNT_UNLOCKED`, …) needed no migration.
  */
 import { prisma, withPlatformTx } from '@/lib/db';
-import { invalidate, redis } from '@/lib/redis';
-import { limits } from '@/lib/security/ratelimit';
+import { redis } from '@/lib/redis';
+import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword } from '@/lib/auth/password';
 import { generateTemporaryPassword } from '@/services/identity/accounts';
@@ -313,7 +313,11 @@ async function hasPassword(id: string) {
  */
 function canSignIn(
   user: { status: string; lockedUntil: Date | null; platformRole: string },
-  memberships: { status: string; tenant: { status: string; deletedAt: Date | null }; salesUser: SalesUserShape | null }[],
+  memberships: {
+    status: string;
+    tenant: { status: string; deletedAt: Date | null };
+    salesUser: SalesUserShape | null;
+  }[],
   now: Date,
 ): { ok: boolean; reason: string } {
   if (user.lockedUntil && user.lockedUntil > now) {
@@ -518,8 +522,7 @@ export async function unlockAccount(ctx: PlatformCtx, userId: string) {
 
 /** Drops the account's sign-in throttle windows. Per-IP limits are not touched. */
 async function clearSignInThrottle(email: string) {
-  const { key } = limits.loginPerAccount(email);
-  await invalidate(`rl:${key}:*`).catch(() => {});
+  await clearLimit(limits.loginPerAccount(email)).catch(() => {});
 }
 
 /**
@@ -600,7 +603,12 @@ export async function setPlatformRole(ctx: PlatformCtx, userId: string, platform
     });
   });
 
-  await record(ctx, 'ROLE_CHANGED', target, { result: 'ok', scope: 'platform', from: target.platformRole, to: platformRole });
+  await record(ctx, 'ROLE_CHANGED', target, {
+    result: 'ok',
+    scope: 'platform',
+    from: target.platformRole,
+    to: platformRole,
+  });
   return { userId: target.id, platformRole };
 }
 
@@ -634,7 +642,13 @@ export async function changeWorkspaceRole(ctx: PlatformCtx, membershipId: string
     ctx,
     'ROLE_CHANGED',
     { id: membership.platformUserId, email: membership.platformUser.email },
-    { result: 'ok', scope: 'workspace', workspace: membership.tenant.slug, from: membership.roleSnapshot, to: role.key },
+    {
+      result: 'ok',
+      scope: 'workspace',
+      workspace: membership.tenant.slug,
+      from: membership.roleSnapshot,
+      to: role.key,
+    },
     membership.tenantId,
   );
   return { membershipId: membership.id, role: role.key };
@@ -648,7 +662,11 @@ export async function changeWorkspaceRole(ctx: PlatformCtx, membershipId: string
  * only the membership fixes one of them and leaves the symptom, so this sets the
  * membership and its workspace user together.
  */
-export async function setMembershipStatus(ctx: PlatformCtx, membershipId: string, status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED') {
+export async function setMembershipStatus(
+  ctx: PlatformCtx,
+  membershipId: string,
+  status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED',
+) {
   const membership = await membershipFor(membershipId);
   const now = new Date();
 

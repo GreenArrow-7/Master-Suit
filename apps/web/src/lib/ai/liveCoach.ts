@@ -1,6 +1,8 @@
 import { logger } from '../logger';
 import { redact } from './redact';
-import { geminiKey, geminiModel } from './gemini';
+import { geminiCredential, geminiModel } from './gemini';
+import { assertAiBudget, recordAiUsage } from './usage';
+import { generateStructured } from './provider';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -80,11 +82,24 @@ export function heuristicHints(windowText: string): CoachHint[] {
 }
 
 export async function coachTick(windowText: string, tenantId?: string): Promise<CoachHint[]> {
-  const apiKey = await geminiKey(tenantId);
+  const credential = await geminiCredential(tenantId);
+  const apiKey = credential.key;
   if (!apiKey) return heuristicHints(windowText);
 
   const model = await geminiModel(tenantId);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  /**
+   * Over budget falls back to the heuristic hints rather than throwing.
+   *
+   * This one runs on an open SSE stream during a live call. Every other AI
+   * surface can refuse and let the caller try later; interrupting somebody
+   * mid-conversation with a billing error is not a trade worth making, and the
+   * keyword hints are what an unconfigured workspace gets anyway.
+   */
+  try {
+    await assertAiBudget(tenantId, credential);
+  } catch {
+    return heuristicHints(windowText);
+  }
   const prompt = [
     'You are a live sales-call coach. The agent is on a call right now.',
     'Given the latest transcript window, return at most 2 short, immediately usable hints.',
@@ -97,25 +112,17 @@ export async function coachTick(windowText: string, tenantId?: string): Promise<
   ].join('\n');
 
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: HINT_SCHEMA,
-          temperature: 0.3,
-          maxOutputTokens: 512,
-        },
-      }),
+    const response = await generateStructured({
+      credential: { key: apiKey, provider: credential.provider },
+      model,
+      prompt,
+      schema: HINT_SCHEMA,
+      temperature: 0.3,
+      maxOutputTokens: 512,
+      timeoutMs: AI_TIMEOUT_MS,
     });
-    if (!res.ok) throw new Error(`Gemini live-coach error: ${res.status}`);
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return [];
-    const parsed = JSON.parse(text) as { hints: { kind: CoachHint['kind']; text: string }[] };
+    await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach', model });
+    const parsed = JSON.parse(response.text) as { hints: { kind: CoachHint['kind']; text: string }[] };
     return parsed.hints.slice(0, 2).map((h) => ({ ...h, source: 'gemini' as const }));
   } catch (err) {
     // A coaching hiccup must never disturb the call; degrade to heuristics.

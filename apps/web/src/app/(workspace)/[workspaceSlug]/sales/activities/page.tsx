@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
@@ -27,7 +28,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
   const typeFilter = params.tab ? { type: { key: params.tab } } : {};
 
   const rows = await prisma.activity.findMany({
-    where: { ...scope, deletedAt: null, ...typeFilter },
+    where: mergeWhere(scope, { deletedAt: null }, typeFilter),
     orderBy: { occurredAt: 'desc' },
     take: 50,
     select: {

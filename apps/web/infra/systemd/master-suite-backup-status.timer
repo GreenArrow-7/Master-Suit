@@ -1,0 +1,12 @@
+# 09:00 daily — in the morning, when somebody is around to act on a red one,
+# rather than at 03:00 when the failure would sit unread until the next incident.
+[Unit]
+Description=Daily Master Suite backup freshness check
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

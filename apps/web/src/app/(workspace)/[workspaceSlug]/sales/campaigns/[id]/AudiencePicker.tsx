@@ -93,7 +93,12 @@ export default function AudiencePicker({ campaignId }: { campaignId: string }) {
     <div className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Add leads to this campaign</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Close
         </button>
       </div>

@@ -42,7 +42,28 @@ const securityBody = z.object({
       requireLower: z.coerce.boolean(),
       requireNumber: z.coerce.boolean(),
       requireSymbol: z.coerce.boolean().optional(),
+      /**
+       * How many previous passwords may not be reused. Enforced by
+       * services/identity/passwordHistory.ts against the PasswordHistory table.
+       *
+       * Capped at 24 because each entry costs one argon2 verification on every
+       * password change — at the configured memory cost, sequentially. 24 is
+       * about a second; there is no reason to offer a number that makes changing
+       * a password feel broken.
+       */
       reuseWindow: z.coerce.number().int().min(0).max(24).optional(),
+      /**
+       * Days before a password must be replaced. 0 or absent means never.
+       *
+       * Typed on PasswordPolicy since it was written and settable nowhere, so an
+       * administrator could not turn it on even though the type said it existed.
+       * Enforced at login and on every workspace page — see `passwordExpired`.
+       *
+       * The floor of 30 is deliberate: rotation below that is the setting that
+       * makes people write passwords down, and offering 1 would let somebody lock
+       * their whole company out on a typo.
+       */
+      maxAgeDays: z.coerce.number().int().min(30).max(3650).nullable().optional(),
     })
     .optional(),
 });

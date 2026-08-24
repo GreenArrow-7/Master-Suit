@@ -61,7 +61,11 @@ if (res.status !== 200) fail(`auth returned HTTP ${res.status}: ${body.detail ??
 if (body.mfaRequired || body.mfaEnrolmentRequired) fail('demo account unexpectedly requires MFA');
 if (!body.destination) fail('no destination in login response');
 
-const cookie = res.headers.getSetCookie?.().map((c) => c.split(';')[0]).join('; ') ?? '';
+const cookie =
+  res.headers
+    .getSetCookie?.()
+    .map((c) => c.split(';')[0])
+    .join('; ') ?? '';
 if (!cookie.includes('lf_session')) fail('no session cookie returned');
 
 const page = await fetch(`${BASE}${body.destination}`, { headers: { cookie }, redirect: 'manual' });

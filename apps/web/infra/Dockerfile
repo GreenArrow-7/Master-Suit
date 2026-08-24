@@ -55,6 +55,21 @@ FROM node:22-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
+# ── Which commit is this? ───────────────────────────────────────────────────
+#
+# Nothing in a running container could answer that. Deployments built from the
+# working tree on the VM, so the only record of what was serving was whatever
+# `git log` said on the host at the moment you looked — which is the *next*
+# release once somebody has pulled.
+#
+# Passed in by scripts/release.sh and surfaced as `masterapp_build_info` on the
+# metrics endpoint. Declared as an ARG with no default so a build that forgets it
+# is visibly `unknown` rather than quietly wrong.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 RUN addgroup -g 1001 -S leadflow && adduser -u 1001 -S leadflow -G leadflow
 
 COPY --from=build --chown=leadflow:leadflow /app/.next/standalone ./
@@ -75,6 +90,63 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
 
 CMD ["node", "server.js"]
 
+# ── worker ───────────────────────────────────────────────────────────────────
+# The queue consumers: `src/workers/index.ts` and everything it reaches.
+#
+# This stage exists because the `production` stage cannot serve it. That image
+# holds `next build`'s standalone output — a bundled HTTP server and nothing
+# else. The worker is a second entry point into the same `src/` tree, and Next
+# does not compile it, so there is no built artefact for it anywhere.
+#
+# The compose files used to paper over that with `node dist/workers/index.js`.
+# Nothing in this repository has ever produced `dist/`: `tsconfig.json` sets
+# `noEmit`, no script runs `tsc -p`, and `dist/` is gitignored. The container
+# therefore exited immediately on every deployment, and because nothing else
+# depends on it, `docker compose up -d` still reported success. Every queue went
+# unconsumed in silence — inbound Meta leads stored and never applied, AI
+# analyses PENDING forever, recordings left on the vendor, SLA never escalated.
+#
+# So the worker runs its TypeScript directly, through `tsx`, exactly as
+# `npm run worker` does on a laptop. One code path, one resolver, one set of
+# semantics — rather than a second build whose output only production executes,
+# and which therefore only breaks in production.
+#
+# `tsconfig.json` is copied because tsx reads `paths` from it to resolve the
+# `@/*` imports the worker tree uses throughout.
+FROM node:22-alpine AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PROCESS_ROLE=worker
+
+# Same stamp as the web stage. A deployment where web and worker are on
+# different commits is a real and confusing state; both reporting their own
+# commit is what makes it visible.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV BUILD_COMMIT=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
+RUN addgroup -g 1001 -S leadflow && adduser -u 1001 -S leadflow -G leadflow
+
+# From `build` rather than `deps`: that stage has already run `prisma generate`,
+# so node_modules carries the generated client the worker needs.
+COPY --from=build --chown=leadflow:leadflow /app/node_modules ./node_modules
+COPY --from=build --chown=leadflow:leadflow /app/src ./src
+COPY --from=build --chown=leadflow:leadflow /app/prisma ./prisma
+COPY --from=build --chown=leadflow:leadflow /app/package.json /app/tsconfig.json ./
+
+# The retention sweep reads ATTENDANCE_CAPTURE_DIR. Same reasoning as the web
+# stage: a named volume mounted over a path absent from the image arrives
+# root-owned, and uid 1001 cannot write to it.
+RUN mkdir -p /app/storage/attendance && chown -R leadflow:leadflow /app/storage
+
+USER leadflow
+
+# No HTTP surface, so no HTTP health check. src/workers/index.ts exits non-zero
+# if a queue fails to attach, which is what makes `restart: unless-stopped`
+# meaningful: a worker that cannot consume must die rather than idle.
+CMD ["node_modules/.bin/tsx", "src/workers/index.ts"]
+
 # ── runtime ──────────────────────────────────────────────────────────────────
-# Alias for the stage above, kept so `--target runtime` still resolves.
+# Alias for the web stage above, kept so `--target runtime` still resolves.
 FROM production AS runtime

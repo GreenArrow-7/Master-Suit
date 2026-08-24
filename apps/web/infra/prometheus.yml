@@ -1,0 +1,67 @@
+# Prometheus server configuration for Master Suite.
+#
+# This file is not read directly. `prometheus-entrypoint.sh` renders it into a
+# tmpfs at /run/prom/prometheus.yml, substituting @APP_ENV@ and writing the
+# scrape credential beside it, then execs the server against the rendered copy.
+# Prometheus does not expand environment variables in its own config, and the
+# alternative — a second secret file the operator has to create on the VM and
+# keep in step with .env.production — is one more thing to forget.
+#
+# ── Why the scraper lives inside the compose network ────────────────────────
+#
+# infra/Caddyfile answers /api/metrics with 404 from the public interface, on
+# purpose: the endpoint exposes no customer data, but it does expose a complete
+# map of the product's routes and actions, its error rates and its queue names.
+# That is free reconnaissance. So the scrape goes to `web:3000` over the bridge
+# network, which is a route only something already inside the deployment has.
+#
+# The token is still required on that path. `src/app/api/metrics/route.ts`
+# answers 404 without it — including to a caller on the compose network — so a
+# scraper with no credential sees a permanently-down target rather than an open
+# endpoint. That is the behaviour ApplicationDown fires on, which is why the
+# entrypoint refuses to start with METRICS_TOKEN unset instead of letting the
+# first alert of the deployment's life be its own misconfiguration.
+
+global:
+  # The endpoint's collection is deliberately cheap — queue depths are four
+  # Redis calls per queue and table growth reads the planner's reltuples rather
+  # than counting rows — so 30s costs little and keeps `increase(...[5m])` on
+  # ten samples rather than five.
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    # Rendered by the entrypoint. Staging and production each run their own
+    # Prometheus; this is what keeps their alerts apart if they are ever pointed
+    # at the same Alertmanager or the same inbox.
+    environment: '@APP_ENV@'
+
+rule_files:
+  # Absolute, because the rendered config lives in /run/prom and a relative path
+  # would resolve beside it rather than beside this file.
+  - /etc/prometheus/prometheus-alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # `job_name` is load-bearing: prometheus-alerts.yml matches
+  # `up{job="master-suite"}` in ApplicationDown, and renaming this job silently
+  # turns that rule into one that can never fire. scripts/check-observability.mjs
+  # fails the build if the two drift apart.
+  - job_name: master-suite
+    metrics_path: /api/metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /run/prom/metrics-token
+    static_configs:
+      - targets: ['web:3000']
+
+  # Prometheus scraping itself, so that "is the monitoring up" has an answer
+  # that does not depend on the thing being monitored.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['127.0.0.1:9090']

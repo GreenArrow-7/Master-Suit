@@ -24,14 +24,24 @@ export default function TaskRowActions({ id, status }: { id: string; status: str
 
   if (status === 'COMPLETED') {
     return (
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => patch({ status: 'OPEN' })}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => patch({ status: 'OPEN' })}
+      >
         Reopen
       </button>
     );
   }
   if (status === 'CANCELLED') {
     return (
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => patch({ status: 'OPEN' })}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => patch({ status: 'OPEN' })}
+      >
         Restore
       </button>
     );

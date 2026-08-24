@@ -28,7 +28,12 @@ function counted(req: Request, origin: string): boolean {
   if (!req.url().startsWith(origin)) return false;
   // Framework internals: static chunks, images, HMR, dev overlay, favicon.
   if (url.pathname.startsWith('/_next/') || url.pathname.startsWith('/__nextjs')) return false;
-  if (url.pathname === '/favicon.ico') return false;
+  // The tab icon, under both conventions. This file listed only `/favicon.ico`,
+  // but the app ships `src/app/icon.svg`, which the App Router serves from
+  // `/icon.svg?<content-hash>` — so the browser re-fetching the tab icon during
+  // a soft navigation read as "an endpoint was asked twice". It is not an
+  // endpoint and it is not the app asking.
+  if (url.pathname === '/favicon.ico' || url.pathname === '/icon.svg') return false;
   // Speculative prefetches are free — the router may or may not issue them
   // depending on build mode, and they must not read as duplicates.
   const headers = req.headers();
@@ -57,7 +62,10 @@ function assertBudget(label: string, requests: Request[], { maxTotal = 8 }: { ma
 
   // 1. Still a soft navigation: a document request means a full reload.
   const documents = requests.filter((r) => r.resourceType() === 'document');
-  expect(documents.map((d) => d.url()), `${label}: navigation caused a full document load`).toEqual([]);
+  expect(
+    documents.map((d) => d.url()),
+    `${label}: navigation caused a full document load`,
+  ).toEqual([]);
 
   // 2. No endpoint is asked twice within one navigation.
   const duplicates = lines.filter((line, index) => lines.indexOf(line) !== index);

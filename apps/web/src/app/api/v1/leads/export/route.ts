@@ -1,18 +1,32 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
+import { mergeWhere } from '@/lib/api/where';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { ulid } from 'ulid';
 import { AppError, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { prisma } from '@/lib/db';
-import { resolveCtx } from '@/lib/auth/session';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
+import { env } from '@/lib/env';
+import { prismaRead } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { audit } from '@/lib/security/audit';
-import { consume, limits } from '@/lib/security/ratelimit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+
+/**
+ * Every query in this module goes to `prismaRead` — the replica when
+ * `DATABASE_REPLICA_URL` is set, the primary otherwise.
+ *
+ * These are the reads that can afford to be a moment behind: a report is a
+ * roll-up over a date range, and one computed 200ms ago is the same report. They
+ * are also the heaviest reads in the product — groupBy over a quarter of leads
+ * or attendance punches — which is exactly the traffic worth keeping off the
+ * connections that are serving writes.
+ *
+ * `prismaRead` refuses write operations, in every configuration including the
+ * no-replica fallback, so a write added here fails on the first run rather than
+ * only where a replica exists. See lib/db.ts.
+ */
 
 const query = z.object({ filter: z.string().max(40).optional(), q: z.string().max(200).optional() }).strict();
 
@@ -62,10 +76,10 @@ export async function GET(req: Request) {
 }
 
 async function handle(req: Request, requestId: string) {
-  const ctx = await resolveCtx(req, requestId);
-  await assertModuleEntitlement(ctx.tenantId, 'SALES');
-  assertPermission(ctx, 'leads', 'EXPORT');
-  await consume(limits.sessionUser(ctx.actor.id));
+  const ctx = await resolveGuardedCtx(req, requestId, {
+    productModule: 'SALES',
+    permission: ['leads', 'EXPORT'],
+  });
 
   const url = new URL(req.url);
   const params = query.parse(Object.fromEntries(url.searchParams));
@@ -74,9 +88,9 @@ async function handle(req: Request, requestId: string) {
   const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date()) : {};
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
 
-  const where = { ...scope, ...extra, ...search };
+  const where = mergeWhere(scope, extra, search);
   const [setting, rules] = await Promise.all([
-    prisma.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
+    prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
     loadFieldRules(ctx, 'LEAD'),
   ]);
 
@@ -92,10 +106,17 @@ async function handle(req: Request, requestId: string) {
     }
   };
 
-  // Streamed in keyset pages rather than gathered into one array, so an export is
-  // bounded by page size instead of by the size of the result — there is no row
-  // limit and no point where the whole file sits in memory.
+  // Streamed in keyset pages rather than gathered into one array, so memory is
+  // bounded by page size rather than by the size of the result — no point in
+  // this function holds the whole file.
+  //
+  // EXPORT_MAX_ROWS still caps it. Memory was never the only cost: an unbounded
+  // export holds a replica connection and streams every lead in the workspace to
+  // whoever asked, and "there is no row limit" is the shape of an exfiltration
+  // rather than a feature. The setting has been declared in lib/env.ts and read
+  // nowhere since it was added, so an operator who lowered it changed nothing.
   const PAGE = 500;
+  const MAX_ROWS = env.EXPORT_MAX_ROWS;
   const encoder = new TextEncoder();
   let cursor: string | null = null;
   let exported = 0;
@@ -105,10 +126,12 @@ async function handle(req: Request, requestId: string) {
       controller.enqueue(encoder.encode('﻿' + columns.map((column) => csvCell(column.label)).join(',') + '\r\n'));
     },
     async pull(controller) {
-      const page = await prisma.lead.findMany({
+      const page = await prismaRead.lead.findMany({
         where,
         orderBy: { id: 'asc' },
-        take: PAGE,
+        // The last page is trimmed to land exactly on the cap rather than
+        // overshooting it by up to PAGE-1 rows.
+        take: Math.min(PAGE, MAX_ROWS - exported),
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         select: {
           id: true,
@@ -129,12 +152,20 @@ async function handle(req: Request, requestId: string) {
         },
       });
 
-      if (page.length === 0) {
-        // Audited on completion so the record reflects what actually left the system.
+      if (page.length === 0 || exported >= MAX_ROWS) {
+        // Audited on completion so the record reflects what actually left the
+        // system — including `truncated`, because a caller who received a capped
+        // file and a reviewer reading this row must both be able to tell that
+        // the export is not the whole answer.
         await audit(ctx, {
           event: 'EXPORT_REQUESTED',
           objectType: 'leads',
-          metadata: { rows: exported, filter: params.filter ?? null },
+          metadata: {
+            rows: exported,
+            filter: params.filter ?? null,
+            truncated: exported >= MAX_ROWS,
+            ...(exported >= MAX_ROWS ? { limit: MAX_ROWS } : {}),
+          },
         });
         controller.close();
         return;

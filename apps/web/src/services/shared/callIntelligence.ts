@@ -166,6 +166,24 @@ export async function claimAnalysis(tenantId: string, callId: string): Promise<b
   return claimed.count > 0;
 }
 
+/**
+ * Which fields a re-run must leave alone.
+ *
+ * A row corrected *before* `correctedFields` existed carries the flag and an
+ * empty list — "somebody corrected this, we do not know what". That is read as
+ * "protect everything", because guessing wrong here means destroying work
+ * somebody did, and the cost of being conservative is a stale field on a handful
+ * of old rows.
+ */
+export function protectedFields(
+  existing: { humanCorrected: boolean; correctedFields: string[] } | null,
+  candidates: string[],
+): string[] {
+  if (!existing?.humanCorrected) return [];
+  if (existing.correctedFields.length === 0) return candidates;
+  return candidates.filter((field) => existing.correctedFields.includes(field));
+}
+
 export async function analyseCall(job: CallJob): Promise<Outcome> {
   const { tenantId, callId } = job;
   if (!(await consented(tenantId, callId))) return skipped('consent absent or withdrawn');
@@ -202,32 +220,62 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
       campaignName: context.campaignName,
     });
 
+    /**
+     * The model's answer, minus anything a person has already corrected.
+     *
+     * This used to write every column unconditionally, so re-analysing a call
+     * somebody had edited replaced their words with the model's — silently, with
+     * no way back. `humanCorrected` was recorded and read by nothing but a badge
+     * in the UI.
+     *
+     * `rawOutput` is written whatever happens, so the model's complete answer is
+     * still on the row and a later interface can show "the model now says X"
+     * beside the correction. Nothing is lost; the model simply does not win an
+     * argument a person has already settled.
+     */
+    const existing = await prisma.aIAnalysis.findFirst({
+      where: { callId, tenantId },
+      select: { humanCorrected: true, correctedFields: true },
+    });
+    const modelFields = {
+      summary: result.summary,
+      clientNeeds: result.clientNeeds,
+      objections: result.objections,
+      commitments: result.commitments,
+      buyingSignals: result.buyingSignals,
+      risks: result.risks,
+      nextSteps: result.nextSteps,
+      actionItems: result.actionItems ?? [],
+      topicsDiscussed: result.topicsDiscussed,
+      topicsMissed: result.topicsMissed,
+      sentiment: result.sentiment,
+      sentimentScore: result.sentimentScore,
+      suggestedStatus: result.suggestedStatus,
+      complianceFlags: result.complianceFlags,
+      uncertainItems: result.uncertainItems,
+    };
+    const preserved = protectedFields(existing, Object.keys(modelFields));
+    for (const field of preserved) delete (modelFields as Record<string, unknown>)[field];
+
+    if (preserved.length) {
+      logger.info({ tenantId, callId, preserved }, 'analysis: kept human corrections over the model');
+    }
+
     await prisma.aIAnalysis.update({
       where: { callId, tenantId },
       data: {
         status: 'COMPLETED',
         modelId,
         processingMs,
-        summary: result.summary,
-        clientNeeds: result.clientNeeds,
-        objections: result.objections,
-        commitments: result.commitments,
-        buyingSignals: result.buyingSignals,
-        risks: result.risks,
-        nextSteps: result.nextSteps,
-        actionItems: result.actionItems ?? [],
-        // Measured from the transcript, never taken from the model. Null when
-        // the transcript carries no speaker attribution at all — an absent
-        // ratio must stay absent rather than render as a balanced call.
+        ...modelFields,
+        // Not in `modelFields`, and deliberately: neither is the model's
+        // opinion, so neither is something a person corrects. `talkRatio` is
+        // measured from the transcript's own speaker attribution — null when
+        // there is none, because an absent ratio must stay absent rather than
+        // render as a balanced call — and `promptVersion` records which prompt
+        // produced the rest.
         talkRatio: talk.ratio,
         promptVersion: ANALYSIS_PROMPT_VERSION,
-        topicsDiscussed: result.topicsDiscussed,
-        topicsMissed: result.topicsMissed,
-        sentiment: result.sentiment,
-        sentimentScore: result.sentimentScore,
-        suggestedStatus: result.suggestedStatus,
-        complianceFlags: result.complianceFlags,
-        uncertainItems: result.uncertainItems,
         rawOutput: result as unknown as object,
       },
     });

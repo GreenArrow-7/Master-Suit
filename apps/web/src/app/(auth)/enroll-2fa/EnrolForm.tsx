@@ -4,22 +4,25 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Stage = 'loading' | 'scan' | 'saved' | 'error';
+type Stage = 'password' | 'loading' | 'scan' | 'saved' | 'error';
 
-async function call(step: 'begin' | 'confirm', code?: string) {
+async function call(step: 'begin' | 'confirm', extra: Record<string, string> = {}) {
   const res = await fetch('/api/v1/auth/enroll-2fa', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ step, ...(code ? { code } : {}) }),
+    body: JSON.stringify({ step, ...extra }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail ?? 'That did not work. Try again.');
   return data;
 }
 
-export default function EnrolForm() {
+export default function EnrolForm({ requiresPassword = false }: { requiresPassword?: boolean }) {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>('loading');
+  // A full session re-authenticates before enrolment begins; the forced
+  // first-run grant proved its password moments ago and goes straight through.
+  const [stage, setStage] = useState<Stage>(requiresPassword ? 'password' : 'loading');
+  const [password, setPassword] = useState('');
   const [secret, setSecret] = useState('');
   const [otpauth, setOtpauth] = useState('');
   const [code, setCode] = useState('');
@@ -27,25 +30,41 @@ export default function EnrolForm() {
   const [error, setError] = useState<string | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
-  useEffect(() => {
-    call('begin')
+  function beginWith(extra: Record<string, string> = {}) {
+    return call('begin', extra)
       .then((data) => {
         setSecret(data.secret);
         setOtpauth(data.otpauthUrl);
         setStage('scan');
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
-        setStage('error');
+        // A wrong password is a correction, not a dead end: stay on the prompt.
+        if (!requiresPassword) setStage('error');
       });
-  }, []);
+  }
+
+  useEffect(() => {
+    if (requiresPassword) return;
+    void beginWith();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requiresPassword]);
+
+  async function submitPassword(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    await beginWith({ currentPassword: password });
+    setPassword('');
+    setBusy(false);
+  }
 
   async function confirm(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const data = await call('confirm', code);
+      const data = await call('confirm', { code });
       setRecoveryCodes(data.recoveryCodes ?? []);
       setStage('saved');
     } catch (err) {
@@ -53,6 +72,39 @@ export default function EnrolForm() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (stage === 'password') {
+    return (
+      <form className="lf-auth-form" onSubmit={submitPassword}>
+        <p className="lf-auth-lede">
+          Confirm your password to continue. Setting up an authenticator hands out recovery codes, so it asks the way
+          changing your password does.
+        </p>
+        <div className="lf-field">
+          <label className="lf-label" htmlFor="enrol-current-password">
+            Password
+          </label>
+          <input
+            id="enrol-current-password"
+            className="lf-input"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </div>
+        {error && (
+          <p className="lf-auth-alert" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="lf-btn" type="submit" disabled={busy || !password}>
+          {busy ? 'Checking…' : 'Continue'}
+        </button>
+      </form>
+    );
   }
 
   if (stage === 'loading') return <p style={{ color: 'var(--lf-ink-3)' }}>Preparing your authenticator setup…</p>;

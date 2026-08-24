@@ -218,9 +218,9 @@ describe('the review, in order', () => {
   });
 
   it('refuses a second self-assessment', async () => {
-    await expect(
-      submitSelfReview(ctxFor('report', STAFF), { reviewId, comments: 'Again' }),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(submitSelfReview(ctxFor('report', STAFF), { reviewId, comments: 'Again' })).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it('refuses a manager review from someone outside the reporting line', async () => {
@@ -330,9 +330,9 @@ describe('improvement plans', () => {
     await activatePip(ctxFor('manager', MANAGER), pipId);
     // The most expensive mistake available here: closing a plan the employee was
     // never recorded as having been told about.
-    await expect(
-      closePip(ctxFor('manager', MANAGER), pipId, false, 'Did not improve'),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(closePip(ctxFor('manager', MANAGER), pipId, false, 'Did not improve')).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it('lets only the employee acknowledge, and then closes', async () => {

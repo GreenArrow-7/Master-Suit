@@ -138,6 +138,14 @@ export class ExotelProvider implements TelephonyProvider {
       deliveryId: `${externalCallId}:${status}`,
     };
   }
+  /**
+   * Exotel serves recordings from its own domain and from S3 buckets it owns.
+   * The S3 entry is the loose one, and it is why RECORDING_URL_ALLOWED_HOSTS
+   * exists: a deployment that knows its own bucket name should narrow this.
+   */
+  mediaHosts(): readonly string[] {
+    return ['.exotel.com', '.exotel.in', '.s3.amazonaws.com'];
+  }
 }
 
 /** Form-encoded or JSON, keys lowercased, values stringified. */

@@ -1,0 +1,43 @@
+# Caddy for the staging project (docker-compose.staging.yml).
+#
+# Deliberately not a copy of ./Caddyfile with the domain swapped, because the two
+# differ in one way that matters: this one has no public name and no certificate.
+#
+# Staging is pointed at a restored production snapshot — that is the point of it,
+# and it is what makes it a deployment holding real customer data with none of
+# production's operational attention. A public hostname with an ACME certificate
+# would make it the softest route to that data. So the only way in is an SSH
+# tunnel to the host:
+#
+#   ssh -L 8080:127.0.0.1:8080 azureuser@<vm>   # then http://localhost:8080
+#
+# `auto_https off` is required, not cosmetic. Caddy reads a site address with no
+# scheme as "obtain a certificate for this", and `:80` alone would still trigger
+# the HTTP-to-HTTPS redirect — which, over a tunnel to a port that terminates no
+# TLS, is a redirect to nothing.
+{
+	auto_https off
+}
+
+:80 {
+	encode zstd gzip
+
+	# The reason Caddy is in the staging stack at all rather than exposing web
+	# directly: this header, and the X-Forwarded-For chain behind it, is what
+	# every rate-limit bucket and every audit row's source address is keyed on.
+	# A staging deployment reached directly on :3000 rehearses a topology
+	# production does not have. It also would not boot — startup-check refuses
+	# a production build with no declared proxy.
+	reverse_proxy web:3000 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	request_body {
+		max_size 32MB
+	}
+
+	# Same block as production. Staging's scrape surface is no less of a map of
+	# the product than production's, and the two are the same map.
+	@metrics path /api/metrics
+	respond @metrics 404
+}

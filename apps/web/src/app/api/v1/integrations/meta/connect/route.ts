@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { Conflict } from '@/lib/errors';
+import { safeReturnTo } from '@/lib/security/redirect';
 import { beginMetaOAuth, metaOAuthConfigured, metaRedirectUri } from '@/services/meta/oauth';
 
 /**
@@ -27,9 +28,11 @@ export const POST = route(
 
     /**
      * A relative path only. Taking a full URL here would turn the connect
-     * button into an open redirect that survives a round trip through Facebook.
+     * button into an open redirect that survives a round trip through Facebook
+     * — which `startsWith('/')` did not prevent, because `//evil.example` is a
+     * protocol-relative URL and passes it.
      */
-    const returnTo = body.returnTo?.startsWith('/') ? body.returnTo : '/';
+    const returnTo = safeReturnTo(body.returnTo);
 
     const url = await beginMetaOAuth({ tenantId: ctx.tenantId, actorId: ctx.actor.id, returnTo });
     return { url, redirectUri: metaRedirectUri() };

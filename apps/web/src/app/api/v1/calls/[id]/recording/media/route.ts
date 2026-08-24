@@ -9,9 +9,7 @@ import { logger } from '@/lib/logger';
 import { getObject, putObject } from '@/lib/storage';
 import { scanBuffer } from '@/lib/antivirus';
 import { getUploadMaxMb } from '@/lib/platform-settings';
-import { resolveCtx } from '@/lib/auth/session';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
 import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
@@ -65,10 +63,14 @@ export const GET = route(
 /**
  * Uploads the recording itself — audio or video — for a call.
  *
- * Multipart, so it cannot go through the JSON kernel in lib/api/handler.ts and
- * reproduces that kernel's security order by hand exactly as the document
- * uploads do: authenticate, entitlement, permission, consent, then read the
- * payload. Adding a step to the kernel means adding it here too.
+ * Multipart, so it cannot go through the JSON kernel in lib/api/handler.ts.
+ * `resolveGuardedCtx` runs the kernel's order for it — authenticate, entitle,
+ * permit, throttle — rather than the prologue being retyped here. That matters
+ * for the fourth step: the hand-written version of this had no rate limit, which
+ * is the same omission the five HR bypasses had and for the same reason. There
+ * is no way to ask that function for no limit.
+ *
+ * Consent is checked after the prologue and before a byte of the body is read.
  *
  * PUT rather than a second POST endpoint: this is the same resource the GET
  * above streams back, and a separate `/upload` path would be a second URL for
@@ -82,9 +84,10 @@ export const GET = route(
 export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'SALES');
-    assertPermission(ctx, 'calls', 'EDIT');
+    const ctx = await resolveGuardedCtx(req, requestId, {
+      productModule: 'SALES',
+      permission: ['calls', 'EDIT'],
+    });
 
     const { id: callId } = await context.params;
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');

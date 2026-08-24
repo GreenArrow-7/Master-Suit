@@ -22,4 +22,14 @@
 	request_body {
 		max_size 32MB
 	}
+
+	# The scrape endpoint is not public. It is token-gated and 404s without one,
+	# so this is defence in depth rather than the only control — but what it
+	# serves is a map of every route module and action in the product, request
+	# volumes, error rates and queue names, and that is free reconnaissance.
+	#
+	# Prometheus reaches it at web:3000 on the compose network instead. See
+	# infra/prometheus-alerts.yml for the scrape config.
+	@metrics path /api/metrics
+	respond @metrics 404
 }

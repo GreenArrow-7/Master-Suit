@@ -70,3 +70,85 @@ describe('transcription provider selection', () => {
     }
   });
 });
+
+/**
+ * Numbers spoken as words.
+ *
+ * Every rule above matches digits, and a transcript is what somebody *said*.
+ * Speech-to-text writes a card number read aloud the way it was read — "four two
+ * four two, four two four two, …" — which contains not one digit and is a full
+ * card number on its way to a third-party model.
+ *
+ * The file used to carry a note saying so and inviting somebody to fix it later.
+ * A known hole in a redactor is not a note.
+ */
+describe('numbers read aloud', () => {
+  it('redacts a card number spoken digit by digit', () => {
+    const spoken =
+      'so the card is four two four two four two four two four two four two four two four two, expiry oh three';
+    const { text, counts } = redact(spoken);
+    expect(text).not.toMatch(/four two four two/);
+    expect(text).toContain('[REDACTED_CARD]');
+    expect(counts.CARD).toBe(1);
+  });
+
+  it('redacts a phone number spoken digit by digit', () => {
+    const { text, counts } = redact('call me on oh five oh one two three four five six');
+    expect(text).toContain('[REDACTED_PHONE]');
+    expect(counts.PHONE).toBe(1);
+    expect(text).not.toMatch(/one two three four/);
+  });
+
+  it('understands "double" and "triple" the way people read numbers', () => {
+    // "double seven" is 77 — how a UAE or UK number is read aloud. Without this
+    // the run is two digits short and slips under the threshold.
+    const { text } = redact('the number is oh five double two triple four one nine');
+    expect(text).toContain('[REDACTED_');
+    expect(text).not.toMatch(/double two/);
+  });
+
+  it('leaves the words in a sentence that merely counts', () => {
+    // The threshold is what keeps ordinary speech out of it: nobody reads eight
+    // consecutive digit-words aloud by accident.
+    const prose = 'we tried one, two, three times and he said no on all three';
+    expect(redact(prose).text).toBe(prose);
+  });
+
+  it('does not turn a price into a number to be redacted', () => {
+    // "hundred", "fifty" and "thousand" are deliberately not digit-words:
+    // converting them to digits would be inventing a number nobody said, and
+    // testing that invention against Luhn is worse than useless.
+    const prose = 'the unit is one hundred and fifty thousand dirhams, plus four percent';
+    expect(redact(prose).text).toBe(prose);
+  });
+
+  it('stops a run at the first word that is not part of the number', () => {
+    // Two short groups either side of ordinary speech must not join up into one
+    // long "number" that trips the threshold.
+    const prose = 'four two four two is what he said and then nine one nine one was the other one';
+    const { text } = redact(prose);
+    expect(text).toBe(prose);
+  });
+
+  it('leaves the transcript’s own words in place rather than rewriting them as digits', () => {
+    // Redaction must not edit the record it is protecting: the surrounding
+    // sentence has to survive verbatim, with only the number replaced.
+    const { text } = redact(
+      'he read out four two four two four two four two four two four two four two four two and hung up',
+    );
+    expect(text).toMatch(/^he read out \[REDACTED_CARD\] and hung up$/);
+  });
+
+  it('still catches a spoken number after a digit rule has already fired', () => {
+    // A placeholder holds no digit-words, so an earlier substitution cannot be
+    // swallowed by a later run — and the offsets of a second run must survive
+    // the first replacement.
+    const { text, counts } = redact(
+      'email me at a@b.com or call oh five oh one two three four five six, card four two four two four two four two four two four two four two four two',
+    );
+    expect(counts.EMAIL).toBe(1);
+    expect(text).toContain('[REDACTED_EMAIL]');
+    expect(text).toContain('[REDACTED_PHONE]');
+    expect(text).toContain('[REDACTED_CARD]');
+  });
+});

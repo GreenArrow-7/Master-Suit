@@ -12,7 +12,14 @@ const DUBAI = 'Asia/Dubai';
 const dayLabel = (value: Date) =>
   new Intl.DateTimeFormat('en-GB', { timeZone: DUBAI, day: '2-digit', month: 'short', year: 'numeric' }).format(value);
 const timeLabel = (value: Date | null) =>
-  value ? new Intl.DateTimeFormat('en-GB', { timeZone: DUBAI, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(value) : '—';
+  value
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: DUBAI,
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(value)
+    : '—';
 const hhmm = (minutes: number) => `${Math.floor(minutes / 60)}h ${String(Math.round(minutes % 60)).padStart(2, '0')}m`;
 const iso = (value: Date) => value.toISOString().slice(0, 10);
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -145,36 +152,38 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No attendance in this period.</div>
       ) : (
         <TableSearch placeholder="Employee, location, date or status…" label="Search this period">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                {seesAll && <th>Employee</th>}
-                <th>First in</th>
-                <th>Last out</th>
-                <th>Hours</th>
-                <th>Location</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td data-label="Date">{dayLabel(row.workDate)}</td>
-                  {seesAll && <td data-label="Employee">{row.employee.membership.platformUser.fullName}</td>}
-                  <td data-label="First in">{timeLabel(row.checkInAt)}</td>
-                  <td data-label="Last out">{timeLabel(row.checkOutAt)}</td>
-                  <td data-label="Hours">{hhmm(row.workMinutes ?? 0)}</td>
-                  <td data-label="Location">{row.location?.name ?? '—'}</td>
-                  <td data-label="Status">
-                    <span className="lf-badge">{row.checkOutAt ? 'complete' : row.checkInAt ? 'open' : row.status.toLowerCase()}</span>
-                  </td>
+          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  {seesAll && <th>Employee</th>}
+                  <th>First in</th>
+                  <th>Last out</th>
+                  <th>Hours</th>
+                  <th>Location</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td data-label="Date">{dayLabel(row.workDate)}</td>
+                    {seesAll && <td data-label="Employee">{row.employee.membership.platformUser.fullName}</td>}
+                    <td data-label="First in">{timeLabel(row.checkInAt)}</td>
+                    <td data-label="Last out">{timeLabel(row.checkOutAt)}</td>
+                    <td data-label="Hours">{hhmm(row.workMinutes ?? 0)}</td>
+                    <td data-label="Location">{row.location?.name ?? '—'}</td>
+                    <td data-label="Status">
+                      <span className="lf-badge">
+                        {row.checkOutAt ? 'complete' : row.checkInAt ? 'open' : row.status.toLowerCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </TableSearch>
       )}
     </div>

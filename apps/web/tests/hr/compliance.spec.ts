@@ -18,13 +18,22 @@ let brokerId = '';
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000);
 
 const hrCtx = () =>
-  buildCtx(buildActor({ id: `hr-${suffix}`, tenantId, permissions: new Map([['employee:EDIT', 'ORGANIZATION']]) as never }));
+  buildCtx(
+    buildActor({ id: `hr-${suffix}`, tenantId, permissions: new Map([['employee:EDIT', 'ORGANIZATION']]) as never }),
+  );
 const plainCtx = () =>
-  buildCtx(buildActor({ id: `p-${suffix}`, tenantId, permissions: new Map([['attendance:VIEW', 'OWN' as Scope]]) as never }));
+  buildCtx(
+    buildActor({ id: `p-${suffix}`, tenantId, permissions: new Map([['attendance:VIEW', 'OWN' as Scope]]) as never }),
+  );
 
 async function employee(name: string, opts: { employmentType?: string; reraExpiry?: Date; reraBrn?: string } = {}) {
   const platformUser = await prisma.platformUser.create({
-    data: { email: `${name}-${suffix}@comp.test`, normalizedEmail: `${name}-${suffix}@comp.test`, fullName: name, status: 'ACTIVE' },
+    data: {
+      email: `${name}-${suffix}@comp.test`,
+      normalizedEmail: `${name}-${suffix}@comp.test`,
+      fullName: name,
+      status: 'ACTIVE',
+    },
   });
   const membership = await prisma.workspaceMembership.create({
     data: { tenantId, platformUserId: platformUser.id, status: 'ACTIVE', joinedAt: new Date() },
@@ -54,17 +63,38 @@ beforeAll(async () => {
   // A staffer with a visa expiring in 20 days (document row).
   const staff = await employee('Staffer');
   await prisma.hrEmployeeDocument.create({
-    data: { tenantId, employeeId: staff.id, kind: 'Residence visa', name: 'Residence visa', number: `V${suffix}`, expiresAt: inDays(20) },
+    data: {
+      tenantId,
+      employeeId: staff.id,
+      kind: 'Residence visa',
+      name: 'Residence visa',
+      number: `V${suffix}`,
+      expiresAt: inDays(20),
+    },
   });
   // A contractor with a labour card expiring in 80 days.
   const contractor = await employee('Contractor', { employmentType: 'contractor' });
   await prisma.hrEmployeeDocument.create({
-    data: { tenantId, employeeId: contractor.id, kind: 'Labour card', name: 'Labour card', number: `L${suffix}`, expiresAt: inDays(80) },
+    data: {
+      tenantId,
+      employeeId: contractor.id,
+      kind: 'Labour card',
+      name: 'Labour card',
+      number: `L${suffix}`,
+      expiresAt: inDays(80),
+    },
   });
   // Something far out that must not appear in a 90-day window.
   const future = await employee('Future');
   await prisma.hrEmployeeDocument.create({
-    data: { tenantId, employeeId: future.id, kind: 'Passport', name: 'Passport', number: `P${suffix}`, expiresAt: inDays(400) },
+    data: {
+      tenantId,
+      employeeId: future.id,
+      kind: 'Passport',
+      name: 'Passport',
+      number: `P${suffix}`,
+      expiresAt: inDays(400),
+    },
   });
 });
 

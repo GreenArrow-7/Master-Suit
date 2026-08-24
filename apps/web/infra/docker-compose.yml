@@ -1,11 +1,62 @@
+# Base stack. Layer docker-compose.dev.yml or .prod.yml over it; the Azure
+# overlay goes last.
+#
+# ── Every published port here binds 127.0.0.1, and that is load-bearing ──────
+#
+# Local development runs the web app on the host, so these have to be reachable
+# from it — but only from it. They used to bind 0.0.0.0, which on any machine
+# with a routable address (a cloud VM, a laptop on a café network, a host whose
+# Docker bridge is exposed) published an unauthenticated database to whoever
+# could reach the interface. `docker-compose.azure.yml` closed them again with
+# `!reset []`, which meant the safety of a deployment depended on remembering to
+# layer a third file. A base file should not need rescuing.
+# ── Log rotation, on every service ──────────────────────────────────────────
+#
+# Nothing here configured logging at all, which means Docker's default:
+# `json-file`, **unrotated**. On a single-VM deployment that is the same disk
+# Postgres writes to, and a chatty week — one request line per request, plus
+# every slow-query warning — fills it. A database that cannot write because a
+# log file ate the volume is an outage caused entirely by observability.
+#
+# 10 MB × 5 is roughly the last few hundred thousand request lines per service,
+# which is the window `docker compose logs` is actually used for during an
+# incident, and about 500 MB in the worst case across the stack.
+#
+# ── What this does not do ───────────────────────────────────────────────────
+#
+# It does not ship anything off the host. Rotation bounds the disk; it does not
+# survive `docker compose down`, and the assessment's W-3 is still open. When a
+# destination is chosen, this anchor is the one place to change — every service
+# below references it, so pointing the stack at syslog, gelf, Loki or a hosted
+# collector is an edit here rather than ten.
+#
+# Note that the options below are `json-file`'s. A different driver takes
+# different options and Docker refuses to start a container given options its
+# driver does not know, so switching driver means replacing this whole block,
+# not overriding one line of it. That is on purpose: a half-substituted logging
+# config that fails at `up` is worse than one that is edited deliberately.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   postgres:
+    logging: *logging
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: leadflow
       POSTGRES_PASSWORD: leadflow
       POSTGRES_DB: leadflow
-      POSTGRES_HOST_AUTH_METHOD: trust
+      # `trust` was here. It accepts ANY password from any host that can open
+      # the port — so the password in DATABASE_URL was decorative, and the
+      # sole thing standing between the network and every tenant's data was the
+      # port binding above. Two mistakes that only compound. scram-sha-256 is
+      # what the Azure overlay already set for production; the local stack now
+      # authenticates the same way it will when it is deployed.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
     command:
       - postgres
       - -c
@@ -16,7 +67,7 @@ services:
       - max_connections=200
       - -c
       - random_page_cost=1.1
-    ports: ['5432:5432']
+    ports: ['127.0.0.1:5432:5432']
     volumes: ['pgdata:/var/lib/postgresql/data']
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U leadflow']
@@ -24,22 +75,52 @@ services:
       retries: 10
 
   redis:
+    logging: *logging
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
-    ports: ['6379:6379']
+    # ── requirepass, in development too ──────────────────────────────────────
+    #
+    # Redis carries queue payloads and cached actor permissions, and it had no
+    # password anywhere. On one host the bridge network is a real mitigation and
+    # it is also the assumption that breaks first the moment anything moves to a
+    # second machine.
+    #
+    # The default is the same well-known development credential the Postgres role
+    # already uses here, and development gets one *at all* for the same reason
+    # staging sends its alerts through Mailpit rather than switching them off: a
+    # path no environment exercises is a path nobody notices is broken. The two
+    # deployment overlays replace it with `:?` and refuse to start without a real
+    # one.
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--maxmemory-policy',
+        'noeviction',
+        '--requirepass',
+        '${REDIS_PASSWORD:-leadflow}',
+      ]
+    environment:
+      # For the healthcheck below, which runs inside this container.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-leadflow}
+    ports: ['127.0.0.1:6379:6379']
     volumes: ['redisdata:/data']
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      # `REDISCLI_AUTH` rather than `-a`: the flag prints "Using a password with
+      # -a is insecure" to stderr on every probe. `$$` escapes Compose's own
+      # interpolation so the shell inside the container expands it.
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
       interval: 5s
       retries: 10
 
   minio:
+    logging: *logging
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: leadflow
       MINIO_ROOT_PASSWORD: leadflow123
-    ports: ['9000:9000', '9001:9001']
+    ports: ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001']
     volumes: ['miniodata:/data']
 
   # A local mailbox, so EMAIL_PROVIDER can be a real `smtp` rather than `mock`.
@@ -47,6 +128,7 @@ services:
   # nothing leaves the machine, which is the point — a local run that can post
   # real mail to real addresses is a worse accident than one that cannot send.
   mailpit:
+    logging: *logging
     image: axllent/mailpit:latest
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 'true'
@@ -62,6 +144,7 @@ services:
   # freshclam keeps them current, which is why the healthcheck allows a long start:
   # the first signature download is several hundred megabytes.
   clamav:
+    logging: *logging
     image: clamav/clamav:stable
     environment:
       CLAMAV_NO_MILTERD: 'true'
@@ -77,10 +160,24 @@ services:
   # Deliberately NOT published to the host — a service that turns camera frames
   # into biometric vectors has no business being reachable from outside.
   face:
+    logging: *logging
     build: { context: ../../face, dockerfile: Dockerfile }
     environment:
       FACE_MODEL_DIR: /models
       FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:-}
+      # The token being rotated out, accepted alongside the current one for the
+      # length of a rotation. Empty except during one. Without it, rotating the
+      # shared secret means a window where the application sends a token this
+      # service no longer accepts, every check-in is a 401, and nobody can start
+      # their shift — which is why it never got rotated. The overlays inherit
+      # both variables from here. See apps/face/tokens.py and
+      # scripts/rotate-face-token.sh.
+      FACE_SERVICE_TOKEN_PREVIOUS: ${FACE_SERVICE_TOKEN_PREVIOUS:-}
+      # Declared, not defaulted. With no token set the service accepts every
+      # caller, which is fine on a laptop and an open biometric engine anywhere
+      # else — so it refuses to start unauthenticated unless something says
+      # `development` out loud. The azure overlay says `production`.
+      FACE_SERVICE_ENV: development
     volumes: ['facemodels:/models']
     # Bound to loopback only. Local development runs the web app on the host, so
     # it needs a port — but a service that turns camera frames into biometric
@@ -99,29 +196,44 @@ services:
       start_period: 300s
 
   web:
-    build: { context: .., dockerfile: infra/Dockerfile }
+    logging: *logging
+    build: { context: .., dockerfile: infra/Dockerfile, target: production }
     environment:
       PROCESS_ROLE: web
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      # The application role, not the owner. `master_saas_app` is NOBYPASSRLS and
+      # owns nothing, which is the only role row-level security actually applies
+      # to — lib/startup-check.ts refuses to boot as a superuser, correctly.
+      # Its password is set by 20260806000000; scram-sha-256 now checks it.
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379/0
       S3_ENDPOINT: http://minio:9000
       FACE_SERVICE_URL: http://face:8000
       ANTIVIRUS_PROVIDER: clamav
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
     env_file: [../.env]
-    ports: ['3000:3000']
+    # Loopback like everything else. The overlays widen it where a public
+    # interface is actually wanted — nothing but Caddy binds one in production.
+    ports: ['127.0.0.1:3000:3000']
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
 
   worker:
-    build: { context: .., dockerfile: infra/Dockerfile }
-    command: ['node', 'dist/workers/index.js']
+    logging: *logging
+    # `target: worker`, and no `command:` override.
+    #
+    # This used to build the default (web) stage and run
+    # `node dist/workers/index.js` against it. No build in this repository
+    # produces `dist/` — see the worker stage in infra/Dockerfile — so the
+    # container exited immediately, every time, and nothing noticed because no
+    # other service depends on it. The image now carries its own correct
+    # entrypoint; overriding it here is what let the two drift apart.
+    build: { context: .., dockerfile: infra/Dockerfile, target: worker }
     environment:
       PROCESS_ROLE: worker
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379/0
     env_file: [../.env]
     depends_on:
       postgres: { condition: service_healthy }
@@ -129,4 +241,107 @@ services:
     deploy:
       replicas: 2
 
-volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {} }
+  # ── Observability ─────────────────────────────────────────────────────────
+  #
+  # `GET /api/metrics` has existed since P1-1 and nothing has ever read it. The
+  # assessment scored monitoring 45/100 for exactly that reason: "the alert
+  # rules are a file, not a running system". These two services are what turns
+  # the file into a system.
+  #
+  # ── Why they are here, behind a profile, rather than in an overlay ─────────
+  #
+  # Behind a profile because development has nowhere for an alert to go.
+  # `npm run secrets` does write a METRICS_TOKEN into .env, so the scrape would
+  # work — but Alertmanager refuses to start without a relay and a recipient,
+  # and it refuses on purpose: alert rules with no destination read as monitored
+  # while delivering nothing. In development that refusal would take
+  # `docker compose up` down with it, over two containers a developer has no use
+  # for. So development does not start them, and says so in one word.
+  #
+  # Here, and not in a docker-compose.observability.yml, because both deployment
+  # overlays clear the profile themselves — `profiles: !reset []` in
+  # docker-compose.azure.yml and docker-compose.staging.yml. A separate file
+  # would have to be remembered on every `docker compose` line in every runbook,
+  # and infra/docker-compose.pgbouncer.yml is already the example of what that
+  # becomes. A control that depends on remembering a fourth `-f` lasts exactly
+  # as long as nobody is in a hurry.
+  #
+  # ── The base image is load-bearing ────────────────────────────────────────
+  #
+  # Both images are built on busybox, so `/bin/sh`, `sed` and `wget` are present
+  # and the entrypoint scripts and healthchecks below work. If a future tag
+  # moves to a distroless base, these break at start rather than silently — the
+  # container will exit with "no such file or directory", which is the failure
+  # mode wanted.
+  prometheus:
+    logging: *logging
+    image: prom/prometheus:v3.1.0
+    profiles: ['observability']
+    # Neither Prometheus nor Alertmanager expands environment variables in its
+    # own configuration, and the scrape credential must not appear in argv. The
+    # entrypoint renders both into a tmpfs. See prometheus-entrypoint.sh.
+    entrypoint: ['/bin/sh', '/etc/prometheus/entrypoint.sh']
+    environment:
+      # `:-` and not `:?` on every one of these: Compose interpolates the whole
+      # file before it decides which profiles are active, so a `:?` here would
+      # abort `docker compose up` in development over a service development does
+      # not start. The overlays that do start it restate these with `:?`.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      APP_ENV: ${APP_ENV:-development}
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - ./prometheus-entrypoint.sh:/etc/prometheus/entrypoint.sh:ro
+      - promdata:/prometheus
+    # The rendered config and the bearer token, in memory only. Neither reaches
+    # this host's disk and neither survives the container.
+    tmpfs: ['/run/prom']
+    restart: unless-stopped
+    depends_on: [web]
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9090/-/healthy']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  alertmanager:
+    logging: *logging
+    image: prom/alertmanager:v0.28.0
+    profiles: ['observability']
+    entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
+    environment:
+      # The relay this deployment already sends product mail through. Alerts go
+      # out the same way, which means one thing to configure and one thing that
+      # can be wrong — and docker-compose.azure.yml already refuses to start
+      # with SMTP_HOST unset.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_PAGE_EMAIL_TO: ${ALERT_PAGE_EMAIL_TO:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      # Staging relays through Mailpit, which speaks plain SMTP and offers no
+      # STARTTLS; the staging overlay sets this to false. Production leaves it.
+      ALERT_SMTP_REQUIRE_TLS: ${ALERT_SMTP_REQUIRE_TLS:-true}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USER: ${SMTP_USER:-}
+      APP_ENV: ${APP_ENV:-development}
+    volumes:
+      - ./alertmanager-entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - amdata:/alertmanager
+    # The generated config and the relay password. Same reasoning as above; the
+    # password is handed to Alertmanager by `smtp_auth_password_file` so it is
+    # never an argument either.
+    tmpfs: ['/run/am']
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9093/-/healthy']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes: { pgdata: {}, redisdata: {}, miniodata: {}, facemodels: {}, clamavdb: {}, promdata: {}, amdata: {} }

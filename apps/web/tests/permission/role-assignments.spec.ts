@@ -47,7 +47,13 @@ async function roleGranting(label: string, scope: 'OWN' | 'BRANCH' | 'ORGANIZATI
 
 async function assign(
   roleId: string,
-  overrides: Partial<{ scopeType: string; scopeId: string; effectiveFrom: Date; effectiveTo: Date; status: string }> = {},
+  overrides: Partial<{
+    scopeType: string;
+    scopeId: string;
+    effectiveFrom: Date;
+    effectiveTo: Date;
+    status: string;
+  }> = {},
 ) {
   const membership = await prisma.workspaceMembership.findFirstOrThrow({
     where: { tenantId, salesUserId: bareUserId },
@@ -75,8 +81,12 @@ beforeAll(async () => {
   tenantId = tenant.id;
   await prisma.moduleEntitlement.create({ data: { tenantId, module: 'SALES', state: 'ACTIVE' } });
 
-  const branchARow = await prisma.branch.create({ data: { tenantId, name: `A-${suffix}`, code: `A${suffix.slice(0, 4)}` } });
-  const branchBRow = await prisma.branch.create({ data: { tenantId, name: `B-${suffix}`, code: `B${suffix.slice(0, 4)}` } });
+  const branchARow = await prisma.branch.create({
+    data: { tenantId, name: `A-${suffix}`, code: `A${suffix.slice(0, 4)}` },
+  });
+  const branchBRow = await prisma.branch.create({
+    data: { tenantId, name: `B-${suffix}`, code: `B${suffix.slice(0, 4)}` },
+  });
   branchA = branchARow.id;
   branchB = branchBRow.id;
 

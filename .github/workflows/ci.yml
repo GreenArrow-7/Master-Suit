@@ -37,14 +37,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
 
     env:
       # NODE_ENV is deliberately NOT set here.
@@ -71,6 +63,28 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
+      # ── Redis, started as a step rather than a service container ────────────
+      #
+      # Every Compose file in this repository sets `--requirepass`, including the
+      # development one, so that no environment leaves the AUTH path unexercised.
+      # CI has to match, or the one place the whole suite runs is the one place
+      # a password is never sent.
+      #
+      # A service container cannot do it: GitHub Actions exposes `image`, `env`,
+      # `ports` and `options`, and the official redis image takes its password as
+      # a *command argument*, which there is no field for. `docker run` has one.
+      - name: Redis
+        run: |
+          docker run -d --name ci-redis -p 6379:6379 redis:7-alpine \
+            redis-server --requirepass leadflow
+          for i in $(seq 1 30); do
+            if docker exec -e REDISCLI_AUTH=leadflow ci-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "redis ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::redis did not become ready"; docker logs ci-redis; exit 1
+
       - name: Install
         run: npm ci
 
@@ -96,6 +110,50 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # ── Gate 0a — schema/migration drift ──────────────────────────────────
+      #
+      # `schema.prisma` and `prisma/migrations` are two descriptions of one
+      # database and nothing kept them in step. HrLeaveBalance, HrChecklistTask,
+      # HrOffboardingCase, HrSettlementSnapshot and HrEmployeeLocationAssignment
+      # were all declared in the schema with no migration creating them, so every
+      # code path touching them typechecked cleanly and failed at runtime.
+      #
+      # The database here has just had every migration replayed into it, so
+      # comparing it against the schema compares exactly those two things. Exit
+      # code 2 means "they differ".
+      - name: Schema drift
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      # ── Gate 0b — tenant isolation is still intact ────────────────────────
+      #
+      # RLS is the layer that holds when the other two are bypassed, and it is
+      # the one that can be silently removed: a migration re-running the catalog
+      # sweep with a stale copy of the policy body drops FORCE across every
+      # tenant table, and `\d` still shows a policy on each of them.
+      #
+      # This asserts against the catalog rather than against a list somebody
+      # maintains. It found HrOvertimeRequest missing both FORCE and the
+      # app.platform_admin branch on its first run.
+      - name: Tenant isolation
+        run: node scripts/check-rls.mjs
+
+      # ── Gate 0c — raw SQL is inside a tenant transaction ──────────────────
+      #
+      # The gate above proves every tenant table has a policy. This proves the
+      # policies are given something to filter on. The tenant guard is blind to
+      # `$queryRaw`, so raw SQL rests on RLS alone, and RLS rests on
+      # `app.tenant_id` — which is set transaction-locally. A raw statement
+      # issued outside a transaction runs on a pooled connection where that
+      # setting is either absent, in which case the policy matches nothing and
+      # the caller is told it succeeded, or left over from another request, in
+      # which case it matches somebody else's rows.
+      #
+      # Nothing in the codebase does this today. It is here because the shape
+      # that would — a bulk DELETE with no model API to route through — is
+      # exactly the shape the retention sweeps take.
+      - name: Raw SQL scope
+        run: node scripts/check-raw-sql-scope.mjs
+
       # The server integration specs sign in as a member of the `manath-homes`
       # workspace, which only exists once the demo data is seeded. The seed
       # refuses to run against NODE_ENV=production, so it cannot touch a real
@@ -118,17 +176,86 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # ── Gate 3 — format check: deliberately absent ────────────────────────
+      # ── Gate 3 — format check ─────────────────────────────────────────────
       #
-      # `npm run format:check` fails on 678 files today, including files
-      # untouched for weeks (tsconfig.json, long-standing tests): the codebase
-      # predates prettier enforcement, and no branch had ever reached this gate
-      # (the typecheck OOM ahead of it masked that it is unpassable). Enforcing
-      # it now would force a 678-file reformat commit into whichever PR happens
-      # to run first, while several feature branches are in flight — the most
-      # conflict-generating change possible. Re-add the gate in the same PR
-      # that runs `npm run format` across the whole repository, once the
-      # in-flight branches have landed. (2026-08-15)
+      # Absent since 2026-08-15, when `npm run format:check` failed on 678 files
+      # and enforcing it would have forced a 678-file reformat into whichever PR
+      # ran first, while several branches were in flight.
+      #
+      # Most of that 678 was not source. `.prettierignore` did not list
+      # `.next-prod` — the local production build's output directory, which
+      # vendors dependencies with their own sources — so once anybody had run a
+      # production build the check was measuring third-party packages. With that
+      # one line added the real number was 99 files, reformatted in the same
+      # commit that re-enables this. (2026-08-20)
+      - name: Format check
+        run: npm run format:check
+
+      # ── Gate 3b — the README's schema counts ──────────────────────────────
+      #
+      # It claimed "79 models, 25 enums, 119 indexes" against a schema holding
+      # 192, 103 and 332. The first file a newcomer opens was wrong, and a reader
+      # who catches one wrong number stops trusting the rest of the page.
+      #
+      # Counting by hand and pasting the result is how it got that way, so the
+      # numbers are generated between markers and this checks the paste.
+      - name: README schema counts
+        run: node scripts/schema-stats.mjs --check
+
+      # ── Gate 3c — the monitoring stack and the thing it monitors ───────────
+      #
+      # Every failure this catches is a silent one. A renamed scrape job turns
+      # ApplicationDown into a rule that can never fire; a queue missing from
+      # QueueHasNoConsumer is a queue whose worker can exit unnoticed, which is
+      # exactly how the worker process came to be dead in production for months;
+      # an overlay that stops clearing the `observability` profile is a
+      # deployment that quietly runs with no scraper at all.
+      #
+      # None of those break a test or a build. They only show up as monitoring
+      # that was never going to say anything.
+      - name: Observability drift
+        run: npm run check:observability
+
+      # ── Gate 3d — Redis has a password, everywhere, and it agrees ──────────
+      #
+      # Both failures this catches present as jobs that never run rather than as
+      # a configuration error: a Compose file that drops `--requirepass`, and an
+      # env file whose REDIS_URL still carries yesterday's password. The second
+      # is the likelier one, because the password is written twice — bare for
+      # the container's `--requirepass`, and as userinfo for the application.
+      - name: Redis auth
+        run: npm run check:redis-auth
+
+      # ── Gate 3e — the face service's authentication gate ───────────────────
+      #
+      # The only thing between the network and a service that turns camera
+      # frames into biometric vectors is one bearer token, and that comparison
+      # has already been wrong twice: once accepting everything when the
+      # variable was unset, once using `!=` and leaking the token through
+      # timing. Rotation support added a third way to be wrong — short-circuiting
+      # on the first of two candidates — so it is tested rather than trusted.
+      #
+      # Plain python3, no pytest and nothing to install: apps/face/tokens.py
+      # imports `hmac` and stops, precisely so this can run on a runner that has
+      # never seen onnxruntime.
+      - name: Face token gate
+        run: python3 ../face/test_tokens.py
+
+      # ── Gate 3f — the backup can come home ────────────────────────────────
+      #
+      # scripts/backup-ship.sh and scripts/restore-verify.sh decide whether this
+      # deployment is recoverable, and had no tests at all. One of the things
+      # the header of the first asserted was false: that the weekly unit ran a
+      # restore against a copy pulled back from the remote. It ran one against
+      # the local directory, and nothing could pull a copy back, because that
+      # code did not exist.
+      #
+      # This drives the `local` transport end to end — ship, list, pull,
+      # compare — plus the four refusals. The s3, rclone and rsync branches need
+      # a real remote and are not covered; what is covered is the shell, which
+      # is where this feature's failures have actually lived.
+      - name: Backup round trip
+        run: scripts/test-backup-roundtrip.sh
 
       # ── Gate 4 ────────────────────────────────────────────────────────────
       #
@@ -189,8 +316,40 @@ jobs:
           node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
 
       - name: E2E
+        id: e2e
         timeout-minutes: 15
         run: npx playwright test
+
+      # Not a gate — the diagnosis for the one above.
+      #
+      # E2E is the only step here whose failure cannot be read from the job log
+      # by anything but a person with the Actions UI open: the log is long, the
+      # useful part is thousands of lines from the end, and the API routes that
+      # serve it are not reachable from every environment that needs to fix a
+      # red build. This suite has already gone red twice on failures nobody
+      # could see, each diagnosed by re-running it rather than by reading it.
+      #
+      # `playwright.config.ts` adds the `html` reporter under CI so there is a
+      # self-contained report to take; `use` already retains a trace and a
+      # screenshot on failure and the reporter copies both into it.
+      - name: E2E report
+        # Precisely "E2E ran and failed" — `failure()` alone would also fire
+        # when an earlier gate failed and E2E never ran, uploading nothing.
+        if: always() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          # The attempt number is load-bearing: re-running a failed job reuses
+          # the run id, and upload-artifact@v4 fails outright on a duplicate
+          # artifact name. Re-running is exactly what happens to this step.
+          name: playwright-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          # Repo-relative. `defaults.run.working-directory` applies to `run:`
+          # steps and not to an action's inputs, so `playwright-report/` on its
+          # own would resolve at the repository root and quietly upload nothing.
+          path: apps/web/playwright-report/
+          # Long enough to diagnose a red build, short enough that screenshots
+          # of a seeded workspace do not sit in the account for a quarter.
+          retention-days: 7
+          if-no-files-found: error
 
       # ── Gate 7 ────────────────────────────────────────────────────────────
       - name: Build

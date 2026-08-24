@@ -16,7 +16,10 @@ import { getUploadMaxMb } from '@/lib/platform-settings';
 import { createPlatformSessionToken } from '../helpers/session';
 import { patch, del } from '../helpers/request';
 import { DELETE as deleteWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/route';
-import { PATCH as patchSubscription, DELETE as cancelSubscription } from '@/app/api/v1/platform/subscriptions/[subscriptionId]/route';
+import {
+  PATCH as patchSubscription,
+  DELETE as cancelSubscription,
+} from '@/app/api/v1/platform/subscriptions/[subscriptionId]/route';
 import { PATCH as patchUser, DELETE as deleteUser } from '@/app/api/v1/platform/users/[userId]/route';
 import { PATCH as patchSettings } from '@/app/api/v1/platform/settings/route';
 
@@ -106,7 +109,12 @@ beforeAll(async () => {
       tenantId,
       planId: businessPlan.id,
       state: 'ACTIVE',
-      modules: { create: [{ module: 'HRMS', state: 'ACTIVE' }, { module: 'SALES', state: 'ACTIVE' }] },
+      modules: {
+        create: [
+          { module: 'HRMS', state: 'ACTIVE' },
+          { module: 'SALES', state: 'ACTIVE' },
+        ],
+      },
     },
   });
   subscriptionId = subscription.id;
@@ -122,9 +130,17 @@ afterAll(async () => {
 describe('authorization boundary', () => {
   it('refuses every platform write for a non-owner', async () => {
     const cases = [
-      await patch(patchUser, `/api/v1/platform/users/${victimId}`, { fullName: 'X' }, plainCookie, { userId: victimId }),
+      await patch(patchUser, `/api/v1/platform/users/${victimId}`, { fullName: 'X' }, plainCookie, {
+        userId: victimId,
+      }),
       await del(deleteWorkspace, `/api/v1/platform/workspaces/${tenantId}`, plainCookie, { workspaceId: tenantId }),
-      await patch(patchSubscription, `/api/v1/platform/subscriptions/${subscriptionId}`, { state: 'ACTIVE' }, plainCookie, { subscriptionId }),
+      await patch(
+        patchSubscription,
+        `/api/v1/platform/subscriptions/${subscriptionId}`,
+        { state: 'ACTIVE' },
+        plainCookie,
+        { subscriptionId },
+      ),
       await patch(patchSettings, '/api/v1/platform/settings', { key: 'uploadMaxMb', value: '10' }, plainCookie),
     ];
     for (const res of cases) expect(res.status).toBe(403);
@@ -152,11 +168,15 @@ describe('platform users', () => {
     expect(token).toBeTruthy();
 
     // Back to active for the delete case below.
-    await patch(patchUser, `/api/v1/platform/users/${victimId}`, { status: 'ACTIVE' }, ownerCookie, { userId: victimId });
+    await patch(patchUser, `/api/v1/platform/users/${victimId}`, { status: 'ACTIVE' }, ownerCookie, {
+      userId: victimId,
+    });
   });
 
   it('refuses self-demotion and self-deletion — no locked-out-owner incidents', async () => {
-    const demote = await patch(patchUser, `/api/v1/platform/users/${ownerId}`, { platformRole: 'USER' }, ownerCookie, { userId: ownerId });
+    const demote = await patch(patchUser, `/api/v1/platform/users/${ownerId}`, { platformRole: 'USER' }, ownerCookie, {
+      userId: ownerId,
+    });
     expect(demote.status).toBe(409);
     const remove = await del(deleteUser, `/api/v1/platform/users/${ownerId}`, ownerCookie, { userId: ownerId });
     expect(remove.status).toBe(409);
@@ -192,7 +212,9 @@ describe('subscriptions', () => {
   });
 
   it('cancel ends every module entitlement now', async () => {
-    const res = await del(cancelSubscription, `/api/v1/platform/subscriptions/${subscriptionId}`, ownerCookie, { subscriptionId });
+    const res = await del(cancelSubscription, `/api/v1/platform/subscriptions/${subscriptionId}`, ownerCookie, {
+      subscriptionId,
+    });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const entitlements = await prisma.moduleEntitlement.findMany({ where: { tenantId } });
     expect(entitlements.every((e) => e.state === 'CANCELED')).toBe(true);
@@ -206,7 +228,9 @@ describe('subscriptions', () => {
 
 describe('workspace delete', () => {
   it('soft-deletes the workspace and revokes its sessions', async () => {
-    const res = await del(deleteWorkspace, `/api/v1/platform/workspaces/${tenantId}`, ownerCookie, { workspaceId: tenantId });
+    const res = await del(deleteWorkspace, `/api/v1/platform/workspaces/${tenantId}`, ownerCookie, {
+      workspaceId: tenantId,
+    });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const gone = await prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null } });
     expect(gone).toBeNull();
@@ -217,29 +241,51 @@ describe('workspace delete', () => {
   });
 
   it('a second delete of the same workspace is a 404, not a repeat', async () => {
-    const res = await del(deleteWorkspace, `/api/v1/platform/workspaces/${tenantId}`, ownerCookie, { workspaceId: tenantId });
+    const res = await del(deleteWorkspace, `/api/v1/platform/workspaces/${tenantId}`, ownerCookie, {
+      workspaceId: tenantId,
+    });
     expect(res.status).toBe(404);
   });
 });
 
 describe('operator settings', () => {
   it('persists the upload limit and the upload path reads the override', async () => {
-    const res = await patch(patchSettings, '/api/v1/platform/settings', { key: 'uploadMaxMb', value: '10' }, ownerCookie);
+    const res = await patch(
+      patchSettings,
+      '/api/v1/platform/settings',
+      { key: 'uploadMaxMb', value: '10' },
+      ownerCookie,
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await getUploadMaxMb()).toBe(10);
   });
 
-  it('refuses a value outside the setting\'s own rule', async () => {
-    const tooBig = await patch(patchSettings, '/api/v1/platform/settings', { key: 'uploadMaxMb', value: '9000' }, ownerCookie);
+  it("refuses a value outside the setting's own rule", async () => {
+    const tooBig = await patch(
+      patchSettings,
+      '/api/v1/platform/settings',
+      { key: 'uploadMaxMb', value: '9000' },
+      ownerCookie,
+    );
     expect(tooBig.status).toBe(422);
-    const garbage = await patch(patchSettings, '/api/v1/platform/settings', { key: 'uploadMaxMb', value: 'lots' }, ownerCookie);
+    const garbage = await patch(
+      patchSettings,
+      '/api/v1/platform/settings',
+      { key: 'uploadMaxMb', value: 'lots' },
+      ownerCookie,
+    );
     expect(garbage.status).toBe(422);
     // The stored value is untouched by the refused writes.
     expect(await getUploadMaxMb()).toBe(10);
   });
 
   it('refuses a key that is not an editable setting', async () => {
-    const res = await patch(patchSettings, '/api/v1/platform/settings', { key: 'DATABASE_URL', value: 'x' }, ownerCookie);
+    const res = await patch(
+      patchSettings,
+      '/api/v1/platform/settings',
+      { key: 'DATABASE_URL', value: 'x' },
+      ownerCookie,
+    );
     expect(res.status).toBe(422);
   });
 });

@@ -1,10 +1,8 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { requireWorkspace } from '@/lib/workspace';
 import { downloadDocument } from '@/services/hr/documents';
 
@@ -20,9 +18,10 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const { workspaceSlug, documentId } = await context.params;
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'HRMS');
-    assertPermission(ctx, 'hr_documents', 'VIEW');
+    const ctx = await resolveGuardedCtx(req, requestId, {
+      productModule: 'HRMS',
+      permission: ['hr_documents', 'VIEW'],
+    });
     await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     const file = await downloadDocument(ctx, documentId);

@@ -18,7 +18,7 @@ import { RUN_TAG } from './run-tag';
  * Call from `test.beforeAll` in each spec file.
  */
 export async function resetLoginThrottle() {
-  const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379/0', { maxRetriesPerRequest: 2 });
+  const redis = new Redis(process.env.REDIS_URL ?? 'redis://:leadflow@localhost:6379/0', { maxRetriesPerRequest: 2 });
   try {
     /**
      * `rl:` is the prefix lib/security/ratelimit.ts puts on every bucket.
@@ -86,7 +86,56 @@ export async function login(page: Page, email: string, password: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
+  try {
+    await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
+  } catch (err) {
+    // Rethrown with what the page was showing. See signInState below.
+    throw new Error(`login(${email}) never left /login.\n${await signInState(page)}\n\n${(err as Error).message}`);
+  }
+}
+
+/**
+ * What the sign-in page was showing when the wait ran out.
+ *
+ * ── Why this exists ─────────────────────────────────────────────────────────
+ *
+ * `expect(page).not.toHaveURL(/\/login$/)` reports a URL and nothing else, and
+ * a URL cannot distinguish the three ways this fails. That mattered: this
+ * assertion failed in CI on a run whose trace could not be retrieved, and the
+ * whole message was "expected not /login, received /login" — true, and no help
+ * at all in deciding whether the server had refused the sign-in or simply not
+ * answered yet.
+ *
+ * LoginForm renders a refusal into `role="alert"` (carrying the API's own
+ * `detail` when there is one) and swaps its submit button between "Sign in",
+ * "Signing in…" and "Verify and sign in". Between them those two say which
+ * failure it was:
+ *
+ *   alert present            → the server answered and refused, and says why
+ *   button "Signing in…"     → the POST never came back inside the timeout
+ *   button "Verify and sign" → MFA was demanded for an account not expecting it
+ *   neither                  → it succeeded and the client-side push did not run
+ *
+ * Every read is guarded. A diagnostic that throws replaces the failure it was
+ * written to explain, which is worse than not having one.
+ */
+async function signInState(page: Page): Promise<string> {
+  const safely = async (read: () => Promise<string>): Promise<string> => {
+    try {
+      return (await read()).trim() || '(empty)';
+    } catch (err) {
+      return `(could not read: ${(err as Error).message.split('\n')[0]})`;
+    }
+  };
+
+  const alert = await safely(async () => {
+    const found = page.getByRole('alert');
+    return (await found.count()) === 0 ? '(none)' : await found.first().innerText();
+  });
+  const button = await safely(() => page.locator('button[type="submit"]').first().innerText());
+  const url = await safely(async () => page.url());
+
+  return `  url:    ${url}\n  alert:  ${alert}\n  button: ${button}`;
 }
 
 export async function logout(page: Page) {

@@ -1,16 +1,31 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { ulid } from 'ulid';
 import { AppError, Invalid, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { prisma } from '@/lib/db';
-import { resolveCtx } from '@/lib/auth/session';
+import { env } from '@/lib/env';
+import { prismaRead } from '@/lib/db';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { csvHeaders, csvStream, type CsvColumn } from '@/lib/csv';
+
+/**
+ * Every query in this module goes to `prismaRead` — the replica when
+ * `DATABASE_REPLICA_URL` is set, the primary otherwise.
+ *
+ * These are the reads that can afford to be a moment behind: a report is a
+ * roll-up over a date range, and one computed 200ms ago is the same report. They
+ * are also the heaviest reads in the product — groupBy over a quarter of leads
+ * or attendance punches — which is exactly the traffic worth keeping off the
+ * connections that are serving writes.
+ *
+ * `prismaRead` refuses write operations, in every configuration including the
+ * no-replica fallback, so a write added here fails on the first run rather than
+ * only where a replica exists. See lib/db.ts.
+ */
 
 /**
  * CSV export for the list routes that had none.
@@ -57,7 +72,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.listing.findMany({
+      prismaRead.listing.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
         take,
@@ -88,7 +103,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.project.findMany({
+      prismaRead.project.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
         take,
@@ -110,7 +125,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.contact.findMany({
+      prismaRead.contact.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
         take,
@@ -140,7 +155,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.account.findMany({
+      prismaRead.account.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
         take,
@@ -171,7 +186,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.opportunity.findMany({
+      prismaRead.opportunity.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
         take,
@@ -208,7 +223,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Paid', value: (r) => date(r.paidAt) },
     ],
     page: (ctx, where, cursor, take) =>
-      prisma.commission.findMany({
+      prismaRead.commission.findMany({
         where,
         orderBy: { id: 'asc' },
         take,
@@ -258,8 +273,7 @@ async function handle(req: Request, params: { resource: string }, requestId: str
   const resource = RESOURCES[params.resource];
   if (!resource) throw NotFound('Export');
 
-  const ctx = await resolveCtx(req, requestId);
-  await assertModuleEntitlement(ctx.tenantId, 'SALES');
+  const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'SALES' });
   // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
   // of the building are different authorities, and every module here already
   // defines the second.
@@ -272,12 +286,16 @@ async function handle(req: Request, params: { resource: string }, requestId: str
   const stream = csvStream({
     columns: resource.columns,
     pageSize: PAGE,
-    page: (cursor) => resource.page(ctx, where, cursor, PAGE) as Promise<{ id: string }[]>,
-    onDone: async (rows) => {
+    // `take` comes from the stream rather than PAGE, so the final page is
+    // trimmed to land exactly on EXPORT_MAX_ROWS.
+    page: (cursor, take) => resource.page(ctx, where, cursor, take) as Promise<{ id: string }[]>,
+    onDone: async (rows, truncated) => {
       await audit(ctx, {
         event: 'EXPORT_REQUESTED',
         objectType: resource.module,
-        metadata: { rows },
+        // Recorded, because a reviewer reading this row must be able to tell a
+        // complete export from one the cap cut short.
+        metadata: { rows, truncated, ...(truncated ? { limit: env.EXPORT_MAX_ROWS } : {}) },
       });
     },
   });

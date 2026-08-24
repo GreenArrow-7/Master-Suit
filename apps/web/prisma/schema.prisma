@@ -352,7 +352,6 @@ model Tenant {
   primaryDomain  String?
   status         String    @default("ACTIVE")
   planCode       String    @default("standard")
-  dataRegion     String    @default("me-central-1")
   leadCeiling    Int       @default(1000000)
   industry       String?
   companySize    String?
@@ -494,7 +493,6 @@ model Tenant {
   hrPipCheckpoints           HrPipCheckpoint[]
   hrReviewCompetencyScores   HrReviewCompetencyScore[]
   importJobs                 ImportJob[]
-  integrations               Integration[]
   integrationConnections     IntegrationConnection[]
   landingPages               LandingPage[]
   landingPageVersions        LandingPageVersion[]
@@ -564,9 +562,9 @@ model Tenant {
   unitInventories            UnitInventory[]
   unitPlans                  UnitPlan[]
   userTeams                  UserTeam[]
-  webhooks                   Webhook[]
-  webhookDeliveries          WebhookDelivery[]
   webhookEvents              WebhookEvent[]
+  referenceCounters          TenantReferenceCounter[]
+  platformAccessGrants       PlatformAccessGrant[]
 
   @@index([status])
 }
@@ -687,6 +685,56 @@ model WorkspaceUsage {
 
   @@unique([tenantId, metric])
   @@index([tenantId, measuredAt])
+}
+
+/// Human-readable per-tenant record references: LD-000142, OP-000019.
+///
+/// One row per (tenant, object type), holding the last number handed out. This
+/// replaced one Postgres *sequence* per tenant per object type — ten types, so
+/// ten thousand tenants meant up to a hundred thousand relations in pg_class,
+/// a file each, a slower pg_dump, and a schema-level CREATE privilege on the
+/// runtime role that nothing else in the application needed.
+model TenantReferenceCounter {
+  tenantId   String
+  objectType String
+  /// The last number issued, not the next one. Allocation is a single
+  /// `UPDATE ... SET counter = counter + 1 RETURNING counter`, so two concurrent
+  /// creates cannot read the same value.
+  counter    Int      @default(0)
+  updatedAt  DateTime @default(now()) @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, objectType])
+}
+
+/// Break-glass: a time-boxed, reasoned grant of *write* access into one customer
+/// workspace for one member of platform staff.
+///
+/// Platform OWNER used to hold every permission in every tenant at all times,
+/// with no record of why and no expiry. Opening a workspace to read a customer's
+/// data and opening it to change that data are different acts, and only one of
+/// them should be ambient.
+model PlatformAccessGrant {
+  id             String    @id @default(cuid())
+  tenantId       String
+  platformUserId String
+  /// Free text, required and minimum-length checked. A grant with no stated
+  /// reason is the thing this exists to stop.
+  reason         String
+  grantedAt      DateTime  @default(now())
+  /// Capped at the ceiling in lib/auth/platform-access.ts. Access ends here
+  /// whether or not anybody remembers to close it.
+  expiresAt      DateTime
+  /// Set when it is handed back early, which is the expected path.
+  revokedAt      DateTime?
+  /// The request that opened it, so the PlatformAuditEvent pair join up.
+  requestId      String?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, tenantId, expiresAt])
+  @@index([tenantId, grantedAt])
 }
 
 model BillingEvent {
@@ -1000,9 +1048,11 @@ model PlatformUser {
   deletedAt         DateTime?
 
   memberships           WorkspaceMembership[]
+  passwordHistory       PasswordHistory[]
   sessions              PlatformSession[]
   platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
+  accessGrants          PlatformAccessGrant[]
 
   @@index([status, platformRole])
 }
@@ -2532,6 +2582,32 @@ model HrAttendanceExceptionRequest {
 
   @@index([tenantId, status, createdAt(sort: Desc)])
   @@index([tenantId, employeeId, createdAt(sort: Desc)])
+}
+
+/// Previous credentials, so `PasswordPolicy.reuseWindow` can mean something.
+///
+/// The policy has typed `reuseWindow` since it was written and the workspace
+/// settings screen has always offered it — with nothing anywhere reading it, so
+/// an administrator who set "cannot reuse the last 5" got no such rule. There
+/// was no history to compare against; this is it.
+///
+/// No `tenantId`, deliberately: a credential belongs to the PlatformUser, not to
+/// any one of their workspace memberships, and duplicating it per tenant is how
+/// two copies of a password drift apart. Outside RLS for the same reason
+/// PlatformUser is.
+///
+/// Only the hash is kept, and only as many as the widest policy allows — the
+/// prune runs on every write, so the table cannot grow past `reuseWindow` rows
+/// per account.
+model PasswordHistory {
+  id             String   @id @default(cuid())
+  platformUserId String
+  passwordHash   String
+  createdAt      DateTime @default(now())
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, createdAt(sort: Desc)])
 }
 
 model PlatformSession {
@@ -4748,31 +4824,6 @@ model ExportJob {
   @@index([tenantId, status, createdAt(sort: Desc)])
 }
 
-model Integration {
-  id               String    @id @default(cuid())
-  tenantId         String
-  key              String
-  name             String
-  category         String
-  authMethod       String
-  configEncrypted  String?
-  fieldMappings    Json      @default("{}")
-  isActive         Boolean   @default(false)
-  lastSyncAt       DateTime?
-  lastSyncStatus   String?
-  lastErrorAt      DateTime?
-  lastErrorMessage String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-  updatedById      String?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, key])
-  @@index([tenantId, category, isActive])
-}
-
 model APIKey {
   id              String    @id @default(cuid())
   tenantId        String
@@ -4794,51 +4845,6 @@ model APIKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, revokedAt])
-}
-
-model Webhook {
-  id               String    @id @default(cuid())
-  tenantId         String
-  name             String
-  targetUrl        String
-  events           String[]
-  signingSecretEnc String
-  isActive         Boolean   @default(true)
-  maxRetries       Int       @default(5)
-  lastDeliveryAt   DateTime?
-  lastStatusCode   Int?
-  failureCount     Int       @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-
-  deliveries WebhookDelivery[]
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, isActive])
-}
-
-model WebhookDelivery {
-  id           String    @id @default(cuid())
-  tenantId     String
-  webhookId    String
-  event        String
-  payload      Json
-  attempt      Int       @default(1)
-  statusCode   Int?
-  responseBody String?
-  errorMessage String?
-  deliveredAt  DateTime?
-  nextRetryAt  DateTime?
-  createdAt    DateTime  @default(now())
-
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, webhookId, createdAt(sort: Desc)])
-  @@index([nextRetryAt])
 }
 
 model Notification {
@@ -5158,6 +5164,11 @@ model AIAnalysis {
   uncertainItems  Json           @default("[]")
   rawOutput       Json?
   humanCorrected  Boolean        @default(false)
+  /// Exactly which fields a person edited, so a re-run overwrites the rest and
+  /// leaves these alone. `humanCorrected` on its own says *that* somebody
+  /// corrected the analysis and not *what*, which left the worker with only two
+  /// options — overwrite everything, or refuse to re-analyse at all.
+  correctedFields String[]       @default([])
   correctedById   String?
   correctedAt     DateTime?
   errorMessage    String?

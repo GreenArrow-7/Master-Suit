@@ -1,0 +1,303 @@
+# Staging: a second Compose project, on the same VM or its own, layered over the
+# base file and the production overlay.
+#
+#   cd apps/web/infra
+#   docker compose --env-file ../.env.staging \
+#     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.staging.yml \
+#     up -d
+#
+# It is a peer of docker-compose.azure.yml, not a child: both sit on top of the
+# same two files and each makes the deployment-shaped changes its own host needs.
+# Never layer the two together.
+#
+# ── Why this exists at all ──────────────────────────────────────────────────
+#
+# docs/ENVIRONMENTS.md has mandated "staging first, then production" for
+# migrations since it was written, and there was no staging. Every migration's
+# first contact with production-shaped data was production. The order was a
+# sentence in a document, which is the weakest kind of control there is: it
+# survives exactly as long as nobody is in a hurry.
+#
+# It is a control now. `scripts/check-staging-first.mjs` runs inside the
+# production `migrate` service and refuses to apply a migration that has not
+# already succeeded against this project's database, with this project's
+# checksum. See docs/DEPLOY-STAGING.md.
+#
+# ── The three things that make it a separate environment ────────────────────
+#
+#   1. `name:` — a distinct Compose project. Volumes, networks and container
+#      names are all prefixed with it, so `pgdata` here is not the `pgdata`
+#      production is using even though both files say the same word. Without
+#      this, bringing staging up on the production VM would mount production's
+#      database.
+#
+#   2. The database is called `leadflow_staging`, and the name is the
+#      enforcement rather than a convention. `src/lib/startup-check.ts` reads
+#      the `_staging` marker out of DATABASE_URL and kills the process unless
+#      APP_ENV says `staging` — so a production connection string pasted in here
+#      does not start, and neither does this file pointed at production.
+#
+#   3. Its own secrets, in ../.env.staging. Nothing is copied from
+#      .env.production: `npm run secrets` generates a separate
+#      FIELD_ENCRYPTION_KEY and WEBHOOK_SIGNING_PEPPER, and rotating one
+#      environment must never touch another.
+#
+# ── Why it is not on the public internet ────────────────────────────────────
+#
+# The restore drill in docs/BACKUP-RECOVERY.md points staging at a restored
+# production snapshot, which is the whole reason staging is worth having: a
+# migration meets production-shaped data before production does. That makes this
+# a deployment holding real customer data with none of production's operational
+# attention, and putting it behind a public name with an ACME certificate would
+# make it the softest way in.
+#
+# So Caddy here binds loopback and terminates plain HTTP. Reach it over SSH:
+#
+#   ssh -L 8080:127.0.0.1:8080 azureuser@<vm>   # then http://localhost:8080
+#
+# Caddy is still in the stack rather than skipped, because the proxy is part of
+# what staging rehearses: TRUSTED_PROXY_CIDRS, the X-Forwarded-For chain that
+# every rate limit and audit row is keyed on, the 32 MB body cap, and the
+# /api/metrics block. A staging deployment reached directly on :3000 rehearses a
+# topology production does not have — and would not start anyway, because
+# startup-check refuses an empty TRUSTED_PROXY_CIDRS on a production build.
+#
+# ── Footprint ───────────────────────────────────────────────────────────────
+#
+# Two full stacks on one VM means two Postgres, two Redis, two MinIO, two ClamAV
+# (~2 GB resident each, for the signature database) and two face containers. On
+# the 4 vCPU / 16 GB VM in docs/DEPLOY-AZURE.md that fits, with little room over.
+# Below that, put this project on its own smaller host — nothing in this file
+# assumes the two are neighbours except the loopback address in
+# STAGING_DATABASE_URL, which becomes a real hostname when they are not.
+
+name: master-suite-staging
+
+# Anchors do not cross files, so this repeats the base file's rotation for the
+# services only this overlay declares. Without it `caddy` — which writes an
+# access line per request, the highest-volume log in the stack — would be the one
+# container on the host with an unbounded log. See docker-compose.yml for why
+# switching driver means replacing this block rather than overriding a line.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+services:
+  caddy:
+    logging: *logging
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Loopback, and port 80 only. No ACME: there is no public name to validate,
+    # and a certificate for staging would mean staging had a public name.
+    ports: ['127.0.0.1:8080:80']
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [web]
+
+  web:
+    env_file: !override ['../.env.staging']
+    # `!reset []`, not a loopback port: web is reached through Caddy here exactly
+    # as it is in production, so the X-Forwarded-For chain staging exercises is
+    # the one production has. A direct route would let a caller pick its own
+    # rate-limit identity, which is the hazard startup-check's proxy rule exists
+    # for.
+    ports: !reset []
+    environment:
+      # `environment:` outranks `env_file:` whatever the order, so the production
+      # overlay's development-default DATABASE_URL would otherwise win over the
+      # staging credential. Both name master_saas_app; the database differs, and
+      # that difference is what startup-check cross-checks APP_ENV against.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.staging}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.staging — `npm run secrets .env.staging` generates one}@redis:6379/0
+      APP_ENV: staging
+      # The runtime has no business holding the role that can drop a policy.
+      # Migrations run from the `migrate` service below.
+      MIGRATION_DATABASE_URL: ''
+      SHADOW_DATABASE_URL: ''
+    volumes:
+      - attendance:/app/storage/attendance
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    env_file: !override ['../.env.staging']
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.staging}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.staging — `npm run secrets .env.staging` generates one}@redis:6379/0
+      APP_ENV: staging
+      MIGRATION_DATABASE_URL: ''
+      SHADOW_DATABASE_URL: ''
+    volumes:
+      - attendance:/app/storage/attendance
+    # One, not production's two. Staging is rehearsing correctness, not
+    # throughput, and a second consumer only makes a scheduler race harder to
+    # read in the logs.
+    deploy:
+      replicas: 1
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # One-off, never started by `up`:
+  #
+  #   docker compose ... run --rm migrate
+  #
+  # No staging-first gate on this one. Staging *is* first — that is its job.
+  # The gate lives on the production migrate service in docker-compose.azure.yml
+  # and reads the ledger this service writes.
+  migrate:
+    logging: *logging
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: build
+    profiles: ['tools']
+    env_file: ['../.env.staging']
+    environment:
+      NODE_ENV: production
+      APP_ENV: staging
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    # The one thing staging publishes, and only on loopback.
+    #
+    # `scripts/check-staging-first.mjs` runs inside production's migrate
+    # container and has to read this project's `_prisma_migrations` ledger to
+    # answer "has this migration already succeeded in staging?". Compose projects
+    # do not share a network, so the production container reaches it through the
+    # host gateway at 127.0.0.1:5433 — see the `migrate` service in
+    # docker-compose.azure.yml.
+    #
+    # If staging lives on its own host instead, drop this line and point
+    # STAGING_DATABASE_URL at that host's address; nothing else changes.
+    ports: !override ['127.0.0.1:5433:5432']
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in apps/web/.env.staging}
+      # The database this cluster initialises with. The `_staging` marker is what
+      # startup-check reads; renaming it to match production's would disable the
+      # only automatic check that these two are different environments.
+      POSTGRES_DB: leadflow_staging
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
+    # The base file's healthcheck asks pg_isready for the `leadflow` database,
+    # which does not exist here, so it would never report healthy and every
+    # `depends_on: service_healthy` above would hang until timeout.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U leadflow -d leadflow_staging']
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      # Its own password, not production's. Rotating one environment's
+      # credential must never touch another's — the same rule this file already
+      # applies to FIELD_ENCRYPTION_KEY and WEBHOOK_SIGNING_PEPPER.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.staging — `npm run secrets .env.staging` generates one}
+
+  minio:
+    # Console on loopback for the same SSH-tunnel reason as production; the S3
+    # API is reached over the compose network and needs no host route.
+    ports: !override ['127.0.0.1:9002:9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in apps/web/.env.staging}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in apps/web/.env.staging}
+    restart: unless-stopped
+
+  mailpit:
+    # Production sends through a real SMTP relay. Staging deliberately does not:
+    # it is pointed at a restored production snapshot, so a notification job that
+    # fans out to every contact in it would mail real customers from a rehearsal.
+    # Everything is composed, sent and delivered for real — into a mailbox on
+    # this host, viewable at http://localhost:8026 over the same SSH tunnel.
+    ports: !override ['127.0.0.1:8026:8025']
+    restart: unless-stopped
+
+  clamav:
+    # Reset, and not merely for tidiness: the base file binds
+    # 127.0.0.1:3310, and two Compose projects on one VM cannot both hold it.
+    # Whichever came up second would fail to start its scanner.
+    ports: !reset []
+    restart: unless-stopped
+
+  face:
+    ports: !reset []
+    environment:
+      # Anything but `development` makes apps/face/main.py refuse to start
+      # without FACE_SERVICE_TOKEN. Staging is a deployed environment holding
+      # real biometric templates; it gets the same refusal production does.
+      FACE_SERVICE_ENV: staging
+    restart: unless-stopped
+
+  # ── Observability ──────────────────────────────────────────────────────────
+  #
+  # Staging gets the same scraper and the same alert rules as production, on the
+  # same reasoning as everything else in this file: a rule that has never fired
+  # anywhere is a rule nobody has tested. `QueueHasNoConsumer` is a good example
+  # — it names nine queues by hand, and the way to find out that the list has
+  # drifted from src/lib/queue.ts is for it to be wrong here first.
+  #
+  # Ports are one above production's, because both projects may run on the same
+  # VM and a loopback port is a loopback port whichever project claimed it:
+  #
+  #   ssh -L 9091:127.0.0.1:9091 -L 9094:127.0.0.1:9094 azureuser@<vm>
+  #
+  prometheus:
+    profiles: !reset []
+    ports: ['127.0.0.1:9091:9090']
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.staging — run `npm run secrets .env.staging`}
+      # Literal, not interpolated, exactly as web and worker above: this is the
+      # label every alert out of this project carries, and it is the only thing
+      # telling a 3am recipient that the page is staging's.
+      APP_ENV: staging
+      # Staging is not a place to keep a month of history. Two weeks covers the
+      # window a migration rehearsal and a restore drill live in.
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-14d}
+
+  alertmanager:
+    profiles: !reset []
+    ports: ['127.0.0.1:9094:9093']
+    environment:
+      APP_ENV: staging
+      # Into Mailpit, on purpose. Staging holds restored production data and has
+      # none of production's operational attention; what it must not do is mail
+      # a real person at 3am because a rehearsal misbehaved. The alert is still
+      # composed, routed, grouped and delivered for real — it lands in the
+      # Mailpit UI on 127.0.0.1:8026, which is where the delivery is verified.
+      #
+      # Restated rather than left to ../.env.staging for the reason this file
+      # keeps repeating: `environment:` outranks `env_file:`, so a value copied
+      # in from .env.production would otherwise be the one that won.
+      SMTP_HOST: mailpit
+      SMTP_PORT: '1025'
+      SMTP_USER: ''
+      SMTP_PASSWORD: ''
+      # Mailpit offers no STARTTLS. Left at the default `true`, every alert this
+      # project ever raised would fail to deliver — and Alertmanager logs that
+      # failure rather than raising one, which is the quietest possible way for
+      # a monitoring stack to be broken.
+      ALERT_SMTP_REQUIRE_TLS: 'false'
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-staging-alerts@staging.invalid}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-Master Suite (staging) <no-reply@staging.invalid>}
+      # Deliberately blank. A chat webhook configured for production must not be
+      # inherited by a staging project that shares the env file's shape — the
+      # first thing staging would do is post a rehearsal into the on-call
+      # channel.
+      ALERT_WEBHOOK_URL: ''
+    depends_on:
+      mailpit: { condition: service_healthy }
+
+volumes:
+  caddydata: {}
+  caddyconfig: {}
+  attendance: {}

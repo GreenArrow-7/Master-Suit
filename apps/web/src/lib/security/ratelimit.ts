@@ -24,10 +24,33 @@ export interface Limit {
  * Fixed windows admit up to 2x the nominal rate across a boundary. That is the
  * accepted trade for a limiter that cannot be starved.
  */
+const windowKey = (limit: Limit, window: number) => `rl:${limit.key}:${window}`;
+
+/**
+ * Drops a limit's counters, by name.
+ *
+ * Two keys, because a fixed window means at most the current one and its
+ * predecessor exist at any moment — the older one is still there until its TTL
+ * runs out, and leaving it behind would let a just-unlocked account be refused
+ * by a window it was throttled in.
+ *
+ * By name rather than by pattern on purpose. The `SCAN` sweep this replaced was
+ * O(*whole keyspace*) — not O(matching keys) — because SCAN has to walk every
+ * key in the database to find the two it wants. On a deployment holding a
+ * cached actor per signed-in user, a rate-limit counter per active user and
+ * BullMQ's own bookkeeping, that is hundreds of thousands of keys visited to
+ * delete two.
+ */
+export async function clear(limit: Limit): Promise<void> {
+  const windowMs = limit.windowSeconds * 1000;
+  const window = Math.floor(Date.now() / windowMs);
+  await redis.del(windowKey(limit, window), windowKey(limit, window - 1));
+}
+
 export async function consume(limit: Limit): Promise<{ remaining: number; resetAt: number }> {
   const windowMs = limit.windowSeconds * 1000;
   const window = Math.floor(Date.now() / windowMs);
-  const redisKey = `rl:${limit.key}:${window}`;
+  const redisKey = windowKey(limit, window);
   const resetAt = (window + 1) * windowMs;
 
   const results = await redis.multi().incr(redisKey).pexpire(redisKey, windowMs).exec();

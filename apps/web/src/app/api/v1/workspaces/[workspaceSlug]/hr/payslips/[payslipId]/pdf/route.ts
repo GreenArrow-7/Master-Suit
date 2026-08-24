@@ -1,10 +1,8 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
-import { requireWorkspace } from '@/lib/workspace';
 import { renderPdf, type PdfLine } from '@/lib/pdf';
 import { payslipDetail } from '@/services/hr/payroll';
 
@@ -22,9 +20,11 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const { workspaceSlug, payslipId } = await context.params;
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'HRMS');
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
+    // No `permission` here on purpose: authorisation is `payslipDetail`'s —
+    // "your own, or payroll:VIEW for anyone else's" — and it also hides a
+    // payslip from an unapproved run and writes the DOCUMENT_ACCESSED row.
+    // The rate limit is not optional, and this route had none.
+    const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'HRMS', workspaceSlug });
 
     const payslip = await payslipDetail(ctx, payslipId);
     const money = (value: { toString(): string }) =>
@@ -59,7 +59,12 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
       { kind: 'row', label: 'Paid to you', value: money(payslip.netPay) },
       { kind: 'gap' },
       ...(payslip.overtimeMinutes
-        ? [{ kind: 'text', text: `Includes ${(payslip.overtimeMinutes / 60).toFixed(2)} hours of approved overtime.` } as PdfLine]
+        ? [
+            {
+              kind: 'text',
+              text: `Includes ${(payslip.overtimeMinutes / 60).toFixed(2)} hours of approved overtime.`,
+            } as PdfLine,
+          ]
         : []),
       ...(payslip.unpaidDays
         ? [{ kind: 'text', text: `${payslip.unpaidDays} day(s) of unpaid leave were deducted.` } as PdfLine]
