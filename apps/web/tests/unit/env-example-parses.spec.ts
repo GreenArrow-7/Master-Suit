@@ -127,4 +127,32 @@ describe('the example files and the schema agree in both directions', () => {
     const orphans = Object.keys(parseEnvFile(file)).filter((name) => !accounted.has(name));
     expect(orphans).toEqual([]);
   });
+
+  /**
+   * A pinned Gemini model id here is a dead deployment on Google's schedule.
+   *
+   * ── The defect this caught ─────────────────────────────────────────────────
+   *
+   * `.env.example` carried `GEMINI_MODEL=gemini-2.0-flash`, an id Google has
+   * retired. `lib/ai/gemini.ts` defaults to a rolling alias precisely so that
+   * cannot happen — but *nothing ever reached that default*, because this file
+   * is copied verbatim into `.env` by `npm run secrets` and the line is
+   * therefore always set. Every fresh checkout and every CI run booted pointing
+   * at a model that no longer exists.
+   *
+   * What that looks like from the outside is the worst part: a 404 inside each
+   * AI feature, caught, falling back to clearly-labelled simulation — while
+   * Settings → Integrations still reads Connected, because the key is valid.
+   * The key is not the problem and the screen that would be checked first says
+   * so.
+   *
+   * Google's own convention is the fix: `*-latest` is a rolling alias that
+   * survives a retirement, numbered and dated ids do not. So an example may
+   * leave the value empty, or name an alias, and may not pin anything else.
+   */
+  it.each(EXAMPLES)('%s does not pin a Gemini model id that Google can retire', (file) => {
+    const model = parseEnvFile(file).GEMINI_MODEL;
+    if (model === undefined || model.trim() === '') return;
+    expect(model.trim()).toMatch(/-latest$/);
+  });
 });
