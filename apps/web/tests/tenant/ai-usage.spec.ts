@@ -14,7 +14,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { AI_TOKEN_LIMIT_KEY, assertAiBudget, recordAiUsage, usageMetric } from '@/lib/ai/usage';
+import { AI_TOKEN_LIMIT_KEY, assertAiBudget, recordAiUsage, usageMetric, type PaidBy } from '@/lib/ai/usage';
 import type { GeminiCredential } from '@/lib/ai/gemini';
 
 const suffix = randomBytes(4).toString('hex');
@@ -28,9 +28,10 @@ let uncappedTenant = '';
 let planId = '';
 let unlimitedPlanId = '';
 
-const used = (tenantId: string) =>
+/** Spend recorded against one payer. The two are separate rows now. */
+const used = (tenantId: string, paidBy: PaidBy = 'deployment') =>
   prisma.workspaceUsage
-    .findUnique({ where: { tenantId_metric: { tenantId, metric: usageMetric() } }, select: { used: true } })
+    .findUnique({ where: { tenantId_metric: { tenantId, metric: usageMetric(paidBy) } }, select: { used: true } })
     .then((r) => r?.used ?? 0);
 
 beforeAll(async () => {
@@ -92,7 +93,9 @@ describe('metering', () => {
 
   it('meters a workspace on its own key too — attribution is not the same as billing', async () => {
     await recordAiUsage(uncappedTenant, WORKSPACE, { totalTokens: 50 }, { feature: 'test', model: 'm' });
-    expect(await used(uncappedTenant)).toBe(50);
+    expect(await used(uncappedTenant, 'workspace')).toBe(50);
+    // And nowhere near the ceiling's counter, which is the whole point.
+    expect(await used(uncappedTenant, 'deployment')).toBe(0);
   });
 
   it('falls back to prompt + completion when no total is reported', async () => {
@@ -102,7 +105,7 @@ describe('metering', () => {
       { promptTokens: 10, completionTokens: 5 },
       { feature: 'test', model: 'm' },
     );
-    expect(await used(uncappedTenant)).toBe(65);
+    expect(await used(uncappedTenant, 'workspace')).toBe(65);
   });
 
   it('records nothing for a simulated answer, which costs nothing', async () => {
@@ -156,14 +159,71 @@ describe('the ceiling', () => {
   });
 });
 
-describe('the period key', () => {
-  it('is the UTC month, so a workspace’s month does not depend on its timezone', () => {
-    expect(usageMetric(new Date('2026-08-20T23:30:00Z'))).toBe('ai_tokens:2026-08');
-    expect(usageMetric(new Date('2026-01-01T00:00:00Z'))).toBe('ai_tokens:2026-01');
+/**
+ * The rule the module comment always stated, now the rule the code implements.
+ *
+ * Both payers used to increment one `ai_tokens:2026-08` row, and the ceiling
+ * compared that combined figure against an allowance it describes as applying
+ * "only to the shared deployment key". So a workspace on its own key — its own
+ * quota, its own Google bill — walked its own allowance down, and the first
+ * time it fell back to the deployment key it was refused on an allowance it had
+ * never spent against.
+ */
+describe('own-key spend does not consume the deployment allowance', () => {
+  // Its own tenant: the shared capped one has already been charged deployment
+  // tokens by the cases above, and this assertion is about a counter at zero.
+  let ownKeyTenant = '';
+
+  beforeAll(async () => {
+    const tenant = await prisma.tenant.create({
+      data: { slug: `aiusage-ownkey-${suffix}`, legalName: 'ownkey LLC', displayName: 'ownkey', status: 'ACTIVE' },
+    });
+    await prisma.tenantSubscription.create({ data: { tenantId: tenant.id, planId, state: 'ACTIVE' } });
+    ownKeyTenant = tenant.id;
   });
 
-  it('rolls over, so last month’s spend does not hold this month hostage', async () => {
-    const lastMonth = usageMetric(new Date('2026-07-15T00:00:00Z'));
-    expect(lastMonth).not.toBe(usageMetric(new Date('2026-08-15T00:00:00Z')));
+  afterAll(async () => {
+    await prisma.tenant.deleteMany({ where: { id: ownKeyTenant } });
+  });
+
+  it('lets a workspace burn past the ceiling on its own key and still be served', async () => {
+    // Twice the 1,000-token cap, all of it on the workspace's own credential.
+    await recordAiUsage(ownKeyTenant, WORKSPACE, { totalTokens: 2_000 }, { feature: 'test', model: 'm' });
+    expect(await used(ownKeyTenant, 'workspace')).toBe(2_000);
+
+    // The counter the ceiling reads is untouched, so a deployment-key call is
+    // still allowed. Before the split this threw.
+    expect(await used(ownKeyTenant, 'deployment')).toBe(0);
+    await expect(assertAiBudget(ownKeyTenant, DEPLOYMENT)).resolves.toBeUndefined();
+  });
+
+  it('still refuses once the deployment key itself passes the ceiling', async () => {
+    await recordAiUsage(ownKeyTenant, DEPLOYMENT, { totalTokens: 1_200 }, { feature: 'test', model: 'm' });
+    await expect(assertAiBudget(ownKeyTenant, DEPLOYMENT)).rejects.toThrow(/monthly AI allowance/);
+    // …and the workspace's own key is never capped, whatever the counter says.
+    await expect(assertAiBudget(ownKeyTenant, WORKSPACE)).resolves.toBeUndefined();
+  });
+});
+
+describe('the metric key', () => {
+  it('is the UTC month, so a workspace’s month does not depend on its timezone', () => {
+    expect(usageMetric('deployment', new Date('2026-08-20T23:30:00Z'))).toBe('ai_tokens:deployment:2026-08');
+    expect(usageMetric('deployment', new Date('2026-01-01T00:00:00Z'))).toBe('ai_tokens:deployment:2026-01');
+  });
+
+  it('rolls over, so last month’s spend does not hold this month hostage', () => {
+    const lastMonth = usageMetric('deployment', new Date('2026-07-15T00:00:00Z'));
+    expect(lastMonth).not.toBe(usageMetric('deployment', new Date('2026-08-15T00:00:00Z')));
+  });
+
+  /**
+   * The two payers are different rows, because the ceiling is about one of
+   * them. Sharing a key is what let a workspace's own-key spend walk down an
+   * allowance that only ever governed the deployment's.
+   */
+  it('separates whose key paid', () => {
+    const at = new Date('2026-08-20T00:00:00Z');
+    expect(usageMetric('workspace', at)).not.toBe(usageMetric('deployment', at));
+    expect(usageMetric('workspace', at)).toBe('ai_tokens:workspace:2026-08');
   });
 });

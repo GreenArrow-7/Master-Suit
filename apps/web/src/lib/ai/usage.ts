@@ -30,15 +30,52 @@ import type { ModelUsage } from './provider';
  *
  * `WorkspaceUsage` already exists with a `(tenantId, metric)` unique and a
  * `limit` column, seeded at workspace creation for users, employees and storage.
- * It has no period dimension, so the month goes in the metric key:
- * `ai_tokens:2026-08`. That keeps this to no migration, gives history for free,
- * and each month's row is a natural candidate for the retention sweep later.
+ * It has no period dimension and no payer dimension, so both go in the metric
+ * key: `ai_tokens:deployment:2026-08`. That keeps this to no migration, gives
+ * history for free, and each month's rows are a natural candidate for the
+ * retention sweep later.
  */
 
-/** `ai_tokens:2026-08`. UTC, so a workspace's month does not depend on its timezone. */
-export function usageMetric(at: Date = new Date()): string {
-  return `ai_tokens:${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
+/** Whose credential paid for a call. The ceiling applies to one of them. */
+export type PaidBy = Exclude<GeminiCredential['source'], 'simulated'>;
+
+/** `2026-08`. UTC, so a workspace's month does not depend on its timezone. */
+function period(at: Date): string {
+  return `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
 }
+
+/**
+ * `ai_tokens:deployment:2026-08` — spend, by month, **by whose key paid**.
+ *
+ * ── Why the source is in the key ───────────────────────────────────────────
+ *
+ * It used not to be, and the module comment above described a rule the code did
+ * not implement. Both sources incremented one `ai_tokens:2026-08` row, and
+ * `assertAiBudget` compared that combined figure against a ceiling it says
+ * "applies only to the shared deployment key". So a workspace on its own key,
+ * spending its own money against its own Google bill, walked its own ceiling
+ * down — and the first time it fell back to the deployment key (a rotation, a
+ * disconnect) it was refused on an allowance it had never touched.
+ *
+ * Splitting the key is also what makes the platform console able to answer the
+ * question it is asked: *what is the AI costing **us***. One number summing
+ * "our spend" and "their spend" answers neither.
+ */
+export function usageMetric(paidBy: PaidBy, at: Date = new Date()): string {
+  return `ai_tokens:${paidBy}:${period(at)}`;
+}
+
+/**
+ * The pre-split key. Rows under it are real spend that cannot be attributed
+ * retroactively, so they are read and shown as their own line rather than
+ * folded into either side or quietly dropped.
+ */
+export function legacyUsageMetric(at: Date = new Date()): string {
+  return `ai_tokens:${period(at)}`;
+}
+
+/** Matches every ai_tokens row, in any of the three shapes. */
+export const AI_METRIC_PREFIX = 'ai_tokens:';
 
 /** The plan limit key an operator sets on a SubscriptionPlan to cap this. */
 export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
@@ -60,9 +97,16 @@ async function monthlyLimit(tenantId: string): Promise<number | null> {
   return typeof value === 'number' && value > 0 ? value : null;
 }
 
-async function usedThisMonth(tenantId: string): Promise<number> {
+/**
+ * Deployment-key spend only — the budget the ceiling is about.
+ *
+ * A workspace's own-key spend is deliberately not counted here. Doing so was
+ * the bug: it charged a tenant against an allowance for a bill they were
+ * already paying themselves.
+ */
+async function deploymentUsedThisMonth(tenantId: string): Promise<number> {
   const row = await prisma.workspaceUsage.findUnique({
-    where: { tenantId_metric: { tenantId, metric: usageMetric() } },
+    where: { tenantId_metric: { tenantId, metric: usageMetric('deployment') } },
     select: { used: true },
   });
   return row?.used ?? 0;
@@ -88,7 +132,7 @@ export async function assertAiBudget(tenantId: string | null | undefined, creden
   const limit = await monthlyLimit(tenantId);
   if (limit === null) return;
 
-  const used = await usedThisMonth(tenantId);
+  const used = await deploymentUsedThisMonth(tenantId);
   if (used < limit) return;
 
   logger.warn({ tenantId, used, limit }, 'ai budget exhausted for the month');
@@ -134,7 +178,7 @@ export async function recordAiUsage(
   recordAiTokens(context.feature, credential.source, tokens);
 
   try {
-    const metric = usageMetric();
+    const metric = usageMetric(credential.source);
     await prisma.workspaceUsage.upsert({
       where: { tenantId_metric: { tenantId, metric } },
       create: { tenantId, metric, used: tokens, limit: await monthlyLimit(tenantId), measuredAt: new Date() },
