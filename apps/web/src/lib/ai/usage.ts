@@ -108,7 +108,7 @@ export const AI_MODEL_METRIC_PREFIX = 'ai_model:';
 export function modelUsageMetric(paidBy: PaidBy, model: string, at: Date = new Date()): string {
   const safe = (model || 'unknown')
     .toLowerCase()
-    .replace(/[^a-z0-9.\-]+/g, '-')
+    .replace(/[^a-z0-9.-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
   return `${AI_MODEL_METRIC_PREFIX}${paidBy}:${safe || 'unknown'}:${period(at)}`;
