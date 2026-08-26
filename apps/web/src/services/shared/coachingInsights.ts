@@ -27,9 +27,13 @@ const WINDOW_MAX = 2000;
  * "Deleted objection", making a manager's past coaching unreadable.
  *
  * Spread rather than written inline because the flag is stripped before the
- * query reaches Prisma and is therefore not part of its argument types.
+ * query reaches Prisma and is therefore not part of its argument types. Typed
+ * `object` rather than cast: spreading it contributes no known keys, so the
+ * excess-property check stays satisfied without asserting a type the value does
+ * not have — which is what `as Record<string, never>` did, and what TypeScript
+ * rejected outright under CI's stricter run.
  */
-const INCLUDE_DELETED = { __includeDeleted: true } as Record<string, never>;
+const INCLUDE_DELETED: object = { __includeDeleted: true };
 
 export interface CoachingFilters {
   callerId?: string;
