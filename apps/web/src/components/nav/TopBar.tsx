@@ -33,10 +33,31 @@ interface NotificationItem {
   kind: string;
   title: string;
   body: string | null;
+  /**
+   * Where this notification goes, resolved by the server from the record's type
+   * and the slug of the workspace that owns it — see
+   * `app/api/v1/notifications/route.ts`. Null when the record has no screen, in
+   * which case the row is not clickable rather than clickable-and-wrong.
+   */
+  destination: string | null;
+  /** An external link, for the rare notification that points outside the app. */
   actionUrl: string | null;
   priority: string;
   readAt: string | null;
   createdAt: string;
+}
+
+/**
+ * The one place a notification turns into a destination.
+ *
+ * The server resolves `destination` from the record's type and the owning
+ * workspace's slug. `actionUrl` is the fallback and now means only what its name
+ * says: a link that points somewhere this application does not route to. It used
+ * to hold bare paths like `/people/overtime`, which were pushed verbatim and
+ * 404'd every time.
+ */
+function destinationOf(n: NotificationItem): string | null {
+  return n.destination ?? n.actionUrl ?? null;
 }
 
 function relTime(iso: string) {
@@ -109,12 +130,20 @@ export default function TopBar({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch unread count once per mount, and only where the badge can render:
-  // People hides the whole actions bar and platform has no notifications, so a
-  // fetch there is a full auth resolve whose answer nothing displays.
+  /**
+   * Fetch the unread count once per mount, wherever the bell renders.
+   *
+   * This was gated on `module === 'sales'`, on the belief that the People shell
+   * hid the whole actions bar. It does not: the bar is marked `hidden`, but
+   * `.lf-shell-actions { display: flex }` in globals.css is an author-origin
+   * rule and beats the user agent's `[hidden] { display: none }`. So the bell
+   * rendered on every People screen with a badge that was never fetched — and
+   * People raises seventeen of the twenty-one notification events this system
+   * generates. Platform still skips it: there are no notifications there at all.
+   */
   const fetchedUnread = useRef(false);
   useEffect(() => {
-    if (module !== 'sales' || fetchedUnread.current) return;
+    if (module === 'platform' || fetchedUnread.current) return;
     fetchedUnread.current = true;
     fetch('/api/v1/notifications?unread=true')
       .then((r) => r.json())
@@ -268,7 +297,18 @@ export default function TopBar({
         </form>
       )}
 
-      <div className="lf-shell-actions" hidden={module === 'people'}>
+      {/* The actions bar renders in every module.
+
+          It used to carry `hidden={module === 'people'}`, which did nothing:
+          `.lf-shell-actions { display: flex }` is an author-origin rule and
+          overrides the user agent's `[hidden] { display: none }`, so the bar was
+          visible on People regardless — only its unread badge was suppressed,
+          which is the worst of both. The attribute is gone and the decision is
+          made openly: People raises most of this system's notifications, so the
+          people working in it need the bell, the workspace switcher's sibling
+          controls and Log out as much as anyone. The one control that genuinely
+          differs is the search box, which is already gated above. */}
+      <div className="lf-shell-actions">
         {/* The dashboard is a destination, not an action: it leads the right
             cluster with an icon+label and a clear pressed state, quieter than
             + Create but always one click away. */}
@@ -468,17 +508,17 @@ export default function TopBar({
                           padding: '10px 16px',
                           borderBottom: '1px solid var(--lf-line)',
                           background: n.readAt ? 'transparent' : 'var(--lf-wine-050)',
-                          cursor: n.actionUrl ? 'pointer' : 'default',
+                          cursor: destinationOf(n) ? 'pointer' : 'default',
                         }}
                         onClick={() => {
                           if (!n.readAt) markRead([n.id]);
-                          if (n.actionUrl) {
-                            setNotiOpen(false);
-                            // Soft navigation keeps the layout (and this badge)
-                            // mounted; anything non-internal falls back to a load.
-                            if (n.actionUrl.startsWith('/')) router.push(n.actionUrl);
-                            else window.location.href = n.actionUrl;
-                          }
+                          const target = destinationOf(n);
+                          if (!target) return;
+                          setNotiOpen(false);
+                          // Soft navigation keeps the layout (and this badge)
+                          // mounted; anything non-internal falls back to a load.
+                          if (target.startsWith('/')) router.push(target);
+                          else window.location.href = target;
                         }}
                       >
                         <div

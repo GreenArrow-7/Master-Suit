@@ -81,7 +81,6 @@ export async function escalateSocialSla(tenantId: string, socialCommentId: strin
           body: `${lateBy} min past target${owner?.fullName ? `, with ${owner.fullName}` : ' and unassigned'}: "${enquiry.commentText.slice(0, 100)}"`,
           objectType: 'SOCIAL_COMMENT',
           recordId: enquiry.id,
-          actionUrl: `/social-leads/${enquiry.id}`,
         },
       })
       .catch((err) => logger.warn({ err: (err as Error).message, tenantId }, 'sla escalation notification failed'));

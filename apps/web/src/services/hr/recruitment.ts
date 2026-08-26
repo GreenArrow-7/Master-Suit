@@ -452,7 +452,6 @@ export async function scheduleInterview(ctx: Ctx, input: InterviewInput) {
     panelIds: interview.panelIds,
     candidateName: candidate.fullName,
     when: interview.scheduledAt,
-    recordId: interview.id,
     candidateId: candidate.id,
   });
   return interview;
@@ -716,7 +715,6 @@ export async function recordOfferResponse(ctx: Ctx, offerId: string, accepted: b
   await notifyOfferResponded(ctx, {
     accepted,
     candidateName: responded?.fullName ?? 'A candidate',
-    recordId: offer.id,
     candidateId: offer.candidateId,
   });
   return updated;

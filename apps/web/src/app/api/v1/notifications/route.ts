@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden } from '@/lib/errors';
+import { entityRoute } from '@/lib/nav/entityRoute';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -52,16 +53,37 @@ export const GET = route(
     // on every navigation.
     if (query.unread) return { unreadCount: await prisma.notification.count({ where: unreadWhere }) };
 
-    const [rows, unreadCount] = await Promise.all([
+    const [rows, unreadCount, workspace] = await Promise.all([
       prisma.notification.findMany({
         where: { tenantId: ctx.tenantId, userId: ctx.actor.id },
         orderBy: { createdAt: 'desc' },
         take: 30,
       }),
       prisma.notification.count({ where: unreadWhere }),
+      // One row by primary key, alongside the feed rather than after them.
+      prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true } }),
     ]);
 
-    return { data: rows, unreadCount };
+    /**
+     * Where each notification goes, decided here rather than in the client.
+     *
+     * Rows used to carry `actionUrl` strings like `/people/overtime` — no
+     * workspace slug — which the bell pushed verbatim, so every HR notification
+     * 404'd. Resolving on read rather than on write is what makes the rows
+     * already in the database work: they have carried `objectType` and
+     * `recordId` all along, and nothing ever read them.
+     *
+     * The slug comes from the tenant the notification belongs to, never from the
+     * URL the reader happens to be standing on. `actionUrl` survives as what its
+     * name always suggested — an escape hatch for a genuinely external link —
+     * and is used only when no destination resolves.
+     */
+    const data = rows.map((row) => ({
+      ...row,
+      destination: workspace ? entityRoute(row.objectType, row.recordId, workspace.slug) : null,
+    }));
+
+    return { data, unreadCount };
   },
 );
 

@@ -121,7 +121,7 @@ export default async function WorkspaceLayout({
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
         <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
       </div>
-      <AssistantWidget />
+      <AssistantWidget slug={shell.slug} />
     </div>
   );
 }
