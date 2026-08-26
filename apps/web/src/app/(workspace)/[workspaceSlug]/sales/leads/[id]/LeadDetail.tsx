@@ -640,8 +640,11 @@ function TimelineTab({
             </div>
           )}
           <div className="lf-field">
-            <label className="lf-label">Type</label>
+            <label className="lf-label" htmlFor="activity-type">
+              Type
+            </label>
             <select
+              id="activity-type"
               className="lf-input"
               value={form.typeId}
               onChange={(e) => setForm((f) => ({ ...f, typeId: e.target.value }))}
@@ -654,8 +657,11 @@ function TimelineTab({
             </select>
           </div>
           <div className="lf-field">
-            <label className="lf-label">Outcome</label>
+            <label className="lf-label" htmlFor="activity-outcome">
+              Outcome
+            </label>
             <input
+              id="activity-outcome"
               className="lf-input"
               value={form.outcome}
               onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value }))}
@@ -663,8 +669,11 @@ function TimelineTab({
             />
           </div>
           <div className="lf-field">
-            <label className="lf-label">Notes</label>
+            <label className="lf-label" htmlFor="activity-notes">
+              Notes
+            </label>
             <textarea
+              id="activity-notes"
               className="lf-input"
               rows={3}
               value={form.notes}
@@ -672,8 +681,11 @@ function TimelineTab({
             />
           </div>
           <div className="lf-field">
-            <label className="lf-label">Duration (minutes)</label>
+            <label className="lf-label" htmlFor="activity-duration">
+              Duration (minutes)
+            </label>
             <input
+              id="activity-duration"
               className="lf-input"
               type="number"
               min="0"
@@ -819,8 +831,11 @@ function TasksTab({
             </div>
           )}
           <div className="lf-field">
-            <label className="lf-label">Title</label>
+            <label className="lf-label" htmlFor="task-title">
+              Title
+            </label>
             <input
+              id="task-title"
               className="lf-input"
               required
               value={form.title}
@@ -829,8 +844,11 @@ function TasksTab({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
             <div className="lf-field">
-              <label className="lf-label">Type</label>
+              <label className="lf-label" htmlFor="task-type">
+                Type
+              </label>
               <select
+                id="task-type"
                 className="lf-input"
                 value={form.typeId}
                 onChange={(e) => setForm((f) => ({ ...f, typeId: e.target.value }))}
@@ -843,8 +861,11 @@ function TasksTab({
               </select>
             </div>
             <div className="lf-field">
-              <label className="lf-label">Priority</label>
+              <label className="lf-label" htmlFor="task-priority">
+                Priority
+              </label>
               <select
+                id="task-priority"
                 className="lf-input"
                 value={form.priority}
                 onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
@@ -858,8 +879,11 @@ function TasksTab({
             </div>
           </div>
           <div className="lf-field">
-            <label className="lf-label">Due date</label>
+            <label className="lf-label" htmlFor="task-due">
+              Due date
+            </label>
             <input
+              id="task-due"
               className="lf-input"
               type="date"
               required
@@ -868,8 +892,11 @@ function TasksTab({
             />
           </div>
           <div className="lf-field">
-            <label className="lf-label">Description</label>
+            <label className="lf-label" htmlFor="task-description">
+              Description
+            </label>
             <textarea
+              id="task-description"
               className="lf-input"
               rows={2}
               value={form.description}

@@ -36,3 +36,11 @@ cloudflared.exe
 
 # Claude Code: per-machine permission allowlist, carries local absolute paths.
 .claude/settings.local.json
+
+# Timestamped .env backups written by local tooling. `.env` itself is ignored
+# above, but `.env.bak-<epoch>` is not matched by that rule, so one had been
+# staged for commit carrying PLATFORM_OWNER_PASSWORD, the owner MFA secret and
+# every database URL. Secrets in git history cannot be taken back.
+.env.bak*
+.env.*.bak
+*.env.bak
