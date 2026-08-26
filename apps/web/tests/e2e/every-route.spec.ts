@@ -33,20 +33,70 @@ const ADMIN_PASSWORD = process.env.DEMO_PASSWORD ?? 'ManathDemo-2026';
 
 /** Sales module, every route the workspace admin may open. */
 const SALES = [
-  'accounts', 'activities', 'allocation', 'automation', 'calendar', 'call-audits',
-  'calls', 'campaigns', 'clients', 'commissions', 'commissions/slabs', 'communications',
-  'contacts', 'dashboards', 'documents', 'engagement', 'events', 'field-sales',
-  'follow-ups', 'forms', 'landing-pages', 'leadership', 'leads', 'listings',
-  'opportunities', 'people', 'products', 'projects', 'reports', 'requirements',
-  'service', 'site-visits', 'smart-views', 'targets', 'tasks',
+  'accounts',
+  'activities',
+  'allocation',
+  'automation',
+  'calendar',
+  'call-audits',
+  'calls',
+  'campaigns',
+  'clients',
+  'commissions',
+  'commissions/slabs',
+  'communications',
+  'contacts',
+  'dashboards',
+  'documents',
+  'engagement',
+  'events',
+  'field-sales',
+  'follow-ups',
+  'forms',
+  'landing-pages',
+  'leadership',
+  'leads',
+  'listings',
+  'opportunities',
+  'people',
+  'products',
+  'projects',
+  'reports',
+  'requirements',
+  'service',
+  'site-visits',
+  'smart-views',
+  'targets',
+  'tasks',
 ];
 
 /** People / HRMS module. */
 const PEOPLE = [
-  'attendance', 'check-in', 'compliance', 'departments', 'documents', 'employees',
-  'face-activity', 'holidays', 'leave', 'lifecycle', 'offboarding', 'onboarding',
-  'overtime', 'payroll', 'payslips', 'performance', 'recruitment', 'reports',
-  'requests', 'roles', 'roster', 'security', 'settings', 'shifts', 'users',
+  'attendance',
+  'check-in',
+  'compliance',
+  'departments',
+  'documents',
+  'employees',
+  'face-activity',
+  'holidays',
+  'leave',
+  'lifecycle',
+  'offboarding',
+  'onboarding',
+  'overtime',
+  'payroll',
+  'payslips',
+  'performance',
+  'recruitment',
+  'reports',
+  'requests',
+  'roles',
+  'roster',
+  'security',
+  'settings',
+  'shifts',
+  'users',
   'work-locations',
 ];
 
@@ -54,14 +104,20 @@ const PEOPLE = [
 const WORKSPACE_LEVEL = [
   // `profile` itself is deliberately absent: the directory holds only `security`
   // and `role`, nothing links to the bare path, and it correctly 404s.
-  'dashboard', 'notifications', 'tasks', 'profile/security', 'profile/role',
-  'admin/users', 'admin/roles', 'admin/settings', 'admin/audit', 'admin/integrations',
+  'dashboard',
+  'notifications',
+  'tasks',
+  'profile/security',
+  'profile/role',
+  'admin/users',
+  'admin/roles',
+  'admin/settings',
+  'admin/audit',
+  'admin/integrations',
 ];
 
 /** Control plane, owner only. */
-const PLATFORM = [
-  '', 'workspaces', 'subscriptions', 'plans', 'users', 'audit', 'system-health', 'settings',
-];
+const PLATFORM = ['', 'workspaces', 'subscriptions', 'plans', 'users', 'audit', 'system-health', 'settings'];
 
 /**
  * One route, opened and judged.
@@ -75,7 +131,11 @@ async function opens(page: Page, url: string) {
   const status = response?.status() ?? 0;
   expect(status, `${url} responded ${status}`).toBeLessThan(400);
 
-  const body = (await page.locator('body').innerText().catch(() => '')) || '';
+  const body =
+    (await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')) || '';
 
   // The refusal screen is a *rendered* page with a 200, so it never trips the
   // status check. For a workspace administrator it is always a defect.

@@ -29,7 +29,10 @@ const password = `Mint-${randomBytes(9).toString('base64url')}`;
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 await db.platformUser.update({
   where: { normalizedEmail: email },
-  data: { passwordHash: await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }), passwordChangedAt: new Date() },
+  data: {
+    passwordHash: await hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }),
+    passwordChangedAt: new Date(),
+  },
 });
 await db.$disconnect();
 

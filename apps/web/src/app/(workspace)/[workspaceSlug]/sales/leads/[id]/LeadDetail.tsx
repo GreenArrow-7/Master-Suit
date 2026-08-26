@@ -831,7 +831,9 @@ function TasksTab({
             </div>
           )}
           <div className="lf-field">
-            <label className="lf-label" htmlFor="task-title">Title</label>
+            <label className="lf-label" htmlFor="task-title">
+              Title
+            </label>
             <input
               id="task-title"
               className="lf-input"
@@ -842,7 +844,9 @@ function TasksTab({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
             <div className="lf-field">
-              <label className="lf-label" htmlFor="task-type">Type</label>
+              <label className="lf-label" htmlFor="task-type">
+                Type
+              </label>
               <select
                 id="task-type"
                 className="lf-input"
@@ -857,7 +861,9 @@ function TasksTab({
               </select>
             </div>
             <div className="lf-field">
-              <label className="lf-label" htmlFor="task-priority">Priority</label>
+              <label className="lf-label" htmlFor="task-priority">
+                Priority
+              </label>
               <select
                 id="task-priority"
                 className="lf-input"
@@ -873,7 +879,9 @@ function TasksTab({
             </div>
           </div>
           <div className="lf-field">
-            <label className="lf-label" htmlFor="task-due">Due date</label>
+            <label className="lf-label" htmlFor="task-due">
+              Due date
+            </label>
             <input
               id="task-due"
               className="lf-input"
@@ -884,7 +892,9 @@ function TasksTab({
             />
           </div>
           <div className="lf-field">
-            <label className="lf-label" htmlFor="task-description">Description</label>
+            <label className="lf-label" htmlFor="task-description">
+              Description
+            </label>
             <textarea
               id="task-description"
               className="lf-input"

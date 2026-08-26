@@ -76,7 +76,9 @@ async function batched(label, total, make, create) {
 }
 
 const TENANT = 'perf-titan-tenant';
-console.log(`Seeding ${dbName}: ${USERS} users, ${LEADS} leads, ${ACTIVITIES} activities, ${CALLS} calls, ${TASKS} tasks`);
+console.log(
+  `Seeding ${dbName}: ${USERS} users, ${LEADS} leads, ${ACTIVITIES} activities, ${CALLS} calls, ${TASKS} tasks`,
+);
 
 // ── Tenant, role, stages ─────────────────────────────────────────────────────
 await db.tenant.upsert({
