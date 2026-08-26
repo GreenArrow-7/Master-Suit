@@ -460,7 +460,15 @@ export async function analyseAndAudit(tenantId: string, callId: string): Promise
   if (scorecard) await runCallAudit({ tenantId, callId, scorecardId: scorecard.id });
 }
 
-/** Best effort: a notification that cannot be written must not fail the analysis. */
+/**
+ * Best effort: a notification that cannot be written must not fail the analysis.
+ *
+ * `objectType` is `call`, singular, because that is the type
+ * `src/lib/nav/entityRoute.ts` resolves — the feed turns it and `recordId` into
+ * `/{slug}/sales/calls/{id}` on read. It said `calls` before, which matched no
+ * type and no permission module, so "Call analysis is ready" arrived as a row
+ * that could not be opened.
+ */
 async function notify(
   tenantId: string,
   userId: string,
@@ -468,7 +476,7 @@ async function notify(
 ) {
   await prisma.notification
     .create({
-      data: { tenantId, userId, kind: n.kind, title: n.title, body: n.body, objectType: 'calls', recordId: n.recordId },
+      data: { tenantId, userId, kind: n.kind, title: n.title, body: n.body, objectType: 'call', recordId: n.recordId },
     })
     .catch((err) => logger.warn({ err, userId }, 'notification write failed'));
 }

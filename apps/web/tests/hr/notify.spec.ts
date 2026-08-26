@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { notifyHr } from '@/services/hr/notify';
+import { entityRoute } from '@/lib/nav/entityRoute';
 import { decideOvertime, requestOvertime } from '@/services/hr/overtime';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { PermissionMap } from '@/lib/security/rbac';
@@ -114,7 +115,14 @@ describe('reaching the right people', () => {
     const manager = await inboxOf('manager');
     expect(manager).toHaveLength(1);
     expect(manager[0]!.kind).toBe('overtime.requested');
-    expect(manager[0]!.actionUrl).toBe('/people/overtime');
+    // The row carries what it points at, not where that is. `actionUrl` used to
+    // hold `/people/overtime` — no workspace slug — which the bell pushed
+    // verbatim and 404'd on. The feed resolves the destination on read now, from
+    // these two fields and the owning workspace's slug.
+    expect(manager[0]!.objectType).toBe('hr_overtime_request');
+    expect(manager[0]!.recordId).toBe(claim.id);
+    expect(manager[0]!.actionUrl).toBeNull();
+    expect(entityRoute(manager[0]!.objectType, manager[0]!.recordId, slug)).toBe(`/${slug}/people/overtime`);
 
     // Resolved through the permission grant, so somebody on a role without it
     // hears nothing — the whole point of not keying on role names.

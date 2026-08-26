@@ -126,7 +126,6 @@ export async function assignSocialLead(ctx: Ctx, input: AssignInput) {
           body: `${channel} enquiry from ${enquiry.authorName ?? 'a commenter'}.`,
           objectType: 'SOCIAL_COMMENT',
           recordId: enquiry.id,
-          actionUrl: `/social-leads/${enquiry.id}`,
         },
       })
       .catch((err) => logger.warn({ err: (err as Error).message }, 'assignment notification failed'));

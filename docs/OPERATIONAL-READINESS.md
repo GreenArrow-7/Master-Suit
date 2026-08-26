@@ -98,7 +98,7 @@ logs or the database; none of them pages anyone.
 
 | # | Control | Exists | Verified under load |
 |---|---|---|---|
-| 6.1 | Login: 10/IP and 5/account per 15 min | Yes — `lib/security/ratelimit.ts` | ☐ |
+| 6.1 | Login: 10/IP and 5/account per 5 min | Yes — `lib/security/ratelimit.ts` | ☐ |
 | 6.2 | Per-session API limit | Yes — 1200/min | ☐ |
 | 6.3 | API-key limit | Yes — 600/min | ☐ |
 | 6.4 | Upload endpoint | **Inherits the session limit only** | ☐ |

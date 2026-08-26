@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
 
 /**
@@ -37,8 +38,23 @@ import { redact } from '../redact';
 
 export interface ToolSource {
   label: string;
-  /** Module-relative href, e.g. /leads/abc — the widget renders it via SalesLink. */
-  href: string;
+  /**
+   * What the chip points at, as a type `src/lib/nav/entityRoute.ts` knows, plus
+   * the record's id where the type needs one.
+   *
+   * This used to be a module-relative path that the widget rendered through
+   * `SalesLink`, which resolves its base from `usePathname()`. The widget is
+   * mounted in the workspace layout, so it renders on Notifications, the
+   * dashboard, every People screen and every Admin screen — and on all of those
+   * a Lead chip resolved to `/{slug}/notifications/leads/{id}` and 404'd. The
+   * type of the thing clicked has to decide where it goes; the page the question
+   * was asked on must not.
+   *
+   * A path cannot be expressed here on purpose: a tool that cannot write one
+   * cannot reintroduce this.
+   */
+  type: EntityType;
+  id?: string;
 }
 
 export interface ProposedAction {
@@ -196,7 +212,7 @@ export const TOOLS: ToolDef[] = [
       });
       return {
         data: { count: rows.length, capped: rows.length === limit, leads: rows.map(leadBrief) },
-        sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, href: `/leads/${l.id}` })),
+        sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, type: 'lead' as const, id: l.id })),
       };
     },
   },
@@ -211,7 +227,7 @@ export const TOOLS: ToolDef[] = [
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
       return {
         data: leadBrief(lead),
-        sources: [{ label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` }],
+        sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
   },
@@ -267,7 +283,7 @@ export const TOOLS: ToolDef[] = [
         .map((e) => ({ at: fmtDate(e.at), kind: e.kind, detail: e.detail.slice(0, 160) }));
       return {
         data: { lead: lead.fullName, since: fmtDate(since), events },
-        sources: [{ label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` }],
+        sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
   },
@@ -317,7 +333,7 @@ export const TOOLS: ToolDef[] = [
         })),
         sources: rows
           .slice(0, 5)
-          .map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, href: `/calls/${c.id}` })),
+          .map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, type: 'call' as const, id: c.id })),
       };
     },
   },
@@ -392,7 +408,7 @@ export const TOOLS: ToolDef[] = [
               }
             : null,
         },
-        sources: [{ label: `Call · ${fmtDate(call.startedAt ?? call.createdAt)}`, href: `/calls/${call.id}` }],
+        sources: [{ label: `Call · ${fmtDate(call.startedAt ?? call.createdAt)}`, type: 'call' as const, id: call.id }],
       };
     },
   },
@@ -453,7 +469,7 @@ export const TOOLS: ToolDef[] = [
             closes: fmtDate(o.expectedCloseDate),
           })),
         })),
-        sources: rows.map((a) => ({ label: `Account · ${a.name}`, href: `/accounts/${a.id}` })),
+        sources: rows.map((a) => ({ label: `Account · ${a.name}`, type: 'account' as const, id: a.id })),
       };
     },
   },
@@ -497,7 +513,9 @@ export const TOOLS: ToolDef[] = [
           phone: c.phone,
           company: c.account?.name ?? null,
         })),
-        sources: rows.slice(0, 6).map((c) => ({ label: `Contact · ${c.fullName}`, href: `/contacts/${c.id}` })),
+        sources: rows
+          .slice(0, 6)
+          .map((c) => ({ label: `Contact · ${c.fullName}`, type: 'contact' as const, id: c.id })),
       };
     },
   },
@@ -553,7 +571,9 @@ export const TOOLS: ToolDef[] = [
           closes: fmtDate(o.expectedCloseDate),
           owner: o.owner?.fullName ?? null,
         })),
-        sources: rows.slice(0, 6).map((o) => ({ label: `Opportunity · ${o.name}`, href: `/opportunities/${o.id}` })),
+        sources: rows
+          .slice(0, 6)
+          .map((o) => ({ label: `Opportunity · ${o.name}`, type: 'opportunity' as const, id: o.id })),
       };
     },
   },
@@ -593,7 +613,7 @@ export const TOOLS: ToolDef[] = [
           status: t.status,
           lead: t.leadId ? (leadNames.get(t.leadId) ?? null) : null,
         })),
-        sources: [{ label: 'Tasks', href: '/tasks' }],
+        sources: [{ label: 'Tasks', type: 'tasks' as const }],
       };
     },
   },
@@ -638,7 +658,7 @@ export const TOOLS: ToolDef[] = [
           lead: f.leadId ? (leadNames.get(f.leadId) ?? null) : null,
           leadId: f.leadId,
         })),
-        sources: [{ label: 'Follow-ups', href: '/follow-ups' }],
+        sources: [{ label: 'Follow-ups', type: 'follow_ups' as const }],
       };
     },
   },
@@ -671,8 +691,8 @@ export const TOOLS: ToolDef[] = [
           scheduledCalls: calls.map((c) => ({ id: c.id, number: c.recipientNumber })),
         },
         sources: [
-          { label: 'Calendar', href: '/calendar' },
-          ...events.slice(0, 3).map((e) => ({ label: `Event · ${e.title}`, href: `/events/${e.id}` })),
+          { label: 'Calendar', type: 'calendar' as const },
+          ...events.slice(0, 3).map((e) => ({ label: `Event · ${e.title}`, type: 'event' as const, id: e.id })),
         ],
       };
     },
@@ -767,9 +787,9 @@ export const TOOLS: ToolDef[] = [
           callsMadeToday: todayCalls,
         },
         sources: [
-          { label: 'Follow-ups', href: '/follow-ups?due=overdue' },
-          { label: 'SLA breached leads', href: '/leads?filter=breached' },
-          { label: 'Tasks', href: '/tasks?tab=overdue' },
+          { label: 'Overdue follow-ups', type: 'follow_ups_overdue' as const },
+          { label: 'SLA breached leads', type: 'leads_breached' as const },
+          { label: 'Overdue tasks', type: 'tasks_overdue' as const },
         ],
       };
     },
@@ -839,8 +859,8 @@ export const TOOLS: ToolDef[] = [
           openFollowUps: followUps.map((f) => ({ title: f.title, due: fmtDate(f.dueAt) })),
         },
         sources: [
-          { label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` },
-          ...calls.map((c) => ({ label: `Call · ${fmtDate(c.createdAt)}`, href: `/calls/${c.id}` })),
+          { label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id },
+          ...calls.map((c) => ({ label: `Call · ${fmtDate(c.createdAt)}`, type: 'call' as const, id: c.id })),
         ],
       };
     },
@@ -1001,8 +1021,8 @@ export async function executeTool(ctx: Ctx, name: string, args: Record<string, u
   }
 
   const result = await tool.execute(ctx, args ?? {});
-  // `data` only. `sources` are hrefs and labels this file wrote, and
+  // `data` only. `sources` are record types, ids and labels this file wrote, and
   // `proposedAction` is a payload the UI posts back verbatim — redacting either
-  // would corrupt a link or a request rather than protect anything.
+  // would corrupt a destination or a request rather than protect anything.
   return { ...result, data: redactFreeText(result.data) };
 }
