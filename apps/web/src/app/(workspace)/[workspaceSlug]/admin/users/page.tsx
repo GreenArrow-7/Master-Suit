@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import FilterSheet from '@/components/workspace/FilterSheet';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -105,40 +106,44 @@ export default async function UsersPage({
       </section>
 
       <form className="lf-card lf-users__filters" method="get">
-        <div className="lf-field" style={{ flex: '1 1 280px', margin: 0 }}>
-          <label className="lf-label" htmlFor="u-q">
-            Search
-          </label>
-          <input
-            id="u-q"
-            className="lf-input"
-            name="q"
-            defaultValue={search}
-            placeholder="Name, email or employee code"
-          />
-        </div>
-        <div className="lf-field" style={{ margin: 0 }}>
-          <label className="lf-label" htmlFor="u-role">
-            Role
-          </label>
-          <select id="u-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
-            <option value="">All roles</option>
-            {roles.map((role) => (
-              <option key={role.key} value={role.key}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="lf-field" style={{ margin: 0 }}>
-          <label className="lf-label" htmlFor="u-show">
-            Show
-          </label>
-          <select id="u-show" className="lf-input" name="show" defaultValue={showAll ? 'all' : 'active'}>
-            <option value="active">Active only</option>
-            <option value="all">Everyone</option>
-          </select>
-        </div>
+        {/* Inline on a desktop, a bottom sheet on a phone — the fields are
+            repositioned, never unmounted, so they still submit. */}
+        <FilterSheet activeCount={[search, query.role, showAll ? 'all' : ''].filter(Boolean).length || undefined}>
+          <div className="lf-field" style={{ flex: '1 1 280px', margin: 0 }}>
+            <label className="lf-label" htmlFor="u-q">
+              Search
+            </label>
+            <input
+              id="u-q"
+              className="lf-input"
+              name="q"
+              defaultValue={search}
+              placeholder="Name, email or employee code"
+            />
+          </div>
+          <div className="lf-field" style={{ margin: 0 }}>
+            <label className="lf-label" htmlFor="u-role">
+              Role
+            </label>
+            <select id="u-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
+              <option value="">All roles</option>
+              {roles.map((role) => (
+                <option key={role.key} value={role.key}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="lf-field" style={{ margin: 0 }}>
+            <label className="lf-label" htmlFor="u-show">
+              Show
+            </label>
+            <select id="u-show" className="lf-input" name="show" defaultValue={showAll ? 'all' : 'active'}>
+              <option value="active">Active only</option>
+              <option value="all">Everyone</option>
+            </select>
+          </div>
+        </FilterSheet>
         <button className="lf-btn lf-btn--secondary" type="submit">
           Filter
         </button>
@@ -159,7 +164,7 @@ export default async function UsersPage({
       {rows.length === 0 ? (
         <div className="lf-card lf-leave__empty">Nobody matches those filters.</div>
       ) : (
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-table-wrap">
           <table className="lf-table">
             <thead>
               <tr>

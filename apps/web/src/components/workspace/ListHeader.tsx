@@ -12,6 +12,7 @@ export default function ListHeader({
   noun = 'record',
   capped,
   actions,
+  secondaryActions,
   description: override,
   eyebrow,
 }: {
@@ -26,7 +27,18 @@ export default function ListHeader({
   description?: ReactNode;
   /** Off by default — the reference screen carries no eyebrow above its title. */
   eyebrow?: string;
+  /** The primary action, and anything that must always be visible. */
   actions?: ReactNode;
+  /**
+   * Actions that fold behind a ••• disclosure.
+   *
+   * A phone header carrying Import, Export, Columns and Add lead is four
+   * buttons competing above the content they act on, and only one of them is
+   * what a person came to do. Passing the other three here keeps them one tap
+   * away instead of in the way. Optional, so screens adopt it when they have a
+   * genuine primary action rather than by rote.
+   */
+  secondaryActions?: ReactNode;
 }) {
   const description =
     override ??
@@ -43,7 +55,21 @@ export default function ListHeader({
         <h1 className="lf-list-header__title">{title}</h1>
         {description && <p className="lf-list-header__count">{description}</p>}
       </div>
-      {actions && <div className="lf-list-header__actions">{actions}</div>}
+      {(actions || secondaryActions) && (
+        <div className="lf-list-header__actions">
+          {secondaryActions && (
+            /* Native disclosure: no state to synchronise, keyboard reachable,
+               and it closes itself. The same pattern the top bar's Help uses. */
+            <details className="lf-overflow">
+              <summary className="lf-btn lf-btn--secondary lf-btn--sm" aria-label="More actions" title="More actions">
+                <span aria-hidden="true">•••</span>
+              </summary>
+              <div className="lf-overflow__menu">{secondaryActions}</div>
+            </details>
+          )}
+          {actions}
+        </div>
+      )}
     </header>
   );
 }

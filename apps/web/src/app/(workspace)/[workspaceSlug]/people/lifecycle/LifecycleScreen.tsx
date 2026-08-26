@@ -304,41 +304,43 @@ export default function LifecycleScreen({
 
       <h2 className="lf-leave__section">Joining and leaving</h2>
       <div className="lf-life__split">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-card" style={{ padding: 0 }}>
           {journeys.length === 0 ? (
             <p className="lf-leave__empty" style={{ margin: 0 }}>
               Nobody joining or leaving.
             </p>
           ) : (
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Phase</th>
-                  <th>When</th>
-                  <th>Blocked</th>
-                </tr>
-              </thead>
-              <tbody>
-                {journeys.map((row) => (
-                  <tr key={`${row.phase}-${row.employeeId}`}>
-                    <td data-label="Employee">
-                      <a href={`?employee=${row.employeeId}`}>{row.name}</a>
-                      <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>
-                        {row.employeeNumber}
-                      </div>
-                    </td>
-                    <td data-label="Phase">{row.phase}</td>
-                    <td data-label="When">{row.when ?? '—'}</td>
-                    <td data-label="Blocked">{row.openBlockers > 0 ? `${row.openBlockers} open` : '—'}</td>
+            <div className="lf-table-scroll">
+              <table className="lf-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Phase</th>
+                    <th>When</th>
+                    <th>Blocked</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {journeys.map((row) => (
+                    <tr key={`${row.phase}-${row.employeeId}`}>
+                      <td data-label="Employee">
+                        <a href={`?employee=${row.employeeId}`}>{row.name}</a>
+                        <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>
+                          {row.employeeNumber}
+                        </div>
+                      </td>
+                      <td data-label="Phase">{row.phase}</td>
+                      <td data-label="When">{row.when ?? '—'}</td>
+                      <td data-label="Blocked">{row.openBlockers > 0 ? `${row.openBlockers} open` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="lf-card" style={{ padding: 0 }}>
           {!selected ? (
             <p className="lf-leave__empty" style={{ margin: 0 }}>
               Pick someone to see their checklist.
@@ -348,41 +350,43 @@ export default function LifecycleScreen({
               No checklist tasks for this person.
             </p>
           ) : (
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>Task</th>
-                  <th>Owner</th>
-                  <th>Due</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {checklist.map((task) => (
-                  <tr key={task.id}>
-                    <td data-label="Task">{task.title}</td>
-                    <td data-label="Owner">{task.owner}</td>
-                    <td data-label="Due">{task.dueOn ?? '—'}</td>
-                    <td data-label="Status">
-                      <span className="lf-badge">{task.status.toLowerCase()}</span>
-                    </td>
-                    <td data-label="">
-                      {canManage && (
-                        <button
-                          type="button"
-                          className="lf-btn lf-btn--secondary lf-btn--sm"
-                          disabled={busy}
-                          onClick={() => void setTask(task.id, task.status !== 'DONE')}
-                        >
-                          {task.status === 'DONE' ? 'Reopen' : 'Complete'}
-                        </button>
-                      )}
-                    </td>
+            <div className="lf-table-scroll">
+              <table className="lf-table">
+                <thead>
+                  <tr>
+                    <th>Task</th>
+                    <th>Owner</th>
+                    <th>Due</th>
+                    <th>Status</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {checklist.map((task) => (
+                    <tr key={task.id}>
+                      <td data-label="Task">{task.title}</td>
+                      <td data-label="Owner">{task.owner}</td>
+                      <td data-label="Due">{task.dueOn ?? '—'}</td>
+                      <td data-label="Status">
+                        <span className="lf-badge">{task.status.toLowerCase()}</span>
+                      </td>
+                      <td data-label="">
+                        {canManage && (
+                          <button
+                            type="button"
+                            className="lf-btn lf-btn--secondary lf-btn--sm"
+                            disabled={busy}
+                            onClick={() => void setTask(task.id, task.status !== 'DONE')}
+                          >
+                            {task.status === 'DONE' ? 'Reopen' : 'Complete'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
@@ -391,27 +395,29 @@ export default function LifecycleScreen({
       {expiring.length === 0 ? (
         <div className="lf-card lf-leave__empty">Nothing expiring in the next 90 days.</div>
       ) : (
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Document</th>
-                <th>Expires</th>
-                <th>Remaining</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expiring.map((row, i) => (
-                <tr key={i}>
-                  <td data-label="Employee">{row.employeeName}</td>
-                  <td data-label="Document">{row.kind}</td>
-                  <td data-label="Expires">{row.expiresAt}</td>
-                  <td data-label="Remaining">{row.daysRemaining}d</td>
+        <div className="lf-table-wrap">
+          <div className="lf-table-scroll">
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Document</th>
+                  <th>Expires</th>
+                  <th>Remaining</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {expiring.map((row, i) => (
+                  <tr key={i}>
+                    <td data-label="Employee">{row.employeeName}</td>
+                    <td data-label="Document">{row.kind}</td>
+                    <td data-label="Expires">{row.expiresAt}</td>
+                    <td data-label="Remaining">{row.daysRemaining}d</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>

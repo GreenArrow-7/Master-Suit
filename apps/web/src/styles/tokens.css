@@ -88,10 +88,21 @@
   --lf-text-xs: 0.6875rem; /* 11px — grid meta, badges */
   --lf-text-sm: 0.8125rem; /* 13px — grid body, the workhorse */
   --lf-text-base: 0.9375rem; /* 15px — forms, detail panes */
+  /* Fluid above body size.
+     A 30px page title is right on a desktop and overbearing on a 320px phone,
+     but stepping it down at a breakpoint makes the layout lurch as the window
+     crosses it. clamp() scales continuously between a floor and the desktop
+     value, so the app fits whatever resolution it is given rather than the
+     handful we happened to test. Body sizes stay fixed: readable text should
+     not depend on window width. */
   --lf-text-lg: 1.0625rem;
-  --lf-text-xl: 1.375rem;
-  --lf-text-2xl: 1.875rem;
-  --lf-text-hero: 2.75rem; /* serif metrics only */
+  --lf-text-xl: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem);
+  --lf-text-2xl: clamp(1.375rem, 1.1rem + 1.35vw, 1.875rem);
+  --lf-text-hero: clamp(2rem, 1.5rem + 2.4vw, 2.75rem); /* display metrics only */
+
+  /* The page gutter scales with the viewport too, so content is not pinned to
+     16px on a phone and 32px everywhere above it. */
+  --lf-page-gutter: clamp(14px, 3.6vw, 32px);
 
   --lf-track-tight: -0.02em;
   --lf-track-wide: 0.09em;
@@ -112,6 +123,27 @@
 
   /* Controls sit at 6/9, cards at 13, hero surfaces at 16 — structured, not
      bubbly, and the three tiers stay visibly distinct. */
+  /* ── Responsive tiers ─────────────────────────────────────────────────────
+     Three intentional experiences, not one layout scaled down. Every new
+     responsive rule MUST use one of these boundaries — the codebase had grown
+     twelve ad-hoc breakpoints (430/560/640/760/820/860/900/960/1100…), which is
+     why 768px ended up with no design at all and overflowed on 22 routes.
+
+       phone    ≤ 760px   single column, drawer nav, cards not tables
+       tablet   761–1023  icon rail + condensed chrome, keeps desktop density
+       desktop  ≥ 1024px  full sidebar, full chrome
+
+     CSS cannot use custom properties in media queries, so these are the
+     canonical literals to copy:
+       @media (max-width: 760px)                          phone
+       @media (min-width: 761px) and (max-width: 1023px)  tablet
+       @media (max-width: 1023px)                         phone + tablet
+       @media (min-width: 1024px)                         desktop
+     ─────────────────────────────────────────────────────────────────────── */
+  --lf-bp-phone: 760px;
+  --lf-bp-tablet: 1023px;
+  --lf-bp-desktop: 1024px;
+
   --lf-radius-sm: 6px;
   --lf-radius: 9px;
   --lf-radius-lg: 13px;

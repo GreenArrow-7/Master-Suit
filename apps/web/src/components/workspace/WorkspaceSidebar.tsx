@@ -46,8 +46,41 @@ export default function WorkspaceSidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  // null = follow the tier; true/false = the viewer overrode it deliberately.
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  /**
+   * The tablet tier collapses the rail automatically.
+   *
+   * Between 761px and 1023px there is room for desktop density but not for
+   * desktop chrome: the full 236px sidebar plus the top bar's action cluster
+   * overflowed 22 routes by 234px. Rather than describe a second collapsed
+   * appearance in CSS — which would have to re-hide every label the component
+   * already conditionally renders, and drift from it — this reuses the exact
+   * rendering the desktop collapse toggle produces.
+   *
+   * `matchMedia` and not a resize listener: the browser evaluates the query,
+   * so this fires once per crossing instead of on every resize frame. The
+   * literal matches the tablet tier in tokens.css.
+   */
+  const [tabletRail, setTabletRail] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 761px) and (max-width: 1023px)');
+    const sync = () => setTabletRail(query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, []);
+
+  // The tier is the default, never a lock: a viewer who expands the rail on a
+  // tablet keeps it expanded. Storing the override as null-until-set is what
+  // makes "no opinion yet" distinguishable from "chose expanded", so crossing
+  // a breakpoint does not silently discard the choice.
+  const collapsed = userCollapsed ?? tabletRail;
+  const setCollapsed = (next: boolean | ((value: boolean) => boolean)) =>
+    setUserCollapsed(typeof next === 'function' ? next(collapsed) : next);
+
   /**
    * The module is the third path segment, not a substring of the whole path.
    *
@@ -65,6 +98,15 @@ export default function WorkspaceSidebar({
   useEffect(() => {
     window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
   }, [activeModule, slug]);
+
+  // The bottom tab bar's Menu button asks for the drawer. An event rather than
+  // lifted state: the drawer's open/closed is nobody else's business, and one
+  // button does not justify a context provider around the whole workspace.
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener('lf:open-nav', open);
+    return () => window.removeEventListener('lf:open-nav', open);
+  }, []);
 
   // The open drawer closes on Escape, like any dismissible surface.
   useEffect(() => {

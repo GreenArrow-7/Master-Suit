@@ -8,6 +8,17 @@ import { usePathname, useRouter } from 'next/navigation';
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
  * reads as "Work locations". The module root is "Overview".
  */
+function pageTitle(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  // /{slug}/sales/leads → "Leads"; /{slug}/dashboard → "Overview".
+  const leaf = segments[segments.length - 1] ?? '';
+  if (!leaf || leaf === 'dashboard') return 'Overview';
+  // A record id is not a page name; fall back to its section.
+  const words = /^[a-z0-9]{16,}$/i.test(leaf) ? (segments[segments.length - 2] ?? leaf) : leaf;
+  const spaced = words.replace(/-/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function peoplePageTitle(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
   const tail = segments[2] === 'people' ? segments.slice(3) : segments.slice(1);
@@ -228,6 +239,10 @@ export default function TopBar({
       {/* The HR topbar stays crumb-only: the employee directory carries its own
           search (labelled "Search employees"), so a topbar twin would give two
           controls one accessible name — and the pair overflows a 375px phone. */}
+      {/* Phone only: the bar has to say where you are, because the desktop
+          breadcrumb and the sidebar's active row are both off-screen. */}
+      <span className="lf-appbar-title">{pageTitle(pathname)}</span>
+
       {module !== 'people' && (
         <form
           className="lf-shell-search"
@@ -303,7 +318,7 @@ export default function TopBar({
           return (
             <Link
               href={dashHref}
-              className="lf-btn lf-btn--ghost lf-btn--sm"
+              className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
               aria-current={active ? 'page' : undefined}
               style={
                 active ? { background: 'var(--lf-wine-050)', color: 'var(--lf-wine-700)', fontWeight: 600 } : undefined
@@ -555,7 +570,7 @@ export default function TopBar({
         )}
 
         <button
-          className="lf-btn lf-btn--ghost lf-btn--sm"
+          className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
           onClick={() => {
             void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
               window.location.href = '/login';
