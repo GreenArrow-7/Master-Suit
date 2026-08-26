@@ -85,3 +85,32 @@ export const PATCH = route(
     });
   },
 );
+
+const deleteQuery = z.object({ auditId: z.string().cuid() }).strict();
+
+/**
+ * Removes one audit verdict. `calls:DELETE` is held only by the administrator
+ * roles (wildcard grants) — QA managers review audits, they do not erase them,
+ * and the deletion itself lands in the audit log like every other destructive
+ * action.
+ */
+export const DELETE = route(
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'DELETE',
+    params,
+    query: deleteQuery,
+    auditEvent: 'RECORD_DELETED',
+  },
+  async ({ ctx, params, query }) => {
+    const audit = await prisma.callAudit.findFirst({
+      where: { id: query.auditId, callId: params.id, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!audit) throw NotFound('Call audit');
+
+    await prisma.callAudit.delete({ where: { id: audit.id, tenantId: ctx.tenantId } });
+    return { ok: true };
+  },
+);

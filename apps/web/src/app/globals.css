@@ -96,8 +96,8 @@ body {
 .lf-page-main {
   flex: 1;
   min-width: 0;
-  /* Fluid side gutter (this branch) with main's FAB-safe bottom — both are
-     wanted: the sides scale with the viewport, the bottom clears the assistant
+  /* Fluid side gutter from the responsive work, main's FAB-safe bottom:
+     the sides scale with the viewport, the bottom clears the assistant
      button and, on a phone, the tab bar. */
   padding: 28px var(--lf-page-gutter) var(--lf-fab-safe);
 }

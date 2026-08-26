@@ -17,6 +17,14 @@ infra/pgbouncer-userlist.txt
 *.log
 # Scratch verification scripts and logs from local test runs
 .verify/
+.mobile-audit-auth.json
+
+# Audit probe output: scripts/mobile-audit.mjs rewrites mobile-audit.json on
+# every run, and all-findings.json is the static sweep's dump. Both are
+# regenerated data, not sources — committed, they re-broke the format gate each
+# time the probe ran. The reading of them lives in docs/MOBILE_UI_AUDIT.md.
+mobile-audit.json
+all-findings.json
 
 # Redis snapshot, written by a redis-server started in this directory.
 dump.rdb
@@ -33,11 +41,3 @@ dump.rdb
 # `tsc --noEmit` passes with the file absent — verified rather than assumed.
 # Next writes it back on the first dev or build.
 next-env.d.ts
-.mobile-audit-auth.json
-
-# Audit probe output: scripts/mobile-audit.mjs rewrites mobile-audit.json on
-# every run, and all-findings.json is the static sweep's dump. Both are
-# regenerated data, not sources — committed, they re-broke the format gate each
-# time the probe ran. The reading of them lives in docs/MOBILE_UI_AUDIT.md.
-mobile-audit.json
-all-findings.json

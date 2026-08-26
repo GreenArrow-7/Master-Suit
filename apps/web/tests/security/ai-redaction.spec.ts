@@ -50,6 +50,21 @@ describe('transcription provider selection', () => {
     expect(getTranscriptionProvider('google', { apiKey: 'k' }).name).toBe('google');
     expect(getTranscriptionProvider('deepgram', { apiKey: 'k' }).name).toBe('deepgram');
     expect(getTranscriptionProvider('whisper', { endpoint: 'https://stt.internal' }).name).toBe('whisper');
+    expect(getTranscriptionProvider('gemini', { apiKey: 'k' }).name).toBe('gemini');
+  });
+
+  it('matches the provider name the admin actually typed, whatever the casing', () => {
+    expect(getTranscriptionProvider('Google', { apiKey: 'k' }).name).toBe('google');
+    expect(getTranscriptionProvider(' Gemini ', { apiKey: 'k' }).name).toBe('gemini');
+  });
+
+  it('routes "Google" with a Gemini model to the generative API, not Cloud STT', () => {
+    // A Gemini key posted to speech.googleapis.com fails with a 403 that reads
+    // like a bad key — the connection the admin saved must select by intent.
+    expect(getTranscriptionProvider('google', { apiKey: 'k', model: 'Gemini' }).name).toBe('gemini');
+    expect(getTranscriptionProvider('google', { apiKey: 'k', model: 'gemini-2.0-flash' }).name).toBe('gemini');
+    expect(getTranscriptionProvider('google', { apiKey: 'k', model: 'latest_long' }).name).toBe('google');
+    expect(() => getTranscriptionProvider('gemini', {})).toThrow(/API key/);
   });
 
   it('refuses a provider with no credentials rather than silently mocking', () => {
