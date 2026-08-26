@@ -1,0 +1,75 @@
+# Connection pooling, as an opt-in overlay. Layer it last:
+#
+#   docker compose --env-file ../.env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.azure.yml \
+#     -f docker-compose.pgbouncer.yml up -d
+#
+# ── It is an overlay, not part of the stack, on purpose ─────────────────────
+#
+# `max_connections=200` against pools of 20 (web) and 10 (worker) is comfortable
+# to roughly 1,000 organizations, and a pooler in the path is one more thing
+# between the application and its data. This exists so that adding it later is a
+# flag and a connection string rather than a design exercise during an incident —
+# see the note in infra/pgbouncer.ini for why transaction pooling is safe with
+# this schema, which the assessment had recorded as an open design question.
+#
+# ── After bringing it up ────────────────────────────────────────────────────
+#
+# Point the *application* at the pooler and leave everything else direct:
+#
+#   DATABASE_URL=postgresql://master_saas_app:…@pgbouncer:6432/leadflow?schema=public&connection_limit=50
+#
+# MIGRATION_DATABASE_URL keeps `postgres:5432`. Migrations take locks, run DDL and
+# occasionally sit inside long transactions; they want a real connection, not a
+# borrowed one — and `idle_transaction_timeout` would eventually cut them off.
+# scripts/backup.sh reaches Postgres through `docker compose exec` and is
+# unaffected.
+#
+# `connection_limit` in the application URL can go *up* once a pooler is in front:
+# it now bounds client connections to PgBouncer, which are cheap, rather than
+# server processes in Postgres, which are not.
+
+# Anchors do not cross files, so this repeats the base file's rotation for the
+# services only this overlay declares. Without it `caddy` — which writes an
+# access line per request, the highest-volume log in the stack — would be the one
+# container on the host with an unbounded log. See docker-compose.yml for why
+# switching driver means replacing this block rather than overriding a line.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+services:
+  pgbouncer:
+    logging: *logging
+    image: edoburu/pgbouncer:latest
+    restart: unless-stopped
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      # scram-sha-256 hashes, not passwords. Generate one with:
+      #
+      #   docker compose exec -T postgres psql -U leadflow -tAc \
+      #     "SELECT '\"'||rolname||'\" \"'||rolpassword||'\"' FROM pg_authid WHERE rolname='master_saas_app'"
+      #
+      # The file must be mode 600 and owned by the container's user; a pooler
+      # holding plaintext credentials is a second copy of the database password.
+      - ./pgbouncer-userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    # Never published to the host. The application reaches it over the compose
+    # network, exactly as it reaches Postgres today; a pooler on a public
+    # interface is an unauthenticated route to the database's front door.
+    expose: ['6432']
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -p 6432 -U master_saas_app || exit 1']
+      interval: 10s
+      retries: 5
+
+  web:
+    depends_on:
+      pgbouncer: { condition: service_started }
+
+  worker:
+    depends_on:
+      pgbouncer: { condition: service_started }

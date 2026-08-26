@@ -25,7 +25,18 @@ import {
  */
 const paramsSchema = z.object({
   workspaceSlug: z.string().min(2).max(64),
-  action: z.enum(['roles', 'matrix', 'history', 'create', 'clone', 'update', 'delete', 'matrix-update', 'assign', 'revoke']),
+  action: z.enum([
+    'roles',
+    'matrix',
+    'history',
+    'create',
+    'clone',
+    'update',
+    'delete',
+    'matrix-update',
+    'assign',
+    'revoke',
+  ]),
 });
 
 const id = z.string().min(1).max(64);

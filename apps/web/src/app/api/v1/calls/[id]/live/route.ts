@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { geminiKeyForTenant } from '@/lib/ai/gemini';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
@@ -38,9 +37,6 @@ export const GET = route(
 
     const scope = scopeFor(ctx, 'calls', 'EDIT');
     if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Call');
-
-    // Resolved once per stream: the env key or the tenant's connected one.
-    const liveKey = await geminiKeyForTenant(ctx.tenantId);
 
     if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
       throw Invalid([
@@ -94,7 +90,12 @@ export const GET = route(
 
         await prisma.call.update({
           where: { id: callId, tenantId },
-          data: { status: 'COMPLETED', endedAt, durationSecs, ...(reason === 'completed' ? { outcome: 'CONNECTED' } : {}) },
+          data: {
+            status: 'COMPLETED',
+            endedAt,
+            durationSecs,
+            ...(reason === 'completed' ? { outcome: 'CONNECTED' } : {}),
+          },
         });
 
         if (content.length > 0) {
@@ -158,8 +159,10 @@ export const GET = route(
               const window = spoken.slice(-6).join('\n');
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
-              if (liveKey && i % 4 === 3) {
-                const hints = await coachTick(window, liveKey);
+              // The workspace's own key when it has one, the deployment's
+              // otherwise — `coachTick` degrades to heuristics with neither.
+              if (i % 4 === 3) {
+                const hints = await coachTick(window, ctx.tenantId);
                 for (const hint of hints.filter((h) => h.source === 'gemini')) send({ type: 'coach', ...hint, at });
               }
             }

@@ -43,10 +43,8 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
 
   // Place / move the marker and radius circle, and reflect the point into the
   // latitude/longitude fields. One function so a map click, a marker drag and a
@@ -186,7 +184,12 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)' }} noValidate>
+    <form
+      onSubmit={submit}
+      className="lf-card"
+      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)' }}
+      noValidate
+    >
       {error && (
         <div className="lf-alert" role="alert">
           {error}
@@ -230,47 +233,119 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
         )}
       </div>
 
-      <div ref={mapEl} style={{ height: 320, borderRadius: 'var(--lf-radius-sm)', overflow: 'hidden', border: '1px solid var(--lf-line)' }} />
+      <div
+        ref={mapEl}
+        style={{
+          height: 320,
+          borderRadius: 'var(--lf-radius-sm)',
+          overflow: 'hidden',
+          border: '1px solid var(--lf-line)',
+        }}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--lf-space-3)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 'var(--lf-space-3)',
+        }}
+      >
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-name">Location name</label>
+          <label className="lf-label" htmlFor="wl-name">
+            Location name
+          </label>
           <input id="wl-name" className="lf-input" value={form.name} onChange={set('name')} required />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-code">Code</label>
+          <label className="lf-label" htmlFor="wl-code">
+            Code
+          </label>
           <input id="wl-code" className="lf-input" value={form.code} onChange={set('code')} />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-lat">Latitude</label>
-          <input id="wl-lat" className="lf-input" value={form.latitude} onChange={set('latitude')} inputMode="decimal" required />
+          <label className="lf-label" htmlFor="wl-lat">
+            Latitude
+          </label>
+          <input
+            id="wl-lat"
+            className="lf-input"
+            value={form.latitude}
+            onChange={set('latitude')}
+            inputMode="decimal"
+            required
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-lng">Longitude</label>
-          <input id="wl-lng" className="lf-input" value={form.longitude} onChange={set('longitude')} inputMode="decimal" required />
+          <label className="lf-label" htmlFor="wl-lng">
+            Longitude
+          </label>
+          <input
+            id="wl-lng"
+            className="lf-input"
+            value={form.longitude}
+            onChange={set('longitude')}
+            inputMode="decimal"
+            required
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-radius">Radius (metres)</label>
-          <input id="wl-radius" className="lf-input" type="number" min={10} max={10000} value={form.radiusMeters} onChange={set('radiusMeters')} required />
+          <label className="lf-label" htmlFor="wl-radius">
+            Radius (metres)
+          </label>
+          <input
+            id="wl-radius"
+            className="lf-input"
+            type="number"
+            min={10}
+            max={10000}
+            value={form.radiusMeters}
+            onChange={set('radiusMeters')}
+            required
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-acc">Worst acceptable GPS accuracy (m)</label>
-          <input id="wl-acc" className="lf-input" type="number" min={5} max={1000} value={form.maxAccuracyMeters} onChange={set('maxAccuracyMeters')} placeholder="100" />
+          <label className="lf-label" htmlFor="wl-acc">
+            Worst acceptable GPS accuracy (m)
+          </label>
+          <input
+            id="wl-acc"
+            className="lf-input"
+            type="number"
+            min={5}
+            max={1000}
+            value={form.maxAccuracyMeters}
+            onChange={set('maxAccuracyMeters')}
+            placeholder="100"
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-open">Opening time</label>
+          <label className="lf-label" htmlFor="wl-open">
+            Opening time
+          </label>
           <input id="wl-open" className="lf-input" type="time" value={form.openingTime} onChange={set('openingTime')} />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-close">Closing time</label>
-          <input id="wl-close" className="lf-input" type="time" value={form.closingTime} onChange={set('closingTime')} />
+          <label className="lf-label" htmlFor="wl-close">
+            Closing time
+          </label>
+          <input
+            id="wl-close"
+            className="lf-input"
+            type="time"
+            value={form.closingTime}
+            onChange={set('closingTime')}
+          />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-emirate">Emirate</label>
+          <label className="lf-label" htmlFor="wl-emirate">
+            Emirate
+          </label>
           <input id="wl-emirate" className="lf-input" value={form.emirate} onChange={set('emirate')} />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-status">Status</label>
+          <label className="lf-label" htmlFor="wl-status">
+            Status
+          </label>
           <select id="wl-status" className="lf-input" value={form.status} onChange={set('status')}>
             <option value="ACTIVE">Active</option>
             <option value="DRAFT">Draft</option>

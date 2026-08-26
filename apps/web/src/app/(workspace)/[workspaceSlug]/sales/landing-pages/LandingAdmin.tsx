@@ -12,9 +12,11 @@ export function LandingComposer({ forms }: { forms: { id: string; name: string }
   const [form, setForm] = useState({ name: '', headline: '', body: '', formId: '', publish: true });
 
   const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+    (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm((f) => ({
+        ...f,
+        [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value,
+      }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,12 +62,22 @@ export function LandingComposer({ forms }: { forms: { id: string; name: string }
     <form
       onSubmit={submit}
       className="lf-card"
-      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      style={{
+        padding: 'var(--lf-space-5)',
+        display: 'grid',
+        gap: 'var(--lf-space-4)',
+        marginBottom: 'var(--lf-space-4)',
+      }}
       noValidate
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>New landing page</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -76,7 +88,13 @@ export function LandingComposer({ forms }: { forms: { id: string; name: string }
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <div className="lf-field">
           <label className="lf-label" htmlFor="lp-name">
             Internal name
@@ -169,7 +187,12 @@ export function LandingRowActions({
           <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={copy}>
             {copied ? 'Copied!' : 'Copy link'}
           </button>
-          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setState('PAUSED')}>
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary lf-btn--sm"
+            disabled={busy}
+            onClick={() => setState('PAUSED')}
+          >
             Pause
           </button>
         </>

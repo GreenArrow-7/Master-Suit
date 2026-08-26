@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
@@ -47,7 +48,7 @@ export default async function LeadsPage({
         ],
       }
     : {};
-  const where = { ...scope, ...extra, ...search };
+  const where = mergeWhere(scope, extra, search);
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 

@@ -23,8 +23,11 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+import sys
 import threading
 from typing import List, Optional
+
+from tokens import accepts, refusal
 
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -93,12 +96,27 @@ def diagnose(exc: Optional[Exception] = None) -> str:
     return f"The face engine failed to start: {exc}" if exc else "The face engine failed to start."
 
 
+# Read once, at import, so the refusal below happens at start rather than on the
+# first check-in of the day.
+_TOKEN = os.environ.get("FACE_SERVICE_TOKEN", "")
+_TOKEN_PREVIOUS = os.environ.get("FACE_SERVICE_TOKEN_PREVIOUS", "")
+_ENV = os.environ.get("FACE_SERVICE_ENV", "development").strip().lower()
+
+# The rules live in tokens.py, which imports nothing but `hmac`, so
+# test_tokens.py can exercise them without loading FastAPI and the ONNX graphs.
+# See that module for why a second token exists at all.
+_REFUSAL = refusal(_TOKEN, _TOKEN_PREVIOUS, _ENV)
+if _REFUSAL:
+    sys.stderr.write(f"\n[face] Refusing to start: {_REFUSAL}\n\n")
+    raise SystemExit(1)
+
+
 def authorise(authorization: str = Header(default="")):
-    """Shared-secret gate. Unset token means development on a private network."""
-    expected = os.environ.get("FACE_SERVICE_TOKEN", "")
-    if not expected:
-        return
-    if authorization != f"Bearer {expected}":
+    """Shared-secret gate. See tokens.py for the comparison and the rotation."""
+    if not accepts(authorization, _TOKEN, _TOKEN_PREVIOUS):
+        # Deliberately one message for every refusal. "Bad token" and "no token"
+        # and "retired token" are the same answer to a caller who should not be
+        # here, and telling them apart is a hint about what to try next.
         raise HTTPException(401, "Bad or missing face-service token.")
 
 

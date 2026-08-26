@@ -136,13 +136,30 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       )}
 
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 10px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            margin: '0 0 10px',
+          }}
+        >
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Assignments</h2>
           {hr && assignments.length > 0 && (
             <ExportCsv
               filename={`work-location-assignments-${new Date().toISOString().slice(0, 10)}.csv`}
               csv={[
-                ['Employee', 'Employee number', 'Location', 'Type', 'Effective from', 'Effective to', 'Check-out rule', 'Status']
+                [
+                  'Employee',
+                  'Employee number',
+                  'Location',
+                  'Type',
+                  'Effective from',
+                  'Effective to',
+                  'Check-out rule',
+                  'Status',
+                ]
                   .map(csvCell)
                   .join(','),
                 ...assignments.map((assignment) =>

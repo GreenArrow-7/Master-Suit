@@ -16,6 +16,7 @@ import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { findDuplicates } from '@/services/leads/findDuplicates';
+import { applySocialComment } from '@/services/social/applySocialComment';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
@@ -34,6 +35,8 @@ export async function applyMetaEvent({ tenantId, connectionId, event }: ApplyMet
   switch (event.kind) {
     case 'LEAD_CREATED':
       return applyLeadgen(tenantId, connectionId, event);
+    case 'SOCIAL_COMMENT_RECEIVED':
+      return applySocialComment({ tenantId, connectionId, event });
     case 'MESSAGE_RECEIVED':
       return applyInboundMessage(tenantId, event);
     case 'MESSAGE_SENT':
@@ -131,11 +134,46 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
     return { leadId: existing.id, created: false };
   }
 
-  const stage = await prisma.leadStage.findFirst({
-    where: { tenantId, isDefault: true },
-    select: { id: true },
-  });
-  if (!stage) throw new Error('tenant has no default lead stage');
+  /**
+   * What this form means to the CRM, if an administrator has said (§20).
+   *
+   * Without a rule the behaviour is exactly what it was before Phase 2: default
+   * stage, default source, distribution engine picks the owner. A rule narrows
+   * that, and a disabled rule stops lead creation without discarding the event —
+   * the WebhookEvent row is already stored, so turning the form back on does not
+   * lose the record that it fired.
+   */
+  const routing = event.lead?.formId
+    ? await prisma.metaLeadFormRouting.findUnique({
+        where: { tenantId_providerFormId: { tenantId, providerFormId: event.lead.formId } },
+        select: {
+          id: true,
+          enabled: true,
+          source: true,
+          stageId: true,
+          priority: true,
+          assignedUserId: true,
+          assignedTeamId: true,
+        },
+      })
+    : null;
+
+  if (routing && !routing.enabled) {
+    logger.info(
+      { tenantId, leadgenId, formId: event.lead?.formId },
+      'meta lead form routing is disabled — not creating a lead',
+    );
+    return { skipped: 'routing-disabled' as const };
+  }
+
+  // The rule's stage when it names one, the tenant default otherwise. A rule
+  // whose stage was deleted falls back rather than failing the ingestion.
+  const stage = routing?.stageId
+    ? await prisma.leadStage.findFirst({ where: { tenantId, id: routing.stageId }, select: { id: true } })
+    : null;
+  const fallbackStage =
+    stage ?? (await prisma.leadStage.findFirst({ where: { tenantId, isDefault: true }, select: { id: true } }));
+  if (!fallbackStage) throw new Error('tenant has no default lead stage');
 
   const lead = await withTx(tenantId, async (tx) => {
     return tx.lead.create({
@@ -146,10 +184,17 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
         email,
         phone: rawPhone,
         phoneNormalized,
-        stageId: stage.id,
+        stageId: fallbackStage.id,
         // AD_LEAD_FORM, not SOCIAL: RecordSource already has the precise term
         // for a lead that came from an ad's lead form, and the reports read it.
-        source: 'AD_LEAD_FORM',
+        // A routing rule may override it — some workspaces report Instagram and
+        // Facebook separately.
+        source: routing?.source ?? 'AD_LEAD_FORM',
+        priority: routing?.priority ?? 'MEDIUM',
+        // A named owner or team from the rule; distribution fills the gap below
+        // when the rule names neither.
+        ownerId: routing?.assignedUserId ?? null,
+        teamId: routing?.assignedTeamId ?? null,
         sourceDetail: `facebook:${event.lead?.formId ?? 'leadgen'}`,
         // They completed a lead form asking to be contacted.
         consentStatus: 'IMPLIED',
@@ -161,10 +206,24 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
     });
   });
 
-  // The same after-commit pipeline a website or manual lead gets: an owner, then
-  // automations. Assignment is what produces the rep's notification (§47).
+  if (routing) {
+    // Best-effort: the lead is already committed, and failing to stamp "last
+    // lead" must not send the job back through ingestion.
+    await prisma.metaLeadFormRouting
+      .update({ where: { id: routing.id }, data: { lastLeadAt: event.occurredAt } })
+      .catch(() => {});
+  }
+
+  /**
+   * The same after-commit pipeline a website or manual lead gets.
+   *
+   * Distribution is skipped only when the rule already named an owner — running
+   * it anyway would let the engine reassign a lead an administrator deliberately
+   * routed. A rule naming only a team still goes through distribution, which is
+   * what picks a person within it.
+   */
   await Promise.all([
-    enqueue('distribution', 'assign-lead', { tenantId, leadId: lead.id }),
+    ...(routing?.assignedUserId ? [] : [enqueue('distribution', 'assign-lead', { tenantId, leadId: lead.id })]),
     enqueue('automation', 'trigger', { tenantId, event: 'record.created', object: 'LEAD', recordId: lead.id }),
   ]);
 

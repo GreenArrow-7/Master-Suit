@@ -2,9 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
-import { enqueue, queueHasWorkers } from '@/lib/queue';
-import { logger } from '@/lib/logger';
-import { runCallAudit } from '@/services/shared/callIntelligence';
+import { enqueue } from '@/lib/queue';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -46,17 +44,13 @@ export const POST = route(
     if (!scorecard) throw NotFound('Active scorecard');
     if (existing?.status === 'PROCESSING') throw Conflict('This audit is already in progress.');
 
-    // The PROCESSING check above is the whole refusal; the service claims the
-    // row itself. When this route also flipped it to PROCESSING, `runCallAudit`
-    // then saw an in-progress row and skipped — stranding every manual re-audit.
-    // Queue when a worker is listening, inline when this box is all there is.
-    const job = { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId };
-    if (await queueHasWorkers('ai')) {
-      await enqueue('ai', 'audit', job, { fresh: true });
-    } else {
-      void runCallAudit(job).catch((err) => logger.error({ err, callId: params.id }, 'inline audit failed'));
-    }
-    return { status: 'QUEUED', existingAuditId: existing?.id ?? null };
+    // NOT claimed here. This route used to set the row PROCESSING itself, and
+    // runCallAudit then saw a PROCESSING row and skipped the very work it was
+    // queued for — every manual re-score stranded the audit in PROCESSING.
+    // The worker claims the row before any paid work; duplicate submissions
+    // converge on the payload-hashed jobId.
+    await enqueue('ai', 'audit', { tenantId: ctx.tenantId, callId: params.id, scorecardId: body.scorecardId });
+    return existing ?? { callId: params.id, scorecardId: body.scorecardId, status: 'PENDING' };
   },
 );
 

@@ -63,7 +63,21 @@ export default defineConfig({
   expect: { timeout: 20_000 },
 
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
+  /**
+   * `html` in CI, and it is the reporter that makes a CI failure diagnosable.
+   *
+   * `github` writes inline annotations and `list` writes the log, and neither
+   * survives contact with a runner whose log cannot be read back — which is the
+   * position anyone debugging this suite from outside GitHub's web UI is in.
+   * The HTML reporter writes a self-contained `playwright-report/` with the
+   * traces and screenshots `use` already retains on failure copied into it, and
+   * ci.yml uploads that directory as an artifact when the E2E step fails.
+   *
+   * `open: 'never'` because the reporter otherwise tries to spawn a browser at
+   * the end of a failing run. It does not in CI, but a developer who exports
+   * CI=1 to reproduce a CI-only failure would get one.
+   */
+  reporter: process.env.CI ? [['github'], ['list'], ['html', { open: 'never' }]] : [['list']],
 
   use: {
     baseURL: process.env.APP_URL ?? 'http://localhost:3000',

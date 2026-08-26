@@ -178,17 +178,65 @@ const id = z.string().min(1).max(64);
 const note = z.string().max(1000).optional();
 
 /** Verbs that need more than "may reach HR". Self-service verbs are absent. */
-const ACTION_PERMISSION: Partial<Record<string, [string, 'CREATE' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION']>> = {
+/**
+ * "This action acts only on the caller's own record, deliberately."
+ *
+ * The nineteen actions marked with it are self-service writes — applying for
+ * your own leave, punching your own attendance, granting or withdrawing your own
+ * biometric consent, writing your own self-assessment, acknowledging your own
+ * review. Each is refused for anyone else's record by the service that performs
+ * it, which is where the caller's identity is actually known.
+ *
+ * A sentinel rather than a missing key, for the reason the map below is total.
+ */
+const SELF = Symbol("acts on the caller's own record");
+
+type HrAction = z.infer<typeof paramsSchema>['action'];
+type ActionPermission = readonly [string, 'CREATE' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION'];
+
+/**
+ * The permission each action needs, for every action, with no gaps possible.
+ *
+ * This was `Partial<Record<string, ...>>`, which is a worse defect here than on
+ * the read route next door: these are writes. An action added to the enum
+ * without a line here compiled cleanly and executed under the kernel's floor
+ * gate alone — `employee:VIEW`, a *read* permission — so any employee who could
+ * open the HR module could have driven it.
+ *
+ * Keyed by the action union, every one must now declare itself or the object
+ * fails to compile.
+ */
+const ACTION_PERMISSION: Record<HrAction, ActionPermission | typeof SELF> = {
+  'leave-apply': SELF,
   'leave-approve': ['leave', 'APPROVE'],
   'leave-reject': ['leave', 'APPROVE'],
+  'leave-cancel': SELF,
   'leave-carry-forward': ['leave', 'APPROVE'],
+  'onboarding-start': ['employee', 'EDIT'],
+  'employee-activate': ['employee', 'EDIT'],
+  'checklist-complete': SELF,
+  'checklist-reopen': SELF,
+  'checklist-add': ['employee', 'EDIT'],
+  'offboarding-start': ['employee', 'EDIT'],
+  'employee-exit': ['employee', 'EDIT'],
+  'consent-grant': SELF,
+  'consent-withdraw': SELF,
+  'face-enrol': ['employee', 'EDIT'],
+  'face-reset': ['employee', 'EDIT'],
+  'attendance-preflight': SELF,
+  'attendance-challenge': SELF,
+  'attendance-punch': SELF,
+  'location-revoke': ['employee', 'EDIT'],
+  'settings-update': ['employee', 'EDIT'],
+  'temporary-request': SELF,
+  'temporary-decide': ['attendance', 'APPROVE'],
+  'exception-request': SELF,
   'exception-decide': ['attendance', 'APPROVE'],
-  // Raising and withdrawing your own claim are self-service, so they are absent
-  // here and gated inside the service instead. Deciding and detecting are not.
+  'document-delete': ['employee', 'EDIT'],
+  'overtime-request': SELF,
   'overtime-decide': ['overtime', 'APPROVE'],
+  'overtime-cancel': SELF,
   'overtime-detect': ['overtime', 'APPROVE'],
-  // Payroll splits preparing from signing off, and the service enforces that the
-  // same person cannot do both on one run.
   'compensation-set': ['payroll', 'EDIT'],
   'payroll-adjustment-add': ['payroll', 'EDIT'],
   'payroll-run-create': ['payroll', 'CREATE'],
@@ -197,15 +245,13 @@ const ACTION_PERMISSION: Partial<Record<string, [string, 'CREATE' | 'EDIT' | 'AP
   'payroll-run-decide': ['payroll', 'APPROVE'],
   'payroll-run-lock': ['payroll', 'APPROVE'],
   'payroll-run-paid': ['payroll', 'APPROVE'],
-  // Requesting and withdrawing your own shift change are self-service; the
-  // service checks the roster entry is actually yours.
   'roster-assign': ['shifts', 'EDIT'],
   'roster-bulk-assign': ['shifts', 'EDIT'],
   'roster-copy-week': ['shifts', 'EDIT'],
   'roster-remove': ['shifts', 'EDIT'],
+  'shift-change-request': SELF,
   'shift-change-decide': ['shifts', 'APPROVE'],
-  // Interview feedback is absent: the service restricts it to the panel, which
-  // is a narrower and more meaningful gate than any role could be.
+  'shift-change-cancel': SELF,
   'requisition-create': ['recruitment', 'CREATE'],
   'requisition-submit': ['recruitment', 'EDIT'],
   'requisition-decide': ['recruitment', 'APPROVE'],
@@ -213,38 +259,28 @@ const ACTION_PERMISSION: Partial<Record<string, [string, 'CREATE' | 'EDIT' | 'AP
   'candidate-add': ['recruitment', 'EDIT'],
   'candidate-move': ['recruitment', 'EDIT'],
   'interview-schedule': ['recruitment', 'EDIT'],
+  'interview-feedback': SELF,
   'offer-create': ['recruitment', 'EDIT'],
   'offer-decide': ['recruitment', 'APPROVE'],
   'offer-send': ['recruitment', 'EDIT'],
   'offer-response': ['recruitment', 'EDIT'],
   'candidate-hire': ['recruitment', 'EDIT'],
   'candidate-onboard': ['employee', 'EDIT'],
-  // The self-service verbs — writing your own self-assessment, acknowledging
-  // your own review or plan — are absent: the service ties them to the record's
-  // own employee, which no role can express.
   'cycle-create': ['performance', 'APPROVE'],
   'cycle-open': ['performance', 'APPROVE'],
   'cycle-status': ['performance', 'APPROVE'],
   'competencies-seed': ['performance', 'APPROVE'],
-  'review-calibrate': ['performance', 'APPROVE'],
   'goal-set': ['performance', 'CREATE'],
   'goal-update': ['performance', 'EDIT'],
+  'review-self': SELF,
   'review-manager': ['performance', 'EDIT'],
+  'review-calibrate': ['performance', 'APPROVE'],
+  'review-acknowledge': SELF,
   'pip-create': ['performance', 'CREATE'],
   'pip-activate': ['performance', 'EDIT'],
+  'pip-acknowledge': SELF,
   'pip-checkpoint': ['performance', 'EDIT'],
   'pip-close': ['performance', 'EDIT'],
-  'temporary-decide': ['attendance', 'APPROVE'],
-  'onboarding-start': ['employee', 'EDIT'],
-  'employee-activate': ['employee', 'EDIT'],
-  'offboarding-start': ['employee', 'EDIT'],
-  'employee-exit': ['employee', 'EDIT'],
-  'checklist-add': ['employee', 'EDIT'],
-  'face-enrol': ['employee', 'EDIT'],
-  'face-reset': ['employee', 'EDIT'],
-  'location-revoke': ['employee', 'EDIT'],
-  'document-delete': ['employee', 'EDIT'],
-  'settings-update': ['employee', 'EDIT'],
 };
 
 export const POST = route(
@@ -263,7 +299,7 @@ export const POST = route(
     // approving another person's leave and applying for your own were the same
     // permission.
     const needed = ACTION_PERMISSION[params.action];
-    if (needed) assertPermission(ctx, needed[0], needed[1]);
+    if (needed !== SELF) assertPermission(ctx, needed[0], needed[1]);
 
     switch (params.action) {
       case 'leave-apply': {
@@ -364,9 +400,7 @@ export const POST = route(
       }
 
       case 'payroll-run-create': {
-        const input = z
-          .object({ periodStart: z.coerce.date(), periodEnd: z.coerce.date(), note })
-          .parse(body);
+        const input = z.object({ periodStart: z.coerce.date(), periodEnd: z.coerce.date(), note }).parse(body);
         return createRun(ctx, input.periodStart, input.periodEnd, input.note);
       }
 
@@ -396,9 +430,7 @@ export const POST = route(
       }
 
       case 'roster-assign': {
-        const input = z
-          .object({ employeeId: id, shiftId: id, workDate: z.coerce.date(), note })
-          .parse(body);
+        const input = z.object({ employeeId: id, shiftId: id, workDate: z.coerce.date(), note }).parse(body);
         return assignShift(ctx, input);
       }
 
@@ -696,9 +728,7 @@ export const POST = route(
       }
 
       case 'review-calibrate': {
-        const input = z
-          .object({ reviewId: id, finalRating: z.coerce.number().int().min(1).max(5), note })
-          .parse(body);
+        const input = z.object({ reviewId: id, finalRating: z.coerce.number().int().min(1).max(5), note }).parse(body);
         return calibrateReview(ctx, input.reviewId, input.finalRating, input.note);
       }
 

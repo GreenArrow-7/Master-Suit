@@ -6,6 +6,8 @@ import { prisma } from '@/lib/db';
 import { AppError, Invalid, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { hashPassword, checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { passwordPolicy } from '@/services/identity/accounts';
+import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
 import { revokeAllSessions } from '@/lib/auth/session';
 import { readJsonBody } from '@/lib/api/read-body';
 
@@ -26,6 +28,11 @@ export async function POST(req: Request) {
   try {
     const body = await readJsonBody(req, bodySchema);
 
+    // Checked twice: once against the platform default before the token is even
+    // looked up, so a hopeless password costs nothing and reveals nothing, and
+    // again below against the *workspace's* policy once the token has told us
+    // which workspace this is. A reset must not be the one door through which a
+    // password weaker than the company requires can be set.
     const problems = checkPolicy(body.newPassword, DEFAULT_POLICY);
     if (problems.length) {
       throw Invalid(problems.map((message) => ({ field: 'newPassword', code: 'policy', message })));
@@ -44,8 +51,6 @@ export async function POST(req: Request) {
       throw Unauthorized('This reset link is invalid or has expired.');
     }
 
-    const passwordHash = await hashPassword(body.newPassword);
-
     // The credential lives on PlatformUser and nowhere else. This route used to
     // write the User copy instead, which login never reads — so the reset was
     // inert and the old, possibly leaked, password kept working.
@@ -60,6 +65,22 @@ export async function POST(req: Request) {
       throw Unauthorized('This reset link is invalid or has expired.');
     }
 
+    const policy = await passwordPolicy(tenant.id);
+    const weak = checkPolicy(body.newPassword, policy);
+    if (weak.length) {
+      throw Invalid(weak.map((message) => ({ field: 'newPassword', code: 'policy', message })));
+    }
+    // The reuse window applies here too. A forgotten password is the most likely
+    // moment for someone to reach for one they have used before, which is
+    // precisely what the rule exists to prevent.
+    await assertNotReused(membership.platformUserId, body.newPassword, policy);
+
+    const previous = await prisma.platformUser.findUnique({
+      where: { id: membership.platformUserId },
+      select: { passwordHash: true },
+    });
+    const passwordHash = await hashPassword(body.newPassword);
+
     await prisma.$transaction([
       prisma.platformUser.update({
         where: { id: membership.platformUserId },
@@ -67,6 +88,7 @@ export async function POST(req: Request) {
       }),
       prisma.passwordResetToken.update({ where: { tenantId: tenant.id, id: record.id }, data: { usedAt: now } }),
     ]);
+    await recordPreviousPassword(membership.platformUserId, previous?.passwordHash ?? null);
 
     // A password reset invalidates every existing session — the whole point of the
     // flow. revokeAllSessions covers both the Session and PlatformSession rows.

@@ -21,6 +21,13 @@
    ═════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /**
+   * Space reserved at the bottom of scrollable page content so the fixed
+   * assistant button (.lf-ai-fab: bottom 18px, 52px tall) never comes to rest
+   * on top of it. Bump this if the button's size or offset changes.
+   */
+  --lf-fab-safe: 88px;
+
   /* ── Burgundy ramp ───────────────────────────────────────────────────────
      900 is chrome. 700 is the brand. 500 is interaction. The tints carry
      selection and fills without ever approaching alert saturation. */

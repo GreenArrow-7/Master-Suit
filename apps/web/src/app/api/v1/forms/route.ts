@@ -9,7 +9,11 @@ import { Conflict } from '@/lib/errors';
  * fields; the public routes under /api/v1/public/forms make it reachable.
  */
 const fieldSpec = z.object({
-  key: z.string().min(1).max(60).regex(/^[a-z][a-z0-9_]*$/),
+  key: z
+    .string()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z][a-z0-9_]*$/),
   label: z.string().min(1).max(120),
   type: z.enum(['TEXT', 'LONG_TEXT', 'EMAIL', 'PHONE', 'NUMBER', 'DROPDOWN']),
   isRequired: z.boolean().default(false),
@@ -29,7 +33,12 @@ const DEFAULT_FIELDS: z.infer<typeof fieldSpec>[] = [
 const createBody = z
   .object({
     name: z.string().min(2).max(160),
-    key: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/).optional(),
+    key: z
+      .string()
+      .min(2)
+      .max(60)
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
     successMessage: z.string().max(300).optional(),
     fields: z.array(fieldSpec).min(1).max(30).optional(),
     /** Publish immediately as a public form; DRAFT otherwise. */

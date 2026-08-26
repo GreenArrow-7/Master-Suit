@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
@@ -32,14 +33,14 @@ export const GET = route(
     const scope = await visibilityWhere(ctx, 'requirements', 'VIEW');
 
     const data = await prisma.clientRequirement.findMany({
-      where: {
-        ...scope,
-        deletedAt: null,
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.purpose ? { purpose: query.purpose } : {}),
-        ...(query.leadId ? { leadId: query.leadId } : {}),
-        ...(query.contactId ? { contactId: query.contactId } : {}),
-      },
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        query.status ? { status: query.status } : null,
+        query.purpose ? { purpose: query.purpose } : null,
+        query.leadId ? { leadId: query.leadId } : null,
+        query.contactId ? { contactId: query.contactId } : null,
+      ),
       orderBy: { updatedAt: 'desc' },
       take: query.limit,
     });

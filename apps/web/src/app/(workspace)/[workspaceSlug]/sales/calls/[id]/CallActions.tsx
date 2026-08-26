@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Props {
@@ -9,15 +9,30 @@ interface Props {
   callStatus: string;
   hasTranscript: boolean;
   hasAnalysis: boolean;
+  hasRecording: boolean;
 }
 
-export default function CallActions({ callId, hasConsent, callStatus, hasTranscript, hasAnalysis }: Props) {
+export default function CallActions({
+  callId,
+  hasConsent,
+  callStatus,
+  hasTranscript,
+  hasAnalysis,
+  hasRecording,
+}: Props) {
+  // Lets the analysis poll below notice the component is gone.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
-  const audioInput = useRef<HTMLInputElement>(null);
 
   async function api(url: string, method: string, body?: Record<string, unknown>) {
     const res = await fetch(url, {
@@ -93,37 +108,6 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
     setBusy('');
   }
 
-  async function uploadAudio(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setBusy('audio');
-    setError('');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(`/api/v1/calls/${callId}/recording/upload`, { method: 'POST', body: form });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail ?? `Upload failed (${res.status})`);
-      }
-      // Transcription and the audit chain run server-side; poll the transcript
-      // until it exists so the page fills in without a manual reload.
-      for (let attempt = 0; attempt < 24; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        const check = await fetch(`/api/v1/calls/${callId}/transcript`);
-        if (check.ok) {
-          const data = await check.json().catch(() => null);
-          if (data?.id || data?.content || data?.wordCount) break;
-        }
-      }
-      router.refresh();
-    } catch (err: any) {
-      setError(err.message);
-    }
-    setBusy('');
-  }
-
   async function triggerAnalysis() {
     setBusy('analysis');
     setError('');
@@ -131,16 +115,41 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       await api(`/api/v1/calls/${callId}/analysis`, 'POST');
       // The analysis runs in the background; poll until it leaves PROCESSING so
       // the panel updates without a manual reload.
-      for (let attempt = 0; attempt < 16; attempt++) {
+      for (let attempt = 0; attempt < 16 && alive.current; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
+        if (!alive.current) return;
+        if (document.hidden) continue;
         const res = await fetch(`/api/v1/calls/${callId}/analysis`);
         if (!res.ok) continue;
         const data = await res.json();
         if (data.status && data.status !== 'PROCESSING') break;
       }
+      if (!alive.current) return;
       router.refresh();
     } catch (e: any) {
       setError(e.message);
+    }
+    setBusy('');
+  }
+
+  async function uploadRecording(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy('recording');
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      // Multipart PUT: the server scans, stores and queues transcription itself.
+      const res = await fetch(`/api/v1/calls/${callId}/recording/media`, { method: 'PUT', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? `Upload failed (${res.status})`);
+      }
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
     }
     setBusy('');
   }
@@ -239,18 +248,27 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
         </form>
       )}
 
-      {/* Audio upload → Gemini transcription → analysis → audit. Consent
-          gates the whole chain server-side; the button says so up front. */}
-      <input ref={audioInput} type="file" accept="audio/*" hidden onChange={uploadAudio} />
-      <button
-        className="lf-btn lf-btn--secondary"
-        onClick={() => audioInput.current?.click()}
-        disabled={!!busy || !hasConsent}
-        title={hasConsent ? 'Upload a recording (max 10 MB); transcription and audit run automatically' : 'Record consent first'}
-        style={{ marginBottom: 8, display: 'block' }}
-      >
-        {busy === 'audio' ? 'Transcribing…' : 'Upload audio for AI audit'}
-      </button>
+      {/* Recording upload — consent gate mirrors the server's */}
+      {hasConsent && (
+        <label
+          className="lf-btn lf-btn--secondary"
+          style={{ marginBottom: 8, display: 'block', textAlign: 'center', cursor: 'pointer' }}
+        >
+          {busy === 'recording' ? 'Uploading…' : hasRecording ? 'Replace Recording' : 'Upload Recording'}
+          <input
+            type="file"
+            accept="audio/*,video/*"
+            style={{ display: 'none' }}
+            onChange={uploadRecording}
+            disabled={!!busy}
+          />
+        </label>
+      )}
+      {!hasConsent && !isActive && (
+        <p className="lf-hint" style={{ marginBottom: 8 }}>
+          Recordings and transcripts need recorded consent first.
+        </p>
+      )}
 
       {/* Transcript upload */}
       {!showTranscript ? (

@@ -14,6 +14,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { prisma } from '@/lib/db';
 import { createStaffAccount } from '@/services/identity/accounts';
 import { resetFaceEnrolment } from '@/services/hr/attendance';
@@ -129,7 +130,9 @@ describe('createStaffAccount', () => {
     const input = hire();
     const result = await createStaffAccount(adminCtx, input);
 
-    expect(result.temporaryPassword).toHaveLength(19);
+    // The property that matters is that the generated password passes the same
+    // policy the account will be held to — not that it is a particular length.
+    expect(checkPolicy(result.temporaryPassword, DEFAULT_POLICY)).toEqual([]);
     employeeId = result.employeeId;
 
     const employee = await prisma.employeeProfile.findFirstOrThrow({

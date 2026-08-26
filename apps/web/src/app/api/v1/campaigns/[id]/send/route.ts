@@ -16,6 +16,20 @@ const body = z
   .strict();
 
 /**
+ * What a campaign on each other channel is worked by, said in the refusal.
+ *
+ * Calls are real and have their own screen. Email and SMS have neither a sender
+ * nor a worker — `EmailCampaign` is a table with no code behind it — so the
+ * honest answer is that nothing sends them, rather than a hint at a queue that
+ * would never pick them up.
+ */
+const HOW_IT_IS_WORKED: Record<string, string> = {
+  VOICE: 'This is a calling campaign. Work it from the dialer — “Open dialer” on the campaign — not from here.',
+  EMAIL: 'This is an email campaign, and nothing sends those yet. Only WhatsApp campaigns can be sent.',
+  SMS: 'This is an SMS campaign, and nothing sends those yet. Only WhatsApp campaigns can be sent.',
+};
+
+/**
  * "Send now". The pipeline itself lives in services/campaigns/send — the
  * scheduler worker runs the identical code when a SCHEDULED campaign's start
  * date arrives; this route only translates refusals into HTTP.
@@ -37,6 +51,19 @@ export const POST = route(
       if (outcome.reason === 'not_sendable') {
         throw Invalid([
           { field: 'status', code: 'not_sendable', message: 'A completed or cancelled campaign cannot send.' },
+        ]);
+      }
+      if (outcome.reason === 'wrong_channel') {
+        // This route sent WhatsApp templates to the audience of any campaign,
+        // whatever channel it stated. The refusal is in the service; this names
+        // the channel and what actually works on it, because "cannot send" with
+        // no reason is what makes somebody press the button again.
+        throw Invalid([
+          {
+            field: 'channel',
+            code: 'wrong_channel',
+            message: HOW_IT_IS_WORKED[outcome.channel] ?? `This is a ${outcome.channel} campaign; only WhatsApp sends.`,
+          },
         ]);
       }
       throw Invalid([

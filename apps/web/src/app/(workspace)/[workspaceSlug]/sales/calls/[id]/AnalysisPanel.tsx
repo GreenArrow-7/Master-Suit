@@ -9,6 +9,8 @@ interface AnalysisData {
   buyingSignals: string[];
   risks: string[];
   nextSteps: string[];
+  actionItems: string[];
+  talkRatio: number | null;
   topicsDiscussed: string[];
   topicsMissed: string[];
   sentiment: string | null;
@@ -113,6 +115,14 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
               Human-corrected
             </span>
           )}
+          {analysis.talkRatio != null && (
+            <span
+              style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', fontWeight: 600 }}
+              title="Share of the conversation spoken by the rep, measured from the transcript"
+            >
+              talk {Math.round(analysis.talkRatio * 100)}%
+            </span>
+          )}
           {analysis.sentiment && (
             <span style={{ fontSize: 'var(--lf-text-sm)', color: sentimentColor, fontWeight: 600 }}>
               {analysis.sentiment}{' '}
@@ -171,6 +181,7 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
       <Section title="Buying Signals" items={analysis.buyingSignals} tone="var(--lf-viridian)" />
       <Section title="Objections" items={analysis.objections} tone="var(--lf-vermillion)" />
       <Section title="Commitments" items={analysis.commitments} />
+      <Section title="Action Items" items={analysis.actionItems} tone="var(--lf-viridian)" />
       <Section title="Next Steps" items={analysis.nextSteps} tone="var(--lf-viridian)" />
       <Section title="Risks" items={analysis.risks} tone="var(--lf-vermillion)" />
       <Section title="Topics Discussed" items={analysis.topicsDiscussed} />

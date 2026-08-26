@@ -8,9 +8,12 @@ export const metadata = { title: 'People' };
 
 const day = (value: Date | null) =>
   value
-    ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', year: 'numeric' }).format(
-        value,
-      )
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Dubai',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(value)
     : null;
 
 /**
@@ -91,31 +94,25 @@ export default async function Page({
         canManage={canManage}
         selected={selected ?? null}
         initialMode={mode === 'onboarding' || mode === 'offboarding' ? mode : null}
-        people={staff.map(
-          (person): Person => ({
-            employeeId: person.id,
-            name: person.membership.platformUser.fullName,
-            employeeNumber: person.employeeNumber,
-          }),
-        )}
+        people={staff.map((person): Person => ({
+          employeeId: person.id,
+          name: person.membership.platformUser.fullName,
+          employeeNumber: person.employeeNumber,
+        }))}
         journeys={journeys}
-        checklist={tasks.map(
-          (task): ChecklistTask => ({
-            id: task.id,
-            title: task.title,
-            owner: task.ownerDepartment ?? '—',
-            dueOn: day(task.dueDate),
-            status: task.completedAt ? 'DONE' : task.overdue ? 'OVERDUE' : 'OPEN',
-          }),
-        )}
-        expiring={documents.map(
-          (document): ExpiringDoc => ({
-            employeeName: document.employeeName,
-            kind: document.kind,
-            expiresAt: day(document.expiresAt) ?? '—',
-            daysRemaining: document.daysRemaining,
-          }),
-        )}
+        checklist={tasks.map((task): ChecklistTask => ({
+          id: task.id,
+          title: task.title,
+          owner: task.ownerDepartment ?? '—',
+          dueOn: day(task.dueDate),
+          status: task.completedAt ? 'DONE' : task.overdue ? 'OVERDUE' : 'OPEN',
+        }))}
+        expiring={documents.map((document): ExpiringDoc => ({
+          employeeName: document.employeeName,
+          kind: document.kind,
+          expiresAt: day(document.expiresAt) ?? '—',
+          daysRemaining: document.daysRemaining,
+        }))}
       />
     </div>
   );

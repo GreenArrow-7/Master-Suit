@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
+import { openGrant, revokeGrants } from '@/lib/auth/platform-access';
 import { resolveCtx } from '@/lib/auth/session';
 import { can } from '@/lib/security/rbac';
 import { isSupportRole } from '@/lib/auth/support-actor';
@@ -40,8 +41,13 @@ beforeAll(async () => {
   // The permissions these cases assert on must exist in the catalogue — the
   // support actor grants only rows that are actually there.
   for (const [module, action] of [
-    ['leads', 'VIEW'], ['leads', 'CREATE'], ['leads', 'EDIT'], ['leads', 'DELETE'], ['leads', 'ASSIGN'],
-    ['employee', 'VIEW_SENSITIVE_FIELDS'], ['hr_documents', 'VIEW_SENSITIVE_FIELDS'],
+    ['leads', 'VIEW'],
+    ['leads', 'CREATE'],
+    ['leads', 'EDIT'],
+    ['leads', 'DELETE'],
+    ['leads', 'ASSIGN'],
+    ['employee', 'VIEW_SENSITIVE_FIELDS'],
+    ['hr_documents', 'VIEW_SENSITIVE_FIELDS'],
   ] as const) {
     await prisma.permission.upsert({
       where: { module_action: { module, action } },
@@ -107,13 +113,40 @@ describe('platform support access', () => {
     expect(ctx.actor.roleKey).toBe('platform_owner');
   });
 
-  it('gives the OWNER full control — create, edit, delete, assign', async () => {
+  it('keeps the OWNER read-only until they open a break-glass grant', async () => {
+    // This asserted full control, which is what the code did: an OWNER held
+    // every permission in every tenant from the moment they opened a workspace,
+    // permanently, with no record of why. Reading a customer's data and changing
+    // it are different acts — see lib/auth/platform-access.ts.
     const cookie = await createPlatformSessionToken(ownerId, tenantId);
-    const ctx = await resolveCtx(asRequest(cookie), 'req-owner');
-    for (const action of ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const) {
-      expect(can(ctx, 'leads', action)).toBe(true);
+    const before = await resolveCtx(asRequest(cookie), 'req-owner');
+    expect(can(before, 'leads', 'VIEW')).toBe(true);
+    for (const action of ['CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const) {
+      expect(can(before, 'leads', action)).toBe(false);
     }
-    expect(can(ctx, 'employee', 'VIEW_SENSITIVE_FIELDS')).toBe(true);
+    expect(can(before, 'employee', 'VIEW_SENSITIVE_FIELDS')).toBe(false);
+  });
+
+  it('gives the OWNER full control while a grant is live, and takes it back after', async () => {
+    const cookie = await createPlatformSessionToken(ownerId, tenantId);
+    await openGrant({
+      platformUserId: ownerId,
+      tenantId,
+      reason: 'Repairing a duplicated payroll run for this customer',
+    });
+
+    const elevated = await resolveCtx(asRequest(cookie), 'req-owner-elevated');
+    for (const action of ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN'] as const) {
+      expect(can(elevated, 'leads', action)).toBe(true);
+    }
+    expect(can(elevated, 'employee', 'VIEW_SENSITIVE_FIELDS')).toBe(true);
+
+    // Same session, same cookie: the grant is checked per request, so handing it
+    // back does not wait for a sign-in.
+    await revokeGrants(ownerId, tenantId);
+    const after = await resolveCtx(asRequest(cookie), 'req-owner-after');
+    expect(can(after, 'leads', 'EDIT')).toBe(false);
+    expect(can(after, 'leads', 'VIEW')).toBe(true);
   });
 
   it('keeps SUPPORT read-only', async () => {

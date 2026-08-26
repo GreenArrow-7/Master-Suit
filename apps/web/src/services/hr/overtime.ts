@@ -93,13 +93,7 @@ export function isNightHour(hour: number, nightStart: number, nightEnd: number):
  * builds an `Intl.DateTimeFormat` per call, which is not cheap, so the hour is
  * derived once per hour boundary rather than once per minute.
  */
-export function nightMinutesIn(
-  from: Date,
-  to: Date,
-  timeZone: string,
-  nightStart: number,
-  nightEnd: number,
-): number {
+export function nightMinutesIn(from: Date, to: Date, timeZone: string, nightStart: number, nightEnd: number): number {
   if (to <= from) return 0;
   const total = Math.min(Math.floor((to.getTime() - from.getTime()) / 60_000), MAX_CLAIM_MINUTES);
   let night = 0;
@@ -323,7 +317,12 @@ async function scheduleLookup(ctx: Ctx, employeeIds: string[], asOf: Date) {
       employeeId: { in: [...new Set(employeeIds)] },
       effectiveOn: { lte: asOf },
     },
-    select: { employeeId: true, effectiveOn: true, endsOn: true, shift: { select: { startTime: true, endTime: true } } },
+    select: {
+      employeeId: true,
+      effectiveOn: true,
+      endsOn: true,
+      shift: { select: { startTime: true, endTime: true } },
+    },
     orderBy: { effectiveOn: 'desc' },
   });
 

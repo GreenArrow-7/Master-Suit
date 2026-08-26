@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { advance, endSession, resumeOrStart, sweepStaleClaims } from '@/services/dialer/session';
+import { advance, endSession, resumeOrStart, sweepStaleClaims, usesDialer } from '@/services/dialer/session';
 import { loadQueue, queueStats } from '@/services/dialer/queue';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 
@@ -427,5 +427,193 @@ describe('loading a campaign queue', () => {
       select: { id: true },
     });
     expect(foreign).toHaveLength(0);
+  });
+});
+
+// ── Which campaigns get called at all ────────────────────────────────────────
+/**
+ * The dialer worked a campaign's list whatever state the campaign was in.
+ *
+ * Both the route and the page selected `campaign.status` and neither read it,
+ * so Cancel, Complete and Pause stopped nothing on the floor — and a DRAFT
+ * campaign, one nobody had pressed Start on, was dialled like a live one.
+ *
+ * The mid-shift case below is the one that matters and the reason the rule is
+ * enforced inside `claimNext`'s statement rather than at the two entrances: an
+ * agent who is already holding somebody must be handed nobody on their *next*
+ * press, without losing the disposition of the call they just made.
+ */
+describe('a campaign is called only while it is running', () => {
+  const setStatus = (status: string) =>
+    prisma.campaign.update({
+      where: { id: campaignId, tenantId: fixture.a.tenantId },
+      data: { status: status as never },
+    });
+
+  afterEach(() => setStatus('RUNNING'));
+
+  it('stops handing out people the moment the campaign is cancelled, mid-shift', async () => {
+    const started = await resumeOrStart(fixture.a.tenantId, AGENT_A, campaignId);
+    const held = started.contact!.id;
+    expect(held).toBeTruthy();
+
+    await setStatus('CANCELLED');
+
+    const next = await advance({
+      tenantId: fixture.a.tenantId,
+      userId: AGENT_A,
+      sessionId: started.session.id,
+      action: 'next',
+      outcome: 'NO_ANSWER',
+    });
+
+    // Nobody else. Without the condition inside the claim this is the next
+    // contact in the queue, which is the defect.
+    expect(next.contact).toBeNull();
+    expect(next.blockedBy).toMatch(/cancelled/i);
+
+    // And the call that already happened still counted. Enforcing the rule by
+    // throwing would have rolled this back — a real call losing its outcome is
+    // a worse trade than one extra dial.
+    const worked = await prisma.campaignContact.findFirstOrThrow({
+      where: { id: held, tenantId: fixture.a.tenantId },
+      select: { attempts: true, outcome: true, claimedBySessionId: true },
+    });
+    expect(worked.attempts).toBe(1);
+    expect(worked.outcome).toBe('NO_ANSWER');
+    expect(worked.claimedBySessionId).toBeNull();
+    expect(next.session.dialed).toBe(1);
+  });
+
+  it('refuses to open a dialer on a paused campaign, and says how to resume it', async () => {
+    await setStatus('PAUSED');
+
+    await expect(resumeOrStart(fixture.a.tenantId, AGENT_B, campaignId)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/paused.*resume/i),
+    });
+    // No session row left behind saying somebody started a shift on it.
+    expect(
+      await prisma.dialerSession.count({ where: { tenantId: fixture.a.tenantId, campaignId, userId: AGENT_B } }),
+    ).toBe(0);
+  });
+
+  it('refuses a campaign nobody has started', async () => {
+    // A behaviour change, and the intended one: DRAFT means the list is still
+    // being built. The way out is the Start button the campaign page already has.
+    await setStatus('DRAFT');
+
+    await expect(resumeOrStart(fixture.a.tenantId, AGENT_A, campaignId)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/not been started/i),
+    });
+  });
+
+  it('still lets the list be built before the campaign starts', async () => {
+    // Deliberately a different rule from the dialer's: a queue is curated first
+    // and the campaign is started afterwards, which is the order of the work.
+    await setStatus('DRAFT');
+    await prisma.campaignContact.deleteMany({ where: { tenantId: fixture.a.tenantId, campaignId } });
+    await makeLead('Built Before Start', '+971509000090');
+
+    const result = await loadQueue({
+      tenantId: fixture.a.tenantId,
+      actorId: fixture.a.userId,
+      campaignId,
+      stageIds: [fixture.a.stageId],
+    });
+
+    expect(result.loaded).toBeGreaterThan(0);
+  });
+
+  it('refuses to add anybody to a campaign that is over', async () => {
+    await setStatus('COMPLETED');
+    await makeLead('Too Late', '+971509000091');
+
+    await expect(
+      loadQueue({
+        tenantId: fixture.a.tenantId,
+        actorId: fixture.a.userId,
+        campaignId,
+        stageIds: [fixture.a.stageId],
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+// ── Which campaigns get a dialer offered at all ──────────────────────────────
+/**
+ * A second, different no.
+ *
+ * The campaign page offered “Open dialer” on every campaign, including a
+ * WhatsApp or Email one that will never have a contact in its queue — a door
+ * onto an empty room, and the arrival said “Queue empty · nobody is eligible
+ * right now”, which is true of the query and useless to the person reading it.
+ *
+ * The channel alone would be the wrong test, and these cases are why: `channel`
+ * is nullable, `campaignType` carries CALLING independently of it, and a queue
+ * can be loaded onto any campaign through the contacts endpoint — calling a
+ * WhatsApp list as follow-up is a real workflow. So the data overrules the
+ * label, and a campaign with contacts keeps its dialer whatever it calls itself.
+ */
+describe('which campaigns are dialled at all', () => {
+  const withChannel = async (channel: string | null) => {
+    const row = await prisma.campaign.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        name: `Channel ${channel ?? 'unset'}`,
+        code: `CH-${Math.random().toString(36).slice(2, 8)}`,
+        campaignType: 'OUTBOUND',
+        status: 'RUNNING',
+        ...(channel ? { channel: channel as never } : {}),
+      },
+      select: { id: true, channel: true },
+    });
+    return row;
+  };
+
+  it('offers the dialer for a calling campaign', async () => {
+    expect(await usesDialer(fixture.a.tenantId, await withChannel('VOICE'))).toBe(true);
+  });
+
+  it('offers it for a campaign whose channel was never stated', async () => {
+    // Nullable, and older rows have no value at all — the dialer's own fixture
+    // campaign above is one. Hiding it from those would be the regression.
+    expect(await usesDialer(fixture.a.tenantId, await withChannel(null))).toBe(true);
+  });
+
+  it('does not offer it for an email or whatsapp campaign with no queue', async () => {
+    expect(await usesDialer(fixture.a.tenantId, await withChannel('EMAIL'))).toBe(false);
+    expect(await usesDialer(fixture.a.tenantId, await withChannel('WHATSAPP'))).toBe(false);
+  });
+
+  it('offers it once a queue has actually been loaded, whatever the channel says', async () => {
+    // The clause that matters: the label is a declaration, the queue is a fact,
+    // and hiding the dialer from a loaded queue would strand live work.
+    const campaign = await withChannel('WHATSAPP');
+    expect(await usesDialer(fixture.a.tenantId, campaign)).toBe(false);
+
+    const lead = await makeLead('Follow Up Call', '+971509000120');
+    await prisma.campaignContact.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        campaignId: campaign.id,
+        leadId: lead.id,
+        displayName: 'Follow Up Call',
+        phone: '+971509000120',
+        phoneNormalized: '+971509000120',
+        position: 0,
+      },
+    });
+
+    expect(await usesDialer(fixture.a.tenantId, campaign)).toBe(true);
+  });
+
+  it('does not count another workspace queue as this one being dialled', async () => {
+    const campaign = await withChannel('SMS');
+    // Same campaign id is impossible across tenants, so the honest check is that
+    // the count is tenant-scoped at all: a contact in tenant B must not make
+    // tenant A's campaign look dialled.
+    expect(await usesDialer(fixture.b.tenantId, campaign)).toBe(false);
   });
 });

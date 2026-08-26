@@ -88,10 +88,16 @@ export default function LeaveScreen({
     }
   }
 
-  async function decide(id: string, approve: boolean) {
+  async function decide(id: string, approve: boolean, note?: string) {
     setBusy(true);
     try {
-      await call(approve ? 'leave-approve' : 'leave-reject', { requestId: id });
+      /**
+       * A rejection carries a reason. The endpoint requires one (`note` is
+       * `.min(1)` for leave-reject, unlike approve) and `decideLeave` refuses
+       * again underneath — so sending the id alone made Reject fail every time
+       * with a bare "1 field failed validation".
+       */
+      await call(approve ? 'leave-approve' : 'leave-reject', { requestId: id, ...(note ? { note } : {}) });
       router.refresh();
     } catch (error) {
       setNote({ text: (error as Error).message, bad: true });
@@ -222,7 +228,7 @@ export default function LeaveScreen({
         rows={waiting}
         empty="Nothing here yet."
         showEmployee
-        onDecide={canDecide ? (id, ok) => void decide(id, ok) : undefined}
+        onDecide={canDecide ? (id, ok, note) => void decide(id, ok, note) : undefined}
         busy={busy}
       />
     </>
@@ -240,10 +246,13 @@ function RequestTable({
   rows: RequestRow[];
   empty: string;
   showEmployee?: boolean;
-  onDecide?: (id: string, approve: boolean) => void;
+  onDecide?: (id: string, approve: boolean, note?: string) => void;
   onCancel?: (id: string) => void;
   busy?: boolean;
 }) {
+  /** Which row is being rejected, and the reason typed so far. */
+  const [rejecting, setRejecting] = useState<{ id: string; note: string } | null>(null);
+
   if (rows.length === 0) return <div className="lf-card lf-leave__empty">{empty}</div>;
   return (
     <div className="lf-table-wrap">
@@ -282,23 +291,65 @@ function RequestTable({
                 <span className="lf-badge">{row.status.toLowerCase()}</span>
               </td>
               <td data-label="">
-                {onDecide && row.status === 'PENDING' && (
-                  <span style={{ display: 'inline-flex', gap: 6 }}>
-                    <button type="button" className="lf-btn lf-btn--sm" disabled={busy} onClick={() => onDecide(row.id, true)}>
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      className="lf-btn lf-btn--secondary lf-btn--sm"
-                      disabled={busy}
-                      onClick={() => onDecide(row.id, false)}
-                    >
-                      Reject
-                    </button>
-                  </span>
-                )}
+                {onDecide &&
+                  row.status === 'PENDING' &&
+                  (rejecting?.id === row.id ? (
+                    /* The reason is asked for here rather than in a dialog: the
+                       applicant reads it, so it is part of the decision. */
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        className="lf-input lf-input--sm"
+                        autoFocus
+                        placeholder="Why are you rejecting this?"
+                        value={rejecting.note}
+                        onChange={(event) => setRejecting({ id: row.id, note: event.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="lf-btn lf-btn--sm"
+                        disabled={busy || rejecting.note.trim() === ''}
+                        onClick={() => {
+                          onDecide(row.id, false, rejecting.note.trim());
+                          setRejecting(null);
+                        }}
+                      >
+                        Send
+                      </button>
+                      <button
+                        type="button"
+                        className="lf-btn lf-btn--ghost lf-btn--sm"
+                        onClick={() => setRejecting(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="lf-btn lf-btn--sm"
+                        disabled={busy}
+                        onClick={() => onDecide(row.id, true)}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="lf-btn lf-btn--secondary lf-btn--sm"
+                        disabled={busy}
+                        onClick={() => setRejecting({ id: row.id, note: '' })}
+                      >
+                        Reject
+                      </button>
+                    </span>
+                  ))}
                 {onCancel && row.status === 'PENDING' && (
-                  <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => onCancel(row.id)}>
+                  <button
+                    type="button"
+                    className="lf-btn lf-btn--secondary lf-btn--sm"
+                    disabled={busy}
+                    onClick={() => onCancel(row.id)}
+                  >
                     Cancel
                   </button>
                 )}

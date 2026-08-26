@@ -13,8 +13,16 @@
  *   developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
  */
 
+import { normalizeSocialComment, type NormalizedSocialComment } from './comments';
+
 export type MetaEventKind =
-  'MESSAGE_RECEIVED' | 'MESSAGE_SENT' | 'MESSAGE_DELIVERED' | 'MESSAGE_READ' | 'MESSAGE_FAILED' | 'LEAD_CREATED';
+  | 'MESSAGE_RECEIVED'
+  | 'MESSAGE_SENT'
+  | 'MESSAGE_DELIVERED'
+  | 'MESSAGE_READ'
+  | 'MESSAGE_FAILED'
+  | 'LEAD_CREATED'
+  | 'SOCIAL_COMMENT_RECEIVED';
 
 /** Maps onto CommunicationStatus without the caller restating the vocabulary. */
 export const STATUS_FOR: Record<string, 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'> = {
@@ -44,6 +52,9 @@ export interface NormalizedMetaEvent {
   messageId?: string;
   status?: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
   errorCode?: string;
+
+  /** Facebook/Instagram comment, already provider-normalised. */
+  comment?: NormalizedSocialComment;
 
   /**
    * Lead Ads. Note what is absent: the webhook carries ad and ad-set ids but no
@@ -105,6 +116,27 @@ export function normalizeMetaWebhook(payload: unknown): NormalizedMetaEvent[] {
             adId: str(value.ad_id),
             adgroupId: str(value.adgroup_id),
           },
+        });
+        continue;
+      }
+
+      /**
+       * Comments. `feed` also carries posts, likes and shares, so the adapter
+       * returns null for anything that is not one — this walks the same
+       * envelope everything else does rather than standing up a second
+       * receiver, which is why the route needed no change to support them.
+       */
+      if (change.field === 'feed' || change.field === 'comments') {
+        const comment = normalizeSocialComment(change.field, value);
+        if (!comment) continue;
+        events.push({
+          kind: 'SOCIAL_COMMENT_RECEIVED',
+          // Provider-scoped: Facebook and Instagram mint ids separately, and
+          // this is the key the route deduplicates on.
+          externalId: `comment:${comment.provider}:${comment.providerCommentId}`,
+          occurredAt: comment.commentCreatedAt,
+          assetId: comment.providerMediaId ?? str(entry.id),
+          comment,
         });
         continue;
       }

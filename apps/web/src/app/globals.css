@@ -79,10 +79,27 @@ body {
   display: flex;
   flex-direction: column;
 }
+/**
+ * Bottom padding clears the assistant button, it is not decoration.
+ *
+ * `.lf-ai-fab` is `position: fixed` at `bottom: 18px` and 52px tall, so it
+ * occupies the last 70px of the viewport at every scroll position. With 40px of
+ * padding the final rows of a long table came to rest underneath it with no
+ * further scroll available to reveal them — permanently hidden data, and on a
+ * wide table the horizontal scrollbar underneath it could not be dragged
+ * either. The safe area is the FAB's own footprint plus breathing room, so the
+ * end of a page always clears it.
+ *
+ * Kept as a token because the FAB's size and offset are defined elsewhere;
+ * anything else that docks bottom-right must reserve the same gutter.
+ */
 .lf-page-main {
   flex: 1;
   min-width: 0;
-  padding: 28px var(--lf-page-gutter) 40px;
+  /* Fluid side gutter from the responsive work, main's FAB-safe bottom:
+     the sides scale with the viewport, the bottom clears the assistant
+     button and, on a phone, the tab bar. */
+  padding: 28px var(--lf-page-gutter) var(--lf-fab-safe);
 }
 .lf-page-stack {
   display: grid;
@@ -609,7 +626,7 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .lf-page-main {
-    padding: 24px;
+    padding: 24px 24px var(--lf-fab-safe);
   }
 }
 /* `.lf-overflow` — the ••• disclosure for secondary actions.
@@ -2053,12 +2070,26 @@ a:hover {
   box-shadow: inset 3px 0 0 var(--lf-brass, #b98f4c);
 }
 
-/* The HR breadcrumb, ahead of the operational controls in the top bar. */
+/* The HR breadcrumb, ahead of the operational controls in the top bar.
+
+   It truncates rather than pushing the page wider. `flex: none` with
+   `white-space: nowrap` meant the crumb's own text was a floor on the width of
+   the top bar, and so on the width of the page: "Workspace · Work locations" —
+   the longest People page title — overflowed a 375px phone by a pixel or two
+   depending on the font metrics of the machine rendering it, and a 320px phone
+   by nearly thirty. The whole document scrolled sideways to fit a label.
+
+   `min-width: 0` is the part that does the work: a flex item's automatic
+   minimum size is its content, so without it `overflow: hidden` has nothing to
+   clip against and the ellipsis never appears. */
 .lf-shell-crumb {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   font: 400 12px/1 var(--lf-font-ui);
   color: var(--lf-ink-3);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .lf-shell-crumb b {
   color: var(--lf-ink);
@@ -4683,4 +4714,482 @@ a:hover {
   .lf-channel__fact dd {
     white-space: normal;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Meta configuration (Phase 2B)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.lf-meta__head {
+  display: grid;
+  gap: 2px;
+}
+.lf-meta__back {
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
+  text-decoration: none;
+}
+.lf-meta__back:hover {
+  color: var(--lf-ink);
+}
+.lf-meta__blurb {
+  margin: 2px 0 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-3);
+}
+
+.lf-meta__panel {
+  border: 1px solid var(--lf-line);
+  border-radius: 12px;
+  background: var(--lf-surface);
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.lf-meta__panelhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lf-meta__subhead {
+  margin: 4px 0 0;
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+}
+
+.lf-meta__facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.lf-meta__facts dt {
+  font-size: 12px;
+  color: var(--lf-ink-3);
+}
+.lf-meta__facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.lf-meta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lf-meta__ok {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lf-viridian);
+}
+
+.lf-meta__alert {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: #fdf7ec;
+  border: 1px solid #e6d3ae;
+  color: #7a5c22;
+  font-size: 13px;
+}
+.lf-meta__alert p {
+  margin: 2px 0 0;
+}
+
+.lf-meta__caps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.lf-meta__caps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.lf-meta__caps li[data-on='false'] {
+  color: var(--lf-ink-3);
+}
+.lf-meta__capname {
+  font-weight: 500;
+}
+.lf-meta__capstate {
+  font-size: 12px;
+  color: var(--lf-ink-3);
+}
+.lf-meta__capnote {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: var(--lf-ink-3);
+}
+
+.lf-meta__forms {
+  display: grid;
+  gap: 6px;
+}
+.lf-meta__form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.lf-meta__form[data-enabled='false'] {
+  opacity: 0.72;
+}
+.lf-meta__formmain {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.lf-meta__formname {
+  font-weight: 600;
+  font-size: 14px;
+}
+.lf-meta__formwhen {
+  font-size: 12px;
+}
+
+.lf-meta__events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+.lf-meta__events li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+.lf-meta__eventtype {
+  font-weight: 500;
+}
+.lf-meta__eventerr {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #b4341f;
+  overflow-wrap: anywhere;
+}
+
+.lf-meta__advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--lf-text-sm);
+}
+
+/* Drawer: a right-hand sheet on desktop, a full surface on a phone. */
+.lf-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+}
+.lf-drawer__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 34%);
+}
+.lf-drawer__panel {
+  position: relative;
+  width: min(440px, 100%);
+  background: var(--lf-surface);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 30px rgb(0 0 0 / 18%);
+}
+.lf-drawer__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--lf-line);
+}
+.lf-drawer__body {
+  padding: 14px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  flex: 1;
+}
+.lf-drawer__foot {
+  padding: 12px 14px;
+  border-top: 1px solid var(--lf-line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.lf-meta__field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.lf-meta__field > span,
+.lf-meta__field legend {
+  color: var(--lf-ink-3);
+  font-size: 12px;
+  padding: 0;
+}
+.lf-meta__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.lf-meta__radio {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  font-size: 13px;
+  padding: 5px 0;
+}
+.lf-meta__radio span {
+  display: grid;
+  gap: 1px;
+}
+.lf-meta__summary {
+  border: 1px solid var(--lf-line);
+  border-radius: 9px;
+  padding: 10px;
+  font-size: 13px;
+  background: var(--lf-surface-2);
+}
+.lf-meta__summary ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+
+@media (max-width: 560px) {
+  .lf-drawer__panel {
+    width: 100%;
+  }
+  .lf-meta__caps li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+/* Social Leads — the enquiry queue. */
+.lf-social__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.lf-social__stat {
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  background: var(--lf-surface);
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+.lf-social__statvalue {
+  font-size: var(--lf-text-xl);
+  font-weight: 600;
+}
+.lf-social__controls {
+  display: grid;
+  gap: 6px;
+}
+.lf-social__list {
+  display: grid;
+  gap: 6px;
+}
+.lf-social__row {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--lf-line);
+  border-radius: 11px;
+  background: var(--lf-surface);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+/* A high-intent enquiry earns a keyline; nothing else competes for attention. */
+.lf-social__row[data-intent='HIGH'] {
+  box-shadow: inset 3px 0 0 var(--lf-wine-500);
+}
+.lf-social__row[data-intent='MEDIUM'] {
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b08b4f);
+}
+.lf-social__who {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  grid-column: 1;
+}
+.lf-social__name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.lf-social__comment {
+  margin: 0;
+  grid-column: 1;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.lf-social__meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  align-items: center;
+}
+.lf-social__row > .lf-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+}
+.lf-social__intent {
+  font-weight: 600;
+  font-size: 12px;
+}
+.lf-social__intent[data-intent='HIGH'] {
+  color: var(--lf-wine-600);
+}
+.lf-social__quote {
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .lf-social__row {
+    grid-template-columns: 1fr;
+  }
+  .lf-social__row > .lf-btn {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}
+.lf-social__convert {
+  display: grid;
+  gap: 8px;
+  justify-content: stretch;
+}
+.lf-social__note {
+  font-size: 12px;
+  color: #7a5c22;
+}
+.lf-social__assign {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  padding: 11px;
+}
+.lf-social__owner {
+  margin: 1px 0 0;
+  font-weight: 600;
+  font-size: 15px;
+}
+.lf-social__assignform {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--lf-line);
+  padding-top: 9px;
+}
+.lf-social__history {
+  border-top: 1px solid var(--lf-line);
+  padding-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+.lf-social__history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.lf-social__history li {
+  display: grid;
+  gap: 1px;
+  font-size: 13px;
+}
+
+/* The response clock. Colour follows the SLA palette the lead rail already uses
+   (§ .lf-rail__seg), and each state carries a word as well as a colour. */
+.lf-social__sla {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--lf-ink-2);
+}
+.lf-social__sla[data-sla='at_risk'] {
+  color: var(--lf-brass);
+}
+.lf-social__sla[data-sla='breached'] {
+  color: var(--lf-vermillion);
+}
+.lf-social__slaline {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--lf-line);
+  font-size: 13px;
+}
+.lf-social__slaline[data-sla='at_risk'] strong {
+  color: var(--lf-brass);
+}
+.lf-social__slaline[data-sla='breached'] strong {
+  color: var(--lf-vermillion);
+}
+.lf-social__reply {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--lf-line);
+  border-radius: 10px;
+  padding: 11px;
+}
+.lf-social__composer {
+  resize: vertical;
+  min-height: 78px;
+  font: inherit;
+  line-height: 1.5;
+}
+.lf-social__thread {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--lf-line);
+}
+.lf-social__thread li {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.lf-social__replyhead {
+  font-size: 12px;
+  color: var(--lf-ink-2);
+}
+.lf-social__sent {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lf-viridian);
 }

@@ -46,8 +46,7 @@ export default function TaskComposer({
   const [form, setForm] = useState(() => EMPTY(taskTypes[0]?.id ?? ''));
 
   const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
@@ -103,12 +102,22 @@ export default function TaskComposer({
     <form
       onSubmit={submit}
       className="lf-card"
-      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      style={{
+        padding: 'var(--lf-space-5)',
+        display: 'grid',
+        gap: 'var(--lf-space-4)',
+        marginBottom: 'var(--lf-space-4)',
+      }}
       noValidate
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>New task</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -126,7 +135,13 @@ export default function TaskComposer({
         <input id="t-title" className="lf-input" value={form.title} onChange={set('title')} required autoFocus />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <div className="lf-field">
           <label className="lf-label" htmlFor="t-type">
             Type
@@ -144,7 +159,14 @@ export default function TaskComposer({
           <label className="lf-label" htmlFor="t-due">
             Due
           </label>
-          <input id="t-due" className="lf-input" type="datetime-local" value={form.dueAt} onChange={set('dueAt')} required />
+          <input
+            id="t-due"
+            className="lf-input"
+            type="datetime-local"
+            value={form.dueAt}
+            onChange={set('dueAt')}
+            required
+          />
         </div>
 
         <div className="lf-field">

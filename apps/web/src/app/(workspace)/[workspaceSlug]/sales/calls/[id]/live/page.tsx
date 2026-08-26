@@ -31,7 +31,14 @@ export default async function LiveCallPage({
   const lead = call.leadId
     ? await prisma.lead.findFirst({
         where: { tenantId: ctx.tenantId, id: call.leadId },
-        select: { id: true, fullName: true, company: true, phone: true, score: true, stage: { select: { name: true } } },
+        select: {
+          id: true,
+          fullName: true,
+          company: true,
+          phone: true,
+          score: true,
+          stage: { select: { name: true } },
+        },
       })
     : null;
 

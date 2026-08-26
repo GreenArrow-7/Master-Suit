@@ -19,11 +19,7 @@ const MOVEABLE = [
   'WITHDRAWN',
 ];
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ workspaceSlug: string; candidateId: string }>;
-}) {
+export default async function Page({ params }: { params: Promise<{ workspaceSlug: string; candidateId: string }> }) {
   const { workspaceSlug, candidateId } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['recruitment', 'VIEW'] });
   const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
@@ -121,7 +117,13 @@ export default async function Page({
                   options: MOVEABLE.map((stage) => ({ value: stage, label: stage.replace('_', ' ') })),
                 },
                 { name: 'note', label: 'Note (required when rejecting)' },
-                { name: 'candidateId', label: 'Candidate', type: 'select', required: true, options: [{ value: candidate.id, label: candidate.fullName }] },
+                {
+                  name: 'candidateId',
+                  label: 'Candidate',
+                  type: 'select',
+                  required: true,
+                  options: [{ value: candidate.id, label: candidate.fullName }],
+                },
               ]}
             />
           </div>
@@ -201,7 +203,13 @@ export default async function Page({
               endpoint={`${actions}/interview-schedule`}
               submitLabel="Schedule"
               fields={[
-                { name: 'candidateId', label: 'Candidate', type: 'select', required: true, options: [{ value: candidate.id, label: candidate.fullName }] },
+                {
+                  name: 'candidateId',
+                  label: 'Candidate',
+                  type: 'select',
+                  required: true,
+                  options: [{ value: candidate.id, label: candidate.fullName }],
+                },
                 { name: 'scheduledAt', label: 'When', type: 'datetime-local', required: true },
                 {
                   name: 'type',
@@ -233,11 +241,7 @@ export default async function Page({
           empty="No offer has been made."
           rows={candidate.offers.map((offer) => [
             `v${offer.version}`,
-            bands && offer.basic != null
-              ? `${offer.currency} ${total(offer)}`
-              : bands
-                ? '—'
-                : 'hidden',
+            bands && offer.basic != null ? `${offer.currency} ${total(offer)}` : bands ? '—' : 'hidden',
             date(offer.joiningDate),
             <span className="lf-badge" key="status">
               {offer.status.replace('_', ' ')}
@@ -293,7 +297,13 @@ export default async function Page({
               endpoint={`${actions}/offer-create`}
               submitLabel="Create offer"
               fields={[
-                { name: 'candidateId', label: 'Candidate', type: 'select', required: true, options: [{ value: candidate.id, label: candidate.fullName }] },
+                {
+                  name: 'candidateId',
+                  label: 'Candidate',
+                  type: 'select',
+                  required: true,
+                  options: [{ value: candidate.id, label: candidate.fullName }],
+                },
                 { name: 'basic', label: 'Basic', type: 'number', required: true },
                 { name: 'housing', label: 'Housing allowance', type: 'number' },
                 { name: 'transport', label: 'Transport allowance', type: 'number' },
@@ -318,7 +328,13 @@ export default async function Page({
             endpoint={`${actions}/candidate-hire`}
             submitLabel="Issue invitation"
             fields={[
-              { name: 'candidateId', label: 'Candidate', type: 'select', required: true, options: [{ value: candidate.id, label: candidate.fullName }] },
+              {
+                name: 'candidateId',
+                label: 'Candidate',
+                type: 'select',
+                required: true,
+                options: [{ value: candidate.id, label: candidate.fullName }],
+              },
               { name: 'employeeNumber', label: 'Employee number', required: true },
               { name: 'designation', label: 'Job title' },
             ]}

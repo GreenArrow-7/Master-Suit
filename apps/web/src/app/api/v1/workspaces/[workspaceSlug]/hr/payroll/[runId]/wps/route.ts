@@ -1,10 +1,8 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { requireWorkspace } from '@/lib/workspace';
 import { generateSif, type SifLayoutKey } from '@/services/hr/wps';
 
@@ -24,9 +22,13 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const { workspaceSlug, runId } = await context.params;
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'HRMS');
-    assertPermission(ctx, 'payroll', 'EXPORT');
+    // This one had no rate limit at all, and it bulk-exports every employee's
+    // IBAN and labour-card number. `resolveGuardedCtx` applies the per-session
+    // bucket unless a route asks for another, so it cannot be omitted again.
+    const ctx = await resolveGuardedCtx(req, requestId, {
+      productModule: 'HRMS',
+      permission: ['payroll', 'EXPORT'],
+    });
     await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     const layout = (new URL(req.url).searchParams.get('layout') ?? 'uae-sif-v1') as SifLayoutKey;

@@ -5,7 +5,7 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import { myEmployee } from '@/services/hr/leave';
 import { isRosterApprover, isRosterPlanner, listShiftChanges, rosterFor } from '@/services/hr/roster';
-import { addDays, dayKey, toDay } from '@/services/hr/rules';
+import { addDays, dayKey, toDay, queryDate } from '@/services/hr/rules';
 
 export default async function Page({
   params,
@@ -25,7 +25,7 @@ export default async function Page({
 
   // Weeks start on the workspace's Monday. A roster is read a week at a time;
   // anything longer stops being a grid you can scan.
-  const anchor = week ? toDay(new Date(week)) : startOfWeek(new Date());
+  const anchor = week ? toDay(queryDate(week, startOfWeek(new Date()))) : startOfWeek(new Date());
   const days = Array.from({ length: 7 }, (_, index) => addDays(anchor, index));
 
   const today = toDay(new Date());
@@ -187,8 +187,8 @@ export default async function Page({
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Ask to change one of my shifts</h2>
           <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
-            Pick one of your upcoming shifts, then either a different shift or a colleague&apos;s day to swap into —
-            one or the other, not both. A manager decides it, and an approved swap moves both sides at once.
+            Pick one of your upcoming shifts, then either a different shift or a colleague&apos;s day to swap into — one
+            or the other, not both. A manager decides it, and an approved swap moves both sides at once.
           </p>
           <WorkspaceRecordForm
             endpoint={`${actions}/shift-change-request`}

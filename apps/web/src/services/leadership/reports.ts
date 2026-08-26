@@ -11,10 +11,25 @@
  * escaping subtly different; one shape means one table component and one export.
  */
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prismaRead } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { conversion, funnel, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
+
+/**
+ * Every query in this module goes to `prismaRead` — the replica when
+ * `DATABASE_REPLICA_URL` is set, the primary otherwise.
+ *
+ * These are the reads that can afford to be a moment behind: a report is a
+ * roll-up over a date range, and one computed 200ms ago is the same report. They
+ * are also the heaviest reads in the product — groupBy over a quarter of leads
+ * or attendance punches — which is exactly the traffic worth keeping off the
+ * connections that are serving writes.
+ *
+ * `prismaRead` refuses write operations, in every configuration including the
+ * no-replica fallback, so a write added here fails on the first run rather than
+ * only where a replica exists. See lib/db.ts.
+ */
 
 export const REPORT_KEYS = [
   'lead-conversion',
@@ -58,7 +73,7 @@ const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { i
 async function names(tenantId: string, ids: (string | null)[]) {
   const real = [...new Set(ids.filter((i): i is string => i !== null))];
   if (real.length === 0) return new Map<string, string>();
-  const rows = await prisma.user.findMany({
+  const rows = await prismaRead.user.findMany({
     where: { tenantId, id: { in: real } },
     select: { id: true, fullName: true },
   });
@@ -94,7 +109,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     case 'pipeline-summary': {
       const [stages, value] = await Promise.all([
         funnel(tenantId, userIds, range),
-        prisma.opportunity.groupBy({
+        prismaRead.opportunity.groupBy({
           by: ['stageId'],
           where: { tenantId, deletedAt: null, status: 'OPEN', ...owned(userIds) },
           _sum: { amount: true },
@@ -123,13 +138,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     }
 
     case 'activity-log': {
-      const rows = await prisma.activity.groupBy({
+      const rows = await prismaRead.activity.groupBy({
         by: ['typeId', 'ownerId'],
         where: { tenantId, occurredAt: within, ...owned(userIds) },
         _count: { _all: true },
       });
       const [types, who] = await Promise.all([
-        prisma.activityType.findMany({
+        prismaRead.activityType.findMany({
           where: { tenantId, id: { in: [...new Set(rows.map((r) => r.typeId))] } },
           select: { id: true, name: true },
         }),
@@ -158,7 +173,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     }
 
     case 'revenue-forecast': {
-      const opps = await prisma.opportunity.findMany({
+      const opps = await prismaRead.opportunity.findMany({
         where: {
           tenantId,
           deletedAt: null,
@@ -244,7 +259,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     case 'rep-activity': {
       const [activities, response] = await Promise.all([
         rank(tenantId, userIds, range, 'activities'),
-        prisma.lead.groupBy({
+        prismaRead.lead.groupBy({
           by: ['ownerId'],
           where: { tenantId, deletedAt: null, createdAt: within, firstResponseMins: { not: null }, ...owned(userIds) },
           _avg: { firstResponseMins: true },
@@ -280,7 +295,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     }
 
     case 'lead-assignment': {
-      const rows = await prisma.leadAssignmentHistory.groupBy({
+      const rows = await prismaRead.leadAssignmentHistory.groupBy({
         by: ['toOwnerId', 'method'],
         where: { tenantId, createdAt: within, ...(userIds.length === 0 ? {} : { toOwnerId: { in: userIds } }) },
         _count: { _all: true },
@@ -309,13 +324,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
 
     case 'campaign-performance': {
       const [byCampaign, converted] = await Promise.all([
-        prisma.lead.groupBy({
+        prismaRead.lead.groupBy({
           by: ['campaignId'],
           where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
           _count: { _all: true },
           _avg: { score: true },
         }),
-        prisma.lead.groupBy({
+        prismaRead.lead.groupBy({
           by: ['campaignId'],
           where: {
             tenantId,
@@ -327,7 +342,7 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
           _count: { _all: true },
         }),
       ]);
-      const campaigns = await prisma.campaign.findMany({
+      const campaigns = await prismaRead.campaign.findMany({
         where: { tenantId, id: { in: byCampaign.map((c) => c.campaignId).filter((c): c is string => c !== null) } },
         select: { id: true, name: true },
       });
@@ -363,13 +378,13 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
     case 'source-analysis':
     case 'lead-quality': {
       const [bySource, converted] = await Promise.all([
-        prisma.lead.groupBy({
+        prismaRead.lead.groupBy({
           by: ['source'],
           where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
           _count: { _all: true },
           _avg: { score: true, firstResponseMins: true },
         }),
-        prisma.lead.groupBy({
+        prismaRead.lead.groupBy({
           by: ['source'],
           where: {
             tenantId,

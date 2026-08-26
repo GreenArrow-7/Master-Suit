@@ -167,10 +167,7 @@ export const notifyOvertimeRaised = (ctx: Ctx, input: { employeeName: string; mi
     recordId: input.recordId,
   });
 
-export const notifyOvertimeDecided = (
-  ctx: Ctx,
-  input: { employeeId: string; approved: boolean; recordId: string },
-) =>
+export const notifyOvertimeDecided = (ctx: Ctx, input: { employeeId: string; approved: boolean; recordId: string }) =>
   notifyHr(ctx, {
     event: 'overtime.decided',
     audience: { employeeIds: [input.employeeId] },

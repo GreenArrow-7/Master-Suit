@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db';
@@ -37,7 +38,7 @@ export const GET = route(
       : undefined;
 
     const cursor = decodeCursor(query.cursor);
-    const where = { ...catalogueWhere(ctx.tenantId, query, favouriteIds), ...cursorWhere(cursor) };
+    const where = mergeWhere(catalogueWhere(ctx.tenantId, query, favouriteIds), cursorWhere(cursor));
 
     // limit + 1 tells us whether another page exists without a second query.
     const rows = await prisma.project.findMany({

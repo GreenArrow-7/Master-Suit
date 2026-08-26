@@ -6,6 +6,7 @@ import { NotFound, Forbidden, Invalid } from '@/lib/errors';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { transcriptionProviderFor } from '@/lib/integrations/transcription';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -56,7 +57,7 @@ export const POST = route(
       }
 
       const credentials = await connectionCredentials(ctx.tenantId, 'transcription');
-      if (!credentials?.provider) {
+      if (!transcriptionProviderFor(credentials)) {
         throw Invalid([
           {
             field: 'integration',

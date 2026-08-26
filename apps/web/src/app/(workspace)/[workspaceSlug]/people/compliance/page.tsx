@@ -1,4 +1,4 @@
-import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ExportCsv from '@/components/workspace/ExportCsv';
@@ -35,7 +35,7 @@ export default async function CompliancePage({
 
   const within = query.within === '30' || query.within === '60' || query.within === '90' ? Number(query.within) : 90;
   const contractorsOnly = query.contractors === 'true';
-  const rows = await complianceRegister(ctx, { withinDays: within, contractorsOnly });
+  const rows = await pageLoad(complianceRegister(ctx, { withinDays: within, contractorsOnly }));
 
   const expired = rows.filter((row) => row.severity === 'expired').length;
   const urgent = rows.filter((row) => row.severity === 'urgent').length;
@@ -46,17 +46,39 @@ export default async function CompliancePage({
         eyebrow="People / HRMS"
         title="Compliance register"
         description="Every work credential expiring soon — visa, Emirates ID, passport, labour card and RERA broker card — worst first. A lapsed credential can stop someone working or selling."
-        breadcrumbs={[{ label: 'Workspace', href: `/${workspaceSlug}/dashboard` }, { label: 'People', href: `/${workspaceSlug}/people` }, { label: 'Compliance' }]}
+        breadcrumbs={[
+          { label: 'Workspace', href: `/${workspaceSlug}/dashboard` },
+          { label: 'People', href: `/${workspaceSlug}/people` },
+          { label: 'Compliance' },
+        ]}
         actions={
           rows.length > 0 ? (
             <ExportCsv
               filename={`compliance-register-${new Date().toISOString().slice(0, 10)}.csv`}
               csv={[
-                ['Employee', 'Employee number', 'Employment type', 'Credential', 'Reference', 'Expires', 'Days remaining', 'Severity']
+                [
+                  'Employee',
+                  'Employee number',
+                  'Employment type',
+                  'Credential',
+                  'Reference',
+                  'Expires',
+                  'Days remaining',
+                  'Severity',
+                ]
                   .map(csvCell)
                   .join(','),
                 ...rows.map((row) =>
-                  [row.employeeName, row.employeeNumber, row.employmentType ?? '', row.credential, row.reference ?? '', date(row.expiresAt), row.daysRemaining, row.severity]
+                  [
+                    row.employeeName,
+                    row.employeeNumber,
+                    row.employmentType ?? '',
+                    row.credential,
+                    row.reference ?? '',
+                    date(row.expiresAt),
+                    row.daysRemaining,
+                    row.severity,
+                  ]
                     .map(csvCell)
                     .join(','),
                 ),
@@ -79,7 +101,13 @@ export default async function CompliancePage({
             <div className="lf-eyebrow">{label}</div>
             <div
               className="lf-metric-card__value"
-              style={tone === 'bad' ? { color: SEVERITY_TONE.expired } : tone === 'warn' ? { color: SEVERITY_TONE.soon } : undefined}
+              style={
+                tone === 'bad'
+                  ? { color: SEVERITY_TONE.expired }
+                  : tone === 'warn'
+                    ? { color: SEVERITY_TONE.soon }
+                    : undefined
+              }
             >
               {value}
             </div>
@@ -87,9 +115,18 @@ export default async function CompliancePage({
         ))}
       </div>
 
-      <nav className="lf-tabs" aria-label="Filters" style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
+      <nav
+        className="lf-tabs"
+        aria-label="Filters"
+        style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}
+      >
         {[30, 60, 90].map((d) => (
-          <SalesLink key={d} className="lf-tab" href={`/compliance?within=${d}${contractorsOnly ? '&contractors=true' : ''}`} aria-selected={within === d}>
+          <SalesLink
+            key={d}
+            className="lf-tab"
+            href={`/compliance?within=${d}${contractorsOnly ? '&contractors=true' : ''}`}
+            aria-selected={within === d}
+          >
             {d} days
           </SalesLink>
         ))}
@@ -104,7 +141,9 @@ export default async function CompliancePage({
 
       <WorkspaceTable
         headers={['Employee', 'Type', 'Credential', 'Reference', 'Expires', 'Remaining', 'Severity']}
-        empty={contractorsOnly ? 'No contractor credentials expire in this window.' : 'No credentials expire in this window.'}
+        empty={
+          contractorsOnly ? 'No contractor credentials expire in this window.' : 'No credentials expire in this window.'
+        }
         rows={rows.map((row) => [
           row.employeeName,
           row.isContractor ? (

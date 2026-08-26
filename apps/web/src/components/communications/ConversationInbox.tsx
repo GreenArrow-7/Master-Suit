@@ -101,18 +101,30 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
 
   const active = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
 
-  const loadList = useCallback(() => {
-    const query = new URLSearchParams({ filter });
-    if (search.trim()) query.set('search', search.trim());
-    return fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' } })
-      .then((res) => {
-        if (!res.ok) throw new Error('Could not load conversations.');
-        return res.json();
-      })
-      .then((data) => setConversations(data.conversations ?? []))
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoadingList(false));
-  }, [filter, search]);
+  const loadList = useCallback(
+    (signal?: AbortSignal) => {
+      const query = new URLSearchParams({ filter });
+      if (search.trim()) query.set('search', search.trim());
+      return (
+        fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' }, signal })
+          .then((res) => {
+            if (!res.ok) throw new Error('Could not load conversations.');
+            return res.json();
+          })
+          .then((data) => setConversations(data.conversations ?? []))
+          .catch((err: Error) => {
+            if (err.name !== 'AbortError') setError(err.message);
+          })
+          // An abort means a newer keystroke is already queued, so the spinner must
+          // stay up — clearing it here flickered the list back to "loaded" between
+          // characters.
+          .finally(() => {
+            if (!signal?.aborted) setLoadingList(false);
+          })
+      );
+    },
+    [filter, search],
+  );
 
   /**
    * These effects fetch and nothing else, as promise chains rather than
@@ -129,7 +141,16 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
    * waiting — the note in WorkspaceSidebar makes the same point.
    */
   useEffect(() => {
-    void loadList();
+    // Debounced, because `search` updates per keystroke: without this each key
+    // was its own request, and a slow older response could land after — and
+    // overwrite — a newer one. The abort covers both. Same pattern as
+    // NewCallForm's lead typeahead.
+    const controller = new AbortController();
+    const timer = setTimeout(() => void loadList(controller.signal), 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [loadList]);
 
   const loadThread = useCallback((id: string) => {
@@ -165,11 +186,14 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
    */
   useEffect(() => {
     if (!canSend || windowState?.open !== false) return;
+    // Templates change rarely; the first closed-window thread loads them and
+    // every later open→closed transition reuses that list.
+    if (templates.length > 0) return;
     void fetch('/api/v1/whatsapp/templates', { headers: { accept: 'application/json' } })
       .then((res) => (res.ok ? res.json() : { templates: [] }))
       .then((data) => setTemplates(data.templates ?? []))
       .catch(() => setTemplates([]));
-  }, [canSend, windowState?.open]);
+  }, [canSend, windowState?.open, templates.length]);
 
   const chosen = useMemo(() => templates.find((t) => t.key === templateKey) ?? null, [templates, templateKey]);
 

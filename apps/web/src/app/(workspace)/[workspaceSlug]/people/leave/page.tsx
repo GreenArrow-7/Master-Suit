@@ -106,16 +106,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         actionsBase={actions}
         balances={[...balances]
           .sort((a, b) => balanceRank(a.name) - balanceRank(b.name))
-          .map(
-          (balance): Balance => ({
+          .map((balance): Balance => ({
             leaveTypeId: balance.leaveTypeId,
             name: balance.name,
             paid: balance.paid,
             entitledDays: balance.entitledDays,
             takenDays: balance.takenDays,
             availableDays: balance.availableDays,
-          }),
-        )}
+          }))}
         mine={mineRows.map(toRow)}
         waiting={waitingRows.map(toRow)}
         canDecide={approver}

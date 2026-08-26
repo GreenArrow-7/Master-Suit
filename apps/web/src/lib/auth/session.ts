@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '../db';
+import { readCachedActor, writeCachedActor } from './actorCache';
 import { env } from '../env';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
@@ -113,6 +114,8 @@ export type PlatformCtx = {
   platformRole: 'USER' | 'OWNER' | 'SUPPORT' | 'SECURITY_AUDITOR';
   email: string;
   fullName: string;
+  /** Null while an administrator-issued password is still in force. */
+  passwordChangedAt: Date | null;
   activeTenantId: string | null;
   sessionId: string;
   purpose: SessionPurpose;
@@ -216,6 +219,7 @@ export async function resolvePlatformCtx(
     platformRole: user.platformRole,
     email: user.email,
     fullName: user.fullName,
+    passwordChangedAt: user.passwordChangedAt,
     activeTenantId: session.activeTenantId,
     sessionId: session.id,
     purpose: session.purpose as SessionPurpose,
@@ -248,56 +252,50 @@ export async function switchActiveWorkspace(platformCtx: PlatformCtx, tenantId: 
  * the role's full permission map with per-permission scopes.
  */
 export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> {
-  const token = await sessionToken(req);
-  if (!token) throw Unauthorized();
-
-  const platformSession = await prisma.platformSession.findUnique({
-    where: { tokenHash: sha256(token) },
-    include: { platformUser: true },
-  });
-  if (platformSession) {
-    const platformCtx = await resolvePlatformCtx(req, requestId);
-    if (!platformCtx.activeTenantId) throw Unauthorized('Choose a workspace to continue.');
-    const membership = await prisma.workspaceMembership.findFirst({
-      where: {
-        platformUserId: platformCtx.platformUserId,
-        tenantId: platformCtx.activeTenantId,
-        status: 'ACTIVE',
-        tenant: { status: 'ACTIVE', deletedAt: null },
-        salesUser: { status: 'ACTIVE', deletedAt: null },
-      },
-      select: { salesUserId: true },
-    });
-    // Platform staff have no membership by design. Rather than locking them out
-    // of every workspace URL, give them a support actor — full control for the
-    // OWNER, read-only for SUPPORT and SECURITY_AUDITOR. See support-actor.ts.
-    const actor = membership?.salesUserId
-      ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
-      : isSupportRole(platformCtx.platformRole)
-        ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId, platformCtx.platformRole)
-        : null;
-    if (!actor) throw Unauthorized('Your workspace access is not active.');
-    return {
-      tenantId: platformCtx.activeTenantId,
-      actor,
-      requestId,
-      ip: platformCtx.ip,
-      userAgent: platformCtx.userAgent,
-    };
-  }
-
   /**
-   * Only a PlatformSession is a session.
-   *
-   * There used to be a second branch here reading a legacy `Session` row. No
-   * code path in the application ever created one — `createSession` was dead —
-   * so it was reachable only from test fixtures, which meant the permission
-   * suite authenticated through something production does not have. Worse, it
-   * checked the user but never `tenant.status`, so it would have kept a
-   * suspended workspace working. Both are gone; the table is next, once a
-   * migration can drop it safely.
+   * Only a PlatformSession is a session, so this delegates straight to
+   * resolvePlatformCtx — it answers a missing row with the same
+   * "Your session has expired". A pre-check findUnique used to run here first,
+   * which meant the identical session query executed twice on every
+   * authenticated request. (A legacy `Session` branch the pre-check existed to
+   * arbitrate is long gone; see the git history of this function.)
    */
-  throw Unauthorized('Your session has expired.');
+  const platformCtx = await resolvePlatformCtx(req, requestId);
+  if (!platformCtx.activeTenantId) throw Unauthorized('Choose a workspace to continue.');
+  const membership = await prisma.workspaceMembership.findFirst({
+    where: {
+      platformUserId: platformCtx.platformUserId,
+      tenantId: platformCtx.activeTenantId,
+      status: 'ACTIVE',
+      tenant: { status: 'ACTIVE', deletedAt: null },
+      salesUser: { status: 'ACTIVE', deletedAt: null },
+    },
+    select: { salesUserId: true },
+  });
+  // Platform staff have no membership by design. Rather than locking them out
+  // of every workspace URL, give them a support actor — full control for the
+  // OWNER, read-only for SUPPORT and SECURITY_AUDITOR. See support-actor.ts.
+  const actor = membership?.salesUserId
+    ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
+    : isSupportRole(platformCtx.platformRole)
+      ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId, platformCtx.platformRole)
+      : null;
+  if (!actor) throw Unauthorized('Your workspace access is not active.');
+  return {
+    tenantId: platformCtx.activeTenantId,
+    actor,
+    requestId,
+    ip: platformCtx.ip,
+    userAgent: platformCtx.userAgent,
+    // Only for real members: a support actor holds no workspace credential to
+    // change, and forcing platform staff through the screen would lock them out.
+    ...(membership?.salesUserId
+      ? {
+          mustChangePassword: platformCtx.passwordChangedAt === null,
+          passwordChangedAt: platformCtx.passwordChangedAt,
+        }
+      : {}),
+  };
 }
 
 /**
@@ -330,7 +328,27 @@ const ASSIGNMENT_SCOPE_CAP: Record<string, Scope> = {
   OWN_RECORD: 'OWN',
 };
 
+/**
+ * The permission set for one user in one workspace.
+ *
+ * Cached in Redis — see lib/auth/actorCache.ts for the versioning, and why
+ * invalidation is a single INCR rather than a key sweep. The cache is checked
+ * first and written last; everything between is the original build, unchanged.
+ *
+ * The *session* is deliberately not cached and is still read from the database
+ * on every request, so signing someone out remains immediate. Only what they may
+ * do once signed in comes from here.
+ */
 async function buildActor(userId: string, tenantId: string): Promise<Actor> {
+  const hit = await readCachedActor(tenantId, userId);
+  if (hit) return hit;
+
+  const actor = await loadActor(userId, tenantId);
+  await writeCachedActor(tenantId, userId, actor);
+  return actor;
+}
+
+async function loadActor(userId: string, tenantId: string): Promise<Actor> {
   const user = await prisma.user.findFirst({
     where: { id: userId, tenantId },
     include: {
@@ -406,6 +424,8 @@ async function buildActor(userId: string, tenantId: string): Promise<Actor> {
   return {
     id: user.id,
     tenantId: user.tenantId,
+    fullName: user.fullName,
+    email: user.email,
     roleId: user.roleId,
     roleKey: user.role.key,
     roleRank: rank,

@@ -154,7 +154,10 @@ export default async function Page({
 
 /** Carries only the filters through to the export, never the report key twice. */
 function queryString(query: { from?: string; to?: string }) {
-  const parts = [query.from ? `from=${encodeURIComponent(query.from)}` : '', query.to ? `to=${encodeURIComponent(query.to)}` : '']
+  const parts = [
+    query.from ? `from=${encodeURIComponent(query.from)}` : '',
+    query.to ? `to=${encodeURIComponent(query.to)}` : '',
+  ]
     .filter(Boolean)
     .join('&');
   return parts ? `?${parts}` : '';

@@ -240,14 +240,13 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         ])
       : null;
 
-  const [people, sales, mine, approvals, security, calls, viewer] = await Promise.all([
+  const [people, sales, mine, approvals, security, calls] = await Promise.all([
     peopleQuery,
     salesQuery,
     mineQuery,
     approvalsQuery,
     securityQuery,
     callsQuery,
-    prisma.user.findFirst({ where: { id: ctx.actor.id, tenantId: ctx.tenantId }, select: { fullName: true } }),
   ]);
 
   // ponytail: ratio of averages, not average of per-call ratios — exact only
@@ -277,7 +276,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
     new Intl.DateTimeFormat('en-AE', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dubai' }).format(new Date()),
   );
   const daypart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-  const firstName = viewer?.fullName?.split(/\s+/)[0];
+  // Off the actor buildActor already loaded — this page fetched the same row a
+  // third time. Empty for platform staff, whose actor is labelled rather than
+  // named: greeting a support session "Good morning, Platform" is nobody's name.
+  const firstName = ctx.actor.id.startsWith('platform:') ? '' : ctx.actor.fullName.split(/\s+/)[0];
 
   /**
    * The attention row: every queue that is somebody's overdue work, one chip
@@ -350,7 +352,11 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
     const lens = salesScope === 'OWN' ? 'My' : salesScope === 'ORGANIZATION' ? '' : 'Team';
     const title = (base: string) => (lens ? `${lens} ${base.toLowerCase()}` : base);
     bandStats.push(
-      { label: title('Pipeline value'), value: money(Number(sales[4]._sum.amount ?? 0)), href: `/${workspace.slug}/sales/opportunities` },
+      {
+        label: title('Pipeline value'),
+        value: money(Number(sales[4]._sum.amount ?? 0)),
+        href: `/${workspace.slug}/sales/opportunities`,
+      },
       { label: title('Open opportunities'), value: String(sales[2]), href: `/${workspace.slug}/sales/opportunities` },
       { label: title('Active leads'), value: String(sales[0]), href: `/${workspace.slug}/sales/leads` },
     );
@@ -381,14 +387,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
       title="My day"
       values={[
-        [
-          'Today',
-          mine[1]?.checkInAt
-            ? mine[1].checkOutAt
-              ? 'Checked out'
-              : 'Checked in'
-            : 'Not checked in',
-        ],
+        ['Today', mine[1]?.checkInAt ? (mine[1].checkOutAt ? 'Checked out' : 'Checked in') : 'Not checked in'],
         ['My pending leave', mine[2]],
         ['My pending overtime', mine[3]],
         ['Self-assessment due', mine[4]],
@@ -416,9 +415,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           }}
         >
           <div>
-            <div className="lf-eyebrow">
-              {workspace.displayName} · Overview
-            </div>
+            <div className="lf-eyebrow">{workspace.displayName} · Overview</div>
             <h1 className="lf-command-band__headline">
               Good {daypart}
               {firstName ? (
@@ -575,7 +572,10 @@ function Summary({
   link?: { href: string; label: string };
 }) {
   return (
-    <section className="lf-module-panel" style={accent ? ({ ['--panel-accent' as string]: accent } as React.CSSProperties) : undefined}>
+    <section
+      className="lf-module-panel"
+      style={accent ? ({ ['--panel-accent' as string]: accent } as React.CSSProperties) : undefined}
+    >
       <div className="lf-module-panel__head">
         <h2 className="lf-module-panel__title">{title}</h2>
         {link && (

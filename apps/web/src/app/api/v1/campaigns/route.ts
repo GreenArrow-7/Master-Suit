@@ -12,7 +12,12 @@ const createBody = z
   .object({
     name: z.string().min(2).max(160),
     /** Short unique handle; derived from the name when omitted. */
-    code: z.string().min(2).max(40).regex(/^[A-Z0-9_-]+$/i).optional(),
+    code: z
+      .string()
+      .min(2)
+      .max(40)
+      .regex(/^[A-Z0-9_-]+$/i)
+      .optional(),
     campaignType: z.string().min(2).max(40).default('OUTBOUND'),
     channel: z.enum(['WHATSAPP', 'VOICE', 'EMAIL', 'SMS']).default('WHATSAPP'),
     startDate: z.coerce.date().optional(),

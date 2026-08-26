@@ -25,7 +25,14 @@ const stamp = (value: Date) =>
     .replace(',', '');
 
 const dayOnly = (value: Date | null) =>
-  value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', year: 'numeric' }).format(value) : null;
+  value
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Dubai',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(value)
+    : null;
 
 /**
  * Roles & permissions, per the reference: the role list on the left with its
@@ -57,8 +64,16 @@ export default async function Page({
       include: { platformUser: { select: { fullName: true, email: true } } },
       orderBy: { joinedAt: 'asc' },
     }),
-    prisma.branch.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    prisma.region.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.branch.findMany({
+      where: { tenantId: ctx.tenantId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.region.findMany({
+      where: { tenantId: ctx.tenantId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
   ]);
 
   const selected = roleId ? await permissionMatrix(ctx, roleId).catch(() => null) : null;
@@ -162,7 +177,12 @@ export default async function Page({
                   Close
                 </Link>
               </div>
+              {/* Keyed by role: navigating between roles changes only a search
+                  param, which React reconciles rather than remounting — so
+                  without this the matrix kept the previous role's scopes, showed
+                  them against the new role's rows, and Save wrote them onto it. */}
               <PermissionMatrix
+                key={selected.role.id}
                 endpoint={endpoint}
                 roleId={selected.role.id}
                 editable={mayManage && selected.editable}
@@ -182,12 +202,21 @@ export default async function Page({
             fields={[
               { name: 'name', label: 'Name', required: true },
               { name: 'key', label: 'Key (lowercase, no spaces)', required: true, placeholder: 'branch_supervisor' },
-              { name: 'rank', label: 'Rank', type: 'number', required: true, placeholder: String(ctx.actor.roleRank + 10) },
+              {
+                name: 'rank',
+                label: 'Rank',
+                type: 'number',
+                required: true,
+                placeholder: String(ctx.actor.roleRank + 10),
+              },
               {
                 name: 'defaultScope',
                 label: 'Default scope',
                 type: 'select',
-                options: ['OWN', 'TEAM', 'BRANCH', 'REGION', 'ORGANIZATION'].map((value) => ({ value, label: value.toLowerCase() })),
+                options: ['OWN', 'TEAM', 'BRANCH', 'REGION', 'ORGANIZATION'].map((value) => ({
+                  value,
+                  label: value.toLowerCase(),
+                })),
               },
               { name: 'description', label: 'Description' },
             ]}
@@ -211,7 +240,13 @@ export default async function Page({
               },
               { name: 'name', label: 'New role name', required: true },
               { name: 'key', label: 'Key (lowercase, no spaces)', required: true },
-              { name: 'rank', label: 'Rank', type: 'number', required: true, placeholder: String(ctx.actor.roleRank + 10) },
+              {
+                name: 'rank',
+                label: 'Rank',
+                type: 'number',
+                required: true,
+                placeholder: String(ctx.actor.roleRank + 10),
+              },
             ]}
           />
         </section>
@@ -281,28 +316,30 @@ export default async function Page({
           <div className="lf-card lf-leave__empty">Nobody currently holds this role.</div>
         ) : (
           <TableSearch placeholder="Name or email…" label="Search the holders">
-          <div className="lf-table-wrap">
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Email</th>
-                  <th>Held as</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holders.map((holder) => (
-                  <tr key={holder.id}>
-                    <td data-label="User">{holder.fullName}</td>
-                    <td data-label="Email">{holder.email}</td>
-                    <td data-label="Held as">
-                      <span className="lf-badge">{holder.roleId === selected.role.id ? 'primary role' : 'assignment'}</span>
-                    </td>
+            <div className="lf-table-wrap">
+              <table className="lf-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Held as</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {holders.map((holder) => (
+                    <tr key={holder.id}>
+                      <td data-label="User">{holder.fullName}</td>
+                      <td data-label="Email">{holder.email}</td>
+                      <td data-label="Held as">
+                        <span className="lf-badge">
+                          {holder.roleId === selected.role.id ? 'primary role' : 'assignment'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </TableSearch>
         )}
       </section>
@@ -313,48 +350,50 @@ export default async function Page({
           <div className="lf-card lf-leave__empty">No additional role assignments.</div>
         ) : (
           <TableSearch placeholder="User, role, scope or status…" label="Search the history">
-          <div className="lf-table-wrap">
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Scope</th>
-                  <th>Window</th>
-                  <th>Status</th>
-                  <th>When</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((assignment) => (
-                  <tr key={assignment.id}>
-                    <td data-label="User">{assignment.holder}</td>
-                    <td data-label="Role">{assignment.role.key}</td>
-                    <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
-                    <td data-label="Window">
-                      {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
-                    </td>
-                    <td data-label="Status">
-                      <span className="lf-badge">{assignment.inForce ? 'active' : assignment.status.toLowerCase()}</span>
-                    </td>
-                    <td data-label="When">{stamp(assignment.assignedAt)}</td>
-                    <td data-label="">
-                      {mayManage && assignment.status === 'ACTIVE' && (
-                        <WorkspaceActionButton
-                          endpoint={`${endpoint}/revoke`}
-                          body={{ assignmentId: assignment.id }}
-                          label="Revoke"
-                          variant="ghost"
-                          promptFor={{ name: 'reason', label: 'Reason', required: false }}
-                        />
-                      )}
-                    </td>
+            <div className="lf-table-wrap">
+              <table className="lf-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Scope</th>
+                    <th>Window</th>
+                    <th>Status</th>
+                    <th>When</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {history.map((assignment) => (
+                    <tr key={assignment.id}>
+                      <td data-label="User">{assignment.holder}</td>
+                      <td data-label="Role">{assignment.role.key}</td>
+                      <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
+                      <td data-label="Window">
+                        {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
+                      </td>
+                      <td data-label="Status">
+                        <span className="lf-badge">
+                          {assignment.inForce ? 'active' : assignment.status.toLowerCase()}
+                        </span>
+                      </td>
+                      <td data-label="When">{stamp(assignment.assignedAt)}</td>
+                      <td data-label="">
+                        {mayManage && assignment.status === 'ACTIVE' && (
+                          <WorkspaceActionButton
+                            endpoint={`${endpoint}/revoke`}
+                            body={{ assignmentId: assignment.id }}
+                            label="Revoke"
+                            variant="ghost"
+                            promptFor={{ name: 'reason', label: 'Reason', required: false }}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </TableSearch>
         )}
       </section>

@@ -5,8 +5,8 @@ import { can } from '@/lib/security/rbac';
 import { callbackSecrets, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { defaultVendor } from '@/lib/integrations/telephony/resolve';
 import { PROVIDERS } from '@/lib/integrations/registry';
+import { buildId } from '@/lib/build';
 import IntegrationBoard, { type ProviderCard } from '@/components/workspace/IntegrationBoard';
-import { geminiKeyForTenant } from '@/lib/ai/gemini';
 import ChannelOverview from '@/components/workspace/ChannelOverview';
 import { channelCards } from '@/services/integrations/channelState';
 
@@ -22,7 +22,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
   const { workspaceSlug } = await params;
   const ctx = await requirePageAccess({ permission: ['integrations', 'VIEW'] });
 
-  const [connections, chosen, aiConfigured, channels] = await Promise.all([
+  const [connections, chosen, channels] = await Promise.all([
     prisma.integrationConnection.findMany({
       where: { tenantId: ctx.tenantId },
       select: {
@@ -35,9 +35,6 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       },
     }),
     defaultVendor(ctx.tenantId),
-    // The deployment key or the one this workspace connected — the card used to
-    // read only the env var and told every hosted tenant "not configured".
-    geminiKeyForTenant(ctx.tenantId).then(Boolean),
     channelCards(ctx.tenantId, workspaceSlug),
   ]);
 
@@ -58,8 +55,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       unsignedCallbacks: spec.unsignedCallbacks ?? false,
       credentialFields: spec.credentials.map(({ key, label, secret, hint }) => ({ key, label, secret, hint })),
       settingFields: spec.settings.map(({ key, label, hint }) => ({ key, label, hint })),
-      // A deployment-wide GEMINI_API_KEY is a real connection with no row.
-      status: conn?.status ?? (spec.key === 'gemini' && aiConfigured ? 'CONNECTED' : 'NOT_CONFIGURED'),
+      status: conn?.status ?? 'NOT_CONFIGURED',
       settings: (conn?.metadata ?? {}) as Record<string, unknown>,
       lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
       errorMessage: conn?.errorMessage ?? null,
@@ -91,7 +87,9 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
       <IntegrationBoard
         providers={providers}
         defaultTelephonyProvider={chosen}
+        aiConfigured={Boolean(process.env.GEMINI_API_KEY)}
         canEdit={can(ctx, 'integrations', 'MANAGE_CONFIGURATION')}
+        build={buildId()}
       />
     </>
   );

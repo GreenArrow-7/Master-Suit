@@ -29,12 +29,7 @@ import { isLineManagerOf, myEmployee, reportingLine, requireEmployee } from './l
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyPipOpened, notifyReviewCycleOpened, notifyReviewReleased, notifySelfReviewSubmitted } from './notify';
 
-export type ReviewStatus =
-  | 'PENDING_SELF'
-  | 'PENDING_MANAGER'
-  | 'CALIBRATION'
-  | 'AWAITING_ACKNOWLEDGEMENT'
-  | 'COMPLETE';
+export type ReviewStatus = 'PENDING_SELF' | 'PENDING_MANAGER' | 'CALIBRATION' | 'AWAITING_ACKNOWLEDGEMENT' | 'COMPLETE';
 
 /** Reads everyone's performance data and runs calibration. HR, in practice. */
 export const isPerformanceAdmin = (ctx: Ctx) =>
@@ -151,7 +146,9 @@ export async function openCycle(ctx: Ctx, cycleId: string) {
         tenantId: ctx.tenantId,
         cycleId: cycle.id,
         employeeId: employee.id,
-        managerId: employee.managerMembershipId ? (managerByMembership.get(employee.managerMembershipId) ?? null) : null,
+        managerId: employee.managerMembershipId
+          ? (managerByMembership.get(employee.managerMembershipId) ?? null)
+          : null,
       })),
       skipDuplicates: true,
     });
@@ -361,7 +358,8 @@ export async function submitSelfReview(ctx: Ctx, input: SelfReviewInput) {
   const review = await loadReview(ctx, input.reviewId);
   const self = await myEmployee(ctx);
   if (!self || self.id !== review.employeeId) throw Forbidden('Only the employee can write their self-assessment.');
-  if (review.status !== 'PENDING_SELF') throw Conflict('The self-assessment for this review has already been submitted.');
+  if (review.status !== 'PENDING_SELF')
+    throw Conflict('The self-assessment for this review has already been submitted.');
   if (input.rating != null && (input.rating < 1 || input.rating > 5)) throw Conflict('Rate between 1 and 5.');
 
   const updated = await withTx(ctx.tenantId, async (tx) => {
@@ -525,8 +523,7 @@ export async function acknowledgeReview(ctx: Ctx, reviewId: string, note?: strin
   const review = await loadReview(ctx, reviewId);
   const self = await myEmployee(ctx);
   if (!self || self.id !== review.employeeId) throw Forbidden('Only the employee can acknowledge their review.');
-  if (review.status !== 'AWAITING_ACKNOWLEDGEMENT')
-    throw Conflict('This review is not ready to be acknowledged yet.');
+  if (review.status !== 'AWAITING_ACKNOWLEDGEMENT') throw Conflict('This review is not ready to be acknowledged yet.');
 
   const updated = await prisma.hrReview.update({
     where: { tenantId: ctx.tenantId, id: review.id },
@@ -781,9 +778,7 @@ export async function performanceSummary(ctx: Ctx, cycleId?: string) {
       ratings.filter((row) => row.finalRating !== null).map((row) => [String(row.finalRating), row._count._all]),
     ),
     // Anything not yet acknowledged is still owed by somebody.
-    outstanding: byStatus
-      .filter((row) => row.status !== 'COMPLETE')
-      .reduce((total, row) => total + row._count._all, 0),
+    outstanding: byStatus.filter((row) => row.status !== 'COMPLETE').reduce((total, row) => total + row._count._all, 0),
     activePips,
   };
 }

@@ -139,9 +139,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         listingId={listing.id}
         canEdit={can(ctx, 'listings', 'EDIT')}
         daysLeft={
-          listing.mandateExpires
-            ? Math.ceil((listing.mandateExpires.getTime() - Date.now()) / 86_400_000)
-            : null
+          listing.mandateExpires ? Math.ceil((listing.mandateExpires.getTime() - Date.now()) / 86_400_000) : null
         }
         mandates={listing.mandates.map((m) => ({
           id: m.id,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MethodNotAllowed } from '@/lib/errors';
+import { Forbidden, MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import { changeOwnPassword, mustChangePassword } from '@/services/identity/accounts';
@@ -61,6 +61,15 @@ export const POST = route(
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
 
+    /**
+     * Every action below manages the account's own credentials, and a machine
+     * credential cannot stand in for the person who owns them. An API key
+     * authenticates as the user who created it, so without this it could change
+     * that person's password or enrol an authenticator on their account —
+     * neither of which a key is ever the right instrument for.
+     */
+    if (ctx.apiKeyId) throw Forbidden('This endpoint requires a signed-in session.');
+
     switch (params.action) {
       case 'password-change': {
         const input = z
@@ -68,8 +77,12 @@ export const POST = route(
           .parse(body);
         return changeOwnPassword(ctx, input.currentPassword, input.newPassword);
       }
-      case 'two-factor-begin':
-        return beginTotpEnrolment(ctx);
+      case 'two-factor-begin': {
+        // Re-authentication: see beginTotpEnrolment for why enrolment is not a
+        // read and must not ride on a session alone.
+        const input = z.object({ currentPassword: z.string().min(1).max(512) }).parse(body);
+        return beginTotpEnrolment(ctx, input.currentPassword);
+      }
       case 'two-factor-confirm': {
         const input = z.object({ code: z.string().length(6) }).parse(body);
         return confirmTotpEnrolment(ctx, input.code);

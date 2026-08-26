@@ -27,8 +27,7 @@ export default async function CommunicationsPage({ searchParams }: { searchParam
   }
 
   const allowed = CHANNELS.map(([, key]) => key).filter(Boolean) as string[];
-  const channelFilter =
-    params.channel && allowed.includes(params.channel) ? { channel: params.channel as never } : {};
+  const channelFilter = params.channel && allowed.includes(params.channel) ? { channel: params.channel as never } : {};
   const rows = await prisma.communication.findMany({
     where: { tenantId: ctx.tenantId, ...channelFilter },
     orderBy: { createdAt: 'desc' },

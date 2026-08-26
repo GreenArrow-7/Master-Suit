@@ -113,6 +113,17 @@ export interface TelephonyProvider {
    */
   mediaHeaders?(): Record<string, string>;
   /**
+   * Hosts this vendor serves recording media from.
+   *
+   * Consulted by `assertFetchableUrl` before the media worker fetches a URL the
+   * vendor supplied in a webhook. A leading dot means "and its subdomains".
+   *
+   * Defaults live with each provider because they are facts about that vendor,
+   * and are overridable by RECORDING_URL_ALLOWED_HOSTS because a CDN change at
+   * the vendor's end must not require a deploy here to keep ingesting.
+   */
+  mediaHosts?(): readonly string[];
+  /**
    * Authenticates the delivery. Never throws — an unauthenticated webhook is a
    * `false`, and the route answers 401 without touching the database again.
    */

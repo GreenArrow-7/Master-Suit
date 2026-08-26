@@ -7,9 +7,11 @@ import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
+import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
 import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { recordError, recordRequest } from '../metrics';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
   module: string;
@@ -78,7 +80,18 @@ export function route<
       if (spec.rateLimit) {
         await consume({ key: `route:${spec.module}:${spec.action}:${ctx?.actor.id ?? ip}`, ...spec.rateLimit });
       } else if (ctx) {
-        await consume(ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, 600) : limits.sessionUser(ctx.actor.id));
+        // `API_RATE_LIMIT_PER_MIN` rather than the literal 600 it defaulted to.
+        // The setting was declared in lib/env.ts and read nowhere, so an
+        // operator who raised or lowered it changed nothing at all — and the
+        // number they saw in .env.production matched what was actually enforced
+        // only by coincidence, until one of the two moved.
+        //
+        // It governs the API-key path only. A browser session is a different
+        // shape of traffic — one screen can issue a dozen requests — and
+        // limits.sessionUser's separate ceiling is deliberate, not an oversight.
+        await consume(
+          ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, env.API_RATE_LIMIT_PER_MIN) : limits.sessionUser(ctx.actor.id),
+        );
       }
 
       // 3. Authorize — before the handler body runs ────────────────────────────
@@ -89,6 +102,19 @@ export function route<
         // from "deliberately Sales". Platform-level surfaces — users, roles,
         // profile, notifications — belong to no product module.
         if (spec.productModule) await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+        /**
+         * `selfService` waives the permission check entirely — that is its
+         * point, and it is worth knowing what that means for an API key.
+         *
+         * A key authenticates through this same path and inherits
+         * `actor.id = key.createdById`, so it reaches a self-service route as
+         * its creator, with no permission check, whatever its scopes narrow it
+         * to. A route that declares `selfService` and does not want machine
+         * callers has to say so itself — see the check at the top of
+         * api/v1/notifications. It is deliberately not enforced here: the
+         * existing self-service routes (identity/self, hr/self) predate that
+         * decision and are left as they were.
+         */
         if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
       } else if (!spec.anonymous) throw Unauthorized();
 
@@ -123,8 +149,21 @@ export function route<
         });
       }
 
+      // `ms` is hoisted because two things need it now: the log line, and the
+      // request/latency histogram the metrics endpoint serves. Computing it
+      // twice would make them disagree by however long the log call took.
+      const ms = Date.now() - started;
+      recordRequest(spec.module, spec.action, 200, ms);
       logger.info(
-        { requestId, module: spec.module, action: spec.action, ms: Date.now() - started, tenantId: ctx?.tenantId },
+        {
+          requestId,
+          method: req.method,
+          path: url.pathname,
+          module: spec.module,
+          action: spec.action,
+          ms,
+          tenantId: ctx?.tenantId,
+        },
         'request',
       );
 
@@ -143,7 +182,17 @@ export function route<
 
       return NextResponse.json(result ?? { ok: true }, { headers: { 'x-request-id': requestId } });
     } catch (err) {
-      return toResponse(err, requestId, { module: spec.module, action: spec.action, tenantId: ctx?.tenantId });
+      const response = toResponse(err, requestId, {
+        module: spec.module,
+        action: spec.action,
+        tenantId: ctx?.tenantId,
+      });
+      // Counted here rather than inside toResponse: this is the one place that
+      // sees both the outcome and how long reaching it took, and a slow 500 is a
+      // different problem from a fast one.
+      recordRequest(spec.module, spec.action, response.status, Date.now() - started);
+      recordError(spec.module, spec.action, errorCode(err), response.status);
+      return response;
     }
   };
 }
@@ -193,6 +242,14 @@ function parse<T extends ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
     }
     throw e;
   }
+}
+
+/** The label for an error series: stable, low-cardinality, never a message. */
+function errorCode(err: unknown): string {
+  if (err instanceof ZodError) return 'validation-failed';
+  if (err instanceof TenantGuardError) return 'tenant-guard';
+  if (err instanceof AppError) return err.code;
+  return 'internal-error';
 }
 
 function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {

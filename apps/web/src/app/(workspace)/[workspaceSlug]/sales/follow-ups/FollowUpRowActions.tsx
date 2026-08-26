@@ -29,7 +29,12 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
 
   if (status === 'COMPLETED' || status === 'CANCELLED') {
     return (
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => patch({ status: 'OPEN' })}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => patch({ status: 'OPEN' })}
+      >
         Reopen
       </button>
     );
@@ -54,7 +59,12 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         >
           Save
         </button>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setRescheduling(false)}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          disabled={busy}
+          onClick={() => setRescheduling(false)}
+        >
           Back
         </button>
       </span>
@@ -63,13 +73,28 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
 
   return (
     <span style={{ display: 'inline-flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
-      <button type="button" className="lf-btn lf-btn--sm" disabled={busy} onClick={() => patch({ status: 'COMPLETED' })}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--sm"
+        disabled={busy}
+        onClick={() => patch({ status: 'COMPLETED' })}
+      >
         Complete
       </button>
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setRescheduling(true)}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => setRescheduling(true)}
+      >
         Reschedule
       </button>
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => patch({ status: 'CANCELLED' })}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => patch({ status: 'CANCELLED' })}
+      >
         Cancel
       </button>
     </span>

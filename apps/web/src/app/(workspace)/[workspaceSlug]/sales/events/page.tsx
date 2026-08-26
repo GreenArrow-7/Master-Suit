@@ -29,7 +29,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };
-  else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED' || params.tab === 'CANCELLED') where.status = params.tab;
+  else if (params.tab === 'DRAFT' || params.tab === 'COMPLETED' || params.tab === 'CANCELLED')
+    where.status = params.tab;
 
   const events = await prisma.event.findMany({
     where,

@@ -34,23 +34,24 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
           </h2>
           <p className="lf-auth-sub">
             {PRODUCT_NAME}
-            {' is a modular platform — Sales CRM, People & HR, and the platform control plane — sharing one directory, one permission model and one audit trail.'}
+            {
+              ' is a modular platform — Sales CRM, People & HR, and the platform control plane — sharing one directory, one permission model and one audit trail.'
+            }
           </p>
 
           <div className="lf-auth-collage">
             <article className="lf-auth-minicard lf-auth-minicard--brief" data-i="1">
               <div className="lf-eyebrow">Sales CRM</div>
               <div className="lf-auth-mini-row">
-                <span className="lf-auth-dot" style={{ background: 'var(--lf-brass, #ca8a04)' }} />
-                3 follow-ups due
+                <span className="lf-auth-dot" style={{ background: 'var(--lf-brass, #ca8a04)' }} />3 follow-ups due
               </div>
               <div className="lf-auth-mini-row">
-                <span className="lf-auth-dot" style={{ background: 'var(--lf-viridian, #16a34a)' }} />
-                2 high-intent leads
+                <span className="lf-auth-dot" style={{ background: 'var(--lf-viridian, #16a34a)' }} />2 high-intent
+                leads
               </div>
               <div className="lf-auth-mini-row">
-                <span className="lf-auth-dot" style={{ background: 'var(--lf-vermillion, #b3261e)' }} />
-                1 opportunity at risk
+                <span className="lf-auth-dot" style={{ background: 'var(--lf-vermillion, #b3261e)' }} />1 opportunity at
+                risk
               </div>
               <div className="lf-auth-mini-foot">Leads, calls, pipeline &amp; commissions &rarr;</div>
             </article>

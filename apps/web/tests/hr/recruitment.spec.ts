@@ -247,11 +247,16 @@ describe('candidates and the pipeline', () => {
       fullName: 'Rejected',
       email: `rejected-${suffix}@example.test`,
     });
-    await expect(
-      moveCandidate(ctxFor('recruiter', RECRUITER), candidate.id, 'REJECTED'),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(moveCandidate(ctxFor('recruiter', RECRUITER), candidate.id, 'REJECTED')).rejects.toMatchObject({
+      status: 409,
+    });
 
-    const rejected = await moveCandidate(ctxFor('recruiter', RECRUITER), candidate.id, 'REJECTED', 'Not enough UAE experience');
+    const rejected = await moveCandidate(
+      ctxFor('recruiter', RECRUITER),
+      candidate.id,
+      'REJECTED',
+      'Not enough UAE experience',
+    );
     expect(rejected.rejectionReason).toBe('Not enough UAE experience');
   });
 
@@ -262,9 +267,9 @@ describe('candidates and the pipeline', () => {
       fullName: 'Shortcut',
       email: `shortcut-${suffix}@example.test`,
     });
-    await expect(
-      moveCandidate(ctxFor('recruiter', RECRUITER), candidate.id, 'HIRED' as never),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(moveCandidate(ctxFor('recruiter', RECRUITER), candidate.id, 'HIRED' as never)).rejects.toMatchObject({
+      status: 409,
+    });
   });
 });
 
@@ -393,9 +398,9 @@ describe('offers and the hire', () => {
   });
 
   it('refuses onboarding until the invitation has been accepted', async () => {
-    await expect(
-      startOnboardingForCandidate(ctxFor('recruiter', RECRUITER), candidateId),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(startOnboardingForCandidate(ctxFor('recruiter', RECRUITER), candidateId)).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it('links the employee back to the application once accepted, and onboards', async () => {

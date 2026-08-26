@@ -60,156 +60,162 @@ const temporaryPassword = `${randomBytes(12).toString('base64url')}-${randomByte
  * to the next borrower of the pooled connection.
  */
 function withPlatformTx(fn) {
-  return client.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
-    return fn(tx);
-  }, { timeout: 60_000 });
+  return client.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
+      return fn(tx);
+    },
+    { timeout: 60_000 },
+  );
 }
 
 async function main() {
   return withPlatformTx(async (client) => {
-  const tenant = await client.tenant.findFirst({ where: { slug }, select: { id: true, displayName: true } });
-  if (!tenant) throw new Error(`No workspace with slug "${slug}".`);
+    const tenant = await client.tenant.findFirst({ where: { slug }, select: { id: true, displayName: true } });
+    if (!tenant) throw new Error(`No workspace with slug "${slug}".`);
 
-  // The highest-ranked role in the workspace: rank ascends downward, so the
-  // minimum rank is the most senior. Hardcoding a key would break on a tenant
-  // that renamed theirs.
-  const role = await client.role.findFirst({
-    where: { tenantId: tenant.id, ...(roleKey ? { key: roleKey } : {}) },
-    orderBy: { rank: 'asc' },
-    select: { id: true, key: true, name: true, rank: true },
-  });
-  if (!role) throw new Error(`Workspace "${slug}" has no role${roleKey ? ` with key "${roleKey}"` : 's'}.`);
+    // The highest-ranked role in the workspace: rank ascends downward, so the
+    // minimum rank is the most senior. Hardcoding a key would break on a tenant
+    // that renamed theirs.
+    const role = await client.role.findFirst({
+      where: { tenantId: tenant.id, ...(roleKey ? { key: roleKey } : {}) },
+      orderBy: { rank: 'asc' },
+      select: { id: true, key: true, name: true, rank: true },
+    });
+    if (!role) throw new Error(`Workspace "${slug}" has no role${roleKey ? ` with key "${roleKey}"` : 's'}.`);
 
-  // Same cost parameters as lib/auth/password.ts, read from the same env vars,
-  // so a hash written here verifies at sign-in.
-  const passwordHash = await hash(temporaryPassword, {
-    memoryCost: Number(process.env.ARGON2_MEMORY_KIB ?? 19456),
-    timeCost: Number(process.env.ARGON2_TIME_COST ?? 2),
-    parallelism: Number(process.env.ARGON2_PARALLELISM ?? 1),
-  });
-  const existingUser = await client.user.findFirst({
-    where: { tenantId: tenant.id, email, deletedAt: null },
-    select: { id: true, workspaceMembership: { select: { id: true, platformUserId: true, employee: { select: { id: true } } } } },
-  });
-
-  let userId;
-  let employeeId;
-  let revocations = { sessions: 0, resetTokens: 0 };
-
-  if (existingUser?.workspaceMembership) {
-    // passwordChangedAt: null is what makes the next sign-in demand a password
-    // of the account holder's own choosing.
-    await client.platformUser.update({
-      where: { id: existingUser.workspaceMembership.platformUserId },
-      data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null, status: 'ACTIVE' },
+    // Same cost parameters as lib/auth/password.ts, read from the same env vars,
+    // so a hash written here verifies at sign-in.
+    const passwordHash = await hash(temporaryPassword, {
+      memoryCost: Number(process.env.ARGON2_MEMORY_KIB ?? 19456),
+      timeCost: Number(process.env.ARGON2_TIME_COST ?? 2),
+      parallelism: Number(process.env.ARGON2_PARALLELISM ?? 1),
     });
-    await client.user.update({
-      where: { id: existingUser.id },
-      data: { fullName, status: 'ACTIVE', roleId: role.id, employeeCode: employeeNumber },
-    });
-    // Every live session dies with the old password: a reset that leaves the
-    // refresh tokens alive is pointless in the one case it matters.
-    const revoked = await client.platformSession.updateMany({
-      where: { platformUserId: existingUser.workspaceMembership.platformUserId, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' },
-    });
-    // Any reset link still in flight would let its holder set a password of
-    // their own choosing, which would silently undo this one.
-    const burned = await client.passwordResetToken.updateMany({
-      where: { tenantId: tenant.id, userId: existingUser.id, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-    revocations = { sessions: revoked.count, resetTokens: burned.count };
-    userId = existingUser.id;
-    employeeId = existingUser.workspaceMembership.employee?.id ?? null;
-    console.log(`Reset the existing account ${email}.`);
-  } else {
-    const platformUser = await client.platformUser.upsert({
-      where: { normalizedEmail: email },
-      update: { passwordHash, passwordChangedAt: null, status: 'ACTIVE', fullName },
-      create: {
-        email,
-        normalizedEmail: email,
-        fullName,
-        passwordHash,
-        status: 'ACTIVE',
-        emailVerifiedAt: new Date(),
-        passwordChangedAt: null,
+    const existingUser = await client.user.findFirst({
+      where: { tenantId: tenant.id, email, deletedAt: null },
+      select: {
+        id: true,
+        workspaceMembership: { select: { id: true, platformUserId: true, employee: { select: { id: true } } } },
       },
     });
-    const user = await client.user.create({
-      data: {
-        tenantId: tenant.id,
-        email,
-        fullName,
-        employeeCode: employeeNumber,
-        status: 'ACTIVE',
-        roleId: role.id,
-        emailVerifiedAt: new Date(),
-      },
-    });
-    const membership = await client.workspaceMembership.create({
-      data: {
-        tenantId: tenant.id,
-        platformUserId: platformUser.id,
-        salesUserId: user.id,
-        status: 'ACTIVE',
-        roleSnapshot: role.key,
-        joinedAt: new Date(),
-      },
-    });
-    await client.membershipRole.create({
-      data: { tenantId: tenant.id, membershipId: membership.id, roleId: role.id },
-    });
-    const employee = await client.employeeProfile.create({
-      data: {
-        tenantId: tenant.id,
-        membershipId: membership.id,
-        employeeNumber,
-        employmentStatus: 'ACTIVE',
-        joinedOn: new Date(),
-      },
-    });
-    userId = user.id;
-    employeeId = employee.id;
-    console.log(`Created ${email}.`);
-  }
 
-  await client.auditLog
-    .create({
-      data: {
-        tenantId: tenant.id,
-        actorUserId: userId,
-        event: 'PASSWORD_CHANGED',
-        objectType: 'user',
-        recordId: userId,
-        // The password is not in here, and there is no field it could be in.
-        metadata: {
-          action: 'account.admin_bootstrap',
-          script: 'ensure-workspace-admin',
-          employeeNumber,
-          sessionsRevoked: revocations.sessions,
-          resetTokensBurned: revocations.resetTokens,
+    let userId;
+    let employeeId;
+    let revocations = { sessions: 0, resetTokens: 0 };
+
+    if (existingUser?.workspaceMembership) {
+      // passwordChangedAt: null is what makes the next sign-in demand a password
+      // of the account holder's own choosing.
+      await client.platformUser.update({
+        where: { id: existingUser.workspaceMembership.platformUserId },
+        data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null, status: 'ACTIVE' },
+      });
+      await client.user.update({
+        where: { id: existingUser.id },
+        data: { fullName, status: 'ACTIVE', roleId: role.id, employeeCode: employeeNumber },
+      });
+      // Every live session dies with the old password: a reset that leaves the
+      // refresh tokens alive is pointless in the one case it matters.
+      const revoked = await client.platformSession.updateMany({
+        where: { platformUserId: existingUser.workspaceMembership.platformUserId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' },
+      });
+      // Any reset link still in flight would let its holder set a password of
+      // their own choosing, which would silently undo this one.
+      const burned = await client.passwordResetToken.updateMany({
+        where: { tenantId: tenant.id, userId: existingUser.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      revocations = { sessions: revoked.count, resetTokens: burned.count };
+      userId = existingUser.id;
+      employeeId = existingUser.workspaceMembership.employee?.id ?? null;
+      console.log(`Reset the existing account ${email}.`);
+    } else {
+      const platformUser = await client.platformUser.upsert({
+        where: { normalizedEmail: email },
+        update: { passwordHash, passwordChangedAt: null, status: 'ACTIVE', fullName },
+        create: {
+          email,
+          normalizedEmail: email,
+          fullName,
+          passwordHash,
+          status: 'ACTIVE',
+          emailVerifiedAt: new Date(),
+          passwordChangedAt: null,
         },
-      },
-    })
-    .catch((error) => console.warn(`Audit row not written: ${error.message}`));
+      });
+      const user = await client.user.create({
+        data: {
+          tenantId: tenant.id,
+          email,
+          fullName,
+          employeeCode: employeeNumber,
+          status: 'ACTIVE',
+          roleId: role.id,
+          emailVerifiedAt: new Date(),
+        },
+      });
+      const membership = await client.workspaceMembership.create({
+        data: {
+          tenantId: tenant.id,
+          platformUserId: platformUser.id,
+          salesUserId: user.id,
+          status: 'ACTIVE',
+          roleSnapshot: role.key,
+          joinedAt: new Date(),
+        },
+      });
+      await client.membershipRole.create({
+        data: { tenantId: tenant.id, membershipId: membership.id, roleId: role.id },
+      });
+      const employee = await client.employeeProfile.create({
+        data: {
+          tenantId: tenant.id,
+          membershipId: membership.id,
+          employeeNumber,
+          employmentStatus: 'ACTIVE',
+          joinedOn: new Date(),
+        },
+      });
+      userId = user.id;
+      employeeId = employee.id;
+      console.log(`Created ${email}.`);
+    }
 
-  console.log('');
-  console.log(`  Workspace          ${tenant.displayName} (${slug})`);
-  console.log(`  Name               ${fullName}`);
-  console.log(`  Sign in with       ${email}`);
-  console.log(`  Employee code      ${employeeNumber}`);
-  console.log(`  Role               ${role.name} (${role.key}, rank ${role.rank})`);
-  console.log(`  Employee record    ${employeeId ?? 'none'}`);
-  console.log(`  Sessions revoked   ${revocations.sessions}`);
-  console.log(`  Reset links burned ${revocations.resetTokens}`);
-  console.log('');
-  console.log(`  Temporary password ${temporaryPassword}`);
-  console.log('');
-  console.log('  Shown once. It is not stored anywhere in the clear and cannot be printed again.');
-  console.log('  The account must set its own password at first sign-in before anything else opens.');
+    await client.auditLog
+      .create({
+        data: {
+          tenantId: tenant.id,
+          actorUserId: userId,
+          event: 'PASSWORD_CHANGED',
+          objectType: 'user',
+          recordId: userId,
+          // The password is not in here, and there is no field it could be in.
+          metadata: {
+            action: 'account.admin_bootstrap',
+            script: 'ensure-workspace-admin',
+            employeeNumber,
+            sessionsRevoked: revocations.sessions,
+            resetTokensBurned: revocations.resetTokens,
+          },
+        },
+      })
+      .catch((error) => console.warn(`Audit row not written: ${error.message}`));
+
+    console.log('');
+    console.log(`  Workspace          ${tenant.displayName} (${slug})`);
+    console.log(`  Name               ${fullName}`);
+    console.log(`  Sign in with       ${email}`);
+    console.log(`  Employee code      ${employeeNumber}`);
+    console.log(`  Role               ${role.name} (${role.key}, rank ${role.rank})`);
+    console.log(`  Employee record    ${employeeId ?? 'none'}`);
+    console.log(`  Sessions revoked   ${revocations.sessions}`);
+    console.log(`  Reset links burned ${revocations.resetTokens}`);
+    console.log('');
+    console.log(`  Temporary password ${temporaryPassword}`);
+    console.log('');
+    console.log('  Shown once. It is not stored anywhere in the clear and cannot be printed again.');
+    console.log('  The account must set its own password at first sign-in before anything else opens.');
   });
 }
 
