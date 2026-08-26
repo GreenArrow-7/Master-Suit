@@ -40,7 +40,19 @@ export const metadata: Metadata = {
     'A modular business platform: Sales CRM, People & HR, and multi-tenant platform administration on one login, one permission model and one audit trail.',
 };
 
-export const viewport = { themeColor: '#2E0B16' };
+export const viewport = {
+  themeColor: '#2E0B16',
+  width: 'device-width',
+  initialScale: 1,
+  /**
+   * `cover` is what makes `env(safe-area-inset-*)` report real numbers. Without
+   * it the insets are all zero, so the bottom tab bar sits under the iPhone
+   * home indicator and the padding written to clear it does nothing.
+   */
+  viewportFit: 'cover' as const,
+  // Deliberately not maximum-scale: pinch-zoom is an accessibility feature and
+  // locking it to keep a layout tidy takes that away from people who need it.
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
