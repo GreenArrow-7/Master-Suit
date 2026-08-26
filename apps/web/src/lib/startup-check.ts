@@ -93,7 +93,7 @@ function databaseName(url: string): string {
  *
  * With no trusted proxies configured, every request behind a load balancer
  * resolved to the same address, so the whole platform shared one login bucket —
- * ten attempts per fifteen minutes, for everyone — and every audit row recorded
+ * ten attempts per five minutes, for everyone — and every audit row recorded
  * the same useless source. It looked configured, which is worse than absent.
  */
 function assertProxyConfiguration() {

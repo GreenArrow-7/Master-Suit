@@ -125,8 +125,10 @@ export async function* runAssistant(
       // `executeTool`, not `tool.execute`: the permission check lives there, so
       // this loop cannot run a tool the caller may not.
       const result = await executeTool(ctx, name, args ?? {});
+      // Deduplicated on what the chip points at, not on a rendered path: two
+      // tools returning the same lead must produce one chip.
       for (const s of result.sources ?? []) {
-        if (!sources.some((x) => x.href === s.href)) sources.push(s);
+        if (!sources.some((x) => x.type === s.type && x.id === s.id)) sources.push(s);
       }
       if (result.proposedAction) action = result.proposedAction;
       return result;

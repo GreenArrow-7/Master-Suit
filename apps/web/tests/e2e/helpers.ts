@@ -9,7 +9,7 @@ import { RUN_TAG } from './run-tag';
  * Clears the login rate-limit counters.
  *
  * Every request in this suite comes from one address, and the limiter allows ten
- * sign-ins per address per fifteen minutes — a deliberate figure that must not be
+ * sign-ins per address per five minutes — a deliberate figure that must not be
  * raised to accommodate a test. The scenarios legitimately sign in many times, so
  * the counters are reset between spec files exactly as the database rows are: the
  * limiter itself is untouched, and tests/security/ratelimit.spec.ts is what
@@ -78,7 +78,7 @@ export function platformOwner() {
  */
 export async function login(page: Page, email: string, password: string) {
   // Self-sufficient rather than per-spec: with no trusted proxy configured the
-  // whole suite shares one 'unknown' per-IP bucket (10 sign-ins / 15 min), so
+  // whole suite shares one 'unknown' per-IP bucket (10 sign-ins / 5 min), so
   // whichever spec ran deepest in the order was the one that starved. Clearing
   // here removes the ordering coupling entirely.
   await resetLoginThrottle();
