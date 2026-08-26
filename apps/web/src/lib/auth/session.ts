@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '../db';
 import { readCachedActor, writeCachedActor } from './actorCache';
 import { env } from '../env';
+import { getNumericSetting } from '../platform-settings';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
 import { buildSupportActor, isSupportRole } from './support-actor';
@@ -31,7 +32,7 @@ export async function createPlatformSession(input: {
   const expiresAt =
     purpose === 'MFA_ENROLMENT'
       ? new Date(Date.now() + MFA_ENROLMENT_TTL_MINUTES * 60_000)
-      : new Date(Date.now() + env.SESSION_TTL_MINUTES * 60_000);
+      : new Date(Date.now() + (await getNumericSetting('sessionTtlMinutes')) * 60_000);
 
   await prisma.platformSession.create({
     data: {
@@ -178,7 +179,7 @@ export async function resolvePlatformCtx(
     );
   }
 
-  const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
+  const idleCutoff = new Date(now.getTime() - (await getNumericSetting('sessionIdleTimeoutMinutes')) * 60_000);
   if (session.lastSeenAt < idleCutoff) {
     await prisma.platformSession.update({
       where: { id: session.id },
