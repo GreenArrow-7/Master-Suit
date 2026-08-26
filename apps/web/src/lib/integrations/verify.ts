@@ -69,6 +69,17 @@ export async function verifyConnection(provider: string, c: Record<string, strin
 
       case 'gemini': {
         /**
+         * Which vendor the key is *from*, checked before asking anyone.
+         *
+         * A key carries its origin in its prefix, and the commonest failure here
+         * is a good key pointed at the wrong service. Google answers an
+         * OpenRouter token with a flat "API key not valid", which reads as a
+         * dead key and sends people to re-issue one that was fine.
+         */
+        const mismatch = keyVendorMismatch(c.apiKey ?? '', c.provider);
+        if (mismatch) return { ok: false, detail: mismatch };
+
+        /**
          * OpenRouter keys are Bearer tokens against an OpenAI-compatible
          * endpoint, so the check that proves a Google key says nothing about
          * one. Verifying the wrong way round is worse than not verifying: the
@@ -142,8 +153,22 @@ export async function verifyConnection(provider: string, c: Record<string, strin
         return unverifiable('No verification is defined for this provider.');
     }
   } catch (err) {
-    // The vendor's status, never the request: the request holds the credential.
-    const detail = (err as Error).message.slice(0, 200);
+    /**
+     * The vendor's status *and* its own explanation — never the request, which
+     * holds the credential.
+     *
+     * The status line alone was all that reached the screen, so "gemini returned
+     * 403" was shown while the response body said precisely what was wrong. The
+     * status names a category; the body names the mistake.
+     *
+     * Credential values are stripped first: some vendors echo the offending
+     * token back, and an integrations screen is where people take screenshots.
+     */
+    const e = err as { message?: string; detail?: string };
+    const detail = redactSecrets([e.message ?? 'Verification failed', e.detail].filter(Boolean).join(' — '), c).slice(
+      0,
+      240,
+    );
     /**
      * A bare status is where this stops being useful. 403 has one overwhelming
      * cause on each side and they are opposite fixes, so the line says which —
@@ -166,4 +191,43 @@ export async function verifyConnection(provider: string, c: Record<string, strin
     }
     return { ok: false, detail };
   }
+}
+
+/** Removes any supplied credential value from text destined for a screen. */
+function redactSecrets(text: string, credentials: Record<string, string>): string {
+  let out = text;
+  for (const value of Object.values(credentials)) {
+    // Short values are settings like a country code; blanking those would mangle
+    // the sentence while protecting nothing.
+    if (typeof value === 'string' && value.length >= 8) out = out.split(value).join('[redacted]');
+  }
+  return out;
+}
+
+/**
+ * Names a key that belongs to a different service than the one selected.
+ *
+ * Only unambiguous prefixes are matched. Google does not document a stable shape
+ * for every key it issues, so anything not positively identified as somebody
+ * else's is passed through to the vendor, which is the real authority on whether
+ * it works.
+ */
+function keyVendorMismatch(apiKey: string, provider: string | undefined): string | undefined {
+  const key = apiKey.trim();
+  if (!key) return 'No API key is saved for this connection.';
+  const usingOpenRouter = provider === 'openrouter';
+
+  if (key.startsWith('sk-or-')) {
+    return usingOpenRouter
+      ? undefined
+      : 'That is an OpenRouter key, but Provider is google. Set Provider to "openrouter" and Model to an OpenRouter id, e.g. google/gemini-2.0-flash-001.';
+  }
+  if (usingOpenRouter) return undefined; // OpenRouter accepts several key shapes.
+  if (key.startsWith('sk-ant-'))
+    return 'That is an Anthropic API key. A Google key comes from AI Studio and starts with "AIza".';
+  if (key.startsWith('sk-'))
+    return 'That is an OpenAI-style key. Either set Provider to "openrouter", or use a Google AI Studio key starting with "AIza".';
+  if (key.startsWith('ya29.'))
+    return 'That is an OAuth access token, not an API key. Google AI Studio keys start with "AIza".';
+  return undefined;
 }
