@@ -58,7 +58,7 @@ export interface ToolSource {
 }
 
 export interface ProposedAction {
-  kind: 'follow_up' | 'task' | 'opportunity_stage';
+  kind: 'follow_up' | 'task' | 'opportunity_stage' | 'automation';
   label: string;
   /** Request the widget sends on Confirm. */
   method: 'POST' | 'PATCH';
@@ -701,7 +701,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'getMyDay',
     description:
-      'A prioritised snapshot for “what should I focus on today”: overdue and today’s follow-ups, overdue tasks, SLA-breached and hottest leads, upcoming events, today’s calls.',
+      'A prioritised snapshot for "what should I focus on today": overdue and today’s follow-ups, overdue tasks, SLA-breached and hottest leads, upcoming events, today’s calls.',
     parameters: { type: 'object', properties: {} },
     requires: [['leads', 'VIEW']],
     execute: async (ctx) => {
@@ -891,7 +891,7 @@ export const TOOLS: ToolDef[] = [
         data: { prepared: true, note: 'Follow-up prepared; the user must confirm before it is created.' },
         proposedAction: {
           kind: 'follow_up',
-          label: `Create follow-up “${String(args.title).slice(0, 80)}”${lead ? ` for ${lead.fullName}` : ''} — ${due.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          label: `Create follow-up "${String(args.title).slice(0, 80)}"${lead ? ` for ${lead.fullName}` : ''} — ${due.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
           method: 'POST',
           endpoint: '/api/v1/follow-ups',
           payload: {
@@ -935,7 +935,7 @@ export const TOOLS: ToolDef[] = [
         data: { prepared: true, note: 'Task prepared; the user must confirm before it is created.' },
         proposedAction: {
           kind: 'task',
-          label: `Create task “${String(args.title).slice(0, 80)}”${lead ? ` for ${lead.fullName}` : ''} — ${due.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          label: `Create task "${String(args.title).slice(0, 80)}"${lead ? ` for ${lead.fullName}` : ''} — ${due.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
           method: 'POST',
           endpoint: '/api/v1/tasks',
           payload: {
@@ -944,6 +944,73 @@ export const TOOLS: ToolDef[] = [
             dueAt: due.toISOString(),
             priority,
             ...(lead ? { leadId: lead.id } : {}),
+          },
+        },
+      };
+    },
+  },
+
+  {
+    name: 'createAutomation',
+    description:
+      'PREPARE (never execute) an automation rule for the user to confirm: when a record is created or ' +
+      'updated, run one action. objectType: LEAD|OPPORTUNITY|ACCOUNT|CONTACT. event: created|updated. ' +
+      'actionKind: notify_owner|notify_manager|add_tag. For notifications pass template text; for add_tag pass tag.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: str,
+        objectType: str,
+        event: str,
+        actionKind: str,
+        template: str,
+        tag: str,
+      },
+      required: ['name', 'objectType', 'event', 'actionKind'],
+    },
+    // Declared, not hand-checked: this reaches configuration rather than a
+    // record, so it needs the automation grant and not a record one. The kernel
+    // enforces it in executeTool, which is what stops a tool from ending up
+    // looser than the endpoint serving the same thing.
+    requires: [['automation', 'MANAGE_AUTOMATION']],
+    execute: async (ctx, args) => {
+      const objectType = String(args.objectType).toUpperCase();
+      if (!['LEAD', 'OPPORTUNITY', 'ACCOUNT', 'CONTACT'].includes(objectType)) {
+        return { data: { error: 'Automations can watch LEAD, OPPORTUNITY, ACCOUNT or CONTACT records.' } };
+      }
+      const event = String(args.event).toLowerCase();
+      if (!['created', 'updated'].includes(event)) {
+        return { data: { error: 'Automations trigger on record created or updated.' } };
+      }
+
+      // create_task needs a task-type key and a duration the model tends to
+      // invent; the three self-contained actions cover the asks that actually
+      // arrive in chat ("tag new leads", "tell the owner"). ponytail: extend to
+      // create_task when a real request needs it.
+      const actionKind = String(args.actionKind).toLowerCase();
+      let actionSpec: Record<string, unknown>;
+      if (actionKind === 'add_tag') {
+        if (!args.tag) return { data: { error: 'add_tag needs the tag to apply.' } };
+        actionSpec = { action: 'add_tag', tag: String(args.tag).slice(0, 60) };
+      } else if (actionKind === 'notify_owner' || actionKind === 'notify_manager') {
+        if (!args.template) return { data: { error: `${actionKind} needs the notification text.` } };
+        actionSpec = { action: actionKind, template: String(args.template).slice(0, 200) };
+      } else {
+        return { data: { error: 'Supported actions: notify_owner, notify_manager, add_tag.' } };
+      }
+
+      return {
+        data: { prepared: true, note: 'Automation prepared; the user must confirm before it is created (as a draft).' },
+        proposedAction: {
+          kind: 'automation',
+          label: `Create automation "${String(args.name).slice(0, 80)}" — when a ${objectType.toLowerCase()} is ${event}, ${actionKind.replace('_', ' ')}`,
+          method: 'POST',
+          endpoint: '/api/v1/automations',
+          payload: {
+            name: String(args.name).slice(0, 160),
+            objectType,
+            event,
+            actionSpec,
           },
         },
       };
