@@ -1,8 +1,8 @@
 import { withPlatformTx } from '@/lib/db';
-import { AI_METRIC_PREFIX, AI_TOKEN_LIMIT_KEY, usageMetric } from '@/lib/ai/usage';
+import { AI_METRIC_PREFIX, AI_MODEL_METRIC_PREFIX, AI_TOKEN_LIMIT_KEY, usageMetric } from '@/lib/ai/usage';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
-import { aggregate } from './aggregate';
+import { aggregate, aggregateModels } from './aggregate';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'AI usage' };
@@ -60,7 +60,14 @@ export default async function AiUsagePage() {
       // ceiling. The live number comes from the plan below.
       select: { tenantId: true, metric: true, used: true, measuredAt: true },
     });
-    const tenantIds = [...new Set(usage.map((u) => u.tenantId))];
+    // The per-model series, written beside the totals above. Same transaction,
+    // because `WorkspaceUsage` is FORCE ROW LEVEL SECURITY and a read outside
+    // one comes back empty rather than refused.
+    const modelUsage = await tx.workspaceUsage.findMany({
+      where: { tenantId: { not: '' }, metric: { startsWith: AI_MODEL_METRIC_PREFIX, endsWith: month } },
+      select: { tenantId: true, metric: true, used: true, measuredAt: true },
+    });
+    const tenantIds = [...new Set([...usage, ...modelUsage].map((u) => u.tenantId))];
     const tenants = await tx.tenant.findMany({
       where: { id: { in: tenantIds } },
       select: { id: true, displayName: true, slug: true },
@@ -72,7 +79,7 @@ export default async function AiUsagePage() {
         plan: { select: { name: true, planLimits: { where: { key: AI_TOKEN_LIMIT_KEY }, select: { value: true } } } },
       },
     });
-    return { rows: { usage, tenants }, plans: subs };
+    return { rows: { usage, modelUsage, tenants }, plans: subs };
   });
   // Deliberately not wrapped in a catch. A read that fails here and falls back
   // to an empty result renders as "nobody used the AI this month", which is the
@@ -88,6 +95,7 @@ export default async function AiUsagePage() {
   );
 
   const { table, totals, nearLimit } = aggregate(rows.usage, allowanceOf);
+  const models = aggregateModels(rows.modelUsage);
 
   return (
     <div className="lf-page-stack">
@@ -132,6 +140,29 @@ export default async function AiUsagePage() {
           />
         </section>
       )}
+
+      <section>
+        <h2 className="lf-h2" style={{ marginBottom: 12 }}>
+          By workspace and model
+        </h2>
+        <p style={{ margin: '0 0 12px', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+          Which model each workspace is actually running, and whose key paid for it. Recorded as its own series, so
+          these may lag the totals above by a call rather than reconciling to the token.
+        </p>
+        <WorkspaceTable
+          headers={['Workspace', 'Model', 'Deployment', 'Own key', 'Total', 'Last recorded']}
+          empty="No model-level usage recorded this month. Rows appear as calls are made."
+          searchPlaceholder="Search workspaces or models"
+          rows={models.map((m) => [
+            nameOf.get(m.tenantId) ?? m.tenantId,
+            m.model,
+            nf.format(m.deployment),
+            nf.format(m.workspace),
+            nf.format(m.total),
+            m.measuredAt ? m.measuredAt.toLocaleString('en-AE') : '—',
+          ])}
+        />
+      </section>
 
       <section>
         <h2 className="lf-h2" style={{ marginBottom: 12 }}>
