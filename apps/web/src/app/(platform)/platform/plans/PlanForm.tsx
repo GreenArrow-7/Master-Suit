@@ -25,6 +25,12 @@ export default function PlanForm() {
           maxUsers: Number(values.maxUsers),
           maxEmployees: Number(values.maxEmployees),
           maxStorageMb: Number(values.maxStorageMb),
+          // Blank means "no ceiling decided", which the API and `monthlyLimit`
+          // both read as unlimited. Sending 0 would mean "refuse every call",
+          // so an empty box must not become a number.
+          ...(String(values.maxAiTokensMonthly ?? '').trim()
+            ? { maxAiTokensMonthly: Number(values.maxAiTokensMonthly) }
+            : {}),
         }),
       });
       const data = await response.json();
@@ -75,6 +81,19 @@ export default function PlanForm() {
         <Field label="Maximum users" name="maxUsers" type="number" defaultValue="100" required />
         <Field label="Maximum employees" name="maxEmployees" type="number" defaultValue="100" required />
         <Field label="Storage (MB)" name="maxStorageMb" type="number" defaultValue="10240" required />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--lf-space-2)' }}>
+        <Field
+          label="Monthly AI tokens (optional)"
+          name="maxAiTokensMonthly"
+          type="number"
+          placeholder="leave blank for no limit"
+        />
+        <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
+          Caps what a workspace on this plan may spend each month <strong>on the shared deployment key</strong> — the
+          bill you pay. A workspace that has connected its own Gemini key spends its own quota and is never capped by
+          this. Leave blank for no ceiling; the allowance resets at the start of each UTC month.
+        </p>
       </div>
       <div>
         <button type="submit" className="lf-btn" disabled={busy}>

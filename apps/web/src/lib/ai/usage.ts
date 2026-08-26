@@ -77,6 +77,54 @@ export function legacyUsageMetric(at: Date = new Date()): string {
 /** Matches every ai_tokens row, in any of the three shapes. */
 export const AI_METRIC_PREFIX = 'ai_tokens:';
 
+/**
+ * `ai_model:deployment:gemini-2.5-flash:2026-08` — the same spend, split by the
+ * model that produced it.
+ *
+ * ── Why a second row rather than a richer key ───────────────────────────────
+ *
+ * The obvious move is to put the model into `ai_tokens:` and sum across models
+ * wherever the total is needed. That would put the model dimension directly in
+ * the path of `assertAiBudget`, which reads the deployment total to decide
+ * whether to refuse work. A mistake there does not show up as a wrong number on
+ * a report — it either stops charging a heavy tenant or starts refusing a light
+ * one. So `ai_tokens:` is left exactly as it was, and attribution is additive:
+ * if these rows are wrong, a chart is wrong and nothing is denied.
+ *
+ * The model is already known at the call site and was being logged and dropped.
+ *
+ * Model ids are vendor strings and they churn (see the Gemini model retirements
+ * this codebase has already survived), so a retired id keeps its history here
+ * instead of being folded into whatever replaced it.
+ */
+export const AI_MODEL_METRIC_PREFIX = 'ai_model:';
+
+/**
+ * Model ids arrive from a vendor and end up in a unique key, so they are
+ * constrained rather than trusted: lowercased, anything exotic collapsed to a
+ * hyphen, and truncated. `unknown` keeps a row attributable to a workspace even
+ * when the provider reports no model at all.
+ */
+export function modelUsageMetric(paidBy: PaidBy, model: string, at: Date = new Date()): string {
+  const safe = (model || 'unknown')
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return `${AI_MODEL_METRIC_PREFIX}${paidBy}:${safe || 'unknown'}:${period(at)}`;
+}
+
+/** Pulls `{ paidBy, model, period }` back out of a model metric key. */
+export function parseModelMetric(metric: string): { paidBy: string; model: string; period: string } | null {
+  if (!metric.startsWith(AI_MODEL_METRIC_PREFIX)) return null;
+  const rest = metric.slice(AI_MODEL_METRIC_PREFIX.length);
+  // The model is the middle, and may itself contain no colons by construction.
+  const parts = rest.split(':');
+  if (parts.length < 3) return null;
+  const [paidBy, model, periodPart] = [parts[0], parts.slice(1, -1).join(':'), parts[parts.length - 1]];
+  return { paidBy, model, period: periodPart };
+}
+
 /** The plan limit key an operator sets on a SubscriptionPlan to cap this. */
 export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
 
@@ -186,5 +234,25 @@ export async function recordAiUsage(
     });
   } catch (err) {
     logger.warn({ err, tenantId }, 'could not record ai usage');
+  }
+
+  /**
+   * The same tokens again, attributed to the model.
+   *
+   * Its own try/catch, and second: the row above is what the ceiling reads, so
+   * a failure to record the breakdown must not cost the deployment its
+   * accounting. `limit` is deliberately left null here — the allowance belongs
+   * to the workspace's month, not to one model within it, and copying it onto
+   * every model row would invite a reader to treat six ceilings as real.
+   */
+  try {
+    const metric = modelUsageMetric(credential.source, context.model);
+    await prisma.workspaceUsage.upsert({
+      where: { tenantId_metric: { tenantId, metric } },
+      create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
+      update: { used: { increment: tokens }, measuredAt: new Date() },
+    });
+  } catch (err) {
+    logger.warn({ err, tenantId, model: context.model }, 'could not record ai model usage');
   }
 }
