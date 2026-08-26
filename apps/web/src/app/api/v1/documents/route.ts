@@ -1,12 +1,10 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { logger } from '@/lib/logger';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { scanBuffer } from '@/lib/antivirus';
 import { putObject } from '@/lib/storage';
@@ -25,9 +23,10 @@ import { prisma } from '@/lib/db';
 export async function POST(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'SALES');
-    assertPermission(ctx, 'leads', 'EDIT');
+    const ctx = await resolveGuardedCtx(req, requestId, {
+      productModule: 'SALES',
+      permission: ['leads', 'EDIT'],
+    });
 
     const uploadMaxMb = await getUploadMaxMb();
     const maxBytes = uploadMaxMb * 1024 * 1024;
@@ -81,7 +80,13 @@ export async function POST(req: Request) {
     if (scan.verdict !== 'CLEAN') {
       // The row records the attempt; tell the uploader plainly.
       return NextResponse.json(
-        { ...document, detail: scan.verdict === 'INFECTED' ? 'The file failed the malware scan and was not stored.' : 'The malware scanner was unavailable; try again.' },
+        {
+          ...document,
+          detail:
+            scan.verdict === 'INFECTED'
+              ? 'The file failed the malware scan and was not stored.'
+              : 'The malware scanner was unavailable; try again.',
+        },
         { status: 422, headers: { 'x-request-id': requestId } },
       );
     }

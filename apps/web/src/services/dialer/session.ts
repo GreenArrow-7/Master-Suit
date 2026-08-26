@@ -26,6 +26,89 @@ import { logger } from '@/lib/logger';
 /** A session idle longer than this has its claim released. */
 const STALE_AFTER_MS = 15 * 60_000;
 
+/**
+ * A campaign's list is called while the campaign is RUNNING, and not otherwise.
+ *
+ * Nothing enforced this. Both the dialer route and the dialer page selected the
+ * campaign's `status` and neither read it, which is the shape of an intention
+ * somebody wrote down and did not finish — so a COMPLETED or CANCELLED campaign
+ * was worked exactly like a live one, and pressing Cancel stopped nothing on the
+ * floor. That is the direction that matters: a campaign is cancelled *because*
+ * somebody wants the calling to stop, and a control that only takes effect when
+ * an agent happens to refresh is not a control.
+ *
+ * RUNNING and only RUNNING, because that is what the status machine already
+ * means — `CampaignStatusActions` offers Start from DRAFT, Start now from
+ * SCHEDULED and Resume from PAUSED, so every refusal below names a state whose
+ * way out is one button on the campaign the agent came from. A dialer that
+ * worked a DRAFT campaign was dialling a list nobody had started.
+ *
+ * Building the queue is deliberately *not* gated on RUNNING — see
+ * services/dialer/queue.ts. A list is curated before the campaign starts, which
+ * is the normal order of the work.
+ */
+const DIALLABLE_STATUS = 'RUNNING';
+
+/**
+ * What to tell somebody, per state. Written for the agent looking at the screen
+ * rather than for the log: each says what happened and what would change it,
+ * because "not available" sends a person to ask their manager.
+ */
+const NOT_DIALLABLE: Record<string, string> = {
+  DRAFT: 'This campaign has not been started yet. Press Start on the campaign to open its dialer.',
+  SCHEDULED: 'This campaign starts on its start date. Use “Start now” on the campaign to call its list before then.',
+  PAUSED: 'This campaign is paused. Resume it on the campaign page to keep calling.',
+  COMPLETED: 'This campaign is complete. Nobody else is being called from its list.',
+  CANCELLED: 'This campaign was cancelled. Its list is not being called.',
+};
+
+/**
+ * Whether the dialer works this campaign at all.
+ *
+ * Separate from `dialerRefusal` because the two are different kinds of no. A
+ * paused campaign is a *temporary* no — the screen says so and Resume is one
+ * button away, so the link into the dialer stays. A campaign the dialer will
+ * never work is a permanent one, and offering a door onto an empty room is the
+ * thing this answers.
+ *
+ * The channel alone would be the wrong test. `channel` is nullable and older
+ * rows have no value at all; `campaignType` carries CALLING independently of
+ * it; and a queue can be loaded onto any campaign through
+ * `POST /api/v1/campaigns/[id]/contacts`, which is a real workflow — calling a
+ * WhatsApp campaign's list as follow-up. So the *data* overrules the label:
+ * a campaign with contacts loaded is a campaign somebody is calling, whatever
+ * its channel says, and hiding the dialer would strand a live queue.
+ *
+ * The count is only asked when the label already says no, so the ordinary case
+ * costs nothing.
+ */
+export async function usesDialer(tenantId: string, campaign: { id: string; channel: string | null }): Promise<boolean> {
+  if (!campaign.channel || campaign.channel === 'VOICE') return true;
+  return (await prisma.campaignContact.count({ where: { tenantId, campaignId: campaign.id } })) > 0;
+}
+
+/** What to say to somebody who reached the dialer of a campaign it does not work. */
+export function notDialledReason(channel: string | null): string {
+  return `This is a ${channel?.toLowerCase() ?? 'non-calling'} campaign and nobody has loaded a calling queue for it. The dialer works a queue of contacts; this campaign's audience is worked from the campaign itself.`;
+}
+
+/**
+ * `null` when the campaign may be called, otherwise the reason it may not.
+ *
+ * Advisory: it is what the screen shows. The rule is *enforced* inside
+ * `claimNext`'s statement, so a campaign cancelled between this read and the
+ * claim still hands out nobody.
+ */
+export async function dialerRefusal(tenantId: string, campaignId: string): Promise<string | null> {
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, tenantId, deletedAt: null },
+    select: { status: true },
+  });
+  if (!campaign) throw NotFound('Campaign');
+  if (campaign.status === DIALLABLE_STATUS) return null;
+  return NOT_DIALLABLE[campaign.status] ?? `This campaign is ${campaign.status.toLowerCase()} and is not being called.`;
+}
+
 export interface DialerPolicy {
   cooldownSeconds: number;
   maxAttempts: number;
@@ -54,6 +137,15 @@ export async function dialerPolicy(tenantId: string): Promise<DialerPolicy> {
  * The cooldown is applied in the same statement. Checking it afterwards would
  * leave a window in which the row is claimed, found ineligible, released — and
  * meanwhile a third agent skipped past it.
+ *
+ * The campaign's own status is checked here for the same reason, and it is the
+ * reason it is checked *here* rather than in the two callers: a campaign
+ * cancelled while an agent is mid-shift must hand out nobody on their very next
+ * press, and a read-then-claim leaves exactly the window where it hands out one
+ * more. Returning null rather than throwing is deliberate — `advance` has
+ * already written the disposition of the call that just happened by the time it
+ * asks for the next number, and losing a real call's outcome to enforce this
+ * would be a worse trade than one extra dial.
  */
 async function claimNext(
   tx: TxClient,
@@ -70,6 +162,15 @@ async function claimNext(
         AND c."campaignId" = ${campaignId}
         AND c."status" IN ('PENDING', 'CALLBACK')
         AND c."claimedBySessionId" IS NULL
+        -- The campaign is being called at all. Same statement as the claim, so
+        -- a cancellation cannot race one more person onto somebody's screen.
+        AND EXISTS (
+          SELECT 1 FROM "Campaign" mc
+          WHERE mc."id" = c."campaignId"
+            AND mc."tenantId" = c."tenantId"
+            AND mc."deletedAt" IS NULL
+            AND mc."status" = ${DIALLABLE_STATUS}
+        )
         AND (c."nextAttemptAt" IS NULL OR c."nextAttemptAt" <= NOW())
         AND c."attempts" < ${policy.maxAttempts}
         -- The cooldown, against the number rather than this row: the same
@@ -159,13 +260,21 @@ export interface SessionView {
   } | null;
   currentCallId: string | null;
   remaining: number;
+  /**
+   * Why there is no contact, when the reason is not "the queue is empty".
+   *
+   * Without it the console says “Queue empty · nobody is eligible right now” to
+   * an agent whose campaign was cancelled thirty seconds ago — which is a true
+   * sentence about the query and a false one about the world.
+   */
+  blockedBy: string | null;
 }
 
 async function view(tenantId: string, sessionId: string): Promise<SessionView> {
   const session = await prisma.dialerSession.findFirst({ where: { id: sessionId, tenantId } });
   if (!session) throw NotFound('Dialer session');
 
-  const [contact, remaining] = await Promise.all([
+  const [contact, remaining, blockedBy] = await Promise.all([
     session.currentContactId
       ? prisma.campaignContact.findFirst({
           where: { id: session.currentContactId, tenantId },
@@ -175,6 +284,7 @@ async function view(tenantId: string, sessionId: string): Promise<SessionView> {
     prisma.campaignContact.count({
       where: { tenantId, campaignId: session.campaignId, status: { in: ['PENDING', 'CALLBACK'] } },
     }),
+    dialerRefusal(tenantId, session.campaignId),
   ]);
 
   return {
@@ -191,6 +301,7 @@ async function view(tenantId: string, sessionId: string): Promise<SessionView> {
     contact,
     currentCallId: session.currentCallId,
     remaining,
+    blockedBy,
   };
 }
 
@@ -205,6 +316,13 @@ async function view(tenantId: string, sessionId: string): Promise<SessionView> {
  * with.
  */
 export async function resumeOrStart(tenantId: string, userId: string, campaignId: string): Promise<SessionView> {
+  // Before anything is created. `claimNext` would hand out nobody anyway, but a
+  // session opened on a cancelled campaign and reporting an empty queue tells
+  // the agent the wrong thing and leaves a row behind saying they started a
+  // shift on it.
+  const refusal = await dialerRefusal(tenantId, campaignId);
+  if (refusal) throw Conflict(refusal);
+
   await sweepStaleClaims(tenantId, campaignId);
 
   const existing = await prisma.dialerSession.findFirst({

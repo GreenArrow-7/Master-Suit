@@ -13,16 +13,38 @@
 # no production number should ever be quoted from a dev server.
 services:
   web:
+    # ── A name and a tag, so there is something to roll back to ──────────────
+    #
+    # Compose otherwise auto-names an image after the project and service and
+    # overwrites it on every build, so the previous release ceased to exist the
+    # moment the next one was built. `docs/…-ASSESSMENT.md` §13 recorded the
+    # consequence plainly: "rollback means rebuilding a previous commit — there
+    # is no image registry and no tagged artifact to roll back to."
+    #
+    # IMAGE_TAG is the commit, set by scripts/release.sh. The old image stays in
+    # the daemon's store under its own tag, so rolling back is starting the tag
+    # that was running an hour ago — no rebuild, no registry, and on a single VM
+    # no network hop either.
+    image: master-suite/web:${IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: infra/Dockerfile
       target: production
+      args:
+        GIT_SHA: ${IMAGE_TAG:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     command: ['node', 'server.js']
     environment:
       NODE_ENV: production
       PROCESS_ROLE: web
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
-      REDIS_URL: redis://redis:6379
+      # This said `leadflow:leadflow` — the owning role, which is a superuser on
+      # this cluster. lib/startup-check.ts refuses to serve as a superuser,
+      # because a superuser bypasses every row-level-security policy in the
+      # schema, so `base + prod` could not start at all: the overlay was only
+      # ever usable with docker-compose.azure.yml layered on top to restate this
+      # one value. An overlay that cannot run without a third file is a trap.
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=20&sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379
       # A real SMTP transport pointed at the local mailbox. Not a mock: the
       # message is composed, sent and delivered for real — it just lands in
       # Mailpit instead of somebody's inbox.
@@ -36,25 +58,46 @@ services:
     restart: unless-stopped
     depends_on:
       mailpit: { condition: service_healthy }
-    ports: ['3000:3000']
+    # Loopback, like everything in the base file. The only stack that runs this
+    # overlay without a deployment overlay on top is the local production
+    # rehearsal in docs/PERFORMANCE.md, reached at localhost:3000 either way —
+    # and both deployment overlays (azure, staging) drop the mapping entirely,
+    # because web is reached through Caddy there. `0.0.0.0:3000` was publishing a
+    # production build with real credentials on every interface of whatever
+    # machine ran it.
+    ports: ['127.0.0.1:3000:3000']
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/api/health/live'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3000/api/health/live'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 30s
 
   worker:
+    # `target: worker` and no `command:`. The previous pair — the `production`
+    # image, which contains only next build's standalone output, told to run
+    # `node dist/workers/index.js`, which no build produces — meant this
+    # container exited on start in every deployment that used this overlay.
+    image: master-suite/worker:${IMAGE_TAG:-dev}
     build:
       context: ..
       dockerfile: infra/Dockerfile
-      target: production
-    command: ['node', 'dist/workers/index.js']
+      target: worker
+      args:
+        GIT_SHA: ${IMAGE_TAG:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     environment:
       NODE_ENV: production
       PROCESS_ROLE: worker
-      DATABASE_URL: postgresql://leadflow:leadflow@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://master_saas_app:master_saas_app@postgres:5432/leadflow?schema=public&connection_limit=10&sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD:-leadflow}@redis:6379
+    # Meaningful now that the entrypoint exits non-zero when a queue cannot
+    # attach: Compose restarts it, and a genuinely broken configuration shows up
+    # as a crash loop instead of a container that is "up" and consuming nothing.
     restart: unless-stopped
     deploy:
       replicas: 2

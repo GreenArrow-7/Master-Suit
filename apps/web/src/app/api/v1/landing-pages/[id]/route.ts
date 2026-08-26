@@ -5,9 +5,7 @@ import { NotFound } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const patchBody = z
-  .object({ state: z.enum(['PUBLISHED', 'PAUSED', 'ARCHIVED']) })
-  .strict();
+const patchBody = z.object({ state: z.enum(['PUBLISHED', 'PAUSED', 'ARCHIVED']) }).strict();
 
 export const PATCH = route(
   {

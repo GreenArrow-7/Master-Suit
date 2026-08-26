@@ -10,7 +10,20 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 
-const KEYS = ['FIELD_ENCRYPTION_KEY', 'WEBHOOK_SIGNING_PEPPER'];
+// METRICS_TOKEN is here rather than left to the operator for the same reason
+// the other two are: a secret nobody generates is a secret somebody types, and
+// an unset one silently 404s the scrape endpoint rather than failing loudly.
+//
+// REDIS_PASSWORD is `base64url` rather than `base64`, and that is load-bearing:
+// it is embedded in REDIS_URL as userinfo, and `+`, `/` and `=` are not valid
+// there unescaped. A base64 password produces a URL that `lib/env.ts` rejects at
+// boot — or worse, one that parses and truncates.
+const KEYS = [
+  { name: 'FIELD_ENCRYPTION_KEY', encoding: 'base64' },
+  { name: 'WEBHOOK_SIGNING_PEPPER', encoding: 'base64' },
+  { name: 'METRICS_TOKEN', encoding: 'base64' },
+  { name: 'REDIS_PASSWORD', encoding: 'base64url' },
+];
 
 /**
  * Which env files to write. Defaults to both; name them to narrow it.
@@ -46,7 +59,7 @@ for (const target of TARGETS) {
 
   let env = readFileSync(target, 'utf8');
 
-  for (const key of KEYS) {
+  for (const { name: key, encoding } of KEYS) {
     const current = new RegExp(`^${key}=(.*)$`, 'm').exec(env)?.[1]?.trim() ?? '';
 
     /**
@@ -64,15 +77,42 @@ for (const target of TARGETS) {
       continue;
     }
 
-    // 32 bytes, base64 — 44 characters. lib/env.ts decodes and measures the
-    // bytes, so a shorter value is rejected at boot rather than accepted.
-    const secret = randomBytes(32).toString('base64');
+    // 32 bytes. lib/env.ts decodes and measures the bytes, so a shorter value is
+    // rejected at boot rather than accepted.
+    const secret = randomBytes(32).toString(encoding);
     const line = `${key}=${secret}`;
     env = new RegExp(`^${key}=.*$`, 'm').test(env)
       ? env.replace(new RegExp(`^${key}=.*$`, 'm'), line)
       : `${env.trimEnd()}\n${line}\n`;
     console.log(`  ${target}: ${key} set (${secret.length} chars)`);
     wrote += 1;
+  }
+
+  /**
+   * REDIS_URL carries the password as userinfo, so the two would drift the
+   * moment either is rotated — and the symptom is a NOAUTH error at the first
+   * queue operation, nowhere near the file that caused it. Derive one from the
+   * other instead of asking anybody to keep them in step.
+   *
+   * The URL keeps its own host, port and database number; only the credential
+   * is replaced. `redis://localhost:6379/15` stays on database 15.
+   */
+  const password = new RegExp('^REDIS_PASSWORD=(.*)$', 'm').exec(env)?.[1]?.trim() ?? '';
+  const redisUrl = new RegExp('^REDIS_URL=(.*)$', 'm').exec(env)?.[1]?.trim() ?? '';
+  if (password && redisUrl) {
+    let rewritten = redisUrl;
+    try {
+      const parsed = new URL(redisUrl);
+      parsed.username = '';
+      parsed.password = password;
+      rewritten = parsed.toString();
+    } catch {
+      console.log(`  ${target}: REDIS_URL is not a URL — left alone`);
+    }
+    if (rewritten !== redisUrl) {
+      env = env.replace(new RegExp('^REDIS_URL=.*$', 'm'), `REDIS_URL=${rewritten}`);
+      console.log(`  ${target}: REDIS_URL credential set from REDIS_PASSWORD`);
+    }
   }
 
   writeFileSync(target, env);

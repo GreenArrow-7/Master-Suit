@@ -239,12 +239,14 @@ export default function SecurityScreen({
         </p>
         <p className="lf-callout lf-callout--warn">
           <strong>What is stored:</strong> four mathematical templates derived from your face, not photographs of you.
-          At each check-in the camera frame is encrypted before it is written to disk and is readable only by
-          authorised HR staff. Withdrawing consent deletes your templates immediately.
+          At each check-in the camera frame is encrypted before it is written to disk and is readable only by authorised
+          HR staff. Withdrawing consent deletes your templates immediately.
         </p>
         <p className="lf-security__copy">
           <strong>Status:</strong>{' '}
-          {consentGiven ? 'consent given. Face check-in is available to you.' : 'no consent recorded. Face check-in is unavailable.'}
+          {consentGiven
+            ? 'consent given. Face check-in is available to you.'
+            : 'no consent recorded. Face check-in is unavailable.'}
         </p>
         {consentNote && (
           <p className="lf-security__note" data-bad={consentNote.bad} role="status">
@@ -252,7 +254,12 @@ export default function SecurityScreen({
           </p>
         )}
         {consentGiven ? (
-          <button type="button" className="lf-btn lf-btn--danger" onClick={() => void withdrawConsent()} disabled={consentBusy}>
+          <button
+            type="button"
+            className="lf-btn lf-btn--danger"
+            onClick={() => void withdrawConsent()}
+            disabled={consentBusy}
+          >
             {consentBusy ? 'Withdrawing…' : 'Withdraw consent'}
           </button>
         ) : (

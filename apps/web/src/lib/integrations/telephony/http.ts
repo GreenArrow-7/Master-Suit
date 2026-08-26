@@ -13,10 +13,38 @@ export class TelephonyApiError extends Error {
     readonly vendor: string,
     readonly status: number,
     message: string,
+    /**
+     * The vendor's own explanation, lifted from the response body.
+     *
+     * Carried separately from `message` because it is the only part a person can
+     * act on and the only part that needs redacting before display. A bare
+     * "gemini returned 403" sent an administrator to check their quota when the
+     * body said "API key not valid" — the status code names the category, the
+     * body names the mistake.
+     */
+    readonly detail?: string,
   ) {
     super(message);
     this.name = 'TelephonyApiError';
   }
+}
+
+/**
+ * The human-readable complaint inside a vendor error body.
+ *
+ * Google, Meta and Twilio all nest it differently and every one of them also
+ * returns HTML on a bad gateway, so this takes the first thing that looks like a
+ * sentence and gives up quietly rather than printing markup at somebody.
+ */
+export function vendorMessage(body: string): string | undefined {
+  try {
+    const j = JSON.parse(body);
+    const found = j?.error?.message ?? j?.error_message ?? j?.message ?? j?.error?.details?.[0]?.reason;
+    if (typeof found === 'string' && found.trim()) return found.trim().slice(0, 200);
+  } catch {
+    /* not JSON — fall through */
+  }
+  return undefined;
 }
 
 interface VendorRequest {
@@ -60,7 +88,7 @@ export async function vendorFetch<T = any>(req: VendorRequest): Promise<T> {
       // The vendor's own message, never the request: `headers` holds the token
       // and `form` holds the client's phone number.
       logger.error({ vendor: req.vendor, status: res.status, body: text.slice(0, 500) }, 'telephony API error');
-      throw new TelephonyApiError(req.vendor, res.status, `${req.vendor} returned ${res.status}`);
+      throw new TelephonyApiError(req.vendor, res.status, `${req.vendor} returned ${res.status}`, vendorMessage(text));
     }
 
     return (text ? JSON.parse(text) : {}) as T;

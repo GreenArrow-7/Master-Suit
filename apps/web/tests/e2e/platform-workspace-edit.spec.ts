@@ -72,6 +72,41 @@ test.describe('Platform workspace editing', () => {
     await expect(page.getByText(renamed).first()).toBeVisible();
   });
 
+  test('the owner takes write access from the console, and hands it back', async ({ page }) => {
+    /**
+     * M-4: the break-glass API existed and the console had no button, so an
+     * owner who needed a write had to call the endpoint by hand. That is the
+     * kind of friction that gets a control removed rather than obeyed, so the
+     * thing worth proving is not that the endpoint works — a unit suite covers
+     * that — but that a person can actually use it from the screen.
+     */
+    await loginPlatformOwner(page);
+    await page.goto(`/platform/workspaces/${workspaceId}`);
+
+    const panel = page.locator('.lf-card').filter({ hasText: 'Write access' });
+    await expect(panel).toBeVisible();
+
+    const take = panel.getByRole('button', { name: 'Take write access' });
+    // Disabled until the reason is a sentence: the console refuses the same
+    // input the API refuses, before the round trip rather than after.
+    await expect(take).toBeDisabled();
+    await panel.getByLabel(/Why do you need to change/).fill('Ticket 4471 — repair a duplicated payroll run.');
+    await expect(take).toBeEnabled();
+
+    await take.click();
+
+    // The reason and the clock, both — the countdown is what makes a self-expiring
+    // grant legible to whoever is holding it.
+    await expect(panel.getByTestId('break-glass-active')).toContainText('Ticket 4471');
+    await expect(panel.getByTestId('break-glass-active')).toContainText(/left/);
+
+    await panel.getByRole('button', { name: 'Hand it back now' }).click();
+
+    // Back to the form, which is the only honest rendering of "no access".
+    await expect(panel.getByRole('button', { name: 'Take write access' })).toBeVisible();
+    await expect(panel.getByTestId('break-glass-active')).toHaveCount(0);
+  });
+
   test('a workspace administrator cannot reach the platform area', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
 

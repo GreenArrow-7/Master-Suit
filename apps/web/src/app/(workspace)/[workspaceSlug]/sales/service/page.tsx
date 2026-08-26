@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -30,7 +31,7 @@ export default async function ServicePage({ searchParams }: { searchParams: Prom
   const statusFilter = params.tab ? { status: params.tab as any } : {};
 
   const rows = await prisma.ticket.findMany({
-    where: { ...scope, ...statusFilter },
+    where: mergeWhere(scope, statusFilter),
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {

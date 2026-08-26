@@ -9,6 +9,25 @@ import { connectionCredentials } from '@/lib/integrations/connection';
  * consent gating, dedup against prior sends, per-lead Communication evidence,
  * and the DRAFT/SCHEDULED → RUNNING transition.
  *
+ * ── It is WhatsApp, and it now says so ──────────────────────────────────────
+ *
+ * A campaign carries a `channel`, offered in the composer as WhatsApp, Calls,
+ * Email or SMS. Everything below hard-codes WhatsApp: the template, the
+ * provider, the `channel: 'WHATSAPP'` written on every Communication, and the
+ * dedup and remaining counts that read it back. Nothing here ever looked at
+ * `campaign.channel`.
+ *
+ * The scheduler checked the channel before calling this, so a SCHEDULED SMS
+ * campaign was left alone. "Send now" did not: it accepted any campaign and
+ * sent WhatsApp templates to its audience, on a channel the operator had
+ * explicitly not chosen. The refusal below is here rather than in the route so
+ * both entrances inherit it, and so a third one cannot reopen the hole.
+ *
+ * An **unset** channel still sends. Null means "not stated" — the create route
+ * has defaulted to WHATSAPP since it existed, so only older rows have it, and
+ * every count in this file already reads them as WhatsApp. Refusing them would
+ * break sending for campaigns that send today, to fix nothing.
+ *
  * ponytail: sequential send, capped per call. Move the loop onto per-lead
  * queue jobs once a campaign audience outgrows sequential delivery.
  */
@@ -16,6 +35,8 @@ export const BATCH_LIMIT = 100;
 
 export type SendOutcome =
   | { ok: false; reason: 'not_found' | 'not_sendable' | 'not_connected' }
+  /** The campaign states a channel this pipeline cannot send. `channel` is it. */
+  | { ok: false; reason: 'wrong_channel'; channel: string }
   | { ok: true; sent: number; failed: number; remaining: number };
 
 export async function sendCampaignBatch(input: {
@@ -38,6 +59,13 @@ export async function sendCampaignBatch(input: {
   if (!campaign) return { ok: false, reason: 'not_found' };
   if (campaign.status === 'CANCELLED' || campaign.status === 'COMPLETED') {
     return { ok: false, reason: 'not_sendable' };
+  }
+  // Before the credentials check, so an SMS campaign is refused for being an SMS
+  // campaign rather than for the tenant not having connected WhatsApp — the
+  // second message would send somebody off to connect an integration that would
+  // not have helped.
+  if (campaign.channel && campaign.channel !== 'WHATSAPP') {
+    return { ok: false, reason: 'wrong_channel', channel: campaign.channel };
   }
 
   const credentials = await connectionCredentials(tenantId, 'meta');

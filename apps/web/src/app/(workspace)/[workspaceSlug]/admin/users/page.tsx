@@ -72,7 +72,11 @@ export default async function UsersPage({
       },
       take: 200,
     }),
-    prisma.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: 'asc' }, select: { key: true, name: true } }),
+    prisma.role.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { rank: 'asc' },
+      select: { key: true, name: true },
+    }),
   ]);
 
   // Consent is per employee; one query rather than one per row.
@@ -105,7 +109,13 @@ export default async function UsersPage({
           <label className="lf-label" htmlFor="u-q">
             Search
           </label>
-          <input id="u-q" className="lf-input" name="q" defaultValue={search} placeholder="Name, email or employee code" />
+          <input
+            id="u-q"
+            className="lf-input"
+            name="q"
+            defaultValue={search}
+            placeholder="Name, email or employee code"
+          />
         </div>
         <div className="lf-field" style={{ margin: 0 }}>
           <label className="lf-label" htmlFor="u-role">

@@ -70,10 +70,7 @@ export default function TableSearch({
           />
         </div>
         {count && (
-          <span
-            aria-live="polite"
-            style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)', paddingTop: 18 }}
-          >
+          <span aria-live="polite" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)', paddingTop: 18 }}>
             {count.shown} of {count.total} shown
           </span>
         )}

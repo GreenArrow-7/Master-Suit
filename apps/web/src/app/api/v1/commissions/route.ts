@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -21,13 +22,13 @@ export const GET = route(
     // Commissions key on userId, not ownerId — the whole point is whose earnings they are.
     const scope = await visibilityWhere(ctx, 'commissions', 'VIEW', { ownerField: 'userId' });
     const data = await prisma.commission.findMany({
-      where: {
-        ...scope,
-        ...(query.bookingId ? { bookingId: query.bookingId } : {}),
-        ...(query.userId ? { userId: query.userId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.payoutId ? { payoutId: query.payoutId } : {}),
-      },
+      where: mergeWhere(
+        scope,
+        query.bookingId ? { bookingId: query.bookingId } : null,
+        query.userId ? { userId: query.userId } : null,
+        query.status ? { status: query.status } : null,
+        query.payoutId ? { payoutId: query.payoutId } : null,
+      ),
       select: {
         id: true,
         userId: true,

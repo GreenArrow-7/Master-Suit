@@ -72,8 +72,23 @@ export interface Ctx {
    * (platformUser.passwordChangedAt is null). Read from the session row already
    * in hand — no extra query. Absent for API keys, workers and support actors,
    * none of which can be walked through the change-password screen.
+   *
+   * **This is one half of the forced-change rule, not the rule.** The other half
+   * is the workspace's `maxAgeDays`, which needs a policy read this context
+   * deliberately does not make on every request. Anywhere that must enforce the
+   * whole rule reads `passwordChangedAt` below and calls `passwordExpired`; see
+   * app/(workspace)/[workspaceSlug]/layout.tsx.
    */
   mustChangePassword?: boolean;
+  /**
+   * The raw timestamp behind the flag above, so a caller that also wants the
+   * expiry half can apply `passwordExpired` without a second lookup.
+   *
+   * `null` is meaningful — an administrator-issued password that has never been
+   * changed. `undefined` means the question does not apply to this caller at
+   * all: API keys, workers and support actors hold no workspace credential.
+   */
+  passwordChangedAt?: Date | null;
   /** Set when the request authenticated with an API key rather than a session. */
   apiKeyId?: string;
 }

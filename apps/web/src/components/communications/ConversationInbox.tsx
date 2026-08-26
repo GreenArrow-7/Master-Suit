@@ -101,25 +101,30 @@ export default function ConversationInbox({ workspaceSlug, canSend }: { workspac
 
   const active = useMemo(() => conversations.find((c) => c.id === activeId) ?? null, [conversations, activeId]);
 
-  const loadList = useCallback((signal?: AbortSignal) => {
-    const query = new URLSearchParams({ filter });
-    if (search.trim()) query.set('search', search.trim());
-    return fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' }, signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('Could not load conversations.');
-        return res.json();
-      })
-      .then((data) => setConversations(data.conversations ?? []))
-      .catch((err: Error) => {
-        if (err.name !== 'AbortError') setError(err.message);
-      })
-      // An abort means a newer keystroke is already queued, so the spinner must
-      // stay up — clearing it here flickered the list back to "loaded" between
-      // characters.
-      .finally(() => {
-        if (!signal?.aborted) setLoadingList(false);
-      });
-  }, [filter, search]);
+  const loadList = useCallback(
+    (signal?: AbortSignal) => {
+      const query = new URLSearchParams({ filter });
+      if (search.trim()) query.set('search', search.trim());
+      return (
+        fetch(`/api/v1/conversations?${query}`, { headers: { accept: 'application/json' }, signal })
+          .then((res) => {
+            if (!res.ok) throw new Error('Could not load conversations.');
+            return res.json();
+          })
+          .then((data) => setConversations(data.conversations ?? []))
+          .catch((err: Error) => {
+            if (err.name !== 'AbortError') setError(err.message);
+          })
+          // An abort means a newer keystroke is already queued, so the spinner must
+          // stay up — clearing it here flickered the list back to "loaded" between
+          // characters.
+          .finally(() => {
+            if (!signal?.aborted) setLoadingList(false);
+          })
+      );
+    },
+    [filter, search],
+  );
 
   /**
    * These effects fetch and nothing else, as promise chains rather than

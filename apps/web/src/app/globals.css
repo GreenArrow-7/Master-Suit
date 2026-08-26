@@ -133,6 +133,17 @@ body {
   gap: 6px;
 }
 
+/* The `hidden` attribute has to keep working, and in a stylesheet that sets
+   `display` by class it does not on its own: the user agent's
+   `[hidden] { display: none }` loses to any author rule, whatever its
+   specificity. `.lf-shell-actions` set `display: flex` and silently defeated
+   `hidden={module === 'people'}` on the top bar for as long as both existed.
+   One rule, high enough to win, so the next component to reach for the
+   attribute gets what the attribute promises. */
+[hidden] {
+  display: none !important;
+}
+
 .lf-workspace-sidebar {
   position: sticky;
   top: 0;
@@ -1487,12 +1498,26 @@ a:hover {
   box-shadow: inset 3px 0 0 var(--lf-brass, #b98f4c);
 }
 
-/* The HR breadcrumb, ahead of the operational controls in the top bar. */
+/* The HR breadcrumb, ahead of the operational controls in the top bar.
+
+   It truncates rather than pushing the page wider. `flex: none` with
+   `white-space: nowrap` meant the crumb's own text was a floor on the width of
+   the top bar, and so on the width of the page: "Workspace · Work locations" —
+   the longest People page title — overflowed a 375px phone by a pixel or two
+   depending on the font metrics of the machine rendering it, and a 320px phone
+   by nearly thirty. The whole document scrolled sideways to fit a label.
+
+   `min-width: 0` is the part that does the work: a flex item's automatic
+   minimum size is its content, so without it `overflow: hidden` has nothing to
+   clip against and the ellipsis never appears. */
 .lf-shell-crumb {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   font: 400 12px/1 var(--lf-font-ui);
   color: var(--lf-ink-3);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .lf-shell-crumb b {
   color: var(--lf-ink);

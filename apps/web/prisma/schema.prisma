@@ -352,7 +352,6 @@ model Tenant {
   primaryDomain  String?
   status         String    @default("ACTIVE")
   planCode       String    @default("standard")
-  dataRegion     String    @default("me-central-1")
   leadCeiling    Int       @default(1000000)
   industry       String?
   companySize    String?
@@ -494,7 +493,6 @@ model Tenant {
   hrPipCheckpoints           HrPipCheckpoint[]
   hrReviewCompetencyScores   HrReviewCompetencyScore[]
   importJobs                 ImportJob[]
-  integrations               Integration[]
   integrationConnections     IntegrationConnection[]
   landingPages               LandingPage[]
   landingPageVersions        LandingPageVersion[]
@@ -564,9 +562,9 @@ model Tenant {
   unitInventories            UnitInventory[]
   unitPlans                  UnitPlan[]
   userTeams                  UserTeam[]
-  webhooks                   Webhook[]
-  webhookDeliveries          WebhookDelivery[]
   webhookEvents              WebhookEvent[]
+  referenceCounters          TenantReferenceCounter[]
+  platformAccessGrants       PlatformAccessGrant[]
 
   @@index([status])
 }
@@ -621,6 +619,7 @@ model TenantSubscription {
   billingEvents BillingEvent[]
 
   @@index([state, currentPeriodEnd])
+  @@index([planId])
 }
 
 model ModuleEntitlement {
@@ -689,6 +688,56 @@ model WorkspaceUsage {
   @@index([tenantId, measuredAt])
 }
 
+/// Human-readable per-tenant record references: LD-000142, OP-000019.
+///
+/// One row per (tenant, object type), holding the last number handed out. This
+/// replaced one Postgres *sequence* per tenant per object type — ten types, so
+/// ten thousand tenants meant up to a hundred thousand relations in pg_class,
+/// a file each, a slower pg_dump, and a schema-level CREATE privilege on the
+/// runtime role that nothing else in the application needed.
+model TenantReferenceCounter {
+  tenantId   String
+  objectType String
+  /// The last number issued, not the next one. Allocation is a single
+  /// `UPDATE ... SET counter = counter + 1 RETURNING counter`, so two concurrent
+  /// creates cannot read the same value.
+  counter    Int      @default(0)
+  updatedAt  DateTime @default(now()) @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, objectType])
+}
+
+/// Break-glass: a time-boxed, reasoned grant of *write* access into one customer
+/// workspace for one member of platform staff.
+///
+/// Platform OWNER used to hold every permission in every tenant at all times,
+/// with no record of why and no expiry. Opening a workspace to read a customer's
+/// data and opening it to change that data are different acts, and only one of
+/// them should be ambient.
+model PlatformAccessGrant {
+  id             String    @id @default(cuid())
+  tenantId       String
+  platformUserId String
+  /// Free text, required and minimum-length checked. A grant with no stated
+  /// reason is the thing this exists to stop.
+  reason         String
+  grantedAt      DateTime  @default(now())
+  /// Capped at the ceiling in lib/auth/platform-access.ts. Access ends here
+  /// whether or not anybody remembers to close it.
+  expiresAt      DateTime
+  /// Set when it is handed back early, which is the expected path.
+  revokedAt      DateTime?
+  /// The request that opened it, so the PlatformAuditEvent pair join up.
+  requestId      String?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, tenantId, expiresAt])
+  @@index([tenantId, grantedAt])
+}
+
 model BillingEvent {
   id             String              @id @default(cuid())
   tenantId       String
@@ -703,6 +752,7 @@ model BillingEvent {
   subscription   TenantSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([subscriptionId])
 }
 
 model OrganizationSetting {
@@ -887,6 +937,7 @@ model Team {
   @@index([tenantId, branchId])
   @@index([tenantId, managerId])
   @@index([tenantId, parentTeamId])
+  @@index([departmentId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1000,9 +1051,11 @@ model PlatformUser {
   deletedAt         DateTime?
 
   memberships           WorkspaceMembership[]
+  passwordHistory       PasswordHistory[]
   sessions              PlatformSession[]
   platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
+  accessGrants          PlatformAccessGrant[]
 
   @@index([status, platformRole])
 }
@@ -1067,6 +1120,8 @@ model WorkspaceInvitation {
   @@unique([tenantId, pendingKey])
   @@index([tenantId, expiresAt])
   @@index([email])
+  @@index([departmentId])
+  @@index([roleId])
 }
 
 model WorkspaceMembership {
@@ -1187,6 +1242,9 @@ model EmployeeProfile {
   @@unique([tenantId, employeeNumber])
   @@index([tenantId, employmentStatus])
   @@index([tenantId, managerMembershipId])
+  @@index([departmentId])
+  @@index([designationId])
+  @@index([hiredFromCandidateId])
 }
 
 model AuthenticationFactor {
@@ -1275,6 +1333,7 @@ model HrEmployeeShift {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, effectiveOn])
+  @@index([shiftId])
 }
 
 /**
@@ -1327,6 +1386,8 @@ model HrOvertimeRequest {
   @@unique([tenantId, employeeId, workDate, source])
   @@index([tenantId, status, workDate])
   @@index([tenantId, employeeId, workDate])
+  @@index([approverId])
+  @@index([requestedById])
 }
 
 /**
@@ -1391,6 +1452,8 @@ model HrPayrollRun {
   // One run per period. Paying March twice is the failure this prevents.
   @@unique([tenantId, periodStart, periodEnd])
   @@index([tenantId, status, periodStart])
+  @@index([approvedById])
+  @@index([preparedById])
 }
 
 model HrPayslip {
@@ -1542,6 +1605,11 @@ model HrShiftChangeRequest {
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, requesterId])
+  @@index([approverId])
+  @@index([counterpartEntryId])
+  @@index([counterpartId])
+  @@index([entryId])
+  @@index([requestedShiftId])
 }
 
 model HrReviewCycle {
@@ -1649,6 +1717,8 @@ model HrReview {
   @@unique([tenantId, cycleId, employeeId])
   @@index([tenantId, status])
   @@index([tenantId, employeeId])
+  @@index([calibratedById])
+  @@index([managerId])
 }
 
 model HrReviewCompetencyScore {
@@ -1698,6 +1768,7 @@ model HrPip {
 
   @@index([tenantId, status])
   @@index([tenantId, employeeId])
+  @@index([managerId])
 }
 
 model HrPipCheckpoint {
@@ -1761,6 +1832,11 @@ model HrRequisition {
   candidates    HrCandidate[]
 
   @@index([tenantId, status, createdAt])
+  @@index([approvedById])
+  @@index([departmentId])
+  @@index([hiringManagerId])
+  @@index([locationId])
+  @@index([recruiterId])
 }
 
 /**
@@ -1916,6 +1992,7 @@ model HrOffer {
 
   @@unique([tenantId, candidateId, version])
   @@index([tenantId, status])
+  @@index([approvedById])
 }
 
 model HrAttendanceRecord {
@@ -1937,6 +2014,7 @@ model HrAttendanceRecord {
 
   @@unique([tenantId, employeeId, workDate])
   @@index([tenantId, workDate, status])
+  @@index([locationId])
 }
 
 model HrLeaveType {
@@ -1985,6 +2063,8 @@ model HrLeaveRequest {
 
   @@index([tenantId, status, startDate])
   @@index([tenantId, employeeId, startDate])
+  @@index([approverId])
+  @@index([leaveTypeId])
 }
 
 model HrLeaveBalance {
@@ -2114,6 +2194,7 @@ model HrEmployeeLocationAssignment {
 
   @@index([tenantId, employeeId, status, effectiveFrom, effectiveTo])
   @@index([tenantId, locationId, status])
+  @@index([assignedById])
 }
 
 model HrChecklistTask {
@@ -2137,6 +2218,7 @@ model HrChecklistTask {
 
   @@unique([tenantId, employeeId, phase, title])
   @@index([tenantId, phase, completedAt, dueDate])
+  @@index([completedById])
 }
 
 model HrOffboardingCase {
@@ -2159,6 +2241,7 @@ model HrOffboardingCase {
   settlements         HrSettlementSnapshot[]
 
   @@index([tenantId, employeeId, completedAt])
+  @@index([startedById])
 }
 
 model HrSettlementSnapshot {
@@ -2175,6 +2258,7 @@ model HrSettlementSnapshot {
   offboardingCase   HrOffboardingCase @relation(fields: [offboardingCaseId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, calculatedAt(sort: Desc)])
+  @@index([offboardingCaseId])
 }
 
 model BiometricConsent {
@@ -2270,6 +2354,7 @@ model HrAttendancePunch {
   @@unique([tenantId, employeeId, clientPunchUid])
   @@index([tenantId, employeeId, serverTime(sort: Desc)])
   @@index([tenantId, result, serverTime(sort: Desc)])
+  @@index([locationId])
 }
 
 enum HrTemporaryRequestStatus {
@@ -2493,6 +2578,9 @@ model HrTemporaryLocationRequest {
   createdLocation   HrWorkLocation?          @relation(fields: [createdLocationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, requestedAt(sort: Desc)])
+  @@index([approverId])
+  @@index([createdLocationId])
+  @@index([requestedById])
 }
 
 /// A missed or out-of-fence punch, corrected through people rather than through
@@ -2532,6 +2620,36 @@ model HrAttendanceExceptionRequest {
 
   @@index([tenantId, status, createdAt(sort: Desc)])
   @@index([tenantId, employeeId, createdAt(sort: Desc)])
+  @@index([createdPunchId])
+  @@index([hrId])
+  @@index([managerId])
+  @@index([nearestLocationId])
+}
+
+/// Previous credentials, so `PasswordPolicy.reuseWindow` can mean something.
+///
+/// The policy has typed `reuseWindow` since it was written and the workspace
+/// settings screen has always offered it — with nothing anywhere reading it, so
+/// an administrator who set "cannot reuse the last 5" got no such rule. There
+/// was no history to compare against; this is it.
+///
+/// No `tenantId`, deliberately: a credential belongs to the PlatformUser, not to
+/// any one of their workspace memberships, and duplicating it per tenant is how
+/// two copies of a password drift apart. Outside RLS for the same reason
+/// PlatformUser is.
+///
+/// Only the hash is kept, and only as many as the widest policy allows — the
+/// prune runs on every write, so the table cannot grow past `reuseWindow` rows
+/// per account.
+model PasswordHistory {
+  id             String   @id @default(cuid())
+  platformUserId String
+  passwordHash   String
+  createdAt      DateTime @default(now())
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, createdAt(sort: Desc)])
 }
 
 model PlatformSession {
@@ -2835,6 +2953,8 @@ model Lead {
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
   @@index([tenantId, ownerId, updatedAt(sort: Desc)])
+  @@index([accountId])
+  @@index([campaignId])
 }
 
 model LeadCustomFieldDefinition {
@@ -3061,6 +3181,7 @@ model Account {
   @@index([tenantId, status])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([parentAccountId])
 }
 
 model Contact {
@@ -3102,6 +3223,7 @@ model Contact {
   @@index([tenantId, phoneNormalized])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([ownerId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3149,6 +3271,7 @@ model Pipeline {
 
   @@unique([tenantId, key])
   @@index([tenantId, isActive])
+  @@index([opportunityTypeId])
 }
 
 model PipelineStage {
@@ -3240,6 +3363,8 @@ model Opportunity {
   @@index([tenantId, leadId])
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([campaignId])
+  @@index([typeId])
 }
 
 model OpportunityStageHistory {
@@ -3343,6 +3468,7 @@ model OpportunityProduct {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, opportunityId])
+  @@index([productId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3413,6 +3539,7 @@ model Activity {
   @@index([tenantId, ownerId, occurredAt(sort: Desc)])
   @@index([tenantId, typeId, occurredAt(sort: Desc)])
   @@index([tenantId, opportunityId])
+  @@index([accountId])
 }
 
 model TaskType {
@@ -3482,6 +3609,10 @@ model Task {
   @@index([tenantId, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, status, dueAt])
+  @@index([accountId])
+  @@index([opportunityId])
+  @@index([parentTaskId])
+  @@index([typeId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3598,6 +3729,7 @@ model AutomationEnrollment {
   @@unique([automationId, recordId, idempotencyKey])
   @@index([tenantId, status, resumeAt])
   @@index([tenantId, objectType, recordId])
+  @@index([versionId])
 }
 
 model AutomationExecution {
@@ -3665,6 +3797,7 @@ model Campaign {
   @@unique([tenantId, code])
   @@index([tenantId, status, startDate])
   @@index([tenantId, campaignType])
+  @@index([ownerId])
 }
 
 model MarketingList {
@@ -3743,6 +3876,7 @@ model EmailCampaign {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status, scheduledAt])
+  @@index([campaignId])
 }
 
 model MessageTemplate {
@@ -3913,6 +4047,8 @@ model SocialComment {
   @@index([tenantId, provider, providerAuthorId])
   /// The overdue sweep and the urgency ordering both read this.
   @@index([tenantId, slaDueAt])
+  @@index([linkedLeadId])
+  @@index([teamId])
 }
 
 /**
@@ -4032,6 +4168,9 @@ model MetaLeadFormRouting {
   /// Scoped by tenant so two workspaces may legitimately hold the same form id.
   @@unique([tenantId, providerFormId])
   @@index([tenantId, enabled])
+  @@index([assignedTeamId])
+  @@index([assignedUserId])
+  @@index([stageId])
 }
 
 /// A threaded exchange with one customer on one channel.
@@ -4307,6 +4446,7 @@ model LandingPageVersion {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([landingPageId, versionNumber])
+  @@index([tenantId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4483,6 +4623,12 @@ model Ticket {
   @@index([tenantId, agentId, status])
   @@index([tenantId, slaState, resolutionDueAt])
   @@index([tenantId, createdAt(sort: Desc)])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([contactId])
+  @@index([leadId])
+  @@index([parentTicketId])
+  @@index([slaId])
 }
 
 model TicketComment {
@@ -4570,6 +4716,12 @@ model Document {
   @@index([tenantId, leadId])
   @@index([tenantId, status, expiresAt])
   @@index([tenantId, category])
+  @@index([accountId])
+  @@index([activityId])
+  @@index([opportunityId])
+  @@index([productId])
+  @@index([taskId])
+  @@index([ticketId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4748,31 +4900,6 @@ model ExportJob {
   @@index([tenantId, status, createdAt(sort: Desc)])
 }
 
-model Integration {
-  id               String    @id @default(cuid())
-  tenantId         String
-  key              String
-  name             String
-  category         String
-  authMethod       String
-  configEncrypted  String?
-  fieldMappings    Json      @default("{}")
-  isActive         Boolean   @default(false)
-  lastSyncAt       DateTime?
-  lastSyncStatus   String?
-  lastErrorAt      DateTime?
-  lastErrorMessage String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-  updatedById      String?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, key])
-  @@index([tenantId, category, isActive])
-}
-
 model APIKey {
   id              String    @id @default(cuid())
   tenantId        String
@@ -4794,51 +4921,6 @@ model APIKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, revokedAt])
-}
-
-model Webhook {
-  id               String    @id @default(cuid())
-  tenantId         String
-  name             String
-  targetUrl        String
-  events           String[]
-  signingSecretEnc String
-  isActive         Boolean   @default(true)
-  maxRetries       Int       @default(5)
-  lastDeliveryAt   DateTime?
-  lastStatusCode   Int?
-  failureCount     Int       @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  createdById      String?
-
-  deliveries WebhookDelivery[]
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, isActive])
-}
-
-model WebhookDelivery {
-  id           String    @id @default(cuid())
-  tenantId     String
-  webhookId    String
-  event        String
-  payload      Json
-  attempt      Int       @default(1)
-  statusCode   Int?
-  responseBody String?
-  errorMessage String?
-  deliveredAt  DateTime?
-  nextRetryAt  DateTime?
-  createdAt    DateTime  @default(now())
-
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, webhookId, createdAt(sort: Desc)])
-  @@index([nextRetryAt])
 }
 
 model Notification {
@@ -4905,6 +4987,7 @@ model RateLimitCounter {
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([windowEnd])
+  @@index([tenantId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5158,6 +5241,11 @@ model AIAnalysis {
   uncertainItems  Json           @default("[]")
   rawOutput       Json?
   humanCorrected  Boolean        @default(false)
+  /// Exactly which fields a person edited, so a re-run overwrites the rest and
+  /// leaves these alone. `humanCorrected` on its own says *that* somebody
+  /// corrected the analysis and not *what*, which left the worker with only two
+  /// options — overwrite everything, or refuse to re-analyse at all.
+  correctedFields String[]       @default([])
   correctedById   String?
   correctedAt     DateTime?
   errorMessage    String?
@@ -5469,6 +5557,7 @@ model CampaignTalkingPoint {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, campaignId, position])
+  @@index([scriptId])
 }
 
 model CampaignQualification {
@@ -5807,6 +5896,7 @@ model UnitInventory {
   @@unique([projectId, unitNumber])
   @@index([tenantId, projectId, status])
   @@index([tenantId, status, heldUntil])
+  @@index([unitPlanId])
 }
 
 model ProjectFavourite {
@@ -6017,6 +6107,8 @@ model Listing {
   @@index([amenityKeys], map: "Listing_amenityKeys_idx", type: Gin)
   /// The list view: every cursor page orders by (updatedAt DESC, id DESC).
   @@index([tenantId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([projectId])
+  @@index([unitInventoryId])
 }
 
 model ListingMedia {
@@ -6403,6 +6495,8 @@ model SiteVisit {
   @@index([tenantId, leadId])
   /// The plausibility check reads a user's punches in time order.
   @@index([tenantId, ownerId, checkInAt])
+  @@index([listingId])
+  @@index([unitInventoryId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6539,6 +6633,8 @@ model Booking {
   @@index([tenantId, ownerId, bookingDate])
   @@index([tenantId, projectId])
   @@index([tenantId, leadId])
+  @@index([listingId])
+  @@index([unitInventoryId])
 }
 
 /// A commission rule, as finance wrote it.
@@ -6668,6 +6764,7 @@ model Commission {
   @@index([tenantId, bookingId])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, payoutId])
+  @@index([slabId])
 }
 
 /// A batch of commissions paid to one person for one period.

@@ -54,7 +54,7 @@ matters; the rest are inputs to it.
 | 4.2 | `WEBHOOK_SIGNING_PEPPER` | Inbound webhook signatures fail until partners update | ☐ | ☐ |
 | 4.3 | Database credentials | Downtime unless rotated with a rolling restart | ☐ | ☐ |
 | 4.4 | S3 credentials | Uploads and downloads fail | ☐ | ☐ |
-| 4.5 | `FACE_SERVICE_TOKEN` | Face check-in fails closed until both sides updated | ☐ | ☐ |
+| 4.5 | `FACE_SERVICE_TOKEN` | **None, if rotated with the script.** `scripts/rotate-face-token.sh <env-file>` does the three ordered steps — face accepts both, web sends the new one, face stops accepting the old one — so no check-in fails while it runs. Rotating by hand still fails closed until both sides restart | ☐ | ☐ |
 
 There is no secret whose rotation signs users out. `SESSION_SECRET` used to be
 listed here as doing exactly that, and it did not: sessions are rows in
@@ -66,6 +66,15 @@ with `revokeSessions` for a whole workspace.
 
 **4.2 is destructive and needs a written migration path before it is ever done.**
 Rotating that key without re-encrypting is data loss, not a rotation.
+
+**4.5 is the only one with a schedule attached.** The face sidecar turns camera
+frames into biometric vectors and its only authentication is that one bearer
+token, so its age is published as `masterapp_secret_age_days` and
+`FaceServiceTokenStale` raises a ticket past `FACE_TOKEN_MAX_AGE_DAYS` (90 by
+default). A deployment that has never rotated reports an age of the threshold
+plus one, so it fires there too — "no stamp" and "rotated yesterday" must not
+look the same. There is deliberately no timer doing it unattended: the rotation
+restarts the service attendance depends on, twice.
 
 ## 5. Monitoring and alerts
 
@@ -89,7 +98,7 @@ logs or the database; none of them pages anyone.
 
 | # | Control | Exists | Verified under load |
 |---|---|---|---|
-| 6.1 | Login: 10/IP and 5/account per 15 min | Yes — `lib/security/ratelimit.ts` | ☐ |
+| 6.1 | Login: 10/IP and 5/account per 5 min | Yes — `lib/security/ratelimit.ts` | ☐ |
 | 6.2 | Per-session API limit | Yes — 1200/min | ☐ |
 | 6.3 | API-key limit | Yes — 600/min | ☐ |
 | 6.4 | Upload endpoint | **Inherits the session limit only** | ☐ |
@@ -103,7 +112,7 @@ throttle disappears exactly when the system is already unhealthy.
 
 | # | Job | Implemented | Scheduled | Monitored |
 |---|---|---|---|---|
-| 7.1 | Retention cleanup (recordings, webhooks, soft-deletes, attendance captures) | Yes — `lib/jobs/retention.ts` | ☐ | ☐ |
+| 7.1 | Retention cleanup (recordings, webhooks, soft-deletes, attendance captures, and the three append-only tables when a window is set) | Yes — `lib/jobs/retention.ts` | ☐ | ☐ |
 | 7.2 | Expiring-document notification | Data available; **no job sends anything** | ☐ | ☐ |
 | 7.3 | Leave year-end carry-forward | Manual action in the UI | ☐ | ☐ |
 | 7.4 | Temporary-location request expiry | `expireTemporaryRequests` exists; **nothing calls it** | ☐ | ☐ |
@@ -116,11 +125,25 @@ throttle disappears exactly when the system is already unhealthy.
 | 8.1 | Attendance capture frames | Per workspace | By the retention job | Verified in a scratch run |
 | 8.2 | Face templates | Deleted on consent withdrawal and on exit | Yes | Verified |
 | 8.3 | Employee documents | **No retention policy at all** | ☐ | ☐ |
-| 8.4 | Audit log | **Retained indefinitely** | ☐ | ☐ |
+| 8.4 | `AuditLog`, `HrAttendancePunch`, `PlatformAuditEvent` | Per deployment, in days — `AUDIT_LOG_RETENTION_DAYS`, `ATTENDANCE_PUNCH_RETENTION_DAYS`, `PLATFORM_AUDIT_RETENTION_DAYS` | By the retention job **only when a window is set**; empty means keep | `tests/tenant/audit-retention.spec.ts` |
 | 8.5 | Soft-deleted records | 90 days | Retention job | ☐ |
 
 **8.3 and 8.4 need a decision.** Passport scans and audit rows kept forever is a
 choice, and it should be a deliberate one rather than a default.
+
+For 8.4 the *mechanism* now exists and the decision does not. The three windows
+are empty out of the box and empty means keep every row — a default would delete
+somebody's audit trail on the strength of a number nobody chose, silently, in the
+one direction that cannot be undone by correcting the setting afterwards. Each is
+separate because the owners differ: attendance punches are employment records
+with statutory minimums in several jurisdictions, and `PlatformAuditEvent` is the
+record of which of our own staff entered which customer's workspace, which is the
+one a customer has the strongest claim to.
+
+The current state is visible from monitoring rather than only from a file:
+`masterapp_retention_window_days{table="…"}` reports the window in days, and zero
+means none is set. Zero is unambiguous because the schema floors a real window at
+30 days, so it cannot be configured.
 
 ## 9. Incident response and rollback
 

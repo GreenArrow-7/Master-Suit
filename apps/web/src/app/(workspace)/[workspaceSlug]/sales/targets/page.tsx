@@ -45,16 +45,33 @@ function TargetCard({
   const remaining = Math.max(0, target.targetValue - achieved);
   return (
     <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--lf-space-3)' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: 'var(--lf-space-3)',
+        }}
+      >
         <div>
           <div style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 600 }}>
             {METRIC_LABEL[target.metric] ?? target.metric.replace(/_/g, ' ').toLowerCase()}
           </div>
-          <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>{target.period.toLowerCase()} target</div>
+          <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
+            {target.period.toLowerCase()} target
+          </div>
         </div>
         <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
       </div>
-      <div style={{ height: 8, background: 'var(--lf-surface-2)', borderRadius: 4, overflow: 'hidden', marginBottom: 'var(--lf-space-3)' }}>
+      <div
+        style={{
+          height: 8,
+          background: 'var(--lf-surface-2)',
+          borderRadius: 4,
+          overflow: 'hidden',
+          marginBottom: 'var(--lf-space-3)',
+        }}
+      >
         <div
           style={{
             width: `${pct}%`,
@@ -65,7 +82,14 @@ function TargetCard({
           }}
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: 'var(--lf-text-sm)',
+          color: 'var(--lf-ink-2)',
+        }}
+      >
         <span>{achieved} done</span>
         <span>{remaining} remaining</span>
         <span className="lf-num">{target.targetValue} target</span>
@@ -78,8 +102,7 @@ export default async function TargetsPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
   const now = new Date();
 
-  const managesTargets =
-    can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const managesTargets = can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
 
   const [mine, teamTargets, users] = await Promise.all([
     prisma.employeeTarget.findMany({
@@ -141,7 +164,14 @@ export default async function TargetsPage() {
 
       {managesTargets && (
         <section style={{ marginTop: 'var(--lf-space-7)', display: 'grid', gap: 'var(--lf-space-4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--lf-space-4)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 'var(--lf-space-4)',
+            }}
+          >
             <div>
               <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Team targets</h2>
               <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>

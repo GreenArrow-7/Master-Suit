@@ -42,7 +42,10 @@ cloudflared.exe
 .playwright-mcp/
 /*.png
 
-# Editor and tooling backups of an env file hold the same live credentials the
-# original does, under a name the .env rules above do not match.
-**/.env.bak*
-**/.env.*.bak
+# Timestamped .env backups written by local tooling. `.env` itself is ignored
+# above, but `.env.bak-<epoch>` is not matched by that rule, so one had been
+# staged for commit carrying PLATFORM_OWNER_PASSWORD, the owner MFA secret and
+# every database URL. Secrets in git history cannot be taken back.
+.env.bak*
+.env.*.bak
+*.env.bak

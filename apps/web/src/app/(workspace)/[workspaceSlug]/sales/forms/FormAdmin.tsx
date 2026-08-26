@@ -57,12 +57,22 @@ export function FormComposer() {
     <form
       onSubmit={submit}
       className="lf-card"
-      style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-4)' }}
+      style={{
+        padding: 'var(--lf-space-5)',
+        display: 'grid',
+        gap: 'var(--lf-space-4)',
+        marginBottom: 'var(--lf-space-4)',
+      }}
       noValidate
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>New lead-capture form</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -77,8 +87,14 @@ export function FormComposer() {
         <label className="lf-label" htmlFor="f-name">
           Form name
         </label>
-        <input id="f-name" className="lf-input" value={form.name} autoFocus required
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        <input
+          id="f-name"
+          className="lf-input"
+          value={form.name}
+          autoFocus
+          required
+          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+        />
         <p className="lf-hint" style={{ margin: '4px 0 0' }}>
           Comes with name, WhatsApp phone, email and message fields. Every submission becomes a lead.
         </p>
@@ -88,14 +104,21 @@ export function FormComposer() {
         <label className="lf-label" htmlFor="f-success">
           Thank-you message
         </label>
-        <input id="f-success" className="lf-input" value={form.successMessage}
+        <input
+          id="f-success"
+          className="lf-input"
+          value={form.successMessage}
           placeholder="Thank you — we will be in touch shortly."
-          onChange={(e) => setForm((f) => ({ ...f, successMessage: e.target.value }))} />
+          onChange={(e) => setForm((f) => ({ ...f, successMessage: e.target.value }))}
+        />
       </div>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
-        <input type="checkbox" checked={form.publish}
-          onChange={(e) => setForm((f) => ({ ...f, publish: e.target.checked }))} />
+        <input
+          type="checkbox"
+          checked={form.publish}
+          onChange={(e) => setForm((f) => ({ ...f, publish: e.target.checked }))}
+        />
         Publish immediately (makes the public link live)
       </label>
 
@@ -151,7 +174,12 @@ export function FormRowActions({
           <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={copy}>
             {copied ? 'Copied!' : 'Copy link'}
           </button>
-          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setState('PAUSED')}>
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary lf-btn--sm"
+            disabled={busy}
+            onClick={() => setState('PAUSED')}
+          >
             Pause
           </button>
         </>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
@@ -68,18 +69,21 @@ export const GET = route(
             : {};
 
     const data = await prisma.siteVisit.findMany({
-      where: {
-        ...scope,
-        deletedAt: null,
-        ...queueWhere,
-        ...(query.kind ? { kind: query.kind } : {}),
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.projectId ? { projectId: query.projectId } : {}),
-        ...(query.leadId ? { leadId: query.leadId } : {}),
-        ...(query.from || query.to
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        queueWhere,
+        query.kind ? { kind: query.kind } : null,
+        // `queue=verification` already constrains status; a `status=` alongside
+        // it used to overwrite that constraint rather than narrow it, so the
+        // verification queue could be asked for REQUESTED rows and would answer.
+        query.status ? { status: query.status } : null,
+        query.projectId ? { projectId: query.projectId } : null,
+        query.leadId ? { leadId: query.leadId } : null,
+        query.from || query.to
           ? { scheduledAt: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
-          : {}),
-      },
+          : null,
+      ),
       select: LIST_SELECT,
       orderBy: { scheduledAt: 'desc' },
       take: query.limit,

@@ -23,15 +23,7 @@ import { isHrAdmin } from './access';
 import type { Ctx } from '@/lib/security/rbac';
 
 export type SettingGroup =
-  | 'face'
-  | 'liveness'
-  | 'attendance'
-  | 'leave'
-  | 'overtime'
-  | 'roster'
-  | 'payroll'
-  | 'gratuity'
-  | 'lifecycle';
+  'face' | 'liveness' | 'attendance' | 'leave' | 'overtime' | 'roster' | 'payroll' | 'gratuity' | 'lifecycle';
 
 interface BaseDefinition {
   key: string;
@@ -49,7 +41,20 @@ type Definition =
   | (BaseDefinition & { type: 'days'; default: number[] })
   | (BaseDefinition & { type: 'strings'; default: string[] })
   /** A single free-text value — an identifier issued by an outside body, typically. */
-  | (BaseDefinition & { type: 'text'; default: string; maxLength?: number; pattern?: string });
+  | (BaseDefinition & {
+      type: 'text';
+      default: string;
+      maxLength?: number;
+      pattern?: string;
+      /**
+       * What to tell the administrator when `pattern` refuses their input.
+       *
+       * "must match /^[A-Za-z0-9][A-Za-z0-9 \/_-]*$/" is not something a person
+       * responsible for payroll can act on, and a validation message nobody can
+       * act on gets worked around rather than fixed.
+       */
+      patternMessage?: string;
+    });
 
 /**
  * Defaults come from the environment where one already existed, so an existing
@@ -501,6 +506,18 @@ export const HR_SETTINGS: Definition[] = [
     type: 'text',
     default: '',
     maxLength: 32,
+    /**
+     * Refused here as well as at export, because this is where it is fixable.
+     *
+     * The value lands in the SIF control record, and a payroll team opens that
+     * file in Excel before instructing a transfer — where a cell beginning `=`,
+     * `+`, `-` or `@` is executed. `=HYPERLINK(…)` in an establishment ID is a
+     * phishing link inside the company's own payroll file. See
+     * services/hr/wps.ts for why the export refuses rather than escapes.
+     */
+    pattern: '^[A-Za-z0-9][A-Za-z0-9 /_-]*$',
+    patternMessage:
+      'must start with a letter or digit and contain only letters, digits, spaces, hyphens, slashes or underscores — the bank rejects anything else, and a value starting with = + - or @ is executed as a formula when the SIF is opened in a spreadsheet',
     label: 'WPS employer (MOL) identifier',
     help: 'The establishment ID issued by the Ministry of Human Resources and Emiratisation. It goes in the SIF control record; without it a bank will reject the file.',
   },
@@ -510,6 +527,9 @@ export const HR_SETTINGS: Definition[] = [
     type: 'text',
     default: '',
     maxLength: 32,
+    pattern: '^[A-Za-z0-9][A-Za-z0-9 /_-]*$',
+    patternMessage:
+      'must start with a letter or digit and contain only letters, digits, spaces, hyphens, slashes or underscores — see the employer identifier above',
     label: 'WPS employer bank agent identifier',
     help: 'The routing code of the bank the salaries are paid from, as registered with the WPS.',
   },
@@ -761,7 +781,7 @@ function coerce(setting: Definition, raw: unknown): { ok: true; value: unknown }
       if (setting.maxLength && value.length > setting.maxLength)
         return { ok: false, message: `must be ${setting.maxLength} characters or fewer` };
       if (setting.pattern && value && !new RegExp(setting.pattern).test(value))
-        return { ok: false, message: `must match ${setting.pattern}` };
+        return { ok: false, message: setting.patternMessage ?? `must match ${setting.pattern}` };
       return { ok: true, value };
     }
   }

@@ -1,0 +1,22 @@
+# Answers "are we actually backed up?" — the question neither of the units above
+# can answer about itself.
+#
+# A failing backup shows as a failed service. A backup that *stopped firing*
+# does not: a masked unit, a disabled timer, a host that was off, a clock that
+# moved — none of those produce a failed service, because no service ran. This
+# checks the only evidence that cannot lie, which is whether a complete backup
+# newer than BACKUP_MAX_AGE_HOURS exists on disk.
+#
+# It is deliberately a separate unit so `systemctl --failed` on the VM is a
+# sufficient answer.
+[Unit]
+Description=Master Suite backup freshness check
+
+[Service]
+Type=oneshot
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=-__CONFIG__
+ExecStart=__APP_DIR__/scripts/backup-status.sh __BACKUP_ROOT__
+
+[Install]
+WantedBy=multi-user.target

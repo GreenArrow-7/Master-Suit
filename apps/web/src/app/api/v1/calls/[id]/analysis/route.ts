@@ -87,11 +87,16 @@ const correctionBody = z
 /**
  * A human correcting the model.
  *
- * `humanCorrected` is set and never cleared: once a person has edited a summary,
- * a later re-run must not quietly overwrite their words with the model's. The
- * worker writes the whole row, so a workspace that re-analyses a corrected call
- * loses the correction — which is why re-analysis is an explicit action rather
- * than something the pipeline does on its own.
+ * `humanCorrected` is set and never cleared, and `correctedFields` records
+ * *which* fields were edited — accumulated across corrections, so editing the
+ * summary today and the objections tomorrow protects both.
+ *
+ * That list is what the analysis worker reads before a re-run. It used to write
+ * every column unconditionally, so re-analysing a corrected call replaced a
+ * person's words with the model's, silently and irreversibly. The comment that
+ * stood here called re-analysis "an explicit action rather than something the
+ * pipeline does on its own", which is true and is not a control: the person
+ * clicking it had no idea it would discard their work.
  */
 export const PATCH = route(
   {
@@ -108,11 +113,17 @@ export const PATCH = route(
     });
     if (!analysis) throw NotFound('Analysis');
 
+    // Accumulated, not replaced. Two corrections a week apart to different
+    // fields must protect both, and `body` only carries what this request
+    // changed.
+    const corrected = [...new Set([...analysis.correctedFields, ...Object.keys(body)])];
+
     return prisma.aIAnalysis.update({
       where: { callId: params.id, tenantId: ctx.tenantId },
       data: {
         ...body,
         humanCorrected: true,
+        correctedFields: corrected,
         correctedById: ctx.actor.id,
         correctedAt: new Date(),
       },

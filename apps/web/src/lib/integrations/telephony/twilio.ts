@@ -184,6 +184,10 @@ export class TwilioProvider implements TelephonyProvider {
       deliveryId: `${callSid}:${p.get('SequenceNumber') ?? status}`,
     };
   }
+  /** Twilio serves recording media from its API host and its media CDN. */
+  mediaHosts(): readonly string[] {
+    return ['api.twilio.com', '.twiliocdn.com'];
+  }
 }
 
 const num = (value: string | null): number | undefined => {

@@ -14,9 +14,7 @@ import { buildActor, buildCtx } from '../helpers/ctx';
 
 /** A ctx holding exactly the given `module:ACTION → scope` grants. */
 function ctxWith(grants: Record<string, Scope>) {
-  return buildCtx(
-    buildActor({ id: 'u1', tenantId: 't1', permissions: new Map(Object.entries(grants)) as never }),
-  );
+  return buildCtx(buildActor({ id: 'u1', tenantId: 't1', permissions: new Map(Object.entries(grants)) as never }));
 }
 
 describe('resolvePersona', () => {
@@ -25,7 +23,9 @@ describe('resolvePersona', () => {
   });
 
   it('HR admin wins over a co-held audit grant', () => {
-    expect(resolvePersona(ctxWith({ 'employee:EDIT': 'ORGANIZATION', 'auditlogs:VIEW': 'ORGANIZATION' }))).toBe('hr_admin');
+    expect(resolvePersona(ctxWith({ 'employee:EDIT': 'ORGANIZATION', 'auditlogs:VIEW': 'ORGANIZATION' }))).toBe(
+      'hr_admin',
+    );
   });
 
   it('payroll:VIEW without HR admin is the payroll dashboard', () => {

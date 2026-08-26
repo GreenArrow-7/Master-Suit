@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '../db';
+import { readCachedActor, writeCachedActor } from './actorCache';
 import { env } from '../env';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
@@ -288,7 +289,12 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
     userAgent: platformCtx.userAgent,
     // Only for real members: a support actor holds no workspace credential to
     // change, and forcing platform staff through the screen would lock them out.
-    ...(membership?.salesUserId ? { mustChangePassword: platformCtx.passwordChangedAt === null } : {}),
+    ...(membership?.salesUserId
+      ? {
+          mustChangePassword: platformCtx.passwordChangedAt === null,
+          passwordChangedAt: platformCtx.passwordChangedAt,
+        }
+      : {}),
   };
 }
 
@@ -322,7 +328,27 @@ const ASSIGNMENT_SCOPE_CAP: Record<string, Scope> = {
   OWN_RECORD: 'OWN',
 };
 
+/**
+ * The permission set for one user in one workspace.
+ *
+ * Cached in Redis — see lib/auth/actorCache.ts for the versioning, and why
+ * invalidation is a single INCR rather than a key sweep. The cache is checked
+ * first and written last; everything between is the original build, unchanged.
+ *
+ * The *session* is deliberately not cached and is still read from the database
+ * on every request, so signing someone out remains immediate. Only what they may
+ * do once signed in comes from here.
+ */
 async function buildActor(userId: string, tenantId: string): Promise<Actor> {
+  const hit = await readCachedActor(tenantId, userId);
+  if (hit) return hit;
+
+  const actor = await loadActor(userId, tenantId);
+  await writeCachedActor(tenantId, userId, actor);
+  return actor;
+}
+
+async function loadActor(userId: string, tenantId: string): Promise<Actor> {
   const user = await prisma.user.findFirst({
     where: { id: userId, tenantId },
     include: {

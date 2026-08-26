@@ -31,7 +31,12 @@ import { myEmployee } from './leave';
 import { startOnboarding } from './lifecycle';
 import { inviteUser } from '@/services/identity/invitations';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
-import { notifyInterviewScheduled, notifyOfferResponded, notifyRequisitionDecided, notifyRequisitionSubmitted } from './notify';
+import {
+  notifyInterviewScheduled,
+  notifyOfferResponded,
+  notifyRequisitionDecided,
+  notifyRequisitionSubmitted,
+} from './notify';
 
 /**
  * Declared as a literal union rather than pulled from the generated client:
@@ -53,8 +58,7 @@ export type Stage =
 
 export type RequisitionStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'OPEN' | 'ON_HOLD' | 'CLOSED' | 'REJECTED';
 
-export const mayReadRecruitment = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW')] >= SCOPE_RANK.TEAM;
+export const mayReadRecruitment = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW')] >= SCOPE_RANK.TEAM;
 export const isRecruiter = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'EDIT')] >= SCOPE_RANK.TEAM;
 export const isHiringApprover = (ctx: Ctx) =>
   SCOPE_RANK[scopeFor(ctx, 'recruitment', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
@@ -369,7 +373,10 @@ export async function candidateDetail(ctx: Ctx, candidateId: string) {
     include: {
       requisition: { include: { department: true } },
       stageEvents: { orderBy: { createdAt: 'desc' } },
-      interviews: { include: { feedback: { include: { interviewer: EMPLOYEE_WITH_PERSON } } }, orderBy: { scheduledAt: 'desc' } },
+      interviews: {
+        include: { feedback: { include: { interviewer: EMPLOYEE_WITH_PERSON } } },
+        orderBy: { scheduledAt: 'desc' },
+      },
       offers: { orderBy: { version: 'desc' } },
       employees: { select: { id: true, employeeNumber: true } },
     },
@@ -408,8 +415,7 @@ export async function scheduleInterview(ctx: Ctx, input: InterviewInput) {
   requireRecruiter(ctx);
   const candidate = await prisma.hrCandidate.findFirst({ where: { tenantId: ctx.tenantId, id: input.candidateId } });
   if (!candidate) throw NotFound('Candidate');
-  if (TERMINAL.includes(candidate.stage))
-    throw Conflict(`That candidate is already ${candidate.stage.toLowerCase()}.`);
+  if (TERMINAL.includes(candidate.stage)) throw Conflict(`That candidate is already ${candidate.stage.toLowerCase()}.`);
   if (!input.panelIds.length) throw Conflict('Name at least one interviewer.');
 
   const panel = await prisma.employeeProfile.findMany({
@@ -436,13 +442,16 @@ export async function scheduleInterview(ctx: Ctx, input: InterviewInput) {
     event: 'RECORD_CREATED',
     objectType: 'hr_interview',
     recordId: interview.id,
-    metadata: { action: 'recruitment.interview.scheduled', candidateId: candidate.id, panel: interview.panelIds.length },
+    metadata: {
+      action: 'recruitment.interview.scheduled',
+      candidateId: candidate.id,
+      panel: interview.panelIds.length,
+    },
   });
   await notifyInterviewScheduled(ctx, {
     panelIds: interview.panelIds,
     candidateName: candidate.fullName,
     when: interview.scheduledAt,
-    recordId: interview.id,
     candidateId: candidate.id,
   });
   return interview;
@@ -470,8 +479,7 @@ export async function submitFeedback(ctx: Ctx, input: FeedbackInput) {
 
   const interview = await prisma.hrInterview.findFirst({ where: { tenantId: ctx.tenantId, id: input.interviewId } });
   if (!interview) throw NotFound('Interview');
-  if (!interview.panelIds.includes(self.id))
-    throw Forbidden('Only the interview panel can leave feedback on it.');
+  if (!interview.panelIds.includes(self.id)) throw Forbidden('Only the interview panel can leave feedback on it.');
   if (interview.status === 'CANCELLED') throw Conflict('That interview was cancelled.');
   if (input.rating < 1 || input.rating > 5) throw Conflict('Rate between 1 and 5.');
 
@@ -611,7 +619,10 @@ export async function decideOffer(ctx: Ctx, offerId: string, approve: boolean, n
     event: 'RECORD_UPDATED',
     objectType: 'hr_offer',
     recordId: offer.id,
-    metadata: { action: approve ? 'recruitment.offer.approved' : 'recruitment.offer.withdrawn', version: offer.version },
+    metadata: {
+      action: approve ? 'recruitment.offer.approved' : 'recruitment.offer.withdrawn',
+      version: offer.version,
+    },
   });
   return updated;
 }
@@ -692,7 +703,10 @@ export async function recordOfferResponse(ctx: Ctx, offerId: string, accepted: b
     event: 'RECORD_UPDATED',
     objectType: 'hr_offer',
     recordId: offer.id,
-    metadata: { action: accepted ? 'recruitment.offer.accepted' : 'recruitment.offer.declined', version: offer.version },
+    metadata: {
+      action: accepted ? 'recruitment.offer.accepted' : 'recruitment.offer.declined',
+      version: offer.version,
+    },
   });
   const responded = await prisma.hrCandidate.findFirst({
     where: { tenantId: ctx.tenantId, id: offer.candidateId },
@@ -701,7 +715,6 @@ export async function recordOfferResponse(ctx: Ctx, offerId: string, accepted: b
   await notifyOfferResponded(ctx, {
     accepted,
     candidateName: responded?.fullName ?? 'A candidate',
-    recordId: offer.id,
     candidateId: offer.candidateId,
   });
   return updated;

@@ -13,7 +13,9 @@
  */
 import { logger } from '@/lib/logger';
 import { redact } from '@/lib/ai/redact';
-import { geminiKey, geminiModel } from '@/lib/ai/gemini';
+import { geminiCredential, geminiModel } from '@/lib/ai/gemini';
+import { generateText } from '@/lib/ai/provider';
+import { assertAiBudget, recordAiUsage } from '@/lib/ai/usage';
 import { withRetry, isTransient } from '@/lib/integrations/retry';
 
 const AI_TIMEOUT_MS = 12_000;
@@ -60,11 +62,11 @@ export function templateDraft(context: DraftContext): string {
 }
 
 export async function draftReply(context: DraftContext): Promise<Draft> {
-  const apiKey = await geminiKey(context.tenantId);
+  const credential = await geminiCredential(context.tenantId);
+  const apiKey = credential.key;
   if (!apiKey) return { body: templateDraft(context), source: 'template' };
 
   const model = await geminiModel(context.tenantId);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const channel = context.provider === 'instagram' ? 'Instagram' : 'Facebook';
 
   const prompt = [
@@ -96,37 +98,34 @@ export async function draftReply(context: DraftContext): Promise<Draft> {
      * to — and a salesperson reading a generic template has no idea the model
      * was ever asked.
      */
-    const data = await withRetry(
+    // Before the billed call, as everywhere else. Over budget this throws and
+    // the catch below serves the template, which is the right degradation for a
+    // customer waiting on an answer.
+    await assertAiBudget(context.tenantId, credential);
+
+    const response = await withRetry(
       'gemini-draft',
-      async () => {
-        const res = await fetch(url, {
-          method: 'POST',
-          signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            /**
-             * Generous for a few sentences, because the current flash models
-             * spend output tokens on reasoning before they write. At 400 the
-             * reply came back cut off mid-sentence — the budget was being eaten
-             * before the answer started.
-             */
-            generationConfig: { temperature: 0.4, maxOutputTokens: 1500 },
-          }),
-        });
-        if (!res.ok) {
-          const error = new Error(`Gemini draft error: ${res.status}`) as Error & { status?: number };
-          error.status = res.status;
-          throw error;
-        }
-        return res.json();
-      },
+      () =>
+        generateText({
+          credential: { key: apiKey, provider: credential.provider },
+          model,
+          prompt,
+          temperature: 0.4,
+          /**
+           * Generous for a few sentences, because the current flash models
+           * spend output tokens on reasoning before they write. At 400 the
+           * reply came back cut off mid-sentence — the budget was being eaten
+           * before the answer started.
+           */
+          maxOutputTokens: 1500,
+          timeoutMs: AI_TIMEOUT_MS,
+        }),
       { retryOn: isTransient },
     );
+    await recordAiUsage(context.tenantId, credential, response.usage, { feature: 'social-draft', model });
 
-    const text: string | undefined = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text?.trim()) throw new Error('Gemini returned no draft');
-    return { body: text.trim(), source: 'gemini' };
+    if (!response.text.trim()) throw new Error('Gemini returned no draft');
+    return { body: response.text.trim(), source: 'gemini' };
   } catch (err) {
     // A drafting hiccup must not block answering a waiting customer.
     logger.warn({ err: (err as Error).message }, 'social reply draft failed, using template');

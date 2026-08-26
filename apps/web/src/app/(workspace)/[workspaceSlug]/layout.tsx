@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { passwordPolicy } from '@/services/identity/accounts';
+import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
@@ -102,7 +104,11 @@ export default async function WorkspaceLayout({
       />
       <div className="lf-content-column">
         {shell.supportMode && (
-          <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} readOnly={shell.supportReadOnly} />
+          <SupportModeBanner
+            workspaceId={shell.workspaceId}
+            workspaceName={shell.displayName}
+            readOnly={shell.supportReadOnly}
+          />
         )}
         <WorkspaceTopBar
           slug={shell.slug}
@@ -112,7 +118,7 @@ export default async function WorkspaceLayout({
         />
         <main className="lf-page-main">{children}</main>
       </div>
-      <AssistantWidget />
+      <AssistantWidget slug={shell.slug} />
     </div>
   );
 }
@@ -144,9 +150,34 @@ async function loadShell(workspaceSlug: string) {
       supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
-      // resolveCtx read passwordChangedAt off the session row it already held;
-      // strictly true only for real members — a support actor never carries it.
-      mustChangePassword: ctx.mustChangePassword === true,
+      /**
+       * The server-side half of the forced-change gate, and the one that counts:
+       * the login response only *suggests* a destination, and typing any other
+       * URL used to walk straight past it.
+       *
+       * Two conditions, one predicate. Null `passwordChangedAt` means the account
+       * is still on the password an administrator issued — handed over by voice
+       * or on paper, the weakest credential the system ever mints. The workspace's
+       * `maxAgeDays` is the other, and until now it was a setting that did nothing.
+       *
+       * `undefined` is deliberately *not* expiry: a platform support actor has no
+       * workspace User row at all, and an absent timestamp must not read as a
+       * password that needs changing — it would trap them in a redirect to a
+       * screen they have no account on. `null` is the opposite and does mean
+       * expiry, which is why this tests for `undefined` rather than falsiness.
+       *
+       * Not `ctx.mustChangePassword`: that field is `passwordChangedAt === null`
+       * and nothing more, so it carries the temporary-password half of the rule
+       * and not the expiry half. Using it here would leave `maxAgeDays` a setting
+       * that does nothing again, silently and on every workspace page.
+       *
+       * The timestamp comes off the context this navigation already resolved, so
+       * the membership lookup this used to make is gone rather than moved.
+       */
+      mustChangePassword:
+        ctx.passwordChangedAt !== undefined
+          ? passwordExpired(ctx.passwordChangedAt, await passwordPolicy(workspace.id))
+          : false,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:

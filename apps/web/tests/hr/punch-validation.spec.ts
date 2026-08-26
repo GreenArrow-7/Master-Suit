@@ -112,10 +112,7 @@ describe('validatePunch sequencing', () => {
   });
 
   it('refuses a weak GPS fix before measuring the fence: LOCATION_ACCURACY_TOO_LOW', async () => {
-    await expectRejection(
-      validatePunch(ctx(), employee, 'CHECK_IN', position(HQ, 5_000)),
-      'LOCATION_ACCURACY_TOO_LOW',
-    );
+    await expectRejection(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ, 5_000)), 'LOCATION_ACCURACY_TOO_LOW');
   });
 
   it('refuses a check-out when nothing is open: NO_OPEN_CHECKIN', async () => {
@@ -138,7 +135,13 @@ describe('validatePunch sequencing', () => {
     // Assigned to the branch too, standing inside it — but the open check-in
     // was at HQ and its rule pins the check-out there.
     await prisma.hrEmployeeLocationAssignment.create({
-      data: { tenantId, employeeId: employee.id, locationId: branchId, status: 'ACTIVE', checkoutRule: 'SAME_LOCATION' },
+      data: {
+        tenantId,
+        employeeId: employee.id,
+        locationId: branchId,
+        status: 'ACTIVE',
+        checkoutRule: 'SAME_LOCATION',
+      },
     });
     await prisma.hrEmployeeLocationAssignment.updateMany({
       where: { tenantId, employeeId: employee.id, locationId: hqId },
@@ -162,10 +165,7 @@ describe('validatePunch sequencing', () => {
       where: { tenantId, employeeId: employee.id, locationId: hqId },
       data: { checkoutRule: 'EXCEPTION_ONLY' },
     });
-    await expectRejection(
-      validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ)),
-      'CHECKOUT_REQUIRES_EXCEPTION',
-    );
+    await expectRejection(validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ)), 'CHECKOUT_REQUIRES_EXCEPTION');
   });
 
   it('refuses an employee with no active employment: EMPLOYMENT_INACTIVE', async () => {

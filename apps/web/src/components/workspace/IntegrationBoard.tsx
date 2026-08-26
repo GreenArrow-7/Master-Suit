@@ -20,6 +20,13 @@ export interface ProviderCard {
   webhookUrl: string | null;
 }
 
+/**
+ * Must match `CONFIRM_PHRASE` in the route. Kept as a literal on both sides
+ * rather than shared through an import: this is a client component, and the
+ * route module it would import from reaches Prisma.
+ */
+const CONFIRM_PHRASE = 'remove-all-credentials';
+
 const CATEGORY_TITLES: Record<string, string> = {
   TELEPHONY: 'Telephony',
   MESSAGING: 'Messaging',
@@ -54,17 +61,22 @@ export default function IntegrationBoard({
   defaultTelephonyProvider,
   aiConfigured,
   canEdit,
+  build,
 }: {
   providers: ProviderCard[];
   defaultTelephonyProvider: string | null;
   aiConfigured: boolean;
   canEdit: boolean;
+  /** Commit the server is running. See HealthSummary for why it is here. */
+  build: string;
 }) {
   const categories = [...new Set(providers.map((p) => p.category))];
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <HealthSummary providers={providers} deploymentKey={aiConfigured} />
+      <HealthSummary providers={providers} deploymentKey={aiConfigured} build={build} />
+
+      <RemoveAllKeys providers={providers} canEdit={canEdit} />
 
       {categories.map((category) => (
         <section key={category}>
@@ -98,7 +110,15 @@ export default function IntegrationBoard({
  * It is a registry provider now, so it arrives with the others — and reports
  * whether *this workspace* has a key rather than whether the server does.
  */
-function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]; deploymentKey: boolean }) {
+function HealthSummary({
+  providers,
+  deploymentKey,
+  build,
+}: {
+  providers: ProviderCard[];
+  deploymentKey: boolean;
+  build: string;
+}) {
   const rows = providers.map((p) => ({
     label: p.label,
     status: p.status,
@@ -112,9 +132,29 @@ function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]
 
   return (
     <div className="lf-card" style={{ padding: 18 }}>
-      <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 12px' }}>
-        Health
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', margin: '0 0 12px' }}>
+        <h2 className="lf-h2" style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>
+          Health
+        </h2>
+        {/*
+          Which commit is answering, on the screen where the question keeps
+          coming up. A provider card that does not match what somebody expects
+          has two explanations — the setting is wrong, or the server is running
+          older code — and until now nothing here could tell them apart. It cost
+          most of an afternoon once: a key was pasted, the field it belonged in
+          did not exist yet, and every reading of the failure assumed it did.
+
+          `buildId()` reads BUILD_COMMIT on a deployment and falls back to
+          `git rev-parse --short HEAD` in a source checkout, so it is populated
+          in development, which is exactly where the confusion happens. It is
+          the same identifier the platform console shows, and a short sha is not
+          a secret — but it is behind an authenticated admin page rather than a
+          public endpoint, which is the line src/lib/metrics.ts already draws.
+        */}
+        <span className="lf-hint" style={{ fontVariantNumeric: 'tabular-nums' }} title="Commit this server is running">
+          build {build}
+        </span>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
         {rows.map((row) => (
           <div
@@ -131,6 +171,112 @@ function HealthSummary({ providers, deploymentKey }: { providers: ProviderCard[]
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Clear every stored credential in this workspace at once.
+ *
+ * Disconnect on a single card already deletes the row rather than flagging it,
+ * so this grants no new power — it saves opening one panel per provider, which
+ * is what somebody rotating a leaked set of keys is actually doing, and what
+ * they least want to do half of.
+ *
+ * The phrase has to be typed. Nothing here comes back: the rows hold the only
+ * copy of each key the workspace has, and no vendor will reissue one on
+ * request. A button behind a `confirm()` is one misplaced Enter away from
+ * taking telephony, messaging and AI down together.
+ */
+function RemoveAllKeys({ providers, canEdit }: { providers: ProviderCard[]; canEdit: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+
+  const connected = providers.filter((p) => p.status !== 'NOT_CONFIGURED');
+  // Nothing stored means nothing to remove, and an enabled button that can only
+  // report "0 removed" reads as broken.
+  if (!canEdit || connected.length === 0) return null;
+
+  async function removeAll() {
+    setBusy(true);
+    setMessage(null);
+    const res = await fetch(`/api/v1/integrations?confirm=${CONFIRM_PHRASE}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+
+    if (!res.ok) {
+      setMessage({ tone: 'error', text: data.errors?.[0]?.message ?? data.detail ?? 'That change was refused.' });
+      return;
+    }
+    setMessage({
+      tone: 'ok',
+      text: data.count
+        ? `Removed ${data.count} key${data.count === 1 ? '' : 's'}: ${(data.removed as string[]).join(', ')}.`
+        : 'Nothing was stored.',
+    });
+    setTyped('');
+    setOpen(false);
+    router.refresh();
+  }
+
+  return (
+    <div className="lf-card" style={{ padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 280px' }}>
+          <strong>Stored API keys</strong>
+          <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+            {connected.length} service{connected.length === 1 ? '' : 's'} hold a credential:{' '}
+            {connected.map((p) => p.label).join(', ')}. Removing them cannot be undone — each vendor issues a new key,
+            it does not return the old one.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen((v) => !v)}
+          disabled={busy}
+        >
+          {open ? 'Cancel' : 'Remove all keys'}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 14, display: 'grid', gap: 10, maxWidth: 480 }}>
+          <label className="lf-label" htmlFor="remove-all-confirm">
+            Type <code>{CONFIRM_PHRASE}</code> to confirm
+          </label>
+          <input
+            id="remove-all-confirm"
+            className="lf-input"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <div>
+            <button
+              type="button"
+              className="lf-btn lf-btn--danger lf-btn--sm"
+              onClick={removeAll}
+              disabled={busy || typed.trim() !== CONFIRM_PHRASE}
+            >
+              {busy ? 'Removing…' : `Remove ${connected.length} key${connected.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message && (
+        <p
+          className={message.tone === 'error' ? 'lf-hint lf-hint--error' : 'lf-hint'}
+          role={message.tone === 'error' ? 'alert' : 'status'}
+        >
+          {message.text}
+        </p>
+      )}
     </div>
   );
 }
@@ -210,6 +356,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<'save' | 'test' | 'disconnect' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  /** Second press confirms; blurring the button forgets the first one. */
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const configured = provider.status !== 'NOT_CONFIGURED';
 
@@ -250,7 +398,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
       tone: verdict?.ok === false ? 'error' : 'ok',
       text:
         action === 'disconnect'
-          ? 'Disconnected.'
+          ? `Key removed. ${provider.label} is no longer configured for this workspace.`
           : verdict?.ok === true
             ? `Verified with ${provider.label}.${verdict.detail ? ` ${verdict.detail}` : ''}`
             : verdict?.ok === null
@@ -258,6 +406,7 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
               : (verdict?.detail ?? 'Saved.'),
     });
     setValues({});
+    setConfirmRemove(false);
     router.refresh();
   }
 
@@ -284,10 +433,47 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
           )}
         </div>
 
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
-          {open ? 'Close' : configured ? 'Configure' : 'Connect'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(!open)}>
+            {open ? 'Close' : configured ? 'Configure' : 'Connect'}
+          </button>
+          {/*
+            Removing a key used to mean Configure → scroll past the form →
+            Disconnect, which is three steps behind a button labelled for the
+            opposite intent. The moment somebody wants a key gone — it is wrong,
+            it leaked, it is 400ing — is the moment they are looking at this
+            card, so the action belongs on it.
+          */}
+          {configured && canEdit && (
+            <button
+              type="button"
+              className="lf-btn lf-btn--danger lf-btn--sm"
+              disabled={busy !== null}
+              onClick={() => (confirmRemove ? send('disconnect') : setConfirmRemove(true))}
+              // The second press is the confirmation. A dialog would be
+              // stronger, but this key is one card among many and re-entering
+              // it costs a visit to the vendor console, not a rebuild.
+              onBlur={() => setConfirmRemove(false)}
+            >
+              {busy === 'disconnect' ? 'Removing…' : confirmRemove ? 'Confirm — remove key' : 'Remove key'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/*
+        Shown here as well as inside the form, because the Remove button on the
+        header is reachable with the form closed — and an action that reports
+        nothing reads as an action that did nothing.
+      */}
+      {message && !open && (
+        <p
+          className={message.tone === 'error' ? 'lf-hint lf-hint--error' : 'lf-hint'}
+          role={message.tone === 'error' ? 'alert' : 'status'}
+        >
+          {message.text}
+        </p>
+      )}
 
       {provider.webhookUrl && (
         <div style={{ marginTop: 12 }}>
@@ -374,16 +560,12 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
                 {busy === 'test' ? 'Testing…' : 'Test connection'}
               </button>
             )}
-            {configured && (
-              <button
-                type="button"
-                className="lf-btn lf-btn--danger lf-btn--sm"
-                disabled={!canEdit || busy !== null}
-                onClick={() => send('disconnect')}
-              >
-                {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
-              </button>
-            )}
+            {/*
+              Removal lives on the card header now, not here. Two buttons for
+              one destructive action on one card is worse than either: they had
+              different labels and different confirmations, so which one a
+              person had pressed was not recoverable from what they remembered.
+            */}
           </div>
 
           {message && (

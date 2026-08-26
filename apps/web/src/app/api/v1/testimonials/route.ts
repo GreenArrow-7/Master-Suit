@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -18,13 +19,13 @@ export const GET = route(
   async ({ ctx, query }) => {
     const scope = await visibilityWhere(ctx, 'testimonials', 'VIEW');
     const data = await prisma.testimonial.findMany({
-      where: {
-        ...scope,
-        deletedAt: null,
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.leadId ? { leadId: query.leadId } : {}),
-        ...(query.contactId ? { contactId: query.contactId } : {}),
-      },
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        query.status ? { status: query.status } : null,
+        query.leadId ? { leadId: query.leadId } : null,
+        query.contactId ? { contactId: query.contactId } : null,
+      ),
       orderBy: { requestedAt: 'desc' },
       take: query.limit,
     });

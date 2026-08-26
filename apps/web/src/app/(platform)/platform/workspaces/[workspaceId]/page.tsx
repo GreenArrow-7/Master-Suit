@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import BreakGlass from './BreakGlass';
 import WorkspaceControls from './WorkspaceControls';
 import WorkspaceEditForm from './WorkspaceEditForm';
 
@@ -42,6 +43,11 @@ export default async function Page({ params }: { params: Promise<{ workspaceId: 
       </div>
 
       <WorkspaceControls workspaceId={workspace.id} status={workspace.status} />
+
+      {/* Above the edit form deliberately: every field below it is a change to a
+          customer's data, and the control that makes those changes possible
+          should be read before them rather than found afterwards. */}
+      <BreakGlass workspaceId={workspace.id} workspaceName={workspace.displayName} />
 
       <WorkspaceEditForm
         workspaceId={workspace.id}

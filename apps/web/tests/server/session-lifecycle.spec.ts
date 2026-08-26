@@ -74,14 +74,14 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 const tokenOf = (cookie: string) => decodeURIComponent(cookie.split('=').slice(1).join('='));
 
 /**
- * Login is throttled to 5 attempts per account per 15 minutes, and this spec
+ * Login is throttled to 5 attempts per account per 5 minutes, and this spec
  * signs in eight times on purpose — it is exercising session lifecycle, not the
  * limiter, which `security/` covers separately. The counter is cleared before
  * each sign-in so the limiter cannot make these results depend on how recently
  * the suite last ran.
  */
 async function clearLoginLimits() {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/0');
+  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

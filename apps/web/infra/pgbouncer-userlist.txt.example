@@ -1,0 +1,16 @@
+; PgBouncer credentials. Copy to pgbouncer-userlist.txt and fill in.
+;
+;   cp infra/pgbouncer-userlist.txt.example infra/pgbouncer-userlist.txt
+;   chmod 600 infra/pgbouncer-userlist.txt
+;
+; SCRAM verifiers, not passwords. Postgres already stores one per role, so copy
+; it rather than writing a second plaintext copy of the database password onto
+; the same disk:
+;
+;   docker compose exec -T postgres psql -U leadflow -tAc \
+;     "SELECT '\"'||rolname||'\" \"'||rolpassword||'\"' FROM pg_authid WHERE rolname = 'master_saas_app'"
+;
+; Only the application role belongs here. Migrations and administration connect
+; to Postgres directly (see the note in docker-compose.pgbouncer.yml), so the
+; owning role has no reason to be reachable through the pooler.
+"master_saas_app" "SCRAM-SHA-256$4096:...

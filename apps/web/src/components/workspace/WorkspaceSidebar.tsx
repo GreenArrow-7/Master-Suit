@@ -48,7 +48,15 @@ export default function WorkspaceSidebar({
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const activeModule = pathname.includes('/people') ? 'people' : 'sales';
+  /**
+   * The module is the third path segment, not a substring of the whole path.
+   *
+   * `includes('/people')` put the HR navigation on `/{slug}/sales/people` — a
+   * Sales screen — and on every screen of any workspace whose slug contains the
+   * word. Matching `ModuleTheme`'s test keeps the sidebar, the top bar and the
+   * palette telling the same story.
+   */
+  const activeModule = pathname.split('/')[2] === 'people' ? 'people' : 'sales';
 
   // Remembering the module is a side effect and belongs here. Closing the
   // mobile drawer is not: setting state synchronously in an effect causes a

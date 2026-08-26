@@ -178,7 +178,12 @@ describe('automations', () => {
         name: `Welcome task ${suffix}`,
         objectType: 'LEAD',
         event: 'created',
-        actionSpec: { action: 'create_task', taskTypeKey: `follow-${suffix}`, title: 'Call the new lead', dueInMinutes: 60 },
+        actionSpec: {
+          action: 'create_task',
+          taskTypeKey: `follow-${suffix}`,
+          title: 'Call the new lead',
+          dueInMinutes: 60,
+        },
         activate: true,
       },
       cookie,
@@ -195,13 +200,9 @@ describe('automations', () => {
     // would silently skip it at trigger time.
     expect(automationGraph.safeParse(automation!.versions[0]!.graph).success).toBe(true);
 
-    const paused = await patch(
-      automationPatch,
-      `/api/v1/automations/${created.body.id}`,
-      { state: 'PAUSED' },
-      cookie,
-      { id: created.body.id },
-    );
+    const paused = await patch(automationPatch, `/api/v1/automations/${created.body.id}`, { state: 'PAUSED' }, cookie, {
+      id: created.body.id,
+    });
     expect(paused.status).toBe(200);
     expect(paused.body.state).toBe('PAUSED');
   });
@@ -212,7 +213,12 @@ describe('landing pages', () => {
     const created = await post(
       landingCreate,
       '/api/v1/landing-pages',
-      { name: `Marina Launch ${suffix}`, headline: 'Own the Marina view', body: 'Two towers. One address.', publish: true },
+      {
+        name: `Marina Launch ${suffix}`,
+        headline: 'Own the Marina view',
+        body: 'Two towers. One address.',
+        publish: true,
+      },
       cookie,
     );
     expect(created.status).toBe(200);

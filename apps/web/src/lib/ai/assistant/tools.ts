@@ -1,23 +1,60 @@
 import { prisma } from '@/lib/db';
-import { can, type Ctx } from '@/lib/security/rbac';
+import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import type { EntityType } from '@/lib/nav/entityRoute';
+import { redact } from '../redact';
 
 /**
  * The CRM tool layer the assistant model calls.
  *
- * Every executor runs the caller's own permission context: `can()` gates the
- * module, `visibilityWhere()` scopes rows exactly as the list pages do, and
+ * Every executor runs the caller's own permission context: `requires` gates the
+ * modules, `visibilityWhere()` scopes rows exactly as the list pages do, and
  * results are capped small. The model never touches the database — it sees
  * only what these functions return, which is only what the signed-in user may
  * see. Write-style tools never write: they return a `proposedAction` that the
  * UI must confirm, and the confirmation goes through the existing REST
  * endpoints with all their own checks.
+ *
+ * ── Why the gate is data rather than a line in each executor ────────────────
+ *
+ * It used to be fifteen hand-written `if (!can(…)) return denied(…)` lines, and
+ * two of them were wrong in the same way: an OR. `getCalendar` admitted anyone
+ * with `events:VIEW` **or** `leads:VIEW` and then read every event in the
+ * workspace scoped by `tenantId` alone — while `GET /api/v1/events` requires
+ * `events:VIEW`. Same rows, two different gates, and the assistant was the
+ * looser one. `getMyDay` carried the same tenant-wide event read under a
+ * `leads:VIEW` gate.
+ *
+ * Neither granted anything on the seeded roles — no role holds `leads:VIEW`
+ * without `events:VIEW` — which is exactly what made them survive review. They
+ * are the same shape as the dormant guard exemptions the multi-tenancy audit
+ * closed: harmless today, load-bearing the day somebody adds a role.
+ *
+ * So the requirement is declared beside the tool, enforced once in
+ * `executeTool`, and checked by `tests/security/assistant-guardrails.spec.ts`
+ * against the Prisma models each executor actually reads. A tool that starts
+ * reading a new module without declaring it fails the build.
  */
 
 export interface ToolSource {
   label: string;
-  /** Module-relative href, e.g. /leads/abc — the widget renders it via SalesLink. */
-  href: string;
+  /**
+   * What the chip points at, as a type `src/lib/nav/entityRoute.ts` knows, plus
+   * the record's id where the type needs one.
+   *
+   * This used to be a module-relative path that the widget rendered through
+   * `SalesLink`, which resolves its base from `usePathname()`. The widget is
+   * mounted in the workspace layout, so it renders on Notifications, the
+   * dashboard, every People screen and every Admin screen — and on all of those
+   * a Lead chip resolved to `/{slug}/notifications/leads/{id}` and 404'd. The
+   * type of the thing clicked has to decide where it goes; the page the question
+   * was asked on must not.
+   *
+   * A path cannot be expressed here on purpose: a tool that cannot write one
+   * cannot reintroduce this.
+   */
+  type: EntityType;
+  id?: string;
 }
 
 export interface ProposedAction {
@@ -37,20 +74,31 @@ export interface ToolResult {
 
 type Exec = (ctx: Ctx, args: Record<string, any>) => Promise<ToolResult>;
 
+/** One permission a tool cannot run without. */
+export type Requirement = readonly [module: string, action: Action];
+
 export interface ToolDef {
   name: string;
   description: string;
   parameters: Record<string, unknown>; // Gemini functionDeclaration parameters (OpenAPI subset)
+  /**
+   * Every entry must hold. AND, never OR — an OR is how a tool ends up looser
+   * than the REST endpoint serving the same rows, which is the bug this field
+   * exists to make impossible to write by accident.
+   *
+   * A tool that reads a module conditionally — `getMyDay` includes events only
+   * for somebody who may see them — does not list it here. It asks `can()` at
+   * the point of the read and omits the section otherwise, so the permission
+   * decides what is *in* the answer rather than whether there is one.
+   */
+  requires: readonly Requirement[];
   execute: Exec;
 }
-
-const denied = (what: string): ToolResult => ({ data: { error: `You do not have permission to view ${what}.` } });
 
 const str = { type: 'string' as const };
 const num = { type: 'number' as const };
 
-const fmtDate = (d: Date | null | undefined) =>
-  d ? d.toISOString().slice(0, 16).replace('T', ' ') : null;
+const fmtDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 16).replace('T', ' ') : null);
 
 const leadBrief = (l: any) => ({
   id: l.id,
@@ -107,8 +155,8 @@ export const TOOLS: ToolDef[] = [
       type: 'object',
       properties: { q: str, view: str, stage: str, ownerName: str, limit: num },
     },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('leads');
       const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
       const where: Record<string, unknown> = { ...scope };
       const now = new Date();
@@ -164,7 +212,7 @@ export const TOOLS: ToolDef[] = [
       });
       return {
         data: { count: rows.length, capped: rows.length === limit, leads: rows.map(leadBrief) },
-        sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, href: `/leads/${l.id}` })),
+        sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, type: 'lead' as const, id: l.id })),
       };
     },
   },
@@ -173,13 +221,13 @@ export const TOOLS: ToolDef[] = [
     name: 'getLead',
     description: 'Fetch one lead by leadId or by (partial) name, with profile, stage, owner and SLA.',
     parameters: { type: 'object', properties: { leadId: str, name: str } },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('leads');
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
       return {
         data: leadBrief(lead),
-        sources: [{ label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` }],
+        sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
   },
@@ -189,11 +237,11 @@ export const TOOLS: ToolDef[] = [
     description:
       'Chronological history for a lead (activities, calls, tasks, follow-ups) over the last `days` (default 30), newest first.',
     parameters: { type: 'object', properties: { leadId: str, name: str, days: num } },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('leads');
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
-      const since = new Date(Date.now() - (Math.min(Number(args.days) || 30, 365)) * 864e5);
+      const since = new Date(Date.now() - Math.min(Number(args.days) || 30, 365) * 864e5);
       const [activities, calls, tasks, followUps] = await Promise.all([
         prisma.activity.findMany({
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, occurredAt: { gte: since } },
@@ -235,7 +283,7 @@ export const TOOLS: ToolDef[] = [
         .map((e) => ({ at: fmtDate(e.at), kind: e.kind, detail: e.detail.slice(0, 160) }));
       return {
         data: { lead: lead.fullName, since: fmtDate(since), events },
-        sources: [{ label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` }],
+        sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
   },
@@ -245,8 +293,8 @@ export const TOOLS: ToolDef[] = [
     description:
       'Recent calls the user may see. Optional leadId/leadName narrows to one lead; mine=true narrows to calls the user made. Includes outcome, duration and whether analysis exists.',
     parameters: { type: 'object', properties: { leadId: str, leadName: str, mine: { type: 'boolean' }, limit: num } },
+    requires: [['calls', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'calls', 'VIEW')) return denied('calls');
       const scope = await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' });
       const where: Record<string, unknown> = { ...scope, deletedAt: null };
       if (args.mine) where.callerId = ctx.actor.id;
@@ -283,7 +331,9 @@ export const TOOLS: ToolDef[] = [
           by: c.caller.fullName,
           analysed: c.analysis?.status === 'COMPLETED',
         })),
-        sources: rows.slice(0, 5).map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, href: `/calls/${c.id}` })),
+        sources: rows
+          .slice(0, 5)
+          .map((c) => ({ label: `Call · ${fmtDate(c.startedAt ?? c.createdAt)}`, type: 'call' as const, id: c.id })),
       };
     },
   },
@@ -293,8 +343,8 @@ export const TOOLS: ToolDef[] = [
     description:
       'Full detail of one call: AI analysis (summary, objections, commitments, buying signals, sentiment, next steps) and the quality audit scores if present. Use callId, or latest=true for the most recent analysed call visible to the user.',
     parameters: { type: 'object', properties: { callId: str, latest: { type: 'boolean' } } },
+    requires: [['calls', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'calls', 'VIEW')) return denied('calls');
       const scope = await visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' });
       const call = await prisma.call.findFirst({
         where: args.callId
@@ -317,7 +367,10 @@ export const TOOLS: ToolDef[] = [
       });
       if (!call) return { data: { error: 'No matching call found in the CRM.' } };
       const lead = call.leadId
-        ? await prisma.lead.findFirst({ where: { tenantId: ctx.tenantId, id: call.leadId }, select: { fullName: true } })
+        ? await prisma.lead.findFirst({
+            where: { tenantId: ctx.tenantId, id: call.leadId },
+            select: { fullName: true },
+          })
         : null;
       const a = call.analysis;
       const audit = call.callAudits[0];
@@ -355,7 +408,7 @@ export const TOOLS: ToolDef[] = [
               }
             : null,
         },
-        sources: [{ label: `Call · ${fmtDate(call.startedAt ?? call.createdAt)}`, href: `/calls/${call.id}` }],
+        sources: [{ label: `Call · ${fmtDate(call.startedAt ?? call.createdAt)}`, type: 'call' as const, id: call.id }],
       };
     },
   },
@@ -364,8 +417,8 @@ export const TOOLS: ToolDef[] = [
     name: 'searchAccounts',
     description: 'Search accounts (companies) by name/industry, with their contacts and open opportunities.',
     parameters: { type: 'object', properties: { q: str, limit: num } },
+    requires: [['accounts', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'accounts', 'VIEW')) return denied('accounts');
       const scope = await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true });
       const where: Record<string, unknown> = { ...scope };
       if (args.q) {
@@ -388,7 +441,14 @@ export const TOOLS: ToolDef[] = [
           contacts: { take: 5, select: { id: true, fullName: true, jobTitle: true, phone: true } },
           opportunities: {
             take: 5,
-            select: { id: true, name: true, status: true, amount: true, expectedCloseDate: true, stage: { select: { name: true } } },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              amount: true,
+              expectedCloseDate: true,
+              stage: { select: { name: true } },
+            },
           },
         },
       });
@@ -409,7 +469,7 @@ export const TOOLS: ToolDef[] = [
             closes: fmtDate(o.expectedCloseDate),
           })),
         })),
-        sources: rows.map((a) => ({ label: `Account · ${a.name}`, href: `/accounts/${a.id}` })),
+        sources: rows.map((a) => ({ label: `Account · ${a.name}`, type: 'account' as const, id: a.id })),
       };
     },
   },
@@ -418,8 +478,8 @@ export const TOOLS: ToolDef[] = [
     name: 'searchContacts',
     description: 'Search contacts by name, phone (or phone suffix), email or company.',
     parameters: { type: 'object', properties: { q: str, phoneEndsWith: str, limit: num } },
+    requires: [['contacts', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'contacts', 'VIEW')) return denied('contacts');
       const scope = await visibilityWhere(ctx, 'contacts', 'VIEW', { includeUnassigned: true });
       const where: Record<string, unknown> = { ...scope };
       if (args.phoneEndsWith) where.phone = { endsWith: String(args.phoneEndsWith).replace(/\D/g, '') };
@@ -445,8 +505,17 @@ export const TOOLS: ToolDef[] = [
         },
       });
       return {
-        data: rows.map((c) => ({ id: c.id, name: c.fullName, title: c.jobTitle, email: c.email, phone: c.phone, company: c.account?.name ?? null })),
-        sources: rows.slice(0, 6).map((c) => ({ label: `Contact · ${c.fullName}`, href: `/contacts/${c.id}` })),
+        data: rows.map((c) => ({
+          id: c.id,
+          name: c.fullName,
+          title: c.jobTitle,
+          email: c.email,
+          phone: c.phone,
+          company: c.account?.name ?? null,
+        })),
+        sources: rows
+          .slice(0, 6)
+          .map((c) => ({ label: `Contact · ${c.fullName}`, type: 'contact' as const, id: c.id })),
       };
     },
   },
@@ -456,13 +525,16 @@ export const TOOLS: ToolDef[] = [
     description:
       'Search opportunities. Filters: status (OPEN | WON | LOST), closingWithinDays (expected close within N days), q (name/account).',
     parameters: { type: 'object', properties: { status: str, closingWithinDays: num, q: str, limit: num } },
+    requires: [['opportunities', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'opportunities', 'VIEW')) return denied('opportunities');
       const scope = await visibilityWhere(ctx, 'opportunities', 'VIEW', { includeUnassigned: true });
       const where: Record<string, unknown> = { ...scope };
       if (args.status) where.status = String(args.status).toUpperCase();
       if (args.closingWithinDays) {
-        where.expectedCloseDate = { gte: new Date(), lte: new Date(Date.now() + Number(args.closingWithinDays) * 864e5) };
+        where.expectedCloseDate = {
+          gte: new Date(),
+          lte: new Date(Date.now() + Number(args.closingWithinDays) * 864e5),
+        };
         where.status = 'OPEN';
       }
       if (args.q) {
@@ -499,7 +571,9 @@ export const TOOLS: ToolDef[] = [
           closes: fmtDate(o.expectedCloseDate),
           owner: o.owner?.fullName ?? null,
         })),
-        sources: rows.slice(0, 6).map((o) => ({ label: `Opportunity · ${o.name}`, href: `/opportunities/${o.id}` })),
+        sources: rows
+          .slice(0, 6)
+          .map((o) => ({ label: `Opportunity · ${o.name}`, type: 'opportunity' as const, id: o.id })),
       };
     },
   },
@@ -508,8 +582,8 @@ export const TOOLS: ToolDef[] = [
     name: 'getTasks',
     description: 'The user’s tasks. due: today | overdue | upcoming | all (default all open).',
     parameters: { type: 'object', properties: { due: str, limit: num } },
+    requires: [['tasks', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'tasks', 'VIEW') && !can(ctx, 'leads', 'VIEW')) return denied('tasks');
       const scope = await visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' });
       const now = new Date();
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -539,7 +613,7 @@ export const TOOLS: ToolDef[] = [
           status: t.status,
           lead: t.leadId ? (leadNames.get(t.leadId) ?? null) : null,
         })),
-        sources: [{ label: 'Tasks', href: '/tasks' }],
+        sources: [{ label: 'Tasks', type: 'tasks' as const }],
       };
     },
   },
@@ -548,8 +622,8 @@ export const TOOLS: ToolDef[] = [
     name: 'getFollowUps',
     description: 'The user’s follow-up queue. due: today | overdue | upcoming | all.',
     parameters: { type: 'object', properties: { due: str, limit: num } },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('follow-ups');
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -584,7 +658,7 @@ export const TOOLS: ToolDef[] = [
           lead: f.leadId ? (leadNames.get(f.leadId) ?? null) : null,
           leadId: f.leadId,
         })),
-        sources: [{ label: 'Follow-ups', href: '/follow-ups' }],
+        sources: [{ label: 'Follow-ups', type: 'follow_ups' as const }],
       };
     },
   },
@@ -593,8 +667,8 @@ export const TOOLS: ToolDef[] = [
     name: 'getCalendar',
     description: 'Events and meetings within the next `days` (default 7), plus today’s scheduled calls.',
     parameters: { type: 'object', properties: { days: num } },
+    requires: [['events', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'events', 'VIEW') && !can(ctx, 'leads', 'VIEW')) return denied('the calendar');
       const now = new Date();
       const until = new Date(now.getTime() + Math.min(Number(args.days) || 7, 60) * 864e5);
       const [events, calls] = await Promise.all([
@@ -617,8 +691,8 @@ export const TOOLS: ToolDef[] = [
           scheduledCalls: calls.map((c) => ({ id: c.id, number: c.recipientNumber })),
         },
         sources: [
-          { label: 'Calendar', href: '/calendar' },
-          ...events.slice(0, 3).map((e) => ({ label: `Event · ${e.title}`, href: `/events/${e.id}` })),
+          { label: 'Calendar', type: 'calendar' as const },
+          ...events.slice(0, 3).map((e) => ({ label: `Event · ${e.title}`, type: 'event' as const, id: e.id })),
         ],
       };
     },
@@ -629,34 +703,76 @@ export const TOOLS: ToolDef[] = [
     description:
       'A prioritised snapshot for “what should I focus on today”: overdue and today’s follow-ups, overdue tasks, SLA-breached and hottest leads, upcoming events, today’s calls.',
     parameters: { type: 'object', properties: {} },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('the CRM');
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
       const leadScope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+      /**
+       * Events are the one part of this snapshot that is not the actor's own
+       * work: follow-ups, tasks and calls are filtered to `ctx.actor.id`, and
+       * leads go through `leadScope`, but the workspace calendar is workspace-
+       * wide. It used to be read under the `leads:VIEW` gate alone — the same
+       * tenant-only query `getCalendar` had, and the same bypass.
+       *
+       * Requiring `events:VIEW` for the whole tool would take somebody's day
+       * away over a section of it, so the permission decides what is in the
+       * answer instead: no `events:VIEW`, no `upcomingEvents` key.
+       */
+      const mayReadEvents = can(ctx, 'events', 'VIEW');
       const [overdueFups, todayFups, overdueTasks, breached, hot, events, todayCalls] = await Promise.all([
         prisma.followUpTask.findMany({
-          where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] }, dueAt: { lt: now } },
+          where: {
+            tenantId: ctx.tenantId,
+            ownerId: ctx.actor.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+            dueAt: { lt: now },
+          },
           orderBy: { dueAt: 'asc' },
           take: 5,
           select: { title: true, dueAt: true, leadId: true },
         }),
         prisma.followUpTask.count({
-          where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] }, dueAt: { gte: todayStart, lte: todayEnd } },
+          where: {
+            tenantId: ctx.tenantId,
+            ownerId: ctx.actor.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+            dueAt: { gte: todayStart, lte: todayEnd },
+          },
         }),
         prisma.task.count({
           where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, status: 'OPEN', dueAt: { lt: now } },
         }),
-        prisma.lead.findMany({ where: { ...leadScope, slaState: 'BREACHED' }, take: 5, select: LEAD_SELECT, orderBy: { updatedAt: 'desc' } }),
-        prisma.lead.findMany({ where: { ...leadScope, score: { gte: 70 } }, orderBy: { score: 'desc' }, take: 5, select: LEAD_SELECT }),
-        prisma.event.findMany({
-          where: { tenantId: ctx.tenantId, deletedAt: null, startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) } },
-          orderBy: { startAt: 'asc' },
-          take: 4,
-          select: { title: true, startAt: true },
+        prisma.lead.findMany({
+          where: { ...leadScope, slaState: 'BREACHED' },
+          take: 5,
+          select: LEAD_SELECT,
+          orderBy: { updatedAt: 'desc' },
         }),
-        prisma.call.count({ where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } } }),
+        prisma.lead.findMany({
+          where: { ...leadScope, score: { gte: 70 } },
+          orderBy: { score: 'desc' },
+          take: 5,
+          select: LEAD_SELECT,
+        }),
+        mayReadEvents
+          ? prisma.event.findMany({
+              where: {
+                tenantId: ctx.tenantId,
+                deletedAt: null,
+                startAt: { gte: todayStart, lte: new Date(now.getTime() + 3 * 864e5) },
+              },
+              orderBy: { startAt: 'asc' },
+              take: 4,
+              select: { title: true, startAt: true },
+            })
+          : Promise.resolve([]),
+        prisma.call.count({
+          where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } },
+        }),
       ]);
       return {
         data: {
@@ -665,13 +781,15 @@ export const TOOLS: ToolDef[] = [
           overdueTasks,
           slaBreachedLeads: breached.map(leadBrief),
           hottestLeads: hot.map(leadBrief),
-          upcomingEvents: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt) })),
+          // Omitted rather than empty: an empty list reads as "nothing on the
+          // calendar", which is a different and wrong answer.
+          ...(mayReadEvents ? { upcomingEvents: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt) })) } : {}),
           callsMadeToday: todayCalls,
         },
         sources: [
-          { label: 'Follow-ups', href: '/follow-ups?due=overdue' },
-          { label: 'SLA breached leads', href: '/leads?filter=breached' },
-          { label: 'Tasks', href: '/tasks?tab=overdue' },
+          { label: 'Overdue follow-ups', type: 'follow_ups_overdue' as const },
+          { label: 'SLA breached leads', type: 'leads_breached' as const },
+          { label: 'Overdue tasks', type: 'tasks_overdue' as const },
         ],
       };
     },
@@ -682,8 +800,8 @@ export const TOOLS: ToolDef[] = [
     description:
       'Everything needed to brief the user before calling a lead: profile, last interactions, previous call analyses (objections, commitments), open tasks and follow-ups.',
     parameters: { type: 'object', properties: { leadId: str, name: str } },
+    requires: [['leads', 'VIEW']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'VIEW')) return denied('leads');
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
       const [activities, calls, tasks, followUps] = await Promise.all([
@@ -697,7 +815,13 @@ export const TOOLS: ToolDef[] = [
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, analysis: { isNot: null } },
           orderBy: { createdAt: 'desc' },
           take: 3,
-          select: { id: true, createdAt: true, analysis: { select: { summary: true, objections: true, commitments: true, sentiment: true, nextSteps: true } } },
+          select: {
+            id: true,
+            createdAt: true,
+            analysis: {
+              select: { summary: true, objections: true, commitments: true, sentiment: true, nextSteps: true },
+            },
+          },
         }),
         prisma.task.findMany({
           where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS'] } },
@@ -705,7 +829,12 @@ export const TOOLS: ToolDef[] = [
           select: { title: true, dueAt: true },
         }),
         prisma.followUpTask.findMany({
-          where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] } },
+          where: {
+            tenantId: ctx.tenantId,
+            leadId: lead.id,
+            deletedAt: null,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
+          },
           take: 5,
           select: { title: true, dueAt: true },
         }),
@@ -713,7 +842,11 @@ export const TOOLS: ToolDef[] = [
       return {
         data: {
           profile: leadBrief(lead),
-          recentActivity: activities.map((a) => ({ at: fmtDate(a.occurredAt), kind: a.type.name, detail: (a.outcome ?? a.notes ?? '').slice(0, 140) })),
+          recentActivity: activities.map((a) => ({
+            at: fmtDate(a.occurredAt),
+            kind: a.type.name,
+            detail: (a.outcome ?? a.notes ?? '').slice(0, 140),
+          })),
           previousCalls: calls.map((c) => ({
             at: fmtDate(c.createdAt),
             summary: c.analysis?.summary?.slice(0, 280),
@@ -726,8 +859,8 @@ export const TOOLS: ToolDef[] = [
           openFollowUps: followUps.map((f) => ({ title: f.title, due: fmtDate(f.dueAt) })),
         },
         sources: [
-          { label: `Lead · ${lead.fullName}`, href: `/leads/${lead.id}` },
-          ...calls.map((c) => ({ label: `Call · ${fmtDate(c.createdAt)}`, href: `/calls/${c.id}` })),
+          { label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id },
+          ...calls.map((c) => ({ label: `Call · ${fmtDate(c.createdAt)}`, type: 'call' as const, id: c.id })),
         ],
       };
     },
@@ -742,8 +875,8 @@ export const TOOLS: ToolDef[] = [
       properties: { leadId: str, leadName: str, title: str, dueAt: str, priority: str },
       required: ['title', 'dueAt'],
     },
+    requires: [['leads', 'EDIT']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'EDIT')) return denied('follow-up creation');
       let lead = null;
       if (args.leadId || args.leadName) {
         lead = await findLead(ctx, { leadId: args.leadId, name: args.leadName });
@@ -780,8 +913,8 @@ export const TOOLS: ToolDef[] = [
       properties: { leadId: str, leadName: str, title: str, dueAt: str, priority: str },
       required: ['title', 'dueAt'],
     },
+    requires: [['leads', 'EDIT']],
     execute: async (ctx, args) => {
-      if (!can(ctx, 'leads', 'EDIT')) return denied('task creation');
       const taskType = await prisma.taskType.findFirst({
         where: { tenantId: ctx.tenantId, isActive: true },
         orderBy: { name: 'asc' },
@@ -819,3 +952,77 @@ export const TOOLS: ToolDef[] = [
 ];
 
 export const toolByName = new Map(TOOLS.map((t) => [t.name, t]));
+
+/**
+ * Free-text fields, cleaned before the result leaves the deployment.
+ *
+ * ── Why by key and not blanket ─────────────────────────────────────────────
+ *
+ * Every other AI path here runs `redact()` over what it sends; the assistant
+ * was the one that did not. Running it over the whole result is not the fix,
+ * though — `leadBrief` returns `phone` and `email` because a salesperson asked
+ * for the phone number, and a tool that answers "[REDACTED_PHONE]" has not
+ * protected anybody, it has just stopped working.
+ *
+ * The difference that matters is *provenance*. Structured contact columns are
+ * fields somebody filled in on a form: the caller may already see them on the
+ * record page, and they are the answer. Free text is where anything can end up
+ * — a note with an API key pasted into it, a call summary quoting a card number
+ * read aloud. So the keys below are cleaned and the rest is passed through,
+ * which is a decision about which fields, recorded here, rather than a blanket
+ * that silently ruins half the answers.
+ */
+const FREE_TEXT_KEYS = new Set([
+  'title',
+  'detail',
+  'summary',
+  'note',
+  'location',
+  'where',
+  'nextAction',
+  'objections',
+  'commitments',
+]);
+
+function redactFreeText(value: unknown, key?: string): unknown {
+  if (typeof value === 'string') return key && FREE_TEXT_KEYS.has(key) ? redact(value).text : value;
+  if (Array.isArray(value)) return value.map((entry) => redactFreeText(entry, key));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactFreeText(v, k)]));
+  }
+  return value;
+}
+
+/**
+ * The sanctioned way to run a tool: permissions first, then the executor.
+ *
+ * The check lives here rather than in the caller so that every entry point
+ * inherits it — the assistant's model loop and its keyword fallback both route
+ * through this, and a third caller added later cannot forget the line, because
+ * there is no line to forget.
+ *
+ * The refusal names the permission rather than the feature. "You do not have
+ * permission to view the calendar" sends somebody to the wrong screen; a role
+ * missing `events:VIEW` is a thing an administrator can act on.
+ */
+export async function executeTool(ctx: Ctx, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  const tool = toolByName.get(name);
+  if (!tool) return { data: { error: `Unknown tool ${name}` } };
+
+  const missing = tool.requires.filter(([module, action]) => !can(ctx, module, action));
+  if (missing.length) {
+    return {
+      data: {
+        error: `You do not have permission to do this. Missing: ${missing
+          .map(([module, action]) => `${module}:${action}`)
+          .join(', ')}.`,
+      },
+    };
+  }
+
+  const result = await tool.execute(ctx, args ?? {});
+  // `data` only. `sources` are record types, ids and labels this file wrote, and
+  // `proposedAction` is a payload the UI posts back verbatim — redacting either
+  // would corrupt a destination or a request rather than protect anything.
+  return { ...result, data: redactFreeText(result.data) };
+}

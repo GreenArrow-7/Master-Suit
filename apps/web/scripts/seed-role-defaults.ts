@@ -90,12 +90,16 @@ async function main() {
         const current = held.get(role.id) ?? 0;
 
         if (!spec) {
-          console.log(`  ${role.key.padEnd(18)} ${String(current).padStart(4)} grants  no default defined — left alone`);
+          console.log(
+            `  ${role.key.padEnd(18)} ${String(current).padStart(4)} grants  no default defined — left alone`,
+          );
           unknown++;
           continue;
         }
         if (current > 0 && !forced.includes(role.key)) {
-          console.log(`  ${role.key.padEnd(18)} ${String(current).padStart(4)} grants  already provisioned — left alone`);
+          console.log(
+            `  ${role.key.padEnd(18)} ${String(current).padStart(4)} grants  already provisioned — left alone`,
+          );
           skipped++;
           continue;
         }
@@ -104,7 +108,13 @@ async function main() {
         for (const [module, actions] of Object.entries(spec.grants)) {
           if (module === '*') {
             for (const id of index.values()) {
-              rows.push({ tenantId: tenant.id, roleId: role.id, permissionId: id, scope: 'ORGANIZATION', granted: true });
+              rows.push({
+                tenantId: tenant.id,
+                roleId: role.id,
+                permissionId: id,
+                scope: 'ORGANIZATION',
+                granted: true,
+              });
             }
             continue;
           }

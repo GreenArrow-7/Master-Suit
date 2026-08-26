@@ -1,11 +1,9 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { logger } from '@/lib/logger';
-import { assertPermission } from '@/lib/security/rbac';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
 import { requireWorkspace } from '@/lib/workspace';
 import { uploadDocument } from '@/services/hr/documents';
 
@@ -19,9 +17,10 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const { workspaceSlug } = await context.params;
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'HRMS');
-    assertPermission(ctx, 'hr_documents', 'CREATE');
+    const ctx = await resolveGuardedCtx(req, requestId, {
+      productModule: 'HRMS',
+      permission: ['hr_documents', 'CREATE'],
+    });
     await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     /**

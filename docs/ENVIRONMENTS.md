@@ -8,7 +8,7 @@ One codebase, five environments, five databases. Nothing is shared between them
 | Development | `development` | `leadflow` (historical) | A laptop. Anything goes.                  | Allowed          |
 | Test        | `test`        | `master_saas_test`      | `npm test` / CI. Wiped freely.            | Allowed          |
 | Demo        | `demo`        | `master_saas_demo`      | Customer showcase. Realistic, artificial. | **The** use case |
-| Staging     | `staging`     | `master_saas_staging`   | Production rehearsal. Real config shape.  | **Refused**      |
+| Staging     | `staging`     | `leadflow_staging`      | Production rehearsal. Real config shape.  | **Refused**      |
 | Production  | `production`  | `master_saas_prod`      | Customers. Nothing artificial, ever.      | **Refused**      |
 
 ## The declaration: `APP_ENV`
@@ -22,19 +22,24 @@ a production build that has not declared one refuses to boot.
 
 These are checks in code, not team habits:
 
-1. **Boot cross-check** (`src/lib/startup-check.ts`): the database name is
+1. **Separate deployments** (`infra/docker-compose.staging.yml`): staging is a
+   second Compose project with its own `name:`, so its volumes, network and
+   containers cannot be production's. Its database is `leadflow_staging`, and
+   that suffix is what the boot cross-check below reads — see
+   `docs/DEPLOY-STAGING.md`.
+2. **Boot cross-check** (`src/lib/startup-check.ts`): the database name is
    physical evidence of which environment the process is wired to. `APP_ENV=production`
    pointed at a `*_demo` database — or any other mismatch against the
    `_test` / `_demo` / `_staging` / `_prod` name markers — kills the process
    before it serves a request.
-2. **Seed guards** (`prisma/seed/index.ts`): the demo seed refuses to run when
+3. **Seed guards** (`prisma/seed/index.ts`): the demo seed refuses to run when
    `NODE_ENV=production`, when `APP_ENV` is `production` **or** `staging`, or —
    independently of every declaration — when the target database's *name* marks
    it as production or staging. The third gate exists because the likeliest
    accident is a production connection string pasted into a shell whose
    declarations are still laptop defaults. On top of all three,
    `ALLOW_DEMO_SEED=yes` must be said explicitly, every time.
-3. **Role split**: `DATABASE_URL` is the NOBYPASSRLS application role;
+4. **Role split**: `DATABASE_URL` is the NOBYPASSRLS application role;
    `MIGRATION_DATABASE_URL` is the owning role, used by `prisma migrate` only.
    Boot refuses to start when they are the same string, and verifies at runtime
    that RLS actually applies to the connected role.
@@ -70,7 +75,11 @@ touch another. The boot check refuses placeholder or low-entropy values.
 
 Versioned in `prisma/migrations`, applied with `prisma migrate deploy`, in
 order: **staging first, then production**, never hand-edited SQL against a live
-database. The deploy order for a release is: apply migrations → deploy
+database. That order is enforced, not asked for: the production `migrate`
+service runs `scripts/check-staging-first.mjs` before `migrate deploy`, and it
+exits non-zero on any pending migration that has not already finished in staging
+with the same checksum — including one that was rehearsed there and then edited.
+`docs/DEPLOY-STAGING.md` is the runbook for both halves. The deploy order for a release is: apply migrations → deploy
 application → validate → clean up. Migrations are written backward-compatible
 where practical (add-then-migrate-then-drop across releases) so an application
 rollback does not require a schema rollback; where a schema reversal is
@@ -82,7 +91,12 @@ is how data gets lost.
 
 Production runs automated `pg_dump` (or the platform's native snapshotting)
 on a schedule with **30-day retention**, plus WAL archiving where the
-infrastructure offers point-in-time recovery. The restore drill:
+infrastructure offers point-in-time recovery. On the single-VM deployment that
+schedule is three systemd timers installed by
+`apps/web/scripts/install-backup-schedule.sh` — nightly backup with encryption
+required, weekly restore verification, and a daily freshness check that fails
+when the newest complete backup is stale. `docs/BACKUP-RECOVERY.md` has the
+detail. The restore drill:
 
 1. Restore the snapshot to a **new** database instance (never over the live one).
 2. `prisma migrate status` against it — the ledger must be clean.

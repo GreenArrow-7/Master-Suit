@@ -93,8 +93,8 @@ Sliding window in Redis, keyed at four levels. The most restrictive applies.
 
 | Scope                  | Limit                          |
 | ---------------------- | ------------------------------ |
-| Login per IP           | 10 / 15 min                    |
-| Login per account      | 5 / 15 min                     |
+| Login per IP           | 10 / 5 min                     |
+| Login per account      | 5 / 5 min                      |
 | API key                | `rateLimitPerMin`, default 600 |
 | Session user           | 1 200 / min                    |
 | Public form submit     | 5 / min per IP, plus CAPTCHA   |

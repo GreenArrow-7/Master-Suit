@@ -2,7 +2,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { env } from './env';
+import { invalidateActors } from './auth/actorCache';
 import { logger } from './logger';
+import { recordTenantGuardTrip } from './metrics';
 
 const globalForPrisma = globalThis as unknown as {
   __prisma?: ReturnType<typeof build>;
@@ -23,8 +25,13 @@ globalForPrisma.__inTenantTx = inTenantTx;
 /**
  * Tables that are not tenant-scoped. Everything else MUST be filtered by tenantId.
  * Adding a model here is a security decision and needs review.
+ *
+ * Exported for tests/tenant/guard-exemptions.spec.ts alone. Application code must
+ * never import it to decide anything: a caller that branches on "is this model
+ * exempt" has reimplemented the guard's decision outside the guard, where the
+ * next person to edit this list will not find it.
  */
-const GLOBAL_MODELS = new Set([
+export const GLOBAL_MODELS = new Set([
   'Tenant',
   'Permission',
   'SubscriptionPlan',
@@ -36,11 +43,20 @@ const GLOBAL_MODELS = new Set([
   'PlatformSession',
   'PlatformAuditEvent',
   'AuthenticationFactor',
+  // Previous credentials, keyed by PlatformUser. A password belongs to the
+  // identity, not to any one of its workspace memberships — duplicating it per
+  // tenant is how two copies of one password drift apart. Reached only through
+  // services/identity/passwordHistory.ts, which is always already scoped to a
+  // single platformUserId.
+  'PasswordHistory',
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
   // Operator key-value settings; carries no tenantId at all.
   'PlatformSetting',
+  // Control-plane, and resolved *before* any tenant context exists: it is the
+  // lookup that decides whether platform staff may write into a workspace.
+  'PlatformAccessGrant',
 ]);
 
 /**
@@ -50,9 +66,26 @@ const GLOBAL_MODELS = new Set([
  * bootstrap case where tenantId isn't known yet (that's what the lookup is
  * for) — not a missing safety check.
  */
-const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
-  Session: ['tokenHash'],
-  PlatformSession: ['tokenHash', 'id'],
+export const GLOBAL_UNIQUE_FIELDS: Record<string, string[]> = {
+  // Two entries were removed from here, both dead, both dead in a way that would
+  // have come back to life on somebody else's shift:
+  //
+  //   `Session: ['tokenHash']`      — there is no `Session` model. Identity moved
+  //     to PlatformSession and lib/auth/session.ts says the legacy branch is
+  //     "long gone". `Session` is about the most likely name a future model could
+  //     take, and the day somebody adds one with a `tenantId` it would inherit a
+  //     guard hole nobody chose.
+  //
+  //   `PlatformSession: ['tokenHash', 'id']` — unreachable. PlatformSession is in
+  //     GLOBAL_MODELS, and the guard returns on that check before it ever reads
+  //     this map, so the entry decided nothing. It would start deciding something
+  //     the moment PlatformSession left GLOBAL_MODELS — which is exactly the
+  //     change during which nobody is looking at this map.
+  //
+  // tests/tenant/guard-exemptions.spec.ts now fails on any entry that does not
+  // name a real model with a real single-column unique index, and on any model
+  // listed in both maps.
+
   // The reset link is the only thing the caller holds; the tenant is resolved
   // *from* it. Without this the guard threw on every reset attempt and the
   // endpoint answered 500 unconditionally — the migration's RLS bootstrap list
@@ -165,6 +198,77 @@ const FILTERED_WRITE_OPS = new Set(['update', 'updateMany', 'delete', 'deleteMan
 
 export class TenantGuardError extends Error {}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Keeping the permission cache honest
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Models whose rows feed `buildActor`, and therefore what a user may do.
+ *
+ * Hooked here rather than at the write sites on purpose. There are dozens of
+ * places that touch a role, an assignment or a user's status — the role editor,
+ * the invitation flow, deactivation, the org-chart move, seeds, the platform
+ * console — and the failure mode of forgetting one is *a revoked permission that
+ * still works*. A list of call sites has to be maintained; a list of models is
+ * checked by the type of every query that passes through this client.
+ */
+const ACTOR_MODELS = new Set([
+  'Role', // isActive and rank
+  'RolePermission', // granted and scope
+  'MembershipRole', // in-window assignments
+  'WorkspaceMembership', // which sales user a platform user is
+  'User', // see ACTOR_USER_FIELDS below
+  'UserTeam', // teamIds
+]);
+
+/**
+ * The one model with no tenant: the permission catalogue. Renaming a permission
+ * changes the `module:ACTION` keys every cached map is keyed by, so it has to
+ * invalidate every tenant at once.
+ */
+const GLOBAL_ACTOR_MODEL = 'Permission';
+
+/**
+ * `User` is written constantly — `lastLoginAt` alone would invalidate a whole
+ * tenant's cache on every sign-in — so it is the one model filtered by field.
+ * These are the columns `buildActor` actually reads.
+ *
+ * `managerId` is here because it decides `managedUserIds`, which means moving
+ * one person under a new manager invalidates the tenant, and the *manager's*
+ * cached actor is rebuilt with the new report. That is the case a per-user
+ * invalidation would have got wrong.
+ */
+const ACTOR_USER_FIELDS = new Set(['status', 'deletedAt', 'roleId', 'branchId', 'regionId', 'managerId']);
+
+function touchesActor(model: string, operation: string, args: GuardedArgs): boolean {
+  if (!CREATE_OPS.has(operation) && !FILTERED_WRITE_OPS.has(operation)) return false;
+  if (model !== 'User') return true;
+
+  // `create`/`createMany` put rows in `data`; `upsert` splits them across
+  // `create` and `update`. A field in any of them is a field being written.
+  const rows: unknown[] = [args?.data, args?.create, args?.update];
+  if (Array.isArray(args?.data)) rows.push(...args.data);
+  return rows.some(
+    (row) => row && typeof row === 'object' && Object.keys(row).some((field) => ACTOR_USER_FIELDS.has(field)),
+  );
+}
+
+/**
+ * The tenant a write belongs to, for invalidation only.
+ *
+ * The guard above has already established that a scoped write carries one, so
+ * this is a read of a value that is known to be there. `undefined` means it
+ * could not be determined — a write reached through a global-unique field, say —
+ * and the caller invalidates every tenant rather than none. Over-invalidating
+ * costs a rebuild; under-invalidating leaves a revoked permission working.
+ */
+function tenantOfWrite(args: GuardedArgs): string | undefined {
+  const candidates = [args?.where?.tenantId, (args?.data as IncomingRow | undefined)?.tenantId];
+  for (const value of candidates) if (typeof value === 'string' && value) return value;
+  const first = Array.isArray(args?.data) ? (args.data[0] as IncomingRow | undefined)?.tenantId : undefined;
+  return typeof first === 'string' && first ? first : undefined;
+}
+
 /**
  * Defence in depth, layer 2 of 3.
  *
@@ -186,6 +290,9 @@ export class TenantGuardError extends Error {}
 interface GuardedArgs {
   where?: Record<string, unknown> & { tenantId?: unknown };
   data?: unknown;
+  /** `upsert` carries its rows here rather than in `data`. */
+  create?: unknown;
+  update?: unknown;
   /**
    * Caller opt-in to see soft-deleted rows. Stripped before the query reaches
    * Prisma, which would reject it as an unknown argument.
@@ -305,6 +412,10 @@ function tenantGuard(base: PrismaClient) {
               (GLOBAL_UNIQUE_FIELDS[model] ?? []).some((f) => where[f] !== undefined);
 
             if (!scoped) {
+              // Counted at the throw, not at the catch: a caller that swallows
+              // this would otherwise hide the one signal that says a repository
+              // is relying on row-level security alone.
+              recordTenantGuardTrip(model, operation);
               throw new TenantGuardError(
                 `${model}.${operation} was issued without a tenantId filter. ` +
                   `Pass ctx.tenantId — see docs/05-SECURITY.md §3.`,
@@ -324,6 +435,7 @@ function tenantGuard(base: PrismaClient) {
             const rows = operation === 'create' ? [args?.data] : (args?.data ?? []);
             for (const row of rows as IncomingRow[]) {
               if (row && row.tenantId === undefined && row.tenant === undefined) {
+                recordTenantGuardTrip(model, operation);
                 throw new TenantGuardError(`${model}.${operation} was issued without a tenantId value.`);
               }
             }
@@ -331,7 +443,18 @@ function tenantGuard(base: PrismaClient) {
 
           if (args) delete args.__includeDeleted;
 
-          return runPinned(base, model, operation, args, query);
+          const invalidates = model === GLOBAL_ACTOR_MODEL || ACTOR_MODELS.has(model);
+          const result = await runPinned(base, model, operation, args, query);
+
+          // After the write, never before: invalidating first would leave a
+          // window in which a rebuild caches the pre-write answer under the new
+          // version. Awaited rather than fired and forgotten, so a request that
+          // revokes a permission cannot return before the revocation is visible
+          // to the next one.
+          if (invalidates && touchesActor(model, operation, args)) {
+            await invalidateActors(model === GLOBAL_ACTOR_MODEL ? undefined : tenantOfWrite(args));
+          }
+          return result;
         },
       },
     },
@@ -391,8 +514,75 @@ function build(url: string) {
 export const prisma = globalForPrisma.__prisma ?? build(env.DATABASE_URL);
 if (env.NODE_ENV !== 'production') globalForPrisma.__prisma = prisma;
 
-/** Read replica for reports and exports; falls back to primary when unset. */
-export const prismaRead = env.DATABASE_REPLICA_URL ? build(env.DATABASE_REPLICA_URL) : prisma;
+/**
+ * Read replica for reports and exports; falls back to the primary when unset.
+ *
+ * ── It was built and never used ─────────────────────────────────────────────
+ *
+ * `DATABASE_REPLICA_URL` has been in `lib/env.ts` and this line has constructed
+ * a second client from it since the beginning, and nothing in `src/` ever
+ * imported the result. An operator setting that variable got a second connection
+ * pool that answered no queries — configuration that looks load-bearing and
+ * does nothing, which is worse than absent, because it reads as a capability
+ * the deployment has.
+ *
+ * ── What may and may not use it ─────────────────────────────────────────────
+ *
+ * A replica is behind the primary — usually by milliseconds, occasionally by a
+ * lot when the primary is under the write load that made you want a replica.
+ * So the rule is not "reads go here", it is **"reads whose answer may be a
+ * moment stale go here"**:
+ *
+ *   yes   reports, CSV exports, analytics roll-ups — a leaderboard computed
+ *         200ms ago is the same leaderboard
+ *   no    session and permission lookups (a revoked session must be revoked
+ *         now), duplicate checks before an insert, anything read back after a
+ *         write in the same request, anything a uniqueness decision rests on
+ *
+ * ── Why it refuses writes even with no replica configured ───────────────────
+ *
+ * The `$extends` below throws on every write operation, and it is applied in
+ * *both* branches — including the fallback where this is the primary client.
+ *
+ * That is deliberate. Without it, a write added to a report module would work
+ * perfectly in development and on any deployment with no replica, and fail only
+ * where a replica exists — which is production, at the moment someone is already
+ * dealing with load. A guard that only bites in the configuration you cannot
+ * test is not a guard. This one fails the same way everywhere, on the first run.
+ */
+const READ_ONLY_OPS_REFUSED = new Set([...CREATE_OPS, ...FILTERED_WRITE_OPS, '$executeRaw', '$executeRawUnsafe']);
+
+function readOnly<T extends { $extends: (ext: never) => unknown }>(client: T) {
+  return client.$extends({
+    name: 'read-only',
+    query: {
+      $allOperations({
+        model,
+        operation,
+        args,
+        query,
+      }: {
+        model?: string;
+        operation: string;
+        args: unknown;
+        query: (args: unknown) => Promise<unknown>;
+      }) {
+        if (READ_ONLY_OPS_REFUSED.has(operation)) {
+          throw new ReadReplicaWriteError(
+            `${model ? `${model}.` : ''}${operation} was issued through prismaRead. ` +
+              'That client is for reports and exports; a replica cannot accept writes. Use `prisma`.',
+          );
+        }
+        return query(args);
+      },
+    },
+  } as never) as T;
+}
+
+/** A write reached the read client. Distinct from TenantGuardError: different bug, different fix. */
+export class ReadReplicaWriteError extends Error {}
+
+export const prismaRead = readOnly(env.DATABASE_REPLICA_URL ? build(env.DATABASE_REPLICA_URL) : prisma);
 
 export type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -443,13 +633,25 @@ export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): P
  *
  * Every caller must already be behind `requirePlatformOwner`.
  */
-export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
+export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   return inTenantTx.run(
     true,
     () =>
-      prisma.$transaction(async (tx: TxClient) => {
-        await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
-        return fn(tx);
-      }) as Promise<T>,
+      prisma.$transaction(
+        async (tx: TxClient) => {
+          await tx.$executeRawUnsafe(`SELECT set_config('app.platform_admin', 'on', true)`);
+          return fn(tx);
+        },
+        /**
+         * Prisma's default interactive-transaction timeout is 5 seconds, which
+         * is right for a request and wrong for a maintenance sweep: the
+         * retention job deletes in batches across every tenant, and a batch that
+         * runs long aborts with P2028 rather than finishing.
+         *
+         * Passed through rather than raised globally, so a control-plane write
+         * on the request path still fails fast instead of holding a connection.
+         */
+        options?.timeoutMs ? { timeout: options.timeoutMs } : undefined,
+      ) as Promise<T>,
   );
 }

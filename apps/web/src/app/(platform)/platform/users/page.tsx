@@ -29,7 +29,8 @@ const MFA_LABEL: Record<MfaState, string> = {
   NOT_CONFIGURED: 'Not configured',
 };
 
-const when = (value: Date | null) => (value ? value.toLocaleString('en-AE', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const when = (value: Date | null) =>
+  value ? value.toLocaleString('en-AE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const day = (value: Date) => value.toLocaleDateString('en-AE', { dateStyle: 'medium' });
 
 type Query = {
@@ -231,9 +232,7 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
                     </span>
                   </td>
                   <td data-label="Workspace">
-                    {user.memberships.length === 0
-                      ? '—'
-                      : user.memberships.map((m) => m.tenant.displayName).join(', ')}
+                    {user.memberships.length === 0 ? '—' : user.memberships.map((m) => m.tenant.displayName).join(', ')}
                   </td>
                   <td data-label="Workspace role">
                     {user.primaryMembership?.roleSnapshot?.replaceAll('_', ' ') ?? '—'}
@@ -262,7 +261,10 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
                     {day(user.createdAt)}
                   </td>
                   <td data-label="">
-                    <Link className="lf-btn lf-btn--secondary lf-btn--sm" href={`${back}${listQuery ? '&' : '?'}user=${user.id}`}>
+                    <Link
+                      className="lf-btn lf-btn--secondary lf-btn--sm"
+                      href={`${back}${listQuery ? '&' : '?'}user=${user.id}`}
+                    >
                       Inspect
                     </Link>
                   </td>

@@ -12,7 +12,12 @@ import { Conflict, NotFound } from '@/lib/errors';
 const createBody = z
   .object({
     name: z.string().min(2).max(160),
-    slug: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/).optional(),
+    slug: z
+      .string()
+      .min(2)
+      .max(60)
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
     headline: z.string().min(2).max(200),
     body: z.string().max(4000).optional(),
     /** A published form to embed; submissions become leads through it. */
@@ -52,10 +57,7 @@ export const POST = route(
         name: body.name,
         slug,
         seoTitle: body.headline,
-        blocks: [
-          { type: 'headline', text: body.headline },
-          ...(body.body ? [{ type: 'body', text: body.body }] : []),
-        ],
+        blocks: [{ type: 'headline', text: body.headline }, ...(body.body ? [{ type: 'body', text: body.body }] : [])],
         formId: body.formId ?? null,
         state: body.publish ? 'PUBLISHED' : 'DRAFT',
         publishedAt: body.publish ? new Date() : null,

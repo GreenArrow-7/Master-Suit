@@ -52,9 +52,7 @@ export default async function Page({
   ]);
 
   const myReview = reviews.find((review) => review.employeeId === self?.id);
-  const toWrite = reviews.filter(
-    (review) => review.employeeId !== self?.id && review.status === 'PENDING_MANAGER',
-  );
+  const toWrite = reviews.filter((review) => review.employeeId !== self?.id && review.status === 'PENDING_MANAGER');
   const toCalibrate = hr ? reviews.filter((review) => review.status === 'CALIBRATION') : [];
   const goalWeight = goals.reduce((total, goal) => (goal.status === 'CANCELLED' ? total : total + goal.weight), 0);
 
@@ -85,7 +83,11 @@ export default async function Page({
 
       {summary && (
         <section
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 'var(--lf-space-4)' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 'var(--lf-space-4)',
+          }}
         >
           {[
             ['Outstanding', summary.outstanding],
@@ -115,7 +117,13 @@ export default async function Page({
               endpoint={`${actions}/review-self`}
               submitLabel="Submit self-assessment"
               fields={[
-                { name: 'reviewId', label: 'Review', type: 'select', required: true, options: [{ value: myReview.id, label: 'My review' }] },
+                {
+                  name: 'reviewId',
+                  label: 'Review',
+                  type: 'select',
+                  required: true,
+                  options: [{ value: myReview.id, label: 'My review' }],
+                },
                 { name: 'comments', label: 'How did the period go?', required: true },
                 {
                   name: 'rating',

@@ -88,7 +88,8 @@ const RESET = process.argv.includes('--reset');
  * environment pins it for demo installs that need a stable credential.
  */
 const DEMO_PASSWORD =
-  process.env.DEMO_PASSWORD || `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  process.env.DEMO_PASSWORD ||
+  `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
 
 /** Host only — a connection string carries the password. */
 function safeHost(url: string | undefined): string {
@@ -471,7 +472,6 @@ async function main() {
       legalName: DEMO_WORKSPACE.legalName,
       displayName: DEMO_WORKSPACE.displayName,
       primaryDomain: DEMO_WORKSPACE.primaryDomain,
-      dataRegion: 'me-central-1',
       settings: {
         create: {
           productName: DEMO_WORKSPACE.displayName,
@@ -748,7 +748,14 @@ async function main() {
     ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@manathhomes.ae'],
   ];
 
-  const users: { id: string; role: string; name: string; email?: string; branch: string | null; teamCode: string | null }[] = [];
+  const users: {
+    id: string;
+    role: string;
+    name: string;
+    email?: string;
+    branch: string | null;
+    teamCode: string | null;
+  }[] = [];
   let n = 0;
   for (const [first, last, roleKey, branchCode, regionCode, fixedEmail] of userSpecs) {
     const addr = fixedEmail ?? (roleKey === 'read_only' ? 'auditor@example.com' : email(first, last, 0));

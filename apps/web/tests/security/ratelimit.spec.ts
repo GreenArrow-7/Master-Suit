@@ -4,7 +4,7 @@
  * Two independent defects met here:
  *
  *   1. `clientIp` returned null behind any proxy, so every login on the platform
- *      keyed the same bucket — ten attempts per fifteen minutes, shared by every
+ *      keyed the same bucket — ten attempts per five minutes, shared by every
  *      customer. Proven below by two IPs getting separate counters.
  *   2. `consume` recorded the request *before* comparing, so refused attempts
  *      kept extending the window and the lockout never drained. Proven below by

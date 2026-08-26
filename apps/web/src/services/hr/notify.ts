@@ -61,8 +61,21 @@ export interface HrNotification {
   audience: Audience;
   title: string;
   body?: string;
-  /** Relative to the workspace root; the client prefixes the slug. */
-  actionPath?: string;
+  /**
+   * The record this notification points at, as a type the navigation resolver
+   * knows (`src/lib/nav/entityRoute.ts`) plus its id.
+   *
+   * This replaced a field that stored a bare path — `/people/leave` — under a
+   * comment promising the client would prefix the workspace slug. Nothing did,
+   * so every one of those clicks 404'd. Storing the type and the id instead lets
+   * the read path resolve a destination for the workspace the notification
+   * actually belongs to, which matters because a person can hold memberships in
+   * several and must not be sent to the right screen in the wrong company.
+   *
+   * "The record this points at", not "the record the event happened to": an
+   * interview being scheduled points at the candidate, because the candidate is
+   * the screen a panel member needs. `event` above already says what happened.
+   */
   objectType?: string;
   recordId?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
@@ -129,7 +142,6 @@ export async function notifyHr(ctx: Ctx, notification: HrNotification): Promise<
         body: notification.body ?? null,
         objectType: notification.objectType ?? null,
         recordId: notification.recordId ?? null,
-        actionUrl: notification.actionPath ?? null,
         priority: notification.priority ?? 'MEDIUM',
         channels: ['in_app', 'email'],
       })),
@@ -162,20 +174,15 @@ export const notifyOvertimeRaised = (ctx: Ctx, input: { employeeName: string; mi
     audience: { permission: ['overtime', 'APPROVE'] },
     title: `Overtime to approve — ${input.employeeName}`,
     body: `${(input.minutes / 60).toFixed(2)} hours awaiting a decision.`,
-    actionPath: '/people/overtime',
     objectType: 'hr_overtime_request',
     recordId: input.recordId,
   });
 
-export const notifyOvertimeDecided = (
-  ctx: Ctx,
-  input: { employeeId: string; approved: boolean; recordId: string },
-) =>
+export const notifyOvertimeDecided = (ctx: Ctx, input: { employeeId: string; approved: boolean; recordId: string }) =>
   notifyHr(ctx, {
     event: 'overtime.decided',
     audience: { employeeIds: [input.employeeId] },
     title: `Your overtime claim was ${input.approved ? 'approved' : 'rejected'}`,
-    actionPath: '/people/overtime',
     objectType: 'hr_overtime_request',
     recordId: input.recordId,
   });
@@ -186,7 +193,6 @@ export const notifyLeaveRaised = (ctx: Ctx, input: { employeeName: string; days:
     audience: { permission: ['leave', 'APPROVE'] },
     title: `Leave to approve — ${input.employeeName}`,
     body: `${input.days} day(s) requested.`,
-    actionPath: '/people/leave',
     objectType: 'hr_leave_request',
     recordId: input.recordId,
   });
@@ -196,7 +202,6 @@ export const notifyLeaveDecided = (ctx: Ctx, input: { employeeId: string; approv
     event: 'leave.decided',
     audience: { employeeIds: [input.employeeId] },
     title: `Your leave request was ${input.approved ? 'approved' : 'rejected'}`,
-    actionPath: '/people/leave',
     objectType: 'hr_leave_request',
     recordId: input.recordId,
   });
@@ -206,7 +211,6 @@ export const notifyShiftChangeRaised = (ctx: Ctx, input: { employeeName: string;
     event: 'shift_change.requested',
     audience: { permission: ['shifts', 'APPROVE'] },
     title: `Shift ${input.kind.toLowerCase()} request — ${input.employeeName}`,
-    actionPath: '/people/roster',
     objectType: 'hr_shift_change_request',
     recordId: input.recordId,
   });
@@ -219,7 +223,6 @@ export const notifyShiftChangeDecided = (
     event: 'shift_change.decided',
     audience: { employeeIds: input.employeeIds },
     title: `Your shift change was ${input.approved ? 'approved' : 'rejected'}`,
-    actionPath: '/people/roster',
     objectType: 'hr_shift_change_request',
     recordId: input.recordId,
   });
@@ -230,7 +233,6 @@ export const notifyPayrollSubmitted = (ctx: Ctx, input: { period: string; net: s
     audience: { permission: ['payroll', 'APPROVE'] },
     title: `Payroll awaiting approval — ${input.period}`,
     body: `Net total ${input.net}.`,
-    actionPath: '/people/payroll',
     objectType: 'hr_payroll_run',
     recordId: input.recordId,
     priority: 'HIGH',
@@ -244,7 +246,6 @@ export const notifyPayrollDecided = (
     event: 'payroll.decided',
     audience: { employeeIds: input.preparedById ? [input.preparedById] : [] },
     title: `Payroll for ${input.period} was ${input.approved ? 'approved' : 'sent back'}`,
-    actionPath: '/people/payroll',
     objectType: 'hr_payroll_run',
     recordId: input.recordId,
     priority: 'HIGH',
@@ -255,8 +256,7 @@ export const notifyPayslipsAvailable = (ctx: Ctx, input: { employeeIds: string[]
     event: 'payslip.available',
     audience: { employeeIds: input.employeeIds },
     title: `Your payslip for ${input.period} is available`,
-    actionPath: '/people/payslips',
-    objectType: 'hr_payroll_run',
+    objectType: 'hr_payslip',
     recordId: input.recordId,
   });
 
@@ -265,7 +265,6 @@ export const notifyRequisitionSubmitted = (ctx: Ctx, input: { title: string; rec
     event: 'requisition.submitted',
     audience: { permission: ['recruitment', 'APPROVE'] },
     title: `Requisition to approve — ${input.title}`,
-    actionPath: '/people/recruitment',
     objectType: 'hr_requisition',
     recordId: input.recordId,
   });
@@ -278,36 +277,35 @@ export const notifyRequisitionDecided = (
     event: 'requisition.decided',
     audience: { employeeIds: input.recruiterId ? [input.recruiterId] : [] },
     title: `Requisition "${input.title}" was ${input.approved ? 'approved' : 'rejected'}`,
-    actionPath: '/people/recruitment',
     objectType: 'hr_requisition',
     recordId: input.recordId,
   });
 
 export const notifyInterviewScheduled = (
   ctx: Ctx,
-  input: { panelIds: string[]; candidateName: string; when: Date; recordId: string; candidateId: string },
+  input: { panelIds: string[]; candidateName: string; when: Date; candidateId: string },
 ) =>
   notifyHr(ctx, {
     event: 'interview.scheduled',
     audience: { employeeIds: input.panelIds },
     title: `Interview scheduled — ${input.candidateName}`,
     body: input.when.toISOString(),
-    actionPath: `/people/recruitment/${input.candidateId}`,
-    objectType: 'hr_interview',
-    recordId: input.recordId,
+    // The candidate, not the interview: `/people/recruitment/{candidateId}` is
+    // the screen a panel member needs, and no per-interview route exists.
+    objectType: 'candidate',
+    recordId: input.candidateId,
   });
 
 export const notifyOfferResponded = (
   ctx: Ctx,
-  input: { accepted: boolean; candidateName: string; recordId: string; candidateId: string },
+  input: { accepted: boolean; candidateName: string; candidateId: string },
 ) =>
   notifyHr(ctx, {
     event: 'offer.responded',
     audience: { permission: ['recruitment', 'EDIT'] },
     title: `${input.candidateName} ${input.accepted ? 'accepted' : 'declined'} the offer`,
-    actionPath: `/people/recruitment/${input.candidateId}`,
-    objectType: 'hr_offer',
-    recordId: input.recordId,
+    objectType: 'candidate',
+    recordId: input.candidateId,
     priority: input.accepted ? 'HIGH' : 'MEDIUM',
   });
 
@@ -320,7 +318,6 @@ export const notifyReviewCycleOpened = (
     audience: { employeeIds: input.employeeIds },
     title: `${input.cycleName}: your self-assessment is open`,
     body: 'Your manager cannot complete their review until you have written yours.',
-    actionPath: '/people/performance',
     objectType: 'hr_review_cycle',
     recordId: input.recordId,
   });
@@ -334,7 +331,6 @@ export const notifySelfReviewSubmitted = (
     audience: { employeeIds: input.managerId ? [input.managerId] : [] },
     title: `${input.employeeName} submitted their self-assessment`,
     body: 'Their review is now waiting on you.',
-    actionPath: '/people/performance',
     objectType: 'hr_review',
     recordId: input.recordId,
   });
@@ -345,7 +341,6 @@ export const notifyReviewReleased = (ctx: Ctx, input: { employeeId: string; rati
     audience: { employeeIds: [input.employeeId] },
     title: 'Your review is ready to read',
     body: `Final rating ${input.rating}/5. It is not closed until you acknowledge it.`,
-    actionPath: '/people/performance',
     objectType: 'hr_review',
     recordId: input.recordId,
     priority: 'HIGH',
@@ -357,7 +352,6 @@ export const notifyPipOpened = (ctx: Ctx, input: { employeeId: string; recordId:
     audience: { employeeIds: [input.employeeId] },
     title: 'An improvement plan has been opened with you',
     body: 'Read it and acknowledge that it has been discussed with you.',
-    actionPath: '/people/performance',
     objectType: 'hr_pip',
     recordId: input.recordId,
     priority: 'HIGH',

@@ -5,9 +5,7 @@ import { NotFound, Conflict } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
 
-const patchBody = z
-  .object({ state: z.enum(['PUBLISHED', 'PAUSED', 'ARCHIVED']) })
-  .strict();
+const patchBody = z.object({ state: z.enum(['PUBLISHED', 'PAUSED', 'ARCHIVED']) }).strict();
 
 export const PATCH = route(
   {
@@ -35,9 +33,7 @@ export const PATCH = route(
       data: {
         state: body.state,
         updatedById: ctx.actor.id,
-        ...(body.state === 'PUBLISHED'
-          ? { activeVersionId: automation.activeVersionId ?? latest!.id }
-          : {}),
+        ...(body.state === 'PUBLISHED' ? { activeVersionId: automation.activeVersionId ?? latest!.id } : {}),
       },
       select: { id: true, state: true, activeVersionId: true },
     });

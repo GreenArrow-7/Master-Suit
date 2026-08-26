@@ -52,7 +52,12 @@ beforeAll(async () => {
       data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
     });
   }
-  const admin = await createWorkspaceUser({ tenantId, roleId: role.id, email: `hr-${suffix}@bulk.test`, fullName: 'HR Admin' });
+  const admin = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `hr-${suffix}@bulk.test`,
+    fullName: 'HR Admin',
+  });
   adminCookie = await createSessionToken(tenantId, admin.id);
 
   const location = await prisma.hrWorkLocation.create({
@@ -101,7 +106,14 @@ describe('bulk work-location assignment', () => {
   it('still accepts a single employeeId', async () => {
     const solo = await prisma.employeeProfile.findFirstOrThrow({ where: { tenantId }, select: { id: true } });
     const other = await prisma.hrWorkLocation.create({
-      data: { tenantId, name: `Branch ${suffix}`, latitude: 25.1, longitude: 55.2, radiusMeters: 120, status: 'ACTIVE' },
+      data: {
+        tenantId,
+        name: `Branch ${suffix}`,
+        latitude: 25.1,
+        longitude: 55.2,
+        radiusMeters: 120,
+        status: 'ACTIVE',
+      },
     });
     const res = await post(
       hrCreate,

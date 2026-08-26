@@ -24,10 +24,33 @@ export interface Limit {
  * Fixed windows admit up to 2x the nominal rate across a boundary. That is the
  * accepted trade for a limiter that cannot be starved.
  */
+const windowKey = (limit: Limit, window: number) => `rl:${limit.key}:${window}`;
+
+/**
+ * Drops a limit's counters, by name.
+ *
+ * Two keys, because a fixed window means at most the current one and its
+ * predecessor exist at any moment — the older one is still there until its TTL
+ * runs out, and leaving it behind would let a just-unlocked account be refused
+ * by a window it was throttled in.
+ *
+ * By name rather than by pattern on purpose. The `SCAN` sweep this replaced was
+ * O(*whole keyspace*) — not O(matching keys) — because SCAN has to walk every
+ * key in the database to find the two it wants. On a deployment holding a
+ * cached actor per signed-in user, a rate-limit counter per active user and
+ * BullMQ's own bookkeeping, that is hundreds of thousands of keys visited to
+ * delete two.
+ */
+export async function clear(limit: Limit): Promise<void> {
+  const windowMs = limit.windowSeconds * 1000;
+  const window = Math.floor(Date.now() / windowMs);
+  await redis.del(windowKey(limit, window), windowKey(limit, window - 1));
+}
+
 export async function consume(limit: Limit): Promise<{ remaining: number; resetAt: number }> {
   const windowMs = limit.windowSeconds * 1000;
   const window = Math.floor(Date.now() / windowMs);
-  const redisKey = `rl:${limit.key}:${window}`;
+  const redisKey = windowKey(limit, window);
   const resetAt = (window + 1) * windowMs;
 
   const results = await redis.multi().incr(redisKey).pexpire(redisKey, windowMs).exec();
@@ -45,8 +68,26 @@ export async function consume(limit: Limit): Promise<{ remaining: number; resetA
 }
 
 export const limits = {
-  loginPerIp: (ip: string) => ({ key: `login:ip:${ip}`, max: 10, windowSeconds: 900 }),
-  loginPerAccount: (email: string) => ({ key: `login:acct:${email.toLowerCase()}`, max: 5, windowSeconds: 900 }),
+  /**
+   * Sign-in, per address and per account.
+   *
+   * A five-minute window rather than the fifteen it was: fifteen minutes is a
+   * long time to be locked out of your own console for fat-fingering a password,
+   * and the counts — 10 and 5 — are what actually bound a guessing attack. The
+   * window only decides how long a legitimate person waits and how fast an
+   * attacker may retry, and this trades the second for the first: the sustained
+   * rate an attacker can hold rises threefold, from 10 to 30 attempts an hour
+   * per address, which against a password policy of twelve characters is still
+   * nowhere near a guessing budget.
+   *
+   * Note what the per-IP one really is when `TRUSTED_PROXY_CIDRS` is unset or
+   * `none`: `clientIp()` returns null, the login route falls back to the literal
+   * string `unknown`, and every caller shares one bucket. Ten sign-ins per five
+   * minutes for the whole deployment, not per person. Configure the CIDRs to get
+   * per-address limiting back — see lib/auth/session.ts.
+   */
+  loginPerIp: (ip: string) => ({ key: `login:ip:${ip}`, max: 10, windowSeconds: 300 }),
+  loginPerAccount: (email: string) => ({ key: `login:acct:${email.toLowerCase()}`, max: 5, windowSeconds: 300 }),
   apiKey: (id: string, max: number) => ({ key: `api:${id}`, max, windowSeconds: 60 }),
   sessionUser: (id: string) => ({ key: `user:${id}`, max: 1200, windowSeconds: 60 }),
   publicForm: (ip: string) => ({ key: `form:${ip}`, max: 5, windowSeconds: 60 }),

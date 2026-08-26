@@ -6,8 +6,17 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-  // Content-Security-Policy is NOT here. It carries a per-request script nonce,
-  // which a static header cannot express — see src/middleware.ts.
+  // Content-Security-Policy is NOT here, and the reason is not the one this
+  // comment used to give. It claimed a per-request nonce set by a
+  // `src/middleware.ts` — there is no such file (the proxy is `src/proxy.ts`)
+  // and it deliberately emits no nonce, because Next 16.2.12 does not stamp one
+  // onto its own script tags in a production build and a nonce makes browsers
+  // ignore `'unsafe-inline'`, which renders the app inert.
+  //
+  // The CSP is built in src/proxy.ts, per request, and still carries
+  // `script-src 'unsafe-inline'`. docs/KNOWN-LIMITATIONS.md records that as the
+  // open gap it is. A reader auditing the CSP was previously told the opposite
+  // of the truth by this line.
 ];
 
 const config: NextConfig = {
@@ -29,6 +38,27 @@ const config: NextConfig = {
    * navigation and the sign-out button rather than floating clear of them.
    */
   devIndicators: false,
+  /**
+   * Hosts allowed to reach `/_next/*` and `/__nextjs*` in development.
+   *
+   * Next 16 blocks cross-origin requests to its dev resources with a 403 —
+   * `server/lib/router-utils/block-cross-site-dev.js`, whose default allowlist
+   * is `localhost`, `*.localhost` and the dev server's own bind hostname. Served
+   * through a dev tunnel the browser's origin is the tunnel host, so the *page*
+   * still loads (same-origin asset GETs send no Origin header) while the two
+   * things that do send one break: the HMR websocket handshake, and the error
+   * overlay's POST to `/__nextjs_original-stack-frames`. Fast refresh silently
+   * stops and runtime errors lose their source mapping.
+   *
+   * `**`, not `*`: the matcher in `app-render/csrf-protection.js` lets `*` stand
+   * for exactly one label, and a tunnel host carries a cluster label
+   * (`<id>-3000.<cluster>.devtunnels.ms`) that `*.devtunnels.ms` therefore fails
+   * to match. `**` is the trailing-wildcard form and matches both shapes.
+   *
+   * Development only — Next ignores this in a production build. Add another
+   * entry here for a different tunnel provider.
+   */
+  allowedDevOrigins: ['**.devtunnels.ms'],
   // This repository intentionally lives inside a directory whose parent also
   // contains Node projects. Pinning the root prevents Turbopack from inferring
   // src/app (or a sibling application's lockfile) as the workspace root.

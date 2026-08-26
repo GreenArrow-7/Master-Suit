@@ -52,7 +52,14 @@ export default async function PeopleOverview({ params }: { params: Promise<{ wor
 
       {dashboard.sections.map((section) => (
         <section key={section.heading} className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--lf-space-3)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 'var(--lf-space-3)',
+            }}
+          >
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>{section.heading}</h2>
             {section.href && (
               <Link className="lf-link" href={href(section.href)!}>

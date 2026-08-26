@@ -69,10 +69,7 @@ export default async function PlatformSettingsPage() {
         <h2 className="lf-h2" style={{ marginBottom: 10 }}>
           Deployment configuration
         </h2>
-        <WorkspaceTable
-          headers={['Setting', 'Current value', 'Scope']}
-          rows={readOnlyRows.map((row) => [...row])}
-        />
+        <WorkspaceTable headers={['Setting', 'Current value', 'Scope']} rows={readOnlyRows.map((row) => [...row])} />
       </section>
     </div>
   );

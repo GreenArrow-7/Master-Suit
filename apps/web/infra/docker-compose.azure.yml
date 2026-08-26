@@ -8,27 +8,36 @@
 #
 # ── What this changes about the two files beneath it ─────────────────────────
 #
-# Each of these is a local-development convenience that becomes a defect the
-# moment the host has a public IP:
+# Less than it used to. The base file and the production overlay are now each
+# correct on their own — loopback bindings, scram-sha-256, and the NOBYPASSRLS
+# application role in both — so this file no longer *rescues* them. What is left
+# is genuinely specific to a host with a public IP:
 #
-#   1. Only Caddy binds a public interface. The base file publishes Postgres,
-#      Redis and MinIO on 0.0.0.0 so a Windows host can reach them; on an Azure
-#      VM that is an internet-facing database.
+#   1. Nothing is published to the host except three administrative web UIs on
+#      loopback — MinIO's console, Prometheus and Alertmanager — each reached
+#      over an SSH tunnel and each listed below with the reason. Everything
+#      else, including Postgres and Redis, publishes nothing at all: the base
+#      file binds 127.0.0.1 so a developer running the app outside Docker can
+#      reach them, and here everything runs inside the network, so even that is
+#      surface with no purpose. `docker compose exec` reaches them for
+#      administration without a listening socket.
 #
-#   2. Postgres stops trusting every connection. The base file sets
-#      POSTGRES_HOST_AUTH_METHOD=trust, which accepts *any* password from any
-#      host that can open the port.
+#      A UI is the exception because there is no `exec` equivalent for one. The
+#      alternative to a loopback port is no way to look at a firing alert, which
+#      is how a monitoring stack becomes decoration.
 #
-#   3. The application connects as master_saas_app, not the owning role. The
-#      production overlay points DATABASE_URL at `leadflow`, the container
-#      superuser — and lib/startup-check refuses to boot on a superuser,
-#      correctly, because a superuser bypasses every row-level-security policy
-#      in the schema. That refusal is the single most likely reason a first
-#      deployment does not come up.
+#   2. Real credentials, from .env.production, replacing the base file's
+#      development defaults.
 #
-#   4. The web container never holds MIGRATION_DATABASE_URL. Migrations run from
+#   3. The web container never holds MIGRATION_DATABASE_URL. Migrations run from
 #      the one-off `migrate` service below, which is the only thing that needs
 #      the owning credential.
+#
+# What is NOT here any more, because it no longer needs to be: an override
+# putting DATABASE_URL back on a non-superuser role, and an override turning off
+# `trust` authentication. Both were this file compensating for a hazard two
+# files down, which meant a deployment that forgot to layer this one was
+# insecure rather than merely unconfigured.
 #
 # ── The two merge tags, which are not interchangeable ────────────────────────
 #
@@ -41,10 +50,23 @@
 # Use `!reset []` to mean "publish nothing", and `!override [...]` to mean
 # "publish exactly this instead". Both are needed here because lists like
 # `ports` and `env_file` are otherwise *appended* to the ones beneath, and an
-# appended 0.0.0.0:5432 would leave the exposure exactly as it was.
+# appended 127.0.0.1:5432 would leave a listening socket on the host that
+# nothing on this VM has any use for.
+
+# Anchors do not cross files, so this repeats the base file's rotation for the
+# services only this overlay declares. Without it `caddy` — which writes an
+# access line per request, the highest-volume log in the stack — would be the one
+# container on the host with an unbounded log. See docker-compose.yml for why
+# switching driver means replacing this block rather than overriding a line.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
 
 services:
   caddy:
+    logging: *logging
     image: caddy:2-alpine
     restart: unless-stopped
     ports: ['80:80', '443:443']
@@ -70,14 +92,45 @@ services:
     ports: !reset []
     environment:
       # Restated because `environment:` outranks `env_file:` regardless of order,
-      # so the production overlay's superuser DATABASE_URL would otherwise win
-      # over the correct value in .env.production.
+      # so the production overlay's development-default DATABASE_URL would
+      # otherwise win over the real credential in .env.production. Both now name
+      # `master_saas_app`; only the password and host differ.
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      # Composed from REDIS_PASSWORD rather than read from the env file, so the
+      # password and the URL cannot drift apart. Restated here for the same
+      # reason DATABASE_URL is: `environment:` outranks `env_file:` whatever the
+      # order, so the production overlay's development default would otherwise
+      # win over the real credential.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}@redis:6379/0
       # Deliberately blank. lib/env.ts accepts empty, and startup-check skips its
       # "same connection" comparison — the runtime has no business holding the
       # role that can drop a policy.
       MIGRATION_DATABASE_URL: ''
       SHADOW_DATABASE_URL: ''
+      # env_file passes the whole file in, and STAGING_DATABASE_URL is in it for
+      # the migrate service below. The serving process has no use for a second
+      # environment's connection string, so it does not get to hold one.
+      STAGING_DATABASE_URL: ''
+      # ── Mail, and why these three have to be restated here ─────────────────
+      #
+      # The production overlay sets SMTP_HOST: mailpit in its `environment:`
+      # block, for the local production-build rehearsal that
+      # `scripts/start-local-prod.mjs` runs. `environment:` outranks `env_file:`
+      # unconditionally, so on this deployment that value won over whatever
+      # .env.production said — and every password-reset mail, every invitation
+      # and every notification was delivered into a Mailpit container on the VM
+      # and never left it.
+      #
+      # Nothing failed. The transport is real, the send succeeds, the audit row
+      # records a delivered message. The only symptom is customers who never
+      # receive the reset link, which reads as "our email is flaky" rather than
+      # as a misconfiguration, and a locked-out account has no other way back in.
+      #
+      # `:?` rather than a default: a deployment with no relay configured must
+      # refuse to start rather than swallow its own mail.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production — production mail must not go to the local mailbox}
+      SMTP_PORT: ${SMTP_PORT:-587}
     volumes:
       - attendance:/app/storage/attendance
     depends_on:
@@ -88,8 +141,16 @@ services:
     env_file: !override ['../.env.production']
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in apps/web/.env.production}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}@redis:6379/0
       MIGRATION_DATABASE_URL: ''
       SHADOW_DATABASE_URL: ''
+      STAGING_DATABASE_URL: ''
+      # The same restatement as web, and it matters more here: the notification
+      # and campaign queues are where most mail is actually sent from, so a
+      # worker still pointed at mailpit swallows it in bulk.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production — production mail must not go to the local mailbox}
+      SMTP_PORT: ${SMTP_PORT:-587}
     volumes:
       - attendance:/app/storage/attendance
     depends_on:
@@ -104,6 +165,7 @@ services:
   #   docker compose ... run --rm migrate
   #
   migrate:
+    logging: *logging
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -114,7 +176,30 @@ services:
     env_file: ['../.env.production']
     environment:
       NODE_ENV: production
-    command: ['npx', 'prisma', 'migrate', 'deploy']
+      # The staging project's database, read only to answer "has this migration
+      # already succeeded there?". Set it in .env.production:
+      #
+      #   STAGING_DATABASE_URL=postgresql://leadflow:...@host.docker.internal:5433/leadflow_staging
+      #
+      # 5433 is where docker-compose.staging.yml publishes staging's Postgres on
+      # this host's loopback. If staging lives on its own VM, put that VM's
+      # address here instead — nothing else changes.
+      STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-}
+      ALLOW_UNSTAGED_MIGRATION: ${ALLOW_UNSTAGED_MIGRATION:-}
+    # Compose projects do not share a network, so reaching the staging project's
+    # published loopback port means going out through the host gateway.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # The gate, then the migration — one command, so the enforced path is the
+    # path the runbook already documents rather than a second thing to remember.
+    #
+    # `check-staging-first.mjs` refuses to apply anything that has not already
+    # finished in staging with the same checksum. docs/ENVIRONMENTS.md has
+    # required "staging first, then production" all along; this is the first
+    # thing that makes it true. It exits 1 with STAGING_DATABASE_URL unset, so a
+    # deployment with no staging has to say ALLOW_UNSTAGED_MIGRATION=yes out
+    # loud — the same idiom as ALLOW_DEMO_SEED.
+    command: ['sh', '-c', 'node scripts/check-staging-first.mjs && npx prisma migrate deploy']
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -131,6 +216,21 @@ services:
       POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
 
   redis:
+    ports: !reset []
+    environment:
+      # `:?` where the base file has a development default. Redis carries queue
+      # payloads and cached actor permissions; on a host with a public IP the
+      # bridge network is the only thing between them and anything else that
+      # ends up on this machine, and "the network is private" is the assumption
+      # that breaks first.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in apps/web/.env.production — `npm run secrets .env.production` generates one}
+
+  mailpit:
+    # Still in the stack, because the production overlay's `depends_on` requires
+    # it and Compose has no way to remove a service from a file beneath. Its
+    # ports are dropped so it holds no host socket; with the SMTP settings above
+    # restated, nothing sends to it any more. It costs about 20 MB and receives
+    # nothing.
     ports: !reset []
 
   minio:
@@ -149,6 +249,11 @@ services:
     restart: unless-stopped
 
   clamav:
+    # Loopback, but still a listening socket on the host for a service the
+    # application reaches over the compose network. The header at the top of this
+    # file claims nothing is published here, not even on loopback; this is the one
+    # service that was still contradicting it.
+    ports: !reset []
     restart: unless-stopped
 
   face:
@@ -157,7 +262,49 @@ services:
     # is dropped: a service that turns camera frames into biometric vectors
     # should have no route from the host at all.
     ports: !reset []
+    environment:
+      # Refuses to start without FACE_SERVICE_TOKEN. Unset, the service accepted
+      # every caller silently — indistinguishable from a configured one until
+      # somebody found the port.
+      FACE_SERVICE_ENV: production
     restart: unless-stopped
+
+  # ── Observability ──────────────────────────────────────────────────────────
+  #
+  # The base file defines both behind `profiles: ['observability']`. Clearing the
+  # profile here is what starts them, and it is done in this file rather than by
+  # adding a fourth `-f` to the runbook so that a production stack cannot be
+  # brought up without its scraper. Layering this file *is* opting in.
+  #
+  # Reach either over SSH — they hold the same reconnaissance value that keeps
+  # /api/metrics off the public interface in the first place, and Prometheus has
+  # no authentication of its own:
+  #
+  #   ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 azureuser@<vm>
+  #
+  prometheus:
+    profiles: !reset []
+    ports: ['127.0.0.1:9090:9090']
+    environment:
+      # `:?` here, where the base file has `:-`. This stack is a real
+      # environment, and a Prometheus with no credential scrapes a 404 and pages
+      # about it. `npm run secrets` writes this value; the same one must be in
+      # .env.production for web and worker, because it is the token the metrics
+      # route compares against.
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.production — run `npm run secrets .env.production`}
+      APP_ENV: ${APP_ENV:?set APP_ENV=production in apps/web/.env.production}
+
+  alertmanager:
+    profiles: !reset []
+    ports: ['127.0.0.1:9093:9093']
+    environment:
+      # Same `:?` reasoning, and the same reasoning as SMTP_HOST on web above: a
+      # deployment that cannot deliver its alerts must refuse to start rather
+      # than hold them. Alert rules firing into nothing is worse than no rules —
+      # it reads as monitored.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?set ALERT_EMAIL_TO in apps/web/.env.production — the address that receives alerts}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in apps/web/.env.production}
+      APP_ENV: ${APP_ENV:?set APP_ENV=production in apps/web/.env.production}
 
 volumes:
   caddydata: {}

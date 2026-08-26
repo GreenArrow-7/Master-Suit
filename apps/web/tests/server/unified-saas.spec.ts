@@ -28,12 +28,12 @@ const leadersSlug = `leadersfort-${suffix}`;
 
 /**
  * The scenario signs in as five different accounts from one address, and login
- * is throttled to 10 attempts per IP per 15 minutes. Without clearing that
+ * is throttled to 10 attempts per IP per 5 minutes. Without clearing that
  * counter the suite passes once and then 429s for a quarter of an hour, which
  * looks like a product bug and is actually the limiter doing its job.
  */
 beforeAll(async () => {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/0');
+  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

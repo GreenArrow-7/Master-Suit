@@ -33,10 +33,27 @@ following items still prevent an unconditional commercial-production claim:
   control-plane case — a telephony vendor posting to a URL knows nothing about
   workspaces — and each is guarded by a hashed bearer secret and tenant-scoped
   administrative reads instead.
-- **`tests/permission/field.spec.ts` was deleted, not fixed.** It asserted
-  against `/api/v1/leads/export` and `/api/v1/reports/run`, neither of which
-  exists, using fabricated fixtures. Field-level permission behaviour
-  (`loadFieldRules`/`applyFieldSecurity`) is therefore currently untested.
+- **Field-level security is tested again.** `tests/permission/field.spec.ts` had
+  been deleted rather than fixed — it asserted against `/api/v1/leads/export` and
+  `/api/v1/reports/run`, neither of which exists — which left `loadFieldRules`,
+  `applyFieldSecurity`, `stripUneditableFields` and `assertFilterableFields`
+  entirely uncovered. `tests/permission/field-security.spec.ts` replaces it,
+  written against `/api/v1/opportunities`, which is where field security is
+  actually wired: hiding, masking, the strip-on-write path, per-role and
+  per-object rule scoping, every masking strategy, and the refusal to filter or
+  sort on a hidden field. That last one is the case that matters — masking is
+  worthless if a caller can recover the value by bisecting a filter over it.
+- **Filtering now works on the four objects whose routes offer it.** This
+  entry used to read "filtering works on leads and nowhere else": `FIELD_MAP` in
+  `src/lib/api/filterTree.ts` registered an allow-list for `LEAD` only, so
+  `/api/v1/opportunities`, `/contacts` and `/accounts` each accepted a `filter`
+  parameter, validated it, checked it against field security, and then rejected
+  it with `400 unknown-object` for every caller. The three maps are written.
+  `tests/unit/filter-field-maps.spec.ts` now checks each entry against
+  `prisma/schema.prisma` — path, nullability, list-ness — and fails if any route
+  compiles a filter against an object with no map, which is the gap itself as a
+  test. TASK, TICKET and ACTIVITY have no route offering `filter`, so they have
+  no map; the gate is what makes that a decision rather than an oversight.
 - **The Python HRMS has been archived out of the repository.** It ran nothing and
   was referenced by nothing; HRMS runs natively in the Next.js app against
   PostgreSQL. All 139 files, including the SQLite database, now live in
@@ -165,9 +182,15 @@ following items still prevent an unconditional commercial-production claim:
     an event fires once, so an approval ignored for a week is never chased
     again; and **notification preferences are not implemented**, so a user
     cannot opt out of anything.
-  - Session rotation exists at `/api/v1/auth/refresh` but **no client calls it
-    automatically**; nothing in the UI refreshes on a timer yet, so in practice
-    tokens live until they expire.
+  - ~~Session rotation exists at `/api/v1/auth/refresh` but **no client calls it
+    automatically**~~ — **out of date, corrected 2026-08-20.** `lib/auth/client.ts`
+    refreshes on a 401 and retries the request once, sharing a single in-flight
+    refresh across concurrent callers (ten parallel refreshes would rotate ten
+    times, and nine would present an already-rotated token — which the server
+    correctly treats as theft and answers by revoking every session). What is
+    still true is that nothing refreshes on a *timer*: a session that goes idle
+    is not extended in the background, which is the intended behaviour rather
+    than a gap.
   - H28 covers the shell being usable on a phone. It has been verified by reading
     the CSS and the components, **not on a real handset** — no device testing has
     been done.
@@ -188,9 +211,11 @@ following items still prevent an unconditional commercial-production claim:
   schema but no migration ever created them, so any code touching them failed at
   runtime while typechecking cleanly. `20260805000000_hr_lifecycle_and_schema_drift`
   closes the gap and re-runs the catalog-driven RLS block for the new tables.
-  Nothing enforces that the schema and the migrations agree — a CI step running
+  **Now enforced.** CI gate 0a runs
   `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma
-  --exit-code` would catch the next one.
+  --exit-code` against the database it has just replayed every migration into, so
+  the schema and the migration history are compared directly. `npm run check:drift`
+  runs the same check locally.
 - **Copying the catalog-driven RLS sweep into a new migration is a live trap, and
   it has now fired once.** Several HR migrations end by re-running the sweep from
   `20260803230000_rls_full_coverage`, each carrying its own inline copy of the
@@ -204,21 +229,109 @@ following items still prevent an unconditional commercial-production claim:
   tenant is known. The first draft of `20260808140000_hr_overtime` did exactly
   this; it was caught by `tests/tenant/rls.spec.ts` and
   `tests/integration/invitation-flow.spec.ts` failing together, and the shipped
-  version instead names the single table it creates:
+  version instead named the single table it creates.
+
+  **And the replacement was wrong too, in a different way, and went unnoticed
+  from 2026-08-08 until 2026-08-20.** The snippet this document used to print as
+  the fix is itself the defect:
 
   ```sql
+  -- What shipped. Correct-looking, and missing both of the things
+  -- 20260806000000 had added six migrations earlier.
   ALTER TABLE "HrOvertimeRequest" ENABLE ROW LEVEL SECURITY;
-  CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL ...
+  CREATE POLICY tenant_isolation ON "HrOvertimeRequest" FOR ALL TO master_saas_app
+    USING ("tenantId" = nullif(current_setting('app.tenant_id', true), ''));
   ```
 
-  **A migration that adds tables should write a policy for those tables only.**
-  The sweep belongs in the migration whose job is coverage, not in every
-  migration that follows it. The three places that must stay in step — the
-  `bootstrap` array, `GLOBAL_UNIQUE_FIELDS` in `src/lib/db.ts`, and the expected
-  list in `tests/tenant/rls.spec.ts` — are still only kept in step by hand.
+  No `FORCE`, so the owning role bypassed the policy; and no
+  `app.platform_admin` branch, so `withPlatformTx` — the control plane, and the
+  retention sweep — matched nothing on that table at all. Neither test suite
+  could see it, because both check tenant-to-tenant isolation and this broke
+  neither. `20260820100000_hr_overtime_rls_parity` fixes it.
+
+  **A migration that adds tables should write a policy for those tables only** —
+  and CI gate 0b (`npm run check:rls`) now asserts the result against the
+  Postgres catalog: every `tenantId` table enabled, FORCED, policied, with both
+  clauses testing `app.tenant_id` and carrying the `app.platform_admin` branch,
+  and no policy scoped `TO` a single role. It found `HrOvertimeRequest` on its
+  first run.
+
+  Two of the three hand-kept lists remain hand-kept — `GLOBAL_UNIQUE_FIELDS` in
+  `src/lib/db.ts` and the expected list in `tests/tenant/rls.spec.ts`. The third,
+  the `bootstrap` array, is now cross-checked against the catalog by the gate.
+- **AI spend is metered per workspace and capped on the shared key.** Nothing
+  counted tokens before — not per tenant, not in aggregate — so one workspace
+  transcribing a backlog could exhaust the deployment's Gemini budget for
+  everyone, with no record afterwards of which one had. All four surfaces
+  (analysis, audit, live coach, assistant) now record `usageMetadata` into
+  `WorkspaceUsage` under a month-keyed metric, and `assertAiBudget` refuses
+  further work past the plan's `ai_tokens_monthly` limit. Two deliberate
+  asymmetries: a workspace on its **own** Gemini key is metered but never capped
+  — its quota, its bill — and the live coach degrades to heuristic hints rather
+  than throwing, because interrupting somebody mid-call with a billing error is
+  not a trade worth making. What remains: the ceiling is approximate, since usage
+  is recorded after each response and a burst of concurrent jobs can carry a
+  workspace some way past it before the first records anything; and no plan ships
+  with `ai_tokens_monthly` set, so the cap is inert until an operator chooses a
+  number.
+- **The web tier is stateless now.** Attendance captures — encrypted frames from
+  face punches — were written to a local directory, which meant a second web
+  replica would take punches whose evidence only the first replica could read.
+  They go to the same object storage as every other uploaded file now, still
+  encrypted before they leave the process. Reads fall back to the old directory
+  so captures stored before the change stay readable, and retention sweeps both;
+  `scripts/migrate-attendance-captures.mjs` moves the backlog across. What
+  remains before actually running two replicas: a load balancer, and the managed
+  Postgres and Redis that a second host implies.
+- **Redis requires a password now; everything behind the edge is still
+  plaintext.** `requirepass` was set in no Compose file at all, and Redis carries
+  queue payloads and cached actor permissions. Every stack sets it now, including
+  the development one — a path no environment exercises is a path nobody notices
+  is broken — and both deployment overlays refuse to start without a real value
+  rather than falling back to the development default. What remains: Postgres,
+  Redis, MinIO, ClamAV and the face engine all still speak unencrypted on the
+  Compose bridge. On one host that is a real mitigation; it is also the first
+  assumption to break if any of this moves to a second machine.
+- **There are metrics and alerting now; there are still no traces and no log
+  shipping.**
+  Nothing in the application exported a metric, emitted a span or reported an
+  exception, and the logs were not collected either — so the worker exiting on
+  start went unnoticed for months, and a `TenantGuardError` would have been an
+  error-level line in a stdout nobody reads. `GET /api/metrics` (token-gated,
+  404 without one) now serves request rate and latency by module, error rate by
+  code, per-queue depth, backlog age and **consumer count**, AI tokens by
+  feature, and a tenant-guard trip counter; `infra/prometheus-alerts.yml` carries
+  eleven rules against them, and both deployment overlays now start a Prometheus
+  that scrapes the endpoint and an Alertmanager that delivers what fires — until
+  that landed, the rules were a file rather than a running system.
+  The queue-consumer gauge is collected by asking Redis
+  what is attached rather than by counting enqueues, which is the only way that
+  failure is visible — a counter maintained by the enqueue path looks healthy
+  throughout, because jobs really are being enqueued.
+  What remains: **no distributed tracing**, **no stack-trace reporting** (a
+  vendor choice, deliberately not made here), and **no log shipping** — pino
+  writes structured JSON to stdout and nothing collects it, so logs still die
+  with the container — though they no longer grow without limit while they live:
+  every container rotates at 10 MB × 5 via the `x-logging` anchor in each Compose
+  file, and the observability gate fails the build if a service is added without
+  it. Docker's unrotated default was on the same disk Postgres writes to.
+  Metrics are also per-process and in memory, so more than one web replica needs
+  a scraper that reaches each of them.
 - Plan creation, assignment, module switching, limits, suspension and archive are
   implemented. External payment collection, invoices, tax and billing-webhook
   settlement are not connected to a real billing provider.
+- **The password policy's `reuseWindow` and `maxAgeDays` are now enforced.** Both
+  were typed on `PasswordPolicy` from the start and `reuseWindow` was offered on
+  the workspace settings screen with a 0..24 validator; nothing read either, so
+  an administrator who turned them on got a setting that saved, redisplayed, and
+  did nothing. `20260820110000_password_history` adds the table there was nothing
+  to compare against, `services/identity/passwordHistory.ts` enforces both, and
+  `maxAgeDays` is settable for the first time. Expiry and the existing
+  temporary-password gate now flow through one predicate rather than two
+  lookalike checks. What remains: reuse is enforced on user-chosen passwords —
+  self-service change and forgot-password redemption — and recorded but not
+  enforced on an administrator's reset, because refusing a recovery path on a
+  history collision turns it into a lockout.
 - Platform-owner MFA data is modeled, but enrollment, recovery and a mandatory
   production MFA policy are not complete.
 - Production providers, object-store retention, backup restoration, incident

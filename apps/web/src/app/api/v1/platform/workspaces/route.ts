@@ -287,6 +287,127 @@ export async function POST(req: Request) {
             { tenantId: created.id, key: 'lost', name: 'Lost', position: 4, category: 'TERMINAL_NEGATIVE' },
           ],
         });
+
+        /**
+         * Activity and task types, without which a new workspace cannot record
+         * that anything happened.
+         *
+         * Both are required foreign keys on their rows (`Activity.typeId`,
+         * `Task.typeId`) and both composers pick from a per-tenant list. With
+         * the list empty the select renders no options, the guard in the form
+         * returns before it posts, and pressing "Log" does nothing at all — no
+         * error, no row. Lead stages were provisioned here from the start; these
+         * two existed only in the demo seed, so every workspace created through
+         * the wizard — that is, every real customer — arrived unable to log a
+         * call or raise a task.
+         *
+         * Deliberately a small starting set rather than the seed's twenty: these
+         * are the ones every sales team uses on day one, and a workspace is
+         * expected to add its own. `scoreDelta` mirrors the seed so lead scoring
+         * behaves the same way in a provisioned workspace as in the demo.
+         */
+        await tx.activityType.createMany({
+          data: [
+            { tenantId: created.id, key: 'call_out', name: 'Outbound call', scoreDelta: 3, position: 0 },
+            { tenantId: created.id, key: 'call_in', name: 'Incoming call', scoreDelta: 8, position: 1 },
+            { tenantId: created.id, key: 'email_sent', name: 'Email sent', scoreDelta: 1, position: 2 },
+            { tenantId: created.id, key: 'meeting', name: 'Meeting', scoreDelta: 12, position: 3 },
+            { tenantId: created.id, key: 'follow_up', name: 'Follow-up completed', scoreDelta: 3, position: 4 },
+            { tenantId: created.id, key: 'note', name: 'Lead note', scoreDelta: 0, position: 5 },
+          ],
+        });
+        await tx.taskType.createMany({
+          data: [
+            { tenantId: created.id, key: 'call', name: 'Call', category: 'TODO' },
+            { tenantId: created.id, key: 'meeting', name: 'Meeting', category: 'APPOINTMENT' },
+            { tenantId: created.id, key: 'follow_up', name: 'Follow-up', category: 'TODO' },
+            { tenantId: created.id, key: 'internal', name: 'Internal task', category: 'TODO' },
+          ],
+        });
+
+        /**
+         * The default opportunity pipeline and its stages.
+         *
+         * `createOpportunity` resolves the tenant's default pipeline and throws
+         * `NotFound('Pipeline')` when there is none, so without this a newly
+         * provisioned workspace cannot create an opportunity at all — the
+         * central object of the CRM — and the failure surfaces to the user as a
+         * bare 404 on save. Like the type tables above, a pipeline existed only
+         * in the demo seed, so this was invisible in the demo tenant and broken
+         * for every real customer.
+         *
+         * Mirrors the seed's stage set, including the probability each stage
+         * carries: forecasting multiplies amount by stage probability, so a
+         * provisioned workspace that omitted them would report every open
+         * opportunity as worth zero.
+         */
+        const pipeline = await tx.pipeline.create({
+          data: { tenantId: created.id, key: 'sales', name: 'Sales Pipeline', isDefault: true },
+        });
+        await tx.pipelineStage.createMany({
+          data: [
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'qualification',
+              name: 'Qualification',
+              category: 'OPEN',
+              color: '#3D6BC7',
+              position: 0,
+              probability: 10,
+            },
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'needs_analysis',
+              name: 'Needs Analysis',
+              category: 'OPEN',
+              color: '#2447C7',
+              position: 1,
+              probability: 25,
+            },
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'proposal',
+              name: 'Proposal',
+              category: 'OPEN',
+              color: '#8A5A1A',
+              position: 2,
+              probability: 50,
+            },
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'negotiation',
+              name: 'Negotiation',
+              category: 'OPEN',
+              color: '#6E4B12',
+              position: 3,
+              probability: 70,
+            },
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'closed_won',
+              name: 'Closed Won',
+              category: 'CONVERSION',
+              color: '#0B6E5A',
+              position: 4,
+              probability: 100,
+            },
+            {
+              tenantId: created.id,
+              pipelineId: pipeline.id,
+              key: 'closed_lost',
+              name: 'Closed Lost',
+              category: 'TERMINAL_NEGATIVE',
+              color: '#A8232B',
+              position: 5,
+              probability: 0,
+            },
+          ],
+        });
       }
       await tx.platformAuditEvent.create({
         data: {

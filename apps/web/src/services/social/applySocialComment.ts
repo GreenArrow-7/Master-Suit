@@ -272,7 +272,6 @@ export async function applySocialComment({ tenantId, connectionId, event }: Appl
           objectType: 'SOCIAL_COMMENT',
           recordId: created.id,
           // Deep link straight to the enquiry (§17), not to a list.
-          actionUrl: `/social-leads/${created.id}`,
         },
       })
       .catch((err) => logger.warn({ err: (err as Error).message, tenantId }, 'social comment notification failed'));

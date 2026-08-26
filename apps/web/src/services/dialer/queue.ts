@@ -6,7 +6,7 @@
  * it. Two sources, because they are the two ways a real campaign gets built: a
  * marketing list somebody curated, or a filter over leads.
  */
-import { Invalid } from '@/lib/errors';
+import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 
@@ -33,6 +33,25 @@ export interface LoadResult {
 
 export async function loadQueue(input: LoadQueueInput): Promise<LoadResult> {
   const limit = Math.min(input.limit ?? MAX_PER_LOAD, MAX_PER_LOAD);
+
+  // Deliberately *not* the same rule the dialer applies. Calling needs the
+  // campaign to be RUNNING; building its list does not, because a list is
+  // curated before the campaign starts and that is the order of the work. What
+  // is refused is the two states a campaign does not come back from: adding
+  // people to a finished or cancelled campaign is either a mistake or somebody
+  // reaching for a list that was stopped on purpose.
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: input.campaignId, tenantId: input.tenantId, deletedAt: null },
+    select: { status: true },
+  });
+  if (!campaign) throw NotFound('Campaign');
+  if (campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED') {
+    throw Conflict(
+      campaign.status === 'COMPLETED'
+        ? 'This campaign is complete. Reopen it before adding anybody to its queue.'
+        : 'This campaign was cancelled. Nobody else should be added to its queue.',
+    );
+  }
 
   if (!input.listId && !input.stageIds?.length) {
     throw Invalid([

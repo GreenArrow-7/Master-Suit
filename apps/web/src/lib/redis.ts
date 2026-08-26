@@ -29,10 +29,28 @@ export async function cached<T>(key: string, ttlSeconds: number, load: () => Pro
   return value;
 }
 
-export async function invalidate(pattern: string) {
-  const stream = redis.scanStream({ match: pattern, count: 200 });
-  for await (const keys of stream) {
-    if ((keys as string[]).length) await redis.del(...(keys as string[]));
-  }
-  await redis.publish('cache:invalidate', pattern);
-}
+/**
+ * There is no pattern-based invalidation here, deliberately.
+ *
+ * There used to be: an `invalidate(pattern)` that ran a `SCAN`. Two things were
+ * wrong with it. It also `publish`ed each invalidation on a `cache:invalidate`
+ * channel nothing had ever subscribed to, which read as a cross-replica
+ * invalidation bus and was not one — every cache in this application lives in
+ * Redis, which all replicas share, so deleting the key here *is* the
+ * cross-replica invalidation.
+ *
+ * And the sweep itself was the wrong shape at any size. A `SCAN MATCH` costs
+ * O(*whole keyspace*) rather than O(matching keys), because Redis walks every
+ * key to find the ones that match — so deleting a tenant's two entitlement keys
+ * visited every cached actor, every live rate-limit window and all of BullMQ's
+ * bookkeeping on the way.
+ *
+ * Both callers could name their keys instead, and now do:
+ * `invalidateEntitlements` over a closed module list, and `ratelimit.clear`
+ * over a window and its predecessor. `lib/auth/actorCache.ts` covers the case
+ * where keys genuinely cannot be enumerated — one per signed-in user — by
+ * versioning the values, so invalidation is a single `INCR`.
+ *
+ * Prefer one of those two shapes. `tests/unit/no-keyspace-sweep.spec.ts` fails
+ * the build if a `SCAN` comes back.
+ */
