@@ -31,9 +31,11 @@
  * security covers every tenant-owned table; this proves the guard covers what
  * RLS does not. A model in `GLOBAL_MODELS` that also carries a `tenantId` and
  * has no forced RLS is protected by application code alone — no guard, no
- * policy. Three do, deliberately, because each is read to *decide* the tenant
- * and a policy on them would match nothing. A fourth appearing by accident is
- * the failure this file exists to make loud.
+ * policy. Two do, deliberately, because each is read to *decide* the tenant
+ * and a policy on them would match nothing. A third appearing by accident is
+ * the failure this file exists to make loud — `PlatformAccessGrant` was one,
+ * and it was here on a bootstrap claim that did not survive being checked
+ * (20260826120000).
  */
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -148,10 +150,6 @@ describe('GLOBAL_MODELS', () => {
       'Resolved before a tenant exists — it is the lookup that says which workspaces the ' +
       'signed-in identity has. lib/auth/session.ts filters every read by platformUserId, and ' +
       'switchActiveWorkspace requires an ACTIVE membership for the target workspace.',
-    PlatformAccessGrant:
-      'The support-access check itself: lib/auth/support-actor.ts asks whether this platform ' +
-      'owner holds an unexpired grant into this workspace. A policy would have to trust the ' +
-      'answer to decide whether to return it.',
     PlatformAuditEvent:
       'Control-plane audit. Written by platform staff actions that span workspaces and read ' +
       'only through the platform console, which runs under app.platform_admin.',

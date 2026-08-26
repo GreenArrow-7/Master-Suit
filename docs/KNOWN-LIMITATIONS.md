@@ -27,6 +27,14 @@ following items still prevent an unconditional commercial-production claim:
   the database. Call sites now pass `tenantId` alongside `callId`, the exemptions
   are gone from `src/lib/db.ts`, and the coverage assertion in `rls.spec.ts` will
   fail if any of them reappears.
+  `20260826120000_rls_platform_access_grant` closes the one that came after it.
+  `PlatformAccessGrant` — the row that turns a platform owner from read-only into
+  full control inside a customer's workspace — shipped outside RLS on the claim
+  that a policy would make the grant lookup match nothing. `activeGrant` is
+  *handed* the tenantId by `buildSupportActor`, which already knows which
+  workspace is being opened; the lookup answers "may this person write here", not
+  "where is here". `liveGrantCount`, the `/api/metrics` gauge, is the one caller
+  that spans tenants and now runs under `withPlatformTx`.
   What remains: `IntegrationConnection`, `APIKey`, `PasswordResetToken`,
   `RateLimitCounter`, `WorkspaceInvitation`, `WorkspaceMembership` and
   `PlatformAuditEvent` are still outside RLS. Each is a genuine bootstrap or
