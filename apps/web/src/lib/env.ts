@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
 /**
@@ -41,7 +42,37 @@ export const b64 = z.string().superRefine((value, ctx) => {
   }
 });
 
-const schema = z.object({
+/**
+ * Exported so tests can parse `.env.example` through it.
+ *
+ * `.env` is created by copying `.env.example` — that is what `npm run secrets`
+ * does, and what CI's "Generate .env" step does — so a key declared there that
+ * this schema rejects makes every process refuse to start, on a fresh checkout
+ * and in CI, while a developer whose `.env` predates the key sees nothing wrong.
+ * That is exactly how `FACE_SERVICE_TOKEN_ROTATED_AT=` got through review:
+ * `z.string().regex(…).optional()` accepts *absent* and rejects *empty*, and the
+ * example file declares keys with no value.
+ */
+/**
+ * An optional retention window in days, where empty means "no policy".
+ *
+ * `z.coerce.number()` turns `''` into `0`, so the bare
+ * `z.coerce.number().min(30).optional()` rejects the empty value that
+ * `.env.example` declares — and `.env` is a copy of `.env.example`, so every
+ * fresh checkout and every CI run would refuse to boot. That is the same failure
+ * `FACE_SERVICE_TOKEN_ROTATED_AT` shipped with; the difference is that
+ * tests/unit/env-example-parses.spec.ts caught this one before the push.
+ *
+ * The floor is a typo guard rather than a recommendation. Thirty days is not a
+ * retention policy anybody arrives at on purpose, and honouring a mistyped `3`
+ * costs an audit trail that cannot be recovered by correcting the variable.
+ */
+const retentionDays = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.coerce.number().int().min(30, 'a retention window must be at least 30 days, or empty to keep every row').optional(),
+);
+
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /**
    * Which environment this deployment IS, as distinct from how Node was built.
@@ -106,7 +137,13 @@ const schema = z.object({
   S3_ACCESS_KEY_ID: z.string(),
   S3_SECRET_ACCESS_KEY: z.string(),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
-  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  // SIGNED_URL_TTL_SECONDS was here and was read nowhere. No presigned URL is
+  // ever handed to a browser in this application — the web process streams
+  // objects itself, behind the same permission and field-security gates the rest
+  // of the product uses, which is why the bucket needs no public route at all.
+  // An operator lowering that TTL was hardening nothing. Removed rather than
+  // wired, along with the @aws-sdk/s3-request-presigner dependency that was
+  // installed and never imported; both come back with the first presigned URL.
 
   EMAIL_PROVIDER: z.enum(['mock', 'smtp']).default('mock'),
   SMTP_HOST: z.string().optional(),
@@ -114,29 +151,91 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
-  SMS_PROVIDER: z.string().default('mock'),
-  /** Offer letters, contracts and policy acknowledgements. `mock` is blocked in production. */
-  ESIGNATURE_PROVIDER: z.string().default('mock'),
+  /**
+   * Extra hosts the media worker may fetch a recording from, comma-separated.
+   *
+   * Added to the provider's own defaults rather than replacing them. A leading
+   * dot means "and its subdomains": `.twiliocdn.com` matches
+   * `media.twiliocdn.com` and not `nottwiliocdn.com`. Exists so a vendor moving
+   * CDN does not require a deploy here to keep ingesting recordings.
+   */
+  RECORDING_URL_ALLOWED_HOSTS: z.string().default(''),
+  // SMS_PROVIDER and ESIGNATURE_PROVIDER were here, with a seam apiece in
+  // lib/integrations and a mock adapter behind each. Nothing in the application
+  // ever called either factory — the only import of either module was its own
+  // test — so the settings described a capability the product did not have, and
+  // the boot check below then refused to start production until an operator set
+  // them to a vendor string that would have thrown "Unknown provider" the first
+  // time anything used it. `.env.production.example` said so out loud.
+  //
+  // Same rule as IMPORT_CHUNK_SIZE further down: a setting for a feature that
+  // does not exist is not forward planning, it is a claim. Both come back with
+  // the code that reads them, and an interface designed against a real vendor's
+  // API beats one guessed at in advance.
   WHATSAPP_PROVIDER: z.string().default('mock'),
   /** `clamav` in any deployed environment; `mock` is test-only and blocked in production. */
   ANTIVIRUS_PROVIDER: z.string().default('mock'),
   CLAMAV_HOST: z.string().default('127.0.0.1'),
   CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
   ANTIVIRUS_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  AI_PROVIDER: z.string().default('mock'),
-  AI_API_KEY: z.string().optional(),
+  // AI_PROVIDER and AI_API_KEY were here and neither was read anywhere. Which
+  // model runs is not a choice this setting made: lib/ai/gemini.ts resolves a
+  // key per workspace, falling back to GEMINI_API_KEY on the deployment, and
+  // *no key* is what selects the simulated path — never a provider string. So
+  // AI_PROVIDER=mock blocked a production boot while deciding nothing, and an
+  // operator who set it to `gemini` and forgot the key still got simulation.
+  //
+  // Deliberately not repointed at GEMINI_API_KEY. Whether a deployment must
+  // hold its own key is an owner's call and the design says otherwise — a
+  // tenant bringing its own key is the intended path, and gemini.ts prefers it.
   /**
    * The key call analysis, call audits and live coaching actually read. Unset
    * means those features run in clearly-labelled simulation mode — fine for a
    * demo, not for production analysis.
    */
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  // A rolling alias: numbered ids retire and take every AI feature with them.
+  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
+
+  /**
+   * The Meta app Master Suite itself is registered as, so one App Review covers
+   * every workspace. These identify the *platform*; the Page tokens they produce
+   * are per-tenant and live encrypted on the connection.
+   *
+   * Unset means the Connect button explains what an operator has to configure
+   * rather than sending anyone to a broken Facebook dialog.
+   */
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
 
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),
   FACE_SERVICE_TOKEN: z.string().optional(),
+  /**
+   * The day the face-service token was last rotated, `YYYY-MM-DD`.
+   *
+   * Written by `scripts/rotate-face-token.sh`, read only to publish the token's
+   * age as a metric. Unset means "never rotated since this was introduced",
+   * which is reported as an age rather than as no data — a missing series is
+   * indistinguishable from a scrape that failed, and the whole point is that a
+   * secret nobody rotates should be visible rather than silent.
+   */
+  FACE_SERVICE_TOKEN_ROTATED_AT: z.preprocess(
+    // An empty string is "not set", not a malformed date. `.env` is created by
+    // copying `.env.example`, which declares the key with no value, so without
+    // this the regex rejects `FACE_SERVICE_TOKEN_ROTATED_AT=` and the whole
+    // environment fails to parse — every process refusing to start because a
+    // secret has never been rotated. CI found it; the local `.env` predates the
+    // variable and so omitted it entirely, which is the one case that passes.
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'FACE_SERVICE_TOKEN_ROTATED_AT must be a date like 2026-08-20, or empty.')
+      .optional(),
+  ),
+  /** How old the face-service token may get before FaceServiceTokenStale fires. */
+  FACE_TOKEN_MAX_AGE_DAYS: z.coerce.number().int().positive().default(90),
   FACE_SERVICE_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   /** Cosine similarity against the enrolled templates. Tune on your own staff and lighting. */
   FACE_MATCH_THRESHOLD: z.coerce.number().min(0).max(1).default(0.55),
@@ -149,22 +248,62 @@ const schema = z.object({
   ATTENDANCE_CAPTURE_DIR: z.string().default('storage/attendance'),
   ATTENDANCE_CAPTURE_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
 
+  /**
+   * Retention for the three append-only tables, in days. Unset means keep.
+   *
+   * `AuditLog`, `HrAttendancePunch` and `PlatformAuditEvent` grow monotonically
+   * — nothing has ever deleted from them (W-7). The sweep that would is written
+   * and tested; what it does not have is a number, because how long an audit
+   * trail must be kept, and whether it may be deleted at all, is a compliance
+   * question and not an engineering one.
+   *
+   * So **absent means keep forever**, deliberately. A default here would delete
+   * somebody's audit trail on the strength of a number nobody chose, and the
+   * failure would be silent and irreversible — the one direction that cannot be
+   * undone by changing the setting later. An operator who wants deletion has to
+   * say so in days.
+   *
+   * The floor is a typo guard, not a policy: `AUDIT_LOG_RETENTION_DAYS=1` is not
+   * a retention decision anybody makes on purpose, and the cost of refusing a
+   * genuine one-day policy is a support conversation, while the cost of honouring
+   * a mistyped one is the trail.
+   *
+   * Each is separate because they have different owners and different legal
+   * weight. Attendance punches are employment records, and several jurisdictions
+   * set a statutory *minimum* on those. `PlatformAuditEvent` is the record of
+   * which of our own staff entered which customer's data, which is the one a
+   * customer has the strongest claim to.
+   */
+  AUDIT_LOG_RETENTION_DAYS: retentionDays,
+  ATTENDANCE_PUNCH_RETENTION_DAYS: retentionDays,
+  PLATFORM_AUDIT_RETENTION_DAYS: retentionDays,
+
+  /**
+   * Bearer token for GET /api/metrics. Unset means the endpoint 404s.
+   *
+   * Not optional-because-nobody-got-round-to-it: an absent endpoint cannot be
+   * probed for how it answers a wrong credential, and a deployment with no
+   * scraper should not be serving a map of its own route surface to anyone who
+   * asks. Generated by `npm run secrets` alongside the other two.
+   */
+  METRICS_TOKEN: z.string().optional(),
+
+  /** Enforced on the API-key path in lib/api/handler.ts. Sessions have their own ceiling. */
   API_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(600),
+  /** Enforced by csvStream in lib/csv.ts, and by the lead export's own loop. */
   EXPORT_MAX_ROWS: z.coerce.number().int().positive().default(500_000),
-  IMPORT_CHUNK_SIZE: z.coerce.number().int().positive().default(5_000),
+  // IMPORT_CHUNK_SIZE was here and was read nowhere, because there is no
+  // importer: the `import` queue is declared in lib/queue.ts and has no
+  // consumer. A setting for a feature that does not exist is not forward
+  // planning, it is a claim — it comes back with the worker that reads it.
   UPLOAD_MAX_MB: z.coerce.number().int().positive().default(25),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
+  /** Queries at or above this duration are logged; only slow ones, so safe in production. */
+  SLOW_QUERY_MS: z.coerce.number().int().positive().default(200),
 });
 
 /** Providers that must be real before the server serves a request. */
-export const PROVIDER_KEYS = [
-  'EMAIL_PROVIDER',
-  'SMS_PROVIDER',
-  'ESIGNATURE_PROVIDER',
-  'WHATSAPP_PROVIDER',
-  'ANTIVIRUS_PROVIDER',
-  'AI_PROVIDER',
-] as const;
+export const PROVIDER_KEYS = ['EMAIL_PROVIDER', 'WHATSAPP_PROVIDER', 'ANTIVIRUS_PROVIDER'] as const;
 
 /**
  * `next build` sets NODE_ENV=production and evaluates this module while
@@ -179,7 +318,58 @@ export function mockProviders(value: Record<string, string>): string[] {
   return PROVIDER_KEYS.filter((key) => String(value[key] ?? '').toLowerCase() === 'mock');
 }
 
-const parsed = schema.safeParse(process.env);
+/**
+ * `<KEY>_FILE` — a secret read from a file rather than from the environment.
+ *
+ * ── Why a variable is the wrong place for a secret ──────────────────────────
+ *
+ * The deployment keeps every credential in `.env.production` and passes the file
+ * into the containers, so each one arrives as a process environment variable.
+ * That is readable by anything that can run `docker inspect`, appears in
+ * `/proc/<pid>/environ` to every process sharing the namespace, and is captured
+ * verbatim by most crash reporters — none of which is true of a file with
+ * restrictive permissions.
+ *
+ * ── Why this is the shape a secret manager wants ────────────────────────────
+ *
+ * It is the convention every one of them already speaks: Docker secrets mount at
+ * `/run/secrets/<name>`, Kubernetes mounts a Secret as a volume, and Azure Key
+ * Vault's CSI driver writes files. All of them can already be pointed at
+ * `FIELD_ENCRYPTION_KEY_FILE=/run/secrets/field_key` with no adapter and no SDK
+ * in the application.
+ *
+ * The variable form still works and is still what a laptop uses. `_FILE` simply
+ * takes precedence where both are set, so migrating one secret at a time is a
+ * change to the deployment rather than to the code.
+ *
+ * Read synchronously and at import, because this runs before anything is served
+ * and a secret that arrives late is a secret half the process does not have.
+ */
+export function resolveSecretFiles(source: Record<string, string | undefined>): Record<string, string | undefined> {
+  const resolved: Record<string, string | undefined> = { ...source };
+  for (const [key, path] of Object.entries(source)) {
+    if (!key.endsWith('_FILE') || !path) continue;
+    const target = key.slice(0, -'_FILE'.length);
+    // Only for keys this application actually declares. Without that, a stray
+    // `LANG_FILE` in the environment would try to read a file and fail the boot
+    // over something that is not ours.
+    if (!(target in envSchema.shape)) continue;
+    try {
+      // Trailing newline trimmed: every editor and most secret managers add one,
+      // and a base64 key with `\n` on the end fails its length check with a
+      // message that says nothing about a newline.
+      resolved[target] = readFileSync(path, 'utf8').trim();
+    } catch (error) {
+      throw new Error(
+        `Could not read ${key}=${path} for ${target}: ${(error as Error).message}\n` +
+          '  A secret mounted as a file must exist and be readable by the process at start.',
+      );
+    }
+  }
+  return resolved;
+}
+
+const parsed = envSchema.safeParse(resolveSecretFiles(process.env));
 
 if (!parsed.success) {
   // Fail at boot, not at the first request that happens to need the variable.

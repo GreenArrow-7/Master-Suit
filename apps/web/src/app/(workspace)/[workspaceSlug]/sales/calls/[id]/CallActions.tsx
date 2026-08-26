@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Props {
@@ -9,9 +9,25 @@ interface Props {
   callStatus: string;
   hasTranscript: boolean;
   hasAnalysis: boolean;
+  hasRecording: boolean;
 }
 
-export default function CallActions({ callId, hasConsent, callStatus, hasTranscript, hasAnalysis }: Props) {
+export default function CallActions({
+  callId,
+  hasConsent,
+  callStatus,
+  hasTranscript,
+  hasAnalysis,
+  hasRecording,
+}: Props) {
+  // Lets the analysis poll below notice the component is gone.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -99,16 +115,41 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
       await api(`/api/v1/calls/${callId}/analysis`, 'POST');
       // The analysis runs in the background; poll until it leaves PROCESSING so
       // the panel updates without a manual reload.
-      for (let attempt = 0; attempt < 16; attempt++) {
+      for (let attempt = 0; attempt < 16 && alive.current; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
+        if (!alive.current) return;
+        if (document.hidden) continue;
         const res = await fetch(`/api/v1/calls/${callId}/analysis`);
         if (!res.ok) continue;
         const data = await res.json();
         if (data.status && data.status !== 'PROCESSING') break;
       }
+      if (!alive.current) return;
       router.refresh();
     } catch (e: any) {
       setError(e.message);
+    }
+    setBusy('');
+  }
+
+  async function uploadRecording(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy('recording');
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      // Multipart PUT: the server scans, stores and queues transcription itself.
+      const res = await fetch(`/api/v1/calls/${callId}/recording/media`, { method: 'PUT', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail ?? `Upload failed (${res.status})`);
+      }
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
     }
     setBusy('');
   }
@@ -205,6 +246,28 @@ export default function CallActions({ callId, hasConsent, callStatus, hasTranscr
             </button>
           </div>
         </form>
+      )}
+
+      {/* Recording upload — consent gate mirrors the server's */}
+      {hasConsent && (
+        <label
+          className="lf-btn lf-btn--secondary"
+          style={{ marginBottom: 8, display: 'block', textAlign: 'center', cursor: 'pointer' }}
+        >
+          {busy === 'recording' ? 'Uploading…' : hasRecording ? 'Replace Recording' : 'Upload Recording'}
+          <input
+            type="file"
+            accept="audio/*,video/*"
+            style={{ display: 'none' }}
+            onChange={uploadRecording}
+            disabled={!!busy}
+          />
+        </label>
+      )}
+      {!hasConsent && !isActive && (
+        <p className="lf-hint" style={{ marginBottom: 8 }}>
+          Recordings and transcripts need recorded consent first.
+        </p>
       )}
 
       {/* Transcript upload */}

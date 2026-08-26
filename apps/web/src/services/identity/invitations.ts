@@ -38,6 +38,8 @@ export interface InviteInput {
   candidateId?: string;
   /** The agreed start date from the accepted offer, rather than the acceptance date. */
   joiningDate?: Date;
+  /** Full-time, contract, and so on — asked for on the invitation form. */
+  employmentType?: string;
 }
 
 /**
@@ -96,6 +98,7 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
       departmentId: input.departmentId || null,
       candidateId: input.candidateId ?? null,
       joiningDate: input.joiningDate ?? null,
+      employmentType: input.employmentType ?? null,
       tokenHash: sha256(token),
       expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000),
       invitedById: ctx.actor.id,
@@ -284,6 +287,7 @@ export async function acceptInvitation(token: string, input: { password: string;
           // acceptance can happen weeks before it, so "today" would be wrong and
           // would skew every service-length calculation from gratuity down.
           joinedOn: invitation.joiningDate ?? new Date(),
+          employmentType: invitation.employmentType,
           hiredFromCandidateId: invitation.candidateId,
         },
       });

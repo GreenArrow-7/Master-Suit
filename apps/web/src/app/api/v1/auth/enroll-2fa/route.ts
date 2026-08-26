@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { AppError, Conflict, Forbidden, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
+import { verifyPassword } from '@/lib/auth/password';
 import { encryptSecret, decryptSecret } from '@/services/identity/secrets';
 import { resolvePlatformCtx, createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -34,17 +35,37 @@ export async function POST(req: Request) {
       z.object({
         step: z.enum(['begin', 'confirm']),
         code: z.string().length(6).optional(),
+        currentPassword: z.string().min(1).max(512).optional(),
       }),
     );
 
     const user = await prisma.platformUser.findUnique({
       where: { id: ctx.platformUserId },
-      select: { id: true, email: true, mfaEnabled: true, mfaSecret: true },
+      select: { id: true, email: true, mfaEnabled: true, mfaSecret: true, passwordHash: true },
     });
     if (!user) throw Unauthorized();
 
     if (body.step === 'begin') {
       if (user.mfaEnabled) throw Conflict('Two-factor authentication is already enabled on this account.');
+
+      /**
+       * Voluntary enrolment re-authenticates; forced first-run enrolment does not.
+       *
+       * An MFA_ENROLMENT grant is minted seconds after a successful password
+       * check, is the only thing that reaches this route, and is revoked the
+       * moment enrolment completes — the password has already been proven and
+       * asking again would only strand someone the workspace is compelling to
+       * enrol. A FULL session is different: it may be hours old, or stolen, and
+       * whoever completes enrolment holds a factor on the account and leaves
+       * with the recovery codes. Same rule as identity/self/two-factor-begin.
+       */
+      if (ctx.purpose === 'FULL') {
+        await consume(limits.mfaConfirm(user.id));
+        if (!body.currentPassword) throw Forbidden('Enter your password to set up two-factor authentication.');
+        if (!user.passwordHash || !(await verifyPassword(user.passwordHash, body.currentPassword))) {
+          throw Forbidden('That password is not correct.');
+        }
+      }
       const secret = generateSecret();
       await prisma.platformUser.update({ where: { id: user.id }, data: { mfaSecret: encryptSecret(secret) } });
       return NextResponse.json(

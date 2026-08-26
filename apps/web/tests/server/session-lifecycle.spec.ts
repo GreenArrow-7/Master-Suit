@@ -81,7 +81,7 @@ const tokenOf = (cookie: string) => decodeURIComponent(cookie.split('=').slice(1
  * the suite last ran.
  */
 async function clearLoginLimits() {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/0');
+  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

@@ -39,7 +39,14 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'campaigns', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'campaigns',
+    productModule: 'SALES',
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     const campaign = await prisma.campaign.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!campaign) throw NotFound('Campaign');

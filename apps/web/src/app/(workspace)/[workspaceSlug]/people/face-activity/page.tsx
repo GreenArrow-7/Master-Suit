@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/db';
+import { forbidden } from 'next/navigation';
+import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { isHrAdmin } from '@/services/hr/access';
-import { Forbidden } from '@/lib/errors';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import SalesLink from '@/components/workspace/SalesLink';
 import TableSearch from '@/components/workspace/TableSearch';
@@ -52,10 +53,12 @@ export default async function Page({
   const { workspaceSlug } = await params;
   const query = await searchParams;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
-  if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can read face recognition activity.');
+  // The same interrupt the page gate uses: a role that does not cover this
+  // screen deserves the refusal page, not "something went wrong on our side".
+  if (!isHrAdmin(ctx)) forbidden();
 
-  const to = query.to ? new Date(query.to) : new Date();
-  const from = query.from ? new Date(query.from) : new Date(to.getTime() - 29 * 86_400_000);
+  const to = queryDate(query.to, new Date());
+  const from = queryDate(query.from, new Date(to.getTime() - 29 * 86_400_000));
   const toEnd = new Date(to);
   toEnd.setHours(23, 59, 59, 999);
 
@@ -84,7 +87,11 @@ export default async function Page({
     }),
     prisma.employeeProfile.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true, employeeNumber: true, membership: { select: { platformUser: { select: { fullName: true } } } } },
+      select: {
+        id: true,
+        employeeNumber: true,
+        membership: { select: { platformUser: { select: { fullName: true } } } },
+      },
       orderBy: { employeeNumber: 'asc' },
     }),
     prisma.biometricConsent.findMany({
@@ -118,11 +125,41 @@ export default async function Page({
   });
 
   const csv = [
-    ['Employee', 'Employee code', 'When', 'Event', 'Liveness', 'Match', 'Location', 'Distance', 'GPS accuracy', 'Geofence', 'Status', 'Reason', 'Device', 'Audit reference']
+    [
+      'Employee',
+      'Employee code',
+      'When',
+      'Event',
+      'Liveness',
+      'Match',
+      'Location',
+      'Distance',
+      'GPS accuracy',
+      'Geofence',
+      'Status',
+      'Reason',
+      'Device',
+      'Audit reference',
+    ]
       .map(csvCell)
       .join(','),
     ...rows.map((row) =>
-      [row.employee, row.employeeNumber, row.at, row.event, row.liveness, row.match, row.location, row.distance, row.accuracy, row.inside, row.status, row.reason, row.device, row.audit]
+      [
+        row.employee,
+        row.employeeNumber,
+        row.at,
+        row.event,
+        row.liveness,
+        row.match,
+        row.location,
+        row.distance,
+        row.accuracy,
+        row.inside,
+        row.status,
+        row.reason,
+        row.device,
+        row.audit,
+      ]
         .map(csvCell)
         .join(','),
     ),
@@ -202,31 +239,31 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No biometric consent has been recorded.</div>
       ) : (
         <TableSearch placeholder="Employee or policy version…" label="Search the register">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Granted</th>
-                <th>Withdrawn</th>
-                <th>Policy</th>
-              </tr>
-            </thead>
-            <tbody>
-              {consents.map((consent, index) => {
-                const person = employees.find((employee) => employee.id === consent.employeeId);
-                return (
-                  <tr key={index}>
-                    <td data-label="Employee">{person?.membership.platformUser.fullName ?? consent.employeeId}</td>
-                    <td data-label="Granted">{consent.grantedAt ? stamp(consent.grantedAt) : '—'}</td>
-                    <td data-label="Withdrawn">{consent.withdrawnAt ? stamp(consent.withdrawnAt) : '—'}</td>
-                    <td data-label="Policy">{consent.policyVersion ?? '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Granted</th>
+                  <th>Withdrawn</th>
+                  <th>Policy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consents.map((consent, index) => {
+                  const person = employees.find((employee) => employee.id === consent.employeeId);
+                  return (
+                    <tr key={index}>
+                      <td data-label="Employee">{person?.membership.platformUser.fullName ?? consent.employeeId}</td>
+                      <td data-label="Granted">{consent.grantedAt ? stamp(consent.grantedAt) : '—'}</td>
+                      <td data-label="Withdrawn">{consent.withdrawnAt ? stamp(consent.withdrawnAt) : '—'}</td>
+                      <td data-label="Policy">{consent.policyVersion ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </TableSearch>
       )}
 
@@ -235,52 +272,54 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No face recognition activity in this period.</div>
       ) : (
         <TableSearch placeholder="Employee, location, status or reason…" label="Search these events">
-        <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>When</th>
-                <th>Event</th>
-                <th>Liveness</th>
-                <th>Match</th>
-                <th>Location</th>
-                <th>Distance</th>
-                <th>Accuracy</th>
-                <th>Geofence</th>
-                <th>Status</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td data-label="Employee">
-                    {row.employee}
-                    <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>{row.employeeNumber}</div>
-                  </td>
-                  <td data-label="When">{row.at}</td>
-                  <td data-label="Event">{row.event}</td>
-                  <td data-label="Liveness">{row.liveness}</td>
-                  <td data-label="Match">{row.match}</td>
-                  <td data-label="Location">{row.location}</td>
-                  <td data-label="Distance">{row.distance}</td>
-                  <td data-label="Accuracy">{row.accuracy}</td>
-                  <td data-label="Geofence">{row.inside}</td>
-                  <td data-label="Status">
-                    <span
-                      className="lf-badge"
-                      style={{ color: row.ok ? 'var(--lf-viridian)' : 'var(--lf-vermillion, #b3261e)' }}
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-                  <td data-label="Reason">{row.reason}</td>
+          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>When</th>
+                  <th>Event</th>
+                  <th>Liveness</th>
+                  <th>Match</th>
+                  <th>Location</th>
+                  <th>Distance</th>
+                  <th>Accuracy</th>
+                  <th>Geofence</th>
+                  <th>Status</th>
+                  <th>Reason</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td data-label="Employee">
+                      {row.employee}
+                      <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>
+                        {row.employeeNumber}
+                      </div>
+                    </td>
+                    <td data-label="When">{row.at}</td>
+                    <td data-label="Event">{row.event}</td>
+                    <td data-label="Liveness">{row.liveness}</td>
+                    <td data-label="Match">{row.match}</td>
+                    <td data-label="Location">{row.location}</td>
+                    <td data-label="Distance">{row.distance}</td>
+                    <td data-label="Accuracy">{row.accuracy}</td>
+                    <td data-label="Geofence">{row.inside}</td>
+                    <td data-label="Status">
+                      <span
+                        className="lf-badge"
+                        style={{ color: row.ok ? 'var(--lf-viridian)' : 'var(--lf-vermillion, #b3261e)' }}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td data-label="Reason">{row.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </TableSearch>
       )}
     </div>

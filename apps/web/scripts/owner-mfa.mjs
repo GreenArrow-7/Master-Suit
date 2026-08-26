@@ -80,8 +80,7 @@ const totp = (secret, counter) => {
   buf.writeBigUInt64BE(BigInt(counter));
   const hmac = createHmac('sha1', base32Decode(secret)).update(buf).digest();
   const offset = hmac[hmac.length - 1] & 0x0f;
-  const value =
-    ((hmac[offset] & 0x7f) << 24) | (hmac[offset + 1] << 16) | (hmac[offset + 2] << 8) | hmac[offset + 3];
+  const value = ((hmac[offset] & 0x7f) << 24) | (hmac[offset + 1] << 16) | (hmac[offset + 2] << 8) | hmac[offset + 3];
   return String(value % 10 ** 6).padStart(6, '0');
 };
 
@@ -122,7 +121,9 @@ if (process.argv.includes('--enroll')) {
   });
   console.log(`Enrolled ${email} for TOTP.\n`);
   console.log(`  Secret:       ${secret}`);
-  console.log(`  Authenticator: otpauth://totp/Master%20Suite:${encodeURIComponent(email)}?secret=${secret}&issuer=Master%20Suite&algorithm=SHA1&digits=6&period=30`);
+  console.log(
+    `  Authenticator: otpauth://totp/Master%20Suite:${encodeURIComponent(email)}?secret=${secret}&issuer=Master%20Suite&algorithm=SHA1&digits=6&period=30`,
+  );
   console.log(`  Current code: ${totp(secret, Math.floor(Date.now() / 1000 / 30))}`);
   console.log(`\nSign in with the password, then enter the code. Re-run without --enroll for a fresh code.`);
 } else {

@@ -1,7 +1,5 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
 import { resumeOrStart } from '@/services/dialer/session';
 import { queueStats } from '@/services/dialer/queue';
 
@@ -16,15 +14,12 @@ const params = z.object({ id: z.string().cuid() });
  */
 export const POST = route(
   { module: 'dialer', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'CALL_STARTED' },
-  async ({ ctx, params }) => {
-    const campaign = await prisma.campaign.findFirst({
-      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-      select: { id: true, status: true, name: true },
-    });
-    if (!campaign) throw NotFound('Campaign');
-
-    return resumeOrStart(ctx.tenantId, ctx.actor.id, campaign.id);
-  },
+  // The campaign lookup that used to be here selected `status` and `name` and
+  // read neither — the same selected-and-unread column that let a cancelled
+  // campaign be dialled. `resumeOrStart` now loads the campaign itself, refuses
+  // on its status, and raises the identical NotFound when there is no such row,
+  // so repeating the query here would only be a second chance to disagree.
+  async ({ ctx, params }) => resumeOrStart(ctx.tenantId, ctx.actor.id, params.id),
 );
 
 /** Queue health, for the campaign page and the leader's team view. */

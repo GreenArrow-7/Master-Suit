@@ -190,26 +190,58 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
 
   return (
     <>
-      <h1 className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+      <h1
+        className="sr-only"
+        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}
+      >
         My day
       </h1>
       <DayBrief eyebrow={briefDate()}>
         {overdueFollowUps > 0 ? (
           <>
-            Clear <BriefFigure href="/follow-ups?due=overdue" n={overdueFollowUps} label={overdueFollowUps === 1 ? 'overdue follow-up' : 'overdue follow-ups'} tone="vermillion" /> first.
-            Then <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone="brass" />, across{' '}
-            <BriefFigure href="/leads?filter=mine" n={assignedLeads} label={assignedLeads === 1 ? 'open lead' : 'open leads'} tone="neutral" />.
+            Clear{' '}
+            <BriefFigure
+              href="/follow-ups?due=overdue"
+              n={overdueFollowUps}
+              label={overdueFollowUps === 1 ? 'overdue follow-up' : 'overdue follow-ups'}
+              tone="vermillion"
+            />{' '}
+            first. Then <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone="brass" />,
+            across{' '}
+            <BriefFigure
+              href="/leads?filter=mine"
+              n={assignedLeads}
+              label={assignedLeads === 1 ? 'open lead' : 'open leads'}
+              tone="neutral"
+            />
+            .
           </>
         ) : (
           <>
-            Nothing overdue. <BriefFigure href="/follow-ups?due=today" n={todayFollowUps} label="due today" tone={todayFollowUps ? 'brass' : 'viridian'} />{' '}
-            across <BriefFigure href="/leads?filter=mine" n={assignedLeads} label={assignedLeads === 1 ? 'open lead' : 'open leads'} tone="neutral" />.
+            Nothing overdue.{' '}
+            <BriefFigure
+              href="/follow-ups?due=today"
+              n={todayFollowUps}
+              label="due today"
+              tone={todayFollowUps ? 'brass' : 'viridian'}
+            />{' '}
+            across{' '}
+            <BriefFigure
+              href="/leads?filter=mine"
+              n={assignedLeads}
+              label={assignedLeads === 1 ? 'open lead' : 'open leads'}
+              tone="neutral"
+            />
+            .
           </>
         )}
       </DayBrief>
 
       {(overdueFollowUps > 0 || todayFollowUps > 0) && (
-        <section aria-label="What to clear first" style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}>
+        <section
+          aria-label="What to clear first"
+          style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}
+        >
           {overdueFollowUps > 0 && (
             <LedgerRow
               href="/follow-ups?due=overdue"
@@ -271,7 +303,11 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
                   </div>
                   <span
                     className="lf-num"
-                    style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'right', color: pct >= 100 ? 'var(--lf-viridian)' : 'var(--lf-ink-2)' }}
+                    style={{
+                      fontSize: 'var(--lf-text-sm)',
+                      textAlign: 'right',
+                      color: pct >= 100 ? 'var(--lf-viridian)' : 'var(--lf-ink-2)',
+                    }}
                   >
                     {achieved}/{t.targetValue}
                   </span>
@@ -391,7 +427,10 @@ async function ManagerHome({ ctx }: { ctx: any }) {
 
   return (
     <>
-      <h1 className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+      <h1
+        className="sr-only"
+        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}
+      >
         The floor
       </h1>
       <DayBrief eyebrow={`${briefDate()} · scoped to your ${ctx.actor.roleKey.replace(/_/g, ' ')} visibility`}>
@@ -399,7 +438,12 @@ async function ManagerHome({ ctx }: { ctx: any }) {
         {breached > 0 && (
           <>
             {' — '}
-            <BriefFigure href="/leads?filter=breached" n={breached} label={breached === 1 ? 'SLA breach' : 'SLA breaches'} tone="vermillion" />
+            <BriefFigure
+              href="/leads?filter=breached"
+              n={breached}
+              label={breached === 1 ? 'SLA breach' : 'SLA breaches'}
+              tone="vermillion"
+            />
           </>
         )}
         {overdue > 0 && (
@@ -419,7 +463,10 @@ async function ManagerHome({ ctx }: { ctx: any }) {
       </DayBrief>
 
       {(breached > 0 || unassigned > 0) && (
-        <section aria-label="What to clear first" style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}>
+        <section
+          aria-label="What to clear first"
+          style={{ display: 'grid', gap: 'var(--lf-space-2)', marginBottom: 'var(--lf-space-4)' }}
+        >
           {breached > 0 && (
             <LedgerRow
               href="/leads?filter=breached"

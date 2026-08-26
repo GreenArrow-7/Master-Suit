@@ -53,10 +53,22 @@ export const requestCtx = cache(async (): Promise<Ctx> =>
   resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid()),
 );
 
-/** Same reasoning for the workspace record, which both callers also load. */
-export const requestWorkspace = cache(async (ctx: Ctx, slug: string, module?: ProductModule) =>
-  requireWorkspace(ctx, slug, module),
-);
+/**
+ * Same reasoning for the workspace record, which both callers also load.
+ *
+ * The record load is cached on (ctx, slug) alone. `cache` keys on the full
+ * argument list, so when the module rode along as a third argument the layout's
+ * two-argument call and a page's three-argument call were different keys — and
+ * the heavy tenant query ran twice per navigation. The entitlement check runs
+ * outside the cache instead; it is already Redis-cached for a minute.
+ */
+const workspaceRecord = cache(async (ctx: Ctx, slug: string) => requireWorkspace(ctx, slug));
+
+export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductModule) {
+  const workspace = await workspaceRecord(ctx, slug);
+  if (module) await assertModuleEntitlement(workspace.id, module);
+  return workspace;
+}
 
 export async function resolveWorkspacePage(workspaceSlug: string, options: WorkspacePageOptions) {
   const ctx = await requestCtx();
@@ -96,6 +108,33 @@ export async function requirePageAccess(options: WorkspacePageOptions) {
  * The API path still throws: `assertPermission` is unchanged, and route
  * handlers must answer with a 403 body, not a rendered page.
  */
+/**
+ * Runs a page's data load, and refuses the same way the page gate does.
+ *
+ * The gate below only knows the coarse permission a route declares; several
+ * services then apply a stricter rule of their own — the compliance register
+ * needs `employee:VIEW` at TEAM, payroll needs `payroll:VIEW` at ORGANIZATION —
+ * and throw when the caller falls short. Thrown from inside a server component
+ * that has already passed the gate, that 403 lands on the generic error
+ * boundary, so somebody whose role simply does not cover the screen was told
+ * "Something went wrong on our side" and offered a Try again button that could
+ * never work. It reads as the application crashing, which is exactly how it was
+ * reported.
+ *
+ * Converting it to the same `forbidden()` interrupt `assertPageAccess` uses
+ * gets the honest answer on screen and keeps genuine faults on the error page
+ * where they belong. The API path is untouched: route handlers still receive a
+ * thrown 403 and answer with a body.
+ */
+export async function pageLoad<T>(load: Promise<T>): Promise<T> {
+  try {
+    return await load;
+  } catch (err) {
+    if ((err as { status?: number } | null)?.status === 403) forbidden();
+    throw err;
+  }
+}
+
 function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
   if (options.permission === SELF_SERVICE) return;
   try {

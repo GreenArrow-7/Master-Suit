@@ -12,6 +12,32 @@
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Employment statuses, spelled in one place.
+ *
+ * `EmployeeProfile.employmentStatus` is a plain String column, so nothing stops
+ * two parts of the module from disagreeing about how to spell the same state —
+ * and two of them did. Offboarding writes `NOTICE`, but the People dashboard
+ * counted `ON_NOTICE`, so its "On notice" tile read 0 however many people were
+ * serving notice; and the employees PATCH endpoint accepted `ON_NOTICE`, which
+ * would have written a value the lifecycle screens do not recognise.
+ */
+export const EMPLOYMENT_STATUSES = ['ONBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE', 'SUSPENDED', 'EXITED'] as const;
+
+export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
+
+/**
+ * The states in which somebody is still expected at work, and may therefore
+ * record attendance.
+ *
+ * PROBATION belongs here: `createStaffAccount` puts every hire who is not
+ * created as ACTIVE onto probation, which is the normal path for someone
+ * starting next month — and they were then refused at the door on day one with
+ * "You have no active employment record." Serving notice counts too; they are
+ * working until the last day.
+ */
+export const AT_WORK_STATUSES: readonly EmploymentStatus[] = ['ONBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE'];
+
 /** UAE weekend, as JS `getUTCDay()` values: Sunday 0, Saturday 6. */
 export const UAE_WEEKEND = [0, 6] as const;
 
@@ -21,6 +47,21 @@ export function toDay(value: Date): Date {
 }
 
 export const dayKey = (value: Date) => toDay(value).toISOString().slice(0, 10);
+
+/**
+ * A date out of a query string, or the fallback.
+ *
+ * `new Date('last-tuesday')` is an Invalid Date rather than an error, and it
+ * stays quiet until something calls `.toISOString()` on it or hands it to
+ * Prisma — at which point the page 500s and the viewer is told the server
+ * broke. A mistyped or stale URL is not a server fault, so an unreadable value
+ * falls back to the same default an absent one would use.
+ */
+export function queryDate(value: string | undefined, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
 
 /**
  * Days that actually consume leave balance. Weekends and public holidays do not:

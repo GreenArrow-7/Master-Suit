@@ -122,6 +122,10 @@ export class KnowlarityProvider implements TelephonyProvider {
       deliveryId: `${externalCallId}:${status}`,
     };
   }
+  /** Knowlarity serves recording media from its own domain. */
+  mediaHosts(): readonly string[] {
+    return ['.knowlarity.com'];
+  }
 }
 
 const num = (value: unknown): number | undefined => {

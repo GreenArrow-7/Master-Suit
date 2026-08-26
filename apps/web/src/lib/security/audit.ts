@@ -31,7 +31,18 @@ export type AuditEventName =
   | 'CONSENT_RECORDED'
   | 'CONSENT_WITHDRAWN'
   | 'AI_ANALYSIS_COMPLETED'
-  | 'CALL_AUDIT_COMPLETED';
+  | 'CALL_AUDIT_COMPLETED'
+  /**
+   * §59. That an agent replied to a customer, never what they said: the audit
+   * hook records only the method, path and record id, so the message body stays
+   * in Communication where retention policy can reach it. An audit trail that
+   * duplicates every WhatsApp message is a second copy of the most sensitive
+   * data in the product, in the one table nobody prunes.
+   *
+   * The rest of §59's list — META_CONNECTED, WEBHOOK_FAILURE and the others —
+   * arrives with the features that emit them rather than as unused strings.
+   */
+  | 'MESSAGE_SENT';
 
 export interface AuditInput {
   event: AuditEventName;

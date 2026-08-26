@@ -1,4 +1,10 @@
 .next
+# The local production build's output directory (scripts/start-local-prod.mjs).
+# Its absence here is why `npm run format:check` reported 678 unformatted files
+# and why the CI gate was left disabled: `.next-prod` vendors dependencies with
+# their own sources, so once anybody had run a production build the check was
+# measuring third-party packages.
+.next-prod
 node_modules
 coverage
 package-lock.json
@@ -7,3 +13,5 @@ src/generated
 next-env.d.ts
 test-results
 playwright-report
+# Scratch verification scripts and logs from local runs.
+.verify

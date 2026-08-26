@@ -87,6 +87,12 @@ export const PROVIDERS: ProviderSpec[] = [
       { key: 'accessToken', label: 'System user access token', secret: true },
       { key: 'phoneNumberId', label: 'Phone number ID', secret: false },
       {
+        key: 'wabaId',
+        label: 'WhatsApp Business Account ID',
+        secret: false,
+        hint: 'Needed to sync templates. Not the same as the phone number ID — templates belong to the account.',
+      },
+      {
         key: 'appSecret',
         label: 'App secret',
         secret: true,
@@ -138,6 +144,44 @@ export const PROVIDERS: ProviderSpec[] = [
     capabilities: ['TRANSCRIBE'],
     webhook: false,
   },
+  {
+    key: 'gemini',
+    label: 'Gemini',
+    category: 'AI',
+    description:
+      'Call analysis, call audits, live coaching, the in-app assistant and reply drafts. Without a key these run in clearly-labelled simulation.',
+    credentials: [
+      {
+        key: 'apiKey',
+        label: 'API key',
+        secret: true,
+        hint: 'From Google AI Studio, or from OpenRouter if Provider is set to openrouter. Bringing your own key gives this workspace its own quota and billing.',
+      },
+    ],
+    settings: [
+      {
+        key: 'provider',
+        label: 'Provider',
+        secret: false,
+        setting: true,
+        // A key does not say which API it belongs to, and sending one to the
+        // wrong endpoint is a 400 that reads as "Connected" on this screen while
+        // every feature quietly simulates.
+        hint: 'google (default) or openrouter. Must match where the key came from.',
+      },
+      {
+        key: 'model',
+        label: 'Model',
+        secret: false,
+        setting: true,
+        // Google retires model ids on its own schedule, so this is editable
+        // rather than pinned in a deployment.
+        hint: 'Google defaults to gemini-flash-latest. OpenRouter has no default and requires an explicit id, e.g. google/gemini-2.0-flash-001.',
+      },
+    ],
+    capabilities: ['ANALYSE', 'AUDIT', 'COACH', 'DRAFT'],
+    webhook: false,
+  },
 ];
 
 export const providerSpec = (key: string) => PROVIDERS.find((p) => p.key === key);
@@ -149,4 +193,11 @@ export const providerSpec = (key: string) => PROVIDERS.find((p) => p.key === key
  * storage detail, and this is the only provider whose engine choice is not a
  * secret but travels with the key that selects it.
  */
-export const CREDENTIAL_ALSO_SETTINGS: Record<string, string[]> = { transcription: ['provider', 'model'] };
+export const CREDENTIAL_ALSO_SETTINGS: Record<string, string[]> = {
+  transcription: ['provider', 'model'],
+  // Same reason, one layer along: verifyConnection is handed the credentials
+  // and nothing else, and it cannot check a key without knowing whose API it
+  // is. Testing a Bearer token against Google's ListModels reports a broken
+  // key as broken for the wrong reason, and a working one as broken outright.
+  gemini: ['provider', 'model'],
+};

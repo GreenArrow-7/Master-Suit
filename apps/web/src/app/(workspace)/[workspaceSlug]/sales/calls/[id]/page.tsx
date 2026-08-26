@@ -5,6 +5,9 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallActions from './CallActions';
 import AnalysisPanel from './AnalysisPanel';
+import FollowUpComposer from './FollowUpComposer';
+import CoachingNotes, { type CoachingNoteView } from './CoachingNotes';
+import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -30,7 +33,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const params = await paramsPromise;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
 
-  const [call, analysis, audits, followUps] = await Promise.all([
+  const [call, analysis, audits, followUps, objectionMatches, coachingNotes] = await Promise.all([
     prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       include: {
@@ -59,6 +62,18 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
       where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
       orderBy: { dueAt: 'asc' },
       take: 10,
+    }),
+    prisma.objectionMatch.findMany({
+      where: { tenantId: ctx.tenantId, callId: params.id },
+      include: { objection: { select: { name: true, recommendedResponses: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    }),
+    prisma.coachingNote.findMany({
+      where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: { author: { select: { id: true, fullName: true } } },
+      take: 50,
     }),
   ]);
 
@@ -194,7 +209,10 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
             callStatus={call.status}
             hasTranscript={!!call.transcript}
             hasAnalysis={!!analysis}
+            hasRecording={!!call.recording}
           />
+
+          <FollowUpComposer callId={params.id} />
 
           {/* Consent details */}
           {call.consent && (
@@ -330,6 +348,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                     buyingSignals: analysis.buyingSignals as string[],
                     risks: analysis.risks as string[],
                     nextSteps: analysis.nextSteps as string[],
+                    actionItems: analysis.actionItems as string[],
+                    talkRatio: analysis.talkRatio,
                     topicsDiscussed: analysis.topicsDiscussed as string[],
                     topicsMissed: analysis.topicsMissed as string[],
                     sentiment: analysis.sentiment,
@@ -342,6 +362,65 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                   }
                 : null
             }
+          />
+
+          {/* Playbook objections found in this call */}
+          {objectionMatches.length > 0 && (
+            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+                Playbook Objections
+              </div>
+              {objectionMatches.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    borderBottom: '1px solid var(--lf-line)',
+                    paddingBottom: 'var(--lf-space-3)',
+                    marginBottom: 'var(--lf-space-3)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 'var(--lf-text-sm)', fontWeight: 600 }}>{m.objection.name}</span>
+                    <Badge tone={m.addressed ? 'viridian' : 'vermillion'}>
+                      {m.addressed ? 'addressed' : 'not addressed'}
+                    </Badge>
+                  </div>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 'var(--lf-text-sm)',
+                      color: 'var(--lf-ink-2)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    “{m.snippet}”
+                  </p>
+                  {!m.addressed && (m.objection.recommendedResponses as string[])[0] && (
+                    <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
+                      Playbook: {(m.objection.recommendedResponses as string[])[0]}
+                    </p>
+                  )}
+                </div>
+              ))}
+              <p className="lf-hint" style={{ margin: 0 }}>
+                “Addressed” is a phrase-overlap heuristic against the playbook’s recommended responses — listen before
+                you coach on it.
+              </p>
+            </section>
+          )}
+
+          <CoachingNotes
+            callId={params.id}
+            notes={coachingNotes.map((n): CoachingNoteView => ({
+              id: n.id,
+              body: n.body,
+              resolvedAt: n.resolvedAt?.toISOString() ?? null,
+              createdAt: n.createdAt.toISOString(),
+              author: n.author,
+            }))}
+            canCoach={SCOPE_RANK[scopeFor(ctx, 'calls', 'VIEW')] >= SCOPE_RANK.TEAM && call.callerId !== ctx.actor.id}
+            viewerId={ctx.actor.id}
+            repId={call.callerId}
           />
 
           {/* Call Audits */}

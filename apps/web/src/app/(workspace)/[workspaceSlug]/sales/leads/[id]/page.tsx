@@ -14,7 +14,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-  const lead = await prisma.lead.findFirst({
+  // One round trip, not three: the lookups and field rules depend only on ctx,
+  // so they run alongside the lead fetch instead of after it.
+  const leadPromise = prisma.lead.findFirst({
     where: { ...scope, id },
     include: {
       stage: true,
@@ -34,14 +36,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 20,
-        select: { id: true, name: true, category: true, mimeType: true, sizeBytes: true, scanState: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          mimeType: true,
+          sizeBytes: true,
+          scanState: true,
+          createdAt: true,
+        },
       },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
     },
   });
-  if (!lead) notFound();
 
-  const [stages, activityTypes, taskTypes, tenantUsers] = await Promise.all([
+  const [lead, stages, activityTypes, taskTypes, tenantUsers, rules] = await Promise.all([
+    leadPromise,
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { position: 'asc' },
@@ -61,9 +71,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       select: { id: true, fullName: true },
       orderBy: { fullName: 'asc' },
     }),
+    loadFieldRules(ctx, 'LEAD'),
   ]);
+  if (!lead) notFound();
 
-  const rules = await loadFieldRules(ctx, 'LEAD');
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
 
   // Serialize dates to ISO strings for the client component

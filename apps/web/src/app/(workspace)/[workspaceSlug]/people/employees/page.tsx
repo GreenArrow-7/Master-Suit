@@ -32,11 +32,27 @@ export default async function EmployeesPage({
 
   const rows = await prisma.employeeProfile.findMany({
     where: { tenantId: ctx.tenantId, deletedAt: null, ...search },
-    include: {
-      membership: { include: { platformUser: true, salesUser: { include: { role: true } } } },
-      department: true,
+    // Exactly the columns the table shows. The previous include pulled the full
+    // PlatformUser row — passwordHash, mfaSecret and recovery codes included —
+    // for every employee on every visit to this page.
+    select: {
+      id: true,
+      employeeNumber: true,
+      designation: true,
+      employmentStatus: true,
+      membership: {
+        select: {
+          roleSnapshot: true,
+          platformUser: { select: { fullName: true, email: true } },
+          salesUser: { select: { role: { select: { name: true } } } },
+        },
+      },
+      department: { select: { name: true } },
     },
     orderBy: { employeeNumber: 'asc' },
+    // ponytail: hard cap, no pager — the search box is the escape hatch. Wire a
+    // Pager like the leads list if a workspace ever exceeds this headcount.
+    take: 500,
   });
   return (
     <div className="lf-page-stack">
@@ -44,9 +60,11 @@ export default async function EmployeesPage({
         eyebrow="People"
         title="Employees"
         description={
-          query
-            ? `${rows.length} employee records matching "${query}".`
-            : `${rows.length} employee records in this workspace.`
+          rows.length === 500
+            ? `Showing the first 500 employee records — narrow with search.`
+            : query
+              ? `${rows.length} employee records matching "${query}".`
+              : `${rows.length} employee records in this workspace.`
         }
         breadcrumbs={[{ label: 'People', href: `/${workspaceSlug}/people` }, { label: 'Employees' }]}
         actions={

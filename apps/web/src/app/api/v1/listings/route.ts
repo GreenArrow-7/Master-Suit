@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
 import { prisma, withTx } from '@/lib/db';
@@ -34,7 +35,7 @@ export const GET = route(
     await expireLapsedMandates(ctx.tenantId);
 
     const cursor = decodeCursor(query.cursor);
-    const where = { ...listingWhere(ctx.tenantId, query, ctx.actor.id), ...cursorWhere(cursor) };
+    const where = mergeWhere(listingWhere(ctx.tenantId, query, ctx.actor.id), cursorWhere(cursor));
 
     const rows = await prisma.listing.findMany({
       where,

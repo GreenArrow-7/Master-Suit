@@ -1,10 +1,8 @@
+import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { resolveCtx } from '@/lib/auth/session';
 import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { assertModuleEntitlement } from '@/lib/security/entitlements';
-import { requireWorkspace } from '@/lib/workspace';
 import { exportReportCsv } from '@/services/hr/reports';
 
 /**
@@ -26,9 +24,10 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const { workspaceSlug, reportKey } = await context.params;
-    const ctx = await resolveCtx(req, requestId);
-    await assertModuleEntitlement(ctx.tenantId, 'HRMS');
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
+    // No `permission` here: `exportReportCsv` decides it per report — an
+    // attendance report and a payroll one are not the same authority. The rate
+    // limit is not optional, and this route had none.
+    const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'HRMS', workspaceSlug });
 
     const url = new URL(req.url);
     const date = (key: string) => {

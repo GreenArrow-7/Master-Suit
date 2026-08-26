@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -32,12 +33,12 @@ export const GET = route(
 
     if (query.view === 'codes') {
       const data = await prisma.referralCode.findMany({
-        where: {
-          ...scope,
-          deletedAt: null,
-          ...(query.leadId ? { leadId: query.leadId } : {}),
-          ...(query.contactId ? { contactId: query.contactId } : {}),
-        },
+        where: mergeWhere(
+          scope,
+          { deletedAt: null },
+          query.leadId ? { leadId: query.leadId } : null,
+          query.contactId ? { contactId: query.contactId } : null,
+        ),
         include: { _count: { select: { referrals: true } } },
         orderBy: { issuedAt: 'desc' },
         take: query.limit,

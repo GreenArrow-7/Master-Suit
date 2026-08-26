@@ -28,13 +28,42 @@ import { decryptSecret, encryptSecret } from './secrets';
 
 const RECOVERY_CODE_COUNT = 10;
 
+/**
+ * Bytes of randomness per recovery code.
+ *
+ * Was 5 — forty bits. A recovery code bypasses the second factor outright, and
+ * these are stored as a plain SHA-256 digest, so the only thing standing between
+ * a leaked database and a working 2FA bypass is the cost of guessing the input.
+ * Forty bits against a fast hash is roughly a trillion candidates: minutes on one
+ * consumer GPU, for every account in the table at once, because an unsalted
+ * digest lets one pass cover them all.
+ *
+ * Ten bytes puts it at 2^80, which is not reachable by anyone. The password
+ * (Argon2id) and the TOTP secret (AES-256-GCM, key held outside the database)
+ * were never the weak link here; this was.
+ */
+const RECOVERY_CODE_BYTES = 10;
+
+/**
+ * A fast digest is the right choice *at this entropy*, and was the wrong one at
+ * the old length.
+ *
+ * Argon2 exists to make guessing expensive when the secret is guessable — a
+ * human-chosen password. A random 80-bit value is not guessable, so the slow
+ * hash would buy nothing and would cost ten verifications per login attempt,
+ * since a submitted code has to be checked against every stored digest. This is
+ * the same reasoning session, reset and invitation tokens already use.
+ *
+ * Normalisation is what lets a person type the code back with or without the
+ * grouping hyphens, and it must stay identical on both sides of the comparison.
+ */
 const hashCode = (code: string) => createHash('sha256').update(code.replace(/\s|-/g, '').toUpperCase()).digest('hex');
 
 /** Grouped for legibility when read aloud down a phone line. */
 function generateRecoveryCodes() {
   return Array.from({ length: RECOVERY_CODE_COUNT }, () => {
-    const raw = randomBytes(5).toString('hex').toUpperCase();
-    return `${raw.slice(0, 5)}-${raw.slice(5)}`;
+    const raw = randomBytes(RECOVERY_CODE_BYTES).toString('hex').toUpperCase();
+    return (raw.match(/.{1,5}/g) ?? [raw]).join('-');
   });
 }
 
@@ -44,9 +73,26 @@ function generateRecoveryCodes() {
  * The returned object is never handed back to a caller as-is — each exported
  * function projects it — and lib/api/handler.ts scrubs the same keys on egress.
  */
-async function platformUserFor(ctx: Ctx, userId = ctx.actor.id) {
+async function platformUserFor(ctx: Ctx) {
+  // Deliberately no `userId` parameter. It had one, defaulting to
+  // `ctx.actor.id`, and not one of the five callers ever passed it.
+  //
+  // That is worth removing rather than leaving: `WorkspaceMembership` is in
+  // GLOBAL_MODELS so the tenant guard is skipped, and it carries no row-level
+  // security either — so this lookup is protected by neither of the two layers
+  // everything else in the codebase relies on. `salesUserId` is globally unique,
+  // so an id belonging to another workspace is a perfectly valid key here, and
+  // what comes back is the row this file's own docstring calls the one place
+  // that legitimately loads the credential columns.
+  //
+  // Nothing exploited it, because nothing passed the argument. An unused
+  // parameter on a function like this is an invitation, and the next caller
+  // would have had no reason to suspect it. Administering *another* user's
+  // factors goes through `removeTotpFor`, which loads the target with
+  // `prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id } })` and takes
+  // the platformUserId from that membership — the tenant-scoped way round.
   const membership = await prisma.workspaceMembership.findUnique({
-    where: { salesUserId: userId },
+    where: { salesUserId: ctx.actor.id },
     include: { platformUser: true },
   });
   if (!membership?.platformUser) throw NotFound('User');
@@ -59,11 +105,27 @@ async function platformUserFor(ctx: Ctx, userId = ctx.actor.id) {
  * Step one: issue a secret and the otpauth URL the authenticator scans. Nothing
  * is switched on yet, and calling this again before confirming simply replaces
  * the pending secret.
+ *
+ * **Requires the account password**, for the same reason `changeOwnPassword`
+ * does: a borrowed unlocked laptop is otherwise a permanent account takeover.
+ * Enrolment is not a read — whoever completes it holds a factor on the account
+ * and walks away with the recovery codes, which are the way back in when the
+ * authenticator is lost. Without this, anyone holding a live session (or an API
+ * key, which authenticates as the key's creator) could enrol *their own*
+ * authenticator on somebody else's account, and the owner would have no way to
+ * tell it apart from their own enrolment.
+ *
+ * The first-run flow in api/v1/auth/enroll-2fa is the deliberate exception: the
+ * password was proven seconds earlier and its grant can reach nothing else.
  */
-export async function beginTotpEnrolment(ctx: Ctx) {
+export async function beginTotpEnrolment(ctx: Ctx, currentPassword: string) {
   const user = await platformUserFor(ctx);
   if (user.mfaEnabled)
     throw Conflict('Two-factor authentication is already enabled. Disable it first if you want to re-enrol.');
+
+  if (!user.passwordHash || !(await verifyPassword(user.passwordHash, currentPassword))) {
+    throw Forbidden('That password is not correct.');
+  }
 
   const secret = generateSecret();
   await prisma.platformUser.update({ where: { id: user.id }, data: { mfaSecret: encryptSecret(secret) } });

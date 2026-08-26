@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { passwordPolicy } from '@/services/identity/accounts';
+import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
@@ -102,7 +104,11 @@ export default async function WorkspaceLayout({
       />
       <div className="lf-content-column">
         {shell.supportMode && (
-          <SupportModeBanner workspaceId={shell.workspaceId} workspaceName={shell.displayName} readOnly={shell.supportReadOnly} />
+          <SupportModeBanner
+            workspaceId={shell.workspaceId}
+            workspaceName={shell.displayName}
+            readOnly={shell.supportReadOnly}
+          />
         )}
         <WorkspaceTopBar
           slug={shell.slug}
@@ -124,22 +130,14 @@ async function loadShell(workspaceSlug: string) {
     // per navigation instead of two of each.
     const ctx = await requestCtx();
     const workspace = await requestWorkspace(ctx, workspaceSlug);
-    const signedInAs = await prisma.user.findFirst({
-      where: { tenantId: ctx.tenantId, id: ctx.actor.id },
-      select: {
-        fullName: true,
-        email: true,
-        // Read through to the identity that actually holds the credential.
-        workspaceMembership: { select: { platformUser: { select: { passwordChangedAt: true } } } },
-      },
-    });
     const now = new Date();
     const modules = workspace.moduleEntitlements
       .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state) && (!item.endsAt || item.endsAt > now))
       .map((item) => item.module);
     const memberships = await prisma.workspaceMembership.findMany({
       where: { salesUserId: ctx.actor.id, status: 'ACTIVE', tenant: { deletedAt: null } },
-      include: { tenant: true },
+      // The switcher renders two strings; the full Tenant row is ~30 columns.
+      select: { tenant: { select: { slug: true, displayName: true } } },
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
@@ -152,10 +150,34 @@ async function loadShell(workspaceSlug: string) {
       supportReadOnly,
       slug: workspace.slug,
       displayName: workspace.displayName,
-      // Null means the account has not yet replaced the password it was issued.
-      // Strictly null: a platform support actor has no workspace User row at
-      // all, and the missing chain must not read as an unchanged password.
-      mustChangePassword: signedInAs?.workspaceMembership?.platformUser.passwordChangedAt === null,
+      /**
+       * The server-side half of the forced-change gate, and the one that counts:
+       * the login response only *suggests* a destination, and typing any other
+       * URL used to walk straight past it.
+       *
+       * Two conditions, one predicate. Null `passwordChangedAt` means the account
+       * is still on the password an administrator issued — handed over by voice
+       * or on paper, the weakest credential the system ever mints. The workspace's
+       * `maxAgeDays` is the other, and until now it was a setting that did nothing.
+       *
+       * `undefined` is deliberately *not* expiry: a platform support actor has no
+       * workspace User row at all, and an absent timestamp must not read as a
+       * password that needs changing — it would trap them in a redirect to a
+       * screen they have no account on. `null` is the opposite and does mean
+       * expiry, which is why this tests for `undefined` rather than falsiness.
+       *
+       * Not `ctx.mustChangePassword`: that field is `passwordChangedAt === null`
+       * and nothing more, so it carries the temporary-password half of the rule
+       * and not the expiry half. Using it here would leave `maxAgeDays` a setting
+       * that does nothing again, silently and on every workspace page.
+       *
+       * The timestamp comes off the context this navigation already resolved, so
+       * the membership lookup this used to make is gone rather than moved.
+       */
+      mustChangePassword:
+        ctx.passwordChangedAt !== undefined
+          ? passwordExpired(ctx.passwordChangedAt, await passwordPolicy(workspace.id))
+          : false,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:
@@ -171,7 +193,9 @@ async function loadShell(workspaceSlug: string) {
         can(ctx, key, 'CREATE'),
       ),
       user: {
-        name: signedInAs?.fullName ?? signedInAs?.email ?? (supportMode ? 'Platform staff' : 'Signed in'),
+        // buildActor carries the name from the row it loads anyway; the support
+        // actor names itself 'Platform staff'.
+        name: ctx.actor.fullName || ctx.actor.email || 'Signed in',
         role: ctx.actor.roleKey,
       },
     };

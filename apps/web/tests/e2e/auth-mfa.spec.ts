@@ -66,6 +66,17 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await page.goto('/enroll-2fa');
 
     await expect(page.getByRole('heading', { name: 'Set up your authenticator' })).toBeVisible();
+
+    /**
+     * Enrolling from a full session re-authenticates before a secret is issued.
+     * Whoever finishes enrolment holds a factor on the account and leaves with
+     * the recovery codes, so a session borrowed for a minute must not be enough
+     * — the same rule that already guards changing the password. The forced
+     * first-run grant is exempt and is covered in tests/security/mfa-reauth.
+     */
+    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
     await expect(page.getByText('Enter this setup key:')).toBeVisible();
 
     // The setup key is the only copy the account holder ever receives.
@@ -100,13 +111,13 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await expect(code).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
+    // Six digits auto-submit (LoginForm.onCodeChange); a click would send
+    // the same wrong code twice and spend two throttled attempts.
     await code.fill('000000');
-    await page.getByRole('button', { name: 'Verify and sign in' }).click();
     await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
     await code.fill(currentCode(secret));
-    await page.getByRole('button', { name: 'Verify and sign in' }).click();
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
   });
   test('a recovery code signs in when the authenticator is gone, and only once', async ({ page }) => {

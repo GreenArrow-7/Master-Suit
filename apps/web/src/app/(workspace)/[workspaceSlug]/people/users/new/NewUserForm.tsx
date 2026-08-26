@@ -125,7 +125,7 @@ export default function NewUserForm({
         </p>
         <p className="lf-users__once">{created.note}</p>
         <div className="lf-face__actions">
-          <a className="lf-btn" href={`/${workspaceSlug}/people/users/${created.employeeId}/face`}>
+          <a className="lf-btn" href={`/${workspaceSlug}/people/employees/${created.employeeId}/face`}>
             Enrol their face
           </a>
           <a className="lf-btn lf-btn--secondary" href={usersHref}>
@@ -149,31 +149,69 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-name">
             Full name
           </label>
-          <input id="nu-name" className="lf-input" value={form.fullName} onChange={(e) => set('fullName', e.target.value)} minLength={2} maxLength={160} required />
+          <input
+            id="nu-name"
+            className="lf-input"
+            value={form.fullName}
+            onChange={(e) => set('fullName', e.target.value)}
+            minLength={2}
+            maxLength={160}
+            required
+          />
         </div>
         <div className="lf-field">
           <label className="lf-label" htmlFor="nu-code">
             Employee code
           </label>
-          <input id="nu-code" className="lf-input" value={form.employeeNumber} onChange={(e) => set('employeeNumber', e.target.value)} maxLength={40} required placeholder="EMP-014" />
+          <input
+            id="nu-code"
+            className="lf-input"
+            value={form.employeeNumber}
+            onChange={(e) => set('employeeNumber', e.target.value)}
+            maxLength={40}
+            required
+            placeholder="EMP-014"
+          />
         </div>
         <div className="lf-field">
           <label className="lf-label" htmlFor="nu-email">
             Work email
           </label>
-          <input id="nu-email" className="lf-input" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} maxLength={254} required />
+          <input
+            id="nu-email"
+            className="lf-input"
+            type="email"
+            value={form.email}
+            onChange={(e) => set('email', e.target.value)}
+            maxLength={254}
+            required
+          />
         </div>
         <div className="lf-field">
           <label className="lf-label" htmlFor="nu-phone">
             Phone
           </label>
-          <input id="nu-phone" className="lf-input" type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} maxLength={32} placeholder="+971 50 000 0000" />
+          <input
+            id="nu-phone"
+            className="lf-input"
+            type="tel"
+            value={form.phone}
+            onChange={(e) => set('phone', e.target.value)}
+            maxLength={32}
+            placeholder="+971 50 000 0000"
+          />
         </div>
         <div className="lf-field">
           <label className="lf-label" htmlFor="nu-role">
             Role
           </label>
-          <select id="nu-role" className="lf-input" value={form.roleId} onChange={(e) => set('roleId', e.target.value)} required>
+          <select
+            id="nu-role"
+            className="lf-input"
+            value={form.roleId}
+            onChange={(e) => set('roleId', e.target.value)}
+            required
+          >
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -185,7 +223,12 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-dept">
             Department
           </label>
-          <select id="nu-dept" className="lf-input" value={form.departmentId} onChange={(e) => set('departmentId', e.target.value)}>
+          <select
+            id="nu-dept"
+            className="lf-input"
+            value={form.departmentId}
+            onChange={(e) => set('departmentId', e.target.value)}
+          >
             <option value="">Not set</option>
             {departments.map((option) => (
               <option key={option.id} value={option.id}>
@@ -198,7 +241,12 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-desig">
             Designation
           </label>
-          <select id="nu-desig" className="lf-input" value={form.designationId} onChange={(e) => set('designationId', e.target.value)}>
+          <select
+            id="nu-desig"
+            className="lf-input"
+            value={form.designationId}
+            onChange={(e) => set('designationId', e.target.value)}
+          >
             <option value="">Not set</option>
             {designations.map((option) => (
               <option key={option.id} value={option.id}>
@@ -211,7 +259,12 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-branch">
             Branch / office
           </label>
-          <select id="nu-branch" className="lf-input" value={form.branchId} onChange={(e) => set('branchId', e.target.value)}>
+          <select
+            id="nu-branch"
+            className="lf-input"
+            value={form.branchId}
+            onChange={(e) => set('branchId', e.target.value)}
+          >
             <option value="">Not set</option>
             {branches.map((option) => (
               <option key={option.id} value={option.id}>
@@ -224,7 +277,12 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-manager">
             Reporting manager
           </label>
-          <select id="nu-manager" className="lf-input" value={form.managerEmployeeId} onChange={(e) => set('managerEmployeeId', e.target.value)}>
+          <select
+            id="nu-manager"
+            className="lf-input"
+            value={form.managerEmployeeId}
+            onChange={(e) => set('managerEmployeeId', e.target.value)}
+          >
             <option value="">Not set</option>
             {managers.map((option) => (
               <option key={option.id} value={option.id}>
@@ -237,13 +295,25 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-joined">
             Joining date
           </label>
-          <input id="nu-joined" className="lf-input" type="date" value={form.joinedOn} onChange={(e) => set('joinedOn', e.target.value)} required />
+          <input
+            id="nu-joined"
+            className="lf-input"
+            type="date"
+            value={form.joinedOn}
+            onChange={(e) => set('joinedOn', e.target.value)}
+            required
+          />
         </div>
         <div className="lf-field">
           <label className="lf-label" htmlFor="nu-type">
             Employment type
           </label>
-          <select id="nu-type" className="lf-input" value={form.employmentType} onChange={(e) => set('employmentType', e.target.value)}>
+          <select
+            id="nu-type"
+            className="lf-input"
+            value={form.employmentType}
+            onChange={(e) => set('employmentType', e.target.value)}
+          >
             {EMPLOYMENT_TYPES.map((type) => (
               <option key={type} value={type}>
                 {type.replace('_', ' ').toLowerCase()}
@@ -255,7 +325,12 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-status">
             Account status
           </label>
-          <select id="nu-status" className="lf-input" value={form.status} onChange={(e) => set('status', e.target.value)}>
+          <select
+            id="nu-status"
+            className="lf-input"
+            value={form.status}
+            onChange={(e) => set('status', e.target.value)}
+          >
             <option value="ACTIVE">Active</option>
             <option value="INVITED">Invited</option>
             <option value="SUSPENDED">Suspended</option>
@@ -264,7 +339,11 @@ export default function NewUserForm({
       </div>
 
       <label className="lf-users__check">
-        <input type="checkbox" checked={form.attendanceEligible} onChange={(e) => set('attendanceEligible', e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={form.attendanceEligible}
+          onChange={(e) => set('attendanceEligible', e.target.checked)}
+        />
         <span>Eligible for geofenced attendance</span>
       </label>
 
@@ -273,7 +352,13 @@ export default function NewUserForm({
           <label className="lf-label" htmlFor="nu-loc">
             Assigned attendance location
           </label>
-          <select id="nu-loc" className="lf-input" value={form.workLocationId} onChange={(e) => set('workLocationId', e.target.value)} required>
+          <select
+            id="nu-loc"
+            className="lf-input"
+            value={form.workLocationId}
+            onChange={(e) => set('workLocationId', e.target.value)}
+            required
+          >
             <option value="">Choose a location</option>
             {locations.map((option) => (
               <option key={option.id} value={option.id}>

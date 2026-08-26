@@ -165,10 +165,34 @@ describe('performer boards', () => {
 
     const board = await performerBoard(fixture.a.tenantId, [], RANGE, 'revenue');
     expect(board.top).toHaveLength(1);
-    // Reversing the top slice would list the only seller as both best and worst.
-    expect(board.bottom.map((r) => r.userId)).toEqual(board.top.map((r) => r.userId));
+    /**
+     * Bottom is empty, not a copy of top.
+     *
+     * This assertion used to require the opposite — `bottom` deep-equal to
+     * `top` — under this very name, which is how the Leadership screen came to
+     * render the workspace's only seller as both "Top by revenue" and "Bottom
+     * by revenue". One seller has no worst.
+     */
+    expect(board.bottom).toEqual([]);
     expect(board.top[0].value).toBe(3_000_000);
     expect(board.top[0].name).not.toBeNull();
+  });
+
+  it('splits top and bottom without overlap once there are enough sellers', async () => {
+    // Six sellers against a limit of five: the old tail slice returned ranks
+    // 1–5 as "bottom" while 0–4 were "top", so four people were both.
+    const values = [6_000_000, 5_000_000, 4_000_000, 3_000_000, 2_000_000, 1_000_000];
+    for (const [i, saleValue] of values.entries()) {
+      await sale({ ownerId: `seller-${i}`, teamId: teamA, saleValue });
+    }
+
+    const board = await performerBoard(fixture.a.tenantId, [], RANGE, 'revenue');
+    const top = board.top.map((r) => r.userId);
+    const bottom = board.bottom.map((r) => r.userId);
+    expect(top).toHaveLength(5);
+    expect(bottom.some((id) => top.includes(id))).toBe(false);
+    // Worst first in the bottom list.
+    expect(bottom[0]).toBe('seller-5');
   });
 
   it('ranks revenue and volume differently', async () => {

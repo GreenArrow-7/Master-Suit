@@ -6,6 +6,7 @@ import {
   accountDetail,
   changeUserRole,
   createStaffAccount,
+  deleteUser,
   listAccounts,
   resetUserPassword,
   revokeUserSessions,
@@ -43,6 +44,7 @@ const paramsSchema = z.object({
     'invitation-resend',
     'invitation-revoke',
     'account-create',
+    'account-delete',
   ]),
 });
 
@@ -166,5 +168,32 @@ export const POST = route(
       default:
         throw new Error('Use GET for this action.');
     }
+  },
+);
+
+/**
+ * Removing an account, on its own permission.
+ *
+ * A separate method rather than another POST action, because it needs a
+ * separate grant: `users:DELETE` instead of the `users:MANAGE_USERS` the rest
+ * of this file runs on. Resetting a password and suspending an account are
+ * everyday administration and recoverable; removing one is neither, and a
+ * workspace can now hand out the first without the second.
+ *
+ * `userId` travels in the query because the kernel only parses a body for
+ * POST/PATCH/PUT — a DELETE body would arrive empty and the id would read as
+ * missing.
+ */
+export const DELETE = route(
+  {
+    module: 'users',
+    action: 'DELETE',
+    params: paramsSchema,
+    query: z.object({ userId: id, reason: z.string().max(300).optional() }),
+  },
+  async ({ ctx, params, query }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
+    if (params.action !== 'account-delete') throw MethodNotAllowed('POST');
+    return deleteUser(ctx, query.userId, query.reason);
   },
 );

@@ -80,9 +80,20 @@ export async function sweepDueCampaigns(now = new Date()) {
       summary.sent += sentTotal;
     }
 
-    // Started — even a WhatsApp campaign with nothing eligible to send, and
-    // every VOICE/EMAIL/SMS campaign whose channel is worked by other flows
-    // (the dialer queue reads RUNNING campaigns, not the clock).
+    // Started — even a WhatsApp campaign with nothing eligible to send.
+    //
+    // A VOICE campaign is started for the dialer, and RUNNING is the gate that
+    // lets it be called: `claimNext` hands out nobody from a campaign in any
+    // other state, in the same statement as the claim. So this transition is
+    // what opens the floor on a scheduled calling campaign, and Pause, Complete
+    // and Cancel are what close it — which is what those buttons had always
+    // looked like they did.
+    //
+    // An EMAIL or SMS campaign is started too, and nothing works it: there is no
+    // sender and no worker for either, and `EmailCampaign` is a table with no
+    // code behind it. This comment used to say all three were "worked by other
+    // flows", which was true of one of them. The composer and the send route now
+    // say the same thing to the operator rather than leaving it here.
     await prisma.campaign.update({
       where: { id: campaign.id, tenantId: campaign.tenantId },
       data: { status: 'RUNNING' },

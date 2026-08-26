@@ -239,12 +239,18 @@ export async function performerBoard(
   const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
   const withNames = rows.map((r) => ({ ...r, name: nameBy.get(r.userId) ?? null }));
 
-  return {
-    top: withNames.slice(0, limit),
-    // Not `.reverse()` of the top slice: with fewer people than `limit` that
-    // would show the same person at both ends.
-    bottom: withNames.slice(-limit).reverse(),
-  };
+  /**
+   * Bottom is the tail that is not already in the top.
+   *
+   * `slice(-limit)` alone does not achieve that: with six sellers and a limit of
+   * five, top is 0–4 and the tail is 1–5, so four people were listed as both the
+   * best and the worst on the same screen. Ranking the same person twice is not
+   * a second insight, and being named "bottom" while also being "top" is a thing
+   * a manager acts on. Below `limit` sellers there is no bottom to show at all.
+   */
+  const top = withNames.slice(0, limit);
+  const rest = withNames.slice(limit);
+  return { top, bottom: rest.slice(-limit).reverse() };
 }
 
 /**

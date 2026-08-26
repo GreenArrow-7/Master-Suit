@@ -1077,8 +1077,12 @@ function DocumentsTab({ documents, leadId, canEdit }: { documents: Doc[]; leadId
                 <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 4, flexWrap: 'wrap' }}>
                   {d.category && <Badge tone="slate">{d.category}</Badge>}
                   <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{d.mimeType}</span>
-                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtBytes(d.sizeBytes)}</span>
-                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{fmtDate(d.createdAt)}</span>
+                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
+                    {fmtBytes(d.sizeBytes)}
+                  </span>
+                  <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
+                    {fmtDate(d.createdAt)}
+                  </span>
                 </div>
               </div>
               {d.scanState === 'CLEAN' && (

@@ -1,0 +1,19 @@
+# 02:30 daily — half an hour before the retention sweep the maintenance worker
+# runs at 03:00, so a backup always precedes the deletions you would need it to
+# undo.
+[Unit]
+Description=Nightly Master Suite backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# Fire on the next boot if the machine was off when the time passed. Without
+# this a VM that reboots during its backup window simply skips that day, and
+# nothing says so.
+Persistent=true
+# The one thing every VM in a fleet doing this at exactly 02:30 does to shared
+# storage. Harmless here, and free.
+RandomizedDelaySec=15m
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -29,7 +29,47 @@ export interface TranscriptionResult {
   confidence?: number;
   language: string;
   provider: string;
+  /**
+   * Speaker-attributed segments, where the provider diarises. Empty otherwise —
+   * absent rather than faked, because a talk-to-listen ratio derived from
+   * invented speaker labels is a number a manager would act on.
+   */
+  segments?: DiarisedSegment[];
 }
+
+export interface DiarisedSegment {
+  /** The vendor's own channel label: Deepgram numbers from 0, Google tags from 1. */
+  speaker: string;
+  text: string;
+  startSec?: number;
+}
+
+/**
+ * Collapses per-word speaker tags into per-turn segments.
+ *
+ * Both diarising vendors return one entry per word with a speaker on it, which
+ * is unusable directly: a hundred single-word segments is not a conversation.
+ * Consecutive words from the same speaker become one turn.
+ */
+function groupWords(words: readonly { word: string; speaker: string; startSec?: number }[]): DiarisedSegment[] {
+  const segments: DiarisedSegment[] = [];
+  for (const w of words) {
+    const current = segments.at(-1);
+    if (current && current.speaker === w.speaker) current.text += ` ${w.word}`;
+    else segments.push({ speaker: w.speaker, text: w.word, startSec: w.startSec });
+  }
+  return segments.map((s) => ({ ...s, text: s.text.trim() }));
+}
+
+/** Google returns "1.400s"; Deepgram returns a number. Neither is required. */
+const toSeconds = (value: unknown): number | undefined => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
 
 export interface TranscriptionProvider {
   name: string;
@@ -56,8 +96,40 @@ export class MockTranscriptionProvider implements TranscriptionProvider {
 
   async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
     logger.info({ provider: 'mock', bytes: request.audio.length }, 'transcription mock');
+    /**
+     * Shaped like a real two-party call, not one line of prose: the analysis,
+     * the talk-to-listen ratio and the objection matcher all read speaker
+     * attribution, and a mock that omits it exercises none of them.
+     */
+    const segments: DiarisedSegment[] = [
+      { speaker: '0', text: 'Good morning, thanks for taking the call. Is now still a good time?', startSec: 0 },
+      { speaker: '1', text: 'Yes, but only a few minutes. Go ahead.', startSec: 6 },
+      {
+        speaker: '0',
+        text: 'Understood. May I ask what you are looking for, and roughly what budget you had in mind?',
+        startSec: 9,
+      },
+      {
+        speaker: '1',
+        text: 'A two bedroom near the schools. Honestly though, it sounds too expensive for us.',
+        startSec: 16,
+      },
+      {
+        speaker: '0',
+        text: 'That is a fair concern. The payment plan spreads it over three years, so the monthly figure is lower than the headline price suggests.',
+        startSec: 24,
+      },
+      {
+        speaker: '1',
+        text: 'Alright, send me the payment plan and the floor plan and I will look this week.',
+        startSec: 34,
+      },
+      { speaker: '0', text: 'I will email both this afternoon and follow up on Thursday.', startSec: 41 },
+    ];
+
     return {
-      text: '[mock transcript] Agent: Good morning, thanks for taking the call. Client: Send me the pricing.',
+      text: segments.map((s) => `${s.speaker === '0' ? 'Agent' : 'Client'}: ${s.text}`).join('\n'),
+      segments,
       confidence: 1,
       language: request.language ?? 'en',
       provider: 'mock',
@@ -130,7 +202,8 @@ export class GoogleTranscriptionProvider implements TranscriptionProvider {
       { maxAttempts: 3, retryOn: isTransient },
     );
 
-    type Alternative = { transcript?: string; confidence?: number };
+    type Word = { word?: string; speakerTag?: number; startTime?: string };
+    type Alternative = { transcript?: string; confidence?: number; words?: Word[] };
     const results = (data.results ?? []) as { alternatives?: Alternative[] }[];
 
     const text = results
@@ -142,8 +215,18 @@ export class GoogleTranscriptionProvider implements TranscriptionProvider {
       .map((r) => r.alternatives?.[0]?.confidence)
       .filter((c): c is number => typeof c === 'number');
 
+    /**
+     * Google puts the full diarised word list on the LAST result element only;
+     * the earlier ones repeat the transcript without speaker tags. Reading any
+     * other element gives a partial conversation attributed to nobody.
+     */
+    const diarised = (results.at(-1)?.alternatives?.[0]?.words ?? [])
+      .filter((w) => w.word && w.speakerTag != null)
+      .map((w) => ({ word: w.word!, speaker: String(w.speakerTag), startSec: toSeconds(w.startTime) }));
+
     return {
       text,
+      segments: groupWords(diarised),
       confidence: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : undefined,
       language,
       provider: this.name,
@@ -196,8 +279,13 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
     const alternative = data.results?.channels?.[0]?.alternatives?.[0];
 
+    const diarised = ((alternative?.words ?? []) as { word?: string; speaker?: number; start?: number }[])
+      .filter((w) => w.word && w.speaker != null)
+      .map((w) => ({ word: w.word!, speaker: String(w.speaker), startSec: toSeconds(w.start) }));
+
     return {
       text: String(alternative?.transcript ?? '').trim(),
+      segments: groupWords(diarised),
       confidence: typeof alternative?.confidence === 'number' ? alternative.confidence : undefined,
       language,
       provider: this.name,
@@ -262,6 +350,22 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
 // Credentials come from the tenant's IntegrationConnection (see
 // `connectionCredentials`), so each customer picks their own provider.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Which provider a workspace's transcription runs on, or null when it has none.
+ *
+ * The one place the development fallback lives, so the worker and the HTTP
+ * route cannot disagree about whether the module works on a fresh clone. In
+ * development an unconnected workspace falls back to `mock`, which is what makes
+ * upload → transcribe → analyse → draft runnable with nothing configured. In
+ * every other environment it returns null and the caller reports the feature as
+ * unavailable — `getTranscriptionProvider` refuses `mock` in production outright,
+ * so this cannot become a way to ship fake transcripts to a customer.
+ */
+export function transcriptionProviderFor(credentials: Record<string, string> | null): string | null {
+  if (credentials?.provider) return credentials.provider;
+  return process.env.NODE_ENV === 'development' ? 'mock' : null;
+}
 
 export function getTranscriptionProvider(provider: string, config: Record<string, string> = {}): TranscriptionProvider {
   switch (provider) {

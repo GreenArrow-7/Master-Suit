@@ -147,6 +147,10 @@ export class PlivoProvider implements TelephonyProvider {
       deliveryId: `${requestUuid}:${p.get('CallUUID') ?? ''}:${raw}`,
     };
   }
+  /** Plivo serves recording media from its API host and its media CDN. */
+  mediaHosts(): readonly string[] {
+    return ['api.plivo.com', '.plivo.com'];
+  }
 }
 
 const num = (value: string | null): number | undefined => {

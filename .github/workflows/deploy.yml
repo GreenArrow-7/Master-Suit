@@ -1,0 +1,211 @@
+# Manually-triggered deploy, calling the same script a person would.
+#
+# ── What this is and is not ─────────────────────────────────────────────────
+#
+# W-10: CI has nineteen gates and does not deploy, so release is a person over
+# SSH. The script they run is good — it refuses a dirty tree, a tree/tag
+# mismatch and a migration that has not been rehearsed in staging — and this
+# does not replace it. It calls it.
+#
+# What a pipeline adds over the same person running the same script is the two
+# things a person cannot do for themselves at 2am:
+#
+#   * **It checks CI was green on the exact commit** before touching the host.
+#     `release.sh` verifies the tree; nothing verified the tests. Deploying a
+#     commit whose pipeline failed is a mistake nobody makes deliberately and
+#     several people have made at speed.
+#   * **It puts production behind an approval.** `environment: production`
+#     below is what makes GitHub hold the run until a required reviewer says
+#     yes, if the repository's environment is configured with one. Staging is
+#     deliberately not gated — a rehearsal nobody can start without a second
+#     person is a rehearsal that stops happening.
+#
+# It is still manual, on purpose. Deploying every green commit to production
+# needs a rollback story faster than "a human notices", and the honest state of
+# that is `release.sh rollback`, which is a person.
+#
+# ── Before this can run ─────────────────────────────────────────────────────
+#
+# Three secrets per environment, none of which exist yet — the preflight job
+# says exactly which are missing rather than letting `ssh` fail obscurely:
+#
+#   DEPLOY_HOST_<ENV>   the VM's address
+#   DEPLOY_USER_<ENV>   an account in the docker group, with the checkout at
+#                       DEPLOY_PATH and the .env file already present
+#   DEPLOY_KEY_<ENV>    a private key whose public half is in that account's
+#                       authorized_keys, restricted to this repository
+#
+# The key is written to a file rather than passed on a command line, because an
+# argument is visible in `ps` to every process on the runner.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options: [staging, production]
+        required: true
+      action:
+        description: deploy this commit, or roll back to the previous tag
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+        required: true
+      commit:
+        description: >-
+          Commit to deploy. Leave empty to deploy the ref this workflow was
+          started from — or, for production, the tag staging is running, which
+          is what promotion means. Ignored for a rollback.
+        type: string
+        required: false
+
+# One deploy per environment at a time. Two overlapping runs would race on the
+# same `.current` / `.previous` state files, and the loser would record a tag
+# that is not what is running — which is exactly the state a rollback trusts.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Reading check runs for the target commit is the whole point of preflight.
+  checks: read
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The full history: the target commit may be older than the default
+          # shallow fetch, and resolving it is the first thing below.
+          fetch-depth: 0
+
+      - name: Resolve the commit
+        id: resolve
+        run: |
+          if [ '${{ inputs.action }}' = 'rollback' ]; then
+            echo 'A rollback starts a tag already on the host; no commit to resolve.'
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          REF='${{ inputs.commit }}'
+          [ -n "$REF" ] || REF='${{ github.sha }}'
+          SHA="$(git rev-parse --verify "$REF^{commit}")" || {
+            echo "::error::Not a commit in this repository: $REF"
+            exit 1
+          }
+          echo "Deploying $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse a commit CI has not passed
+        if: inputs.action == 'deploy'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          # The `verify` job is the whole pipeline; ci.yml runs one job by that
+          # name. Asking for its conclusion on this exact SHA is stricter than
+          # "the branch is green", which is a property of a different commit.
+          CONCLUSION="$(
+            gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+              --jq '.check_runs[] | select(.name=="verify") | .conclusion' | head -1
+          )"
+          case "$CONCLUSION" in
+            success) echo "CI is green on $SHA." ;;
+            '')      echo "::error::No 'verify' check run has reported on $SHA. Push it and let CI finish first."; exit 1 ;;
+            *)       echo "::error::CI concluded '$CONCLUSION' on $SHA. Refusing to deploy it."; exit 1 ;;
+          esac
+
+  deploy:
+    name: ${{ inputs.action }} to ${{ inputs.environment }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    # This is the approval gate. A `production` environment configured with
+    # required reviewers holds the run here; an unconfigured one does not, and
+    # that is a repository setting rather than something this file can assert.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check the deploy secrets exist
+        env:
+          HOST: ${{ secrets[format('DEPLOY_HOST_{0}', inputs.environment)] }}
+          USER: ${{ secrets[format('DEPLOY_USER_{0}', inputs.environment)] }}
+          KEY: ${{ secrets[format('DEPLOY_KEY_{0}', inputs.environment)] }}
+        run: |
+          # Named individually, because "Permission denied (publickey)" twenty
+          # minutes into an incident is a worse message than this one.
+          MISSING=''
+          [ -n "$HOST" ] || MISSING="$MISSING DEPLOY_HOST_${{ inputs.environment }}"
+          [ -n "$USER" ] || MISSING="$MISSING DEPLOY_USER_${{ inputs.environment }}"
+          [ -n "$KEY" ]  || MISSING="$MISSING DEPLOY_KEY_${{ inputs.environment }}"
+          if [ -n "$MISSING" ]; then
+            echo "::error::This repository has no deploy credentials for ${{ inputs.environment }}. Missing:$MISSING"
+            echo "::error::See the header of .github/workflows/deploy.yml for what each one is."
+            exit 1
+          fi
+
+      - name: Open an SSH session
+        env:
+          HOST: ${{ secrets[format('DEPLOY_HOST_{0}', inputs.environment)] }}
+          KEY: ${{ secrets[format('DEPLOY_KEY_{0}', inputs.environment)] }}
+          KNOWN_HOSTS: ${{ secrets[format('DEPLOY_KNOWN_HOSTS_{0}', inputs.environment)] }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            # Trust on first use, recorded in the log so the fingerprint can be
+            # compared afterwards. Set DEPLOY_KNOWN_HOSTS_<ENV> to pin it and
+            # this branch stops running — which is what a deployment carrying
+            # production credentials should be doing.
+            echo "::warning::No DEPLOY_KNOWN_HOSTS_${{ inputs.environment }}; accepting the host key on first use."
+            ssh-keyscan -H "$HOST" 2>/dev/null | tee ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run release.sh on the host
+        env:
+          HOST: ${{ secrets[format('DEPLOY_HOST_{0}', inputs.environment)] }}
+          USER: ${{ secrets[format('DEPLOY_USER_{0}', inputs.environment)] }}
+          DEPLOY_PATH: ${{ vars[format('DEPLOY_PATH_{0}', inputs.environment)] || '/opt/master-suite' }}
+          SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [ '${{ inputs.action }}' = 'rollback' ]; then
+            REMOTE="cd '$DEPLOY_PATH' && apps/web/scripts/release.sh rollback ${{ inputs.environment }}"
+          else
+            # `git fetch && checkout` before the script, because release.sh
+            # refuses a tree that is not at the commit it was asked to deploy —
+            # deliberately, and this is the step that satisfies it rather than
+            # the check to work around.
+            REMOTE="cd '$DEPLOY_PATH' \
+              && git fetch --all --tags --prune \
+              && git checkout --detach '$SHA' \
+              && apps/web/scripts/release.sh ${{ inputs.environment }} '$SHA'"
+          fi
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$USER@$HOST" "bash -lc \"set -Eeuo pipefail; $REMOTE\""
+
+      - name: What is running now
+        if: always()
+        env:
+          HOST: ${{ secrets[format('DEPLOY_HOST_{0}', inputs.environment)] }}
+          USER: ${{ secrets[format('DEPLOY_USER_{0}', inputs.environment)] }}
+          DEPLOY_PATH: ${{ vars[format('DEPLOY_PATH_{0}', inputs.environment)] || '/opt/master-suite' }}
+        # `always()`, because the state after a *failed* deploy is the thing
+        # somebody most needs to read, and it is the run they will not think to
+        # go and ask for.
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$USER@$HOST" "cd '$DEPLOY_PATH' && apps/web/scripts/release.sh status" || true
+
+      - name: Forget the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

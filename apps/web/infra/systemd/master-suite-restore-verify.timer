@@ -1,0 +1,14 @@
+# Sunday 04:00 — after the night's backup and its retention sweep have finished,
+# and in the quietest hour of the week for a restore that competes with the live
+# database for the same disk.
+[Unit]
+Description=Weekly Master Suite restore verification
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30m
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

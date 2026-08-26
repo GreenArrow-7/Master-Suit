@@ -314,7 +314,13 @@ describe('detection', () => {
     // The attendance day is then corrected downwards. Detection must not reopen
     // or restate a decision somebody already signed.
     await prisma.hrAttendanceRecord.update({
-      where: { tenantId_employeeId_workDate: { tenantId, employeeId: employees.worker!, workDate: new Date('2026-03-04T00:00:00Z') } },
+      where: {
+        tenantId_employeeId_workDate: {
+          tenantId,
+          employeeId: employees.worker!,
+          workDate: new Date('2026-03-04T00:00:00Z'),
+        },
+      },
       data: { workMinutes: 500 },
     });
     const summary = await detectOvertime(ctx, range);
@@ -332,7 +338,13 @@ describe('detection', () => {
     await detectOvertime(ctx, range);
 
     await prisma.hrAttendanceRecord.update({
-      where: { tenantId_employeeId_workDate: { tenantId, employeeId: employees.worker!, workDate: new Date('2026-03-05T00:00:00Z') } },
+      where: {
+        tenantId_employeeId_workDate: {
+          tenantId,
+          employeeId: employees.worker!,
+          workDate: new Date('2026-03-05T00:00:00Z'),
+        },
+      },
       data: { workMinutes: 480 },
     });
     const summary = await detectOvertime(ctx, range);

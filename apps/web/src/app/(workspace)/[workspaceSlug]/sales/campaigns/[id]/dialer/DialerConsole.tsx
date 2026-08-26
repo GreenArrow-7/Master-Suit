@@ -22,6 +22,8 @@ interface State {
   remaining: number;
   currentCallId: string | null;
   contact: Contact | null;
+  /** Set when the campaign stopped being called — see services/dialer/session. */
+  blockedBy: string | null;
 }
 
 /**
@@ -62,6 +64,7 @@ export default function DialerConsole({ campaignId, initial }: { campaignId: str
     contact: Contact | null;
     currentCallId: string | null;
     remaining: number;
+    blockedBy: string | null;
   }) {
     setState({
       sessionId: next.session.id,
@@ -72,6 +75,7 @@ export default function DialerConsole({ campaignId, initial }: { campaignId: str
       remaining: next.remaining,
       currentCallId: next.currentCallId,
       contact: next.contact,
+      blockedBy: next.blockedBy,
     });
     setNotes('');
   }
@@ -199,11 +203,15 @@ export default function DialerConsole({ campaignId, initial }: { campaignId: str
         {!state.contact ? (
           <div style={{ textAlign: 'center' }}>
             <h2 className="lf-h2" style={{ marginTop: 0 }}>
-              Queue empty
+              {state.blockedBy ? 'Stopped' : 'Queue empty'}
             </h2>
+            {/* Two different facts. The campaign can be paused or cancelled
+                between one press of Next and the following one, and "nobody is
+                eligible right now" would be a true sentence about the query and
+                a false one about why. */}
             <p className="lf-hint">
-              Nobody is eligible right now. Numbers dialled recently are still cooling off, and callbacks are waiting
-              for their time.
+              {state.blockedBy ??
+                'Nobody is eligible right now. Numbers dialled recently are still cooling off, and callbacks are waiting for their time.'}
             </p>
             <button
               type="button"

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -36,7 +37,11 @@ export const GET = route(
 
     const scope = await visibilityWhere(ctx, 'clientprofiles', 'VIEW');
     const rows = await prisma.clientProfile.findMany({
-      where: { ...scope, deletedAt: null, ...(query.purchaseIntent ? { purchaseIntent: query.purchaseIntent } : {}) },
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        query.purchaseIntent ? { purchaseIntent: query.purchaseIntent } : null,
+      ),
       orderBy: { updatedAt: 'desc' },
       take: query.limit,
     });

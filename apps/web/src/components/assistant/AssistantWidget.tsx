@@ -212,8 +212,7 @@ export default function AssistantWidget() {
         }
       }
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === 'AbortError'))
-        patch(idx, (m) => ({ ...m, error: OFFLINE }));
+      if (!(err instanceof DOMException && err.name === 'AbortError')) patch(idx, (m) => ({ ...m, error: OFFLINE }));
     } finally {
       setStreaming(false);
       setStatus(null);
@@ -289,7 +288,11 @@ export default function AssistantWidget() {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <strong style={{ fontSize: 'var(--lf-text-base)' }}>Manath AI</strong>
-            {context && <span className="lf-badge" data-tone="wine">Viewing: {context.entityType}</span>}
+            {context && (
+              <span className="lf-badge" data-tone="wine">
+                Viewing: {context.entityType}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>CRM copilot</div>
         </div>

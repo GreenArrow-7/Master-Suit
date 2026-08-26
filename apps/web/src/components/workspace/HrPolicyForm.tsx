@@ -25,6 +25,15 @@ export type Definition = {
   | { type: 'select'; default: string; options: { value: string; label: string }[] }
   | { type: 'days'; default: number[] }
   | { type: 'strings'; default: string[] }
+  /**
+   * A single free-text value — an identifier issued by an outside body.
+   *
+   * The service registry has had this variant all along; this union did not,
+   * and the page cast the difference away. Every branch below then missed, so
+   * the two WPS identifier rows rendered a label and help text with nothing to
+   * type into — and the WPS payroll export they gate 409s until they are set.
+   */
+  | { type: 'text'; default: string; maxLength?: number; pattern?: string }
 );
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -225,6 +234,19 @@ export default function HrPolicyForm({
                     </div>
                   )}
 
+                  {definition.type === 'text' && (
+                    <input
+                      id={definition.key}
+                      className="lf-input"
+                      disabled={readOnly}
+                      style={{ maxWidth: 460 }}
+                      maxLength={definition.maxLength}
+                      pattern={definition.pattern}
+                      value={typeof value === 'string' ? value : String(value ?? '')}
+                      onChange={(event) => set(definition.key, event.target.value)}
+                    />
+                  )}
+
                   {definition.type === 'strings' && (
                     <input
                       id={definition.key}
@@ -288,5 +310,6 @@ function formatDefault(definition: Definition): string {
   if (definition.type === 'days')
     return (definition.default as number[]).map((day) => DAY_NAMES[day]!.slice(0, 3)).join('/') || 'none';
   if (definition.type === 'strings') return (definition.default as string[]).join(', ') || 'none';
+  if (definition.type === 'text') return (definition.default as string) || 'not set';
   return String(definition.default);
 }

@@ -35,7 +35,15 @@ async function seedWith(extraEnv: Record<string, string>): Promise<string> {
   }
 }
 
-describe('demo seed guards', () => {
+/**
+ * Longer than the default because these tests shell out, and the previous
+ * 30-second default was shorter than the 120 seconds `seedWith` itself allows
+ * each child — so vitest could kill a test that was still legitimately waiting
+ * on a subprocess it had authorised to keep running. Measured 2026-08-17: the
+ * whole file takes 9.9s in isolation, roughly 2.5s per spawn, and only ever
+ * failed inside a fully loaded 85-file parallel run. Contention, not a hang.
+ */
+describe('demo seed guards', { timeout: 150_000 }, () => {
   it('refuses when NODE_ENV is production', async () => {
     const stderr = await seedWith({ NODE_ENV: 'production' });
     expect(stderr).toContain('NODE_ENV is production');

@@ -33,10 +33,8 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
     periodEnd: inDays(6),
   }));
 
-  const set =
-    (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +84,12 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Assign a target</h2>
-        <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>
@@ -97,7 +100,13 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--lf-space-4)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 'var(--lf-space-4)',
+        }}
+      >
         <div className="lf-field">
           <label className="lf-label" htmlFor="tg-user">
             Teammate
@@ -154,14 +163,28 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
           <label className="lf-label" htmlFor="tg-start">
             From
           </label>
-          <input id="tg-start" className="lf-input" type="date" value={form.periodStart} onChange={set('periodStart')} required />
+          <input
+            id="tg-start"
+            className="lf-input"
+            type="date"
+            value={form.periodStart}
+            onChange={set('periodStart')}
+            required
+          />
         </div>
 
         <div className="lf-field">
           <label className="lf-label" htmlFor="tg-end">
             To
           </label>
-          <input id="tg-end" className="lf-input" type="date" value={form.periodEnd} onChange={set('periodEnd')} required />
+          <input
+            id="tg-end"
+            className="lf-input"
+            type="date"
+            value={form.periodEnd}
+            onChange={set('periodEnd')}
+            required
+          />
         </div>
       </div>
 
@@ -202,7 +225,12 @@ export function TargetDelete({ id }: { id: string }) {
       <button type="button" className="lf-btn lf-btn--sm" disabled={busy} onClick={remove}>
         {busy ? 'Removing…' : 'Confirm'}
       </button>
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={() => setConfirming(false)}>
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary lf-btn--sm"
+        disabled={busy}
+        onClick={() => setConfirming(false)}
+      >
         Keep
       </button>
     </span>

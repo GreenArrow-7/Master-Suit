@@ -1,4 +1,7 @@
 import { logger } from '../logger';
+import { geminiCredential, geminiModel } from './gemini';
+import { assertAiBudget, recordAiUsage } from './usage';
+import { generateStructured } from './provider';
 import { redact } from './redact';
 import { withRetry, isTransient } from '../integrations/retry';
 
@@ -10,6 +13,8 @@ import { withRetry, isTransient } from '../integrations/retry';
 const AI_TIMEOUT_MS = 60_000;
 
 export interface AuditInput {
+  /** Whose key to run on. Absent falls back to the deployment key. */
+  tenantId?: string;
   transcript: string;
   analysisJson: Record<string, unknown>;
   criteria: { label: string; description?: string; weight: number; isRequired: boolean }[];
@@ -94,50 +99,35 @@ const AUDIT_SCHEMA = {
 };
 
 export async function auditCall(input: AuditInput): Promise<AuditResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const credential = await geminiCredential(input.tenantId);
+  const apiKey = credential.key;
   if (!apiKey) {
     // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
     const { simulateAudit } = await import('./simulated');
-    logger.info('GEMINI_API_KEY not set — returning simulated audit');
+    logger.info('no Gemini key for this workspace — returning simulated audit');
     return simulateAudit(input);
   }
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const model = await geminiModel(input.tenantId);
+  await assertAiBudget(input.tenantId, credential);
 
-  const data = await withRetry(
+  const response = await withRetry(
     'gemini-audit',
-    async () => {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildAuditPrompt(input) }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            responseSchema: AUDIT_SCHEMA,
-            temperature: 0.1,
-            maxOutputTokens: 4096,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        logger.error({ status: res.status, model }, 'Gemini audit API error');
-        const e: any = new Error(`Gemini API error: ${res.status}`);
-        e.status = res.status;
-        throw e;
-      }
-
-      return res.json();
-    },
+    () =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model,
+        prompt: buildAuditPrompt(input),
+        schema: AUDIT_SCHEMA,
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     { maxAttempts: 3, retryOn: isTransient },
   );
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
+  await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
 
-  const parsed = JSON.parse(text);
+  const parsed = JSON.parse(response.text);
   const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
   const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
 

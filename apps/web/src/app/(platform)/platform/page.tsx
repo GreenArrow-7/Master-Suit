@@ -91,7 +91,14 @@ export default async function PlatformOverviewPage() {
       <section className="lf-command-band">
         <div
           className="lf-command-band__row"
-          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 28, flexWrap: 'wrap' }}
+          style={{
+            position: 'relative',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            gap: 28,
+            flexWrap: 'wrap',
+          }}
         >
           <div>
             <div className="lf-eyebrow">Commercial operations</div>
@@ -135,7 +142,11 @@ export default async function PlatformOverviewPage() {
         {modules.map((module) => {
           const share = workspaceCount ? Math.round((module.count / workspaceCount) * 100) : 0;
           return (
-            <article key={module.key} className="lf-module-panel" style={{ ['--panel-accent' as string]: module.accent }}>
+            <article
+              key={module.key}
+              className="lf-module-panel"
+              style={{ ['--panel-accent' as string]: module.accent }}
+            >
               <div className="lf-module-panel__head">
                 <h2 className="lf-module-panel__title">{module.title}</h2>
                 <Link className="lf-module-panel__link" href={module.href}>

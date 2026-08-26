@@ -254,9 +254,11 @@ test.describe('Each HR module opens and does its job', () => {
 
       // Checked while it is still pending: the approval queue on this page
       // shows PENDING only, so approving first would make it vanish before it
-      // was ever seen.
+      // was ever seen. The queue row carries employee, type, dates and status —
+      // not the free-text reason — so the row with its Approve control is the
+      // evidence the request arrived.
       await page.reload();
-      await expect(page.getByText(`Happy path ${run}`).first()).toBeVisible();
+      await expect(page.getByRole('row', { name: /Annual Leave.*pending/ }).first()).toBeVisible();
 
       const decided = await post(page.request, 'actions/leave-approve', {
         requestId: applied.id,
@@ -266,7 +268,7 @@ test.describe('Each HR module opens and does its job', () => {
 
       // And it leaves the queue once decided, which is the queue doing its job.
       await page.reload();
-      await expect(page.getByText(`Happy path ${run}`)).toHaveCount(0);
+      await expect(page.getByRole('row', { name: /Annual Leave.*pending/ })).toHaveCount(0);
     });
 
     await test.step('overtime is requested and decided', async () => {

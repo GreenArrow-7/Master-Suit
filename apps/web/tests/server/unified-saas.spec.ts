@@ -33,7 +33,7 @@ const leadersSlug = `leadersfort-${suffix}`;
  * looks like a product bug and is actually the limiter doing its job.
  */
 beforeAll(async () => {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://localhost:6379/0');
+  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

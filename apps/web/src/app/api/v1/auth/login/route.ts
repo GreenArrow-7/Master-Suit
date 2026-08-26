@@ -11,6 +11,8 @@ import { createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { isActiveWorkspaceMembership } from '@/lib/auth/platform-policy';
 import { readJsonBody } from '@/lib/api/read-body';
+import { passwordPolicy } from '@/services/identity/accounts';
+import { passwordExpired } from '@/services/identity/passwordHistory';
 
 const bodySchema = z.object({
   email: z.string().email().max(254),
@@ -228,6 +230,13 @@ export async function POST(req: Request) {
       mfaSatisfied: mfaRequired,
     });
 
+    // Resolved against the workspace being entered. A platform owner with no
+    // membership has no workspace policy to age out against, and the temporary
+    // -password half of the predicate still applies to them.
+    const mustChangePassword = activeMembership
+      ? passwordExpired(user.passwordChangedAt, await passwordPolicy(activeMembership.tenantId))
+      : user.passwordChangedAt === null;
+
     await prisma.platformAuditEvent.create({
       data: {
         tenantId: activeMembership?.tenantId,
@@ -258,13 +267,17 @@ export async function POST(req: Request) {
           displayName: membership.tenant.displayName,
           role: membership.salesUser?.role.key ?? membership.roleSnapshot,
         })),
-        // Null passwordChangedAt is what an administrator's reset leaves behind:
-        // the account is on a temporary password and must replace it before
-        // anything else opens. Surfaced here so the client routes straight to
-        // the change screen rather than discovering it on the first 403.
-        mustChangePassword: user.passwordChangedAt === null,
+        // Two reasons a password must be replaced before anything else opens,
+        // through one predicate. Null `passwordChangedAt` is what an
+        // administrator's reset leaves behind — the account is on a temporary
+        // password. The other is the workspace's `maxAgeDays`, which was typed on
+        // PasswordPolicy and read by nothing.
+        //
+        // Surfaced here so the client routes straight to the change screen rather
+        // than discovering it on the first redirect.
+        mustChangePassword,
         destination:
-          user.passwordChangedAt === null && activeMembership
+          mustChangePassword && activeMembership
             ? `/${activeMembership.tenant.slug}/profile/security`
             : user.platformRole === 'OWNER' && !activeMembership
               ? '/platform'

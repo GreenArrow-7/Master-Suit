@@ -72,7 +72,11 @@ export default async function UsersPage({
       },
       take: 200,
     }),
-    prisma.role.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { rank: 'asc' }, select: { key: true, name: true } }),
+    prisma.role.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { rank: 'asc' },
+      select: { key: true, name: true },
+    }),
   ]);
 
   // Consent is per employee; one query rather than one per row.
@@ -85,6 +89,9 @@ export default async function UsersPage({
     : [];
   const consented = new Set(consents.map((row) => row.employeeId));
   const mayManage = can(ctx, 'users', 'MANAGE_USERS');
+  // Removal is its own grant, so a workspace can let somebody reset passwords
+  // without letting them delete the account. The route checks it again.
+  const mayDelete = can(ctx, 'users', 'DELETE');
 
   return (
     <div className="lf-page-stack">
@@ -102,7 +109,13 @@ export default async function UsersPage({
           <label className="lf-label" htmlFor="u-q">
             Search
           </label>
-          <input id="u-q" className="lf-input" name="q" defaultValue={search} placeholder="Name, email or employee code" />
+          <input
+            id="u-q"
+            className="lf-input"
+            name="q"
+            defaultValue={search}
+            placeholder="Name, email or employee code"
+          />
         </div>
         <div className="lf-field" style={{ margin: 0 }}>
           <label className="lf-label" htmlFor="u-role">
@@ -191,6 +204,7 @@ export default async function UsersPage({
                           userName={row.fullName}
                           employeeId={employee?.id ?? null}
                           workspaceSlug={workspaceSlug}
+                          mayDelete={mayDelete}
                         />
                       )}
                     </td>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
@@ -39,15 +40,15 @@ export const GET = route(
   async ({ ctx, query }) => {
     const scope = await visibilityWhere(ctx, 'bookings', 'VIEW');
     const data = await prisma.booking.findMany({
-      where: {
-        ...scope,
-        deletedAt: null,
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.projectId ? { projectId: query.projectId } : {}),
-        ...(query.from || query.to
+      where: mergeWhere(
+        scope,
+        { deletedAt: null },
+        query.status ? { status: query.status } : null,
+        query.projectId ? { projectId: query.projectId } : null,
+        query.from || query.to
           ? { bookingDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
-          : {}),
-      },
+          : null,
+      ),
       select: LIST_SELECT,
       orderBy: { bookingDate: 'desc' },
       take: query.limit,

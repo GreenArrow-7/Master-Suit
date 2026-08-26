@@ -73,8 +73,7 @@ export function shiftWindow(workDate: Date, startTime: string, endTime: string):
 export const windowsOverlap = (a: ShiftWindow, b: ShiftWindow) => a.start < b.end && b.start < a.end;
 
 /** Hours between the end of one shift and the start of the next. Negative when they overlap. */
-export const restHoursBetween = (earlier: ShiftWindow, later: ShiftWindow) =>
-  (later.start - earlier.end) / 3_600_000;
+export const restHoursBetween = (earlier: ShiftWindow, later: ShiftWindow) => (later.start - earlier.end) / 3_600_000;
 
 export type ConflictCode =
   | 'DUPLICATE'
@@ -191,7 +190,11 @@ async function loadContext(ctx: Ctx, employeeIds: string[], from: Date, to: Date
   const padded = { from: addDays(from, -14), to: addDays(to, 14) };
   const [entries, leave] = await Promise.all([
     prisma.hrRosterEntry.findMany({
-      where: { tenantId: ctx.tenantId, employeeId: { in: employeeIds }, workDate: { gte: padded.from, lte: padded.to } },
+      where: {
+        tenantId: ctx.tenantId,
+        employeeId: { in: employeeIds },
+        workDate: { gte: padded.from, lte: padded.to },
+      },
       select: {
         id: true,
         employeeId: true,
@@ -564,8 +567,7 @@ export async function rosterFor(ctx: Ctx, options: { from: Date; to: Date; emplo
   const planner = isRosterPlanner(ctx);
   if (!planner) {
     if (!self) return [];
-    if (options.employeeId && options.employeeId !== self.id)
-      throw Forbidden('You can only see your own roster.');
+    if (options.employeeId && options.employeeId !== self.id) throw Forbidden('You can only see your own roster.');
   }
 
   return prisma.hrRosterEntry.findMany({
@@ -674,7 +676,12 @@ export async function decideShiftChange(ctx: Ctx, requestId: string, approve: bo
   if (!approve) {
     const rejected = await prisma.hrShiftChangeRequest.update({
       where: { tenantId: ctx.tenantId, id: request.id },
-      data: { status: 'REJECTED', approverId: actor?.id ?? null, decidedAt: new Date(), decisionNote: note?.trim() || null },
+      data: {
+        status: 'REJECTED',
+        approverId: actor?.id ?? null,
+        decidedAt: new Date(),
+        decisionNote: note?.trim() || null,
+      },
     });
     await audit(ctx, {
       event: 'RECORD_UPDATED',
@@ -722,7 +729,12 @@ export async function decideShiftChange(ctx: Ctx, requestId: string, approve: bo
 
     return tx.hrShiftChangeRequest.update({
       where: { tenantId: ctx.tenantId, id: request.id },
-      data: { status: 'APPROVED', approverId: actor?.id ?? null, decidedAt: new Date(), decisionNote: note?.trim() || null },
+      data: {
+        status: 'APPROVED',
+        approverId: actor?.id ?? null,
+        decidedAt: new Date(),
+        decisionNote: note?.trim() || null,
+      },
     });
   });
 
@@ -769,7 +781,10 @@ export async function cancelShiftChange(ctx: Ctx, requestId: string) {
   return cancelled;
 }
 
-export async function listShiftChanges(ctx: Ctx, options: { status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' } = {}) {
+export async function listShiftChanges(
+  ctx: Ctx,
+  options: { status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' } = {},
+) {
   const self = await myEmployee(ctx);
   const approver = isRosterApprover(ctx);
   if (!approver && !self) return [];

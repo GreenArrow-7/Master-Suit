@@ -19,6 +19,7 @@
  * bounded by the page size rather than by the size of the result. An export with
  * a row limit is a report somebody silently gets half of.
  */
+import { env } from './env';
 
 /**
  * A plain number, including a signed or exponent one.
@@ -53,10 +54,16 @@ export const csvHeader = <T>(columns: CsvColumn<T>[]) =>
 export interface CsvStreamOptions<T extends { id: string }> {
   columns: CsvColumn<T>[];
   /** One keyset page. Returning an empty array ends the file. */
-  page: (cursor: string | null) => Promise<T[]>;
-  /** Called once, after the last row, with the total actually written. */
-  onDone?: (rows: number) => Promise<void>;
+  page: (cursor: string | null, take: number) => Promise<T[]>;
+  /**
+   * Called once, after the last row, with the total actually written and whether
+   * the cap cut it short. Callers audit both: a reviewer reading an export row
+   * must be able to tell a complete file from a truncated one.
+   */
+  onDone?: (rows: number, truncated: boolean) => Promise<void>;
   pageSize?: number;
+  /** Defaults to EXPORT_MAX_ROWS. See the note in the stream body. */
+  maxRows?: number;
 }
 
 /**
@@ -68,6 +75,22 @@ export interface CsvStreamOptions<T extends { id: string }> {
  */
 export function csvStream<T extends { id: string }>(options: CsvStreamOptions<T>): ReadableStream<Uint8Array> {
   const { columns, page, onDone, pageSize = 500 } = options;
+
+  /**
+   * The ceiling, from `EXPORT_MAX_ROWS`.
+   *
+   * Streaming bounds *memory* — no point here holds the whole file — and that
+   * was mistaken for bounding the export. It does not: an uncapped export holds
+   * a database connection for as long as it takes to serialise every row a
+   * workspace owns and hands the lot to whoever asked. "There is no row limit"
+   * is the shape of an exfiltration as much as a feature.
+   *
+   * The setting has been declared in `lib/env.ts` and read nowhere since it was
+   * added, so an operator who lowered it changed nothing — which is the specific
+   * failure mode of inert configuration: it reads as a control.
+   */
+  const maxRows = options.maxRows ?? env.EXPORT_MAX_ROWS;
+
   const encoder = new TextEncoder();
   let cursor: string | null = null;
   let written = 0;
@@ -77,12 +100,15 @@ export function csvStream<T extends { id: string }>(options: CsvStreamOptions<T>
       controller.enqueue(encoder.encode(csvHeader(columns)));
     },
     async pull(controller) {
-      const rows = await page(cursor);
+      // Trimmed so the last page lands exactly on the cap instead of
+      // overshooting it by up to pageSize-1 rows.
+      const take = Math.min(pageSize, maxRows - written);
+      const rows = take > 0 ? await page(cursor, take) : [];
 
       if (rows.length === 0) {
         // Audited on completion, not on request, so the record reflects what
         // actually left the system rather than what somebody asked for.
-        await onDone?.(written);
+        await onDone?.(written, written >= maxRows);
         controller.close();
         return;
       }
@@ -91,10 +117,10 @@ export function csvStream<T extends { id: string }>(options: CsvStreamOptions<T>
       written += rows.length;
       cursor = rows[rows.length - 1].id;
 
-      // A short page is the last page. Without this the next pull runs one
-      // extra empty query per export.
-      if (rows.length < pageSize) {
-        await onDone?.(written);
+      // A short page is the last page, and so is a full one that reached the
+      // cap. Without this the next pull runs one extra empty query per export.
+      if (rows.length < take || written >= maxRows) {
+        await onDone?.(written, written >= maxRows);
         controller.close();
       }
     },
