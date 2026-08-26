@@ -85,5 +85,7 @@ unconstrained, so callers pass 3–4 buttons that cannot fit.
 5. Touch-target + grid-floor + tab-strip token rules.
 6. Filters → filter sheet; ListHeader → primary + overflow menu.
 
-Raw data: `mobile-audit.json` (per route × width, named offenders),
-`all-findings.json` (222 static findings).
+Raw data is not committed — it is regenerated, and 775KB of machine-written
+JSON re-broke the format gate every time the probe ran. `node scripts/mobile-audit.mjs`
+rewrites `mobile-audit.json` (per route × width, named offenders); `all-findings.json`
+was the static sweep's 222 findings, summarised above.
