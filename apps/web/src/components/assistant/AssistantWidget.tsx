@@ -1,14 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import SalesLink from '@/components/workspace/SalesLink';
+import { entityRoute } from '@/lib/nav/entityRoute';
 
 type EntityType = 'lead' | 'account' | 'contact' | 'opportunity' | 'call';
 
 interface Source {
   label: string;
-  href: string;
+  /** A type `@/lib/nav/entityRoute` knows; see `ToolSource` for why not a path. */
+  type: string;
+  id?: string;
 }
 
 interface ActionSpec {
@@ -107,7 +110,7 @@ function loadStored(): Msg[] {
   }
 }
 
-export default function AssistantWidget() {
+export default function AssistantWidget({ slug }: { slug: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>(loadStored);
@@ -320,11 +323,21 @@ export default function AssistantWidget() {
             {msg.role === 'user' ? msg.content : <Markdown text={msg.content} />}
             {msg.sources && msg.sources.length > 0 && (
               <div className="lf-ai-chips">
-                {msg.sources.map((source, i) => (
-                  <SalesLink key={i} href={source.href}>
-                    {source.label}
-                  </SalesLink>
-                ))}
+                {/* Resolved from the chip's own type and the workspace slug, so a
+                    Lead opens the Leads screen whether the question was asked
+                    from Sales, from Notifications or from a People screen. A
+                    chip whose type has no destination renders as plain text
+                    rather than as a link to nowhere. */}
+                {msg.sources.map((source, i) => {
+                  const target = entityRoute(source.type, source.id, slug);
+                  return target ? (
+                    <Link key={i} href={target}>
+                      {source.label}
+                    </Link>
+                  ) : (
+                    <span key={i}>{source.label}</span>
+                  );
+                })}
               </div>
             )}
             {msg.actions?.map((action, actIdx) => (

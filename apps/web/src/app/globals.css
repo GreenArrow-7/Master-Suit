@@ -133,6 +133,17 @@ body {
   gap: 6px;
 }
 
+/* The `hidden` attribute has to keep working, and in a stylesheet that sets
+   `display` by class it does not on its own: the user agent's
+   `[hidden] { display: none }` loses to any author rule, whatever its
+   specificity. `.lf-shell-actions` set `display: flex` and silently defeated
+   `hidden={module === 'people'}` on the top bar for as long as both existed.
+   One rule, high enough to win, so the next component to reach for the
+   attribute gets what the attribute promises. */
+[hidden] {
+  display: none !important;
+}
+
 .lf-workspace-sidebar {
   position: sticky;
   top: 0;

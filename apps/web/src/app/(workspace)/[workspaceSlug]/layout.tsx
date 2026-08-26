@@ -118,7 +118,7 @@ export default async function WorkspaceLayout({
         />
         <main className="lf-page-main">{children}</main>
       </div>
-      <AssistantWidget />
+      <AssistantWidget slug={shell.slug} />
     </div>
   );
 }

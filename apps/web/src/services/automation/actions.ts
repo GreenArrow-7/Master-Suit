@@ -51,6 +51,14 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
         select: { ownerId: true },
       });
       if (!record?.ownerId) return;
+      /**
+       * No `actionUrl`: the destination is resolved on read, from `objectType`
+       * and `recordId`, by `src/lib/nav/entityRoute.ts`. `objectType` here is
+       * one of LEAD, OPPORTUNITY, ACCOUNT or CONTACT — see `records.ts` — and
+       * all four have detail screens, so these rows became clickable the moment
+       * the feed started resolving instead of pushing stored paths. They had
+       * been inert since they were written.
+       */
       await prisma.notification.create({
         data: {
           tenantId: ctx.tenantId,
