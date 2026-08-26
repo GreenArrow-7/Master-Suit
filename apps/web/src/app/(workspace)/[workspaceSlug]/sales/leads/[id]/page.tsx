@@ -153,6 +153,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         canEdit={can(ctx, 'leads', 'EDIT')}
         canAssign={can(ctx, 'leads', 'ASSIGN')}
         canDelete={can(ctx, 'leads', 'DELETE')}
+        // Deleting an attachment is its own authority, not part of editing the
+        // lead: the representatives who upload hold `leads:EDIT` and must not be
+        // able to remove a file once it is on the record. Only the organisation
+        // administrator is granted `documents:DELETE`.
+        canDeleteDocuments={can(ctx, 'documents', 'DELETE')}
       />
     </>
   );
