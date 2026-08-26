@@ -3,7 +3,7 @@ import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { env } from '@/lib/env';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { AppError, Unauthorized, TooManyRequests } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { verifyPassword, burnTiming } from '@/lib/auth/password';
@@ -101,12 +101,14 @@ export async function POST(req: Request) {
     const ok = await verifyPassword(user.passwordHash, body.password);
     if (!ok) {
       const failures = user.failedLoginCount + 1;
-      const locked = failures >= env.MAX_FAILED_LOGINS;
+      const locked = failures >= (await getNumericSetting('maxFailedLogins'));
       await prisma.platformUser.update({
         where: { id: user.id },
         data: {
           failedLoginCount: locked ? 0 : failures,
-          lockedUntil: locked ? new Date(now.getTime() + env.LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
+          lockedUntil: locked
+            ? new Date(now.getTime() + (await getNumericSetting('lockoutMinutes')) * 60_000)
+            : user.lockedUntil,
         },
       });
       await recordFailure(null, user.id, ip, ua, requestId, locked ? 'LOCKED_NOW' : 'BAD_PASSWORD');

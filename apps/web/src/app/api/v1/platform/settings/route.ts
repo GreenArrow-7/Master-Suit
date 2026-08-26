@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
-import { EDITABLE_SETTINGS, isEditableSetting } from '@/lib/platform-settings';
+import { EDITABLE_SETTINGS, isEditableSetting, settingCacheKey } from '@/lib/platform-settings';
+import { redis } from '@/lib/redis';
 
 const patchSchema = z.object({
   key: z.string().min(1).max(64),
@@ -34,6 +35,11 @@ export async function PATCH(req: Request) {
       update: { value: String(parsed), updatedBy: ctx.platformUserId },
       create: { key: body.key, value: String(parsed), updatedBy: ctx.platformUserId },
     });
+    // Drop the cached value so the change is live on the next request rather
+    // than up to a minute later. A Redis failure here is not worth failing the
+    // write for — the entry expires on its own.
+    await redis.del(settingCacheKey(body.key)).catch(() => {});
+
     await prisma.platformAuditEvent.create({
       data: {
         actorUserId: ctx.platformUserId,
