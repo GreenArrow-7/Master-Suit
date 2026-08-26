@@ -28,13 +28,42 @@ import { decryptSecret, encryptSecret } from './secrets';
 
 const RECOVERY_CODE_COUNT = 10;
 
+/**
+ * Bytes of randomness per recovery code.
+ *
+ * Was 5 — forty bits. A recovery code bypasses the second factor outright, and
+ * these are stored as a plain SHA-256 digest, so the only thing standing between
+ * a leaked database and a working 2FA bypass is the cost of guessing the input.
+ * Forty bits against a fast hash is roughly a trillion candidates: minutes on one
+ * consumer GPU, for every account in the table at once, because an unsalted
+ * digest lets one pass cover them all.
+ *
+ * Ten bytes puts it at 2^80, which is not reachable by anyone. The password
+ * (Argon2id) and the TOTP secret (AES-256-GCM, key held outside the database)
+ * were never the weak link here; this was.
+ */
+const RECOVERY_CODE_BYTES = 10;
+
+/**
+ * A fast digest is the right choice *at this entropy*, and was the wrong one at
+ * the old length.
+ *
+ * Argon2 exists to make guessing expensive when the secret is guessable — a
+ * human-chosen password. A random 80-bit value is not guessable, so the slow
+ * hash would buy nothing and would cost ten verifications per login attempt,
+ * since a submitted code has to be checked against every stored digest. This is
+ * the same reasoning session, reset and invitation tokens already use.
+ *
+ * Normalisation is what lets a person type the code back with or without the
+ * grouping hyphens, and it must stay identical on both sides of the comparison.
+ */
 const hashCode = (code: string) => createHash('sha256').update(code.replace(/\s|-/g, '').toUpperCase()).digest('hex');
 
 /** Grouped for legibility when read aloud down a phone line. */
 function generateRecoveryCodes() {
   return Array.from({ length: RECOVERY_CODE_COUNT }, () => {
-    const raw = randomBytes(5).toString('hex').toUpperCase();
-    return `${raw.slice(0, 5)}-${raw.slice(5)}`;
+    const raw = randomBytes(RECOVERY_CODE_BYTES).toString('hex').toUpperCase();
+    return (raw.match(/.{1,5}/g) ?? [raw]).join('-');
   });
 }
 
