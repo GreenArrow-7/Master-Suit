@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -16,8 +17,23 @@ export default async function DocumentsPage() {
     return <EmptyState title="Access denied" description="You do not have permission to view documents." />;
   }
 
+  /**
+   * Scoped, not merely tenant-filtered.
+   *
+   * The page gated on `documents:VIEW` at *any* scope and then listed every
+   * document in the workspace, so a sales representative holding that
+   * permission at OWN — which is what the seeded role grants — read every
+   * other rep's uploads and the organisation's own files. The permission was
+   * being treated as a door rather than as a scope.
+   *
+   * `visibilityWhere` returns the bare tenant filter for ORGANIZATION, so an
+   * organisation administrator still sees everything; below that it narrows to
+   * the viewer's own records the same way every other list in the product does.
+   */
+  const scope = await visibilityWhere(ctx, 'documents', 'VIEW');
+
   const rows = await prisma.document.findMany({
-    where: { tenantId: ctx.tenantId },
+    where: scope,
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
