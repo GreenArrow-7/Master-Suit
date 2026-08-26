@@ -327,7 +327,12 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
                         'Transcribe this sales call verbatim. Two speakers: label each turn ' +
                         '"Agent:" or "Client:". Do not summarise, translate or annotate.',
                     },
-                    { inline_data: { mime_type: request.mimeType.split(';')[0].trim(), data: request.audio.toString('base64') } },
+                    {
+                      inline_data: {
+                        mime_type: request.mimeType.split(';')[0].trim(),
+                        data: request.audio.toString('base64'),
+                      },
+                    },
                   ],
                 },
               ],
@@ -513,7 +518,10 @@ export function getTranscriptionProvider(provider: string, config: Record<string
   switch (provider.trim().toLowerCase()) {
     case 'gemini':
       if (!config.apiKey) throw new Error('Gemini transcription requires an API key.');
-      return new GeminiTranscriptionProvider(config.apiKey, looksLikeGeminiModel(config.model) ? config.model : undefined);
+      return new GeminiTranscriptionProvider(
+        config.apiKey,
+        looksLikeGeminiModel(config.model) ? config.model : undefined,
+      );
 
     case 'google':
       if (!config.apiKey) throw new Error('Google Speech-to-Text requires an API key.');
@@ -521,7 +529,10 @@ export function getTranscriptionProvider(provider: string, config: Record<string
       // Speech-to-Text — the two take different keys, and sending a Gemini key
       // to speech.googleapis.com fails with a 403 that reads like a bad key.
       if ((config.model ?? '').toLowerCase().includes('gemini')) {
-        return new GeminiTranscriptionProvider(config.apiKey, looksLikeGeminiModel(config.model) ? config.model : undefined);
+        return new GeminiTranscriptionProvider(
+          config.apiKey,
+          looksLikeGeminiModel(config.model) ? config.model : undefined,
+        );
       }
       return new GoogleTranscriptionProvider(config.apiKey);
 

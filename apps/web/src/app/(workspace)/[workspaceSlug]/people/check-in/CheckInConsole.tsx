@@ -432,38 +432,38 @@ export default function CheckInConsole({
         ) : (
           <div className="lf-table-scroll">
             <table className="lf-table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Type</th>
-                <th>Result</th>
-                <th>Location</th>
-                <th>Distance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((row) => (
-                <tr key={row.id}>
-                  <td data-label="When">
-                    {new Intl.DateTimeFormat('en-GB', {
-                      timeZone: 'Asia/Dubai',
-                      day: '2-digit',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hourCycle: 'h23',
-                    }).format(new Date(row.at))}
-                  </td>
-                  <td data-label="Type">{row.type === 'CHECK_IN' ? 'Check in' : 'Check out'}</td>
-                  <td data-label="Result">
-                    <span className="lf-badge">{row.result.replace(/_/g, ' ').toLowerCase()}</span>
-                  </td>
-                  <td data-label="Location">{row.location ?? '—'}</td>
-                  <td data-label="Distance">{row.distanceM == null ? '—' : `${Math.round(row.distanceM)} m`}</td>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Type</th>
+                  <th>Result</th>
+                  <th>Location</th>
+                  <th>Distance</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recent.map((row) => (
+                  <tr key={row.id}>
+                    <td data-label="When">
+                      {new Intl.DateTimeFormat('en-GB', {
+                        timeZone: 'Asia/Dubai',
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hourCycle: 'h23',
+                      }).format(new Date(row.at))}
+                    </td>
+                    <td data-label="Type">{row.type === 'CHECK_IN' ? 'Check in' : 'Check out'}</td>
+                    <td data-label="Result">
+                      <span className="lf-badge">{row.result.replace(/_/g, ' ').toLowerCase()}</span>
+                    </td>
+                    <td data-label="Location">{row.location ?? '—'}</td>
+                    <td data-label="Distance">{row.distanceM == null ? '—' : `${Math.round(row.distanceM)} m`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

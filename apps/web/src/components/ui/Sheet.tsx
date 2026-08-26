@@ -56,14 +56,7 @@ export default function Sheet({
   return (
     <>
       <div className="lf-sheet__scrim" onClick={onClose} aria-hidden="true" />
-      <div
-        ref={panel}
-        className="lf-sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-      >
+      <div ref={panel} className="lf-sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="lf-sheet__head">
           <h2>{title}</h2>
           <button type="button" className="lf-sheet__close" onClick={onClose} aria-label="Close">

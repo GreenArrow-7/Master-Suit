@@ -109,41 +109,40 @@ export default async function UsersPage({
         {/* Inline on a desktop, a bottom sheet on a phone — the fields are
             repositioned, never unmounted, so they still submit. */}
         <FilterSheet activeCount={[search, query.role, showAll ? 'all' : ''].filter(Boolean).length || undefined}>
-
-        <div className="lf-field" style={{ flex: '1 1 280px', margin: 0 }}>
-          <label className="lf-label" htmlFor="u-q">
-            Search
-          </label>
-          <input
-            id="u-q"
-            className="lf-input"
-            name="q"
-            defaultValue={search}
-            placeholder="Name, email or employee code"
-          />
-        </div>
-        <div className="lf-field" style={{ margin: 0 }}>
-          <label className="lf-label" htmlFor="u-role">
-            Role
-          </label>
-          <select id="u-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
-            <option value="">All roles</option>
-            {roles.map((role) => (
-              <option key={role.key} value={role.key}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="lf-field" style={{ margin: 0 }}>
-          <label className="lf-label" htmlFor="u-show">
-            Show
-          </label>
-          <select id="u-show" className="lf-input" name="show" defaultValue={showAll ? 'all' : 'active'}>
-            <option value="active">Active only</option>
-            <option value="all">Everyone</option>
-          </select>
-        </div>
+          <div className="lf-field" style={{ flex: '1 1 280px', margin: 0 }}>
+            <label className="lf-label" htmlFor="u-q">
+              Search
+            </label>
+            <input
+              id="u-q"
+              className="lf-input"
+              name="q"
+              defaultValue={search}
+              placeholder="Name, email or employee code"
+            />
+          </div>
+          <div className="lf-field" style={{ margin: 0 }}>
+            <label className="lf-label" htmlFor="u-role">
+              Role
+            </label>
+            <select id="u-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
+              <option value="">All roles</option>
+              {roles.map((role) => (
+                <option key={role.key} value={role.key}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="lf-field" style={{ margin: 0 }}>
+            <label className="lf-label" htmlFor="u-show">
+              Show
+            </label>
+            <select id="u-show" className="lf-input" name="show" defaultValue={showAll ? 'all' : 'active'}>
+              <option value="active">Active only</option>
+              <option value="all">Everyone</option>
+            </select>
+          </div>
         </FilterSheet>
         <button className="lf-btn lf-btn--secondary" type="submit">
           Filter

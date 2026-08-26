@@ -71,12 +71,7 @@ export default function MobileTabBar({ slug, module }: { slug: string; module: '
         // the dashboard does not claim every route beneath the workspace.
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
-          <Link
-            key={item.key}
-            href={item.href}
-            className="lf-tabbar__item"
-            aria-current={active ? 'page' : undefined}
-          >
+          <Link key={item.key} href={item.href} className="lf-tabbar__item" aria-current={active ? 'page' : undefined}>
             <Icon name={item.key} />
             <span>{item.label}</span>
           </Link>

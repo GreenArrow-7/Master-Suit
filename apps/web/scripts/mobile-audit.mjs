@@ -121,7 +121,11 @@ if (!fresh || !(await signedIn())) {
     // Generous: a dev server compiles the destination route on first hit.
     await page.waitForURL((u) => !u.pathname.endsWith('/login'), { timeout: 120_000 });
   } catch {
-    const alert = await page.locator('.lf-auth-alert, .lf-alert').first().textContent().catch(() => null);
+    const alert = await page
+      .locator('.lf-auth-alert, .lf-alert')
+      .first()
+      .textContent()
+      .catch(() => null);
     throw new Error(`sign-in did not complete${alert ? ` — the app said: ${alert.trim()}` : ''}`);
   }
   await ctx.storageState({ path: AUTH });
@@ -139,7 +143,9 @@ for (const [name, path] of ROUTES) {
       results.push({ route: name, path, width, ...r });
       if (r.overflow > 1) {
         const worst = r.realOffenders[0] ?? r.offenders[0];
-        console.log(`OVERFLOW ${name} @${width}: +${r.overflow}px — ${worst ? worst.tag + '.' + worst.cls.split(' ')[0] + ' (w=' + worst.width + ', minW=' + worst.minWidth + ')' : 'unknown'}`);
+        console.log(
+          `OVERFLOW ${name} @${width}: +${r.overflow}px — ${worst ? worst.tag + '.' + worst.cls.split(' ')[0] + ' (w=' + worst.width + ', minW=' + worst.minWidth + ')' : 'unknown'}`,
+        );
       }
     } catch (err) {
       results.push({ route: name, path, width, error: String(err).slice(0, 120) });

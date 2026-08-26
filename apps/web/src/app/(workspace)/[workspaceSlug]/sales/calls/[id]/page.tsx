@@ -466,7 +466,11 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                               fontSize: 'var(--lf-text-lg)',
                               fontWeight: 700,
                               color:
-                                pct >= 70 ? 'var(--lf-viridian)' : pct >= 40 ? 'var(--lf-brass)' : 'var(--lf-vermillion)',
+                                pct >= 70
+                                  ? 'var(--lf-viridian)'
+                                  : pct >= 40
+                                    ? 'var(--lf-brass)'
+                                    : 'var(--lf-vermillion)',
                             }}
                           >
                             {pct}%

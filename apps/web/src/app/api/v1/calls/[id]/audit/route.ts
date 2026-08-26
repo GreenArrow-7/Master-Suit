@@ -95,7 +95,14 @@ const deleteQuery = z.object({ auditId: z.string().cuid() }).strict();
  * action.
  */
 export const DELETE = route(
-  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, query: deleteQuery, auditEvent: 'RECORD_DELETED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'DELETE',
+    params,
+    query: deleteQuery,
+    auditEvent: 'RECORD_DELETED',
+  },
   async ({ ctx, params, query }) => {
     const audit = await prisma.callAudit.findFirst({
       where: { id: query.auditId, callId: params.id, tenantId: ctx.tenantId },
