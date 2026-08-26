@@ -515,7 +515,8 @@ function ProviderPanel({ provider, canEdit }: { provider: ProviderCard; canEdit:
             e.preventDefault();
             void send('save');
           }}
-          className="lf-stack" style={{ marginTop: 16, ['--lf-stack-gap' as string]: '12px' } as React.CSSProperties}
+          className="lf-stack"
+          style={{ marginTop: 16, ['--lf-stack-gap' as string]: '12px' } as React.CSSProperties}
         >
           {[...provider.credentialFields, ...provider.settingFields].map((field) => {
             const stored = 'secret' in field && field.secret ? configured : false;

@@ -49,35 +49,37 @@ export default async function PeoplePage() {
         ) : (
           <div style={{ padding: 'var(--lf-space-4)' }}>
             <TableSearch placeholder="Name, email, number or designation…" label="Search the directory">
-              <div className="lf-table-scroll"><table className="lf-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Number</th>
-                    <th>Designation</th>
-                    <th>Status</th>
-                    <th>Access</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((employee) => (
-                    <tr key={employee.id}>
-                      <td>
-                        <strong>{employee.membership.platformUser.fullName}</strong>
-                        <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
-                          {employee.membership.platformUser.email}
-                        </div>
-                      </td>
-                      <td className="lf-num">{employee.employeeNumber}</td>
-                      <td>{employee.designation ?? '—'}</td>
-                      <td>
-                        <span className="lf-badge">{employee.employmentStatus}</span>
-                      </td>
-                      <td>{employee.membership.status}</td>
+              <div className="lf-table-scroll">
+                <table className="lf-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Number</th>
+                      <th>Designation</th>
+                      <th>Status</th>
+                      <th>Access</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table></div>
+                  </thead>
+                  <tbody>
+                    {employees.map((employee) => (
+                      <tr key={employee.id}>
+                        <td>
+                          <strong>{employee.membership.platformUser.fullName}</strong>
+                          <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                            {employee.membership.platformUser.email}
+                          </div>
+                        </td>
+                        <td className="lf-num">{employee.employeeNumber}</td>
+                        <td>{employee.designation ?? '—'}</td>
+                        <td>
+                          <span className="lf-badge">{employee.employmentStatus}</span>
+                        </td>
+                        <td>{employee.membership.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </TableSearch>
           </div>
         )}

@@ -58,12 +58,7 @@ export default function FilterSheet({
       <div className="lf-filterbox" data-open={open || undefined}>
         <div className="lf-filterbox__head">
           <h2>{label}</h2>
-          <button
-            type="button"
-            className="lf-sheet__close"
-            onClick={() => setOpen(false)}
-            aria-label="Close filters"
-          >
+          <button type="button" className="lf-sheet__close" onClick={() => setOpen(false)} aria-label="Close filters">
             ✕
           </button>
         </div>

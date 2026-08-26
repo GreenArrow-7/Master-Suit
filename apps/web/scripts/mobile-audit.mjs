@@ -20,35 +20,35 @@ const SLUG = process.env.AUDIT_SLUG ?? 'manath-homes';
 const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 1024, 1280, 1440];
 
 const ROUTES = [
-  ['login', '/login', false],
-  ['dashboard', `/${SLUG}/dashboard`, true],
-  ['leads', `/${SLUG}/sales/leads`, true],
-  ['accounts', `/${SLUG}/sales/accounts`, true],
-  ['contacts', `/${SLUG}/sales/contacts`, true],
-  ['opportunities', `/${SLUG}/sales/opportunities`, true],
-  ['calls', `/${SLUG}/sales/calls`, true],
-  ['call-audits', `/${SLUG}/sales/call-audits`, true],
-  ['activities', `/${SLUG}/sales/activities`, true],
-  ['tasks', `/${SLUG}/sales/tasks`, true],
-  ['follow-ups', `/${SLUG}/sales/follow-ups`, true],
-  ['campaigns', `/${SLUG}/sales/campaigns`, true],
-  ['communications', `/${SLUG}/sales/communications`, true],
-  ['inbox', `/${SLUG}/sales/communications/inbox`, true],
-  ['calendar', `/${SLUG}/sales/calendar`, true],
-  ['reports', `/${SLUG}/sales/reports`, true],
-  ['notifications', `/${SLUG}/notifications`, true],
-  ['admin-users', `/${SLUG}/admin/users`, true],
-  ['admin-roles', `/${SLUG}/admin/roles`, true],
-  ['admin-settings', `/${SLUG}/admin/settings`, true],
-  ['integrations', `/${SLUG}/admin/integrations`, true],
-  ['audit-log', `/${SLUG}/admin/audit`, true],
-  ['people', `/${SLUG}/people`, true],
-  ['people-employees', `/${SLUG}/people/employees`, true],
-  ['people-attendance', `/${SLUG}/people/attendance`, true],
-  ['people-leave', `/${SLUG}/people/leave`, true],
-  ['people-payroll', `/${SLUG}/people/payroll`, true],
-  ['people-checkin', `/${SLUG}/people/check-in`, true],
-  ['profile-role', `/${SLUG}/profile/role`, true],
+  ['login', '/login'],
+  ['dashboard', `/${SLUG}/dashboard`],
+  ['leads', `/${SLUG}/sales/leads`],
+  ['accounts', `/${SLUG}/sales/accounts`],
+  ['contacts', `/${SLUG}/sales/contacts`],
+  ['opportunities', `/${SLUG}/sales/opportunities`],
+  ['calls', `/${SLUG}/sales/calls`],
+  ['call-audits', `/${SLUG}/sales/call-audits`],
+  ['activities', `/${SLUG}/sales/activities`],
+  ['tasks', `/${SLUG}/sales/tasks`],
+  ['follow-ups', `/${SLUG}/sales/follow-ups`],
+  ['campaigns', `/${SLUG}/sales/campaigns`],
+  ['communications', `/${SLUG}/sales/communications`],
+  ['inbox', `/${SLUG}/sales/communications/inbox`],
+  ['calendar', `/${SLUG}/sales/calendar`],
+  ['reports', `/${SLUG}/sales/reports`],
+  ['notifications', `/${SLUG}/notifications`],
+  ['admin-users', `/${SLUG}/admin/users`],
+  ['admin-roles', `/${SLUG}/admin/roles`],
+  ['admin-settings', `/${SLUG}/admin/settings`],
+  ['integrations', `/${SLUG}/admin/integrations`],
+  ['audit-log', `/${SLUG}/admin/audit`],
+  ['people', `/${SLUG}/people`],
+  ['people-employees', `/${SLUG}/people/employees`],
+  ['people-attendance', `/${SLUG}/people/attendance`],
+  ['people-leave', `/${SLUG}/people/leave`],
+  ['people-payroll', `/${SLUG}/people/payroll`],
+  ['people-checkin', `/${SLUG}/people/check-in`],
+  ['profile-role', `/${SLUG}/profile/role`],
 ];
 
 /** Elements whose box escapes the viewport, widest first. */
@@ -121,7 +121,11 @@ if (!fresh || !(await signedIn())) {
     // Generous: a dev server compiles the destination route on first hit.
     await page.waitForURL((u) => !u.pathname.endsWith('/login'), { timeout: 120_000 });
   } catch {
-    const alert = await page.locator('.lf-auth-alert, .lf-alert').first().textContent().catch(() => null);
+    const alert = await page
+      .locator('.lf-auth-alert, .lf-alert')
+      .first()
+      .textContent()
+      .catch(() => null);
     throw new Error(`sign-in did not complete${alert ? ` — the app said: ${alert.trim()}` : ''}`);
   }
   await ctx.storageState({ path: AUTH });
@@ -129,7 +133,7 @@ if (!fresh || !(await signedIn())) {
 console.log('signed in');
 
 const results = [];
-for (const [name, path, needsAuth] of ROUTES) {
+for (const [name, path] of ROUTES) {
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     try {
@@ -139,7 +143,9 @@ for (const [name, path, needsAuth] of ROUTES) {
       results.push({ route: name, path, width, ...r });
       if (r.overflow > 1) {
         const worst = r.realOffenders[0] ?? r.offenders[0];
-        console.log(`OVERFLOW ${name} @${width}: +${r.overflow}px — ${worst ? worst.tag + '.' + worst.cls.split(' ')[0] + ' (w=' + worst.width + ', minW=' + worst.minWidth + ')' : 'unknown'}`);
+        console.log(
+          `OVERFLOW ${name} @${width}: +${r.overflow}px — ${worst ? worst.tag + '.' + worst.cls.split(' ')[0] + ' (w=' + worst.width + ', minW=' + worst.minWidth + ')' : 'unknown'}`,
+        );
       }
     } catch (err) {
       results.push({ route: name, path, width, error: String(err).slice(0, 120) });
