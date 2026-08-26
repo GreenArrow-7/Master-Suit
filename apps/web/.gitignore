@@ -41,3 +41,4 @@ dump.rdb
 # `tsc --noEmit` passes with the file absent — verified rather than assumed.
 # Next writes it back on the first dev or build.
 next-env.d.ts
+.e2e-owner-mfa.json

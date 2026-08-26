@@ -1,8 +1,10 @@
+import { writeFileSync } from 'node:fs';
+import path from 'node:path';
 import Redis from 'ioredis';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { totp } from '@/lib/auth/mfa';
-import { encryptSecret } from '@/services/identity/secrets';
+import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
 
 /**
@@ -174,6 +176,19 @@ export async function loginPlatformOwner(page: Page) {
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
 }
 
+/**
+ * Where the operator's own authenticator is parked while the suite borrows the
+ * account. Read by globalTeardown, which puts it back.
+ *
+ * A file rather than a database row: the owner record is the very thing being
+ * overwritten, and stashing the backup inside it would be lost the moment a
+ * second worker wrote over it.
+ */
+export const OWNER_MFA_BACKUP = path.join(process.cwd(), '.e2e-owner-mfa.json');
+
+/** The secret the suite signs in with. Fixed so parallel workers agree. */
+const E2E_OWNER_SECRET = 'E2EOWNERAUTHENTICATORSECRET23456';
+
 /** Gives the owner a known authenticator, returning its base32 secret. */
 async function ensureOwnerAuthenticator(email: string): Promise<string> {
   // Deterministic, not generated: spec files run in parallel workers and
@@ -181,7 +196,58 @@ async function ensureOwnerAuthenticator(email: string): Promise<string> {
   // the shared owner's authenticator underneath whichever worker is
   // mid-sign-in, and its freshly computed code stops matching. Every worker
   // writing the same value makes the update idempotent and the race harmless.
-  const secret = 'E2EOWNERAUTHENTICATORSECRET23456';
+  const secret = E2E_OWNER_SECRET;
+
+  /**
+   * Park the operator's own authenticator before taking the account over.
+   *
+   * On a developer machine this row is a real account somebody signs in with,
+   * and the enrolment below silently invalidated the codes in their phone —
+   * every run, with no way back except re-enrolling by hand. The suite still
+   * needs a secret it can compute codes from, so it borrows the account and
+   * globalTeardown gives it back.
+   *
+   * `wx` makes the write the arbiter between parallel workers: the first to
+   * create the file wins and the rest get EEXIST, so a worker that arrives
+   * after the overwrite cannot stash the E2E secret over the real backup.
+   */
+  const current = await prisma.platformUser.findUnique({
+    where: { email },
+    select: { mfaSecret: true, mfaEnabled: true, passwordChangedAt: true },
+  });
+  const alreadyBorrowed =
+    current?.mfaSecret != null &&
+    (() => {
+      // An undecryptable value (rotated FIELD_ENCRYPTION_KEY) is not ours, and
+      // is worth backing up rather than throwing here.
+      try {
+        return decryptSecret(current.mfaSecret!) === E2E_OWNER_SECRET;
+      } catch {
+        return false;
+      }
+    })();
+
+  if (!alreadyBorrowed) {
+    try {
+      writeFileSync(
+        OWNER_MFA_BACKUP,
+        JSON.stringify({
+          email,
+          mfaSecret: current?.mfaSecret ?? null,
+          mfaEnabled: current?.mfaEnabled ?? false,
+          passwordChangedAt: current?.passwordChangedAt ?? null,
+        }),
+        { flag: 'wx' },
+      );
+    } catch (error) {
+      // EEXIST: another worker already parked it. Anything else is worth seeing,
+      // but must not fail the run — the sign-in below still works.
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        console.warn(`[e2e] could not back up the owner authenticator: ${(error as Error).message}`);
+      }
+    }
+  }
+
   await prisma.platformUser.update({
     where: { email },
     data: {
