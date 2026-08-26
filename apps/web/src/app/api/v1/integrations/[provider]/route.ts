@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid, NotFound } from '@/lib/errors';
-import { connectionCredentials, wrapCredentials } from '@/lib/integrations/connection';
+import { connectionMetadata, connectionCredentials, wrapCredentials } from '@/lib/integrations/connection';
 import { CREDENTIAL_ALSO_SETTINGS, providerSpec } from '@/lib/integrations/registry';
 import { verifyConnection } from '@/lib/integrations/verify';
 
@@ -86,7 +86,7 @@ export const PUT = route(
 
     const verdict = body.skipVerification
       ? ({ ok: null, detail: 'Saved without verification.' } as const)
-      : await verifyConnection(params.provider, credentials);
+      : await verifyConnection(params.provider, verifyInput(credentials, metadata));
 
     const connection = await prisma.integrationConnection.upsert({
       where: { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } },
@@ -134,7 +134,8 @@ export const POST = route(
     if (!credentials) throw NotFound('Connection');
 
     const stored = (await connectionCredentials(ctx.tenantId, params.provider)) ?? {};
-    const verdict = await verifyConnection(params.provider, stored);
+    const settings = await connectionMetadata(ctx.tenantId, params.provider);
+    const verdict = await verifyConnection(params.provider, verifyInput(stored, settings));
 
     await prisma.integrationConnection.update({
       where: { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } },
@@ -175,3 +176,26 @@ export const DELETE = route(
     return { provider: params.provider, status: 'NOT_CONFIGURED' };
   },
 );
+
+/**
+ * What `verifyConnection` needs to prove a connection: the secrets, plus the
+ * non-secret settings that decide *which* API is being proved.
+ *
+ * Both call sites used to pass credentials alone. `provider` and `model` are
+ * settings, so they live in `metadata` and never arrived — which made the
+ * OpenRouter branch of the Gemini check unreachable. A workspace with a valid
+ * OpenRouter key was verified against Google AI Studio, told "API key not
+ * valid", and parked in ERROR while the runtime (which does read metadata) would
+ * have used the key perfectly well.
+ *
+ * Credentials win on a name collision: a secret is never overridden by a setting
+ * a user can type.
+ */
+function verifyInput(credentials: Record<string, string>, metadata: unknown): Record<string, string> {
+  const settings = Object.fromEntries(
+    Object.entries((metadata ?? {}) as Record<string, unknown>).filter(
+      ([, v]) => typeof v === 'string' && v.trim() !== '',
+    ),
+  ) as Record<string, string>;
+  return { ...settings, ...credentials };
+}
