@@ -36,3 +36,13 @@ cloudflared.exe
 
 # Claude Code: per-machine permission allowlist, carries local absolute paths.
 .claude/settings.local.json
+
+# MCP browser-driver page dumps and ad-hoc verification screenshots. Written
+# into the working tree by a debugging session, never an input to the build.
+.playwright-mcp/
+/*.png
+
+# Editor and tooling backups of an env file hold the same live credentials the
+# original does, under a name the .env rules above do not match.
+**/.env.bak*
+**/.env.*.bak

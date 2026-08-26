@@ -121,6 +121,33 @@ const SOFT_DELETE_MODELS = new Set([
   'PlatformUser',
   'EmployeeProfile',
   'Designation',
+  /**
+   * Registered late. Each of these declares `deletedAt` in the datamodel but was
+   * never listed here, so the guard did not add `deletedAt: null` to their reads
+   * and every caller had to remember the filter by hand. They all did — an audit
+   * of every read found no live leak — but "correct because nobody has forgotten
+   * yet" is not a property, it is a coincidence. A soft delete that only hides a
+   * record where somebody wrote the filter is not a delete.
+   *
+   * `Tenant` also carries `deletedAt` and is deliberately absent: it is in
+   * GLOBAL_MODELS, which returns before this filter is applied, so listing it
+   * would imply a protection it cannot receive.
+   */
+  'AllocationRequest',
+  'Booking',
+  'ClientProfile',
+  'ClientRequirement',
+  'CoachingNote',
+  'Contest',
+  'Listing',
+  'Nomination',
+  'Objection',
+  'Owner',
+  'Post',
+  'Referral',
+  'ReferralCode',
+  'SiteVisit',
+  'Testimonial',
 ]);
 
 const READ_OPS = new Set([

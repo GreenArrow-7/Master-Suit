@@ -18,6 +18,19 @@ import { resolveOwnerIds } from '@/lib/security/visibility';
 
 const WINDOW_MAX = 2000;
 
+/**
+ * Opts a read out of the guard's `deletedAt: null` filter (see src/lib/db.ts).
+ *
+ * Used for one thing here: resolving the *name* of a playbook entry that has
+ * since been retired. Those ids come from ObjectionMatch rows written while the
+ * entry was live, and hiding it now would relabel historical findings as
+ * "Deleted objection", making a manager's past coaching unreadable.
+ *
+ * Spread rather than written inline because the flag is stripped before the
+ * query reaches Prisma and is therefore not part of its argument types.
+ */
+const INCLUDE_DELETED = { __includeDeleted: true } as unknown as Record<string, never>;
+
 export interface CoachingFilters {
   callerId?: string;
   from?: Date;
@@ -239,6 +252,7 @@ export async function coachingAnalytics(ctx: Ctx, filters: CoachingFilters) {
           await prisma.objection.findMany({
             where: { tenantId: ctx.tenantId, id: { in: objectionIds } },
             select: { id: true, name: true },
+            ...INCLUDE_DELETED,
           })
         ).map((o) => [o.id, o.name]),
       )
