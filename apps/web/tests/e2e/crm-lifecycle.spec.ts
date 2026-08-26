@@ -14,17 +14,35 @@
  * evidence behind without colliding with the next one.
  */
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { login } from './helpers';
+import {
+  createWorkspaceViaWizard,
+  login,
+  loginPlatformOwner,
+  resetLoginThrottle,
+  strongPassword,
+  uniq,
+} from './helpers';
 
-const WORKSPACE = process.env.E2E_DEMO_SLUG ?? 'manath-homes';
-const ADMIN_EMAIL = process.env.E2E_DEMO_ADMIN ?? 'admin@manathhomes.ae';
-const ADMIN_PASSWORD = process.env.DEMO_PASSWORD ?? 'ManathDemo-2026';
-
-const run = Math.random().toString(36).slice(2, 8);
+/**
+ * Provisions its own workspace. The first draft used the seeded demo tenant and
+ * its published password, which passed locally and failed in CI — the seed
+ * rotates that password unless DEMO_PASSWORD is pinned, so the sign-in never
+ * happened. A lifecycle spec creates every record it needs anyway, so it has no
+ * reason to depend on one machine's fixtures.
+ */
+const run = uniq();
+const workspace = {
+  displayName: `Lifecycle ${run}`,
+  slug: `lifecycle-${run}`,
+  adminName: 'Lifecycle Administrator',
+  adminEmail: `admin.lifecycle.${run}@masterapp.local`,
+  adminPassword: strongPassword(`lc${run}`),
+  modules: ['SALES'] as ('SALES' | 'HRMS')[],
+};
 const LEAD_NAME = `E2E Lifecycle ${run}`;
 const COMPANY = `Northwind ${run}`;
 
-const at = (path: string) => `/${WORKSPACE}/sales${path}`;
+const at = (path: string) => `/${workspace.slug}/sales${path}`;
 
 /** POST through the API, failing with the server's own message. */
 async function post(request: APIRequestContext, path: string, data: Record<string, unknown>) {
@@ -36,11 +54,19 @@ async function post(request: APIRequestContext, path: string, data: Record<strin
 test.describe('CRM lifecycle', () => {
   test.describe.configure({ mode: 'serial' });
 
+  test.beforeAll(async ({ browser }) => {
+    await resetLoginThrottle();
+    const page = await browser.newPage();
+    await loginPlatformOwner(page);
+    await createWorkspaceViaWizard(page, workspace);
+    await page.close();
+  });
+
   let leadId = '';
   let opportunityId = '';
 
   test('a lead is created through the form and appears in the list', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
     await page.goto(at('/leads/new'));
 
     await page.getByLabel('Full name *').fill(LEAD_NAME);
@@ -62,7 +88,7 @@ test.describe('CRM lifecycle', () => {
   });
 
   test('an activity, a task and a follow-up attach to the lead', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
 
     // Logged through the composer on the record, because the type is chosen
     // from a per-tenant list the server supplies — hardcoding a type id in the
@@ -90,7 +116,7 @@ test.describe('CRM lifecycle', () => {
   });
 
   test('the lead becomes an opportunity carrying its value into the pipeline', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
 
     const opportunity = await post(page.request, 'opportunities', {
       name: `Fit-out ${run}`,
@@ -111,7 +137,7 @@ test.describe('CRM lifecycle', () => {
   });
 
   test('the opportunity closes won and leaves the open pipeline', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
 
     const response = await page.request.patch(`/api/v1/opportunities/${opportunityId}`, {
       data: { status: 'WON' },

@@ -18,18 +18,36 @@
  *     refused on arrival;
  *   - nothing rendered Next's error boundary.
  *
- * It runs against the seeded demo workspace rather than provisioning its own.
- * A freshly wizarded tenant is empty, and an empty page cannot distinguish "no
- * records yet" from "the query threw and the empty state is the fallback" —
- * the seeded tenant has real leads, employees, calls and payroll behind it.
- * Every navigation here is a GET; nothing in this file mutates demo data.
+ * It provisions its own workspace rather than using the seeded demo tenant.
+ * The first draft did the latter, for realistic data behind each page, and it
+ * passed locally and failed in CI: the demo password is rotated by the seed
+ * unless DEMO_PASSWORD is pinned, so the sign-in never happened. A spec that
+ * depends on one machine's fixture data is not a test of the application.
+ *
+ * An empty workspace cannot distinguish "no records yet" from "the query threw
+ * and the empty state is the fallback" — which is exactly why the assertions
+ * below check for the error boundary and a real heading rather than for
+ * content. Those hold on an empty page and still fail on a broken one.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { login, loginPlatformOwner } from './helpers';
+import {
+  createWorkspaceViaWizard,
+  login,
+  loginPlatformOwner,
+  resetLoginThrottle,
+  strongPassword,
+  uniq,
+} from './helpers';
 
-const WORKSPACE = process.env.E2E_DEMO_SLUG ?? 'manath-homes';
-const ADMIN_EMAIL = process.env.E2E_DEMO_ADMIN ?? 'admin@manathhomes.ae';
-const ADMIN_PASSWORD = process.env.DEMO_PASSWORD ?? 'ManathDemo-2026';
+const run = uniq();
+const workspace = {
+  displayName: `Routes ${run}`,
+  slug: `routes-${run}`,
+  adminName: 'Routes Administrator',
+  adminEmail: `admin.routes.${run}@masterapp.local`,
+  adminPassword: strongPassword(`rt${run}`),
+  modules: ['SALES', 'HRMS'] as ('SALES' | 'HRMS')[],
+};
 
 /** Sales module, every route the workspace admin may open. */
 const SALES = [
@@ -155,29 +173,37 @@ async function opens(page: Page, url: string) {
 test.describe('Every route renders for an entitled viewer', () => {
   test.describe.configure({ mode: 'serial' });
 
+  test.beforeAll(async ({ browser }) => {
+    await resetLoginThrottle();
+    const page = await browser.newPage();
+    await loginPlatformOwner(page);
+    await createWorkspaceViaWizard(page, workspace);
+    await page.close();
+  });
+
   test('the Sales module opens on every route', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
     for (const route of SALES) {
       await test.step(`sales/${route}`, async () => {
-        await opens(page, `/${WORKSPACE}/sales/${route}`);
+        await opens(page, `/${workspace.slug}/sales/${route}`);
       });
     }
   });
 
   test('the People module opens on every route', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
     for (const route of PEOPLE) {
       await test.step(`people/${route}`, async () => {
-        await opens(page, `/${WORKSPACE}/people/${route}`);
+        await opens(page, `/${workspace.slug}/people/${route}`);
       });
     }
   });
 
   test('the workspace-level screens open', async ({ page }) => {
-    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await login(page, workspace.adminEmail, workspace.adminPassword);
     for (const route of WORKSPACE_LEVEL) {
       await test.step(route, async () => {
-        await opens(page, `/${WORKSPACE}/${route}`);
+        await opens(page, `/${workspace.slug}/${route}`);
       });
     }
   });
