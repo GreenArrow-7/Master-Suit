@@ -6,8 +6,9 @@ import { env } from '../env';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
 import { buildSupportActor, isSupportRole } from './support-actor';
-import { isPrivilegedPlatformRole } from './platform-policy';
+import { isPrivilegedPlatformRole, isPlatformServiceRole } from './platform-policy';
 import { isInAny, parseCidrList, parseIp, type Cidr } from '../security/cidr';
+import { logger } from '../logger';
 
 export const SESSION_COOKIE = 'lf_session';
 
@@ -16,7 +17,12 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 /** Minutes an MFA-enrolment grant lives. Long enough to scan a QR code, no longer. */
 export const MFA_ENROLMENT_TTL_MINUTES = 10;
 
-export type SessionPurpose = 'FULL' | 'MFA_ENROLMENT';
+/**
+ * FULL is an ordinary signed-in human session. MFA_ENROLMENT is the restricted
+ * grant that reaches only the enrolment endpoints. AI_SERVICE is an interactive
+ * session for a machine identity, mintable only by api/v1/auth/service-login.
+ */
+export type SessionPurpose = 'FULL' | 'MFA_ENROLMENT' | 'AI_SERVICE';
 
 export async function createPlatformSession(input: {
   platformUserId: string;
@@ -28,10 +34,15 @@ export async function createPlatformSession(input: {
 }) {
   const token = randomBytes(32).toString('base64url');
   const purpose = input.purpose ?? 'FULL';
-  const expiresAt =
+  // A machine identity's interactive session is deliberately short — see
+  // SERVICE_SESSION_TTL_MINUTES in lib/env.ts.
+  const ttlMinutes =
     purpose === 'MFA_ENROLMENT'
-      ? new Date(Date.now() + MFA_ENROLMENT_TTL_MINUTES * 60_000)
-      : new Date(Date.now() + env.SESSION_TTL_MINUTES * 60_000);
+      ? MFA_ENROLMENT_TTL_MINUTES
+      : purpose === 'AI_SERVICE'
+        ? env.SERVICE_SESSION_TTL_MINUTES
+        : env.SESSION_TTL_MINUTES;
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
   await prisma.platformSession.create({
     data: {
@@ -90,6 +101,33 @@ export async function revokeSession(token: string, reason = 'USER_LOGOUT') {
   }
 }
 
+/**
+ * Every live session for a platform identity, by identity id.
+ *
+ * `revokeAllSessions` below cannot serve this: it resolves the identity through
+ * `WorkspaceMembership`, and a platform service identity has none by design — so
+ * it would find nothing and silently revoke nothing, which is the worst possible
+ * outcome for a function whose whole job is ending access.
+ *
+ * Returns the count so a caller can report what it actually did rather than
+ * assuming.
+ */
+export async function revokeAllPlatformSessions(
+  platformUserId: string,
+  reason: string,
+  exceptSessionId?: string,
+): Promise<number> {
+  const { count } = await prisma.platformSession.updateMany({
+    where: {
+      platformUserId,
+      revokedAt: null,
+      ...(exceptSessionId ? { NOT: { id: exceptSessionId } } : {}),
+    },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
+  return count;
+}
+
 /** A password or role change invalidates every other session for that user. */
 export async function revokeAllSessions(
   tenantId: string,
@@ -111,7 +149,7 @@ export async function revokeAllSessions(
 
 export type PlatformCtx = {
   platformUserId: string;
-  platformRole: 'USER' | 'OWNER' | 'SUPPORT' | 'SECURITY_AUDITOR';
+  platformRole: 'USER' | 'OWNER' | 'SUPPORT' | 'SECURITY_AUDITOR' | 'AI_SERVICE';
   email: string;
   fullName: string;
   /** Null while an administrator-issued password is still in force. */
@@ -191,6 +229,35 @@ export async function resolvePlatformCtx(
   if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
 
   /**
+   * A machine identity may hold a session, but only one its own path minted.
+   *
+   * This used to refuse every AI_SERVICE session outright, which was right while
+   * the identity had no password. It is narrowed rather than removed: the
+   * purpose column is the proof that the dedicated username → password → MFA
+   * route in api/v1/auth/service-login issued this session.
+   *
+   * Both directions are checked, and the second matters as much as the first. An
+   * AI_SERVICE identity holding a FULL session means the human login route
+   * accepted it and the dedicated path was bypassed. A human identity holding an
+   * AI_SERVICE session means a service session outlived a role change — someone
+   * demoted to USER, or promoted to OWNER, while signed in — and the session must
+   * not survive that either way.
+   */
+  const serviceIdentity = isPlatformServiceRole(user.platformRole);
+  const servicePurpose = session.purpose === 'AI_SERVICE';
+  if (serviceIdentity !== servicePurpose && session.purpose !== 'MFA_ENROLMENT') {
+    logger.error(
+      { platformUserId: user.id, sessionId: session.id, purpose: session.purpose, role: user.platformRole },
+      'platform session purpose does not match the identity role',
+    );
+    await prisma.platformSession.update({
+      where: { id: session.id },
+      data: { revokedAt: now, revokedReason: 'ROLE_PURPOSE_MISMATCH' },
+    });
+    throw Unauthorized();
+  }
+
+  /**
    * Platform staff must have completed two-factor authentication.
    *
    * These roles read across every customer workspace — the owner through the
@@ -260,7 +327,12 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
    * authenticated request. (A legacy `Session` branch the pre-check existed to
    * arbitrate is long gone; see the git history of this function.)
    */
-  const platformCtx = await resolvePlatformCtx(req, requestId);
+  // AI_SERVICE alongside FULL, because a workspace request is exactly what an
+  // interactive service session exists to make. The purpose is still checked
+  // against the identity's role inside resolvePlatformCtx, so widening the list
+  // here does not let a human session in through the service door or the
+  // reverse; MFA_ENROLMENT stays excluded, as it reaches no workspace at all.
+  const platformCtx = await resolvePlatformCtx(req, requestId, ['FULL', 'AI_SERVICE']);
   if (!platformCtx.activeTenantId) throw Unauthorized('Choose a workspace to continue.');
   const membership = await prisma.workspaceMembership.findFirst({
     where: {
@@ -279,7 +351,9 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
     ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
     : isSupportRole(platformCtx.platformRole)
       ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId, platformCtx.platformRole)
-      : null;
+      : isPlatformServiceRole(platformCtx.platformRole)
+        ? await serviceSessionActor(platformCtx)
+        : null;
   if (!actor) throw Unauthorized('Your workspace access is not active.');
   return {
     tenantId: platformCtx.activeTenantId,
@@ -296,6 +370,39 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
         }
       : {}),
   };
+}
+
+/**
+ * The workspace actor for an interactive `AI_SERVICE` session.
+ *
+ * Everything the machine credential path enforces per request has to hold here
+ * too, or signing in through a browser becomes the way around the scoping:
+ *
+ *   * the identity's `serviceScopes` narrow the permission map, exactly as a
+ *     credential's scopes do — and an empty list grants nothing,
+ *   * `serviceTenantAllowlist` decides which workspaces may be opened at all,
+ *   * `buildSupportActor` is the same builder, so read-only and the
+ *     OWNER-only elevation branch apply unchanged.
+ *
+ * Read on every request rather than captured at login, so narrowing an
+ * identity's scopes or allowlist takes effect on the next request instead of at
+ * the next sign-in.
+ */
+async function serviceSessionActor(platformCtx: PlatformCtx): Promise<Actor | null> {
+  const identity = await prisma.platformUser.findUnique({
+    where: { id: platformCtx.platformUserId },
+    select: { serviceScopes: true, serviceTenantAllowlist: true },
+  });
+  if (!identity) return null;
+  if (identity.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(platformCtx.activeTenantId!)) {
+    throw Forbidden('This service identity is not permitted in that workspace.');
+  }
+  return buildSupportActor(
+    platformCtx.activeTenantId!,
+    platformCtx.platformUserId,
+    platformCtx.platformRole,
+    identity.serviceScopes,
+  );
 }
 
 /**

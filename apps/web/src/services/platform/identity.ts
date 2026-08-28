@@ -39,6 +39,9 @@ export type MfaState = 'ENABLED' | 'ENROLMENT_PENDING' | 'ENROLMENT_REQUIRED' | 
 const SAFE_USER = {
   id: true,
   email: true,
+  /// Null for every human account. Set only on AI_SERVICE identities, and needed
+  /// here so unlock can clear the throttle bucket their sign-in actually uses.
+  username: true,
   fullName: true,
   phone: true,
   status: true,
@@ -476,7 +479,7 @@ export async function resetPassword(
       data: { revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' },
     });
   });
-  await clearSignInThrottle(target.email);
+  await clearSignInThrottle(target.email, target.username);
 
   await record(ctx, 'PASSWORD_RESET', target, {
     result: 'ok',
@@ -510,7 +513,7 @@ export async function unlockAccount(ctx: PlatformCtx, userId: string) {
     where: { id: target.id },
     data: { failedLoginCount: 0, lockedUntil: null },
   });
-  await clearSignInThrottle(target.email);
+  await clearSignInThrottle(target.email, target.username);
 
   await record(ctx, 'ACCOUNT_UNLOCKED', target, {
     result: 'ok',
@@ -520,9 +523,19 @@ export async function unlockAccount(ctx: PlatformCtx, userId: string) {
   return { userId: target.id, unlocked: true, wasLocked };
 }
 
-/** Drops the account's sign-in throttle windows. Per-IP limits are not touched. */
-async function clearSignInThrottle(email: string) {
+/**
+ * Drops the account's sign-in throttle windows. Per-IP limits are not touched.
+ *
+ * Both buckets, because there are two sign-in routes with two identifiers. A
+ * service identity is throttled by `limits.serviceLogin(username)`, so clearing
+ * only the email bucket would leave an owner who has just unlocked the account
+ * watching it refuse the correct password for another fifteen minutes — the
+ * exact "I unlocked it and it still says the password is wrong" this function's
+ * original comment exists to prevent, reintroduced through the other door.
+ */
+async function clearSignInThrottle(email: string, username?: string | null) {
   await clearLimit(limits.loginPerAccount(email)).catch(() => {});
+  if (username) await clearLimit(limits.serviceLogin(username)).catch(() => {});
 }
 
 /**
@@ -583,7 +596,7 @@ export async function setAccountActive(ctx: PlatformCtx, userId: string, active:
       });
     }
   });
-  if (active) await clearSignInThrottle(target.email);
+  if (active) await clearSignInThrottle(target.email, target.username);
 
   await record(ctx, active ? 'USER_REACTIVATED' : 'USER_DEACTIVATED', target, { result: 'ok' });
   return { userId: target.id, status: active ? 'ACTIVE' : 'DEACTIVATED' };

@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
@@ -9,6 +8,8 @@ import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
 import { verifyPassword } from '@/lib/auth/password';
 import { encryptSecret, decryptSecret } from '@/services/identity/secrets';
 import { resolvePlatformCtx, createPlatformSession, clientIp } from '@/lib/auth/session';
+import { issueRecoveryCodes } from '@/services/identity/twoFactor';
+import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
 
@@ -41,9 +42,22 @@ export async function POST(req: Request) {
 
     const user = await prisma.platformUser.findUnique({
       where: { id: ctx.platformUserId },
-      select: { id: true, email: true, mfaEnabled: true, mfaSecret: true, passwordHash: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        platformRole: true,
+        mfaEnabled: true,
+        mfaSecret: true,
+        passwordHash: true,
+      },
     });
     if (!user) throw Unauthorized();
+
+    // A machine identity enrols here too — it is the same two-step ceremony and
+    // there is no reason to build a second one — but it must leave with the
+    // session its own login path issues, never the FULL session a human gets.
+    const isService = isPlatformServiceRole(user.platformRole);
 
     if (body.step === 'begin') {
       if (user.mfaEnabled) throw Conflict('Two-factor authentication is already enabled on this account.');
@@ -71,7 +85,10 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           secret,
-          otpauthUrl: otpauthUrl(secret, user.email),
+          // The label the authenticator app shows. For a service identity that
+          // is its username — the thing an operator actually signs in with —
+          // rather than an internal address nothing delivers to.
+          otpauthUrl: otpauthUrl(secret, user.username ?? user.email),
           note: 'Scan this with an authenticator app, then confirm with a code. Nothing is switched on until you do.',
         },
         { headers: { 'x-request-id': requestId } },
@@ -86,7 +103,7 @@ export async function POST(req: Request) {
       throw Forbidden('That code did not match. Check your authenticator clock and try the current code.');
     }
 
-    const { codes, hashed } = generateRecoveryCodes();
+    const { codes, hashed } = issueRecoveryCodes();
     await prisma.platformUser.update({
       where: { id: user.id },
       data: { mfaEnabled: true, mfaRecoveryCodes: hashed },
@@ -108,6 +125,12 @@ export async function POST(req: Request) {
       ip: clientIp(req),
       userAgent: req.headers.get('user-agent'),
       mfaSatisfied: true,
+      // Not FULL for a machine identity: resolvePlatformCtx refuses an
+      // AI_SERVICE identity holding a FULL session, because that is the shape
+      // the human login route issues and reaching one would mean the dedicated
+      // path had been bypassed. Enrolment must hand back the same restricted
+      // session service-login would.
+      purpose: isService ? 'AI_SERVICE' : 'FULL',
     });
 
     await prisma.platformAuditEvent
@@ -147,14 +170,8 @@ export async function POST(req: Request) {
   }
 }
 
-/** Grouped for legibility when read aloud down a phone line. Stored hashed. */
-function generateRecoveryCodes() {
-  const codes = Array.from({ length: 10 }, () => {
-    const raw = randomBytes(5).toString('hex').toUpperCase();
-    return `${raw.slice(0, 5)}-${raw.slice(5)}`;
-  });
-  const hashed = codes.map((code) =>
-    createHash('sha256').update(code.replace(/\s|-/g, '').toUpperCase()).digest('hex'),
-  );
-  return { codes, hashed };
-}
+// The private `generateRecoveryCodes` that lived here is gone. It minted codes
+// from `randomBytes(5)` — forty bits against an unsalted SHA-256 — while
+// services/identity/twoFactor.ts had already moved to ten bytes for exactly
+// that reason. Two copies, one of them fixed, and no way to see the other from
+// where the fix was made. Both now call `issueRecoveryCodes`.
