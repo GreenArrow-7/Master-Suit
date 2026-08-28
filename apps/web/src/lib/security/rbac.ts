@@ -91,6 +91,25 @@ export interface Ctx {
   passwordChangedAt?: Date | null;
   /** Set when the request authenticated with an API key rather than a session. */
   apiKeyId?: string;
+  /**
+   * Set when the request authenticated as a platform service identity.
+   *
+   * The API kernel reads this to write a PlatformAuditEvent for *every* request
+   * from this caller, not only the routes that declare an `auditEvent`. A
+   * cross-tenant machine reader is the one caller whose reads all have to be
+   * accounted for — see lib/auth/service-identity.ts.
+   */
+  service?: {
+    credentialId: string;
+    platformUserId: string;
+    /**
+     * Whatever the calling system declared in `x-initiated-by`. **Unverified**:
+     * it is a request header, so it is a breadcrumb for correlating with the
+     * caller's own logs, never an authorisation input and never proof of who
+     * asked.
+     */
+    declaredInitiator: string | null;
+  };
 }
 
 const key = (module: string, action: Action) => `${module}:${action}`;

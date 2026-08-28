@@ -26,6 +26,15 @@ export const metadata = { title: 'Audit log' };
  */
 const DOMAINS: Record<string, { label: string; objectTypes: string[] }> = {
   auth: { label: 'Sign-in', objectTypes: ['platform_user', 'platform_session'] },
+  /**
+   * Reads made by the automated platform service. `objectTypes` is empty
+   * because these rows live in PlatformAuditEvent, not AuditLog — the filter is
+   * applied to the platform query below instead.
+   *
+   * It gets its own tab so "has an automated service been in our data, and how
+   * often" is one click rather than a scroll through everything else.
+   */
+  service: { label: 'Platform service', objectTypes: [] },
   access: { label: 'Accounts and roles', objectTypes: ['user', 'role', 'membership_role', 'hr_policy'] },
   leave: { label: 'Leave', objectTypes: ['hr_leave_request', 'hr_leave_balance'] },
   attendance: {
@@ -56,7 +65,9 @@ export default async function Page({
   }
 
   const selected = domain && DOMAINS[domain] ? DOMAINS[domain] : null;
+  // Both of these read PlatformAuditEvent; they differ in which half of it.
   const showAuth = !selected || domain === 'auth';
+  const showService = !selected || domain === 'service';
 
   const [records, platformEvents] = await Promise.all([
     prisma.auditLog.findMany({
@@ -76,9 +87,18 @@ export default async function Page({
         occurredAt: true,
       },
     }),
-    showAuth
+    showAuth || showService
       ? prisma.platformAuditEvent.findMany({
-          where: { tenantId: ctx.tenantId },
+          where: {
+            tenantId: ctx.tenantId,
+            // Unfiltered shows both. Picking a tab narrows to one half rather
+            // than dropping the other silently.
+            ...(showAuth && showService
+              ? {}
+              : showService
+                ? { event: 'SERVICE_READ' }
+                : { event: { not: 'SERVICE_READ' } }),
+          },
           orderBy: { occurredAt: 'desc' },
           take: 60,
           select: {
@@ -126,14 +146,44 @@ export default async function Page({
     })),
     ...platformEvents.map((row) => {
       const reason = (row.metadata as { reason?: string } | null)?.reason;
+      /**
+       * A background platform service is not one of this company's people, and
+       * rendering its account name in the actor column puts it in a list of
+       * colleagues where nobody can tell the difference.
+       *
+       * So it is labelled as what it is, and its row is trimmed to the four
+       * facts this company is owed — that an automated platform service read
+       * their workspace, when, which module, and from where. The operational
+       * detail behind it (which credential, which upstream job declared itself,
+       * the correlation id) is platform-internal and stays in /platform/audit.
+       *
+       * Note what is deliberately *not* done here: the event is not filtered
+       * out. Suppressing it would leave this company unable to see that an
+       * automated reader touched their leads and employee records at all, which
+       * is precisely the visibility an audit log owes a data controller. The
+       * distinction is presentation, not existence — the row is written by
+       * lib/auth/service-identity.ts on every single request, and this page is
+       * not the thing deciding whether it exists.
+       */
+      const isService = row.event === 'SERVICE_READ';
       return {
         id: row.id,
         at: row.occurredAt,
-        actor: row.actorUserId ? (names.get(row.actorUserId) ?? 'Removed user') : 'System',
-        action: reason ? `${row.event.toLowerCase()} · ${reason}` : row.event.toLowerCase(),
+        actor: isService
+          ? 'Automated platform service'
+          : row.actorUserId
+            ? (names.get(row.actorUserId) ?? 'Removed user')
+            : 'System',
+        action: isService
+          ? `read · ${(row.metadata as { action?: string } | null)?.action?.toLowerCase() ?? 'view'}`
+          : reason
+            ? `${row.event.toLowerCase()} · ${reason}`
+            : row.event.toLowerCase(),
         event: row.event as string,
         objectType: row.objectType ?? 'platform_user',
-        detail: describe({ fieldKey: null, previousValue: null, newValue: null, metadata: row.metadata }),
+        detail: isService
+          ? 'Automated read by the platform service. Full detail is held in the platform security log.'
+          : describe({ fieldKey: null, previousValue: null, newValue: null, metadata: row.metadata }),
         ip: row.ipAddress,
       };
     }),

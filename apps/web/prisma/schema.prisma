@@ -42,6 +42,14 @@ enum PlatformRole {
   OWNER
   SUPPORT
   SECURITY_AUDITOR
+  /// A machine identity for background and AI reads across every workspace.
+  ///
+  /// Deliberately its own role rather than a reused OWNER or SUPPORT: those are
+  /// people, they can hold a session, and OWNER can elevate to write through a
+  /// break-glass grant. This one authenticates only with a rotatable credential
+  /// (lib/auth/service-identity.ts), can never elevate, and is read-only by
+  /// construction — see buildSupportActor.
+  AI_SERVICE
 }
 
 enum MembershipStatus {
@@ -1032,6 +1040,16 @@ model PlatformUser {
   id                String       @id @default(cuid())
   email             String       @unique
   normalizedEmail   String       @unique
+  /// Interactive login identifier, separate from the email address.
+  ///
+  /// Only `AI_SERVICE` identities have one. Their `email` is a stable internal
+  /// name rather than a mailbox — nothing is ever delivered to it — so it is a
+  /// poor thing to type into a sign-in form and a worse thing to rotate. Human
+  /// platform accounts keep signing in with their email and leave this null.
+  ///
+  /// Nullable and unique together: Postgres allows many NULLs in a unique index,
+  /// so every human account can leave it unset without colliding.
+  username          String?      @unique
   passwordHash      String?
   fullName          String
   avatarUrl         String?
@@ -1050,14 +1068,76 @@ model PlatformUser {
   updatedAt         DateTime     @updatedAt
   deletedAt         DateTime?
 
+  /// Read scopes an **interactive** `AI_SERVICE` session may use, in the same
+  /// `module:read` form a machine credential carries.
+  ///
+  /// Deliberately not read from `PlatformServiceCredential`: a browser session
+  /// holds no machine credential, and borrowing one would make the two credential
+  /// paths depend on each other — the thing that must not happen, since revoking
+  /// the machine token has to be a separate act from revoking the login.
+  ///
+  /// Empty means an interactive session can read nothing, which is the correct
+  /// default for an identity provisioned before anyone decided what it may see.
+  serviceScopes          String[] @default([])
+  /// Workspaces an interactive `AI_SERVICE` session may enter. Empty means all.
+  serviceTenantAllowlist String[] @default([])
+
   memberships           WorkspaceMembership[]
   passwordHistory       PasswordHistory[]
   sessions              PlatformSession[]
   platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
+  serviceCredentials    PlatformServiceCredential[]
 
   @@index([status, platformRole])
+}
+
+/// A rotatable machine credential for an `AI_SERVICE` platform identity.
+///
+/// Separate from `APIKey` because that model is tenant-scoped — it carries a
+/// required `tenantId` and derives its permissions from a workspace `Role`. A
+/// platform service identity is the opposite shape: it belongs to no workspace
+/// and reads across all of them, so it needs its own credential with its own
+/// scoping.
+///
+/// The secret is never stored. Only `prefix` is in the clear, exactly as
+/// `APIKey` does it, so a leaked table is not a set of working credentials.
+model PlatformServiceCredential {
+  id             String @id @default(cuid())
+  platformUserId String
+  /// What this credential is for, so a rotation knows which one it is replacing.
+  name           String
+  prefix         String @unique
+  keyHash        String @unique
+
+  /// `module:read` entries, matched by the same `scopeAllows` the API keys use.
+  /// Empty means no access at all — least privilege has to be opted into, not
+  /// out of, or a credential minted with a forgotten argument reads everything.
+  scopes          String[] @default([])
+  /// Workspaces this credential may read. Empty means every workspace, which is
+  /// the cross-tenant case this exists for; a populated list pins it to named
+  /// tenants for a narrower job.
+  tenantAllowlist String[] @default([])
+  rateLimitPerMin Int      @default(120)
+
+  lastUsedAt DateTime?
+  /// Required, unlike `APIKey.expiresAt`. A machine credential that never
+  /// expires is one nobody ever rotates.
+  expiresAt  DateTime
+
+  revokedAt     DateTime?
+  revokedReason String?
+  /// Set on the replacement when a credential is rotated, so the pair can be
+  /// followed in an incident.
+  rotatedFromId String?
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, revokedAt])
 }
 
 /// A pending invitation to join a workspace.
@@ -2666,6 +2746,12 @@ model PlatformSession {
   /// verification and logout endpoints — issued when a workspace mandates 2FA
   /// and the user has not enrolled yet. Without it, turning on mandatory 2FA
   /// locked out every user who had not already enrolled, permanently.
+  ///
+  /// AI_SERVICE is an interactive session for a machine identity, mintable only
+  /// by api/v1/auth/service-login. It is the proof `resolvePlatformCtx` checks:
+  /// an AI_SERVICE identity holding a FULL session is refused, because a FULL
+  /// session is what the *human* login route issues and reaching one would mean
+  /// the dedicated path had been bypassed.
   purpose        String    @default("FULL")
   expiresAt      DateTime
   lastSeenAt     DateTime  @default(now())

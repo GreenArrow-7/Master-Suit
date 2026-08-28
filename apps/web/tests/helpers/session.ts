@@ -44,7 +44,7 @@ export async function createPlatformSessionToken(
    * resolvePlatformCtx must now refuse — it is a server-side column, never
    * something a client can assert.
    */
-  options: { mfaSatisfied?: boolean; purpose?: 'FULL' | 'MFA_ENROLMENT' } = {},
+  options: { mfaSatisfied?: boolean; purpose?: 'FULL' | 'MFA_ENROLMENT' | 'AI_SERVICE' } = {},
 ): Promise<string> {
   const token = randomBytes(32).toString('base64url');
   await prisma.platformSession.create({

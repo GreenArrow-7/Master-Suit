@@ -57,6 +57,10 @@ export const GLOBAL_MODELS = new Set([
   // Control-plane, and resolved *before* any tenant context exists: it is the
   // lookup that decides whether platform staff may write into a workspace.
   'PlatformAccessGrant',
+  // Same shape, one step earlier: the machine credential that decides which
+  // tenants a platform service identity may read at all. It carries no tenantId
+  // to filter on, and the lookup happens before any tenant is known.
+  'PlatformServiceCredential',
 ]);
 
 /**

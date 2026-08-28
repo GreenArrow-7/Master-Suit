@@ -88,7 +88,28 @@ export const limits = {
    */
   loginPerIp: (ip: string) => ({ key: `login:ip:${ip}`, max: 10, windowSeconds: 300 }),
   loginPerAccount: (email: string) => ({ key: `login:acct:${email.toLowerCase()}`, max: 5, windowSeconds: 300 }),
+  /**
+   * Interactive sign-in to a service identity, keyed by username.
+   *
+   * Its own bucket rather than `loginPerAccount`, because the identifier is a
+   * username and the account is not a person: three attempts, not five, and a
+   * fifteen-minute window rather than five. Nobody mistypes a password stored in
+   * a secret manager three times, so a burst here is worth slowing down harder
+   * than a human's fat-fingered morning.
+   */
+  serviceLogin: (username: string) => ({ key: `svclogin:${username.toLowerCase()}`, max: 3, windowSeconds: 900 }),
   apiKey: (id: string, max: number) => ({ key: `api:${id}`, max, windowSeconds: 60 }),
+  /**
+   * A platform service credential, keyed per credential rather than per
+   * identity: rotating a credential should not inherit the old one's spent
+   * budget, and two credentials for one identity are two jobs with two
+   * appetites.
+   *
+   * This is also the cross-tenant read ceiling. A machine that can read every
+   * workspace is the caller whose runaway loop is most expensive, so the
+   * per-credential default (120/min) is a fifth of what an API key gets.
+   */
+  platformService: (id: string, max: number) => ({ key: `svc:${id}`, max, windowSeconds: 60 }),
   sessionUser: (id: string) => ({ key: `user:${id}`, max: 1200, windowSeconds: 60 }),
   publicForm: (ip: string) => ({ key: `form:${ip}`, max: 5, windowSeconds: 60 }),
   exportCreate: (id: string) => ({ key: `export:${id}`, max: 10, windowSeconds: 3600 }),

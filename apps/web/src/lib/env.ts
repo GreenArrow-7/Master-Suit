@@ -112,6 +112,16 @@ export const envSchema = z.object({
   WEBHOOK_SIGNING_PEPPER: b64,
 
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(480),
+  /**
+   * Interactive sessions for an `AI_SERVICE` identity, which get a much shorter
+   * life than the eight hours a person's session runs for.
+   *
+   * Thirty minutes because there is no workflow to interrupt: the account exists
+   * to inspect what a background reader can see, and re-authenticating costs one
+   * TOTP code. An eight-hour window on a cross-tenant read-only account is a
+   * whole working day in which an unattended browser is that account.
+   */
+  SERVICE_SESSION_TTL_MINUTES: z.coerce.number().int().positive().max(480).default(30),
   SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(60),
   MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
   LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),

@@ -60,11 +60,28 @@ const RECOVERY_CODE_BYTES = 10;
 const hashCode = (code: string) => createHash('sha256').update(code.replace(/\s|-/g, '').toUpperCase()).digest('hex');
 
 /** Grouped for legibility when read aloud down a phone line. */
-function generateRecoveryCodes() {
+export function generateRecoveryCodes() {
   return Array.from({ length: RECOVERY_CODE_COUNT }, () => {
     const raw = randomBytes(RECOVERY_CODE_BYTES).toString('hex').toUpperCase();
     return (raw.match(/.{1,5}/g) ?? [raw]).join('-');
   });
+}
+
+/**
+ * Codes plus the digests to store, from one call.
+ *
+ * Exported because there were two independent implementations of this: the one
+ * above, and a private copy in api/v1/auth/enroll-2fa/route.ts built on
+ * `randomBytes(5)`. Forty bits, against an unsalted SHA-256, on the enrolment
+ * path a platform owner is *most* likely to use — precisely the weakness the
+ * RECOVERY_CODE_BYTES comment above describes as fixed. It was fixed here and
+ * not there, because the copy was invisible from here.
+ *
+ * One function, three callers, one entropy figure to review.
+ */
+export function issueRecoveryCodes() {
+  const codes = generateRecoveryCodes();
+  return { codes, hashed: codes.map(hashCode) };
 }
 
 /**

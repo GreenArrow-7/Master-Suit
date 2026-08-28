@@ -6,6 +6,7 @@ import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
+import { requirePlatformServiceActor, recordServiceAccess } from '../auth/service-identity';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
@@ -70,9 +71,15 @@ export function route<
       // 1. Authenticate ────────────────────────────────────────────────────────
       if (!spec.anonymous) {
         const bearer = req.headers.get('authorization');
-        ctx = bearer?.startsWith('Bearer ')
-          ? await authenticateApiKey(bearer.slice(7), req, requestId)
-          : await resolveCtx(req, requestId);
+        // Three credentials, told apart by the token's own prefix rather than by
+        // a separate header, so a caller cannot pick which verifier examines its
+        // token. `lf_svc_` is the cross-tenant platform service identity; a
+        // service credential presented as anything else simply fails to parse.
+        ctx = bearer?.startsWith('Bearer lf_svc_')
+          ? await requirePlatformServiceActor(req, requestId)
+          : bearer?.startsWith('Bearer ')
+            ? await authenticateApiKey(bearer.slice(7), req, requestId)
+            : await resolveCtx(req, requestId);
       }
 
       // 2. Rate limit ──────────────────────────────────────────────────────────
@@ -89,9 +96,16 @@ export function route<
         // It governs the API-key path only. A browser session is a different
         // shape of traffic — one screen can issue a dozen requests — and
         // limits.sessionUser's separate ceiling is deliberate, not an oversight.
-        await consume(
-          ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, env.API_RATE_LIMIT_PER_MIN) : limits.sessionUser(ctx.actor.id),
-        );
+        // A service identity has already spent its per-credential budget inside
+        // requirePlatformServiceActor, where the credential's own
+        // `rateLimitPerMin` applies. Falling through to `sessionUser` here would
+        // add a second, laxer ceiling keyed on the shared actor id — which for
+        // an identity holding several credentials is the wrong bucket entirely.
+        if (!ctx.service) {
+          await consume(
+            ctx.apiKeyId ? limits.apiKey(ctx.apiKeyId, env.API_RATE_LIMIT_PER_MIN) : limits.sessionUser(ctx.actor.id),
+          );
+        }
       }
 
       // 3. Authorize — before the handler body runs ────────────────────────────
@@ -149,6 +163,26 @@ export function route<
         });
       }
 
+      /**
+       * Every request from a platform service identity, not only the routes
+       * that declare an `auditEvent`.
+       *
+       * Awaited and unguarded on purpose: if this write fails the request fails
+       * with it. The alternative is serving a customer's records to a
+       * cross-tenant machine reader and having no record that it happened, which
+       * is the one outcome the identity is not allowed to produce.
+       */
+      if (ctx?.service) {
+        await recordServiceAccess(ctx, {
+          module: spec.module,
+          action: spec.action,
+          method: req.method,
+          path: url.pathname,
+          objectId: (result as { id?: string } | null)?.id,
+          status: 200,
+        });
+      }
+
       // `ms` is hoisted because two things need it now: the log line, and the
       // request/latency histogram the metrics endpoint serves. Computing it
       // twice would make them disagree by however long the log call took.
@@ -187,6 +221,25 @@ export function route<
         action: spec.action,
         tenantId: ctx?.tenantId,
       });
+
+      /**
+       * A refused or failed service request is still an attempt worth holding —
+       * a credential probing routes it has no scope for is exactly the pattern
+       * the platform log exists to make visible.
+       *
+       * Best-effort here, unlike the success path: this response carries no
+       * customer data, so a failed audit write must not turn a 403 into a 500
+       * and lose the real cause.
+       */
+      if (ctx?.service) {
+        await recordServiceAccess(ctx, {
+          module: spec.module,
+          action: spec.action,
+          method: req.method,
+          path: new URL(req.url).pathname,
+          status: response.status,
+        }).catch((auditErr) => logger.error({ err: auditErr, requestId }, 'service audit write failed'));
+      }
       // Counted here rather than inside toResponse: this is the one place that
       // sees both the outcome and how long reaching it took, and a slow 500 is a
       // different problem from a fast one.
