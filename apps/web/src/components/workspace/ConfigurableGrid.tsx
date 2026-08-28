@@ -41,6 +41,7 @@ export default function ConfigurableGrid({
                   key={column.key}
                   data-hide-mobile={column.hideMobile ? '' : undefined}
                   data-label={column.label}
+                  data-priority={column.primary ? 'primary' : undefined}
                   style={{ textAlign: column.align ?? 'left' }}
                 >
                   {renderCell(object, column.key, row) ?? emptyLabel}

@@ -297,17 +297,34 @@ jobs:
       # reach for apt only if Chromium genuinely cannot launch. The bounded
       # timeout means a stall costs six minutes and names itself, instead of
       # eating the job's whole budget.
+      # ── E2E, only where it earns its cost ─────────────────────────────────
+      #
+      # The browser suite is by far the most expensive gate — roughly two thirds
+      # of the job's minutes — and this repository is private on a plan with a
+      # monthly Actions allowance. Twenty-nine runs in one day, across several
+      # branches in flight at once, spent about a quarter of that allowance and
+      # left runs queueing for the best part of an hour before a runner picked
+      # them up.
+      #
+      # So it runs where a regression would actually reach someone: a pull
+      # request targeting `main`, and every push to `main` itself. A branch
+      # pushed for review against any other base still gets typecheck, lint,
+      # unit, integration, build and audit — everything except the browser.
+      # Re-target the PR at `main` and the browser gate runs before it can merge.
       - name: Playwright version
         id: playwright
+        if: github.event_name == 'push' || github.base_ref == 'main'
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browser
+        if: github.event_name == 'push' || github.base_ref == 'main'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install Playwright browser
+        if: github.event_name == 'push' || github.base_ref == 'main'
         timeout-minutes: 6
         run: |
           npx playwright install chromium
@@ -317,6 +334,7 @@ jobs:
 
       - name: E2E
         id: e2e
+        if: github.event_name == 'push' || github.base_ref == 'main'
         timeout-minutes: 15
         run: npx playwright test
 

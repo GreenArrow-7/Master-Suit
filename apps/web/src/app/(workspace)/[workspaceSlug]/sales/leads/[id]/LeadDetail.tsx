@@ -94,6 +94,7 @@ interface Props {
   taskTypes: TaskType[];
   users: User[];
   canEdit: boolean;
+  canDeleteDocuments: boolean;
   canAssign: boolean;
   canDelete: boolean;
 }
@@ -114,6 +115,7 @@ export default function LeadDetail({
   taskTypes,
   users,
   canEdit,
+  canDeleteDocuments,
   canAssign,
   canDelete,
 }: Props) {
@@ -384,7 +386,9 @@ export default function LeadDetail({
       {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
       {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
       {tab === 'Notes' && <NotesTab lead={lead} patchLead={patchLead} canEdit={canEdit} />}
-      {tab === 'Documents' && <DocumentsTab documents={lead.documents} leadId={lead.id} canEdit={canEdit} />}
+      {tab === 'Documents' && (
+        <DocumentsTab documents={lead.documents} leadId={lead.id} canEdit={canEdit} canDelete={canDeleteDocuments} />
+      )}
     </>
   );
 }
@@ -1026,10 +1030,21 @@ function NotesTab({
 
 // ── Documents Tab ───────────────────────────────────────────────────────────
 
-function DocumentsTab({ documents, leadId, canEdit }: { documents: Doc[]; leadId: string; canEdit: boolean }) {
+function DocumentsTab({
+  documents,
+  leadId,
+  canEdit,
+  canDelete,
+}: {
+  documents: Doc[];
+  leadId: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1052,6 +1067,31 @@ function DocumentsTab({ documents, leadId, canEdit }: { documents: Doc[]; leadId
     } finally {
       setBusy(false);
       e.target.value = '';
+    }
+  }
+
+  /**
+   * Removes the file as well as the row, so it arms before it fires rather than
+   * deleting on a single click. Only rendered for a viewer holding
+   * `documents:DELETE`; the endpoint refuses everyone else regardless, so the
+   * hidden button is a courtesy and not the control.
+   */
+  async function remove(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/documents/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail ?? 'The document could not be deleted.');
+        return;
+      }
+      setArmed(null);
+      router.refresh();
+    } catch {
+      setError('Could not reach the server. Try again.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1117,6 +1157,37 @@ function DocumentsTab({ documents, leadId, canEdit }: { documents: Doc[]; leadId
                   Download
                 </a>
               )}
+              {canDelete &&
+                (armed === d.id ? (
+                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-2)' }}>Delete the file?</span>
+                    <button
+                      type="button"
+                      className="lf-btn lf-btn--danger lf-btn--sm"
+                      disabled={busy}
+                      onClick={() => void remove(d.id)}
+                    >
+                      {busy ? 'Deleting…' : 'Yes, delete'}
+                    </button>
+                    <button
+                      type="button"
+                      className="lf-btn lf-btn--secondary lf-btn--sm"
+                      disabled={busy}
+                      onClick={() => setArmed(null)}
+                    >
+                      Keep
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="lf-btn lf-btn--danger lf-btn--sm"
+                    onClick={() => setArmed(d.id)}
+                    aria-label={`Delete ${d.name}`}
+                  >
+                    Delete
+                  </button>
+                ))}
             </div>
           ))}
         </div>

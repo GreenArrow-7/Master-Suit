@@ -96,11 +96,22 @@ body {
 .lf-page-main {
   flex: 1;
   min-width: 0;
-  padding: 28px 32px var(--lf-fab-safe);
+  /* Fluid side gutter from the responsive work, main's FAB-safe bottom:
+     the sides scale with the viewport, the bottom clears the assistant
+     button and, on a phone, the tab bar. */
+  padding: 28px var(--lf-page-gutter) var(--lf-fab-safe);
 }
 .lf-page-stack {
   display: grid;
+  /* Same constraint as .lf-stack: a bare grid's implicit track sizes to
+     max-content, so one wide child (a hero band, a 320px-floor grid) drags the
+     whole page past the viewport. Every screen hangs off this container, so the
+     floor belongs here rather than in each page. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
+}
+.lf-page-stack > * {
+  min-width: 0;
 }
 
 .lf-shell-topbar {
@@ -119,7 +130,11 @@ body {
 }
 .lf-shell-search {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
+  /* Without this the flex item cannot shrink below the intrinsic width of the
+     input it wraps, so the top bar pushes the page wider than the viewport
+     instead of the search box getting narrower. */
+  min-width: 0;
   max-width: 460px;
 }
 .lf-shell-search .lf-input {
@@ -625,6 +640,460 @@ body {
     padding: 24px 24px var(--lf-fab-safe);
   }
 }
+/* `.lf-overflow` — the ••• disclosure for secondary actions.
+
+   Built on <details> so there is no open/closed state to keep in sync, it is
+   keyboard reachable by default, and it dismisses itself. */
+.lf-overflow {
+  position: relative;
+}
+.lf-overflow > summary {
+  list-style: none;
+  cursor: pointer;
+  /* Square: it holds three dots, not a word. */
+  padding-inline: var(--lf-space-3);
+}
+.lf-overflow > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-overflow__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  display: grid;
+  gap: var(--lf-space-2);
+  min-width: 190px;
+  padding: var(--lf-space-3);
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  box-shadow: var(--lf-shadow-2);
+}
+/* Stacked, full-width and tappable rather than a row of chips. */
+.lf-overflow__menu > * {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 40px;
+}
+
+/* ── Sheets ───────────────────────────────────────────────────────────────
+   One surface for everything that is a side drawer or a centred dialog on a
+   desktop and should be a bottom sheet on a phone: filters, record previews,
+   quick edits, confirmations.
+
+   A 560px drawer or a 600px modal inside a 390px viewport is the "desktop
+   squeezed into a phone" complaint in its purest form. Below the phone tier a
+   sheet rises from the bottom edge, is capped at 88vh so the page behind stays
+   visible (which is what tells you it is dismissible), scrolls internally, and
+   keeps its actions pinned where the thumb already is.
+
+   `dvh` not `vh`: with the mobile browser chrome shown, `vh` overshoots and the
+   sheet's footer ends up under the address bar.
+   ──────────────────────────────────────────────────────────────────────── */
+.lf-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(15 10 12 / 0.45);
+  backdrop-filter: blur(1.5px);
+}
+.lf-sheet {
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  background: var(--lf-surface);
+  box-shadow: var(--lf-shadow-3);
+  /* Desktop: a right-hand drawer. */
+  inset: 0 0 0 auto;
+  width: min(460px, 100%);
+  border-left: 1px solid var(--lf-line);
+}
+.lf-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: var(--lf-space-3);
+  padding: var(--lf-space-4) var(--lf-space-5);
+  border-bottom: 1px solid var(--lf-line);
+}
+.lf-sheet__head h2 {
+  margin: 0;
+  font: 600 var(--lf-text-lg)/1.2 var(--lf-font-ui);
+}
+.lf-sheet__close {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--lf-line-2);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+  color: var(--lf-ink-2);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lf-sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--lf-space-5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lf-space-4);
+  align-content: start;
+}
+.lf-sheet__foot {
+  display: flex;
+  gap: var(--lf-space-2);
+  padding: var(--lf-space-4) var(--lf-space-5);
+  border-top: 1px solid var(--lf-line);
+  /* Above the home indicator, not under it. */
+  padding-bottom: calc(var(--lf-space-4) + env(safe-area-inset-bottom, 0px));
+}
+.lf-sheet__foot > * {
+  flex: 1;
+  min-height: 44px;
+}
+
+@media (max-width: 760px) {
+  .lf-sheet {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 88dvh;
+    border-left: 0;
+    border-top: 1px solid var(--lf-line);
+    border-radius: var(--lf-radius-xl) var(--lf-radius-xl) 0 0;
+    animation: lf-sheet-rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* The grab handle says "drag me down" before any label does. */
+  .lf-sheet::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--lf-line-2);
+  }
+  .lf-sheet__head {
+    padding-top: var(--lf-space-5);
+  }
+}
+
+@keyframes lf-sheet-rise {
+  from {
+    transform: translateY(12px);
+    opacity: 0.6;
+  }
+}
+
+/* The trigger and the sheet chrome exist only on a phone; above the tier the
+   filters are simply the row they always were. */
+.lf-filter-trigger,
+.lf-filterbox__head {
+  display: none;
+}
+.lf-filterbox,
+.lf-filterbox__body {
+  display: contents;
+}
+
+@media (max-width: 760px) {
+  .lf-filter-trigger {
+    display: inline-flex;
+    min-height: 40px;
+  }
+
+  /* Collapsed, not removed: the fields keep their values and still submit with
+     the form. Unmounting them would silently drop them from the query. */
+  .lf-filterbox {
+    display: none;
+  }
+  .lf-filterbox[data-open] {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    max-height: 88dvh;
+    background: var(--lf-surface);
+    border-top: 1px solid var(--lf-line);
+    border-radius: var(--lf-radius-xl) var(--lf-radius-xl) 0 0;
+    box-shadow: var(--lf-shadow-3);
+    animation: lf-sheet-rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .lf-filterbox[data-open]::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--lf-line-2);
+  }
+  .lf-filterbox[data-open] .lf-filterbox__head {
+    display: flex;
+    align-items: center;
+    gap: var(--lf-space-3);
+    padding: var(--lf-space-5) var(--lf-space-5) var(--lf-space-3);
+    border-bottom: 1px solid var(--lf-line);
+  }
+  .lf-filterbox__head h2 {
+    margin: 0;
+    font: 600 var(--lf-text-lg)/1.2 var(--lf-font-ui);
+  }
+  .lf-filterbox[data-open] .lf-filterbox__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--lf-space-4);
+    align-content: start;
+    overflow-y: auto;
+    padding: var(--lf-space-5);
+    padding-bottom: calc(var(--lf-space-5) + env(safe-area-inset-bottom, 0px));
+  }
+  /* One control per row, each comfortably tappable. */
+  .lf-filterbox[data-open] .lf-filterbox__body .lf-field {
+    flex: none !important;
+    width: 100%;
+    min-width: 0;
+  }
+  .lf-filterbox[data-open] .lf-filterbox__body .lf-input,
+  .lf-filterbox[data-open] .lf-filterbox__body .lf-select,
+  .lf-filterbox[data-open] .lf-filterbox__body .lf-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* ── Phone: scroll strips and action rows ─────────────────────────────────
+   A tab strip that scrolls is right; one that appears to stop mid-word is not.
+   Inside the page's 16px padding the last visible tab is sliced with no hint
+   that more exists, so on a phone the strip bleeds to both screen edges and
+   fades at the trailing edge — the two signals that say "keep going".
+
+   Action rows get the same treatment rather than wrapping into a second and
+   third row of buttons above the content they act on.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .lf-tabs {
+    /* Cancel the page gutter so the strip runs edge to edge, then restore it
+       as padding so the first and last tab still line up with the content. */
+    margin-inline: calc(-1 * var(--lf-page-gutter));
+    padding-inline: var(--lf-page-gutter);
+    scroll-snap-type: x proximity;
+    /* The fade is the affordance: content continues past the edge. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .lf-tab {
+    scroll-snap-align: start;
+    /* Comfortably tappable without turning the strip into a toolbar. */
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .lf-list-header {
+    gap: var(--lf-space-3);
+  }
+  .lf-list-header__actions {
+    /* One scrolling row instead of two or three wrapped ones. The primary
+       action is burgundy and sits last, where the thumb already is. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * var(--lf-page-gutter));
+    padding-inline: var(--lf-page-gutter);
+  }
+  .lf-list-header__actions::-webkit-scrollbar {
+    display: none;
+  }
+  .lf-list-header__actions > * {
+    flex: none;
+  }
+  .lf-list-header__actions .lf-btn {
+    min-height: 40px;
+  }
+}
+
+/* ── Phone navigation and app bar ─────────────────────────────────────────
+   A phone got the desktop chrome: a top bar carrying search, workspace name,
+   plan, density, theme, help, notifications, sign-out and Create, wrapping
+   onto three rows — and a 40-link sidebar as the only way to navigate.
+
+   Below the phone tier the bar keeps a menu button, the page title and the two
+   actions worth a thumb; everything else already exists in the drawer, so
+   nothing is lost by removing it here. Primary destinations move to a bottom
+   tab bar, where a thumb actually reaches.
+   ──────────────────────────────────────────────────────────────────────── */
+.lf-tabbar {
+  display: none;
+}
+.lf-appbar-title {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .lf-tabbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 44;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    background: rgb(255 255 255 / 0.96);
+    border-top: 1px solid var(--lf-line);
+    backdrop-filter: blur(14px);
+    /* Home-indicator safe area on iOS, zero elsewhere. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .lf-tabbar__item {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 3px;
+    /* Comfortably past the 44px floor once the safe area is added. */
+    min-height: 52px;
+    padding: 6px 2px;
+    border: 0;
+    background: none;
+    color: var(--lf-ink-3);
+    font: 600 var(--lf-text-2xs)/1 var(--lf-font-ui);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .lf-tabbar__item svg {
+    width: 20px;
+    height: 20px;
+  }
+  .lf-tabbar__item[aria-current='page'] {
+    color: var(--lf-wine-700);
+  }
+
+  /* The bar is fixed, so the last rows of every page need somewhere to go. */
+  .lf-page-main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+  /* One row, never three: the bar is chrome, not content. */
+  .lf-shell-topbar {
+    height: 56px;
+    min-height: 0;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0 8px 0 52px;
+  }
+  .lf-shell-actions {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  /* Search lives on the list screens it filters; on a phone the bar cannot
+     afford it and the tab bar reaches those lists in one tap. */
+  .lf-shell-search {
+    display: none;
+  }
+  .lf-appbar-title {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 600 var(--lf-text-base)/1 var(--lf-font-ui);
+    color: var(--lf-ink);
+  }
+
+  /* Anything below the touch floor gets a hit area without growing visually. */
+  .lf-shell-actions .lf-btn--sm {
+    min-height: 40px;
+  }
+  .lf-mobile-nav-button {
+    width: 40px;
+    height: 40px;
+    top: 8px;
+    left: 8px;
+    border-radius: var(--lf-radius);
+  }
+}
+
+/* The drawer is a phone surface; on a tablet the rail is the navigation. */
+@media (min-width: 761px) {
+  .lf-tabbar {
+    display: none;
+  }
+}
+
+/* ── Layout primitives ────────────────────────────────────────────────────
+   `.lf-stack` — a vertical grid that cannot outgrow its container.
+
+   A bare `display: grid` creates an implicit column sized to max-content, and
+   an explicit `1fr` track still refuses to shrink past its items' min-content
+   because grid items default to `min-width: auto`. Either way a long line of
+   text or a wide child silently pushes the whole page wider than the viewport:
+   the integrations board rendered a 639px track inside a 358px column and
+   overflowed every phone width. `minmax(0, 1fr)` is the constraint that says
+   "share the container, and shrink when it does".
+
+   Use this instead of an inline `display: grid` anywhere content stacks. Rows
+   flow with the token gap; override with --lf-stack-gap when a screen needs a
+   tighter rhythm.
+   ──────────────────────────────────────────────────────────────────────── */
+.lf-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lf-stack-gap, var(--lf-space-4));
+}
+/* Grid and flex children opt out of min-content sizing the same way. */
+.lf-stack > * {
+  min-width: 0;
+}
+
+/* ── Tablet: 761–1023px ───────────────────────────────────────────────────
+   The tier that did not exist. Every mobile rule was gated on ≤760px, so an
+   iPad in portrait rendered the full desktop shell — a 236px sidebar plus a
+   648px action cluster inside 768px — and 22 routes overflowed by +234px.
+
+   A tablet has room for desktop information density; what it lacks is chrome
+   width. So the sidebar becomes an icon rail (the same collapsed rendering the
+   desktop toggle already produces, driven here by WorkspaceSidebar's media
+   query) and the top bar sheds the controls that are conveniences rather than
+   navigation. Nothing is stacked or hidden behind a drawer: this is a tablet
+   layout, not the phone layout promoted upward.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (min-width: 761px) and (max-width: 1023px) {
+  /* Width matches the rail so there is no reflow when the component's own
+     media query collapses it; the two agree on the same 64px. */
+  .lf-workspace-sidebar {
+    width: 64px;
+  }
+
+  .lf-shell-topbar {
+    gap: 8px;
+    padding: 0 16px;
+  }
+
+  /* Workspace name, plan badge, density and theme toggles, Help. Each is a
+     preference rather than a destination, and together they are most of the
+     648px. They remain reachable on desktop and in the drawer. */
+  .lf-shell-actions .lf-topbar-optional {
+    display: none;
+  }
+
+  .lf-shell-actions {
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .lf-page-main {
+    padding-top: 24px;
+  }
+}
+
 @media (max-width: 760px) {
   .lf-workspace-sidebar {
     position: fixed;
@@ -675,7 +1144,7 @@ body {
     min-width: 0;
   }
   .lf-page-main {
-    padding: 20px 16px 32px;
+    padding-top: 20px;
   }
   .lf-page-header {
     align-items: flex-start;
@@ -1274,7 +1743,7 @@ a:hover {
    Same treatment as .lf-table: each cell shows its column header via
    data-label, so a phone user sees "Stage · Qualified" instead of a bare
    unexplained value. */
-@media (max-width: 860px) {
+@media (max-width: 760px) {
   .lf-grid thead {
     display: none;
   }
@@ -1319,6 +1788,119 @@ a:hover {
     box-shadow: none;
   }
   .lf-grid td[data-hide-mobile] {
+    display: none;
+  }
+}
+
+/* `.lf-table-scroll` — a scroll region with no chrome of its own.
+
+   `.lf-table-wrap` draws a card (surface, border, radius); use this instead
+   when the table already sits inside one, so a wide table can scroll without a
+   second border around it. It replaces the `overflow: hidden` that several
+   screens used to clip a 720px table — which does not scroll, it truncates,
+   leaving the last columns unreachable on every device including desktop. */
+.lf-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* ── Row-as-card: the phone form of every table ───────────────────────────
+   Both table systems already stopped being tables on a phone — but what they
+   became was a stack of blocks separated by hairlines, sitting inside the
+   wrapper's own border. A box of boxes, which is exactly the "squared, dense,
+   desktop-compressed" look this system exists to remove.
+
+   Below the phone tier a row becomes a real card on the page canvas, and the
+   wrapper stops drawing chrome so there is only one box, not two. Applies to
+   `.lf-table` (WorkspaceTable: HR, admin, platform) and `.lf-grid`
+   (ConfigurableGrid: the sales lists) alike, so neither can drift.
+
+   Column priority is what stops a card being fifteen label/value rows:
+     primary   — the record's identity. Card title: no label, larger, bold.
+     secondary — the fields worth scanning. Label/value pairs (the default).
+     meta      — hidden on a phone; still in the DOM and on desktop.
+   ──────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* One box, not two: the card is the row, so the container is just canvas. */
+  .lf-table-wrap,
+  .lf-grid-wrap {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    overflow: visible;
+    border-radius: 0;
+  }
+
+  /* The 720px floor is what forced horizontal scrolling in the first place. */
+  .lf-table,
+  .lf-grid {
+    min-width: 0;
+    font-size: var(--lf-text-sm);
+  }
+
+  .lf-table tbody tr,
+  .lf-grid tbody tr {
+    background: var(--lf-surface);
+    border: 1px solid var(--lf-line);
+    border-radius: var(--lf-radius-lg);
+    box-shadow: var(--lf-shadow-1);
+    padding: var(--lf-space-4);
+    margin-bottom: var(--lf-space-3);
+  }
+  /* The hairline belonged to the old stacked-block look. */
+  .lf-table tbody tr:last-child,
+  .lf-grid tbody tr:last-child {
+    border-bottom: 1px solid var(--lf-line);
+    margin-bottom: 0;
+  }
+  .lf-table tbody tr:hover,
+  .lf-grid tbody tr:hover {
+    background: var(--lf-surface);
+    border-color: var(--lf-line-2);
+  }
+
+  /* A card is read top-down, so the identity has to be the first thing in it.
+     Column order is a desktop decision — reference first, because that is the
+     link column and the sticky one — and it should not dictate what a phone
+     leads with. Flex lets the visual order differ from the column order
+     without a second markup path. */
+  .lf-table tbody tr,
+  .lf-grid tbody tr {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Identity line: reads as a heading, not as another field. */
+  .lf-table tbody td[data-priority='primary'],
+  .lf-grid tbody td[data-priority='primary'] {
+    order: -1;
+    display: block;
+    grid-template-columns: none;
+    /* Clear of the selection control parked in the corner. */
+    padding: 0 40px var(--lf-space-2) 0;
+    font-size: var(--lf-text-base);
+    font-weight: 600;
+    color: var(--lf-ink);
+  }
+
+  /* Bulk-select belongs in the card's corner, not as a labelled row of its
+     own — it acts on the card rather than being one of its fields. */
+  .lf-grid__select {
+    position: absolute;
+    top: var(--lf-space-3);
+    right: var(--lf-space-3);
+    width: auto;
+    padding: 0;
+  }
+  .lf-table tbody td[data-priority='primary']::before,
+  .lf-grid tbody td[data-priority='primary']::before {
+    display: none;
+  }
+
+  /* Detail that does not earn a line on a 390px screen. */
+  .lf-table tbody td[data-priority='meta'],
+  .lf-grid tbody td[data-priority='meta'] {
     display: none;
   }
 }
@@ -1843,7 +2425,7 @@ a:hover {
 }
 .lf-leave__balances {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: 16px;
 }
 .lf-leave__balance {
@@ -1896,7 +2478,7 @@ a:hover {
 }
 .lf-leave__fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 12px;
 }
 .lf-leave__half {
@@ -1947,7 +2529,7 @@ a:hover {
 }
 .lf-life__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 12px;
 }
 .lf-life__helper {
@@ -2145,7 +2727,7 @@ a:hover {
 }
 .lf-users__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 4px 20px;
 }
 .lf-users__grid .lf-field {
@@ -2167,7 +2749,7 @@ a:hover {
 }
 .lf-users__created dl {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 14px;
   margin: 0;
 }
@@ -2210,7 +2792,7 @@ a:hover {
 }
 .lf-face__facts dl {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px 24px;
   margin: 0;
   width: 100%;
@@ -2600,6 +3182,15 @@ a:hover {
   cursor: pointer;
   box-shadow: var(--lf-shadow-3);
 }
+/* Clears the bottom tab bar. Declared after the base rule rather than with the
+   other phone rules, because both are single-class selectors and the later one
+   wins — order is the whole mechanism here. */
+@media (max-width: 760px) {
+  .lf-ai-fab {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .lf-ai-fab:hover {
   background: var(--lf-wine-500);
 }
@@ -3929,7 +4520,7 @@ a:hover {
 /* Two quiet panels sharing a row on wide screens; stacking below. */
 .lf-panel-duo {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 22px;
   align-items: start;
 }
@@ -4003,7 +4594,7 @@ a:hover {
 
 .lf-channels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 12px;
 }
 

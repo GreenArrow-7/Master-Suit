@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
+import { AI_TOKEN_LIMIT_KEY } from '@/lib/ai/usage';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
@@ -16,6 +17,15 @@ const planSchema = z.object({
   maxUsers: z.number().int().positive().max(100000),
   maxEmployees: z.number().int().positive().max(100000),
   maxStorageMb: z.number().int().positive().max(10000000),
+  /**
+   * The monthly AI ceiling for this billing tier, in tokens on the shared
+   * deployment key. Optional, and absent means unlimited rather than zero:
+   * `monthlyLimit` treats a missing row as "no number has been decided", and a
+   * platform that has not decided must not refuse work because of a default
+   * somebody guessed. Sending 0 would be a decision to refuse every call, which
+   * is why the floor is 1.
+   */
+  maxAiTokensMonthly: z.number().int().positive().max(1_000_000_000).optional(),
 });
 
 export async function GET(req: Request) {
@@ -55,6 +65,12 @@ export async function POST(req: Request) {
               { key: 'users', value: body.maxUsers },
               { key: 'employees', value: body.maxEmployees },
               { key: 'storage_mb', value: body.maxStorageMb },
+              // Only when set. An absent row is what `monthlyLimit` reads as
+              // unlimited; writing one unconditionally would cap every tier the
+              // moment this shipped.
+              ...(body.maxAiTokensMonthly === undefined
+                ? []
+                : [{ key: AI_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthly }]),
             ],
           },
         },
@@ -69,7 +85,7 @@ export async function POST(req: Request) {
           requestId,
           ipAddress: ctx.ip,
           userAgent: ctx.userAgent,
-          metadata: { code: created.code, modules: body.modules },
+          metadata: { code: created.code, modules: body.modules, aiTokensMonthly: body.maxAiTokensMonthly ?? null },
         },
       });
       return created;

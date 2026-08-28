@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '../db';
 import { readCachedActor, writeCachedActor } from './actorCache';
 import { env } from '../env';
+import { getNumericSetting } from '../platform-settings';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
 import { buildSupportActor, isSupportRole } from './support-actor';
@@ -36,12 +37,22 @@ export async function createPlatformSession(input: {
   const purpose = input.purpose ?? 'FULL';
   // A machine identity's interactive session is deliberately short — see
   // SERVICE_SESSION_TTL_MINUTES in lib/env.ts.
+  /**
+   * Three lifetimes, and only one of them is operator-tunable.
+   *
+   * A human session takes `sessionTtlMinutes` from platform settings, which is
+   * what main made editable — an operator changing it must still change it for
+   * people. The machine identity's interactive session deliberately does not
+   * follow that dial: raising the human session to a working day must not
+   * silently extend a cross-tenant read-only account to match, so it stays on
+   * `SERVICE_SESSION_TTL_MINUTES` and is capped at 480 in lib/env.ts.
+   */
   const ttlMinutes =
     purpose === 'MFA_ENROLMENT'
       ? MFA_ENROLMENT_TTL_MINUTES
       : purpose === 'AI_SERVICE'
         ? env.SERVICE_SESSION_TTL_MINUTES
-        : env.SESSION_TTL_MINUTES;
+        : await getNumericSetting('sessionTtlMinutes');
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
   await prisma.platformSession.create({
@@ -216,7 +227,7 @@ export async function resolvePlatformCtx(
     );
   }
 
-  const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
+  const idleCutoff = new Date(now.getTime() - (await getNumericSetting('sessionIdleTimeoutMinutes')) * 60_000);
   if (session.lastSeenAt < idleCutoff) {
     await prisma.platformSession.update({
       where: { id: session.id },

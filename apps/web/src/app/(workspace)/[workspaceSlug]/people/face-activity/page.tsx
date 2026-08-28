@@ -239,7 +239,7 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No biometric consent has been recorded.</div>
       ) : (
         <TableSearch placeholder="Employee or policy version…" label="Search the register">
-          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="lf-table-wrap">
             <table className="lf-table">
               <thead>
                 <tr>
@@ -272,7 +272,7 @@ export default async function Page({
         <div className="lf-card lf-leave__empty">No face recognition activity in this period.</div>
       ) : (
         <TableSearch placeholder="Employee, location, status or reason…" label="Search these events">
-          <div className="lf-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="lf-table-wrap">
             <table className="lf-table">
               <thead>
                 <tr>

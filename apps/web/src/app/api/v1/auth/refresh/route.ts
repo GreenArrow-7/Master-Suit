@@ -3,7 +3,7 @@ import { ulid } from 'ulid';
 import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { env } from '@/lib/env';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { AppError, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { SESSION_COOKIE, clientIp, createPlatformSession } from '@/lib/auth/session';
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     const now = new Date();
     if (session.expiresAt < now) throw Unauthorized('Your session has expired.');
 
-    const idleCutoff = new Date(now.getTime() - env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
+    const idleCutoff = new Date(now.getTime() - (await getNumericSetting('sessionIdleTimeoutMinutes')) * 60_000);
     if (session.lastSeenAt < idleCutoff) {
       await prisma.platformSession.update({
         where: { id: session.id },

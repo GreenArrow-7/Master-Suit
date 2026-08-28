@@ -1,4 +1,4 @@
-import { AI_METRIC_PREFIX, type PaidBy } from '@/lib/ai/usage';
+import { AI_METRIC_PREFIX, parseModelMetric, type PaidBy } from '@/lib/ai/usage';
 
 /**
  * Turning `WorkspaceUsage` rows into the three numbers an operator asked for.
@@ -93,4 +93,54 @@ export function aggregate(
   );
 
   return { table, totals, nearLimit };
+}
+
+/**
+ * The same month's spend, grouped by workspace and model.
+ *
+ * Fed from `ai_model:` rows, which are written alongside the `ai_tokens:` rows
+ * the totals above come from — deliberately a separate series so that a
+ * mistake in attribution cannot reach `assertAiBudget`. The two therefore need
+ * not agree to the token, and the page says so rather than presenting this as a
+ * reconciliation of the figures above it.
+ *
+ * Sorted heaviest first within each workspace, because the question this
+ * answers is "what is this customer actually running", and the answer is the
+ * top line far more often than the tail.
+ */
+export type ModelSpend = {
+  tenantId: string;
+  model: string;
+  deployment: number;
+  workspace: number;
+  total: number;
+  measuredAt: Date | null;
+};
+
+export function aggregateModels(rows: UsageRow[]): ModelSpend[] {
+  const byKey = new Map<string, ModelSpend>();
+
+  for (const row of rows) {
+    const parsed = parseModelMetric(row.metric);
+    if (!parsed) continue;
+    const key = `${row.tenantId}\u0000${parsed.model}`;
+    const entry =
+      byKey.get(key) ??
+      ({
+        tenantId: row.tenantId,
+        model: parsed.model,
+        deployment: 0,
+        workspace: 0,
+        total: 0,
+        measuredAt: null,
+      } as ModelSpend);
+
+    if (parsed.paidBy === 'deployment') entry.deployment += row.used;
+    else entry.workspace += row.used;
+    entry.total += row.used;
+    if (!entry.measuredAt || row.measuredAt > entry.measuredAt) entry.measuredAt = row.measuredAt;
+    byKey.set(key, entry);
+  }
+
+  return [...byKey.values()].sort((a, b) => b.total - a.total || a.model.localeCompare(b.model));
 }
