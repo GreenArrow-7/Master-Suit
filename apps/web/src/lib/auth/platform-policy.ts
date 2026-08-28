@@ -9,6 +9,18 @@ export function isPlatformOwner(role: string): boolean {
 }
 
 /**
+ * The machine identity: background and AI reads across every workspace.
+ *
+ * Kept apart from the human roles everywhere it matters. It authenticates with
+ * a rotatable credential rather than a password (lib/auth/service-identity.ts),
+ * it is refused an interactive session by `resolvePlatformCtx`, and
+ * `buildSupportActor` gives it read-only permissions with no elevation path.
+ */
+export function isPlatformServiceRole<T extends string>(role: T): role is T & 'AI_SERVICE' {
+  return role === 'AI_SERVICE';
+}
+
+/**
  * Any platform role that can reach across tenant boundaries.
  *
  * OWNER runs the platform console; OWNER, SUPPORT and SECURITY_AUDITOR can all
