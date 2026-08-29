@@ -544,16 +544,21 @@ export const ROLES: RoleSpec[] = [
     },
   },
   {
-    // Call quality reviewer. Deliberately holds NO leads/opportunities grants:
-    // the QA job is calls, transcripts and audit scorecards, and the absence of
-    // `leads VIEW` is what makes the dashboard lead with call quality rather
-    // than a pipeline this person never works. Reviewing is a write action on
-    // audits (the human pass over AI scores), hence calls EDIT.
+    // Call quality reviewer: calls, transcripts and audit scorecards. Reviewing
+    // is a write action on audits (the human pass over AI scores), hence calls
+    // EDIT. Still holds no opportunities grant — QA does not work the pipeline.
+    //
+    // `leads VIEW` is read-only and deliberate. The role already held
+    // `dashboards VIEW`, but every figure on Sales → Dashboards is derived from
+    // leads, so without this the link appeared and the page refused — a promise
+    // the nav could not keep. Reading a lead is also what makes a call audit
+    // legible: the reviewer needs the record the call was about.
     key: 'call_qa',
     name: 'Call Quality Manager',
     rank: 40,
     defaultScope: A,
     grants: {
+      leads: { VIEW: A },
       calls: { VIEW: A, EDIT: A, EXPORT: A },
       tasks: { VIEW: A, CREATE: A, EDIT: A },
       reports: { VIEW: A, VIEW_REPORTS: A },
