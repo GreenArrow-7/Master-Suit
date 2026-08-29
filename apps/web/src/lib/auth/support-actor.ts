@@ -90,7 +90,11 @@ export async function buildSupportActor(
    * Authority lives in `permissions`; identity lives here.
    */
   const roleKey =
-    platformRole === 'OWNER' ? 'platform_owner' : platformRole === 'AI_SERVICE' ? 'platform_service' : 'platform_support';
+    platformRole === 'OWNER'
+      ? 'platform_owner'
+      : platformRole === 'AI_SERVICE'
+        ? 'platform_service'
+        : 'platform_support';
 
   return {
     // Namespaced so it can never collide with a real User id, and so anything

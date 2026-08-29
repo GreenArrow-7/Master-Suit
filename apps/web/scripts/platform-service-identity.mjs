@@ -88,9 +88,7 @@ const READ_SCOPE = /^[a-z][a-z0-9_]*:read$/;
  * The identity's address. It is not a mailbox and never receives anything — the
  * column is unique and required, so it is a stable name rather than a contact.
  */
-const IDENTITY_EMAIL = (process.env.PLATFORM_SERVICE_EMAIL ?? 'ai-service@platform.internal')
-  .trim()
-  .toLowerCase();
+const IDENTITY_EMAIL = (process.env.PLATFORM_SERVICE_EMAIL ?? 'ai-service@platform.internal').trim().toLowerCase();
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const client = new PrismaClient({ adapter });
@@ -416,7 +414,9 @@ async function setPassword() {
   console.log(`  Password      ${password}`);
   console.log('');
   console.log(`  Shown once. ${count} existing session(s) revoked.`);
-  console.log(`  MFA is mandatory: ${service.mfaEnabled ? 'already enrolled' : 'enrol at /enroll-2fa after signing in'}.`);
+  console.log(
+    `  MFA is mandatory: ${service.mfaEnabled ? 'already enrolled' : 'enrol at /enroll-2fa after signing in'}.`,
+  );
   console.log('');
 }
 
@@ -507,16 +507,22 @@ async function status() {
   console.log('');
   console.log(`  Identity            ${service.email}`);
   console.log(`  Role                ${service.platformRole}`);
-  console.log(`  Status              ${service.status}${locked ? `  (LOCKED until ${service.lockedUntil.toISOString()})` : ''}`);
+  console.log(
+    `  Status              ${service.status}${locked ? `  (LOCKED until ${service.lockedUntil.toISOString()})` : ''}`,
+  );
   console.log('');
   console.log('  Interactive login');
   console.log(`    username          ${service.username ?? 'not set'}`);
   console.log(`    password          ${service.passwordHash ? 'set' : 'not set — cannot sign in'}`);
-  console.log(`    MFA               ${service.mfaEnabled ? 'enrolled' : 'NOT enrolled — enrolment forced at next sign-in'}`);
+  console.log(
+    `    MFA               ${service.mfaEnabled ? 'enrolled' : 'NOT enrolled — enrolment forced at next sign-in'}`,
+  );
   console.log(`    failed attempts   ${service.failedLoginCount}`);
   console.log(`    live sessions     ${live}`);
   console.log(`    session scopes    ${service.serviceScopes.join(', ') || 'none — reads nothing'}`);
-  console.log(`    session workspaces ${service.serviceTenantAllowlist.length ? service.serviceTenantAllowlist.join(', ') : 'all'}`);
+  console.log(
+    `    session workspaces ${service.serviceTenantAllowlist.length ? service.serviceTenantAllowlist.join(', ') : 'all'}`,
+  );
   console.log(`    last sign-in      ${service.lastLoginAt?.toISOString() ?? 'never'}`);
   console.log('');
   console.log('  Machine access');
