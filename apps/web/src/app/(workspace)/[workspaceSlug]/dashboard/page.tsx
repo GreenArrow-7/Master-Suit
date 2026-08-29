@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
-import { can, scopeFor } from '@/lib/security/rbac';
+import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 
@@ -90,14 +90,31 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    * never mistaken for a different altitude.
    */
   const salesScope = showSales ? scopeFor(ctx, 'leads', 'VIEW') : 'NONE';
+  /**
+   * Each figure is gated on *its own* module, not on `leads`.
+   *
+   * `showSales` asks whether the viewer may see leads, and this block then went
+   * on to call `visibilityWhere` for opportunities and tasks regardless —
+   * assuming that anyone holding `leads:VIEW` also holds the other two.
+   * `visibilityWhere` throws `Forbidden` on a NONE scope, and nothing here
+   * catches it, so the assumption failing did not hide a panel: it threw out of
+   * a server component and turned the whole landing page into "Something went
+   * wrong on our side".
+   *
+   * That is reachable by any role configured with leads but not tasks — a
+   * perfectly ordinary sales role — and it is exactly what a read-only platform
+   * service identity scoped to a few modules hits on its first page load.
+   */
+  const showOpportunities = showSales && can(ctx, 'opportunities', 'VIEW');
+  const showTasks = showSales && can(ctx, 'tasks', 'VIEW');
   const salesQuery = showSales
     ? Promise.all([
         visibilityWhere(ctx, 'leads', 'VIEW'),
-        visibilityWhere(ctx, 'opportunities', 'VIEW'),
+        showOpportunities ? visibilityWhere(ctx, 'opportunities', 'VIEW') : Promise.resolve(null),
         // Follow-ups key on ownerId like leads do; they carry the lead module's
         // grant because they are lead work.
         visibilityWhere(ctx, 'leads', 'VIEW'),
-        visibilityWhere(ctx, 'tasks', 'VIEW'),
+        showTasks ? visibilityWhere(ctx, 'tasks', 'VIEW') : Promise.resolve(null),
       ]).then(([leadWhere, oppWhere, followUpWhere, taskWhere]) =>
         Promise.all([
           prisma.lead.count({ where: { ...leadWhere, deletedAt: null } }),
@@ -106,19 +123,79 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           salesScope === 'OWN'
             ? Promise.resolve(0)
             : prisma.lead.count({ where: { tenantId: ctx.tenantId, deletedAt: null, ownerId: null } }),
-          prisma.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }),
+          oppWhere ? prisma.opportunity.count({ where: { ...oppWhere, deletedAt: null, status: 'OPEN' } }) : 0,
           prisma.followUpTask.count({
             where: { ...followUpWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lt: new Date() } },
           }),
-          prisma.opportunity.aggregate({
-            where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
-            _sum: { amount: true },
-          }),
-          prisma.task.count({
-            where: { ...taskWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
-          }),
+          oppWhere
+            ? prisma.opportunity.aggregate({
+                where: { ...oppWhere, deletedAt: null, status: 'OPEN' },
+                _sum: { amount: true },
+              })
+            : { _sum: { amount: null } },
+          taskWhere
+            ? prisma.task.count({
+                where: { ...taskWhere, status: { in: ['OPEN', 'IN_PROGRESS'] }, dueAt: { lte: tomorrow } },
+              })
+            : 0,
         ]),
       )
+    : null;
+
+  /**
+   * Whose follow-ups are on this page.
+   *
+   * The tiles above count follow-ups but name nobody, which is the right
+   * summary for a representative looking at their own queue and useless to
+   * anyone looking at the team's: "14 overdue" does not say whose, or on which
+   * lead, or how late. A viewer whose scope reaches past their own records is
+   * asking a different question, so they get the rows rather than the number.
+   *
+   * Gated on scope rather than on a role name, so it appears for a manager, an
+   * administrator and a read-only platform service identity alike — anyone
+   * `visibilityWhere` would hand more than their own work.
+   */
+  const showTeamFollowUps = showSales && SCOPE_RANK[salesScope] > SCOPE_RANK.OWN;
+  const teamFollowUpQuery = showTeamFollowUps
+    ? visibilityWhere(ctx, 'leads', 'VIEW').then(async (where) => {
+        const rows = await prisma.followUpTask.findMany({
+          where: { ...where, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+          orderBy: [{ dueAt: 'asc' }],
+          take: 12,
+          select: { id: true, title: true, dueAt: true, priority: true, ownerId: true, leadId: true },
+        });
+        if (rows.length === 0) return [];
+
+        // Two lookups for the whole list rather than a join per row. Both are
+        // tenant-scoped explicitly, which is what lets the guard set
+        // `app.tenant_id` for them — see runPinned in lib/db.ts.
+        const [owners, leads] = await Promise.all([
+          prisma.user.findMany({
+            where: { tenantId: ctx.tenantId, id: { in: [...new Set(rows.map((row) => row.ownerId))] } },
+            select: { id: true, fullName: true },
+          }),
+          prisma.lead.findMany({
+            where: {
+              tenantId: ctx.tenantId,
+              id: { in: [...new Set(rows.map((row) => row.leadId).filter((id): id is string => Boolean(id)))] },
+            },
+            select: { id: true, fullName: true },
+          }),
+        ]);
+        const ownerName = new Map(owners.map((owner) => [owner.id, owner.fullName]));
+        const leadName = new Map(leads.map((lead) => [lead.id, lead.fullName]));
+        return rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          dueAt: row.dueAt,
+          priority: row.priority as string,
+          // "Removed user" rather than a bare id: an owner whose account was
+          // deleted still owns rows, and the id tells a reader nothing.
+          owner: ownerName.get(row.ownerId) ?? 'Removed user',
+          lead: row.leadId ? (leadName.get(row.leadId) ?? '—') : '—',
+          leadId: row.leadId,
+        }));
+      })
     : null;
 
   /**
@@ -240,13 +317,14 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         ])
       : null;
 
-  const [people, sales, mine, approvals, security, calls] = await Promise.all([
+  const [people, sales, mine, approvals, security, calls, teamFollowUps] = await Promise.all([
     peopleQuery,
     salesQuery,
     mineQuery,
     approvalsQuery,
     securityQuery,
     callsQuery,
+    teamFollowUpQuery,
   ]);
 
   // ponytail: ratio of averages, not average of per-call ratios — exact only
@@ -482,6 +560,63 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
             ['Tasks due', sales[5]],
           ]}
         />
+      )}
+      {/* Whose work is outstanding, by name — the question a count cannot
+          answer. Only rendered for a viewer whose scope reaches past their own
+          records; a representative sees their own queue in My day instead. */}
+      {teamFollowUps && teamFollowUps.length > 0 && (
+        <section className="lf-table-wrap" style={{ gridColumn: '1 / -1' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 'var(--lf-space-3)',
+              padding: '14px 16px 0',
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 'var(--lf-text-md)' }}>Follow-ups across the workspace</h2>
+            <Link className="lf-link" href={`/${workspace.slug}/sales/follow-ups`}>
+              All follow-ups →
+            </Link>
+          </div>
+          <table className="lf-table">
+            <thead>
+              <tr>
+                <th>Owner</th>
+                <th>Follow-up</th>
+                <th>Lead</th>
+                <th>Due</th>
+                <th>Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamFollowUps.map((row) => {
+                const overdue = row.dueAt.getTime() < Date.now();
+                return (
+                  <tr key={row.id}>
+                    <td data-label="Owner">{row.owner}</td>
+                    <td data-label="Follow-up">{row.title}</td>
+                    <td data-label="Lead">
+                      {row.leadId ? (
+                        <Link className="lf-link" href={`/${workspace.slug}/sales/leads/${row.leadId}`}>
+                          {row.lead}
+                        </Link>
+                      ) : (
+                        row.lead
+                      )}
+                    </td>
+                    <td data-label="Due" style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}>
+                      {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
+                      {overdue ? ' · overdue' : ''}
+                    </td>
+                    <td data-label="Priority">{row.priority.toLowerCase()}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
       )}
       {people && (
         <Summary
