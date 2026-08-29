@@ -297,10 +297,9 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
     : null;
 
   /**
-   * Call quality — the QA persona's dashboard, by permission rather than by
-   * role name. A Call QA Manager holds calls VIEW but not leads VIEW, so the
-   * Sales panel is absent and this one leads their page automatically; for a
-   * seller or administrator it is one more module panel.
+   * Call quality — by permission rather than by role name, so it appears for
+   * anyone who reviews calls and not only for the QA persona. For a seller or
+   * administrator it is one more module panel.
    */
   const callsQuery =
     modules.has('SALES') && can(ctx, 'calls', 'VIEW')
@@ -627,7 +626,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
                         row.lead
                       )}
                     </td>
-                    <td data-label="Due" style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}>
+                    <td
+                      data-label="Due"
+                      style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}
+                    >
                       {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
                       {overdue ? ' · overdue' : ''}
                     </td>

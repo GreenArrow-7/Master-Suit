@@ -21,9 +21,10 @@ const SLA_COLORS: Record<string, string> = {
 interface Props {
   totalLeads: number;
   newThisMonth: number;
-  openTasks: number;
-  overdueTasks: number;
-  activitiesThisMonth: number;
+  // null when the viewer lacks the grant behind the tile — it is dropped, not zeroed.
+  openTasks: number | null;
+  overdueTasks: number | null;
+  activitiesThisMonth: number | null;
   leadsByStage: { name: string; count: number }[];
   leadsBySource: { name: string; count: number }[];
   slaStats: { name: string; key: string; count: number }[];
@@ -51,9 +52,13 @@ export default function DashboardCharts({
       >
         <MetricCard label="Total Leads" value={totalLeads} tone="wine" />
         <MetricCard label="New This Month" value={newThisMonth} tone="brass" />
-        <MetricCard label="Open Tasks" value={openTasks} tone="slate" />
-        <MetricCard label="Overdue Tasks" value={overdueTasks} tone={overdueTasks > 0 ? 'vermillion' : 'viridian'} />
-        <MetricCard label="Activities This Month" value={activitiesThisMonth} tone="slate" />
+        {openTasks !== null && <MetricCard label="Open Tasks" value={openTasks} tone="slate" />}
+        {overdueTasks !== null && (
+          <MetricCard label="Overdue Tasks" value={overdueTasks} tone={overdueTasks > 0 ? 'vermillion' : 'viridian'} />
+        )}
+        {activitiesThisMonth !== null && (
+          <MetricCard label="Activities This Month" value={activitiesThisMonth} tone="slate" />
+        )}
       </div>
 
       {/* Pipeline funnel */}

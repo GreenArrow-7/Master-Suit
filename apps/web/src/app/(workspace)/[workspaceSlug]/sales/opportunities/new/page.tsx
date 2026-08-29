@@ -12,13 +12,18 @@ export default async function NewOpportunityPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['opportunities', 'CREATE'] });
   if (!can(ctx, 'opportunities', 'CREATE')) redirect('/opportunities');
 
-  const scope = await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true });
-  const accounts = await prisma.account.findMany({
-    where: scope,
-    orderBy: { name: 'asc' },
-    take: 200,
-    select: { id: true, name: true },
-  });
+  // Permission to create an opportunity is not permission to browse accounts,
+  // and `visibilityWhere` throws Forbidden on a NONE scope. Unguarded, that
+  // refused the whole page to a role holding `opportunities:CREATE` without
+  // `accounts:VIEW` — a missing picker presented as a missing page.
+  const accounts = can(ctx, 'accounts', 'VIEW')
+    ? await prisma.account.findMany({
+        where: await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true }),
+        orderBy: { name: 'asc' },
+        take: 200,
+        select: { id: true, name: true },
+      })
+    : [];
 
   return (
     <div style={{ maxWidth: 480 }}>

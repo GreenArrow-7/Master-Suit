@@ -74,7 +74,6 @@ const sessionFor = (tenantId: string | null = null) =>
   createPlatformSessionToken(identityId, tenantId, { purpose: 'AI_SERVICE' });
 
 async function callWithCookie(
-   
   handler: (req: Request, ctx: { params: Promise<any> }) => Promise<Response>,
   path: string,
   cookie: string,
@@ -157,9 +156,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await prisma.platformAuditEvent.deleteMany({ where: { actorUserId: { in: [identityId, ownerId] } } }).catch(() => {});
-  await prisma.platformUser
-    .deleteMany({ where: { normalizedEmail: { in: [email, ownerEmail] } } })
-    .catch(() => {});
+  await prisma.platformUser.deleteMany({ where: { normalizedEmail: { in: [email, ownerEmail] } } }).catch(() => {});
   await fx?.cleanup();
 });
 

@@ -12,13 +12,24 @@ export default async function NewContactPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['contacts', 'CREATE'] });
   if (!can(ctx, 'contacts', 'CREATE')) redirect('/contacts');
 
-  const scope = await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true });
-  const accounts = await prisma.account.findMany({
-    where: scope,
-    orderBy: { name: 'asc' },
-    take: 200,
-    select: { id: true, name: true },
-  });
+  /**
+   * The account picker is optional; permission to create a contact is not
+   * permission to browse accounts.
+   *
+   * `visibilityWhere` throws Forbidden on a NONE scope, and this call was
+   * unguarded — so a role that may create contacts but not read accounts (a
+   * Marketing Executive, in this workspace today) was refused the whole page
+   * rather than shown a form with one fewer field. Contact and account are
+   * separate grants; the page now treats them that way.
+   */
+  const accounts = can(ctx, 'accounts', 'VIEW')
+    ? await prisma.account.findMany({
+        where: await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true }),
+        orderBy: { name: 'asc' },
+        take: 200,
+        select: { id: true, name: true },
+      })
+    : [];
 
   return (
     <div style={{ maxWidth: 480 }}>

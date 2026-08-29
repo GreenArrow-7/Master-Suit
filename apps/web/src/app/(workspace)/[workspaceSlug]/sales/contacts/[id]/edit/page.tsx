@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { can } from '@/lib/security/rbac';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { prisma } from '@/lib/db';
 import ContactForm from '../../new/ContactForm';
@@ -30,13 +31,20 @@ export default async function EditContactPage({ params }: { params: Promise<{ id
   const rules = await loadFieldRules(ctx, 'CONTACT');
   const safe = applyFieldSecurity(ctx, 'CONTACT', rules, contact) as typeof contact;
 
-  const accountScope = await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true });
-  const accounts = await prisma.account.findMany({
-    where: accountScope,
-    orderBy: { name: 'asc' },
-    take: 200,
-    select: { id: true, name: true },
-  });
+  // Editing a contact needs `contacts:EDIT`; listing accounts to link one to
+  // needs `accounts:VIEW`. `visibilityWhere` throws Forbidden on a NONE scope,
+  // so unguarded this refused the edit page outright to a role holding the
+  // first without the second. The account already on the record is preserved
+  // below regardless, so a viewer who cannot browse accounts still cannot
+  // silently unlink the one that is set.
+  const accounts = can(ctx, 'accounts', 'VIEW')
+    ? await prisma.account.findMany({
+        where: await visibilityWhere(ctx, 'accounts', 'VIEW', { includeUnassigned: true }),
+        orderBy: { name: 'asc' },
+        take: 200,
+        select: { id: true, name: true },
+      })
+    : [];
   // Keep the current account selectable even when it falls outside the first
   // 200 or the viewer's account scope — otherwise saving would silently unlink it.
   const current = contact.account;
