@@ -35,12 +35,18 @@ export default function WorkspaceSidebar({
   permitted,
   workspaces,
   user,
+  serviceMode = false,
 }: {
   slug: string;
   name: string;
   modules: string[];
   /** Permission modules the signed-in role may VIEW, resolved server-side. */
   permitted: string[];
+  /**
+   * A platform service identity is viewing. The personal groups are dropped —
+   * see `sections` below.
+   */
+  serviceMode?: boolean;
   workspaces: { slug: string; name: string }[];
   user: { name: string; role: string };
 }) {
@@ -119,16 +125,33 @@ export default function WorkspaceSidebar({
   }, [mobileOpen]);
 
   const sections = useMemo<Section[]>(() => {
-    const common: Section = {
-      // "Daily" in the HR module, matching the source HRMS's grouping; "Work"
-      // everywhere else.
-      label: activeModule === 'people' ? 'Daily' : 'Work',
-      items: [
-        { label: 'Overview', href: `/${slug}/dashboard`, icon: 'home' },
-        { label: 'Notifications', href: `/${slug}/notifications`, icon: 'bell' },
-        { label: 'My tasks', href: `/${slug}/tasks`, icon: 'task' },
-      ],
-    };
+    /**
+     * The personal group, and why a service identity does not get one.
+     *
+     * "Overview", "Notifications" and "My tasks" are all *mine* — they read
+     * `ctx.actor` and show the viewer's own records. A platform service identity
+     * owns none: it holds no membership, no notifications are addressed to it,
+     * and no task is assigned to it. The group rendered three links to three
+     * empty pages, which reads as a broken product rather than an inapplicable
+     * one.
+     *
+     * Follow-ups survives because it is the one item in these groups that is
+     * about the workspace's work rather than the viewer's own — see
+     * sales/follow-ups/page.tsx, which lists everyone's with an Owner column
+     * for exactly this actor.
+     */
+    const common: Section = serviceMode
+      ? { label: 'Workspace', items: [{ label: 'Follow-ups', href: `/${slug}/sales/follow-ups`, icon: 'task' }] }
+      : {
+          // "Daily" in the HR module, matching the source HRMS's grouping; "Work"
+          // everywhere else.
+          label: activeModule === 'people' ? 'Daily' : 'Work',
+          items: [
+            { label: 'Overview', href: `/${slug}/dashboard`, icon: 'home' },
+            { label: 'Notifications', href: `/${slug}/notifications`, icon: 'bell' },
+            { label: 'My tasks', href: `/${slug}/tasks`, icon: 'task' },
+          ],
+        };
     // People was rendered unfiltered — every HR screen shown to everyone in an
     // HRMS workspace. Now keyed on the granular permissions from P1-8. Check-in
     // is deliberately unkeyed: recording your own attendance is self-service.
@@ -194,15 +217,28 @@ export default function WorkspaceSidebar({
         { label: 'Account', items: [{ label: 'Security', href: `/${slug}/people/security`, icon: 'shield' }] },
       ];
     const sales: Section[] = [
-      {
-        label: 'My day',
-        items: [
-          { label: 'Sales overview', href: `/${slug}/sales`, icon: 'home' },
-          { label: 'My targets', href: `/${slug}/sales/targets`, icon: 'report' },
-          { label: 'Follow-ups', href: `/${slug}/sales/follow-ups`, icon: 'task' },
-          { label: 'Smart views', href: `/${slug}/sales/smart-views`, icon: 'activity', permission: 'smartviews' },
-        ],
-      },
+      // "My day" is the same story as the Work group above: an overview of the
+      // viewer's own numbers and *their* targets. A service identity has
+      // neither, and Follow-ups has already been lifted into the Workspace
+      // group, so the whole section is dropped rather than shown half-empty.
+      ...(serviceMode
+        ? []
+        : [
+            {
+              label: 'My day',
+              items: [
+                { label: 'Sales overview', href: `/${slug}/sales`, icon: 'home' as const },
+                { label: 'My targets', href: `/${slug}/sales/targets`, icon: 'report' as const },
+                { label: 'Follow-ups', href: `/${slug}/sales/follow-ups`, icon: 'task' as const },
+                {
+                  label: 'Smart views',
+                  href: `/${slug}/sales/smart-views`,
+                  icon: 'activity' as const,
+                  permission: 'smartviews',
+                },
+              ],
+            },
+          ]),
       {
         label: 'Pipeline',
         items: [
@@ -328,7 +364,7 @@ export default function WorkspaceSidebar({
         items: section.items.filter((item) => !item.permission || permitted.includes(item.permission)),
       }))
       .filter((section) => section.items.length > 0);
-  }, [activeModule, permitted, slug]);
+  }, [activeModule, permitted, slug, serviceMode]);
 
   /**
    * Administration, filtered like everything else.

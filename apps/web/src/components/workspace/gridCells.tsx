@@ -337,6 +337,17 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
+        case 'owner':
+          /**
+           * A tag, because this column only appears on a list spanning several
+           * people and the eye scans for whose row it is before reading
+           * anything else — but the name is passed as a child, not as `value`.
+           *
+           * `Badge` lower-cases its `value`, which is right for the enum labels
+           * it exists to render (`IN_PROGRESS` → "in progress") and wrong for a
+           * person: it turned "Sana Chowdhury" into "sana chowdhury".
+           */
+          return row.owner ? <Badge value="owner">{String(row.owner)}</Badge> : dash;
         case 'dueAt':
           return (
             <span style={{ color: overdue(row.dueAt) }}>
