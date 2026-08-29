@@ -25,9 +25,25 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   const now = new Date();
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
+  /**
+   * Whose follow-ups this page lists.
+   *
+   * `ownerId: ctx.actor.id` was the whole filter, which is right for a
+   * representative and wrong for anyone reading the operation — and empty for a
+   * platform service actor, whose id is the namespaced `platform:<id>` and owns
+   * no rows at all, so the page rendered "No follow-ups" over a workspace with
+   * seventy of them.
+   *
+   * Deliberately not widened for everybody. A manager or administrator opening
+   * "Follow-ups" today expects their own queue, and quietly turning it into the
+   * company's would change a page people already use. The support and service
+   * actors are the case that has no own-queue to show, so they get the whole
+   * list with an Owner column; everyone else is untouched.
+   */
+  const orgWide = ctx.actor.id.startsWith('platform:');
   const where: Record<string, unknown> = {
     tenantId: ctx.tenantId,
-    ownerId: ctx.actor.id,
+    ...(orgWide ? {} : { ownerId: ctx.actor.id }),
     status: { in: ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'] },
     deletedAt: null,
   };
@@ -51,12 +67,31 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
         })
       : [];
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
+
+  // Owner names, only when the list spans people. One lookup for the page.
+  const owners = orgWide
+    ? await prisma.user.findMany({
+        where: { tenantId: ctx.tenantId, id: { in: [...new Set(rows.map((row) => row.ownerId))] } },
+        select: { id: true, fullName: true },
+      })
+    : [];
+  const ownerById = new Map(owners.map((owner) => [owner.id, owner.fullName]));
+
   const followUps = rows.map((row) => ({
     ...row,
     lead: row.leadId ? (leadById.get(row.leadId) ?? null) : null,
+    // "Removed user" rather than a bare id: an owner whose account is gone still
+    // owns rows, and the cuid tells a reader nothing.
+    owner: orgWide ? (ownerById.get(row.ownerId) ?? 'Removed user') : null,
   }));
 
-  const columns = await columnsFor(ctx.tenantId, 'FOLLOWUP');
+  const configured = await columnsFor(ctx.tenantId, 'FOLLOWUP');
+  // The Owner column is off by default — it repeats your own name on a personal
+  // list. Inserted after the task title when the list is somebody else's work.
+  const columns =
+    orgWide && !configured.some((column) => column.key === 'owner')
+      ? [configured[0]!, { key: 'owner', label: 'Owner', hideMobile: true }, ...configured.slice(1)]
+      : configured;
 
   return (
     <>

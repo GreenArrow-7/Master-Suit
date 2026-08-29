@@ -92,12 +92,22 @@ export const limits = {
    * Interactive sign-in to a service identity, keyed by username.
    *
    * Its own bucket rather than `loginPerAccount`, because the identifier is a
-   * username and the account is not a person: three attempts, not five, and a
-   * fifteen-minute window rather than five. Nobody mistypes a password stored in
-   * a secret manager three times, so a burst here is worth slowing down harder
-   * than a human's fat-fingered morning.
+   * username and the account is not a person.
+   *
+   * **Ten, not three.** Three was chosen on the reasoning that nobody mistypes a
+   * password held in a secret manager — which is true and was the wrong number
+   * anyway, because it counted requests rather than sign-ins. The flow is two
+   * POSTs: password, then password plus the code the server just asked for. One
+   * successful sign-in therefore spent two thirds of the allowance, and the
+   * second sign-in inside fifteen minutes was refused with "too many attempts"
+   * having never got a single credential wrong.
+   *
+   * The route also clears this bucket on success, so a legitimate operator never
+   * accumulates toward it. What remains counted is failure, which is what the
+   * limit is for. Ten per fifteen minutes is still tighter than the human
+   * route's sustained rate.
    */
-  serviceLogin: (username: string) => ({ key: `svclogin:${username.toLowerCase()}`, max: 3, windowSeconds: 900 }),
+  serviceLogin: (username: string) => ({ key: `svclogin:${username.toLowerCase()}`, max: 10, windowSeconds: 900 }),
   apiKey: (id: string, max: number) => ({ key: `api:${id}`, max, windowSeconds: 60 }),
   /**
    * A platform service credential, keyed per credential rather than per

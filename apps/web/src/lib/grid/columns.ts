@@ -174,6 +174,15 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   FOLLOWUP: [
     { key: 'title', label: 'Task', fixed: true, primary: true },
+    /**
+     * Whose follow-up it is.
+     *
+     * Off by default because the page shows only your own for most viewers, and
+     * a column repeating your own name in every row is furniture. It is added
+     * explicitly by the follow-ups page when the list spans other people — see
+     * sales/follow-ups/page.tsx.
+     */
+    { key: 'owner', label: 'Owner', hideMobile: true },
     { key: 'lead', label: 'Lead', byDefault: true, hideMobile: true },
     { key: 'dueAt', label: 'Due', byDefault: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },

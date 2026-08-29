@@ -102,6 +102,7 @@ export default async function WorkspaceLayout({
         permitted={shell.permitted}
         workspaces={shell.availableWorkspaces}
         user={shell.user}
+        serviceMode={shell.serviceMode}
       />
       <div className="lf-content-column">
         {shell.supportMode && (
@@ -144,13 +145,25 @@ async function loadShell(workspaceSlug: string) {
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
-    const supportMode = ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
-    const supportReadOnly = ctx.actor.roleKey === 'platform_support';
+    /**
+     * `platform_service` joins the two staff role keys here.
+     *
+     * It was absent, so a machine identity signed in interactively read a
+     * customer's workspace with no banner saying whose session this was — the
+     * one piece of chrome that distinguishes "you are inside someone else's
+     * data" from an ordinary tab. It is read-only for the same reason
+     * `platform_support` is: buildSupportActor grants it VIEW and nothing else.
+     */
+    const serviceMode = ctx.actor.roleKey === 'platform_service';
+    const supportMode =
+      serviceMode || ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
+    const supportReadOnly = serviceMode || ctx.actor.roleKey === 'platform_support';
 
     return {
       workspaceId: workspace.id,
       supportMode,
       supportReadOnly,
+      serviceMode,
       slug: workspace.slug,
       displayName: workspace.displayName,
       /**
