@@ -129,6 +129,15 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'status', label: 'Status', byDefault: true },
     { key: 'startedAt', label: 'Started', hideMobile: true },
     { key: 'notes', label: 'Notes', hideMobile: true },
+    /**
+     * Dial the person this row is about, from the row.
+     *
+     * On by default and never hidden on mobile — a handset is where a `tel:`
+     * link is most useful, and a call list you cannot call from is a reading
+     * exercise. Rendered last so it sits at the end of the row, where an action
+     * belongs.
+     */
+    { key: 'call', label: '', byDefault: true, align: 'right' },
   ],
   CAMPAIGN: [
     { key: 'name', label: 'Name', fixed: true, primary: true },

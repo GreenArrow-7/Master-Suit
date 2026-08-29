@@ -520,21 +520,20 @@ export default function WorkspaceSidebar({
               </div>
             )}
           </div>
-          {/* Signing out belongs where the account is, as in the source HRMS —
-              previously it lived only in the top bar. */}
-          {!collapsed && (
-            <button
-              type="button"
-              className="lf-sidebar-signout"
-              onClick={() => {
-                void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
-                  window.location.href = '/login';
-                });
-              }}
-            >
-              Sign out
-            </button>
-          )}
+          {/* The sign-out button that lived here is gone; the top bar's is the
+              only one now.
+
+              Two controls doing the same thing is one too many, and this was the
+              one that could not be relied on: it rendered only while the rail
+              was expanded, so it vanished on tablet, where the rail
+              auto-collapses, and on a phone it sat inside a drawer the user had
+              to open first. Between that and the top bar's copy being marked
+              `lf-topbar-optional` — hidden at both those breakpoints — there was
+              no reachable way to sign out on either size.
+
+              Signing out does belong beside the account, which is the argument
+              this button was added on. It loses to being present at every
+              width. */}
         </div>
       </aside>
     </>
