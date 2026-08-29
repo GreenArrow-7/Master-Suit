@@ -28,15 +28,13 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
 
         <div>
           <h2 className="lf-auth-headline">
-            One login.
+            Run your business.
             <br />
-            <em>The whole business.</em>
+            <em>Master your growth.</em>
           </h2>
           <p className="lf-auth-sub">
-            {PRODUCT_NAME}
-            {
-              ' is a modular platform — Sales CRM, People & HR, and the platform control plane — sharing one directory, one permission model and one audit trail.'
-            }
+            Sales, people, performance and AI — connected in one intelligent platform built to move your business
+            forward.
           </p>
 
           <div className="lf-auth-collage">
