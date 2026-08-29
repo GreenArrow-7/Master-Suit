@@ -95,7 +95,19 @@ export default function WorkspaceSidebar({
    * word. Matching `ModuleTheme`'s test keeps the sidebar, the top bar and the
    * palette telling the same story.
    */
-  const activeModule = pathname.split('/')[2] === 'people' ? 'people' : 'sales';
+  const moduleSegment = pathname.split('/')[2];
+  const activeModule: 'people' | 'sales' =
+    moduleSegment === 'people'
+      ? 'people'
+      : moduleSegment === 'sales'
+        ? 'sales'
+        : // Neutral routes (/dashboard, /notifications, /tasks, /admin/*, /profile/*)
+          // follow entitlement rather than a hardcoded 'sales': an HRMS-only
+          // workspace must not land on the Sales rail, which an org_admin's
+          // wildcard grants otherwise populate in full. Mirrors MobileTabBar.
+          modules.includes('SALES')
+          ? 'sales'
+          : 'people';
 
   // Remembering the module is a side effect and belongs here. Closing the
   // mobile drawer is not: setting state synchronously in an effect causes a
