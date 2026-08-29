@@ -52,6 +52,18 @@ export default function LoginForm() {
         );
         return;
       }
+      /**
+       * A platform service identity signing in at the human door.
+       *
+       * The server refuses to mint a session for one here — that session would
+       * be revoked on its first request — and answers with where to go instead.
+       * Carrying the username across is not possible: this form collected an
+       * email, and the service page signs in by username.
+       */
+      if (data.serviceIdentity) {
+        router.push(data.destination ?? '/service-login');
+        return;
+      }
       if (data.mfaEnrolmentRequired) {
         router.push(data.destination ?? '/enroll-2fa');
         return;

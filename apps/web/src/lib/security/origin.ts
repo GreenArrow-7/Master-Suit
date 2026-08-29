@@ -55,16 +55,44 @@ export function assertSameOrigin(req: Request) {
    */
   if (!stated) return;
 
-  let expected: string;
-  try {
-    expected = new URL(env.APP_URL).origin;
-  } catch {
-    // A malformed APP_URL must not become an open door. If the expected origin
-    // cannot be determined, nothing cross-origin is accepted.
-    throw Forbidden('This request could not be verified as same-origin.');
-  }
-
-  if (stated !== expected) {
+  if (!allowed().has(stated)) {
     throw Forbidden('This request came from another origin and was refused.');
   }
+}
+
+/**
+ * The origins this deployment accepts: APP_URL, plus anything ALLOWED_ORIGINS
+ * names.
+ *
+ * The second part exists because a proxy can rewrite `Origin` before the
+ * application sees it, and then the header no longer describes where the
+ * browser actually is. A Microsoft dev tunnel does exactly this: a same-origin
+ * POST from `https://<id>-3000.<region>.devtunnels.ms` arrives carrying
+ * `Origin: http://localhost:3000`, on every port protocol. That is not an
+ * attack and there is nothing the application can inspect to tell it apart from
+ * one, because the information was destroyed upstream.
+ *
+ * What is deliberately *not* done: trusting `x-forwarded-host` to rebuild the
+ * expected origin. That header is set by the client on a direct request, so an
+ * attacker would send a matching `Origin` and `x-forwarded-host` pair and the
+ * check would approve itself. An operator-maintained allowlist keeps the
+ * decision on the server, where it belongs.
+ *
+ * Computed per call rather than at module load so a malformed entry cannot take
+ * the process down at boot, and so tests can vary the environment.
+ */
+function allowed(): Set<string> {
+  const origins = new Set<string>();
+  for (const candidate of [env.APP_URL, ...(env.ALLOWED_ORIGINS ?? '').split(',')]) {
+    const value = candidate?.trim();
+    if (!value) continue;
+    try {
+      origins.add(new URL(value).origin);
+    } catch {
+      // A malformed entry is skipped rather than throwing: one bad character in
+      // an operator's list must not refuse every request on the deployment.
+      // Skipping narrows what is accepted, which is the safe direction.
+    }
+  }
+  return origins;
 }

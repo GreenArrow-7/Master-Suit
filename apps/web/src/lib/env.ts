@@ -92,6 +92,25 @@ export const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'demo', 'staging', 'production']).default('development'),
   PROCESS_ROLE: z.enum(['web', 'worker']).default('web'),
   APP_URL: z.string().url(),
+  /**
+   * Extra origins accepted by `assertSameOrigin`, comma-separated.
+   *
+   * `APP_URL` is always accepted and is the answer for a plain deployment. This
+   * exists because a reverse proxy may **rewrite** the browser's `Origin` before
+   * the application sees it: a Microsoft dev tunnel normalises a same-origin
+   * request to the local origin, so a browser on
+   * `https://<id>-3000.<region>.devtunnels.ms` arrives carrying
+   * `Origin: http://localhost:3000` — which is not APP_URL and is not an attack.
+   *
+   * Deriving the expected origin from `x-forwarded-host` instead would be worse
+   * than useless: that header is client-settable, so an attacker would simply
+   * send a matching pair and the check would validate itself. An operator-set
+   * allowlist keeps the decision on the server.
+   *
+   * Empty in a normal deployment. Set it only for the origin a proxy actually
+   * presents, and never to a wildcard.
+   */
+  ALLOWED_ORIGINS: z.string().optional(),
 
   /** The application role: NOBYPASSRLS, no DDL. See docs/RLS-ROLLOUT.md. */
   DATABASE_URL: z.string().url(),

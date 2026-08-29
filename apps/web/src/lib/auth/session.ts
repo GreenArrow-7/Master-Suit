@@ -13,6 +13,26 @@ import { logger } from '../logger';
 
 export const SESSION_COOKIE = 'lf_session';
 
+/**
+ * A second cookie, for `AI_SERVICE` sessions only.
+ *
+ * One cookie name cannot hold two identities. An operator signing into the
+ * platform console overwrote their service session — same browser, same name,
+ * last write wins — and the next request carried the owner's FULL session to an
+ * endpoint that only accepts AI_SERVICE, which surfaced as the useless "This
+ * session cannot be used here."
+ *
+ * These two identities are *expected* to be held at once: the console is where
+ * the service account is administered, and the service session is what you use
+ * to see what it can see. Giving them separate names lets both live in one
+ * browser instead of silently evicting each other.
+ */
+export const SERVICE_SESSION_COOKIE = 'lf_service_session';
+
+/** Which cookie a session's purpose belongs in. */
+const cookieFor = (purpose: SessionPurpose) =>
+  purpose === 'AI_SERVICE' ? SERVICE_SESSION_COOKIE : SESSION_COOKIE;
+
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /** Minutes an MFA-enrolment grant lives. Long enough to scan a QR code, no longer. */
@@ -68,7 +88,7 @@ export async function createPlatformSession(input: {
     },
   });
 
-  await setSessionCookie(token, expiresAt);
+  await setSessionCookie(token, expiresAt, cookieFor(purpose));
   return { token, expiresAt };
 }
 
@@ -85,9 +105,9 @@ export async function createPlatformSession(input: {
  * That is safe: the only callers that skip the scope are tests, and a route
  * that fails to set a cookie in production would have thrown here anyway.
  */
-export async function setSessionCookie(token: string, expiresAt: Date) {
+export async function setSessionCookie(token: string, expiresAt: Date, name: string = SESSION_COOKIE) {
   try {
-    (await cookies()).set(SESSION_COOKIE, token, {
+    (await cookies()).set(name, token, {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -182,18 +202,52 @@ export type PlatformCtx = {
  * hand us a bare Request, and it throws outside a Next request scope — which is
  * why it must not be the primary read.
  */
-async function sessionToken(req: Request): Promise<string | undefined> {
+async function readCookie(req: Request, name: string): Promise<string | undefined> {
   for (const part of req.headers.get('cookie')?.split(';') ?? []) {
     const eq = part.indexOf('=');
-    if (eq !== -1 && part.slice(0, eq).trim() === SESSION_COOKIE) {
+    if (eq !== -1 && part.slice(0, eq).trim() === name) {
       return decodeURIComponent(part.slice(eq + 1).trim());
     }
   }
   try {
-    return (await cookies()).get(SESSION_COOKIE)?.value;
+    return (await cookies()).get(name)?.value;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The tokens this request carries, in the order they should be tried for a
+ * given set of allowed purposes.
+ *
+ * A browser can now hold both a human session and a service session at once, so
+ * "which one did you mean" has to be answered by something other than
+ * whichever was written last. It is answered by the route: a handler that
+ * accepts only AI_SERVICE gets the service cookie first, everything else gets
+ * the ordinary one first. The *other* cookie is still tried as a fallback, so a
+ * browser holding only one of the two keeps working everywhere it should.
+ */
+async function sessionTokens(req: Request, allowPurpose: readonly SessionPurpose[]): Promise<string[]> {
+  const preferService = allowPurpose.length === 1 && allowPurpose[0] === 'AI_SERVICE';
+  const names = preferService
+    ? [SERVICE_SESSION_COOKIE, SESSION_COOKIE]
+    : [SESSION_COOKIE, SERVICE_SESSION_COOKIE];
+  const tokens: string[] = [];
+  for (const name of names) {
+    const value = await readCookie(req, name);
+    if (value && !tokens.includes(value)) tokens.push(value);
+  }
+  return tokens;
+}
+
+/** One session by token, or null when it does not exist, is revoked or has expired. */
+async function loadSession(token: string, now: Date) {
+  const session = await prisma.platformSession.findUnique({
+    where: { tokenHash: sha256(token) },
+    include: { platformUser: true },
+  });
+  if (!session || session.revokedAt || session.expiresAt < now) return null;
+  return session;
 }
 
 /**
@@ -209,15 +263,49 @@ export async function resolvePlatformCtx(
   requestId: string,
   allowPurpose: readonly SessionPurpose[] = ['FULL'],
 ): Promise<PlatformCtx> {
-  const token = await sessionToken(req);
-  if (!token) throw Unauthorized();
+  const tokens = await sessionTokens(req, allowPurpose);
+  if (tokens.length === 0) throw Unauthorized();
 
-  const session = await prisma.platformSession.findUnique({
-    where: { tokenHash: sha256(token) },
-    include: { platformUser: true },
-  });
   const now = new Date();
-  if (!session || session.revokedAt || session.expiresAt < now) throw Unauthorized('Your session has expired.');
+  /**
+   * With two cookies in play, the first token that resolves to a *usable*
+   * session wins — usable meaning live and of a purpose this route accepts.
+   *
+   * Checking the purpose here rather than only below is what stops one identity
+   * masking the other: a browser holding both an owner session and a service
+   * session used to send whichever cookie was written last, so opening the
+   * console evicted the service session and the next request was refused with
+   * "this session cannot be used here" while a perfectly good session sat in
+   * the other cookie.
+   */
+  const live = (await Promise.all(tokens.map((candidate) => loadSession(candidate, now)))).filter(
+    (found): found is NonNullable<typeof found> => found !== null,
+  );
+  if (live.length === 0) throw Unauthorized('Your session has expired.');
+
+  /**
+   * Among the sessions this route will accept, the most recently created wins.
+   *
+   * Order of cookies cannot decide it. Workspace routes accept both FULL and
+   * AI_SERVICE, so "first allowed cookie" always picked the human session and
+   * a service session could never browse a workspace while a console session
+   * existed — the original bug, moved rather than fixed.
+   *
+   * Recency matches what the person did: whichever identity they signed in as
+   * most recently is the one they are using. The difference from the old
+   * single-cookie behaviour is that the other session now *survives* instead of
+   * being overwritten, so switching back is a sign-in rather than a recovery.
+   *
+   * A route with a single allowed purpose is unambiguous and never reaches this
+   * — the console gets the owner, the service endpoints get the service session.
+   */
+  const usable = live
+    .filter((found) => allowPurpose.includes(found.purpose as SessionPurpose))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  // No usable one: fall through with any live session so the purpose check
+  // below explains *why* rather than reporting a generic expiry.
+  const session = usable[0] ?? live[0]!;
 
   if (!allowPurpose.includes(session.purpose as SessionPurpose)) {
     throw Unauthorized(

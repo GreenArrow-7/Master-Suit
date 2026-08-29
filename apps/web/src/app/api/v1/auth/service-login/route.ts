@@ -6,9 +6,9 @@ import { env } from '@/lib/env';
 import { AppError, Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { burnTiming, verifyPassword } from '@/lib/auth/password';
-import { clientIp, createPlatformSession } from '@/lib/auth/session';
+import { clientIp, createPlatformSession, SERVICE_SESSION_COOKIE } from '@/lib/auth/session';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
-import { consume, limits } from '@/lib/security/ratelimit';
+import { clear as clearLimit, consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
 import { verifyTotp } from '@/lib/auth/mfa';
 import { decryptSecret } from '@/services/identity/secrets';
@@ -48,7 +48,8 @@ import { assertSameOrigin } from '@/lib/security/origin';
  * stops mandatory 2FA locking out a human who has not enrolled yet.
  */
 const bodySchema = z.object({
-  username: z.string().min(3).max(64),
+  /** Username or email address — see the lookup below. */
+  username: z.string().min(3).max(254),
   password: z.string().min(1).max(512),
   mfaCode: z.string().length(6).optional(),
   recoveryCode: z.string().min(8).max(32).optional(),
@@ -81,7 +82,26 @@ export async function POST(req: Request) {
       throw err;
     }
 
-    const user = await prisma.platformUser.findUnique({ where: { username } });
+    /**
+     * Username *or* email address.
+     *
+     * The username is the intended identifier and what the CLI sets. The email
+     * is accepted too because it is the other name this account has, it is
+     * unique, and it is what an operator reaches for — the identity is created
+     * as `ai-service@platform.internal` and every console screen shows that
+     * string, so refusing it here produced repeated "unknown account" failures
+     * against an account that plainly exists.
+     *
+     * No authority is granted by the choice: the same row, the same password and
+     * the same authenticator are checked either way, and every failure below
+     * still answers with one message. What must not happen is `email` becoming a
+     * way into the *human* login route for this role — that is refused
+     * separately, in api/v1/auth/login.
+     */
+    const identifier = username;
+    const user = identifier.includes('@')
+      ? await prisma.platformUser.findUnique({ where: { normalizedEmail: identifier } })
+      : await prisma.platformUser.findUnique({ where: { username: identifier } });
     const now = new Date();
 
     // Unknown username, no password set, or deleted — all answered identically,
@@ -209,6 +229,17 @@ export async function POST(req: Request) {
       where: { id: user.id },
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
     });
+    /**
+     * A completed sign-in clears the throttle, exactly as it clears
+     * `failedLoginCount` on the line above.
+     *
+     * Without it the two-step flow counts against itself: password, then
+     * password plus code, is two requests for one sign-in, so an operator who
+     * signs in twice in a quarter of an hour is refused for "too many attempts"
+     * having got nothing wrong. What the limiter should accumulate is failure,
+     * and proving both factors is the opposite of that.
+     */
+    await clearLimit(limits.serviceLogin(username)).catch(() => {});
 
     const session = await createPlatformSession({
       platformUserId: user.id,
@@ -236,11 +267,14 @@ export async function POST(req: Request) {
         identity: { id: user.id, username: user.username, platformRole: user.platformRole },
         readOnly: true,
         scopes: user.serviceScopes,
-        workspaces: user.serviceTenantAllowlist.length ? user.serviceTenantAllowlist : 'all',
+        // The workspaces this session may open, resolved now so the caller has
+        // somewhere to go. A service identity holds no membership, so the usual
+        // /auth/workspaces picker — which lists memberships — returns nothing
+        // for it and would strand a successful sign-in on a blank screen.
+        workspaces: await readableWorkspaces(user.serviceTenantAllowlist),
         recoveryCodeUsed: byRecovery,
         expiresAt: session.expiresAt,
-        detail:
-          'Signed in as a platform service identity. This session is read-only and cannot be elevated.',
+        detail: 'Signed in as a platform service identity. This session is read-only and cannot be elevated.',
       },
       { headers: { 'x-request-id': requestId } },
     );
@@ -252,6 +286,86 @@ export async function POST(req: Request) {
       return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
     }
     logger.error({ err, requestId }, 'service login failed');
+    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+  }
+}
+
+/**
+ * The workspaces an interactive service session may open.
+ *
+ * An empty allowlist means every active workspace — the cross-tenant case this
+ * identity exists for. Capped, because a platform with a thousand tenants does
+ * not need all of them in a sign-in response; the picker is a convenience and
+ * `PATCH` below validates the choice again regardless of what was listed.
+ */
+async function readableWorkspaces(allowlist: string[]) {
+  const rows = await prisma.tenant.findMany({
+    where: {
+      status: 'ACTIVE',
+      deletedAt: null,
+      ...(allowlist.length ? { id: { in: allowlist } } : {}),
+    },
+    select: { id: true, slug: true, displayName: true },
+    orderBy: { displayName: 'asc' },
+    take: 100,
+  });
+  return rows;
+}
+
+/**
+ * Points the session at a workspace.
+ *
+ * Separate from sign-in because the choice can change during a session, and
+ * because validating it here means the allowlist is enforced at the moment of
+ * selection rather than only at read time. `serviceSessionActor` checks it again
+ * on every request — this is the friendly refusal, that one is the real gate.
+ */
+export async function PATCH(req: Request) {
+  const requestId = req.headers.get('x-request-id') ?? ulid();
+  try {
+    assertSameOrigin(req);
+    const { resolvePlatformCtx } = await import('@/lib/auth/session');
+    const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
+    if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
+
+    const body = await readJsonBody(req, z.object({ workspaceId: z.string().min(1).max(64) }));
+    const identity = await prisma.platformUser.findUnique({
+      where: { id: ctx.platformUserId },
+      select: { serviceTenantAllowlist: true },
+    });
+    if (identity?.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(body.workspaceId)) {
+      throw Forbidden('This service identity is not permitted in that workspace.');
+    }
+    const workspace = await prisma.tenant.findFirst({
+      where: { id: body.workspaceId, status: 'ACTIVE', deletedAt: null },
+      select: { id: true, slug: true },
+    });
+    if (!workspace) throw Forbidden('That workspace is not available.');
+
+    await prisma.platformSession.update({
+      where: { id: ctx.sessionId },
+      data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
+    });
+    // Opening a customer's workspace is worth a record even before anything is
+    // read — the same reason the platform console audits WORKSPACE_OPENED.
+    await record(ctx.platformUserId, 'WORKSPACE_OPENED', ctx.ip, ctx.userAgent, requestId, {
+      workspaceId: workspace.id,
+      slug: workspace.slug,
+      mode: 'service_readonly',
+    });
+
+    return NextResponse.json(
+      { destination: `/${workspace.slug}/dashboard`, workspace },
+      { headers: { 'x-request-id': requestId } },
+    );
+  } catch (err) {
+    if (err instanceof AppError) {
+      return NextResponse.json(err.toProblem(requestId), {
+        status: err.status,
+        headers: { 'x-request-id': requestId },
+      });
+    }
+    logger.error({ err, requestId }, 'service workspace selection failed');
     return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
   }
 }
@@ -277,6 +391,17 @@ export async function DELETE(req: Request) {
       : await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT').then(() => 1);
 
     await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
+
+    // The service cookie specifically — clearing `lf_session` here would sign
+    // the operator out of the platform console instead, which is a different
+    // identity that happens to share the browser.
+    try {
+      const { cookies } = await import('next/headers');
+      (await cookies()).delete(SERVICE_SESSION_COOKIE);
+    } catch {
+      /* no request scope */
+    }
+
     return NextResponse.json({ signedOut: true, sessionsRevoked: revoked }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
     if (err instanceof AppError) {
