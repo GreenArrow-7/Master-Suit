@@ -204,7 +204,10 @@ export default function ServiceLoginForm() {
             {/* The label said "Username" alone and the field was filled with the
                 identity's email four times in a row, each answered as an unknown
                 account. The route accepts both now; the label says so. */}
-            <p id="username-hint" style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
+            <p
+              id="username-hint"
+              style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}
+            >
               Either the service username or the identity’s address.
             </p>
           </div>

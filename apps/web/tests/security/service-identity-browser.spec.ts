@@ -118,7 +118,12 @@ describe('two identities in one browser', () => {
   it('the service session lands in its own cookie, leaving the console session alone', async () => {
     const ownerCookie = await createPlatformSessionToken(ownerId, null, { purpose: 'FULL' });
 
-    const res = await post(serviceLogin, '/api/v1/auth/service-login', { username, password: PASSWORD, mfaCode: code() }, { cookie: ownerCookie });
+    const res = await post(
+      serviceLogin,
+      '/api/v1/auth/service-login',
+      { username, password: PASSWORD, mfaCode: code() },
+      { cookie: ownerCookie },
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
     // Both sessions live: the console one was not overwritten.
@@ -205,7 +210,12 @@ describe('origin checking', () => {
   it('still serves a caller that sends no Origin at all', async () => {
     // curl, a worker, a server-to-server client. This is the branch that made
     // every earlier probe pass without ever running the check.
-    const res = await post(serviceLogin, '/api/v1/auth/service-login', { username, password: PASSWORD }, { origin: null });
+    const res = await post(
+      serviceLogin,
+      '/api/v1/auth/service-login',
+      { username, password: PASSWORD },
+      { origin: null },
+    );
     expect(res.status).toBe(200);
   });
 });

@@ -199,7 +199,8 @@ export async function POST(req: Request) {
     await consume(limits.mfaConfirm(user.id));
 
     const byTotp = Boolean(body.mfaCode && verifyTotp(decryptSecret(user.mfaSecret), body.mfaCode));
-    const byRecovery = !byTotp && Boolean(body.recoveryCode) && (await consumeRecoveryCode(user.id, body.recoveryCode!));
+    const byRecovery =
+      !byTotp && Boolean(body.recoveryCode) && (await consumeRecoveryCode(user.id, body.recoveryCode!));
 
     if (!byTotp && !byRecovery) {
       /**

@@ -104,9 +104,7 @@ export async function issueServiceCredential(input: {
 }): Promise<IssuedCredential> {
   assertScopes(input.scopes);
   if (!Number.isInteger(input.days) || input.days < 1 || input.days > MAX_CREDENTIAL_DAYS) {
-    throw Invalid([
-      { field: 'days', code: 'range', message: `Between 1 and ${MAX_CREDENTIAL_DAYS} days.` },
-    ]);
+    throw Invalid([{ field: 'days', code: 'range', message: `Between 1 and ${MAX_CREDENTIAL_DAYS} days.` }]);
   }
 
   const identity = await prisma.platformUser.findFirst({
@@ -256,9 +254,7 @@ export async function requirePlatformServiceActor(req: Request, requestId: strin
   });
   if (!workspace) throw NotFound('Workspace');
 
-  prisma.platformServiceCredential
-    .update({ where: { id: credential.id }, data: { lastUsedAt: now } })
-    .catch(() => {});
+  prisma.platformServiceCredential.update({ where: { id: credential.id }, data: { lastUsedAt: now } }).catch(() => {});
 
   return {
     tenantId,

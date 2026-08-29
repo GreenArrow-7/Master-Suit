@@ -30,8 +30,7 @@ export const SESSION_COOKIE = 'lf_session';
 export const SERVICE_SESSION_COOKIE = 'lf_service_session';
 
 /** Which cookie a session's purpose belongs in. */
-const cookieFor = (purpose: SessionPurpose) =>
-  purpose === 'AI_SERVICE' ? SERVICE_SESSION_COOKIE : SESSION_COOKIE;
+const cookieFor = (purpose: SessionPurpose) => (purpose === 'AI_SERVICE' ? SERVICE_SESSION_COOKIE : SESSION_COOKIE);
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -229,9 +228,7 @@ async function readCookie(req: Request, name: string): Promise<string | undefine
  */
 async function sessionTokens(req: Request, allowPurpose: readonly SessionPurpose[]): Promise<string[]> {
   const preferService = allowPurpose.length === 1 && allowPurpose[0] === 'AI_SERVICE';
-  const names = preferService
-    ? [SERVICE_SESSION_COOKIE, SESSION_COOKIE]
-    : [SESSION_COOKIE, SERVICE_SESSION_COOKIE];
+  const names = preferService ? [SERVICE_SESSION_COOKIE, SESSION_COOKIE] : [SESSION_COOKIE, SERVICE_SESSION_COOKIE];
   const tokens: string[] = [];
   for (const name of names) {
     const value = await readCookie(req, name);
@@ -493,7 +490,10 @@ async function serviceSessionActor(platformCtx: PlatformCtx): Promise<Actor | nu
     select: { serviceScopes: true, serviceTenantAllowlist: true },
   });
   if (!identity) return null;
-  if (identity.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(platformCtx.activeTenantId!)) {
+  if (
+    identity.serviceTenantAllowlist.length &&
+    !identity.serviceTenantAllowlist.includes(platformCtx.activeTenantId!)
+  ) {
     throw Forbidden('This service identity is not permitted in that workspace.');
   }
   return buildSupportActor(

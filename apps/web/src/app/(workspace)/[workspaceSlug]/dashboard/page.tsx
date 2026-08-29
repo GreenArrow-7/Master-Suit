@@ -606,7 +606,10 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
                         row.lead
                       )}
                     </td>
-                    <td data-label="Due" style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}>
+                    <td
+                      data-label="Due"
+                      style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}
+                    >
                       {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
                       {overdue ? ' · overdue' : ''}
                     </td>
