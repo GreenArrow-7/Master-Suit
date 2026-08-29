@@ -1790,6 +1790,21 @@ a:hover {
     min-height: 44px;
     margin-right: var(--lf-fab-gutter);
   }
+  /* A status pill should hug its word.
+
+     `td` becomes `display: grid` in the card layout, which blockifies its
+     children: `.lf-badge` is `inline-flex`, an inline-level grid item is
+     blockified to `flex`, and it then stretches across the column. Measured on
+     a 375px viewport, "New" rendered 157px wide against a natural 38 and "on
+     track" 157 against 57 — so every list on a phone read as a stack of
+     coloured bars rather than labelled values.
+
+     `justify-self` puts the pill back to its own size without touching
+     `.lf-badge`, which is correct everywhere it is not a grid item. */
+  .lf-grid tbody td > .lf-badge,
+  .lf-table tbody td > .lf-badge {
+    justify-self: start;
+  }
 }
 
 /* `.lf-table-scroll` — a scroll region with no chrome of its own.

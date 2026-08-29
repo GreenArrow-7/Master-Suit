@@ -5,7 +5,21 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { PRODUCT_NAME } from '@/lib/branding';
 
-type Item = { label: string; href: string; icon: IconName; permission?: string };
+/**
+ * `permission` accepts a list because a screen can need more than one grant.
+ *
+ * Dashboards is the case: it is a view of lead data, so it needs `leads` as
+ * well as `dashboards`. With a single string the link showed to anyone holding
+ * `dashboards`, and the page then refused them — a menu item that exists only
+ * to say no, which is the thing this navigation is careful not to do
+ * elsewhere. Every entry must be held, not any.
+ */
+type Item = { label: string; href: string; icon: IconName; permission?: string | string[] };
+
+/** True when the viewer holds every permission the item names. */
+const itemAllowed = (item: Item, permitted: string[]) =>
+  !item.permission ||
+  (Array.isArray(item.permission) ? item.permission : [item.permission]).every((p) => permitted.includes(p));
 type Section = { label: string; items: Item[] };
 type IconName =
   | 'home'
@@ -195,7 +209,7 @@ export default function WorkspaceSidebar({
               { label: 'Performance', href: `/${slug}/people/performance`, icon: 'report', permission: 'employee' },
               { label: 'People reports', href: `/${slug}/people/reports`, icon: 'report', permission: 'employee' },
             ] as Item[]
-          ).filter((item) => !item.permission || permitted.includes(item.permission)),
+          ).filter((item) => itemAllowed(item, permitted)),
         },
         {
           /**
@@ -224,7 +238,7 @@ export default function WorkspaceSidebar({
               { label: 'Roles & permissions', href: `/${slug}/people/roles`, icon: 'shield', permission: 'roles' },
               { label: 'HR policy', href: `/${slug}/people/settings`, icon: 'settings', permission: 'employee' },
             ] as Item[]
-          ).filter((item) => !item.permission || permitted.includes(item.permission)),
+          ).filter((item) => itemAllowed(item, permitted)),
         },
         { label: 'Account', items: [{ label: 'Security', href: `/${slug}/people/security`, icon: 'shield' }] },
       ];
@@ -361,7 +375,14 @@ export default function WorkspaceSidebar({
         items: [
           { label: 'Leadership', href: `/${slug}/sales/leadership`, icon: 'report', permission: 'reports' },
           { label: 'Reports', href: `/${slug}/sales/reports`, icon: 'report', permission: 'reports' },
-          { label: 'Dashboards', href: `/${slug}/sales/dashboards`, icon: 'report', permission: 'dashboards' },
+          // Both: the screen is a view of lead data, so `dashboards` alone was a
+          // link to a page its holder could not open. See the page's own gate.
+          {
+            label: 'Dashboards',
+            href: `/${slug}/sales/dashboards`,
+            icon: 'report',
+            permission: ['dashboards', 'leads'],
+          },
           { label: 'Call audits', href: `/${slug}/sales/call-audits`, icon: 'shield', permission: 'calls' },
           { label: 'Coaching', href: `/${slug}/sales/coaching`, icon: 'people', permission: 'calls' },
           { label: 'Playbook', href: `/${slug}/sales/playbook`, icon: 'document', permission: 'calls' },
@@ -373,7 +394,7 @@ export default function WorkspaceSidebar({
     return [common, ...sales]
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => !item.permission || permitted.includes(item.permission)),
+        items: section.items.filter((item) => itemAllowed(item, permitted)),
       }))
       .filter((section) => section.items.length > 0);
   }, [activeModule, permitted, slug, serviceMode]);
@@ -404,7 +425,7 @@ export default function WorkspaceSidebar({
       { label: 'Settings', href: `/${slug}/admin/settings`, icon: 'settings', permission: 'settings' },
       { label: 'Audit logs', href: `/${slug}/admin/audit`, icon: 'report', permission: 'auditlogs' },
     ] as Item[]
-  ).filter((item) => !item.permission || permitted.includes(item.permission));
+  ).filter((item) => itemAllowed(item, permitted));
 
   return (
     <>
