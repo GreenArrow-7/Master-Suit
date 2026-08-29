@@ -70,7 +70,14 @@ export default function NewUserForm({
     joinedOn: today(),
     employmentType: 'FULL_TIME',
     status: 'ACTIVE',
-    attendanceEligible: true,
+    // Only default this on when there is a location to assign. It used to
+    // default on unconditionally, which revealed a `required` location select
+    // holding nothing but its placeholder — no tenant here has an active work
+    // location — so "Create user" silently did nothing: the browser blocks
+    // submit on a required field that cannot be satisfied, and the form has no
+    // way to say so. Attendance off with no location is a valid account; the
+    // server only demands a location when this is on.
+    attendanceEligible: locations.length > 0,
     workLocationId: locations[0]?.id ?? '',
   });
 
@@ -343,9 +350,16 @@ export default function NewUserForm({
           type="checkbox"
           checked={form.attendanceEligible}
           onChange={(e) => set('attendanceEligible', e.target.checked)}
+          disabled={locations.length === 0}
         />
         <span>Eligible for geofenced attendance</span>
       </label>
+      {locations.length === 0 && (
+        <p className="lf-users__once">
+          No attendance location exists yet, so nobody can be made eligible. Add one under Attendance locations first —
+          this person can be created now and made eligible afterwards.
+        </p>
+      )}
 
       {form.attendanceEligible && (
         <div className="lf-field">
