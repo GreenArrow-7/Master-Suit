@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { signOut } from '@/lib/auth/signOut';
 
 /**
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
@@ -572,7 +573,7 @@ export default function TopBar({
         <button
           className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
           onClick={() => {
-            void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
+            void signOut().finally(() => {
               window.location.href = '/login';
             });
           }}

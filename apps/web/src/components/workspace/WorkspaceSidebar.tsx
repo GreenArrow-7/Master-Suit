@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { PRODUCT_NAME } from '@/lib/branding';
+import { signOut } from '@/lib/auth/signOut';
 
 type Item = { label: string; href: string; icon: IconName; permission?: string };
 type Section = { label: string; items: Item[] };
@@ -491,7 +492,7 @@ export default function WorkspaceSidebar({
               type="button"
               className="lf-sidebar-signout"
               onClick={() => {
-                void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
+                void signOut().finally(() => {
                   window.location.href = '/login';
                 });
               }}

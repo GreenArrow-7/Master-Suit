@@ -3,6 +3,8 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
+import { entityRoute } from '@/lib/nav/entityRoute';
+import { pushConfigured, sendPush } from '@/lib/push/send';
 
 interface HrEventJob {
   tenantId: string;
@@ -10,6 +12,55 @@ interface HrEventJob {
   userIds: string[];
   title: string;
   body: string;
+}
+
+interface HrEventPushJob {
+  tenantId: string;
+  userIds: string[];
+  title: string;
+  body: string;
+  objectType: string | null;
+  recordId: string | null;
+}
+
+/**
+ * Ring the phones the recipients are carrying.
+ *
+ * Separate from the email job on purpose — see the comment at the enqueue in
+ * services/hr/notify.ts. It never throws: the in-app row is already written and
+ * the email is already queued, so a push is the third copy of a message that has
+ * arrived twice. Failing the job would only retry the two that worked.
+ *
+ * The destination is resolved here rather than carried in the payload, because
+ * it needs the workspace slug and `entityRoute` is the one place allowed to turn
+ * a record type into a path. A record with no route still pushes — it opens the
+ * notification list, which is a worse destination than the record and a much
+ * better one than nothing.
+ */
+async function pushHrEvent(data: HrEventPushJob) {
+  if (!pushConfigured()) return { pushed: 0 };
+
+  const [devices, tenant] = await Promise.all([
+    prisma.deviceToken.findMany({
+      where: { userId: { in: data.userIds } },
+      select: { token: true, platform: true },
+    }),
+    prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { slug: true } }),
+  ]);
+  if (!devices.length || !tenant) return { pushed: 0 };
+
+  const { sent, stale } = await sendPush(devices, {
+    title: data.title,
+    body: data.body,
+    url: entityRoute(data.objectType, data.recordId, tenant.slug) ?? `/${tenant.slug}/notifications`,
+  });
+
+  // The app was deleted, or the token was never valid. Removed rather than
+  // retried: keeping it means paying for a rejected request on every future
+  // notification to this person, forever.
+  if (stale.length) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } });
+
+  return { pushed: sent };
 }
 
 /**
@@ -29,6 +80,16 @@ export function startNotificationsWorker() {
   return new Worker(
     'notifications',
     async (job) => {
+      if (job.name === 'hr-event-push') {
+        try {
+          return await pushHrEvent(job.data as HrEventPushJob);
+        } catch (error) {
+          // Swallowed, not rethrown: a retry would re-ring the phones that did
+          // receive it, and there is no delivery stamp to filter them out.
+          logger.warn({ err: error }, 'push notification failed');
+          return { pushed: 0 };
+        }
+      }
       if (job.name !== 'hr-event') {
         logger.warn({ jobName: job.name }, 'unknown notifications job');
         return;
