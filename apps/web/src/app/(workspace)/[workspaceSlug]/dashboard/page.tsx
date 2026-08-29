@@ -385,7 +385,12 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
     if (sales[1] > 0)
       attention.push({
         label: 'Unassigned leads',
-        hint: 'Nobody owns these yet',
+        // Says "workspace" because this one figure is not scoped like the
+        // others: an unassigned lead has no owner, so `visibilityWhere` cannot
+        // place it in anybody's territory and the count is tenant-wide. Left
+        // unqualified, it read as a contradiction beside the viewer's own
+        // scoped totals — more unassigned leads than leads.
+        hint: 'Nobody owns these yet · workspace-wide',
         count: sales[1],
         tone: 'brass',
         href: `/${workspace.slug}/sales/leads`,
@@ -463,18 +468,35 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   // the operation first. Permission (leads EDIT) is the honest proxy.
   const workerView = !isAdminView && can(ctx, 'leads', 'EDIT');
 
+  /**
+   * My day, minus the rows that have nothing to say.
+   *
+   * All five were rendered unconditionally, so a salesperson with no leave
+   * request, no overtime, no assessment and no payslip read four tiles of "0"
+   * every morning — a panel whose only content was the absence of content.
+   * Zeros here are not information: nobody is waiting to learn they have no
+   * pending overtime.
+   *
+   * Attendance always shows, because "Not checked in" *is* the day's state and
+   * the thing the panel's own link acts on. If nothing else has a value the
+   * panel is one row, and if attendance is the only row it still earns its
+   * place; the panel disappears entirely only when there is no employee record
+   * behind it at all.
+   */
   const myDayPanel = mine ? (
     <Summary
       accent="var(--lf-brass)"
       link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
       title="My day"
-      values={[
-        ['Today', mine[1]?.checkInAt ? (mine[1].checkOutAt ? 'Checked out' : 'Checked in') : 'Not checked in'],
-        ['My pending leave', mine[2]],
-        ['My pending overtime', mine[3]],
-        ['Self-assessment due', mine[4]],
-        ['Payslips available', mine[5]],
-      ]}
+      values={(
+        [
+          ['Today', mine[1]?.checkInAt ? (mine[1].checkOutAt ? 'Checked out' : 'Checked in') : 'Not checked in'],
+          ['My pending leave', mine[2]],
+          ['My pending overtime', mine[3]],
+          ['Self-assessment due', mine[4]],
+          ['Payslips available', mine[5]],
+        ] as [string, string | number][]
+      ).filter(([label, value]) => label === 'Today' || Number(value) > 0)}
     />
   ) : null;
 
@@ -546,21 +568,20 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           or analyst's with the business. Same panels, different order. */}
       {workerView && myDayPanel}
 
-      {sales && (
-        <Summary
-          accent="var(--lf-wine-700)"
-          link={{ href: `/${workspace.slug}/sales`, label: 'Open Sales →' }}
-          title="Sales summary"
-          values={[
-            ['Total leads', sales[0]],
-            ['Unassigned leads', sales[1]],
-            ['Open opportunities', sales[2]],
-            ['Overdue follow-ups', sales[3]],
-            ['Pipeline value', money(Number(sales[4]._sum.amount ?? 0))],
-            ['Tasks due', sales[5]],
-          ]}
-        />
-      )}
+      {/* "Sales summary" stood here and repeated the page back to itself.
+          Every one of its six figures had already been read: pipeline value,
+          open opportunities and active leads in the band above, overdue
+          follow-ups, tasks due and unassigned leads in the attention chips. A
+          reader who scrolled past the band met the same numbers twice more, in
+          two more visual treatments, and had to work out whether they were
+          being told something new. They were not.
+
+          It also put two incomparable figures side by side. "Total leads" is
+          scoped by `visibilityWhere` to what this viewer may see; "Unassigned
+          leads" is tenant-wide by design — see the comment on that query. A
+          regional manager therefore read "Total leads 38" next to "Unassigned
+          leads 42" and reasonably concluded the page was broken. The unassigned
+          count keeps its own chip, where the hint says whose it is. */}
       {/* Whose work is outstanding, by name — the question a count cannot
           answer. Only rendered for a viewer whose scope reaches past their own
           records; a representative sees their own queue in My day instead. */}
