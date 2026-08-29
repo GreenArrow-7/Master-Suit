@@ -145,19 +145,27 @@ async function loadShell(workspaceSlug: string) {
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
-    /**
-     * `platform_service` joins the two staff role keys here.
-     *
-     * It was absent, so a machine identity signed in interactively read a
-     * customer's workspace with no banner saying whose session this was — the
-     * one piece of chrome that distinguishes "you are inside someone else's
-     * data" from an ordinary tab. It is read-only for the same reason
-     * `platform_support` is: buildSupportActor grants it VIEW and nothing else.
-     */
     const serviceMode = ctx.actor.roleKey === 'platform_service';
-    const supportMode =
-      serviceMode || ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
-    const supportReadOnly = serviceMode || ctx.actor.roleKey === 'platform_support';
+    /**
+     * The support banner is for people, and `platform_service` is deliberately
+     * not in this list.
+     *
+     * It was, briefly. The argument for including it still holds — the banner
+     * is the one piece of chrome distinguishing "you are inside someone else's
+     * data" from an ordinary tab — but it is an interruption aimed at a human
+     * who might forget which hat they are wearing, and this identity exists to
+     * be driven deliberately, by an operator who signed into a separate
+     * `/service-login` page with a separate credential and cannot have arrived
+     * here by accident.
+     *
+     * Nothing about accountability changes with it gone: every request this
+     * identity makes still writes a PlatformAuditEvent, the actor is still
+     * labelled "Platform service" in the customer's own audit log, and the
+     * session is still read-only — `buildSupportActor` grants it VIEW and
+     * VIEW_REPORTS and there is no path to anything else.
+     */
+    const supportMode = ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
+    const supportReadOnly = ctx.actor.roleKey === 'platform_support';
 
     return {
       workspaceId: workspace.id,
