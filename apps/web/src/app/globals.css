@@ -1769,6 +1769,27 @@ a:hover {
   .lf-grid td[data-hide-mobile] {
     display: none;
   }
+  /* A row action on a phone is a thumb target, not a link in a table.
+     `.lf-btn--sm` is 28px tall, which is right beside a mouse and well under
+     the 44px every touch guideline asks for — and the one action that lands
+     here is Call, which exists to be tapped on exactly this device.
+
+     The right gutter is the assistant button. `--lf-fab-safe` stops a page
+     *ending* underneath it; it cannot stop a row in the middle of a long list
+     coming to rest under it, because the button is fixed and every row passes
+     through that band while scrolling. A full-width action button therefore had
+     its last ~70px permanently occluded at whatever scroll position put it
+     there — measured, not guessed: the 52px button at (290, 684) overlapped a
+     279px-wide Call button on a 375px viewport.
+
+     Stopping the control short of that column costs width on the one edge
+     nobody starts a tap from, and makes every part of it reachable at every
+     scroll position. */
+  .lf-grid tbody td[data-label=''] .lf-btn,
+  .lf-grid tbody td:not([data-label]) .lf-btn {
+    min-height: 44px;
+    margin-right: var(--lf-fab-gutter);
+  }
 }
 
 /* `.lf-table-scroll` — a scroll region with no chrome of its own.
