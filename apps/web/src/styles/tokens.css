@@ -27,6 +27,13 @@
    * on top of it. Bump this if the button's size or offset changes.
    */
   --lf-fab-safe: 88px;
+  /* The horizontal band the assistant button occupies: its 52px width plus the
+     18px it is inset from the right, plus 10px so a target does not merely
+     abut it. `--lf-fab-safe` keeps content from ending *underneath* the button;
+     this keeps a tappable control from passing under it mid-scroll, which the
+     vertical reserve cannot prevent — the button is fixed, so any row can come
+     to rest below it. */
+  --lf-fab-gutter: 80px;
 
   /* ── Burgundy ramp ───────────────────────────────────────────────────────
      900 is chrome. 700 is the brand. 500 is interaction. The tints carry
