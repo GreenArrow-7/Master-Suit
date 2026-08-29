@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import DashboardCharts from './DashboardCharts';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -16,11 +17,10 @@ export default async function DashboardsPage() {
    * and was then refused deeper in, when `visibilityWhere` threw on a NONE
    * scope. Twenty-two roles in this database are in exactly that position.
    *
-   * Guarding each query instead — the fix applied to the other pages in this
-   * audit — would leave those roles a page of zeroes, which is a worse answer
-   * than a clear one. So the page now asks for what it actually reads, and the
-   * sidebar asks for both (see WorkspaceSidebar): the link appears only for
-   * someone who can open it, and the page refuses cleanly if reached directly.
+   * So the page now asks for what it actually reads, and the sidebar asks for
+   * both (see WorkspaceSidebar): the link appears only for someone who can
+   * open it, and the page refuses cleanly if reached directly. The secondary
+   * figures are guarded individually below — see the note on the scopes.
    */
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
   const now = new Date();
@@ -28,10 +28,18 @@ export default async function DashboardsPage() {
 
   // Figures follow the viewer's role scope, like every list page: a SELF-scoped
   // rep sees their own numbers, a manager the team's, an admin the org's.
+  //
+  // Leads are the gate, so that scope is unconditional. Tasks and activities
+  // are separate grants and were asked for regardless — `visibilityWhere`
+  // throws Forbidden on a NONE scope, so a role holding leads without
+  // activities (call_qa, in both tenants here) crashed the whole page for the
+  // want of one tile. A missing permission drops its tile, not the dashboard.
+  const canSeeTasks = can(ctx, 'tasks', 'VIEW');
+  const canSeeActivities = can(ctx, 'activities', 'VIEW');
   const [leadScope, taskScope, activityScope] = await Promise.all([
     visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true }),
-    visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
-    visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }),
+    canSeeTasks ? visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }) : null,
+    canSeeActivities ? visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }) : null,
   ]);
 
   const [
@@ -47,9 +55,9 @@ export default async function DashboardsPage() {
   ] = await Promise.all([
     prisma.lead.count({ where: leadScope }),
     prisma.lead.count({ where: { ...leadScope, createdAt: { gte: monthStart } } }),
-    prisma.task.count({ where: { ...taskScope, status: 'OPEN' } }),
-    prisma.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }),
-    prisma.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }),
+    taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN' } }) : null,
+    taskScope ? prisma.task.count({ where: { ...taskScope, status: 'OPEN', dueAt: { lt: now } } }) : null,
+    activityScope ? prisma.activity.count({ where: { ...activityScope, createdAt: { gte: monthStart } } }) : null,
     prisma.lead.groupBy({ by: ['stageId'], where: leadScope, _count: { id: true } }),
     prisma.lead.groupBy({ by: ['source'], where: leadScope, _count: { id: true } }),
     prisma.lead.groupBy({ by: ['slaState'], where: leadScope, _count: { id: true } }),
