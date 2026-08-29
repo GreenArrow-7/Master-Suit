@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { can } from '@/lib/security/rbac';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 
 export const metadata = { title: 'Request a visit' };
@@ -14,15 +15,24 @@ export const metadata = { title: 'Request a visit' };
  */
 export default async function NewSiteVisitPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['visits', 'CREATE'] });
-  const scope = await visibilityWhere(ctx, 'leads', 'VIEW');
+
+  // Booking a visit needs `visits:CREATE`; listing leads to pick from needs
+  // `leads:VIEW`. They are separate grants, and `visibilityWhere` throws
+  // Forbidden on a NONE scope — so unguarded, a role holding the first without
+  // the second was refused the page instead of offered a shorter form.
+  const canReadLeads = can(ctx, 'leads', 'VIEW');
 
   const [leads, projects, listings] = await Promise.all([
-    prisma.lead.findMany({
-      where: { ...scope, deletedAt: null },
-      select: { id: true, fullName: true, phone: true },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
-    }),
+    canReadLeads
+      ? visibilityWhere(ctx, 'leads', 'VIEW').then((scope) =>
+          prisma.lead.findMany({
+            where: { ...scope, deletedAt: null },
+            select: { id: true, fullName: true, phone: true },
+            orderBy: { updatedAt: 'desc' },
+            take: 200,
+          }),
+        )
+      : Promise.resolve([]),
     prisma.project.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null, isPitchable: true },
       select: { id: true, name: true },

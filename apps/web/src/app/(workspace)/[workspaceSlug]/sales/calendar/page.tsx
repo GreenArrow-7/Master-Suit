@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import CalendarView from './CalendarView';
 
@@ -29,10 +30,21 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
   const inMonth = { gte: monthStart, lte: monthEnd };
 
+  /**
+   * The calendar draws three kinds of entry, each on its own grant.
+   *
+   * The page is gated on `tasks:VIEW`, and then asked `visibilityWhere` for
+   * activities and calls regardless — which throws Forbidden on a NONE scope.
+   * A role holding tasks without calls (four exist in this database) was
+   * refused the whole calendar rather than shown a calendar without call
+   * entries. A missing permission should subtract a layer, not the page.
+   */
+  const canSeeActivities = can(ctx, 'activities', 'VIEW');
+  const canSeeCalls = can(ctx, 'calls', 'VIEW');
   const [taskScope, activityScope, callScope] = await Promise.all([
     visibilityWhere(ctx, 'tasks', 'VIEW', { ownerField: 'ownerId' }),
-    visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }),
-    visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' }),
+    canSeeActivities ? visibilityWhere(ctx, 'activities', 'VIEW', { ownerField: 'ownerId' }) : null,
+    canSeeCalls ? visibilityWhere(ctx, 'calls', 'VIEW', { ownerField: 'callerId' }) : null,
   ]);
 
   const [tasks, activities, followUps, calls, events] = await Promise.all([
@@ -41,26 +53,30 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       take: 300,
       select: { id: true, title: true, dueAt: true, status: true },
     }),
-    prisma.activity.findMany({
-      where: { ...activityScope, deletedAt: null, occurredAt: inMonth },
-      take: 300,
-      select: { id: true, occurredAt: true, leadId: true, type: { select: { name: true } } },
-    }),
+    activityScope
+      ? prisma.activity.findMany({
+          where: { ...activityScope, deletedAt: null, occurredAt: inMonth },
+          take: 300,
+          select: { id: true, occurredAt: true, leadId: true, type: { select: { name: true } } },
+        })
+      : [],
     prisma.followUpTask.findMany({
       where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null, dueAt: inMonth },
       take: 300,
       select: { id: true, title: true, dueAt: true, status: true },
     }),
-    prisma.call.findMany({
-      // A completed call sits at its start time; one not yet dialled at its creation.
-      where: {
-        ...callScope,
-        deletedAt: null,
-        OR: [{ startedAt: inMonth }, { startedAt: null, createdAt: inMonth }],
-      },
-      take: 300,
-      select: { id: true, startedAt: true, createdAt: true, direction: true, status: true },
-    }),
+    callScope
+      ? prisma.call.findMany({
+          // A completed call sits at its start time; one not yet dialled at its creation.
+          where: {
+            ...callScope,
+            deletedAt: null,
+            OR: [{ startedAt: inMonth }, { startedAt: null, createdAt: inMonth }],
+          },
+          take: 300,
+          select: { id: true, startedAt: true, createdAt: true, direction: true, status: true },
+        })
+      : [],
     // Events are tenant-wide, matching the Events list page.
     prisma.event.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null, startAt: inMonth },

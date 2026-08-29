@@ -7,7 +7,22 @@ import ListHeader from '@/components/workspace/ListHeader';
 export const metadata = { title: 'Dashboards' };
 
 export default async function DashboardsPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['dashboards', 'VIEW'] });
+  /**
+   * Gated on `leads:VIEW`, not `dashboards:VIEW`.
+   *
+   * Every figure here is derived from leads — the totals, the month-on-month
+   * count, the stage, source and SLA breakdowns. `dashboards:VIEW` was the
+   * declared gate, so a role holding it without `leads:VIEW` reached the page
+   * and was then refused deeper in, when `visibilityWhere` threw on a NONE
+   * scope. Twenty-two roles in this database are in exactly that position.
+   *
+   * Guarding each query instead — the fix applied to the other pages in this
+   * audit — would leave those roles a page of zeroes, which is a worse answer
+   * than a clear one. So the page now asks for what it actually reads, and the
+   * sidebar asks for both (see WorkspaceSidebar): the link appears only for
+   * someone who can open it, and the page refuses cleanly if reached directly.
+   */
+  const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
