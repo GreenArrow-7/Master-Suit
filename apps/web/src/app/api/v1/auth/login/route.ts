@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
+import { isPrivilegedPlatformRole, isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
@@ -113,6 +113,49 @@ export async function POST(req: Request) {
       });
       await recordFailure(null, user.id, ip, ua, requestId, locked ? 'LOCKED_NOW' : 'BAD_PASSWORD');
       throw Unauthorized(GENERIC);
+    }
+
+    /**
+     * A service identity proved its password at the wrong door.
+     *
+     * This route issues FULL sessions, and `resolvePlatformCtx` refuses an
+     * AI_SERVICE identity holding one — so without this the account signs in
+     * successfully, gets a session, and is silently bounced on its first request
+     * with nothing to explain why. That is exactly what happened: correct
+     * password, correct authenticator code, `LOGIN` recorded, and two sessions
+     * revoked as ROLE_PURPOSE_MISMATCH seconds later.
+     *
+     * Placed *after* the password check on purpose. Answering before it would
+     * tell an unauthenticated caller which accounts are service identities,
+     * which is an enumeration oracle; here, whoever sees it has already proven
+     * they hold the credential.
+     *
+     * No session is created, so there is nothing doomed to revoke.
+     */
+    if (isPlatformServiceRole(user.platformRole)) {
+      await prisma.platformAuditEvent
+        .create({
+          data: {
+            actorUserId: user.id,
+            event: 'LOGIN_FAILED',
+            objectType: 'platform_user',
+            objectId: user.id,
+            ipAddress: ip,
+            userAgent: ua,
+            requestId,
+            metadata: { reason: 'SERVICE_IDENTITY_WRONG_ROUTE' },
+          },
+        })
+        .catch(() => {});
+      return NextResponse.json(
+        {
+          serviceIdentity: true,
+          destination: '/service-login',
+          detail:
+            'This is a platform service identity. Sign in on the service page with its username instead of its email address.',
+        },
+        { status: 200, headers: { 'x-request-id': requestId } },
+      );
     }
 
     const activeMembership = memberships[0] ?? null;

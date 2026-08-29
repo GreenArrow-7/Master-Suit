@@ -77,7 +77,10 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
     leadIds.length > 0
       ? await prisma.lead.findMany({
           where: { tenantId: ctx.tenantId, id: { in: leadIds } },
-          select: { id: true, fullName: true },
+          // `phone` is what the row's Call button falls back to when the call
+          // itself recorded no number — a scheduled or failed call often has
+          // none, and dialling the lead is still what the user came here to do.
+          select: { id: true, fullName: true, phone: true },
         })
       : [];
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
@@ -91,7 +94,19 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
     .filter((r) => r.outcome && CONNECTED_OUTCOMES.includes(r.outcome))
     .reduce((s, r) => s + r._count, 0);
 
-  const columns = await columnsFor(ctx.tenantId, 'CALL');
+  const configured = await columnsFor(ctx.tenantId, 'CALL');
+  /**
+   * The Call button is present in every workspace, configured layout or not.
+   *
+   * `resolveColumns` returns the stored preference verbatim once a workspace has
+   * saved one, so a new catalogue entry reaches only the workspaces that never
+   * customised this grid — every established customer would have silently
+   * missed it. Appended rather than made `fixed`, because fixed columns render
+   * at the *start* of the row and an action belongs at the end.
+   */
+  const columns = configured.some((column) => column.key === 'call')
+    ? configured
+    : [...configured, { key: 'call', label: '', align: 'right' as const }];
 
   return (
     <>

@@ -10,6 +10,36 @@ export type GridRow = Record<string, any>;
 const dash = <span style={{ color: 'var(--lf-ink-3)' }}>—</span>;
 const muted = (value: ReactNode) => <span style={{ color: 'var(--lf-ink-2)' }}>{value}</span>;
 
+/**
+ * A "Call" button that opens the device's dialler.
+ *
+ * `tel:` takes digits, an optional leading `+`, and the DTMF separators `,`
+ * (pause) and `;` (wait) that an extension needs. Everything a person types for
+ * legibility — spaces, brackets, dashes — is stripped, because a handset given
+ * `+971 (50) 123-4567` may refuse the whole string.
+ *
+ * Nothing is rendered without a number: a dead button that silently does
+ * nothing is worse than an obvious blank.
+ */
+function dialLink(raw: unknown): ReactNode {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return dash;
+  const dialable = value.replace(/[^+\d,;]/g, '').replace(/(?!^)\+/g, '');
+  if (!/\d/.test(dialable)) return dash;
+  return (
+    <a
+      className="lf-btn lf-btn--secondary lf-btn--sm"
+      href={`tel:${dialable}`}
+      style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+      // The number is not in the visible label, so the control has to say who it
+      // dials for anyone using a screen reader.
+      aria-label={`Call ${value}`}
+    >
+      Call
+    </a>
+  );
+}
+
 function date(value: unknown): ReactNode {
   if (!value) return dash;
   return new Date(value as string).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -223,6 +253,21 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return dateTime(row.startedAt);
         case 'notes':
           return muted(row.notes ?? '—');
+        case 'call':
+          /**
+           * Hands the number to whatever the device uses to place calls: the
+           * handset dialler on a phone, or the desktop's registered `tel:`
+           * handler (a softphone, Teams, Skype).
+           *
+           * A plain anchor rather than a click handler, so it works in a server
+           * component with no JavaScript and behaves like a link — long-press to
+           * copy on mobile, right-click to copy on desktop.
+           *
+           * The number the call actually used comes first; the lead's own number
+           * is the fallback, because a scheduled or failed row may never have
+           * recorded one and dialling the lead is still what the user wants.
+           */
+          return dialLink(row.recipientNumber ?? row.lead?.phone);
         default:
           return dash;
       }
@@ -337,6 +382,17 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return <FollowUpRowActions id={String(row.id)} status={String(row.status)} />;
         case 'lead':
           return row.lead ? link(`/leads/${row.lead.id}`, row.lead.fullName) : dash;
+        case 'owner':
+          /**
+           * A tag, because this column only appears on a list spanning several
+           * people and the eye scans for whose row it is before reading
+           * anything else — but the name is passed as a child, not as `value`.
+           *
+           * `Badge` lower-cases its `value`, which is right for the enum labels
+           * it exists to render (`IN_PROGRESS` → "in progress") and wrong for a
+           * person: it turned "Sana Chowdhury" into "sana chowdhury".
+           */
+          return row.owner ? <Badge value="owner">{String(row.owner)}</Badge> : dash;
         case 'dueAt':
           return (
             <span style={{ color: overdue(row.dueAt) }}>

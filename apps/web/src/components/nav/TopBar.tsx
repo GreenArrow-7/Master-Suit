@@ -570,15 +570,29 @@ export default function TopBar({
           </div>
         )}
 
+        {/* The only sign-out control in the product, and deliberately not
+            `lf-topbar-optional`.
+
+            It carried that class, which is `display: none` at both the tablet
+            and the phone breakpoint — and the sidebar's own "Sign out" is
+            rendered only when the rail is expanded, so it is gone on tablet too
+            and behind the drawer on a phone. Between them there was no way to
+            sign out on either size without opening the navigation drawer first.
+            The breakpoint's own comment lists "Notifications · Log out ·
+            + Create" as the actions that survive, so the class was against the
+            intent already written next to it.
+
+            "Sign out" rather than "Log out", to pair with "Sign in" on the
+            authentication pages; the sidebar's duplicate has been removed. */}
         <button
-          className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
+          className="lf-btn lf-btn--ghost lf-btn--sm"
           onClick={() => {
             void signOut().finally(() => {
               window.location.href = '/login';
             });
           }}
         >
-          Log out
+          Sign out
         </button>
 
         {/* Create dropdown — absent entirely for roles that can create nothing. */}

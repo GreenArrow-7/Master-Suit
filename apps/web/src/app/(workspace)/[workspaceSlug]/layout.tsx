@@ -103,6 +103,7 @@ export default async function WorkspaceLayout({
         permitted={shell.permitted}
         workspaces={shell.availableWorkspaces}
         user={shell.user}
+        serviceMode={shell.serviceMode}
       />
       <div className="lf-content-column">
         {shell.supportMode && (
@@ -146,6 +147,25 @@ async function loadShell(workspaceSlug: string) {
       orderBy: { tenant: { displayName: 'asc' } },
     });
 
+    const serviceMode = ctx.actor.roleKey === 'platform_service';
+    /**
+     * The support banner is for people, and `platform_service` is deliberately
+     * not in this list.
+     *
+     * It was, briefly. The argument for including it still holds — the banner
+     * is the one piece of chrome distinguishing "you are inside someone else's
+     * data" from an ordinary tab — but it is an interruption aimed at a human
+     * who might forget which hat they are wearing, and this identity exists to
+     * be driven deliberately, by an operator who signed into a separate
+     * `/service-login` page with a separate credential and cannot have arrived
+     * here by accident.
+     *
+     * Nothing about accountability changes with it gone: every request this
+     * identity makes still writes a PlatformAuditEvent, the actor is still
+     * labelled "Platform service" in the customer's own audit log, and the
+     * session is still read-only — `buildSupportActor` grants it VIEW and
+     * VIEW_REPORTS and there is no path to anything else.
+     */
     const supportMode = ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
     const supportReadOnly = ctx.actor.roleKey === 'platform_support';
 
@@ -153,6 +173,7 @@ async function loadShell(workspaceSlug: string) {
       workspaceId: workspace.id,
       supportMode,
       supportReadOnly,
+      serviceMode,
       slug: workspace.slug,
       displayName: workspace.displayName,
       /**

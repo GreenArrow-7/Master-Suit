@@ -76,8 +76,7 @@ export async function registerNativePush(onOpen: (url: string) => void): Promise
 
   try {
     const current = await native.push.checkPermissions();
-    const receive =
-      current.receive === 'granted' ? current.receive : (await native.push.requestPermissions()).receive;
+    const receive = current.receive === 'granted' ? current.receive : (await native.push.requestPermissions()).receive;
     // Denied is a settled answer, not an error. Someone who declined the prompt
     // gets the in-app feed and the email, which is what they had before.
     if (receive !== 'granted') return;

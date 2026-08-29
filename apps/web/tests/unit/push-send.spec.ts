@@ -103,14 +103,9 @@ describe('sendPush', () => {
       aud: 'https://oauth2.googleapis.com/token',
       scope: 'https://www.googleapis.com/auth/firebase.messaging',
     });
-    expect(
-      verify(
-        'sha256',
-        Buffer.from(`${header}.${claims}`),
-        publicKey,
-        Buffer.from(signature!, 'base64url'),
-      ),
-    ).toBe(true);
+    expect(verify('sha256', Buffer.from(`${header}.${claims}`), publicKey, Buffer.from(signature!, 'base64url'))).toBe(
+      true,
+    );
 
     // 2 · the message, carrying the destination the tap handler reads.
     expect(calls[1]!.url).toBe('https://fcm.googleapis.com/v1/projects/demo-project/messages:send');

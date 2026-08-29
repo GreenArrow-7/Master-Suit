@@ -164,8 +164,7 @@ async function sendFcm(targets: PushTarget[], message: PushMessage): Promise<Pus
 
 // ── Apple: APNs over HTTP/2 ─────────────────────────────────────────────────
 
-const apnsConfigured = () =>
-  Boolean(env.APNS_KEY && env.APNS_KEY_ID && env.APNS_TEAM_ID && env.APNS_BUNDLE_ID);
+const apnsConfigured = () => Boolean(env.APNS_KEY && env.APNS_KEY_ID && env.APNS_TEAM_ID && env.APNS_BUNDLE_ID);
 
 let apnsAuth: { token: string; issuedAt: number } | null = null;
 
@@ -177,13 +176,17 @@ function apnsToken(): string {
   if (apnsAuth && nowSeconds() - apnsAuth.issuedAt < 50 * 60) return apnsAuth.token;
 
   const issuedAt = nowSeconds();
-  const token = jwt({ alg: 'ES256', kid: env.APNS_KEY_ID, typ: 'JWT' }, { iss: env.APNS_TEAM_ID, iat: issuedAt }, {
-    key: createPrivateKey((env.APNS_KEY ?? '').replace(/\\n/g, '\n')),
-    // JWS wants the raw r‖s pair. Node signs EC as DER by default, and Apple
-    // answers a DER signature with a 403 InvalidProviderToken that says nothing
-    // about the encoding.
-    dsaEncoding: 'ieee-p1363',
-  });
+  const token = jwt(
+    { alg: 'ES256', kid: env.APNS_KEY_ID, typ: 'JWT' },
+    { iss: env.APNS_TEAM_ID, iat: issuedAt },
+    {
+      key: createPrivateKey((env.APNS_KEY ?? '').replace(/\\n/g, '\n')),
+      // JWS wants the raw r‖s pair. Node signs EC as DER by default, and Apple
+      // answers a DER signature with a 403 InvalidProviderToken that says nothing
+      // about the encoding.
+      dsaEncoding: 'ieee-p1363',
+    },
+  );
 
   apnsAuth = { token, issuedAt };
   return token;
@@ -191,9 +194,7 @@ function apnsToken(): string {
 
 async function sendApns(targets: PushTarget[], message: PushMessage): Promise<PushResult> {
   // HTTP/2 is not optional for APNs, and `fetch` does not speak it.
-  const client = http2.connect(
-    env.APNS_SANDBOX ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com',
-  );
+  const client = http2.connect(env.APNS_SANDBOX ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com');
   const authorization = `bearer ${apnsToken()}`;
   const payload = JSON.stringify({
     aps: { alert: { title: message.title, body: message.body || undefined }, sound: 'default' },

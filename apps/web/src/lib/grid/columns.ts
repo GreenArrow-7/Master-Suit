@@ -129,6 +129,15 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'status', label: 'Status', byDefault: true },
     { key: 'startedAt', label: 'Started', hideMobile: true },
     { key: 'notes', label: 'Notes', hideMobile: true },
+    /**
+     * Dial the person this row is about, from the row.
+     *
+     * On by default and never hidden on mobile — a handset is where a `tel:`
+     * link is most useful, and a call list you cannot call from is a reading
+     * exercise. Rendered last so it sits at the end of the row, where an action
+     * belongs.
+     */
+    { key: 'call', label: '', byDefault: true, align: 'right' },
   ],
   CAMPAIGN: [
     { key: 'name', label: 'Name', fixed: true, primary: true },
@@ -174,6 +183,15 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
   FOLLOWUP: [
     { key: 'title', label: 'Task', fixed: true, primary: true },
+    /**
+     * Whose follow-up it is.
+     *
+     * Off by default because the page shows only your own for most viewers, and
+     * a column repeating your own name in every row is furniture. It is added
+     * explicitly by the follow-ups page when the list spans other people — see
+     * sales/follow-ups/page.tsx.
+     */
+    { key: 'owner', label: 'Owner', hideMobile: true },
     { key: 'lead', label: 'Lead', byDefault: true, hideMobile: true },
     { key: 'dueAt', label: 'Due', byDefault: true },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
