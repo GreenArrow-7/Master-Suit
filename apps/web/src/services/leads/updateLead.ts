@@ -5,6 +5,7 @@ import { assertRecordVisible } from '@/lib/security/visibility';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { emit } from '../shared/events';
+import { notifyCrm } from '../crm/notify';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -31,6 +32,20 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     delete input.ownerId;
   }
 
+  /**
+   * What actually changed, carried out of the transaction so the notifications
+   * can be written after it commits.
+   *
+   * Only these two are announced. "Lead updates" in the abstract includes fixing
+   * a typo in a job title, and a bell that fires on every field edit is one
+   * people learn to ignore — which would cost the stage and owner changes their
+   * audience too. The audit log already records every field; this is for the two
+   * events that change who is responsible and what happens next.
+   */
+  let stageChangedTo: string | null = null;
+  let previousOwnerId: string | null = null;
+  let ownerChanged = false;
+
   const updated = await withTx(ctx.tenantId, async (tx) => {
     const before = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id } });
     if (!before) throw NotFound('Lead');
@@ -39,6 +54,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     if (input.stageId && input.stageId !== before.stageId) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
       if (!stage) throw NotFound('Lead stage');
+      stageChangedTo = stage.name;
       await tx.leadStageHistory.create({
         data: {
           tenantId: ctx.tenantId,
@@ -51,6 +67,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     }
 
     if (input.ownerId !== undefined && input.ownerId !== before.ownerId) {
+      ownerChanged = true;
+      previousOwnerId = before.ownerId;
       await tx.leadAssignmentHistory.create({
         data: {
           tenantId: ctx.tenantId,
@@ -92,6 +110,35 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     object: 'LEAD',
     recordId: id,
   });
+  /**
+   * Reassignment tells both ends. The new owner needs to know they have it; the
+   * previous owner otherwise watches a record leave their list with no
+   * explanation, which is the reassignment complaint every CRM eventually gets.
+   */
+  if (ownerChanged) {
+    await notifyCrm(ctx, {
+      event: 'lead.assigned',
+      ownerId: updated.ownerId,
+      alsoNotify: [previousOwnerId],
+      title: `Lead assigned: ${updated.fullName}`,
+      body: updated.reference,
+      objectType: 'lead',
+      recordId: id,
+      priority: 'HIGH',
+    });
+  }
+
+  if (stageChangedTo) {
+    await notifyCrm(ctx, {
+      event: 'lead.stage_changed',
+      ownerId: updated.ownerId,
+      title: `${updated.fullName} moved to ${stageChangedTo}`,
+      body: updated.reference,
+      objectType: 'lead',
+      recordId: id,
+    });
+  }
+
   emit(ctx, 'lead.updated', { leadId: id });
   return updated;
 }

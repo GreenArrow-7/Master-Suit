@@ -189,8 +189,10 @@
   --lf-text-sm: 0.75rem;
 }
 
-/* ── Dark: the rail colour swallows the whole canvas ─────────────────────── */
-[data-theme='dark'] {
+/* ── Dark Classic: the rail colour swallows the whole canvas ─────────────── */
+/* Glassy shares this block and overrides only its surfaces further down. */
+[data-theme='dark'],
+[data-theme='glass'] {
   --lf-canvas: #1a0a11;
   --lf-surface: #24101a;
   --lf-surface-2: #2e1622;
@@ -220,6 +222,53 @@
   --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
   --lf-shadow-3: 0 18px 44px rgb(0 0 0 / 0.55);
+}
+
+/* ── Glassy ───────────────────────────────────────────────────────────────
+ *
+ * Selector list, not a separate palette. Glassy is Dark Classic with the
+ * surfaces made translucent, so it inherits every ink, accent and status colour
+ * above and cannot drift out of sync with them — the failure mode of a second
+ * dark theme maintained by hand.
+ *
+ * The overrides below are only the ones translucency actually requires. Anything
+ * a reader has to *read* — text, focus rings, status pills — is inherited
+ * unchanged, because a glass panel that dims its own contrast is the mistake
+ * this style is usually accused of.
+ */
+[data-theme='glass'] {
+  /* A canvas with structure in it. Blur over a flat colour is invisible: the
+     effect is entirely in what shows through, so there has to be something to
+     show. Two soft wine pools, fixed, so scrolling does not drag them. */
+  --lf-canvas: #150710;
+  --lf-canvas-wash:
+    radial-gradient(1100px 620px at 12% -8%, rgb(150 60 95 / 0.28), transparent 60%),
+    radial-gradient(880px 520px at 96% 6%, rgb(90 50 110 / 0.22), transparent 62%);
+
+  /* Panels. Alpha, not a solid — everything else here follows from that. */
+  --lf-surface: rgb(255 255 255 / 0.055);
+  --lf-surface-2: rgb(255 255 255 / 0.085);
+  --lf-line: rgb(255 255 255 / 0.11);
+  --lf-line-2: rgb(255 255 255 / 0.2);
+
+  /*
+   * Where data lives, opacity goes up.
+   *
+   * §9 is explicit that tables of leads and calls stay highly readable, and a
+   * table is the one place a background pattern competes directly with rows of
+   * small text. These are near-opaque on purpose: the glass reads at the panel
+   * edge, not through the numbers.
+   */
+  --lf-glass-solid: rgb(32 16 26 / 0.92);
+  --lf-glass-blur: 14px;
+  --lf-glass-blur-strong: 20px;
+  /* A single top highlight is what reads as "pane of glass" rather than
+     "translucent box". Cheap: one inset shadow, no extra element. */
+  --lf-glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.13);
+
+  --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --lf-shadow-2: 0 6px 22px rgb(0 0 0 / 0.4);
+  --lf-shadow-3: 0 22px 54px rgb(0 0 0 / 0.5);
 }
 
 /* Every figure in the product is tabular so columns align without extra CSS. */

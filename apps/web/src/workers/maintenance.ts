@@ -2,6 +2,7 @@ import { Queue, Worker } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
+import { runReminderSweep } from '@/services/crm/reminders';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -22,6 +23,16 @@ import { runRetentionCleanup } from '@/lib/jobs/retention';
 /** 03:00 UTC — after the working day in every timezone this product ships to. */
 const DAILY_PATTERN = '0 3 * * *';
 
+/**
+ * Every quarter hour, for the reminder sweep.
+ *
+ * A reminder is only worth sending before the thing is due, so its cadence is
+ * set by how late it is acceptable to be told — not by load. The sweep looks 45
+ * minutes ahead and refuses to repeat itself, so this interval can change
+ * without anybody being told twice.
+ */
+const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
+
 export function startMaintenanceWorker() {
   return new Worker(
     'maintenance',
@@ -32,6 +43,11 @@ export function startMaintenanceWorker() {
         // scheduled sweep that only counted would be the current bug wearing a
         // cron expression.
         return runRetentionCleanup(false);
+      }
+      if (job.name === 'reminders') {
+        const result = await runReminderSweep();
+        logger.info(result, 'reminder sweep complete');
+        return result;
       }
       logger.warn({ jobName: job.name }, 'unknown maintenance job');
     },
@@ -52,5 +68,10 @@ export function startMaintenanceWorker() {
 export async function armMaintenanceScheduler() {
   const queue = new Queue('maintenance', { connection: redis });
   await queue.upsertJobScheduler('retention-daily', { pattern: DAILY_PATTERN }, { name: 'retention' });
+  await queue.upsertJobScheduler(
+    'reminders-quarter-hourly',
+    { pattern: QUARTER_HOURLY_PATTERN },
+    { name: 'reminders' },
+  );
   await queue.close();
 }

@@ -94,7 +94,7 @@ export default function PlaybookEditor({ objections, canEdit }: { objections: Ob
     <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
       {canEdit && !form && (
         <div>
-          <button className="lf-btn lf-btn--primary" onClick={() => setForm(empty)}>
+          <button className="lf-btn" onClick={() => setForm(empty)}>
             Add objection
           </button>
         </div>
@@ -149,7 +149,7 @@ export default function PlaybookEditor({ objections, canEdit }: { objections: Ob
             />
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" className="lf-btn lf-btn--primary" disabled={busy}>
+            <button type="submit" className="lf-btn" disabled={busy}>
               {busy ? 'Saving…' : 'Save'}
             </button>
             <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setForm(null)} disabled={busy}>
