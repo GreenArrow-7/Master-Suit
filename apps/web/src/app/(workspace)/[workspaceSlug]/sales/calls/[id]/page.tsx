@@ -8,8 +8,11 @@ import CallActions from './CallActions';
 import AuditDelete from './AuditDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
+import WhatsAppFollowUp from './WhatsAppFollowUp';
 import CoachingNotes, { type CoachingNoteView } from './CoachingNotes';
 import RequirementSuggestion, { type DetectedRequirementView } from './RequirementSuggestion';
+import TemperaturePanel from './TemperaturePanel';
+import { temperatureFromAnalysis } from '@/lib/ai/temperature';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 
 export const metadata = { title: 'Call Detail' };
@@ -87,9 +90,13 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const lead = call.leadId
     ? await prisma.lead.findFirst({
         where: { id: call.leadId, tenantId: ctx.tenantId },
-        select: { id: true, fullName: true, company: true },
+        select: { id: true, fullName: true, company: true, score: true },
       })
     : null;
+
+  // Explainable post-call temperature, computed on the way out — writing it to
+  // the lead is the agent's explicit act via the temperature route.
+  const temperature = lead && analysis?.status === 'COMPLETED' ? temperatureFromAnalysis(analysis) : null;
 
   // The requirement the AI heard on this call, staged for review. Lives in the
   // analysis rawOutput, so old rows and providerless rows both work unchanged.
@@ -238,6 +245,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
 
           <FollowUpComposer callId={params.id} />
 
+          <WhatsAppFollowUp callId={params.id} />
+
           {/* Consent details */}
           {call.consent && (
             <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
@@ -360,6 +369,14 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
 
         {/* Right column: AI Analysis + Audits */}
         <div style={{ display: 'grid', gap: 'var(--lf-space-4)', alignContent: 'start' }}>
+          {lead && temperature && (
+            <TemperaturePanel
+              callId={params.id}
+              result={temperature}
+              leadScore={lead.score}
+              canApply={can(ctx, 'leads', 'EDIT')}
+            />
+          )}
           {lead && detectedRequirement && canSuggestRequirement && (
             <RequirementSuggestion
               leadId={lead.id}

@@ -28,6 +28,7 @@ const QUICK_ACTIONS: [action: string, label: string][] = [
   ['PAYMENT_PLAN', 'Payment plan'],
   ['CLOSING_LINE', 'Closing line'],
   ['SUMMARIZE', 'Summarize customer'],
+  ['TRANSLATE', 'Translate'],
 ];
 
 const HINT_TONE: Record<string, 'brass' | 'vermillion' | 'viridian' | 'slate' | 'wine'> = {
@@ -80,6 +81,10 @@ export default function LiveCallWorkspace({
   const [notes, setNotes] = useState(call.notes ?? '');
   const [notesSaved, setNotesSaved] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [stage, setStage] = useState<string | null>(null);
+  const [mode, setMode] = useState<'sim' | 'mic'>('sim');
+  const [micError, setMicError] = useState('');
+  const micRef = useRef<{ stream: MediaStream; stopped: boolean; chunk: number } | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
@@ -94,7 +99,16 @@ export default function LiveCallWorkspace({
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' });
   }, [segments]);
 
-  useEffect(() => () => sourceRef.current?.close(), []);
+  useEffect(
+    () => () => {
+      sourceRef.current?.close();
+      if (micRef.current) {
+        micRef.current.stopped = true;
+        micRef.current.stream.getTracks().forEach((t) => t.stop());
+      }
+    },
+    [],
+  );
 
   function start() {
     setPhase('live');
@@ -107,6 +121,8 @@ export default function LiveCallWorkspace({
         setSeconds(data.at);
       } else if (data.type === 'coach') {
         setHints((prev) => [...prev, data]);
+      } else if (data.type === 'stage') {
+        setStage(data.stage);
       } else if (data.type === 'status' && data.status === 'WRAPPING_UP') {
         setPhase('wrapping');
       } else if (data.type === 'done') {
@@ -122,8 +138,89 @@ export default function LiveCallWorkspace({
   }
 
   function endCall() {
+    if (mode === 'mic' && micRef.current) {
+      micRef.current.stopped = true;
+      micRef.current.stream.getTracks().forEach((t) => t.stop());
+      void fetch(`/api/v1/calls/${call.id}/live-audio?final=true`, { method: 'POST' });
+    }
     sourceRef.current?.close();
     setPhase('done');
+  }
+
+  /**
+   * The real-call transport: the browser microphone next to the phone call,
+   * recorded in standalone ~5s chunks (a fresh MediaRecorder per chunk — later
+   * slices of one recorder are headerless and untranscribable). Each chunk
+   * comes back with its transcript, hints and stage. Consent is affirmed and
+   * recorded before the first byte, and the server refuses audio without it.
+   */
+  async function micStart() {
+    setMicError('');
+    const affirmed = window.confirm(
+      'Confirm you have told the customer this call is recorded and they have consented. This is recorded against the call.',
+    );
+    if (!affirmed) return;
+    try {
+      const consent = await fetch(`/api/v1/calls/${call.id}/consent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ consentGiven: true, method: 'VERBAL' }),
+      });
+      // 409 means consent is already on record — exactly as good.
+      if (!consent.ok && consent.status !== 409) throw new Error('Could not record consent.');
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micRef.current = { stream, stopped: false, chunk: 0 };
+      setMode('mic');
+      setPhase('live');
+      void micLoop();
+    } catch (e) {
+      setMicError((e as Error).message || 'Microphone access was refused.');
+    }
+  }
+
+  async function micLoop() {
+    const mic = micRef.current;
+    if (!mic) return;
+    while (!mic.stopped) {
+      const recorder = new MediaRecorder(mic.stream, { mimeType: 'audio/webm' });
+      const parts: Blob[] = [];
+      const done = new Promise<Blob>((resolve) => {
+        recorder.ondataavailable = (e) => parts.push(e.data);
+        recorder.onstop = () => resolve(new Blob(parts, { type: 'audio/webm' }));
+      });
+      recorder.start();
+      await new Promise((r) => setTimeout(r, 5000));
+      if (recorder.state !== 'inactive') recorder.stop();
+      const blob = await done;
+      if (mic.stopped) break;
+      mic.chunk += 1;
+      // Fire and forget so the next chunk starts recording immediately; a model
+      // tick every 4th chunk, heuristics on all of them. Chunks are ~5s, so the
+      // counter doubles as the timestamp.
+      void micUpload(blob, mic.chunk % 4 === 0, mic.chunk * 5);
+    }
+  }
+
+  async function micUpload(blob: Blob, tick: boolean, at: number) {
+    try {
+      const res = await fetch(`/api/v1/calls/${call.id}/live-audio?tick=${tick}`, {
+        method: 'POST',
+        headers: { 'content-type': blob.type || 'audio/webm' },
+        body: blob,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setMicError(data?.errors?.[0]?.message ?? data?.detail ?? `Chunk failed (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+      if (data.text) setSegments((prev) => [...prev, { speaker: 'Live', text: data.text, at }]);
+      if (data.hints?.length) setHints((prev) => [...prev, ...data.hints.map((h: Hint) => ({ ...h, at }))]);
+      if (data.stage) setStage(data.stage);
+    } catch {
+      /* one lost chunk must not stop the call */
+    }
   }
 
   async function quickAction(action: string) {
@@ -201,6 +298,9 @@ export default function LiveCallWorkspace({
           >
             {mm}:{ss}
           </span>
+          {stage && phase === 'live' && (
+            <Badge tone="wine">{stage.toLowerCase().replace(/_/g, ' ')}</Badge>
+          )}
           <Badge tone={phase === 'live' ? 'viridian' : phase === 'done' ? 'slate' : 'brass'}>
             {phase === 'idle' ? 'ready' : phase === 'wrapping' ? 'wrapping up' : phase}
           </Badge>
@@ -209,9 +309,19 @@ export default function LiveCallWorkspace({
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
         {phase === 'idle' && (
-          <button className="lf-btn" onClick={start}>
-            Start simulated call
-          </button>
+          <>
+            <button className="lf-btn" onClick={start}>
+              Start simulated call
+            </button>
+            <button className="lf-btn lf-btn--secondary" onClick={micStart} title="Coach the phone call you are on, via this device's microphone">
+              Coach a real call (microphone)
+            </button>
+          </>
+        )}
+        {micError && (
+          <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-vermillion)', alignSelf: 'center' }}>
+            {micError}
+          </span>
         )}
         {phase === 'live' && (
           <>

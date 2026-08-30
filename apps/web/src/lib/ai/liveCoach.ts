@@ -99,6 +99,40 @@ export function heuristicHints(windowText: string): CoachHint[] {
 }
 
 /**
+ * Where the conversation is, from what was recently said.
+ *
+ * Deterministic keyword classification over the rolling window, checked in
+ * precedence order — a viewing being booked outranks the objection that came
+ * before it. FOLLOW_UP is post-call territory and never returned live.
+ */
+export type SalesStage =
+  | 'INTRODUCTION'
+  | 'DISCOVERY'
+  | 'QUALIFICATION'
+  | 'PROPERTY_MATCHING'
+  | 'PRESENTATION'
+  | 'OBJECTION_HANDLING'
+  | 'NEGOTIATION'
+  | 'CLOSING';
+
+const STAGE_RULES: [RegExp, SalesStage][] = [
+  [/\b(book|arrange|schedule|confirm)\b.{0,40}\b(viewing|visit|meeting)|thursday or saturday|reserve (it|the unit)|booking amount/i, 'CLOSING'],
+  [/\b(discount|best price|final price|negotiat|can you do|any offer|lower the)/i, 'NEGOTIATION'],
+  [/\b(expensive|too (much|high)|over budget|concern|worried|not sure|think about it|ask my (wife|husband|partner))/i, 'OBJECTION_HANDLING'],
+  [/\b(payment plan|handover|amenities|per square|sqft|service charge|floor plan|the (unit|tower|project) has)/i, 'PRESENTATION'],
+  [/\b(recommend|options? for you|shortlist|matches your|show you)/i, 'PROPERTY_MATCHING'],
+  [/\b(budget|mortgage|cash or|finance|financing|timeline|when (do|would) you|decision maker)/i, 'QUALIFICATION'],
+  [/\b(looking for|need|want|bedroom|prefer|invest|to live in|what (are you|do you))/i, 'DISCOVERY'],
+];
+
+export function detectStage(windowText: string, lineCount: number): SalesStage {
+  for (const [pattern, stage] of STAGE_RULES) {
+    if (pattern.test(windowText)) return stage;
+  }
+  return lineCount < 4 ? 'INTRODUCTION' : 'DISCOVERY';
+}
+
+/**
  * The single most useful question to ask next, from what the CRM already knows.
  *
  * Deterministic on purpose (spec: structured services where deterministic logic
@@ -223,7 +257,8 @@ export type CoachActionKind =
   | 'RECOMMEND_PROPERTY'
   | 'PAYMENT_PLAN'
   | 'CLOSING_LINE'
-  | 'SUMMARIZE';
+  | 'SUMMARIZE'
+  | 'TRANSLATE';
 
 const ACTION_INSTRUCTION: Record<CoachActionKind, string> = {
   ASK_NEXT: 'Return exactly 1 ASK hint: the single most useful question to ask next, not yet answered in the context.',
@@ -237,6 +272,8 @@ const ACTION_INSTRUCTION: Record<CoachActionKind, string> = {
     'Return exactly 1 ACTION hint: the smallest concrete commitment that moves this deal forward, with natural closing wording offering two specific options.',
   SUMMARIZE:
     'Return exactly 1 TIP hint: a two-sentence recap of what the customer has said they want so far, so the agent can confirm it back.',
+  TRANSLATE:
+    'Return exactly 1 TIP hint. In `text`, translate the customer\'s most recent statement into English ("Customer said: …"). In `say`, give a short suggested response written in the customer\'s own language. If the whole window is already in English, say so in `text` and leave `say` empty. Never assume a language from a name or nationality — only from the words actually spoken.',
 };
 
 /** No provider, over budget, or provider error — still answer the button. */
@@ -278,6 +315,11 @@ function actionFallback(action: CoachActionKind, context?: LeadCallContext | nul
       text: 'Propose a viewing with two concrete slots.',
       say: '"I think seeing the actual unit will make this much easier. Would Thursday evening or Saturday morning work better?"',
       why: 'The smallest commitment that moves the deal forward.',
+      source: 'simulated',
+    },
+    TRANSLATE: {
+      kind: 'TIP',
+      text: 'Translation needs an AI provider — connect one under Administration → Integrations.',
       source: 'simulated',
     },
     SUMMARIZE: {

@@ -9,7 +9,15 @@ import { leadCallContext, contextPromptBlock } from '@/services/leads/callContex
 const params = z.object({ id: z.string().cuid() });
 const body = z
   .object({
-    action: z.enum(['ASK_NEXT', 'HANDLE_OBJECTION', 'RECOMMEND_PROPERTY', 'PAYMENT_PLAN', 'CLOSING_LINE', 'SUMMARIZE']),
+    action: z.enum([
+      'ASK_NEXT',
+      'HANDLE_OBJECTION',
+      'RECOMMEND_PROPERTY',
+      'PAYMENT_PLAN',
+      'CLOSING_LINE',
+      'SUMMARIZE',
+      'TRANSLATE',
+    ]),
     /** The rolling transcript window the client already holds — resent rather
      *  than re-read so the button answers on what was just said. */
     window: z.string().max(8000).default(''),

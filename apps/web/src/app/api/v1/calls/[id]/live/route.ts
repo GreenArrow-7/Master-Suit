@@ -3,7 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { demoScript, coachTick, heuristicHints, nextBestQuestion } from '@/lib/ai/liveCoach';
+import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { logger } from '@/lib/logger';
@@ -81,6 +81,7 @@ export const GET = route(
     const callId = call.id;
 
     let finalised = false;
+    let stage: string = 'INTRODUCTION';
     const spoken: string[] = [];
 
     async function finalise(reason: 'completed' | 'aborted') {
@@ -164,6 +165,12 @@ export const GET = route(
             // answer instantly; Gemini (when configured) adds model hints.
             if (turn.speaker === 'Customer') {
               const window = spoken.slice(-6).join('\n');
+              // The sales-stage chip: recomputed per customer turn, sent on change.
+              const nowStage = detectStage(window, spoken.length);
+              if (nowStage !== stage) {
+                stage = nowStage;
+                send({ type: 'stage', stage, at });
+              }
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
               // The workspace's own key when it has one, the deployment's
