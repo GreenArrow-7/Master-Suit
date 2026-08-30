@@ -37,6 +37,13 @@ export default async function LiveCallPage({
   // same resolution the coach itself uses, so the banner cannot contradict it.
   const credential = await geminiCredential(ctx.tenantId).catch(() => null);
 
+  // A call placed through a real vendor is displayed, not simulated: the
+  // realtime engine produces its events and this page only shows them.
+  const transport =
+    call.externalCallId && call.providerName && !['demo-simulation', 'live-mic'].includes(call.providerName)
+      ? ('vendor' as const)
+      : ('demo' as const);
+
   return (
     <LiveCallWorkspace
       call={{
@@ -47,6 +54,7 @@ export default async function LiveCallPage({
         notes: call.notes,
         agentName: call.caller.fullName,
       }}
+      transport={transport}
       context={context}
       hasGemini={Boolean(credential?.key)}
     />

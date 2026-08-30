@@ -237,6 +237,16 @@ export const envSchema = z.object({
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
 
+  /**
+   * The realtime call engine (worker process): where telephony vendors fork
+   * live call audio. LIVE_STREAM_WS_URL is the PUBLIC wss:// URL the vendor is
+   * told to connect to (through the tunnel/load balancer); unset means live
+   * coaching of vendor calls is off and dialling behaves exactly as before.
+   * LIVE_STREAM_PORT is where the worker listens for those connections.
+   */
+  LIVE_STREAM_WS_URL: z.string().url().optional().or(z.literal('')),
+  LIVE_STREAM_PORT: z.coerce.number().int().min(1).max(65535).default(8090),
+
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),

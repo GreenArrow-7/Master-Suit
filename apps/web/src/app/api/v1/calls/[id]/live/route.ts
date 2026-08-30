@@ -6,7 +6,64 @@ import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
+import { liveChannel } from '@/lib/integrations/telephony/stream';
+import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+
+/**
+ * Relay mode: the call is live at a telephony vendor and the realtime engine
+ * (worker process) is producing segments, hints and stage changes onto this
+ * call's redis channel. The SSE here only forwards — the browser never touches
+ * audio, and closing the tab stops nothing but the display.
+ */
+function relayStream(callId: string, initialStatus: string): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      send({ type: 'status', status: initialStatus, transport: 'vendor-stream' });
+
+      const subscriber = redis.duplicate();
+      // SSE needs periodic bytes or proxies reap the connection.
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': hb\n\n'));
+        } catch {
+          /* closing */
+        }
+      }, 15_000);
+
+      const stop = async () => {
+        clearInterval(heartbeat);
+        await subscriber.quit().catch(() => undefined);
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      };
+
+      subscriber.on('message', (_channel: string, message: string) => {
+        try {
+          send(JSON.parse(message));
+          if ((JSON.parse(message) as { type?: string }).type === 'done') void stop();
+        } catch {
+          /* skip malformed event */
+        }
+      });
+      await subscriber.subscribe(liveChannel(callId)).catch(() => void stop());
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    },
+  });
+}
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -43,6 +100,12 @@ export const GET = route(
       throw Invalid([
         { field: 'status', code: 'not_live', message: `A ${call.status.toLowerCase()} call has no live session.` },
       ]);
+    }
+
+    // A call placed through a real telephony vendor is fed by the realtime
+    // engine, not by the demo script — this SSE only relays its events.
+    if (call.externalCallId && call.providerName && !['demo-simulation', 'live-mic'].includes(call.providerName)) {
+      return relayStream(call.id, call.status);
     }
 
     // The lead context is loaded once per session and carried on every coach
