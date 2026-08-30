@@ -5541,3 +5541,22 @@ body,
   font-size: var(--lf-text-2xs);
   line-height: 1.5;
 }
+
+/*
+ * Phone app-bar controls meet the touch minimum.
+ *
+ * The bell, Create and the account menu were rendering 40px tall — `lf-btn--sm`
+ * sizing carried straight from the desktop bar into a header meant to be
+ * thumbed. MOBILE_UI_GUIDELINES puts the floor at 44, and the account menu was
+ * the worst of them at 36px wide because its label is a single glyph.
+ *
+ * min-* rather than height, so a control with more in it than an icon still
+ * grows. 44 fits inside the 56px bar with room either side.
+ */
+@media (max-width: 760px) {
+  .lf-shell-actions .lf-btn,
+  .lf-shell-actions .lf-account-menu > summary {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
