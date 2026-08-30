@@ -61,11 +61,14 @@ export function startMaintenanceWorker() {
 }
 
 /**
- * Arms the daily sweep. Idempotent: the scheduler id is stable, so every worker
- * start converges on one schedule rather than stacking them — the same property
- * armCampaignScheduler relies on.
+ * Arms this queue's schedules. Idempotent: the scheduler ids are stable, so
+ * every worker start converges on one schedule each rather than stacking them —
+ * the same property armCampaignScheduler relies on.
+ *
+ * Returns the ids it armed so the start-up log can name what is actually
+ * running. That line used to be a hard-coded pair and had already gone stale.
  */
-export async function armMaintenanceScheduler() {
+export async function armMaintenanceScheduler(): Promise<string[]> {
   const queue = new Queue('maintenance', { connection: redis });
   await queue.upsertJobScheduler('retention-daily', { pattern: DAILY_PATTERN }, { name: 'retention' });
   await queue.upsertJobScheduler(
@@ -74,4 +77,5 @@ export async function armMaintenanceScheduler() {
     { name: 'reminders' },
   );
   await queue.close();
+  return ['retention-daily', 'reminders-quarter-hourly'];
 }
