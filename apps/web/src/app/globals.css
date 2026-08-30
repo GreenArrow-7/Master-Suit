@@ -5218,3 +5218,245 @@ a:hover {
   font-weight: 600;
   color: var(--lf-viridian);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Floating menus and panels
+   ═══════════════════════════════════════════════════════════════════════════
+
+   The notification panel and the Create menu were each built from the same
+   inline style object, and each carried the same three faults:
+
+     * `background: var(--lf-surface)`. Under Glassy that token is 5%-alpha
+       white, so both panels were see-through and the table behind them read
+       through the text. A floating panel has to state its own opacity rather
+       than inherit a surface token a theme may make translucent.
+     * `--lf-radius-md` and `--lf-shadow-lg`, neither of which is defined
+       anywhere. Both resolved to nothing, so the panels had square corners and
+       no shadow in every theme, including before this change.
+     * No class, so no stylesheet could correct any of it.
+
+   One base class, two users. */
+.lf-pop {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  box-shadow: var(--lf-shadow-3);
+  z-index: 100;
+  /* Opens rather than appears. 120ms is under the point where a menu starts to
+     feel slow, and only transform/opacity animate, so it cannot reflow. */
+  animation: lf-pop-open 120ms ease-out;
+  transform-origin: top right;
+}
+@keyframes lf-pop-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lf-noti-panel {
+  width: 380px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.lf-create-menu {
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+/* On a phone a 380px panel hangs off the right edge of a 360px viewport.
+   Pinned to the screen with a gutter either side instead. */
+@media (max-width: 760px) {
+  .lf-noti-panel {
+    position: fixed;
+    top: 56px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 70dvh;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Notification rows
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Moved out of inline styles on the <li> so hover and the unread state can be
+   expressed once here instead of being recomputed per row in React, and so the
+   Glassy theme can restyle them without touching the component. */
+.lf-noti-row {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--lf-line);
+  background: transparent;
+  transition:
+    background 140ms ease,
+    padding-left 140ms ease;
+}
+.lf-noti-row[data-unread] {
+  background: var(--lf-wine-050);
+}
+.lf-noti-row:hover {
+  background: var(--lf-surface-2);
+  /* A 2px nudge is enough to register as "this row is live" without moving text
+     far enough to be read as a layout shift. */
+  padding-left: 18px;
+}
+.lf-noti-row:last-child {
+  border-bottom: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Glassy
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Everything below is scoped to [data-theme='glass']. Dark Classic and Light do
+   not read a line of it.
+
+   Where the glass goes is a deliberate list, not "every surface": chrome and
+   containers — sidebar, top bar, cards, dropdowns, sheets, drawers, modals.
+   What holds data people read closely — table bodies, inputs — stays opaque.
+   That is §9's requirement and it is also what stops the theme looking like a
+   novelty after ten minutes of real use. */
+
+[data-theme='glass'] body {
+  /* Fixed, so the wash sits behind the page rather than scrolling with it —
+     the parallax of a moving backdrop is what makes blur read as a gimmick. */
+  background: var(--lf-canvas-wash), var(--lf-canvas);
+  background-attachment: fixed;
+}
+
+[data-theme='glass'] .lf-card,
+[data-theme='glass'] .lf-workspace-sidebar,
+[data-theme='glass'] .lf-shell-topbar,
+[data-theme='glass'] .lf-sheet,
+[data-theme='glass'] .lf-drawer__panel {
+  background: var(--lf-surface);
+  -webkit-backdrop-filter: blur(var(--lf-glass-blur)) saturate(1.25);
+  backdrop-filter: blur(var(--lf-glass-blur)) saturate(1.25);
+  border: 1px solid var(--lf-line);
+  box-shadow: var(--lf-glass-edge), var(--lf-shadow-2);
+}
+
+/* Panels that float above the page get the stronger blur: there is more behind
+   them to separate from, and they are on screen briefly. */
+[data-theme='glass'] .lf-sheet,
+[data-theme='glass'] .lf-drawer__panel,
+[data-theme='glass'] .lf-pop,
+[data-theme='glass'] .lf-overflow__menu {
+  -webkit-backdrop-filter: blur(var(--lf-glass-blur-strong)) saturate(1.3);
+  backdrop-filter: blur(var(--lf-glass-blur-strong)) saturate(1.3);
+}
+
+/*
+ * Data stays legible.
+ *
+ * A translucent table is the single change most likely to make this theme
+ * unusable: small type over a moving gradient is hard to read and harder to
+ * scan down a column. Table wrappers keep the glass at their edge and go
+ * near-opaque behind the rows themselves.
+ */
+[data-theme='glass'] .lf-table-wrap,
+[data-theme='glass'] .lf-table {
+  background: var(--lf-glass-solid);
+}
+
+/*
+ * Floating panels over content are opaque, not translucent.
+ *
+ * A dropdown sits directly on top of a dense table, so any transparency puts one
+ * column of small text behind another. The blur stays — it is what separates the
+ * panel from the page — but the surface underneath it is solid.
+ */
+[data-theme='glass'] .lf-pop,
+[data-theme='glass'] .lf-overflow__menu {
+  background: var(--lf-glass-solid);
+  box-shadow: var(--lf-glass-edge), var(--lf-shadow-3);
+}
+
+/* Inputs must look like inputs. A translucent field reads as disabled, and a
+   form is not the place to be clever about it. */
+[data-theme='glass'] .lf-input,
+[data-theme='glass'] select.lf-input,
+[data-theme='glass'] textarea.lf-input {
+  background: var(--lf-glass-solid);
+  border-color: var(--lf-line-2);
+}
+
+/* Buttons are deliberately absent from every rule above: they stay solid in
+   Glassy because nothing here makes them translucent in the first place. A
+   call-to-action you can see through is one that stops looking clickable. */
+
+/* The notification panel is built with inline styles in TopBar, so it is
+   targeted through the row class it does carry. */
+[data-theme='glass'] .lf-noti-row:hover {
+  background: rgb(255 255 255 / 0.09);
+}
+
+/*
+ * No backdrop-filter, no problem.
+ *
+ * Firefox shipped it late and it can be switched off; some Android browsers
+ * ignore it entirely. Without this the "glass" is a nearly transparent panel
+ * over a gradient, which is unreadable rather than merely unstyled — so where
+ * the filter is unsupported the surfaces fall back to solid.
+ */
+@supports not (backdrop-filter: blur(1px)) {
+  [data-theme='glass'] .lf-card,
+  [data-theme='glass'] .lf-workspace-sidebar,
+  [data-theme='glass'] .lf-shell-topbar,
+  [data-theme='glass'] .lf-sheet,
+  [data-theme='glass'] .lf-drawer__panel,
+  [data-theme='glass'] .lf-pop {
+    background: var(--lf-glass-solid);
+  }
+}
+
+/*
+ * Blur is the expensive part of this theme.
+ *
+ * A large blurred surface is recomposited on every scroll frame. On a phone that
+ * is a real cost, and §9 asks for performance to survive the styling — so below
+ * the phone breakpoint the blur is dropped and the surfaces go solid. The theme
+ * still reads as itself: the palette, the edge highlight and the wash all stay.
+ */
+@media (max-width: 760px) {
+  [data-theme='glass'] .lf-card,
+  [data-theme='glass'] .lf-workspace-sidebar,
+  [data-theme='glass'] .lf-shell-topbar,
+  [data-theme='glass'] .lf-sheet,
+  [data-theme='glass'] .lf-drawer__panel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--lf-glass-solid);
+  }
+}
+
+/* ── Interaction polish (all themes) ─────────────────────────────────────── */
+
+/*
+ * Theme switching, faded rather than snapped.
+ *
+ * Only colour properties, and only on the containers — putting a transition on
+ * `*` makes every hover in the product feel laggy, and animating layout
+ * properties here would reflow the page on a theme change.
+ */
+body,
+.lf-card,
+.lf-workspace-sidebar,
+.lf-shell-topbar,
+.lf-table,
+.lf-input {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}

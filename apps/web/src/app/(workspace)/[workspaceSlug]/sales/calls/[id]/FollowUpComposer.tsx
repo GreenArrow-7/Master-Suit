@@ -107,7 +107,7 @@ export default function FollowUpComposer({ callId }: { callId: string }) {
             required
           />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" className="lf-btn lf-btn--primary" disabled={busy || !draft.to || draft.optedOut}>
+            <button type="submit" className="lf-btn" disabled={busy || !draft.to || draft.optedOut}>
               {busy ? 'Sending…' : 'Send'}
             </button>
             <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setDraft(null)} disabled={busy}>

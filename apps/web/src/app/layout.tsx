@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Fraunces, Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import { PRODUCT_NAME } from '@/lib/branding';
 import ServiceWorkerRegistration from '@/components/pwa/ServiceWorkerRegistration';
+import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 
 /**
@@ -61,7 +62,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       data-density="comfortable"
       className={`${fraunces.variable} ${interTight.variable} ${jetbrainsMono.variable}`}
+      // The stored theme is applied by the script below before first paint, so
+      // this attribute is intentionally absent here rather than set to 'light':
+      // rendering light and correcting it after hydration is the flash.
+      suppressHydrationWarning
     >
+      <head>
+        {/*
+         * Runs before anything paints. Deferring this to an effect means every
+         * page load shows the light theme for a frame and then swaps — a white
+         * flash on each navigation for anyone using Dark Classic or Glassy.
+         *
+         * The script reads localStorage and sets one attribute. It cannot throw:
+         * the whole body is wrapped, because storage access itself raises in a
+         * private window or with site data blocked.
+         */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
       <body>
         {children}
         <ServiceWorkerRegistration />
