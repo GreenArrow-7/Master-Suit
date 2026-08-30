@@ -199,7 +199,9 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
       prompt,
       schema: HINT_SCHEMA,
       temperature: 0.3,
-      maxOutputTokens: 512,
+      // 2048, not 512: reasoning models spend thinking tokens from this same
+      // budget and a truncated JSON reply silently degrades to heuristics.
+      maxOutputTokens: 2048,
       timeoutMs: AI_TIMEOUT_MS,
     });
     await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach', model });
@@ -309,7 +311,9 @@ export async function coachAction(
       prompt: buildCoachPrompt(ACTION_INSTRUCTION[action], windowText, contextBlock),
       schema: HINT_SCHEMA,
       temperature: 0.3,
-      maxOutputTokens: 512,
+      // 2048, not 512: reasoning models spend thinking tokens from this same
+      // budget and a truncated JSON reply silently degrades to heuristics.
+      maxOutputTokens: 2048,
       timeoutMs: AI_TIMEOUT_MS,
     });
     await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach-action', model });

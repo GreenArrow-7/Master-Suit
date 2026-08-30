@@ -34,14 +34,23 @@ const SCENARIOS = [
   { key: 'CLOSE', label: 'Close', hint: 'Ask for the commitment and make the next step concrete.' },
 ];
 
+export interface Recommendation {
+  scenario: string;
+  objectionId?: string;
+  objectionName?: string;
+  reasons: string[];
+}
+
 export default function PracticeWorkspace({
   objections,
   remainingToday,
   capEnabled,
+  recommendation,
 }: {
   objections: { id: string; name: string }[];
   remainingToday: number;
   capEnabled: boolean;
+  recommendation: Recommendation | null;
 }) {
   const router = useRouter();
   const [scenario, setScenario] = useState('OPENER');
@@ -69,14 +78,18 @@ export default function PracticeWorkspace({
     return data;
   }
 
-  async function start() {
+  async function start(pick?: { scenario: string; objectionId?: string }) {
+    const chosenScenario = pick?.scenario ?? scenario;
+    const chosenObjection = pick ? (pick.objectionId ?? '') : objectionId;
+    setScenario(chosenScenario);
+    setObjectionId(chosenObjection);
     setBusy(true);
     setError('');
     setScore(null);
     setProspectEnded(false);
     try {
-      const body: Record<string, unknown> = { scenario };
-      if (scenario === 'OBJECTION' && objectionId) body.objectionId = objectionId;
+      const body: Record<string, unknown> = { scenario: chosenScenario };
+      if (chosenScenario === 'OBJECTION' && chosenObjection) body.objectionId = chosenObjection;
       const data = await api('/api/v1/practice', 'POST', body);
       setSession({ ...data, turns: [] });
     } catch (e) {
@@ -154,6 +167,47 @@ export default function PracticeWorkspace({
           </p>
         ) : (
           <>
+            {recommendation && (
+              <div
+                className="lf-card"
+                style={{
+                  padding: 'var(--lf-space-3) var(--lf-space-4)',
+                  marginBottom: 'var(--lf-space-3)',
+                  border: '1px solid var(--lf-primary, #2447C7)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>
+                      Recommended drill:{' '}
+                      <span style={{ textTransform: 'capitalize' }}>{recommendation.scenario.toLowerCase()}</span>
+                      {recommendation.objectionName ? ` — ${recommendation.objectionName}` : ''}
+                    </div>
+                    <ul
+                      style={{
+                        margin: '4px 0 0',
+                        paddingLeft: 'var(--lf-space-4)',
+                        fontSize: 'var(--lf-text-2xs)',
+                        color: 'var(--lf-ink-3)',
+                      }}
+                    >
+                      {recommendation.reasons.map((reason, i) => (
+                        <li key={i}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <button
+                    className="lf-btn lf-btn--sm"
+                    disabled={busy || remainingToday <= 0}
+                    onClick={() =>
+                      start({ scenario: recommendation.scenario, objectionId: recommendation.objectionId })
+                    }
+                  >
+                    Start this drill
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
               {SCENARIOS.map((s) => (
                 <button
@@ -188,7 +242,7 @@ export default function PracticeWorkspace({
               </select>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'var(--lf-space-3)' }}>
-              <button className="lf-btn" onClick={start} disabled={busy || remainingToday <= 0}>
+              <button className="lf-btn" onClick={() => start()} disabled={busy || remainingToday <= 0}>
                 {busy ? 'Starting…' : 'Start practising'}
               </button>
               <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>

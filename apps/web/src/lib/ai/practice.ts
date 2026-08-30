@@ -120,7 +120,9 @@ export async function prospectReply(input: {
     prompt,
     schema: REPLY_SCHEMA,
     temperature: 0.8,
-    maxOutputTokens: 512,
+    // No explicit output cap: reasoning models (gemini-3.x via OpenRouter)
+    // spend "thinking" tokens from the same budget, and 512 truncated the JSON
+    // mid-string — every reply silently fell back to the simulated prospect.
     timeoutMs: 30_000,
   }).catch((err) => {
     logger.warn({ err: (err as Error).message }, 'practice reply fell back to simulation');
