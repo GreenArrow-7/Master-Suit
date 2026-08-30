@@ -455,62 +455,88 @@ export default function TopBar({
             {plan}
           </span>
         )}
-        <button
-          className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
-          onClick={() => setDensity((d) => (d === 'compact' ? 'comfortable' : 'compact'))}
-          aria-pressed={density === 'compact'}
-        >
-          {density === 'compact' ? 'Comfortable' : 'Compact'}
-        </button>
         {/*
-         * The quick cycle. Settings → Appearance is the screen that explains the
-         * three and is where the preference is described; this is the shortcut
-         * for someone who just wants the lights off, so its label names the
-         * theme it will switch *to* rather than the one in use.
+         * Density, theme, help and sign-out, in one menu.
+         *
+         * These were four separate buttons in a bar that already carried ten
+         * controls, and three of them are set once and then never touched.
+         * Collapsing them leaves the bar holding only what people press daily:
+         * search, Dashboard, the bell and Create.
+         *
+         * Deliberately NOT `lf-topbar-optional`. Three of the four used to carry
+         * that class — `display: none` at the tablet and phone breakpoints —
+         * but Sign out did not, for the reason recorded where it used to live:
+         * the sidebar's own sign-out is behind the drawer on a phone and absent
+         * on a tablet, so this is the only way out of the product at those
+         * widths. Folding it into a menu that vanished below 1024px would have
+         * reintroduced exactly that bug.
+         *
+         * `<details>` rather than component state: the browser handles toggling
+         * and Escape, and it is the pattern the Help disclosure already used.
          */}
-        <button
-          className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
-          onClick={() => {
-            applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!);
-          }}
-          aria-label={`Switch to ${THEME_LABELS[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!].name}`}
-          title={`Switch to ${THEME_LABELS[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!].name}`}
-        >
-          {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◈'}
-        </button>
-
-        {/* Native disclosure: no state, closes on outside click via the browser. */}
-        <details className="lf-topbar-optional" style={{ position: 'relative' }}>
-          <summary className="lf-btn lf-btn--ghost lf-btn--sm" style={{ listStyle: 'none', cursor: 'pointer' }}>
-            Help
-          </summary>
-          <div
-            className="lf-card"
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 'calc(100% + 6px)',
-              width: 260,
-              padding: 'var(--lf-space-4)',
-              zIndex: 50,
-              fontSize: 'var(--lf-text-sm)',
-              display: 'grid',
-              gap: 'var(--lf-space-2)',
-            }}
+        <details className="lf-account-menu" style={{ position: 'relative' }}>
+          <summary
+            className="lf-btn lf-btn--ghost lf-btn--sm"
+            style={{ listStyle: 'none', cursor: 'pointer' }}
+            aria-label="Preferences and account"
+            title="Preferences and account"
           >
-            <strong>Quick help</strong>
-            <span style={{ color: 'var(--lf-ink-2)' }}>
-              Press <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> to jump to search.
-            </span>
-            <span style={{ color: 'var(--lf-ink-2)' }}>
-              Use <em>+ Create</em> for new leads, tasks and calls.
-            </span>
-            <span style={{ color: 'var(--lf-ink-2)' }}>
-              Manage columns on any list via <em>Columns</em>.
-            </span>
-            <span style={{ color: 'var(--lf-ink-2)' }}>
-              Need access or a password reset? Contact your workspace administrator.
-            </span>
+            {'⋯'}
+          </summary>
+
+          <div className="lf-pop lf-account-pop">
+            <div className="lf-account-pop__group">
+              <span className="lf-eyebrow">Display</span>
+              <button
+                className="lf-account-pop__item"
+                onClick={() => setDensity((d) => (d === 'compact' ? 'comfortable' : 'compact'))}
+                aria-pressed={density === 'compact'}
+              >
+                <span>Row height</span>
+                <span className="lf-account-pop__value">{density === 'compact' ? 'Compact' : 'Comfortable'}</span>
+              </button>
+              {/*
+               * The quick cycle. Settings → Appearance explains the three and is
+               * where the preference is described; this is the shortcut for
+               * somebody who just wants the lights off, so it names the theme it
+               * switches *to* rather than the one in use.
+               */}
+              <button
+                className="lf-account-pop__item"
+                onClick={() => applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!)}
+              >
+                <span>Theme</span>
+                <span className="lf-account-pop__value">{THEME_LABELS[theme].name}</span>
+              </button>
+              <Link className="lf-account-pop__item" href={`${basePath}/profile/appearance`}>
+                <span>Appearance settings</span>
+              </Link>
+            </div>
+
+            <div className="lf-account-pop__group">
+              <span className="lf-eyebrow">Help</span>
+              <span className="lf-account-pop__note">
+                Press <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> to jump to search.
+              </span>
+              <span className="lf-account-pop__note">Use + Create for new leads, tasks and calls.</span>
+              <span className="lf-account-pop__note">Manage columns on any list via Columns.</span>
+              <span className="lf-account-pop__note">
+                Need access or a password reset? Contact your workspace administrator.
+              </span>
+            </div>
+
+            <div className="lf-account-pop__group">
+              <button
+                className="lf-account-pop__item"
+                onClick={() => {
+                  void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
+                    window.location.href = '/login';
+                  });
+                }}
+              >
+                <span>Sign out</span>
+              </button>
+            </div>
           </div>
         </details>
 
@@ -684,30 +710,10 @@ export default function TopBar({
           </div>
         )}
 
-        {/* The only sign-out control in the product, and deliberately not
-            `lf-topbar-optional`.
-
-            It carried that class, which is `display: none` at both the tablet
-            and the phone breakpoint — and the sidebar's own "Sign out" is
-            rendered only when the rail is expanded, so it is gone on tablet too
-            and behind the drawer on a phone. Between them there was no way to
-            sign out on either size without opening the navigation drawer first.
-            The breakpoint's own comment lists "Notifications · Log out ·
-            + Create" as the actions that survive, so the class was against the
-            intent already written next to it.
-
-            "Sign out" rather than "Log out", to pair with "Sign in" on the
-            authentication pages; the sidebar's duplicate has been removed. */}
-        <button
-          className="lf-btn lf-btn--ghost lf-btn--sm"
-          onClick={() => {
-            void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
-              window.location.href = '/login';
-            });
-          }}
-        >
-          Sign out
-        </button>
+        {/* Sign out has moved into the account menu above. It stays reachable
+            at every width for the reason recorded there: the sidebar's own
+            control is absent on tablet and behind the drawer on a phone, so
+            this is the only way out of the product at those sizes. */}
 
         {/* Create dropdown — absent entirely for roles that can create nothing. */}
         {CREATE_ITEMS.length > 0 && (
