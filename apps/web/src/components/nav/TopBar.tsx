@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
+import { useTheme } from '@/lib/useTheme';
 
 /**
  * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
@@ -60,6 +62,71 @@ function destinationOf(n: NotificationItem): string | null {
   return n.destination ?? n.actionUrl ?? null;
 }
 
+/**
+ * The bell, as a path rather than 🔔.
+ *
+ * An emoji renders as a different picture on every platform — a flat outline on
+ * one, a saturated colour glyph on another — and cannot take `currentColor`, so
+ * it would ignore both themes. This inherits the button's colour and sits on the
+ * same optical baseline as the other icons in the bar.
+ */
+function BellIcon({ ringing }: { ringing: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
+      <path d="M13.7 20a2 2 0 0 1-3.4 0" />
+      {/* Two short strokes, drawn only when something is waiting: the badge
+          carries the count, this carries the glance. */}
+      {ringing && <path d="M20.5 5.5c.6.8 1 1.8 1 2.9M3.5 5.5c-.6.8-1 1.8-1 2.9" opacity="0.65" />}
+    </svg>
+  );
+}
+
+/**
+ * One glyph per family of event, so a panel of twenty rows can be scanned
+ * without reading every title.
+ *
+ * Two naming conventions have to be understood, because the table holds both:
+ * `LEAD_ASSIGNED` from the seed and `CALL_ANALYSIS_READY` from call
+ * intelligence, alongside the dotted `lead.created` / `call.missed` that the CRM
+ * and HR registries write. Normalising to a common form and matching the leading
+ * segment covers both without a lookup table that would need a new entry every
+ * time an event is added.
+ *
+ * An unrecognised kind gets the neutral ring rather than nothing, so a new event
+ * type is never invisible.
+ */
+function kindGlyph(kind: string): { glyph: string; label: string } {
+  const family = kind.toLowerCase().replace(/_/g, '.').split('.')[0] ?? '';
+  switch (family) {
+    case 'lead':
+      return { glyph: '◆', label: 'Lead' };
+    case 'call':
+      return { glyph: '●', label: 'Call' };
+    case 'follow':
+    case 'task':
+      return { glyph: '▲', label: 'Follow-up' };
+    case 'sla':
+      return { glyph: '■', label: 'SLA' };
+    case 'target':
+      return { glyph: '▰', label: 'Target' };
+    default:
+      // Everything HR raises, and anything added later.
+      return { glyph: '○', label: 'Notification' };
+  }
+}
+
 function relTime(iso: string) {
   const ms = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(ms / 60_000);
@@ -89,7 +156,12 @@ export default function TopBar({
   const router = useRouter();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  /**
+   * Subscribed, not stored here. The pre-paint script in the root layout has
+   * already applied the theme to the document; this only needs to know which one
+   * so the quick toggle can name the next.
+   */
+  const theme = useTheme();
 
   // Create dropdown
   const [createOpen, setCreateOpen] = useState(false);
@@ -116,9 +188,6 @@ export default function TopBar({
   useEffect(() => {
     document.documentElement.dataset.density = density;
   }, [density]);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -141,14 +210,49 @@ export default function TopBar({
    * People raises seventeen of the twenty-one notification events this system
    * generates. Platform still skips it: there are no notifications there at all.
    */
-  const fetchedUnread = useRef(false);
   useEffect(() => {
-    if (module === 'platform' || fetchedUnread.current) return;
-    fetchedUnread.current = true;
-    fetch('/api/v1/notifications?unread=true')
-      .then((r) => r.json())
-      .then((d) => setUnreadCount(d.unreadCount ?? 0))
-      .catch(() => {});
+    if (module === 'platform') return;
+
+    const refresh = () =>
+      fetch('/api/v1/notifications?unread=true')
+        .then((r) => r.json())
+        .then((d) => setUnreadCount(d.unreadCount ?? 0))
+        .catch(() => {});
+
+    void refresh();
+
+    /**
+     * Polled, not pushed.
+     *
+     * The badge used to be fetched exactly once per mount and then never again,
+     * so a lead assigned to you at 09:05 showed up whenever you next happened to
+     * do a full page load. The shell is a persistent layout — soft navigation
+     * does not remount it — so "once per mount" could mean once a day.
+     *
+     * A minute is the interval because the payload is a single integer and the
+     * query is served by the (tenantId, userId, readAt, createdAt) index the
+     * model already carries. Server-sent events would be tidier and are the
+     * upgrade path; they need a connection per signed-in tab held open through
+     * whatever proxy sits in front of this, which is a materially bigger thing
+     * to own than one cheap request a minute.
+     *
+     * The visibility check keeps background tabs off the wire entirely: a
+     * browser with nine workspaces open should poll for the one being looked at.
+     */
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 60_000);
+
+    // Catches up immediately on return rather than waiting out the interval.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [module]);
 
   const loadNotifications = useCallback(() => {
@@ -358,12 +462,21 @@ export default function TopBar({
         >
           {density === 'compact' ? 'Comfortable' : 'Compact'}
         </button>
+        {/*
+         * The quick cycle. Settings → Appearance is the screen that explains the
+         * three and is where the preference is described; this is the shortcut
+         * for someone who just wants the lights off, so its label names the
+         * theme it will switch *to* rather than the one in use.
+         */}
         <button
           className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
-          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-          aria-label="Toggle dark mode"
+          onClick={() => {
+            applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!);
+          }}
+          aria-label={`Switch to ${THEME_LABELS[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!].name}`}
+          title={`Switch to ${THEME_LABELS[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!].name}`}
         >
-          {theme === 'dark' ? '☾' : '☀'}
+          {theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◈'}
         </button>
 
         {/* Native disclosure: no state, closes on outside click via the browser. */}
@@ -410,9 +523,12 @@ export default function TopBar({
                 setNotiOpen((o) => !o);
                 if (!notiOpen) loadNotifications();
               }}
-              style={{ position: 'relative' }}
+              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+              aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+              aria-expanded={notiOpen}
+              title="Notifications"
             >
-              Notifications
+              <BellIcon ringing={unreadCount > 0} />
               {unreadCount > 0 && (
                 <span
                   style={{
@@ -437,22 +553,7 @@ export default function TopBar({
             </button>
 
             {notiOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 6,
-                  width: 380,
-                  maxHeight: 440,
-                  overflowY: 'auto',
-                  background: 'var(--lf-surface)',
-                  border: '1px solid var(--lf-line)',
-                  borderRadius: 'var(--lf-radius-md)',
-                  boxShadow: 'var(--lf-shadow-lg)',
-                  zIndex: 100,
-                }}
-              >
+              <div className="lf-pop lf-noti-panel" role="dialog" aria-label="Notifications">
                 <div
                   style={{
                     padding: '12px 16px',
@@ -504,12 +605,9 @@ export default function TopBar({
                     {notifications.map((n) => (
                       <li
                         key={n.id}
-                        style={{
-                          padding: '10px 16px',
-                          borderBottom: '1px solid var(--lf-line)',
-                          background: n.readAt ? 'transparent' : 'var(--lf-wine-050)',
-                          cursor: destinationOf(n) ? 'pointer' : 'default',
-                        }}
+                        className="lf-noti-row"
+                        data-unread={n.readAt ? undefined : ''}
+                        style={{ cursor: destinationOf(n) ? 'pointer' : 'default' }}
                         onClick={() => {
                           if (!n.readAt) markRead([n.id]);
                           const target = destinationOf(n);
@@ -524,12 +622,29 @@ export default function TopBar({
                         <div
                           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}
                         >
+                          {/* Type marker, and the unread dot in the same slot:
+                              two indicators competing for the left gutter is
+                              what makes a notification list look busy. */}
+                          <span
+                            aria-hidden="true"
+                            title={kindGlyph(n.kind).label}
+                            style={{
+                              flex: '0 0 auto',
+                              width: 18,
+                              lineHeight: '20px',
+                              textAlign: 'center',
+                              fontSize: 10,
+                              color: n.readAt ? 'var(--lf-ink-3)' : 'var(--lf-wine-600)',
+                            }}
+                          >
+                            {kindGlyph(n.kind).glyph}
+                          </span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div
                               style={{
                                 fontSize: 'var(--lf-text-sm)',
                                 fontWeight: n.readAt ? 400 : 600,
-                                color: 'var(--lf-ink-1)',
+                                color: 'var(--lf-ink)',
                               }}
                             >
                               {n.title}
@@ -602,21 +717,7 @@ export default function TopBar({
             </button>
 
             {createOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 6,
-                  minWidth: 180,
-                  background: 'var(--lf-surface)',
-                  border: '1px solid var(--lf-line)',
-                  borderRadius: 'var(--lf-radius-md)',
-                  boxShadow: 'var(--lf-shadow-lg)',
-                  zIndex: 100,
-                  padding: '4px 0',
-                }}
-              >
+              <div className="lf-pop lf-create-menu" role="menu">
                 {CREATE_ITEMS.map((item, index) => (
                   <div key={item.href}>
                     {/* A group label when the group changes — after role filtering,
@@ -632,7 +733,7 @@ export default function TopBar({
                         display: 'block',
                         padding: '8px 16px',
                         fontSize: 'var(--lf-text-sm)',
-                        color: 'var(--lf-ink-1)',
+                        color: 'var(--lf-ink)',
                         textDecoration: 'none',
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}

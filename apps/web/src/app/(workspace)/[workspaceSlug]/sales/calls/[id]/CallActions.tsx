@@ -241,7 +241,7 @@ export default function CallActions({
               ))}
             </select>
             <textarea name="notes" className="lf-input" rows={2} placeholder="Post-call notes…" />
-            <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
+            <button type="submit" className="lf-btn" disabled={!!busy}>
               {busy === 'outcome' ? 'Saving…' : 'Complete'}
             </button>
           </div>
@@ -286,7 +286,7 @@ export default function CallActions({
           <textarea name="content" required className="lf-input" rows={6} placeholder="Paste call transcript here…" />
           <input name="language" className="lf-input" defaultValue="en" placeholder="Language code (e.g. en, ar)" />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
+            <button type="submit" className="lf-btn" disabled={!!busy}>
               {busy === 'transcript' ? 'Saving…' : 'Save Transcript'}
             </button>
             <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setShowTranscript(false)}>
@@ -299,7 +299,7 @@ export default function CallActions({
       {/* AI Analysis trigger */}
       {hasTranscript && (
         <button
-          className="lf-btn lf-btn--primary"
+          className="lf-btn"
           onClick={triggerAnalysis}
           disabled={!!busy}
           style={{ marginBottom: 8, display: 'block' }}
@@ -325,7 +325,7 @@ export default function CallActions({
             <option value="URGENT">Urgent</option>
           </select>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" className="lf-btn lf-btn--primary" disabled={!!busy}>
+            <button type="submit" className="lf-btn" disabled={!!busy}>
               {busy === 'followup' ? 'Creating…' : 'Create'}
             </button>
             <button type="button" className="lf-btn lf-btn--ghost" onClick={() => setShowFollowUp(false)}>
