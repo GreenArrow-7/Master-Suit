@@ -219,7 +219,7 @@ export default function NewCallForm() {
         {error && <div style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-sm)' }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
-          <button type="submit" className="lf-btn lf-btn--primary" disabled={submitting}>
+          <button type="submit" className="lf-btn" disabled={submitting}>
             {submitting ? 'Creating…' : 'Create Call'}
           </button>
           <button

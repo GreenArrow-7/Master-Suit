@@ -119,7 +119,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
             {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
               <ColumnEditor object="CALL" current={columns.map((c) => c.key)} />
             )}
-            <SalesLink href="/calls/new" className="lf-btn lf-btn--primary" style={{ textDecoration: 'none' }}>
+            <SalesLink href="/calls/new" className="lf-btn" style={{ textDecoration: 'none' }}>
               New Call
             </SalesLink>
           </>

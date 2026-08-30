@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -82,5 +82,68 @@ describe('CSS custom properties', () => {
     expect(declared.size).toBeGreaterThan(50);
     expect(declared.has('--lf-surface')).toBe(true);
     expect(usedTokens().size).toBeGreaterThan(30);
+  });
+});
+
+/**
+ * Button variants that do not exist.
+ *
+ * `lf-btn--primary` was on eleven buttons across six screens and was defined
+ * nowhere. It happened to be harmless — the base `.lf-btn` already paints the
+ * burgundy primary, so those buttons looked right — but that is luck, not
+ * design: the same typo on `lf-btn--danger` would have shipped a delete button
+ * styled as a normal one, and nothing would have failed.
+ *
+ * Scoped to `lf-btn--*` rather than every class name. The button variants are a
+ * closed set defined in one stylesheet, so the check is exact; a general
+ * "every className exists in CSS" sweep would flag every class that comes from
+ * a library, a data attribute or a template literal, and get switched off.
+ */
+describe('button variants', () => {
+  const componentDir = join(root, 'app');
+  const cssText = sources.map((file) => readFileSync(file, 'utf8')).join('\n');
+
+  function definedVariants(): Set<string> {
+    const defined = new Set<string>();
+    for (const match of cssText.matchAll(/\.(lf-btn--[a-z0-9-]+)/gi)) defined.add(match[1]!.toLowerCase());
+    return defined;
+  }
+
+  function usedVariants(): Map<string, Set<string>> {
+    const used = new Map<string, Set<string>>();
+
+    const walk = (dir: string): string[] => {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) out.push(...walk(full));
+        else if (entry.name.endsWith('.tsx')) out.push(full);
+      }
+      return out;
+    };
+
+    for (const file of [...walk(componentDir), ...walk(join(root, 'components'))]) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(/(lf-btn--[a-z0-9-]+)/gi)) {
+        const variant = match[1]!.toLowerCase();
+        if (!used.has(variant)) used.set(variant, new Set());
+        used.get(variant)!.add(file.split(/[\\/]/).pop()!);
+      }
+    }
+    return used;
+  }
+
+  it('are defined before they are used', () => {
+    const defined = definedVariants();
+    const undefinedVariants = [...usedVariants()]
+      .filter(([variant]) => !defined.has(variant))
+      .map(([variant, files]) => `${variant} (used in ${[...files].sort().join(', ')})`);
+
+    expect(undefinedVariants).toEqual([]);
+  });
+
+  it('finds the variants it is meant to be checking', () => {
+    expect(definedVariants().has('lf-btn--secondary')).toBe(true);
+    expect(usedVariants().size).toBeGreaterThan(2);
   });
 });

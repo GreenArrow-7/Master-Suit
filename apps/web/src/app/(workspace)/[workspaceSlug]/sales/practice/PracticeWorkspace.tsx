@@ -188,7 +188,7 @@ export default function PracticeWorkspace({
               </select>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'var(--lf-space-3)' }}>
-              <button className="lf-btn lf-btn--primary" onClick={start} disabled={busy || remainingToday <= 0}>
+              <button className="lf-btn" onClick={start} disabled={busy || remainingToday <= 0}>
                 {busy ? 'Starting…' : 'Start practising'}
               </button>
               <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
@@ -266,7 +266,7 @@ export default function PracticeWorkspace({
             disabled={busy}
             maxLength={2000}
           />
-          <button type="submit" className="lf-btn lf-btn--primary" disabled={busy || !input.trim()}>
+          <button type="submit" className="lf-btn" disabled={busy || !input.trim()}>
             {busy ? '…' : 'Send'}
           </button>
         </form>
