@@ -3,7 +3,8 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { demoScript, coachTick, heuristicHints } from '@/lib/ai/liveCoach';
+import { demoScript, coachTick, heuristicHints, nextBestQuestion } from '@/lib/ai/liveCoach';
+import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { logger } from '@/lib/logger';
 
@@ -44,12 +45,14 @@ export const GET = route(
       ]);
     }
 
-    const [lead, agent] = await Promise.all([
-      call.leadId
-        ? prisma.lead.findFirst({ where: { tenantId: ctx.tenantId, id: call.leadId }, select: { fullName: true } })
-        : null,
+    // The lead context is loaded once per session and carried on every coach
+    // tick — the AI never operates without CRM context when context exists.
+    const [context, agent] = await Promise.all([
+      call.leadId ? leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null,
       prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id: call.callerId }, select: { fullName: true } }),
     ]);
+    const lead = context?.lead ?? null;
+    const contextBlock = context ? contextPromptBlock(context) : undefined;
 
     // The demo session assumes verbal consent, records that assumption, and
     // says so in the workspace banner. Real vendors go through the existing
@@ -139,6 +142,10 @@ export const GET = route(
           source: 'simulated',
           at: 0,
         });
+        // The opening move: the single most useful question, from what the CRM
+        // already knows about this lead. Deterministic — no provider needed.
+        const opener = nextBestQuestion(context?.requirement ?? null);
+        send({ type: 'coach', kind: 'ASK', text: opener.text, why: opener.why, source: 'simulated', at: 0 });
 
         try {
           for (let i = 0; i < script.length; i++) {
@@ -162,7 +169,7 @@ export const GET = route(
               // The workspace's own key when it has one, the deployment's
               // otherwise — `coachTick` degrades to heuristics with neither.
               if (i % 4 === 3) {
-                const hints = await coachTick(window, ctx.tenantId);
+                const hints = await coachTick(window, ctx.tenantId, contextBlock);
                 for (const hint of hints.filter((h) => h.source === 'gemini')) send({ type: 'coach', ...hint, at });
               }
             }

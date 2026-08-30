@@ -1,4 +1,4 @@
-import type { AnalysisInput, AnalysisResult } from './analysis';
+import type { AnalysisInput, AnalysisResult, DetectedRequirement } from './analysis';
 import type { AuditInput, AuditResult, CriterionScore } from './audit';
 import { parseTranscript, type TranscriptLine as Line } from './callMetrics';
 
@@ -58,6 +58,85 @@ const pick = (lines: Line[], words: readonly string[], limit = 4): string[] => {
 const count = (lines: Line[], words: readonly string[]): number =>
   lines.reduce((total, line) => total + (words.some((w) => line.lower.includes(w)) ? 1 : 0), 0);
 
+const WORD_NUM: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+/** "1.5 million", "1.5m", "one point five million", "800k" → a number. */
+export function parseAmounts(text: string): number[] {
+  const amounts: number[] = [];
+  const lower = text.toLowerCase();
+  for (const m of lower.matchAll(/(\d+(?:\.\d+)?)\s*(million|mil\b|m\b|k\b)/g)) {
+    amounts.push(parseFloat(m[1]) * (m[2].startsWith('k') ? 1_000 : 1_000_000));
+  }
+  for (const m of lower.matchAll(/\b(\w+)(?:\s+point\s+(\w+))?\s+million/g)) {
+    const whole = WORD_NUM[m[1]];
+    if (whole == null) continue;
+    const frac = m[2] ? WORD_NUM[m[2]] : undefined;
+    amounts.push((whole + (frac ?? 0) / 10) * 1_000_000);
+  }
+  // "one point five million, maybe stretching to one point eight" — the second
+  // number elides the unit. Once a million-scale amount anchors the sentence,
+  // a bare "N point M" is read at the same scale.
+  if (amounts.some((a) => a >= 1_000_000)) {
+    for (const m of lower.matchAll(/\b(\w+)\s+point\s+(\w+)\b(?!\s*(?:million|mil\b|m\b|k\b|percent|%))/g)) {
+      const whole = WORD_NUM[m[1]];
+      const frac = WORD_NUM[m[2]];
+      if (whole != null && frac != null) amounts.push((whole + frac / 10) * 1_000_000);
+    }
+  }
+  return amounts;
+}
+
+/**
+ * Keyword requirement extraction for the demo path. Only what the transcript
+ * literally contains; anything else stays null for the agent to fill in.
+ */
+export function extractRequirement(transcript: string): DetectedRequirement | null {
+  // Budget comes from the customer's own lines where the transcript attributes
+  // speakers — a price the agent quoted is not the customer's budget.
+  const lines = parseTranscript(transcript);
+  const attributed = lines.some((l) => l.side !== 'UNKNOWN');
+  const customerText = attributed
+    ? lines
+        .filter((l) => l.side === 'OTHER')
+        .map((l) => l.text)
+        .join('\n')
+    : transcript;
+  const lower = customerText.toLowerCase();
+
+  const amounts = parseAmounts(customerText).filter((a) => a >= 50_000);
+  const bedrooms: number[] = [];
+  for (const m of lower.matchAll(/(\d+|one|two|three|four|five|six)([- ]or[- ](\d+|one|two|three|four|five|six))?[- ]?(?:br\b|bed(?:room)?s?)/g)) {
+    for (const raw of [m[1], m[3]]) {
+      if (!raw) continue;
+      const n = WORD_NUM[raw] ?? parseInt(raw, 10);
+      if (!Number.isNaN(n) && n > 0 && n <= 20) bedrooms.push(n);
+    }
+  }
+
+  const purpose = /\b(rent|renting|lease)\b/.test(lower) && !/\brental (yield|income)/.test(lower) ? 'RENT' : /\b(buy|purchas|invest|to live in|own use)/.test(lower) ? 'BUY' : null;
+  const typeHit = ['PENTHOUSE', 'TOWNHOUSE', 'APARTMENT', 'VILLA', 'PLOT', 'OFFICE'].find((t) =>
+    lower.includes(t.toLowerCase()),
+  );
+  const timeline = lower.match(
+    /\b(?:by|before|within|next)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|month|year|week|\d+\s+(?:days?|weeks?|months?|years?))\b/,
+  );
+
+  const detected: DetectedRequirement = {
+    purpose,
+    budgetMin: amounts.length > 1 ? Math.min(...amounts) : null,
+    budgetMax: amounts.length ? Math.max(...amounts) : null,
+    bedroomsMin: bedrooms.length ? Math.min(...bedrooms) : null,
+    bedroomsMax: bedrooms.length ? Math.max(...bedrooms) : null,
+    propertyType: typeHit ?? null,
+    locations: [],
+    timeline: timeline ? timeline[0] : null,
+  };
+  const anything = Object.values(detected).some((v) => (Array.isArray(v) ? v.length : v != null));
+  return anything ? detected : null;
+}
+
 export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
   const lines = parseTranscript(input.transcript);
   const objections = pick(lines, SIGNALS.objection);
@@ -110,6 +189,7 @@ export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
     suggestedStatus: buyingSignals.length > objections.length ? 'INTERESTED' : null,
     complianceFlags,
     uncertainItems: ['This is a keyword-based simulation, not a model analysis. Verify findings against the call.'],
+    detectedRequirement: extractRequirement(input.transcript),
   };
 }
 

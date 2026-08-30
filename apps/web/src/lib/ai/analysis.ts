@@ -20,7 +20,7 @@ const AI_TIMEOUT_MS = 60_000;
  * cannot be explained once the prompt has moved on. Two rows disagreeing is
  * then a fact about the prompt rather than a mystery about the model.
  */
-export const ANALYSIS_PROMPT_VERSION = 'call-analysis/2026-08-19';
+export const ANALYSIS_PROMPT_VERSION = 'call-analysis/2026-08-30';
 
 export interface AnalysisInput {
   /** Whose key to run on. Absent falls back to the deployment key. */
@@ -30,6 +30,22 @@ export interface AnalysisInput {
   qualifications?: { question: string; expectedAnswer?: string }[];
   callDirection?: string;
   campaignName?: string;
+}
+
+/**
+ * Structured property requirement heard on the call — only what the customer
+ * actually said, each field null when it was not stated. Reviewed by the agent
+ * on the call page before anything is written to the CRM; never auto-applied.
+ */
+export interface DetectedRequirement {
+  purpose: 'BUY' | 'RENT' | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
+  bedroomsMin: number | null;
+  bedroomsMax: number | null;
+  propertyType: string | null;
+  locations: string[];
+  timeline: string | null;
 }
 
 export interface AnalysisResult {
@@ -49,7 +65,26 @@ export interface AnalysisResult {
   suggestedStatus: string | null;
   complianceFlags: string[];
   uncertainItems: string[];
+  /** Optional: the model may omit it entirely when nothing was stated. */
+  detectedRequirement?: DetectedRequirement | null;
 }
+
+const REQUIREMENT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    purpose: { type: 'string' as const, enum: ['BUY', 'RENT'] },
+    budgetMin: { type: 'number' as const },
+    budgetMax: { type: 'number' as const },
+    bedroomsMin: { type: 'number' as const },
+    bedroomsMax: { type: 'number' as const },
+    propertyType: {
+      type: 'string' as const,
+      enum: ['APARTMENT', 'VILLA', 'TOWNHOUSE', 'PENTHOUSE', 'PLOT', 'OFFICE', 'RETAIL', 'WAREHOUSE'],
+    },
+    locations: { type: 'array' as const, items: { type: 'string' as const } },
+    timeline: { type: 'string' as const },
+  },
+};
 
 const RESPONSE_SCHEMA = {
   type: 'object' as const,
@@ -69,6 +104,7 @@ const RESPONSE_SCHEMA = {
     suggestedStatus: { type: 'string' as const },
     complianceFlags: { type: 'array' as const, items: { type: 'string' as const } },
     uncertainItems: { type: 'array' as const, items: { type: 'string' as const } },
+    detectedRequirement: REQUIREMENT_SCHEMA,
   },
   required: [
     'summary',
@@ -100,6 +136,7 @@ function buildPrompt(input: AnalysisInput): string {
     '- Never present uncertain findings as established facts.',
     '- Keep the summary factual and under 300 words.',
     '- "actionItems" are only things the REP said they would do, phrased as imperatives. Empty if none.',
+    '- "detectedRequirement": the property requirement in the CUSTOMER\'s own words — purpose (BUY/RENT), budget as plain numbers, bedrooms, propertyType, locations named, timeline. Include ONLY values the customer explicitly stated on this call; omit any field not stated. Never guess or invent.',
     '',
   ];
 
