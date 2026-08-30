@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { notifyAboutCall } from '@/services/crm/notify';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -55,6 +56,27 @@ export const PATCH = route(
     });
     if (!existing) throw NotFound('Call');
 
-    return prisma.call.update({ where: { id: params.id, tenantId: ctx.tenantId }, data: body });
+    const updated = await prisma.call.update({ where: { id: params.id, tenantId: ctx.tenantId }, data: body });
+
+    /**
+     * Only on the transition, not on every save of an already-missed call.
+     * A PATCH that touches notes on a MISSED call must not re-announce it.
+     */
+    if (body.status && body.status !== existing.status) {
+      const label = updated.recipientNumber;
+      if (body.status === 'MISSED') {
+        await notifyAboutCall(ctx, updated, 'call.missed', `Missed call from ${label}`, updated.notes ?? undefined);
+      } else if (body.status === 'COMPLETED') {
+        await notifyAboutCall(
+          ctx,
+          updated,
+          'call.completed',
+          `Call completed with ${label}`,
+          updated.notes ?? undefined,
+        );
+      }
+    }
+
+    return updated;
   },
 );

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { notifyAboutCall } from '@/services/crm/notify';
 
 const createBody = z
   .object({
@@ -22,7 +23,7 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'CALL_STARTED' },
   async ({ ctx, body }) => {
-    return prisma.call.create({
+    const call = await prisma.call.create({
       data: {
         tenantId: ctx.tenantId,
         callerId: ctx.actor.id,
@@ -30,6 +31,12 @@ export const POST = route(
         ...body,
       },
     });
+
+    // Reaches the lead's owner when somebody else booked the call for them; the
+    // actor is filtered out, so scheduling your own call is silent.
+    await notifyAboutCall(ctx, call, 'call.scheduled', `Call scheduled with ${call.recipientNumber}`);
+
+    return call;
   },
 );
 

@@ -8,6 +8,7 @@ import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
 import { emit } from '../shared/events';
 import { enqueue } from '@/lib/queue';
+import { notifyCrm } from '../crm/notify';
 
 export const LEAD_SENSITIVE_FIELDS = ['secondaryEmail', 'secondaryPhone', 'addressLine', 'postalCode'] as const;
 
@@ -146,6 +147,25 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
       recordId: lead.id,
     }),
   ]);
+
+  /**
+   * The "notify" step this function's own comment has always listed.
+   *
+   * Deliberately after the commit and outside the Promise.all above: those are
+   * queue writes that may be skipped, this is a database write that must see the
+   * committed lead. `notifyCrm` excludes the actor, so the common case — a rep
+   * creating a lead for themselves — sends nothing, and only a lead created
+   * *for* somebody else reaches a bell.
+   */
+  await notifyCrm(ctx, {
+    event: 'lead.created',
+    ownerId,
+    title: `New lead: ${lead.fullName}`,
+    body: lead.reference,
+    objectType: 'lead',
+    recordId: lead.id,
+    priority: 'HIGH',
+  });
 
   emit(ctx, 'lead.created', { leadId: lead.id, duplicates: duplicates.length });
   return lead;
