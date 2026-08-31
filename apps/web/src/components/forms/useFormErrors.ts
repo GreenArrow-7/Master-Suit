@@ -57,7 +57,10 @@ export function problemSummary(data: ProblemLike, fallback: string): string {
   if (!rows.length) return data.detail ?? fallback;
   return rows
     .map((row) => {
-      const label = row.field!.split('.')[0]!.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+      const label = row
+        .field!.split('.')[0]!
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toLowerCase();
       const capitalised = label.charAt(0).toUpperCase() + label.slice(1);
       // Zod's bare "Required" earns the field name; richer messages keep it too.
       return `${capitalised}: ${row.message}`;
