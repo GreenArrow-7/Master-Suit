@@ -113,9 +113,20 @@ function Field(props: {
   placeholder?: string;
 }) {
   const { label, ...inputProps } = props;
+  const { required } = props;
   return (
     <label className="lf-field">
-      <span className="lf-label">{label}</span>
+      {/* The `required` prop reached the input but never the label, so six
+          mandatory fields on this form carried no visible marker at all. */}
+      <span className="lf-label">
+        {label}
+        {required && (
+          <span className="lf-label__req" aria-hidden="true">
+            {' '}
+            *
+          </span>
+        )}
+      </span>
       <input className="lf-input" {...inputProps} />
     </label>
   );

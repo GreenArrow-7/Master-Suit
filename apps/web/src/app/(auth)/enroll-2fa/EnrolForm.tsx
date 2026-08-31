@@ -84,6 +84,10 @@ export default function EnrolForm({ requiresPassword = false }: { requiresPasswo
         <div className="lf-field">
           <label className="lf-label" htmlFor="enrol-current-password">
             Password
+            <span className="lf-label__req" aria-hidden="true">
+              {' '}
+              *
+            </span>
           </label>
           <input
             id="enrol-current-password"
@@ -214,6 +218,10 @@ export default function EnrolForm({ requiresPassword = false }: { requiresPasswo
       <div className="lf-field">
         <label className="lf-label" htmlFor="code">
           Code from the app
+          <span className="lf-label__req" aria-hidden="true">
+            {' '}
+            *
+          </span>
         </label>
         <input
           id="code"

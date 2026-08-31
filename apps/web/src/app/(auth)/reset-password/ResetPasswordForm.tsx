@@ -72,6 +72,10 @@ export default function ResetPasswordForm({ token }: { token: string }) {
       <div className="lf-field">
         <label className="lf-label" htmlFor="password">
           New password
+          <span className="lf-label__req" aria-hidden="true">
+            {' '}
+            *
+          </span>
         </label>
         <input
           id="password"
@@ -89,6 +93,10 @@ export default function ResetPasswordForm({ token }: { token: string }) {
       <div className="lf-field">
         <label className="lf-label" htmlFor="confirm">
           Confirm new password
+          <span className="lf-label__req" aria-hidden="true">
+            {' '}
+            *
+          </span>
         </label>
         <input
           id="confirm"
