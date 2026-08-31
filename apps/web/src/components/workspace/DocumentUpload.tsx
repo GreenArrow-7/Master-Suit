@@ -60,7 +60,7 @@ export default function DocumentUpload({
         </div>
       )}
       {notice && (
-        <div role="status" style={{ color: 'var(--lf-ink-600)' }}>
+        <div role="status" style={{ color: 'var(--lf-ink-2)' }}>
           {notice}
         </div>
       )}

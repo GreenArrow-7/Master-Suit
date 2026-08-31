@@ -36,6 +36,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       currency: true,
       probability: true,
       expectedCloseDate: true,
+      actualCloseDate: true,
       updatedAt: true,
       stage: { select: { key: true, name: true, color: true } },
       account: { select: { name: true } },

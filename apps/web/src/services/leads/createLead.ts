@@ -9,6 +9,7 @@ import { nextReference } from '../shared/reference';
 import { emit } from '../shared/events';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
+import { recordTargetProgress } from '../targets/progress';
 
 export const LEAD_SENSITIVE_FIELDS = ['secondaryEmail', 'secondaryPhone', 'addressLine', 'postalCode'] as const;
 
@@ -166,6 +167,8 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
     recordId: lead.id,
     priority: 'HIGH',
   });
+
+  if (ownerId) await recordTargetProgress(ctx, ownerId, 'LEADS_ASSIGNED');
 
   emit(ctx, 'lead.created', { leadId: lead.id, duplicates: duplicates.length });
   return lead;

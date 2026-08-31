@@ -106,7 +106,7 @@ export default function PermissionMatrix({
         </div>
       )}
       {notice && (
-        <div role="status" style={{ color: 'var(--lf-ink-600)' }}>
+        <div role="status" style={{ color: 'var(--lf-ink-2)' }}>
           {notice}
         </div>
       )}
@@ -174,7 +174,7 @@ export default function PermissionMatrix({
               Discard
             </button>
           )}
-          <span style={{ color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-xs)' }}>
+          <span style={{ color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-xs)' }}>
             Saving signs out everyone on this role — a live session carries the permissions it was built with.
           </span>
         </div>

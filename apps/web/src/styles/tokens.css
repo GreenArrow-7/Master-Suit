@@ -68,6 +68,13 @@
   --lf-viridian-sub: #e0eeeb;
   --lf-vermillion: #c8412c; /* breached, lost, rejected, destructive */
   --lf-vermillion-sub: #fbe9e6;
+  /* Alias, not a new red: components reach for "danger" as a name and several
+     already did — against a token that did not exist, silently. */
+  --lf-danger: var(--lf-vermillion);
+  /* Informational callout pair; the warn/positive tones had tokens, info was a
+     hardcoded pastel patch that ignored dark and glass. */
+  --lf-info: #2c5578;
+  --lf-info-sub: #e8f0f7;
   --lf-slate: #5f545a; /* open, no state */
   --lf-slate-sub: #f0ecee;
 
@@ -106,6 +113,9 @@
   --lf-text-xl: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem);
   --lf-text-2xl: clamp(1.375rem, 1.1rem + 1.35vw, 1.875rem);
   --lf-text-hero: clamp(2rem, 1.5rem + 2.4vw, 2.75rem); /* display metrics only */
+  /* Between base (0.9375) and lg (1.0625): seven call sites were already
+     asking for this step; without it their font-size silently fell to inherit. */
+  --lf-text-md: 1rem;
 
   /* The page gutter scales with the viewport too, so content is not pinned to
      16px on a phone and 32px everywhere above it. */
@@ -216,6 +226,8 @@
   --lf-viridian-sub: #0f2e29;
   --lf-vermillion: #ee8478;
   --lf-vermillion-sub: #3a1714;
+  --lf-info: #7fb0d8;
+  --lf-info-sub: #142633;
   --lf-slate: #a2919a;
   --lf-slate-sub: #2c1f26;
 

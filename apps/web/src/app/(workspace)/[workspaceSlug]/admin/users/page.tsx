@@ -3,6 +3,7 @@ import FilterSheet from '@/components/workspace/FilterSheet';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
 import SalesLink from '@/components/workspace/SalesLink';
 import UserRowActions from './UserRowActions';
 
@@ -147,10 +148,15 @@ export default async function UsersPage({
         <button className="lf-btn lf-btn--secondary" type="submit">
           Filter
         </button>
+        {/* A plain link, not SalesLink: SalesLink resolves module-relative
+            hrefs against the CURRENT module, and from /admin that produced
+            /admin/users/new — no such route, so Next matched [userId]="new"
+            and the button dead-ended on "not found". The only add-user form in
+            the product is the People module's. */}
         {mayManage && (
-          <SalesLink className="lf-btn" href="/users/new">
+          <Link className="lf-btn" href={`/${workspaceSlug}/people/users/new`}>
             + Add user
-          </SalesLink>
+          </Link>
         )}
       </form>
 

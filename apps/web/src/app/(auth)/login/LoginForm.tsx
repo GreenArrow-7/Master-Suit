@@ -111,7 +111,7 @@ export default function LoginForm() {
       {!mfaNeeded ? (
         <>
           <div className="lf-field">
-            <label className="lf-label" htmlFor="email">
+            <label className="lf-label" data-required htmlFor="email">
               Email
             </label>
             <input
@@ -128,7 +128,7 @@ export default function LoginForm() {
 
           <div className="lf-field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <label className="lf-label" htmlFor="password">
+              <label className="lf-label" data-required htmlFor="password">
                 Password
               </label>
               <Link href="/forgot-password" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-wine-700)' }}>

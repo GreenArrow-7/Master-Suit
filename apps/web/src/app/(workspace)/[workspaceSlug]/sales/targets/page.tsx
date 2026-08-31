@@ -12,20 +12,10 @@ export const metadata = { title: 'My Targets' };
 
 const METRIC_LABEL = Object.fromEntries(METRICS);
 
-type ProgressRow = { dateKey: string; achieved: number };
-
-/**
- * Achieved within the target's own window, not just today. A weekly target of
- * 25 calls with 20 done by Thursday used to show 3/25 because only today's
- * progress row was counted.
- */
-function achievedFor(target: { periodStart: Date; periodEnd: Date; progress: ProgressRow[] }) {
-  const from = target.periodStart.toISOString().slice(0, 10);
-  const to = target.periodEnd.toISOString().slice(0, 10);
-  return target.progress
-    .filter((row) => row.dateKey >= from && row.dateKey <= to)
-    .reduce((sum, row) => sum + row.achieved, 0);
-}
+// One copy in services/targets/progress.ts, shared with the sales overview:
+// two screens computing "achieved" differently is how the same target read
+// 38% here and 0% there.
+import { achievedWithin as achievedFor, type ProgressRow } from '@/services/targets/progress';
 
 function TargetCard({
   target,
@@ -163,7 +153,7 @@ export default async function TargetsPage() {
       {mine.length > 0 && <SignOff complete={outstanding === 0} remaining={outstanding} />}
 
       {managesTargets && (
-        <section style={{ marginTop: 'var(--lf-space-7)', display: 'grid', gap: 'var(--lf-space-4)' }}>
+        <section style={{ marginTop: 'var(--lf-space-6)', display: 'grid', gap: 'var(--lf-space-4)' }}>
           <div
             style={{
               display: 'flex',
@@ -202,15 +192,17 @@ export default async function TargetsPage() {
                     const pct = Math.min(100, Math.round((achieved / t.targetValue) * 100));
                     return (
                       <tr key={t.id}>
-                        <td style={{ fontWeight: 500 }}>{t.user?.fullName ?? '—'}</td>
-                        <td>
+                        <td data-label="Teammate" style={{ fontWeight: 500 }}>
+                          {t.user?.fullName ?? '—'}
+                        </td>
+                        <td data-label="Target">
                           {t.targetValue} × {METRIC_LABEL[t.metric] ?? t.metric.replace(/_/g, ' ').toLowerCase()}
                         </td>
-                        <td>{t.period.toLowerCase()}</td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
+                        <td data-label="Cadence">{t.period.toLowerCase()}</td>
+                        <td data-label="Window" style={{ whiteSpace: 'nowrap' }}>
                           {dateFmt(t.periodStart)} – {dateFmt(t.periodEnd)}
                         </td>
-                        <td style={{ minWidth: 140 }}>
+                        <td data-label="Progress" style={{ minWidth: 140 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--lf-space-2)' }}>
                             <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
                             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>

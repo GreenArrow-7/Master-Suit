@@ -155,7 +155,7 @@ export default function BreakGlass({ workspaceId, workspaceName }: { workspaceId
     return (
       <div className="lf-card" style={{ padding: 18 }}>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Write access</h2>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>{error || 'Reading the current state…'}</p>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>{error || 'Reading the current state…'}</p>
       </div>
     );
   }
@@ -167,7 +167,7 @@ export default function BreakGlass({ workspaceId, workspaceName }: { workspaceId
     <div className="lf-card" style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Write access</h2>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           Opening {workspaceName} to read it needs nothing — answering a customer&rsquo;s question is the ordinary case.
           Changing something in it needs a stated reason and a clock, and both are written to <strong>their</strong>{' '}
           audit trail, not ours.
@@ -182,7 +182,7 @@ export default function BreakGlass({ workspaceId, workspaceName }: { workspaceId
               {now === null ? 'Expires soon' : remaining(state.grant!.expiresAt, now)} · granted{' '}
               {new Date(state.grant!.grantedAt).toLocaleTimeString('en-AE')}
             </span>
-            <span style={{ color: 'var(--lf-ink-600)' }}>Reason given: {state.grant!.reason}</span>
+            <span style={{ color: 'var(--lf-ink-2)' }}>Reason given: {state.grant!.reason}</span>
           </div>
           <div>
             <button className="lf-btn lf-btn--secondary" disabled={busy} onClick={() => void send('DELETE')}>
@@ -205,7 +205,7 @@ export default function BreakGlass({ workspaceId, workspaceName }: { workspaceId
               onChange={(event) => setReason(event.target.value)}
               placeholder="Ticket number and what you are going to change."
             />
-            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-600)' }}>
+            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
               At least {state.minReason} characters. This is what the customer reads on their audit trail.
             </span>
           </div>
@@ -229,7 +229,7 @@ export default function BreakGlass({ workspaceId, workspaceName }: { workspaceId
                   </option>
                 ))}
             </select>
-            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-600)' }}>
+            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
               It ends by itself. Asking again is cheap; a grant nobody closes is not.
             </span>
           </div>

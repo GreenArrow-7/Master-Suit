@@ -148,7 +148,7 @@ export default function ServiceLoginForm() {
             <button
               key={workspace.id}
               type="button"
-              className="lf-button lf-button--ghost"
+              className="lf-btn lf-btn--ghost"
               disabled={busy}
               onClick={() => void enter(workspace.id)}
               style={{ justifyContent: 'flex-start', textAlign: 'left' }}
@@ -257,7 +257,7 @@ export default function ServiceLoginForm() {
               <input id="identity" className="lf-input" value={username} readOnly />
               <button
                 type="button"
-                className="lf-button lf-button--ghost"
+                className="lf-btn lf-btn--ghost"
                 onClick={() => {
                   setMfaNeeded(false);
                   setMfaCode('');
@@ -314,7 +314,7 @@ export default function ServiceLoginForm() {
         </>
       )}
 
-      <button className="lf-button lf-button--primary" type="submit" disabled={busy}>
+      <button className="lf-btn" type="submit" disabled={busy}>
         {busy ? 'Working…' : mfaNeeded ? 'Verify and sign in' : 'Continue'}
       </button>
 

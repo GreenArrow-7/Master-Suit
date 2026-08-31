@@ -22,7 +22,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>HR policy</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           Every tunable parameter behind attendance, leave and settlement, editable for this workspace. Anything left at
           its default follows the product default, including when a release changes it — only values you actually change
           are stored.
@@ -38,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           style={{
             margin: '10px 0 0',
             paddingLeft: 20,
-            color: 'var(--lf-ink-600)',
+            color: 'var(--lf-ink-2)',
             fontSize: 'var(--lf-text-sm)',
             display: 'grid',
             gap: 6,

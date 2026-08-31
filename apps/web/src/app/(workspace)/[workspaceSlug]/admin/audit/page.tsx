@@ -196,7 +196,7 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">Administration</div>
         <h1 style={{ margin: '8px 0 0' }}>Audit log</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
           Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one
           timeline. Nothing here can be edited or deleted from within the product.
         </p>
@@ -227,7 +227,7 @@ export default async function Page({
           <span key="a">
             <strong>{title(row.action)}</strong>
             {row.action !== row.event && (
-              <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+              <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                 {row.event.toLowerCase().replace(/_/g, ' ')}
               </div>
             )}
@@ -235,7 +235,7 @@ export default async function Page({
           <code key="o" style={{ fontSize: 'var(--lf-text-xs)' }}>
             {row.objectType}
           </code>,
-          <span key="d" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-600)' }}>
+          <span key="d" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-2)' }}>
             {row.detail}
           </span>,
           row.ip ?? '—',

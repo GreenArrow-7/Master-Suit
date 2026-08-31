@@ -70,8 +70,16 @@ export default function DashboardCharts({
           <ResponsiveContainer width="100%" height={Math.max(200, leadsByStage.length * 40)}>
             <BarChart data={leadsByStage} layout="vertical" margin={{ left: 20, right: 20 }}>
               <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 13 }} />
-              <Tooltip />
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 13, fill: 'var(--lf-ink-2)' }} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--lf-surface)',
+                  border: '1px solid var(--lf-line)',
+                  borderRadius: 8,
+                  color: 'var(--lf-ink)',
+                }}
+                itemStyle={{ color: 'var(--lf-ink)' }}
+              />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {leadsByStage.map((_, i) => (
                   <Cell key={i} fill={PIPELINE_COLORS[i % PIPELINE_COLORS.length]} />
@@ -102,7 +110,15 @@ export default function DashboardCharts({
                     <Cell key={i} fill={PIPELINE_COLORS[i % PIPELINE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--lf-surface)',
+                    border: '1px solid var(--lf-line)',
+                    borderRadius: 8,
+                    color: 'var(--lf-ink)',
+                  }}
+                  itemStyle={{ color: 'var(--lf-ink)' }}
+                />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -121,7 +137,15 @@ export default function DashboardCharts({
                     <Cell key={entry.key} fill={SLA_COLORS[entry.key] ?? SLATE} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--lf-surface)',
+                    border: '1px solid var(--lf-line)',
+                    borderRadius: 8,
+                    color: 'var(--lf-ink)',
+                  }}
+                  itemStyle={{ color: 'var(--lf-ink)' }}
+                />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

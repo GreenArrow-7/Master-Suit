@@ -76,13 +76,13 @@ export default function EnrolForm({ requiresPassword = false }: { requiresPasswo
 
   if (stage === 'password') {
     return (
-      <form className="lf-auth-form" onSubmit={submitPassword}>
+      <form style={{ display: 'grid', gap: 'var(--lf-space-4)' }} onSubmit={submitPassword}>
         <p className="lf-auth-lede">
           Confirm your password to continue. Setting up an authenticator hands out recovery codes, so it asks the way
           changing your password does.
         </p>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="enrol-current-password">
+          <label className="lf-label" data-required htmlFor="enrol-current-password">
             Password
           </label>
           <input
@@ -212,7 +212,7 @@ export default function EnrolForm({ requiresPassword = false }: { requiresPasswo
       )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="code">
+        <label className="lf-label" data-required htmlFor="code">
           Code from the app
         </label>
         <input

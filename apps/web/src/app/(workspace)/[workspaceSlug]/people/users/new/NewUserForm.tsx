@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { problemSummary } from '@/components/forms/useFormErrors';
 
 interface Option {
   id: string;
@@ -95,7 +96,7 @@ export default function NewUserForm({
         body: JSON.stringify(form),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The account could not be created.');
+      if (!res.ok) throw new Error(problemSummary(data, 'The account could not be created.'));
       setCreated(data as Created);
       router.refresh();
     } catch (err) {
@@ -153,7 +154,7 @@ export default function NewUserForm({
 
       <div className="lf-users__grid">
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-name">
+          <label className="lf-label" data-required htmlFor="nu-name">
             Full name
           </label>
           <input
@@ -167,7 +168,7 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-code">
+          <label className="lf-label" data-required htmlFor="nu-code">
             Employee code
           </label>
           <input
@@ -181,7 +182,7 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-email">
+          <label className="lf-label" data-required htmlFor="nu-email">
             Work email
           </label>
           <input
@@ -209,7 +210,7 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-role">
+          <label className="lf-label" data-required htmlFor="nu-role">
             Role
           </label>
           <select
@@ -299,7 +300,7 @@ export default function NewUserForm({
           </select>
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-joined">
+          <label className="lf-label" data-required htmlFor="nu-joined">
             Joining date
           </label>
           <input
@@ -363,7 +364,7 @@ export default function NewUserForm({
 
       {form.attendanceEligible && (
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-loc">
+          <label className="lf-label" data-required htmlFor="nu-loc">
             Assigned attendance location
           </label>
           <select

@@ -44,7 +44,7 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Payroll</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           A run is calculated from approved HR state only — effective-dated pay, approved overtime, approved unpaid
           leave and entered adjustments. Whoever prepares a run cannot approve it. Locking freezes the overtime claims
           the run paid, so a payslip keeps reconciling against the hours behind it.
@@ -106,7 +106,7 @@ export default async function Page({
                   {/* Hidden rather than offered-and-refused: the service still
                       enforces it, this only avoids a button that always fails. */}
                   {self?.id === row.preparedById ? (
-                    <span style={{ color: 'var(--lf-ink-500)' }}>You prepared this</span>
+                    <span style={{ color: 'var(--lf-ink-3)' }}>You prepared this</span>
                   ) : (
                     <>
                       <WorkspaceActionButton
@@ -172,7 +172,7 @@ export default async function Page({
           ])}
         />
         {!wpsReady && (
-          <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '10px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             WPS export needs the employer MOL identifier and bank agent identifier, set under{' '}
             <Link className="lf-link" href={`/${workspaceSlug}/people/settings`}>
               HR policy
@@ -207,7 +207,7 @@ export default async function Page({
         <>
           <section>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Record compensation</h2>
-            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               A raise is a new record, never an edit. Past runs keep the salary that was in force when they were
               calculated.
             </p>
@@ -237,7 +237,7 @@ export default async function Page({
 
           <section>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>One-off adjustment</h2>
-            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               A bonus, commission, reimbursement or deduction. Picked up by whichever draft run covers its date, and
               stamped as consumed when that run locks so it cannot be paid twice.
             </p>

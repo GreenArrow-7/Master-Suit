@@ -128,7 +128,7 @@ export default async function EventDetailPage({ params: paramsPromise }: { param
             <div
               key={meeting.id}
               style={{
-                borderTop: '1px solid var(--lf-rule)',
+                borderTop: '1px solid var(--lf-line)',
                 paddingTop: 'var(--lf-space-3)',
                 marginTop: 'var(--lf-space-3)',
               }}

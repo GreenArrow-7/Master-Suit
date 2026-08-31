@@ -56,7 +56,7 @@ export default function ForgotPasswordForm() {
       )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="email">
+        <label className="lf-label" data-required htmlFor="email">
           Email
         </label>
         <input

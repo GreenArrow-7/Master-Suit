@@ -93,7 +93,7 @@ export default function PlatformRowActions({
           </label>
         ))}
         {error && (
-          <div role="alert" style={{ color: 'var(--lf-danger, #B00020)', fontSize: 'var(--lf-text-xs)' }}>
+          <div role="alert" style={{ color: 'var(--lf-danger, var(--lf-danger))', fontSize: 'var(--lf-text-xs)' }}>
             {error}
           </div>
         )}
@@ -132,7 +132,7 @@ export default function PlatformRowActions({
       <div style={{ display: 'grid', gap: 6, minWidth: 200 }}>
         <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{deleteWarning}</span>
         {error && (
-          <div role="alert" style={{ color: 'var(--lf-danger, #B00020)', fontSize: 'var(--lf-text-xs)' }}>
+          <div role="alert" style={{ color: 'var(--lf-danger, var(--lf-danger))', fontSize: 'var(--lf-text-xs)' }}>
             {error}
           </div>
         )}

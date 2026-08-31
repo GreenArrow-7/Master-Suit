@@ -251,7 +251,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
         }}
       >
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-name">
+          <label className="lf-label" data-required htmlFor="wl-name">
             Location name
           </label>
           <input id="wl-name" className="lf-input" value={form.name} onChange={set('name')} required />
@@ -263,7 +263,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
           <input id="wl-code" className="lf-input" value={form.code} onChange={set('code')} />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-lat">
+          <label className="lf-label" data-required htmlFor="wl-lat">
             Latitude
           </label>
           <input
@@ -276,7 +276,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-lng">
+          <label className="lf-label" data-required htmlFor="wl-lng">
             Longitude
           </label>
           <input
@@ -289,7 +289,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-radius">
+          <label className="lf-label" data-required htmlFor="wl-radius">
             Radius (metres)
           </label>
           <input

@@ -54,8 +54,11 @@ export const GLOBAL_MODELS = new Set([
   'SubscriptionModule',
   // Operator key-value settings; carries no tenantId at all.
   'PlatformSetting',
-  // Control-plane, and resolved *before* any tenant context exists: it is the
-  // lookup that decides whether platform staff may write into a workspace.
+  // Not a bootstrap case — the tenant is an *input* to every grant lookup, and
+  // the table is under RLS as of 20260826120000. It is here for the one caller
+  // that spans tenants: liveGrantCount, the /api/metrics gauge, which counts
+  // live grants across the platform under withPlatformTx. Every other caller
+  // names a tenantId and is pinned by runPinned below.
   'PlatformAccessGrant',
   // Same shape, one step earlier: the machine credential that decides which
   // tenants a platform service identity may read at all. It carries no tenantId

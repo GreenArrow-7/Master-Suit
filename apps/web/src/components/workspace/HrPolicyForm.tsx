@@ -101,7 +101,7 @@ export default function HrPolicyForm({
         </div>
       )}
       {saved && (
-        <div role="status" style={{ color: 'var(--lf-ink-600)' }}>
+        <div role="status" style={{ color: 'var(--lf-ink-2)' }}>
           {saved}
         </div>
       )}
@@ -124,7 +124,7 @@ export default function HrPolicyForm({
                   display: 'grid',
                   gap: 6,
                   paddingBottom: 'var(--lf-space-4)',
-                  borderBottom: '1px solid var(--lf-border-subtle)',
+                  borderBottom: '1px solid var(--lf-line)',
                 }}
               >
                 <label
@@ -142,7 +142,7 @@ export default function HrPolicyForm({
                   )}
                   {!isDefault && <span className="lf-badge">changed</span>}
                 </label>
-                <p style={{ margin: 0, color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)', maxWidth: '68ch' }}>
+                <p style={{ margin: 0, color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)', maxWidth: '68ch' }}>
                   {definition.help}
                 </p>
 
@@ -164,11 +164,11 @@ export default function HrPolicyForm({
                         style={{ maxWidth: 160 }}
                       />
                       {definition.unit && (
-                        <span style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-sm)' }}>
+                        <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
                           {definition.unit}
                         </span>
                       )}
-                      <span style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                      <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                         allowed {definition.min}–{definition.max}
                       </span>
                     </>

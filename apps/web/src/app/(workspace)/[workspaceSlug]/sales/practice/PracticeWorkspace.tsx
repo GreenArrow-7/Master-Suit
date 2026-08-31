@@ -267,7 +267,7 @@ export default function PracticeWorkspace({
                     padding: 'var(--lf-space-3)',
                     textAlign: 'left',
                     cursor: 'pointer',
-                    border: scenario === s.key ? '2px solid var(--lf-primary, #2447C7)' : '1px solid var(--lf-line)',
+                    border: scenario === s.key ? '2px solid var(--lf-wine-700)' : '1px solid var(--lf-line)',
                   }}
                 >
                   <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>{s.label}</div>
@@ -349,8 +349,8 @@ export default function PracticeWorkspace({
               padding: '8px 12px',
               borderRadius: 8,
               fontSize: 'var(--lf-text-sm)',
-              background: turn.role === 'REP' ? 'var(--lf-primary, #2447C7)' : 'var(--lf-surface-2, #f0f0f0)',
-              color: turn.role === 'REP' ? '#fff' : 'var(--lf-ink-1, #222)',
+              background: turn.role === 'REP' ? 'var(--lf-wine-700)' : 'var(--lf-surface-2, #f0f0f0)',
+              color: turn.role === 'REP' ? '#fff' : 'var(--lf-ink)',
             }}
           >
             {turn.text}

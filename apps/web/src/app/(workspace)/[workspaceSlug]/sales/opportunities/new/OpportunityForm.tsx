@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { problemSummary } from '@/components/forms/useFormErrors';
 
 export default function OpportunityForm({
   accounts = [],
@@ -62,7 +63,9 @@ export default function OpportunityForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail ?? (editing ? 'Could not save this opportunity.' : 'Could not create this opportunity.'));
+        setError(
+          problemSummary(data, editing ? 'Could not save this opportunity.' : 'Could not create this opportunity.'),
+        );
         return;
       }
       router.push(`${base}/opportunities/${opportunityId ?? data.id}`);
@@ -83,7 +86,7 @@ export default function OpportunityForm({
       )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="name">
+        <label className="lf-label" data-required htmlFor="name">
           Opportunity name
         </label>
         <input
