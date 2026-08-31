@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Master Suite</string>
+    <string name="title_activity_main">Master Suite</string>
+    <string name="package_name">com.mastersuite.app</string>
+    <string name="custom_url_scheme">com.mastersuite.app</string>
+</resources>

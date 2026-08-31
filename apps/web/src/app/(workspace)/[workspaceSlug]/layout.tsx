@@ -11,6 +11,7 @@ import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
+import NativePush from '@/components/pwa/NativePush';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,6 +124,7 @@ export default async function WorkspaceLayout({
         <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
       </div>
       <AssistantWidget slug={shell.slug} />
+      <NativePush />
     </div>
   );
 }

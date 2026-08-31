@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut } from '@/lib/auth/signOut';
 
 /**
  * Ends the working day. Offered once every active target is met, but never
@@ -12,9 +13,9 @@ export default function SignOff({ complete, remaining }: { complete: boolean; re
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function signOut() {
+  async function endSession() {
     setBusy(true);
-    await fetch('/api/v1/auth/logout', { method: 'POST' });
+    await signOut();
     router.push('/login');
   }
 
@@ -39,7 +40,7 @@ export default function SignOff({ complete, remaining }: { complete: boolean; re
             : `${remaining} more to go before today's targets are met.`}
         </div>
       </div>
-      <button className={complete ? 'lf-btn' : 'lf-btn lf-btn--ghost'} onClick={signOut} disabled={busy}>
+      <button className={complete ? 'lf-btn' : 'lf-btn lf-btn--ghost'} onClick={endSession} disabled={busy}>
         {busy ? 'Signing out…' : complete ? 'Finish for the day and sign out' : 'Sign out anyway'}
       </button>
     </div>

@@ -61,6 +61,15 @@ export const GLOBAL_MODELS = new Set([
   // tenants a platform service identity may read at all. It carries no tenantId
   // to filter on, and the lookup happens before any tenant is known.
   'PlatformServiceCredential',
+  // A push registration belongs to a handset, not to a workspace. The device
+  // mints one token and returns it to whoever signs in next, so the row has to
+  // be globally unique on that token — a tenant-scoped copy per workspace is
+  // exactly how the previous occupant's notification titles end up on the new
+  // one's lock screen. It carries no tenantId to filter on for that reason.
+  //
+  // The exemption is narrower than it looks: every query names either `userId`,
+  // which is a tenant-scoped User, or the unique `token`, which pins one row.
+  'DeviceToken',
 ]);
 
 /**
