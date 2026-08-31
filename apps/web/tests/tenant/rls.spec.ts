@@ -43,6 +43,8 @@ const manath = { slug: `rls-manath-${suffix}`, id: '' };
 const leaders = { slug: `rls-leadersfort-${suffix}`, id: '' };
 
 let app: Client;
+/** Owns the break-glass grant the WITH CHECK case tries to plant. */
+let platformUserId = '';
 
 /** Runs `sql` with app.tenant_id pinned to `tenantId` for that statement only. */
 async function asTenant<T = any>(tenantId: string, sql: string, params: any[] = []): Promise<T[]> {
@@ -87,6 +89,17 @@ beforeAll(async () => {
     });
   }
 
+  const staff = await prisma.platformUser.create({
+    data: {
+      email: `rls-staff-${suffix}@example.test`,
+      normalizedEmail: `rls-staff-${suffix}@example.test`,
+      fullName: 'Platform staff',
+      platformRole: 'OWNER',
+      status: 'ACTIVE',
+    },
+  });
+  platformUserId = staff.id;
+
   app = new Client({ connectionString: rlsUrl });
   await app.connect();
 });
@@ -96,6 +109,7 @@ afterAll(async () => {
   for (const workspace of [manath, leaders]) {
     if (workspace.id) await prisma.tenant.delete({ where: { id: workspace.id } }).catch(() => {});
   }
+  if (platformUserId) await prisma.platformUser.delete({ where: { id: platformUserId } }).catch(() => {});
 });
 
 describe('postgres row-level security', () => {
@@ -157,6 +171,26 @@ describe('postgres row-level security', () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
+  it('hides one workspace’s break-glass grants from another', async () => {
+    // The record of who from the platform team was inside a customer's data, and
+    // why they said they needed to be. It belongs to that customer.
+    const rows = await asTenant(manath.id, 'SELECT id FROM "PlatformAccessGrant" WHERE "tenantId" = $1', [leaders.id]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('refuses to plant a grant naming another workspace (WITH CHECK)', async () => {
+    // The insert that matters: this row is what turns a platform owner from
+    // read-only into full control inside the named workspace.
+    await expect(
+      asTenant(
+        manath.id,
+        'INSERT INTO "PlatformAccessGrant" (id, "tenantId", "platformUserId", reason, "expiresAt")' +
+          " VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 hour')",
+        [`rls-grant-${suffix}`, leaders.id, platformUserId, 'Planted from another workspace'],
+      ),
+    ).rejects.toThrow(/row-level security/i);
+  });
+
   it('covers every tenant-owned table except the documented bootstrap set', async () => {
     const { rows } = await app.query(`
       SELECT c.table_name
@@ -177,6 +211,16 @@ describe('postgres row-level security', () => {
     // transcripts of client conversations the least protected rows in the
     // database. If one reappears, a `findUnique({ where: { callId } })` has been
     // reintroduced somewhere and this test is the thing that says so.
+    //
+    // PlatformAccessGrant was here too, for one release, and went the same way
+    // (20260826120000_rls_platform_access_grant). Its exemption said a policy
+    // would make the grant lookup match nothing — but `activeGrant` is *handed*
+    // the tenantId by buildSupportActor, which already knows which workspace is
+    // being opened; the lookup answers "may this person write here", not "where
+    // is here". It was the row that turns a platform owner from read-only into
+    // full control inside a customer's workspace, and it had no policy on it.
+    // The one caller that genuinely spans tenants is the metrics gauge, and it
+    // runs under withPlatformTx like every other cross-tenant read.
     expect(rows.map((r: any) => r.table_name)).toEqual(
       [
         'APIKey',
@@ -184,11 +228,6 @@ describe('postgres row-level security', () => {
         // the key in that URL is the only thing that can resolve the tenant.
         'IntegrationConnection',
         'PasswordResetToken',
-        // Break-glass grants: control-plane data about platform *staff*, and the
-        // lookup that decides whether they may write is the one that would have
-        // to set app.tenant_id. A policy here would make it match nothing, so an
-        // owner with a live grant would silently stay read-only.
-        'PlatformAccessGrant',
         'PlatformAuditEvent',
         'RateLimitCounter',
         // 'Session' was here until migration 20260808120000 dropped the table.

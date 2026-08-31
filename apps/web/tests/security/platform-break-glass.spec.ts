@@ -7,6 +7,7 @@ import {
   MAX_GRANT_MINUTES,
   MIN_REASON,
   activeGrant,
+  liveGrantCount,
   openGrant,
   revokeGrants,
 } from '@/lib/auth/platform-access';
@@ -107,15 +108,35 @@ describe('with a grant', () => {
     // not anything remembers to tidy up — a sweeper that fails to run must not
     // silently extend somebody's authority.
     const grant = await openGrant({ platformUserId: ownerId, tenantId, reason: 'Repairing a duplicated run' });
-    await prisma.platformAccessGrant.update({
-      where: { id: grant.id },
+    // Reached by id *and* tenantId: the table is under row-level security
+    // (20260826120000), and a query that names only the primary key pins no
+    // tenant, so the policy matches nothing and the update silently touches no
+    // rows. The tenant is known here, as it is at every real call site.
+    await prisma.platformAccessGrant.updateMany({
+      where: { id: grant.id, tenantId },
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
 
     expect(await activeGrant(ownerId, tenantId)).toBeNull();
     expect(await canWrite()).toBe(false);
     // The row stays: it is the record of who was in the customer's data and why.
-    expect(await prisma.platformAccessGrant.count({ where: { id: grant.id } })).toBe(1);
+    expect(await prisma.platformAccessGrant.count({ where: { id: grant.id, tenantId } })).toBe(1);
+  });
+});
+
+describe('the operator-facing count', () => {
+  it('sees a live grant from outside any one workspace', async () => {
+    // `masterapp_platform_write_grants` is the only reader of this table that
+    // legitimately spans tenants, so it runs under withPlatformTx. Without that
+    // the count returns 0 under RLS — which is also the healthy value, so the
+    // gauge would read "nobody has write access into a customer's data" while
+    // being blind to all of them.
+    const before = await liveGrantCount();
+    await openGrant({ platformUserId: ownerId, tenantId, reason: 'Repairing a duplicated payroll run' });
+    expect(await liveGrantCount()).toBe(before + 1);
+
+    await revokeGrants(ownerId, tenantId);
+    expect(await liveGrantCount()).toBe(before);
   });
 });
 
