@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { recordTargetProgress } from '@/services/targets/progress';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -46,9 +47,17 @@ export const PATCH = route(
     if (body.dueAt && !body.status && ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'].includes(followUp.status)) {
       data.status = 'RESCHEDULED';
     }
-    if (body.status === 'COMPLETED' && !followUp.completedAt) data.completedAt = new Date();
+    const completingNow = body.status === 'COMPLETED' && !followUp.completedAt;
+    if (completingNow) data.completedAt = new Date();
     if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
 
-    return prisma.followUpTask.update({ where: { tenantId: ctx.tenantId, id: params.id }, data });
+    const updated = await prisma.followUpTask.update({ where: { tenantId: ctx.tenantId, id: params.id }, data });
+
+    // Counted on the transition only — completingNow is false for a repeat
+    // PATCH of an already-completed task, so it cannot double count. Credited
+    // to the task's owner: theirs is the target this work fulfils.
+    if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
+
+    return updated;
   },
 );

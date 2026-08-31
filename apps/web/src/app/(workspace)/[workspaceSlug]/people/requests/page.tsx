@@ -18,7 +18,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section className="lf-card" style={{ padding: 'var(--lf-space-6)' }}>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Requests</h1>
-        <p style={{ color: 'var(--lf-ink-600)' }}>
+        <p style={{ color: 'var(--lf-ink-2)' }}>
           Your account has no employee record in this workspace, so there is nothing to raise a request against.
         </p>
       </section>
@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Requests</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
           The two authorised routes around the geofence. A geofence that can only say no is one people work around — an
           agent at a client site, or someone whose phone died at the door, needs a path that ends in a human decision.
           Neither route weakens the fence: an approved temporary site becomes a real, date-bounded location, and an
@@ -54,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {/* ── Attendance exceptions ─────────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Raise an attendance exception</h2>
-        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           For a check-in or check-out that could not happen normally. Your line manager decides first, then HR.
         </p>
         <WorkspaceRecordForm
@@ -106,7 +106,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
               <span key="r">
                 {request.reasonCode.replace(/_/g, ' ')}
                 {request.reasonText ? (
-                  <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>{request.reasonText}</div>
+                  <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>{request.reasonText}</div>
                 ) : null}
               </span>,
               request.nearestLocation?.name
@@ -132,7 +132,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
                   />
                 </span>
               ) : (
-                <span key="d" style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                <span key="d" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                   {request.hrComment ?? request.managerComment ?? '—'}
                 </span>
               ),
@@ -144,7 +144,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {/* ── Temporary work locations ──────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Request a temporary work location</h2>
-        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           For a site that is not an approved location — a project office, an exhibition stand, a client&apos;s premises.
           On approval it becomes a real work location with hard start and end dates, and the named staff are assigned to
           it for that window only.
@@ -182,7 +182,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           rows={temporary.map((request) => [
             <span key="n">
               {request.name}
-              <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>{request.reason}</div>
+              <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>{request.reason}</div>
             </span>,
             `${date(request.validFrom)} – ${date(request.validTo)}`,
             `${request.employeeIds.length} employee${request.employeeIds.length === 1 ? '' : 's'}`,
@@ -208,7 +208,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
                 />
               </span>
             ) : (
-              <span key="d" style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+              <span key="d" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                 {request.decisionNote ?? (request.createdLocation ? `Live as “${request.createdLocation.name}”` : '—')}
               </span>
             ),

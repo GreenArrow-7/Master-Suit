@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Employee documents</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '80ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
           Passport scans and visas are the highest-value data in this system. Files are stored under generated keys, the
           format is identified from the file&apos;s own bytes rather than what the browser claimed, and
           <strong> every download is recorded against the person who made it</strong>. There is no public link to any of
@@ -95,7 +95,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
                   Download
                 </a>
               ) : (
-                <span key="d" style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                <span key="d" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                   metadata only
                 </span>
               ),

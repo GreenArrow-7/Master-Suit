@@ -43,7 +43,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           <Link href={`/${workspaceSlug}/admin/users`}>Users</Link> · Account
         </div>
         <h1 style={{ margin: '8px 0 0' }}>{account.fullName}</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
           {account.email} · {account.role.name}
         </p>
       </section>
@@ -136,7 +136,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
               />
             )}
           </div>
-          <p style={{ margin: 0, color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-xs)' }}>
+          <p style={{ margin: 0, color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-xs)' }}>
             A password reset signs the account out everywhere and forces the user to set their own before anything else
             opens. Suspension revokes live sessions immediately rather than waiting for them to expire.
           </p>
@@ -146,7 +146,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {mayAct && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Role</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Changing a role signs the account out, because a live session carries the permissions it was built with.
             Only roles below your own level are offered.
           </p>
@@ -178,7 +178,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {account.employee && mayManage && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Line manager</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Who approves this person&apos;s leave and endorses their attendance exceptions. Leave blank to route
             straight to HR.
           </p>
@@ -218,7 +218,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           empty="No live sessions."
           rows={account.activeSessions.map((session) => [
             session.ipAddress ?? '—',
-            <span key="ua" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-600)' }}>
+            <span key="ua" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-2)' }}>
               {(session.userAgent ?? '—').slice(0, 70)}
             </span>,
             session.lastSeenAt.toLocaleString('en-AE', { timeZone: 'UTC' }),

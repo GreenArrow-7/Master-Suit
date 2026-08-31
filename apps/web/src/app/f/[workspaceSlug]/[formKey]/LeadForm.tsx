@@ -50,7 +50,7 @@ export default function LeadForm({
 
   if (done) {
     return (
-      <p role="status" style={{ margin: 0, fontSize: 'var(--lf-text-base)', color: 'var(--lf-ink-1)' }}>
+      <p role="status" style={{ margin: 0, fontSize: 'var(--lf-text-base)', color: 'var(--lf-ink)' }}>
         {done}
       </p>
     );

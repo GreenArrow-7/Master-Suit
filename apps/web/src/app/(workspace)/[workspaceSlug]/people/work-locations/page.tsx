@@ -42,7 +42,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Work locations</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
           The geofence attendance is measured against. Coordinates never reach the browser during a punch — the distance
           is computed on the server, because a client-reported &ldquo;I am inside&rdquo; is exactly what an attacker
           would forge. A location left in <strong>DRAFT</strong> is not a candidate for any check-in.
@@ -52,7 +52,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {hr && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Add a location</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Search an address or click the map to drop the geofence pin; drag to fine-tune. The circle previews the
             radius. You can also paste coordinates straight from Google Maps into the latitude and longitude fields.
           </p>
@@ -84,7 +84,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {hr && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Assign an employee to a location</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Without an active assignment no check-in is accepted at all.
           </p>
           <WorkspaceRecordForm

@@ -45,7 +45,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Recruitment</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           A hire is completed from an accepted offer, not by moving a stage. Doing it issues the joiner an invitation,
           and the employee record created when they accept points back at this application.
           {!bands && ' Salary bands and offered compensation are hidden from your role.'}
@@ -193,7 +193,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           <section>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Add a candidate</h2>
             {open.length === 0 ? (
-              <p style={{ color: 'var(--lf-ink-600)' }}>
+              <p style={{ color: 'var(--lf-ink-2)' }}>
                 No requisition is open. A candidate can only be added to an approved, open role.
               </p>
             ) : (

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { problemSummary } from '@/components/forms/useFormErrors';
 
 interface Option {
   id: string;
@@ -95,7 +96,7 @@ export default function NewUserForm({
         body: JSON.stringify(form),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The account could not be created.');
+      if (!res.ok) throw new Error(problemSummary(data, 'The account could not be created.'));
       setCreated(data as Created);
       router.refresh();
     } catch (err) {

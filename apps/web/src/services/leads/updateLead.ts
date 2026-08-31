@@ -6,6 +6,7 @@ import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { emit } from '../shared/events';
 import { notifyCrm } from '../crm/notify';
+import { recordTargetProgress } from '../targets/progress';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -43,6 +44,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
    * events that change who is responsible and what happens next.
    */
   let stageChangedTo: string | null = null;
+  let stageChangedKey: string | null = null;
+  let stageChangedCategory: string | null = null;
   let previousOwnerId: string | null = null;
   let ownerChanged = false;
 
@@ -55,6 +58,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
       if (!stage) throw NotFound('Lead stage');
       stageChangedTo = stage.name;
+      stageChangedKey = stage.key;
+      stageChangedCategory = stage.category;
       await tx.leadStageHistory.create({
         data: {
           tenantId: ctx.tenantId,
@@ -126,6 +131,24 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
       recordId: id,
       priority: 'HIGH',
     });
+  }
+
+  /**
+   * Target metrics ride the stage transition. LEADS_CONVERTED keys on the
+   * stage's category — CONVERSION is the semantic "won" marker, tenant-safe.
+   * LEADS_QUALIFIED has no category of its own, so it keys on the stage key
+   * the seed and reference pipeline use; a workspace that renames the
+   * qualified stage's key simply does not count that metric, which is the
+   * honest behaviour until the schema grows a QUALIFIED category.
+   */
+  if (stageChangedCategory === 'CONVERSION') {
+    await recordTargetProgress(ctx, updated.ownerId, 'LEADS_CONVERTED');
+  }
+  if (stageChangedKey === 'qualified') {
+    await recordTargetProgress(ctx, updated.ownerId, 'LEADS_QUALIFIED');
+  }
+  if (ownerChanged && updated.ownerId) {
+    await recordTargetProgress(ctx, updated.ownerId, 'LEADS_ASSIGNED');
   }
 
   if (stageChangedTo) {

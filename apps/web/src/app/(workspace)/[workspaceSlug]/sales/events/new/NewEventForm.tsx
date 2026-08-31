@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { problemSummary } from '@/components/forms/useFormErrors';
 
 export default function NewEventForm() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function NewEventForm() {
       router.push(`${base}/events/${event.id}`);
     } else {
       const err = await res.json().catch(() => ({}));
-      setError(err.detail ?? 'Failed to create event');
+      setError(problemSummary(err, 'Failed to create event'));
       setSaving(false);
     }
   }

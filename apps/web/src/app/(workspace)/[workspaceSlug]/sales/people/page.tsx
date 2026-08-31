@@ -21,7 +21,7 @@ export default async function PeoplePage() {
       <section>
         <div className="lf-eyebrow">HR & people</div>
         <h1 style={{ margin: 'var(--lf-space-2) 0' }}>People workspace</h1>
-        <p style={{ margin: 0, color: 'var(--lf-ink-600)' }}>
+        <p style={{ margin: 0, color: 'var(--lf-ink-2)' }}>
           Employees and access now share the same company boundary as Sales.
         </p>
       </section>
@@ -38,7 +38,7 @@ export default async function PeoplePage() {
         ))}
       </section>
       <section className="lf-card" style={{ padding: 0 }}>
-        <div style={{ padding: 'var(--lf-space-5)', borderBottom: '1px solid var(--lf-border-subtle)' }}>
+        <div style={{ padding: 'var(--lf-space-5)', borderBottom: '1px solid var(--lf-line)' }}>
           <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Employee directory</h2>
         </div>
         {employees.length === 0 ? (
@@ -65,7 +65,7 @@ export default async function PeoplePage() {
                       <tr key={employee.id}>
                         <td>
                           <strong>{employee.membership.platformUser.fullName}</strong>
-                          <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                          <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                             {employee.membership.platformUser.email}
                           </div>
                         </td>

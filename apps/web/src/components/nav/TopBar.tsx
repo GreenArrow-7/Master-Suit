@@ -200,6 +200,48 @@ export default function TopBar({
   }, []);
 
   /**
+   * The <details> menus close like menus, not like accordions.
+   *
+   * Two comments in this codebase — one here, one in ListHeader — claimed the
+   * browser closes a native disclosure on outside click. No browser does: a
+   * <details> stays open until its summary is clicked again, which on a phone
+   * meant the ••• action panel sat over the content until somebody found the
+   * button again. One delegated listener covers every such menu in the product
+   * (the list-header ••• and the account menu), because per-component copies of
+   * this logic are how one of them ends up without it.
+   *
+   * Escape closes too, and choosing an item closes the menu it lives in —
+   * except the account menu's setting rows (row height, theme), which people
+   * toggle repeatedly and expect to stay put.
+   */
+  useEffect(() => {
+    const SELECTOR = 'details.lf-overflow[open], details.lf-account-menu[open]';
+    const closeAll = (except?: Node | null) => {
+      document.querySelectorAll<HTMLDetailsElement>(SELECTOR).forEach((menu) => {
+        if (!except || !menu.contains(except)) menu.open = false;
+      });
+    };
+    const onPointerDown = (e: PointerEvent) => closeAll(e.target as Node);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAll();
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Links always dismiss; buttons dismiss in the ••• menu (Import, Export,
+      // Columns act once) but not the account menu's toggles.
+      if (target.closest('.lf-overflow__menu a, .lf-overflow__menu button, .lf-account-pop a')) closeAll();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('click', onClick);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('click', onClick);
+    };
+  }, []);
+
+  /**
    * Fetch the unread count once per mount, wherever the bell renders.
    *
    * This was gated on `module === 'sales'`, on the belief that the People shell
@@ -634,6 +676,17 @@ export default function TopBar({
                         className="lf-noti-row"
                         data-unread={n.readAt ? undefined : ''}
                         style={{ cursor: destinationOf(n) ? 'pointer' : 'default' }}
+                        /* A clickable <li> is invisible to the keyboard: no tab
+                           stop, no Enter. Button semantics on the row keep the
+                           existing markup while making it operable. */
+                        role={destinationOf(n) ? 'button' : undefined}
+                        tabIndex={destinationOf(n) ? 0 : undefined}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            (e.currentTarget as HTMLElement).click();
+                          }
+                        }}
                         onClick={() => {
                           if (!n.readAt) markRead([n.id]);
                           const target = destinationOf(n);

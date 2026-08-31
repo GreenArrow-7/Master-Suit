@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import { useFormErrors } from '@/components/forms/useFormErrors';
 
 interface LeadOption {
   id: string;
@@ -16,6 +17,7 @@ export default function NewCallForm() {
   const base = useModuleBase();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const { fieldErrors, clear, applyProblem } = useFormErrors();
 
   // Lead picker: search-as-you-type against the leads API instead of asking a
   // salesperson to paste a database id.
@@ -68,7 +70,10 @@ export default function NewCallForm() {
     if (fd.get('notes')) body.notes = fd.get('notes') as string;
 
     if (!body.recipientNumber) {
-      setError('Enter a phone number, or pick a lead that has one.');
+      applyProblem(
+        { errors: [{ field: 'recipientNumber', message: 'Enter a phone number, or pick a lead that has one.' }] },
+        form,
+      );
       setSubmitting(false);
       return;
     }
@@ -81,7 +86,8 @@ export default function NewCallForm() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.detail ?? 'Failed to create call');
+      // Field errors land under their field; only unmapped failures banner.
+      if (!applyProblem(data, form)) setError(data.detail ?? 'Failed to create call');
       setSubmitting(false);
       return;
     }
@@ -192,15 +198,28 @@ export default function NewCallForm() {
           )}
         </div>
 
-        <label className="lf-field">
-          <span className="lf-label">Phone Number {lead?.phone ? '' : '*'}</span>
+        <label className="lf-field" data-invalid={fieldErrors.recipientNumber ? '' : undefined}>
+          <span className="lf-label">
+            Phone Number{' '}
+            {!lead?.phone && (
+              <span className="lf-label__req" aria-hidden="true">
+                *
+              </span>
+            )}
+          </span>
           <input
             name="recipientNumber"
             type="tel"
             className="lf-input"
             placeholder={lead?.phone ?? '+971 50 123 4567'}
             required={!lead?.phone}
+            onChange={() => clear('recipientNumber')}
           />
+          {fieldErrors.recipientNumber && (
+            <span className="lf-field__error" role="alert">
+              {fieldErrors.recipientNumber}
+            </span>
+          )}
         </label>
 
         <label className="lf-field">

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
+import { achievedWithin } from '@/services/targets/progress';
 
 export const metadata = { title: 'Home' };
 
@@ -142,13 +143,15 @@ export default async function HomePage() {
 
 async function EmployeeHome({ ctx }: { ctx: any }) {
   const now = new Date();
-  const todayKey = now.toISOString().slice(0, 10);
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
   const [targets, assignedLeads, overdueFollowUps, todayFollowUps, recentLeads] = await Promise.all([
     prisma.employeeTarget.findMany({
       where: { tenantId: ctx.tenantId, userId: ctx.actor.id, periodStart: { lte: now }, periodEnd: { gte: now } },
-      include: { progress: { where: { dateKey: todayKey } } },
+      /* The whole period's day-buckets, not just today's: pairing today's
+         count with a monthly target showed 0/60 every morning regardless of
+         the 25 already done this month. achievedWithin() sums the window. */
+      include: { progress: true },
       orderBy: { metric: 'asc' },
     }),
     prisma.lead.count({
@@ -264,11 +267,11 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
       {targets.length > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}>
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-            Today&apos;s targets
+            My targets
           </div>
           <div style={{ display: 'grid', gap: 12 }}>
             {targets.map((t) => {
-              const achieved = t.progress[0]?.achieved ?? 0;
+              const achieved = achievedWithin(t);
               const pct = Math.min(100, Math.round((achieved / t.targetValue) * 100));
               return (
                 <div
@@ -377,7 +380,6 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
 
 async function ManagerHome({ ctx }: { ctx: any }) {
   const now = new Date();
-  const todayKey = now.toISOString().slice(0, 10);
   const where = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
 
   const [total, unassigned, overdue, breached, teamTargets, byStage, recent] = await Promise.all([
@@ -388,7 +390,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
     prisma.employeeTarget.findMany({
       where: { tenantId: ctx.tenantId, periodStart: { lte: now }, periodEnd: { gte: now } },
       include: {
-        progress: { where: { dateKey: todayKey } },
+        progress: true,
         user: { select: { id: true, fullName: true } },
       },
       orderBy: [{ userId: 'asc' }, { metric: 'asc' }],
@@ -596,7 +598,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
       {byUser.size > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}>
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
-            Team target progress — {todayKey}
+            Team target progress
           </div>
           <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
             <table className="lf-grid">
@@ -611,20 +613,26 @@ async function ManagerHome({ ctx }: { ctx: any }) {
               </thead>
               <tbody>
                 {[...byUser.values()].map(({ name, targets: ts }) =>
-                  ts.map((t, i) => {
-                    const achieved = t.progress[0]?.achieved ?? 0;
+                  ts.map((t) => {
+                    const achieved = achievedWithin(t);
                     const pct = Math.min(100, Math.round((achieved / t.targetValue) * 100));
+                    /* No rowSpan: on a phone each row becomes its own card and
+                       a spanned cell exists only in the first, leaving the
+                       rest anonymous. data-label is what captions the values
+                       once the header row is hidden. */
                     return (
                       <tr key={t.id}>
-                        {i === 0 && (
-                          <td rowSpan={ts.length} style={{ fontWeight: 500 }}>
-                            {name}
-                          </td>
-                        )}
-                        <td>{t.metric.replace(/_/g, ' ').toLowerCase()}</td>
-                        <td className="lf-num">{t.targetValue}</td>
-                        <td className="lf-num">{achieved}</td>
-                        <td>
+                        <td data-label="Employee" style={{ fontWeight: 500 }}>
+                          {name}
+                        </td>
+                        <td data-label="Metric">{t.metric.replace(/_/g, ' ').toLowerCase()}</td>
+                        <td data-label="Target" className="lf-num">
+                          {t.targetValue}
+                        </td>
+                        <td data-label="Done" className="lf-num">
+                          {achieved}
+                        </td>
+                        <td data-label="Progress">
                           <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'vermillion'}>{pct}%</Badge>
                         </td>
                       </tr>

@@ -84,7 +84,7 @@ export default function RowActions({
           <label key={field.name} style={{ display: 'grid', gap: 2, fontSize: 'var(--lf-text-xs)' }}>
             <span style={{ color: 'var(--lf-ink-3)' }}>{field.label}</span>
             <input
-              className="lf-input lf-input--sm"
+              className="lf-input"
               type={field.type ?? 'text'}
               value={values[field.name] ?? ''}
               onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}

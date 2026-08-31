@@ -58,8 +58,11 @@ export default function ListHeader({
       {(actions || secondaryActions) && (
         <div className="lf-list-header__actions">
           {secondaryActions && (
-            /* Native disclosure: no state to synchronise, keyboard reachable,
-               and it closes itself. The same pattern the top bar's Help uses. */
+            /* Native disclosure: no state to synchronise and keyboard
+               reachable. It does NOT close itself — no browser dismisses a
+               <details> on outside click, despite what this comment used to
+               say — so the top bar installs one delegated listener that closes
+               these on outside click, Escape and item selection. */
             <details className="lf-overflow">
               <summary className="lf-btn lf-btn--secondary lf-btn--sm" aria-label="More actions" title="More actions">
                 <span aria-hidden="true">•••</span>

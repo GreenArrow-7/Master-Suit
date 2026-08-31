@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
     return (
       <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
         <h1 style={{ margin: 0 }}>My pay</h1>
-        <p style={{ color: 'var(--lf-ink-600)' }}>
+        <p style={{ color: 'var(--lf-ink-2)' }}>
           Your account has no employee record in this workspace, so there is nothing to show here. Ask HR to create one.
         </p>
       </div>
@@ -38,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>My pay</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
           Payslips appear once the payroll run they belong to has been approved.
         </p>
       </section>
@@ -53,7 +53,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
               <div style={{ fontFamily: 'var(--lf-font-display)', fontSize: 28, marginTop: 4 }}>
                 {money(payslip.netPay, payslip.currency)}
               </div>
-              <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+              <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                 net · {payslip.run.status.toLowerCase().replace('_', ' ')}
               </div>
               <a
@@ -78,7 +78,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       ))}
 
       {payslips.length === 0 && (
-        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', color: 'var(--lf-ink-600)' }}>
+        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', color: 'var(--lf-ink-2)' }}>
           No payslip has been issued to you yet.
         </section>
       )}
