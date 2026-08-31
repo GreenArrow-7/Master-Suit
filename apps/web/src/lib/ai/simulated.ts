@@ -198,8 +198,9 @@ export function simulateAnalysis(input: AnalysisInput): AnalysisResult {
       `Simulated analysis of a ${lines.length}-line ${input.callDirection?.toLowerCase() ?? ''} call` +
       `${input.campaignName ? ` for campaign "${input.campaignName}"` : ''}. ` +
       `Detected ${objections.length} objection(s), ${buyingSignals.length} buying signal(s) and ` +
-      `${commitments.length} commitment(s); overall sentiment reads ${sentiment.toLowerCase()}. ` +
-      'Generated without an AI provider — connect GEMINI_API_KEY for model-based analysis.',
+      // No claim about *why* the model is absent: the caller knows whether it
+      // was an unconfigured workspace, spent credit or an outage, and says so.
+      `${commitments.length} commitment(s); overall sentiment reads ${sentiment.toLowerCase()}.`,
     clientNeeds,
     objections,
     commitments,

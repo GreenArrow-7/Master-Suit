@@ -183,39 +183,85 @@ export async function analyzeTranscript(
   if (!apiKey) {
     // Demo fallback: a deterministic keyword pass, stamped as simulation so the
     // stored row can never masquerade as a model verdict.
-    const { simulateAnalysis, SIMULATED_MODEL_ID } = await import('./simulated');
-    const started = Date.now();
-    const result = simulateAnalysis(input);
-    logger.info('no Gemini key for this workspace — returning simulated analysis');
-    return { result, modelId: SIMULATED_MODEL_ID, processingMs: Date.now() - started };
+    return degraded(input, 'no AI provider is connected for this workspace');
   }
 
   const model = await geminiModel(input.tenantId);
-  // Before the billed call, which is the only place a ceiling can act.
-  await assertAiBudget(input.tenantId, credential);
 
   const prompt = buildPrompt(input);
   const started = Date.now();
 
-  const response = await withRetry(
-    'gemini-analysis',
-    () =>
-      generateStructured({
-        credential: { key: apiKey, provider: credential.provider },
-        model,
-        prompt,
-        schema: RESPONSE_SCHEMA,
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        timeoutMs: AI_TIMEOUT_MS,
-      }),
-    { maxAttempts: 3, retryOn: isTransient },
-  );
+  try {
+    // Before the billed call, which is the only place a ceiling can act.
+    await assertAiBudget(input.tenantId, credential);
 
-  const processingMs = Date.now() - started;
+    const response = await withRetry(
+      'gemini-analysis',
+      () =>
+        generateStructured({
+          credential: { key: apiKey, provider: credential.provider },
+          model,
+          prompt,
+          schema: RESPONSE_SCHEMA,
+          temperature: 0.2,
+          maxOutputTokens: 4096,
+          timeoutMs: AI_TIMEOUT_MS,
+        }),
+      { maxAttempts: 3, retryOn: isTransient },
+    );
 
-  await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-analysis', model });
+    const processingMs = Date.now() - started;
 
-  const result: AnalysisResult = JSON.parse(response.text);
-  return { result, modelId: model, processingMs };
+    await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-analysis', model });
+
+    const result: AnalysisResult = JSON.parse(response.text);
+    return { result, modelId: model, processingMs };
+  } catch (err) {
+    /**
+     * A provider that refuses — spent credit, a revoked key, a workspace over
+     * its ceiling, an outage that outlasted the retries — must not leave the
+     * call with nothing.
+     *
+     * FAILED was the honest answer when analysis was the only thing downstream
+     * of it. It no longer is: the summary, the detected requirement, the lead
+     * temperature and the follow-up drafts all read this row, so one 402 took
+     * the whole post-call chain with it and put a provider error on the screen
+     * where a rep expects their call. The keyword pass is a poorer answer and
+     * an honest one — stamped `demo-simulation`, carrying the reason in its own
+     * summary — and re-running once the provider is back overwrites it.
+     */
+    logger.warn(
+      { err: (err as Error).message, model },
+      'analysis provider refused — degrading to the keyword pass for this call',
+    );
+    return degraded(input, providerReason(err));
+  }
+}
+
+/** Why the model did not answer, in words a rep can act on. */
+function providerReason(err: unknown): string {
+  const message = (err as Error)?.message ?? '';
+  if (/\b402\b|more credits|quota|insufficient/i.test(message)) return 'the AI provider is out of credit';
+  if (/\b401\b|\b403\b|api key|unauthor/i.test(message)) return 'the AI provider rejected this workspace’s key';
+  if (/budget/i.test(message)) return 'this workspace is over its AI budget';
+  return 'the AI provider could not be reached';
+}
+
+async function degraded(
+  input: AnalysisInput,
+  reason: string,
+): Promise<{ result: AnalysisResult; modelId: string; processingMs: number }> {
+  const { simulateAnalysis, SIMULATED_MODEL_ID } = await import('./simulated');
+  const started = Date.now();
+  const result = simulateAnalysis(input);
+  logger.info({ reason }, 'returning simulated analysis');
+  return {
+    result: {
+      ...result,
+      summary: `${result.summary}\n\nModel analysis was skipped because ${reason}. Re-run the analysis once that is resolved.`,
+      uncertainItems: [`Keyword analysis only — ${reason}.`, ...result.uncertainItems],
+    },
+    modelId: SIMULATED_MODEL_ID,
+    processingMs: Date.now() - started,
+  };
 }
