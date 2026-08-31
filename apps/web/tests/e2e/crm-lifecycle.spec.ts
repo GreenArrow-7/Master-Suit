@@ -69,7 +69,11 @@ test.describe('CRM lifecycle', () => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
     await page.goto(at('/leads/new'));
 
-    await page.getByLabel('Full name *').fill(LEAD_NAME);
+    // 'Full name', not 'Full name *'. The asterisk used to be literal text in
+    // the label, so the accessible name carried it; it is now CSS generated
+    // content on the label, which is what keeps `getByLabel` matching the field
+    // by its actual name. This spec asserted the old markup, not a behaviour.
+    await page.getByLabel('Full name').fill(LEAD_NAME);
     await page.getByLabel('Email').fill(`lifecycle.${run}@example.test`);
     await page.getByLabel('Company').fill(COMPANY);
     await page.getByRole('button', { name: 'Create lead' }).click();
