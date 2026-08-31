@@ -47,6 +47,7 @@ export class TwilioProvider implements TelephonyProvider {
     'CALL_STATUS',
     'END_CALL',
     'SIGNED_WEBHOOK',
+    'LIVE_STREAM',
   ];
 
   constructor(
@@ -65,6 +66,16 @@ export class TwilioProvider implements TelephonyProvider {
       ? `<Dial callerId="${xml(request.from)}" record="record-from-answer-dual" recordingStatusCallback="${xml(request.callbackUrl)}" recordingStatusCallbackEvent="completed absent">${xml(request.to)}</Dial>`
       : `<Dial callerId="${xml(request.from)}">${xml(request.to)}</Dial>`;
 
+    // Media Streams: fork the call audio to the realtime engine. `<Start>` runs
+    // before `<Dial>`, both_tracks so the agent (inbound) and the client
+    // (outbound) arrive separately attributed; the parameters ride the stream's
+    // start event so the engine can authenticate it without a callback.
+    const stream = request.stream
+      ? `<Start><Stream url="${xml(request.stream.url)}" track="both_tracks">${Object.entries(request.stream.parameters)
+          .map(([name, value]) => `<Parameter name="${xml(name)}" value="${xml(value)}"/>`)
+          .join('')}</Stream></Start>`
+      : '';
+
     const data = await vendorFetch<{ sid: string; status: string }>({
       vendor: this.name,
       url: `${API}/Accounts/${this.accountSid}/Calls.json`,
@@ -72,7 +83,7 @@ export class TwilioProvider implements TelephonyProvider {
       form: {
         To: request.agentNumber,
         From: request.from,
-        Twiml: `<Response>${dial}</Response>`,
+        Twiml: `<Response>${stream}${dial}</Response>`,
         StatusCallback: request.callbackUrl,
         StatusCallbackMethod: 'POST',
         StatusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
