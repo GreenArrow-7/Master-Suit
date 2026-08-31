@@ -61,7 +61,55 @@ export default function PracticeWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [prospectEnded, setProspectEnded] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream; parts: Blob[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Voice practice (§24): one spoken turn per press. The transcript lands in
+   * the input for the rep to read and edit — speech is input, never a bypass
+   * of review, and the audio is transcribed server-side then discarded.
+   */
+  async function toggleRecording() {
+    if (recorderRef.current) {
+      recorderRef.current.recorder.stop();
+      return;
+    }
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const parts: Blob[] = [];
+      recorder.ondataavailable = (e) => parts.push(e.data);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        const blob = new Blob(parts, { type: 'audio/webm' });
+        if (blob.size < 1000) return;
+        setBusy(true);
+        try {
+          const res = await fetch('/api/v1/practice/transcribe', {
+            method: 'POST',
+            headers: { 'content-type': 'audio/webm' },
+            body: blob,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Transcription failed (${res.status})`);
+          if (data.text) setInput((current) => (current ? `${current} ${data.text}` : data.text));
+          else setError('Nothing recognised — try again closer to the microphone.');
+        } catch (e) {
+          setError((e as Error).message);
+        }
+        setBusy(false);
+      };
+      recorderRef.current = { recorder, stream, parts };
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setError('Microphone access was refused.');
+    }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -314,12 +362,28 @@ export default function PracticeWorkspace({
           <input
             className="lf-input"
             style={{ flex: 1 }}
-            placeholder={prospectEnded ? 'The prospect has wrapped up — finish for your score.' : 'Say something…'}
+            placeholder={
+              recording
+                ? 'Recording — click the mic again to stop…'
+                : prospectEnded
+                  ? 'The prospect has wrapped up — finish for your score.'
+                  : 'Say something, or use the mic…'
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
             maxLength={2000}
           />
+          <button
+            type="button"
+            className={`lf-btn lf-btn--secondary${recording ? ' lf-btn--danger' : ''}`}
+            onClick={toggleRecording}
+            disabled={busy}
+            title="Speak your reply — it lands in the box for you to review before sending"
+            aria-pressed={recording}
+          >
+            {recording ? '■ Stop' : '🎙'}
+          </button>
           <button type="submit" className="lf-btn" disabled={busy || !input.trim()}>
             {busy ? '…' : 'Send'}
           </button>

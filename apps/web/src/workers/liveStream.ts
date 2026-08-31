@@ -28,7 +28,7 @@ import { connectionCredentials } from '@/lib/integrations/connection';
 import { parseStreamMessage, verifyStreamToken, liveChannel } from '@/lib/integrations/telephony/stream';
 import { openLiveStt, type LiveSttFactory, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
 import { coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
-import { leadCallContext, contextPromptBlock, type LeadCallContext } from '@/services/leads/callContext';
+import { leadCallContext, contextPromptBlock, budgetMatchHint, type LeadCallContext } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 interface Session {
@@ -42,6 +42,7 @@ interface Session {
   contextBlock?: string;
   stt: Partial<Record<'inbound' | 'outbound', LiveSttConnection>>;
   finalised: boolean;
+  budgetHinted: boolean;
 }
 
 const publish = (callId: string, event: Record<string, unknown>) =>
@@ -82,6 +83,15 @@ async function onSegment(session: Session, speaker: 'Agent' | 'Customer', text: 
   }
 
   for (const hint of heuristicHints(text)) await publish(session.callId, { type: 'coach', ...hint, at });
+
+  // Budget just stated → re-query the live book on the spot, once per call.
+  if (!session.budgetHinted) {
+    const match = await budgetMatchHint(session.tenantId, text).catch(() => null);
+    if (match) {
+      session.budgetHinted = true;
+      await publish(session.callId, { type: 'coach', ...match, at });
+    }
+  }
 
   if (session.customerTurns % 4 === 0) {
     // Fire-and-forget: a slow model must not back-pressure the audio path.
@@ -157,6 +167,7 @@ async function openSession(msg: {
     contextBlock: context ? contextPromptBlock(context) : undefined,
     stt: {},
     finalised: false,
+    budgetHinted: false,
   };
 
   // One STT connection per track keeps attribution exact: 'inbound' is the

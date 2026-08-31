@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
-import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
+import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
 import { redis } from '@/lib/redis';
@@ -145,6 +145,7 @@ export const GET = route(
 
     let finalised = false;
     let stage: string = 'INTRODUCTION';
+    let budgetHinted = false;
     const spoken: string[] = [];
 
     async function finalise(reason: 'completed' | 'aborted') {
@@ -236,6 +237,15 @@ export const GET = route(
               }
               const instant = heuristicHints(turn.text);
               for (const hint of instant) send({ type: 'coach', ...hint, at });
+              // A budget just stated re-queries the live book on the spot; once
+              // per call, or the same recommendation nags every restatement.
+              if (!budgetHinted) {
+                const match = await budgetMatchHint(ctx.tenantId, turn.text).catch(() => null);
+                if (match) {
+                  budgetHinted = true;
+                  send({ type: 'coach', ...match, at });
+                }
+              }
               // The workspace's own key when it has one, the deployment's
               // otherwise — `coachTick` degrades to heuristics with neither.
               if (i % 4 === 3) {

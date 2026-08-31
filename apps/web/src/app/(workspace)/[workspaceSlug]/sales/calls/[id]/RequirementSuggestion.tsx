@@ -12,6 +12,8 @@ export interface DetectedRequirementView {
   propertyType: string | null;
   locations: string[];
   timeline: string | null;
+  confidence?: number | null;
+  evidence?: string | null;
 }
 
 const PROPERTY_TYPES = ['APARTMENT', 'VILLA', 'TOWNHOUSE', 'PENTHOUSE', 'PLOT', 'OFFICE', 'RETAIL', 'WAREHOUSE'];
@@ -103,6 +105,20 @@ export default function RequirementSuggestion({
         Heard on this call. Review and edit before applying — nothing is saved to the {existingRequirementId ? 'requirement' : 'lead'}{' '}
         until you apply it.
       </p>
+      {(detected.evidence || detected.confidence != null) && (
+        <p style={{ margin: '0 0 var(--lf-space-3)', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
+          {detected.evidence && (
+            <>
+              Heard as: <em>“{detected.evidence}”</em>
+            </>
+          )}
+          {detected.confidence != null && (
+            <span style={{ marginLeft: detected.evidence ? 8 : 0 }}>
+              · {Math.round(detected.confidence * 100)}% confidence
+            </span>
+          )}
+        </p>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-2)' }}>
         {!existingRequirementId && (

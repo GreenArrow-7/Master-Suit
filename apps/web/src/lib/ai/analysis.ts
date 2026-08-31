@@ -20,7 +20,7 @@ const AI_TIMEOUT_MS = 60_000;
  * cannot be explained once the prompt has moved on. Two rows disagreeing is
  * then a fact about the prompt rather than a mystery about the model.
  */
-export const ANALYSIS_PROMPT_VERSION = 'call-analysis/2026-08-30';
+export const ANALYSIS_PROMPT_VERSION = 'call-analysis/2026-08-30b';
 
 export interface AnalysisInput {
   /** Whose key to run on. Absent falls back to the deployment key. */
@@ -46,6 +46,10 @@ export interface DetectedRequirement {
   propertyType: string | null;
   locations: string[];
   timeline: string | null;
+  /** 0–1: how sure the extractor is of this requirement as a whole. */
+  confidence?: number | null;
+  /** The customer's words it was read from, short and verbatim. */
+  evidence?: string | null;
 }
 
 export interface AnalysisResult {
@@ -83,6 +87,8 @@ const REQUIREMENT_SCHEMA = {
     },
     locations: { type: 'array' as const, items: { type: 'string' as const } },
     timeline: { type: 'string' as const },
+    confidence: { type: 'number' as const },
+    evidence: { type: 'string' as const },
   },
 };
 
@@ -136,7 +142,7 @@ function buildPrompt(input: AnalysisInput): string {
     '- Never present uncertain findings as established facts.',
     '- Keep the summary factual and under 300 words.',
     '- "actionItems" are only things the REP said they would do, phrased as imperatives. Empty if none.',
-    '- "detectedRequirement": the property requirement in the CUSTOMER\'s own words — purpose (BUY/RENT), budget as plain numbers, bedrooms, propertyType, locations named, timeline. Include ONLY values the customer explicitly stated on this call; omit any field not stated. Never guess or invent.',
+    '- "detectedRequirement": the property requirement in the CUSTOMER\'s own words — purpose (BUY/RENT), budget as plain numbers, bedrooms, propertyType, locations named, timeline. Include ONLY values the customer explicitly stated on this call; omit any field not stated. Never guess or invent. Add "confidence" (0-1) for how clearly it was stated, and "evidence": a short verbatim quote of the customer words it was read from.',
     '',
   ];
 

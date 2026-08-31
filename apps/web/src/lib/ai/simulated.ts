@@ -123,6 +123,14 @@ export function extractRequirement(transcript: string): DetectedRequirement | nu
     /\b(?:by|before|within|next)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|month|year|week|\d+\s+(?:days?|weeks?|months?|years?))\b/,
   );
 
+  // The first customer line an extraction actually hit — the provenance quote.
+  const evidence =
+    lines.find(
+      (l) =>
+        (!attributed || l.side === 'OTHER') &&
+        (parseAmounts(l.text).length > 0 || /(\d+|one|two|three|four|five|six)[- ]?(?:br\b|bed)/i.test(l.lower)),
+    )?.text ?? null;
+
   const detected: DetectedRequirement = {
     purpose,
     budgetMin: amounts.length > 1 ? Math.min(...amounts) : null,
@@ -132,8 +140,14 @@ export function extractRequirement(transcript: string): DetectedRequirement | nu
     propertyType: typeHit ?? null,
     locations: [],
     timeline: timeline ? timeline[0] : null,
+    // A keyword pass is honest about being one.
+    confidence: 0.4,
+    evidence: evidence ? evidence.slice(0, 300) : null,
   };
-  const anything = Object.values(detected).some((v) => (Array.isArray(v) ? v.length : v != null));
+  // Judged on the fact fields only — confidence/evidence are metadata and must
+  // not make an empty extraction look like a finding.
+  const { confidence: _c, evidence: _e, ...facts } = detected;
+  const anything = Object.values(facts).some((v) => (Array.isArray(v) ? v.length : v != null));
   return anything ? detected : null;
 }
 

@@ -7,10 +7,20 @@ import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
 import { coachTick, heuristicHints, detectStage, type CoachHint } from '@/lib/ai/liveCoach';
-import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
+import { parseAmounts } from '@/lib/ai/simulated';
+import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
+
+/** True when the transcript BEFORE this chunk already carried an amount — the
+ *  budget was mentioned earlier and its match hint has already fired. */
+function parseHadAmountBefore(windowWithChunk: string, chunk: string): boolean {
+  const before = windowWithChunk.endsWith(chunk)
+    ? windowWithChunk.slice(0, windowWithChunk.length - chunk.length)
+    : windowWithChunk;
+  return parseAmounts(before).some((a) => a >= 100_000);
+}
 const query = z
   .object({
     /** BCP-47-ish language hint passed straight to the STT provider. */
@@ -140,6 +150,13 @@ export const POST = route(
     }
 
     let hints: CoachHint[] = text ? heuristicHints(text) : [];
+    // Budget heard in this chunk → live-book match now. Only when this chunk is
+    // the first mention, so restatements don't nag (this transport is stateless
+    // per request; the prior transcript is the state).
+    if (text && !parseHadAmountBefore(windowText, text)) {
+      const match = await budgetMatchHint(ctx.tenantId, text).catch(() => null);
+      if (match) hints = [match, ...hints];
+    }
     if (query.tick && windowText) {
       const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null;
       const modelHints = await coachTick(windowText, ctx.tenantId, context ? contextPromptBlock(context) : undefined);

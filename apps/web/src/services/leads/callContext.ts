@@ -10,6 +10,8 @@
  */
 import { prisma } from '@/lib/db';
 import { matchesForRequirement } from '@/services/inventory/demand';
+import { parseAmounts } from '@/lib/ai/simulated';
+import type { CoachHint } from '@/lib/ai/liveCoach';
 
 export interface PropertyMatch {
   id: string;
@@ -37,6 +39,16 @@ export interface RequirementSummary {
   notes: string | null;
 }
 
+export interface PlaybookSummary {
+  id: string;
+  name: string;
+  discoveryQuestions: string[];
+  approvedClaims: string[];
+  objectionGuidance: string | null;
+  closingStrategy: string | null;
+  complianceNotes: string | null;
+}
+
 export interface LeadCallContext {
   lead: {
     id: string;
@@ -49,6 +61,8 @@ export interface LeadCallContext {
     stageName: string | null;
     notes: string | null;
   };
+  /** The buyer-type playbook this lead sells under: tag match first, then the default. */
+  playbook: PlaybookSummary | null;
   requirement: RequirementSummary | null;
   lastCall: {
     at: string | null;
@@ -61,8 +75,21 @@ export interface LeadCallContext {
 
 const fmtMoney = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M` : `${n}`);
 
+/** Tag match first, then the workspace default. First active overlap wins. */
+export function pickPlaybook<T extends { leadTags: string[]; isDefault: boolean }>(
+  playbooks: readonly T[],
+  leadTags: readonly string[],
+): T | null {
+  const tags = new Set(leadTags.map((t) => t.toLowerCase()));
+  return (
+    playbooks.find((p) => p.leadTags.some((t) => tags.has(t.toLowerCase()))) ??
+    playbooks.find((p) => p.isDefault) ??
+    null
+  );
+}
+
 export async function leadCallContext(tenantId: string, leadId: string): Promise<LeadCallContext | null> {
-  const [lead, requirement, lastCall] = await Promise.all([
+  const [lead, requirement, lastCall, playbooks] = await Promise.all([
     prisma.lead.findFirst({
       where: { id: leadId, tenantId },
       select: {
@@ -74,6 +101,7 @@ export async function leadCallContext(tenantId: string, leadId: string): Promise
         source: true,
         score: true,
         notes: true,
+        tags: true,
         stage: { select: { name: true } },
       },
     }),
@@ -86,8 +114,15 @@ export async function leadCallContext(tenantId: string, leadId: string): Promise
       orderBy: { endedAt: 'desc' },
       select: { endedAt: true, analysis: { select: { summary: true, objections: true, nextSteps: true } } },
     }),
+    prisma.salesPlaybook.findMany({
+      where: { tenantId, isActive: true, deletedAt: null },
+      orderBy: { name: 'asc' },
+      take: 50,
+    }),
   ]);
   if (!lead) return null;
+
+  const playbook = pickPlaybook(playbooks, lead.tags);
 
   let matches: PropertyMatch[] = [];
   if (requirement) {
@@ -140,6 +175,17 @@ export async function leadCallContext(tenantId: string, leadId: string): Promise
       stageName: lead.stage?.name ?? null,
       notes: lead.notes,
     },
+    playbook: playbook
+      ? {
+          id: playbook.id,
+          name: playbook.name,
+          discoveryQuestions: playbook.discoveryQuestions,
+          approvedClaims: playbook.approvedClaims,
+          objectionGuidance: playbook.objectionGuidance,
+          closingStrategy: playbook.closingStrategy,
+          complianceNotes: playbook.complianceNotes,
+        }
+      : null,
     requirement: requirement
       ? {
           id: requirement.id,
@@ -167,6 +213,45 @@ export async function leadCallContext(tenantId: string, leadId: string): Promise
 }
 
 /**
+ * Mid-call re-matching: the customer just stated a budget — is there stock for
+ * it, right now? Fired by the live transports when a customer line parses to an
+ * amount, so the recommendation lands seconds after the number is spoken
+ * instead of on the next call. Deterministic and drawn from the live book only.
+ */
+export async function budgetMatchHint(tenantId: string, customerLine: string): Promise<CoachHint | null> {
+  const amounts = parseAmounts(customerLine).filter((a) => a >= 100_000);
+  if (!amounts.length) return null;
+  const min = Math.min(...amounts);
+  const max = Math.max(...amounts);
+
+  const rows = await prisma.listing.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      status: { in: ['ACTIVE', 'UNDER_OFFER'] },
+      listingType: 'SALE',
+      // A single stated figure reads as a ceiling with ~10% stretch below it.
+      price: { gte: amounts.length > 1 ? min : min * 0.7, lte: max * 1.05 },
+    },
+    select: { title: true, reference: true, bedrooms: true, price: true, currency: true },
+    take: 50,
+  });
+  if (!rows.length) return null;
+
+  const target = (min + max) / 2;
+  const best = rows.reduce((a, b) =>
+    Math.abs(Number(a.price) - target) <= Math.abs(Number(b.price) - target) ? a : b,
+  );
+  return {
+    kind: 'TIP',
+    text: `In budget right now: ${best.title} (${best.reference}) — ${best.bedrooms ?? '?'}BR at ${fmtMoney(Number(best.price))} ${best.currency}.`,
+    say: `"That budget actually works — ${best.title} sits right inside it. Shall I send you the details?"`,
+    why: 'Matched against live inventory the moment the budget was stated.',
+    source: 'simulated',
+  };
+}
+
+/**
  * The compact text block the live coach prompt carries. Deliberately short —
  * this is resent on every coach tick, and the spec's latency budget is seconds.
  */
@@ -187,6 +272,21 @@ export function contextPromptBlock(ctx: LeadCallContext): string {
         /,$/,
         '',
       ),
+    );
+  }
+  const pb = ctx.playbook;
+  if (pb) {
+    parts.push(
+      `PLAYBOOK "${pb.name}" — sell to this buyer type as follows.` +
+        (pb.discoveryQuestions.length
+          ? ` Discovery questions: ${pb.discoveryQuestions.slice(0, 6).join(' | ')}.`
+          : '') +
+        (pb.approvedClaims.length
+          ? ` APPROVED CLAIMS (assert nothing beyond these): ${pb.approvedClaims.slice(0, 8).join(' | ')}.`
+          : '') +
+        (pb.objectionGuidance ? ` Objections: ${pb.objectionGuidance.slice(0, 300)}.` : '') +
+        (pb.closingStrategy ? ` Closing: ${pb.closingStrategy.slice(0, 300)}.` : '') +
+        (pb.complianceNotes ? ` Compliance: ${pb.complianceNotes.slice(0, 300)}.` : ''),
     );
   }
   if (ctx.lastCall?.summary) parts.push(`LAST CALL: ${ctx.lastCall.summary.slice(0, 400)}`);

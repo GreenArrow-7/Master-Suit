@@ -87,6 +87,9 @@ export default function LiveCallWorkspace({
   const [mode, setMode] = useState<'sim' | 'mic'>('sim');
   const [micError, setMicError] = useState('');
   const micRef = useRef<{ stream: MediaStream; stopped: boolean; chunk: number } | null>(null);
+  /** Per-listing viewing request: the picked time, and where the request got to. */
+  const [visitTimes, setVisitTimes] = useState<Record<string, string>>({});
+  const [visitStatus, setVisitStatus] = useState<Record<string, 'busy' | 'done' | string>>({});
   const sourceRef = useRef<EventSource | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
@@ -203,6 +206,34 @@ export default function LiveCallWorkspace({
       // tick every 4th chunk, heuristics on all of them. Chunks are ~5s, so the
       // counter doubles as the timestamp.
       void micUpload(blob, mic.chunk % 4 === 0, mic.chunk * 5);
+    }
+  }
+
+  /**
+   * The spec's "book a viewing" made concrete: one click files a SiteVisit
+   * request through the existing register (status REQUESTED — the approval
+   * state machine is the point, not a bypass of it).
+   */
+  async function requestViewing(listingId: string) {
+    const when = visitTimes[listingId];
+    if (!when || !context?.lead) return;
+    setVisitStatus((s) => ({ ...s, [listingId]: 'busy' }));
+    try {
+      const res = await fetch('/api/v1/site-visits', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          leadId: context.lead.id,
+          listingId,
+          scheduledAt: new Date(when).toISOString(),
+          notes: 'Requested from the live call workspace.',
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.errors?.[0]?.message ?? data?.detail ?? `Request failed (${res.status})`);
+      setVisitStatus((s) => ({ ...s, [listingId]: 'done' }));
+    } catch (e) {
+      setVisitStatus((s) => ({ ...s, [listingId]: (e as Error).message }));
     }
   }
 
@@ -384,6 +415,11 @@ export default function LiveCallWorkspace({
                 {context.lead.city ? ` · ${context.lead.city}` : ''}
                 {context.lead.stageName ? ` · ${context.lead.stageName}` : ''} · score {context.lead.score}
               </span>
+              {context.playbook && (
+                <span style={{ color: 'var(--lf-ink-3)' }}>
+                  Playbook: <strong>{context.playbook.name}</strong>
+                </span>
+              )}
             </div>
 
             <div className="lf-eyebrow" style={{ margin: 'var(--lf-space-3) 0 4px' }}>
@@ -450,6 +486,35 @@ export default function LiveCallWorkspace({
                           <li key={i}>{w}</li>
                         ))}
                       </ul>
+                    )}
+                    {visitStatus[m.id] === 'done' ? (
+                      <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-viridian, #16a34a)' }}>
+                        Viewing requested — pending approval.
+                      </span>
+                    ) : (
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                        <input
+                          type="datetime-local"
+                          className="lf-input"
+                          style={{ padding: '2px 6px', fontSize: 'var(--lf-text-xs)', width: 170 }}
+                          value={visitTimes[m.id] ?? ''}
+                          onChange={(e) => setVisitTimes((t) => ({ ...t, [m.id]: e.target.value }))}
+                          aria-label={`Viewing time for ${m.title}`}
+                        />
+                        <button
+                          type="button"
+                          className="lf-btn lf-btn--sm lf-btn--secondary"
+                          disabled={!visitTimes[m.id] || visitStatus[m.id] === 'busy'}
+                          onClick={() => requestViewing(m.id)}
+                        >
+                          {visitStatus[m.id] === 'busy' ? '…' : 'Request viewing'}
+                        </button>
+                        {visitStatus[m.id] && !['busy', 'done'].includes(visitStatus[m.id]) && (
+                          <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-vermillion)' }}>
+                            {visitStatus[m.id]}
+                          </span>
+                        )}
+                      </span>
                     )}
                   </div>
                 ))}
