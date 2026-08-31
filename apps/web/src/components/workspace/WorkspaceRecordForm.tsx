@@ -82,14 +82,8 @@ export default function WorkspaceRecordForm({
             {/* `required` reached the control but never the label, so every
                 mandatory field on the 19 screens built from this component was
                 invisible as such until the submit failed. */}
-            <span className="lf-label">
+            <span className="lf-label" data-required={field.required ? '' : undefined}>
               {field.label}
-              {field.required && (
-                <span className="lf-label__req" aria-hidden="true">
-                  {' '}
-                  *
-                </span>
-              )}
             </span>
             {field.type === 'multiselect' ? (
               <select className="lf-input" name={field.name} required={field.required} multiple size={6}>

@@ -154,12 +154,8 @@ export default function NewUserForm({
 
       <div className="lf-users__grid">
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-name">
+          <label className="lf-label" data-required htmlFor="nu-name">
             Full name
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <input
             id="nu-name"
@@ -172,12 +168,8 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-code">
+          <label className="lf-label" data-required htmlFor="nu-code">
             Employee code
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <input
             id="nu-code"
@@ -190,12 +182,8 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-email">
+          <label className="lf-label" data-required htmlFor="nu-email">
             Work email
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <input
             id="nu-email"
@@ -222,12 +210,8 @@ export default function NewUserForm({
           />
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-role">
+          <label className="lf-label" data-required htmlFor="nu-role">
             Role
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <select
             id="nu-role"
@@ -316,12 +300,8 @@ export default function NewUserForm({
           </select>
         </div>
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-joined">
+          <label className="lf-label" data-required htmlFor="nu-joined">
             Joining date
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <input
             id="nu-joined"
@@ -384,12 +364,8 @@ export default function NewUserForm({
 
       {form.attendanceEligible && (
         <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-loc">
+          <label className="lf-label" data-required htmlFor="nu-loc">
             Assigned attendance location
-            <span className="lf-label__req" aria-hidden="true">
-              {' '}
-              *
-            </span>
           </label>
           <select
             id="nu-loc"

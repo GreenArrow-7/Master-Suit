@@ -250,6 +250,9 @@ export default function LiveCallWorkspace({
         return;
       }
       const data = await res.json();
+      // A skipped chunk is a notice, not a stop: the loop keeps recording and
+      // the next chunk gets its own chance at the provider.
+      setMicError(data.sttUnavailable ?? '');
       if (data.text) setSegments((prev) => [...prev, { speaker: 'Live', text: data.text, at }]);
       if (data.hints?.length) setHints((prev) => [...prev, ...data.hints.map((h: Hint) => ({ ...h, at }))]);
       if (data.stage) setStage(data.stage);
