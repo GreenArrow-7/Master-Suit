@@ -142,8 +142,10 @@ test.describe('Request budget: the five hot navigations', () => {
       // Directly guards the TopBar Dashboard control staying a <Link>: as a raw
       // <a> this click is a document load and the assertion fails.
       const requests = await requestsDuring(page, origin, async () => {
-        // exact: the sidebar brand link's label is "<workspace> dashboard".
-        await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+        // Scoped to the banner: the nav refactor gave the sidebar a link that
+        // is also named exactly "Dashboard", and this step is about the TopBar
+        // control specifically — see the comment above.
+        await page.getByRole('banner').getByRole('link', { name: 'Dashboard', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));
       });
       assertBudget('lead detail → dashboard', requests);
