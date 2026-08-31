@@ -95,7 +95,8 @@ export default function PracticeWorkspace({
             body: blob,
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Transcription failed (${res.status})`);
+          if (!res.ok)
+            throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Transcription failed (${res.status})`);
           if (data.text) setInput((current) => (current ? `${current} ${data.text}` : data.text));
           else setError('Nothing recognised — try again closer to the microphone.');
         } catch (e) {

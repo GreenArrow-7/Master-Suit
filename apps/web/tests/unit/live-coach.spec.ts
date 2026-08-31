@@ -37,9 +37,7 @@ describe('heuristicHints', () => {
 
 describe('parseAmounts', () => {
   it('reads digits and spelled-out millions', () => {
-    expect(parseAmounts('around 1.8m, or one point five million, maybe 800k')).toEqual([
-      1_800_000, 800_000, 1_500_000,
-    ]);
+    expect(parseAmounts('around 1.8m, or one point five million, maybe 800k')).toEqual([1_800_000, 800_000, 1_500_000]);
   });
 });
 

@@ -113,9 +113,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           select: { id: true },
         })
       : null;
-  const canSuggestRequirement = openRequirement
-    ? can(ctx, 'requirements', 'EDIT')
-    : can(ctx, 'requirements', 'CREATE');
+  const canSuggestRequirement = openRequirement ? can(ctx, 'requirements', 'EDIT') : can(ctx, 'requirements', 'CREATE');
 
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
   // Wildcard-granted to administrator roles only; QA reviews, admins erase.

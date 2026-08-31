@@ -82,9 +82,16 @@ export function weakestArea(
       `“${objectionPattern[1].name}” went unaddressed on ${objectionPattern[1].count} of your recent calls.`,
     ];
     if (weakest?.scenario === 'OBJECTION') {
-      reasons.push(`${weakest.label} averaged ${Math.round(weakest.fraction * 100)}% across ${weakest.calls} audited calls.`);
+      reasons.push(
+        `${weakest.label} averaged ${Math.round(weakest.fraction * 100)}% across ${weakest.calls} audited calls.`,
+      );
     }
-    return { scenario: 'OBJECTION', objectionId: objectionPattern[0], objectionName: objectionPattern[1].name, reasons };
+    return {
+      scenario: 'OBJECTION',
+      objectionId: objectionPattern[0],
+      objectionName: objectionPattern[1].name,
+      reasons,
+    };
   }
 
   if (weakest) {

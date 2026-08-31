@@ -290,7 +290,8 @@ export function contextPromptBlock(ctx: LeadCallContext): string {
     );
   }
   if (ctx.lastCall?.summary) parts.push(`LAST CALL: ${ctx.lastCall.summary.slice(0, 400)}`);
-  if (ctx.lastCall?.objections.length) parts.push(`PAST OBJECTIONS: ${ctx.lastCall.objections.join('; ').slice(0, 300)}`);
+  if (ctx.lastCall?.objections.length)
+    parts.push(`PAST OBJECTIONS: ${ctx.lastCall.objections.join('; ').slice(0, 300)}`);
   if (ctx.matches.length) {
     parts.push(
       `MATCHING INVENTORY (only recommend from this list): ${ctx.matches

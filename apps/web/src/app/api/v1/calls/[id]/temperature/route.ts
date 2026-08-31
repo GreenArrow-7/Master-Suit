@@ -33,7 +33,8 @@ export const POST = route(
         select: { id: true, tenantId: true, ownerId: true, score: true },
       }),
     ]);
-    if (!analysis) throw Invalid([{ field: 'analysis', code: 'missing', message: 'The call has no completed analysis.' }]);
+    if (!analysis)
+      throw Invalid([{ field: 'analysis', code: 'missing', message: 'The call has no completed analysis.' }]);
     if (!lead) throw NotFound('Lead');
     await assertRecordVisible(ctx, 'leads', lead, prisma);
 

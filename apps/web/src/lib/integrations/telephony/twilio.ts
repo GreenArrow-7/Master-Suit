@@ -71,9 +71,7 @@ export class TwilioProvider implements TelephonyProvider {
     // (outbound) arrive separately attributed; the parameters ride the stream's
     // start event so the engine can authenticate it without a callback.
     const stream = request.stream
-      ? `<Start><Stream url="${xml(request.stream.url)}" track="both_tracks">${Object.entries(
-          request.stream.parameters,
-        )
+      ? `<Start><Stream url="${xml(request.stream.url)}" track="both_tracks">${Object.entries(request.stream.parameters)
           .map(([name, value]) => `<Parameter name="${xml(name)}" value="${xml(value)}"/>`)
           .join('')}</Stream></Start>`
       : '';

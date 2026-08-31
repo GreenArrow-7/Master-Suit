@@ -102,8 +102,8 @@ export default function RequirementSuggestion({
         AI detected — suggested CRM update
       </div>
       <p style={{ margin: '0 0 var(--lf-space-3)', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-        Heard on this call. Review and edit before applying — nothing is saved to the {existingRequirementId ? 'requirement' : 'lead'}{' '}
-        until you apply it.
+        Heard on this call. Review and edit before applying — nothing is saved to the{' '}
+        {existingRequirementId ? 'requirement' : 'lead'} until you apply it.
       </p>
       {(detected.evidence || detected.confidence != null) && (
         <p style={{ margin: '0 0 var(--lf-space-3)', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
@@ -148,7 +148,13 @@ export default function RequirementSuggestion({
       </div>
 
       <label
-        style={{ display: 'grid', gap: 2, fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', marginTop: 'var(--lf-space-2)' }}
+        style={{
+          display: 'grid',
+          gap: 2,
+          fontSize: 'var(--lf-text-xs)',
+          color: 'var(--lf-ink-3)',
+          marginTop: 'var(--lf-space-2)',
+        }}
       >
         Notes
         <textarea className="lf-input" rows={2} value={form.notes} onChange={set('notes')} disabled={saved} />

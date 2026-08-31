@@ -59,7 +59,17 @@ const count = (lines: Line[], words: readonly string[]): number =>
   lines.reduce((total, line) => total + (words.some((w) => line.lower.includes(w)) ? 1 : 0), 0);
 
 const WORD_NUM: Record<string, number> = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
 };
 
 /** "1.5 million", "1.5m", "one point five million", "800k" → a number. */
@@ -107,7 +117,9 @@ export function extractRequirement(transcript: string): DetectedRequirement | nu
 
   const amounts = parseAmounts(customerText).filter((a) => a >= 50_000);
   const bedrooms: number[] = [];
-  for (const m of lower.matchAll(/(\d+|one|two|three|four|five|six)([- ]or[- ](\d+|one|two|three|four|five|six))?[- ]?(?:br\b|bed(?:room)?s?)/g)) {
+  for (const m of lower.matchAll(
+    /(\d+|one|two|three|four|five|six)([- ]or[- ](\d+|one|two|three|four|five|six))?[- ]?(?:br\b|bed(?:room)?s?)/g,
+  )) {
     for (const raw of [m[1], m[3]]) {
       if (!raw) continue;
       const n = WORD_NUM[raw] ?? parseInt(raw, 10);
@@ -115,7 +127,12 @@ export function extractRequirement(transcript: string): DetectedRequirement | nu
     }
   }
 
-  const purpose = /\b(rent|renting|lease)\b/.test(lower) && !/\brental (yield|income)/.test(lower) ? 'RENT' : /\b(buy|purchas|invest|to live in|own use)/.test(lower) ? 'BUY' : null;
+  const purpose =
+    /\b(rent|renting|lease)\b/.test(lower) && !/\brental (yield|income)/.test(lower)
+      ? 'RENT'
+      : /\b(buy|purchas|invest|to live in|own use)/.test(lower)
+        ? 'BUY'
+        : null;
   const typeHit = ['PENTHOUSE', 'TOWNHOUSE', 'APARTMENT', 'VILLA', 'PLOT', 'OFFICE'].find((t) =>
     lower.includes(t.toLowerCase()),
   );

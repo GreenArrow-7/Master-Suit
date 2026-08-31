@@ -28,7 +28,12 @@ import { connectionCredentials } from '@/lib/integrations/connection';
 import { parseStreamMessage, verifyStreamToken, liveChannel } from '@/lib/integrations/telephony/stream';
 import { openLiveStt, type LiveSttFactory, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
 import { coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
-import { leadCallContext, contextPromptBlock, budgetMatchHint, type LeadCallContext } from '@/services/leads/callContext';
+import {
+  leadCallContext,
+  contextPromptBlock,
+  budgetMatchHint,
+  type LeadCallContext,
+} from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 interface Session {
@@ -121,12 +126,15 @@ async function finalise(session: Session) {
   await publish(session.callId, { type: 'done', callId: session.callId });
 }
 
-async function openSession(msg: {
-  tenantId: string;
-  callId: string;
-  token: string;
-  mediaFormat: { sampleRate: number };
-}, stt: LiveSttFactory): Promise<Session | { refused: string }> {
+async function openSession(
+  msg: {
+    tenantId: string;
+    callId: string;
+    token: string;
+    mediaFormat: { sampleRate: number };
+  },
+  stt: LiveSttFactory,
+): Promise<Session | { refused: string }> {
   if (!msg.tenantId || !msg.callId || !verifyStreamToken(msg.tenantId, msg.callId, msg.token)) {
     return { refused: 'bad token' };
   }

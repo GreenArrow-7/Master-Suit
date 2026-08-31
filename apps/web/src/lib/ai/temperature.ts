@@ -74,7 +74,13 @@ export function leadTemperature(input: TemperatureInput): TemperatureResult {
   const objections = Math.min(input.objections.length, 3);
   if (objections) reasons.push({ text: `${input.objections.length} objection(s) raised`, delta: objections * -8 });
 
-  const score = Math.max(0, Math.min(100, reasons.reduce((sum, r) => sum + r.delta, 0)));
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      reasons.reduce((sum, r) => sum + r.delta, 0),
+    ),
+  );
 
   const temperature: LeadTemperature =
     score >= 75 && committed ? 'READY_TO_ACT' : score >= 55 ? 'HOT' : score >= 35 ? 'WARM' : 'COLD';

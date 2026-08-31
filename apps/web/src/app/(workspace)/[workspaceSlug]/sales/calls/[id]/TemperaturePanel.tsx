@@ -69,7 +69,9 @@ export default function TemperaturePanel({
         <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>lead currently {leadScore}</span>
       </div>
 
-      <ul style={{ margin: 0, paddingLeft: 'var(--lf-space-4)', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+      <ul
+        style={{ margin: 0, paddingLeft: 'var(--lf-space-4)', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}
+      >
         {result.reasons.map((reason, i) => (
           <li key={i}>
             <span

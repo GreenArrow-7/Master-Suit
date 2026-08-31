@@ -116,10 +116,19 @@ export type SalesStage =
   | 'CLOSING';
 
 const STAGE_RULES: [RegExp, SalesStage][] = [
-  [/\b(book|arrange|schedule|confirm)\b.{0,40}\b(viewing|visit|meeting)|thursday or saturday|reserve (it|the unit)|booking amount/i, 'CLOSING'],
+  [
+    /\b(book|arrange|schedule|confirm)\b.{0,40}\b(viewing|visit|meeting)|thursday or saturday|reserve (it|the unit)|booking amount/i,
+    'CLOSING',
+  ],
   [/\b(discount|best price|final price|negotiat|can you do|any offer|lower the)/i, 'NEGOTIATION'],
-  [/\b(expensive|too (much|high)|over budget|concern|worried|not sure|think about it|ask my (wife|husband|partner))/i, 'OBJECTION_HANDLING'],
-  [/\b(payment plan|handover|amenities|per square|sqft|service charge|floor plan|the (unit|tower|project) has)/i, 'PRESENTATION'],
+  [
+    /\b(expensive|too (much|high)|over budget|concern|worried|not sure|think about it|ask my (wife|husband|partner))/i,
+    'OBJECTION_HANDLING',
+  ],
+  [
+    /\b(payment plan|handover|amenities|per square|sqft|service charge|floor plan|the (unit|tower|project) has)/i,
+    'PRESENTATION',
+  ],
   [/\b(recommend|options? for you|shortlist|matches your|show you)/i, 'PROPERTY_MATCHING'],
   [/\b(budget|mortgage|cash or|finance|financing|timeline|when (do|would) you|decision maker)/i, 'QUALIFICATION'],
   [/\b(looking for|need|want|bedroom|prefer|invest|to live in|what (are you|do you))/i, 'DISCOVERY'],
@@ -140,16 +149,18 @@ export function detectStage(windowText: string, lineCount: number): SalesStage {
  * property shape → location → timeline → commitment, and each rung is skipped
  * once the requirement records an answer.
  */
-export function nextBestQuestion(req: {
-  purpose?: string | null;
-  budgetMin?: number | null;
-  budgetMax?: number | null;
-  bedroomsMin?: number | null;
-  bedroomsMax?: number | null;
-  propertyTypes?: string[];
-  micromarketIds?: string[];
-  possessionBy?: string | Date | null;
-} | null): { text: string; why: string } {
+export function nextBestQuestion(
+  req: {
+    purpose?: string | null;
+    budgetMin?: number | null;
+    budgetMax?: number | null;
+    bedroomsMin?: number | null;
+    bedroomsMax?: number | null;
+    propertyTypes?: string[];
+    micromarketIds?: string[];
+    possessionBy?: string | Date | null;
+  } | null,
+): { text: string; why: string } {
   if (!req || !req.purpose) {
     return {
       text: '"Are you looking to buy or rent — and is it for your own use or as an investment?"',
@@ -252,13 +263,7 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
 
 /** The agent quick buttons: on-demand, single-purpose coaching. */
 export type CoachActionKind =
-  | 'ASK_NEXT'
-  | 'HANDLE_OBJECTION'
-  | 'RECOMMEND_PROPERTY'
-  | 'PAYMENT_PLAN'
-  | 'CLOSING_LINE'
-  | 'SUMMARIZE'
-  | 'TRANSLATE';
+  'ASK_NEXT' | 'HANDLE_OBJECTION' | 'RECOMMEND_PROPERTY' | 'PAYMENT_PLAN' | 'CLOSING_LINE' | 'SUMMARIZE' | 'TRANSLATE';
 
 const ACTION_INSTRUCTION: Record<CoachActionKind, string> = {
   ASK_NEXT: 'Return exactly 1 ASK hint: the single most useful question to ask next, not yet answered in the context.',

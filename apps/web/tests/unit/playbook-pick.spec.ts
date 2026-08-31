@@ -6,7 +6,11 @@ import { extractRequirement } from '@/lib/ai/simulated';
 const pb = (name: string, leadTags: string[], isDefault = false) => ({ name, leadTags, isDefault });
 
 describe('pickPlaybook', () => {
-  const books = [pb('Dubai Investor', ['investor', 'off-plan']), pb('First-Time Buyer', ['first-home']), pb('General', [], true)];
+  const books = [
+    pb('Dubai Investor', ['investor', 'off-plan']),
+    pb('First-Time Buyer', ['first-home']),
+    pb('General', [], true),
+  ];
 
   it('matches on lead tags, case-insensitively', () => {
     expect(pickPlaybook(books, ['Investor'])?.name).toBe('Dubai Investor');

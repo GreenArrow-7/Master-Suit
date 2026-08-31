@@ -104,7 +104,10 @@ export default function BuyerPlaybooks({ playbooks, canEdit }: { playbooks: Play
   const set = <K extends keyof PlaybookRow>(key: K, value: PlaybookRow[K]) =>
     setEditing((p) => (p ? { ...p, [key]: value } : p));
 
-  const area = (label: string, key: 'objectionGuidance' | 'closingStrategy' | 'followUpStrategy' | 'complianceNotes') => (
+  const area = (
+    label: string,
+    key: 'objectionGuidance' | 'closingStrategy' | 'followUpStrategy' | 'complianceNotes',
+  ) => (
     <label style={{ display: 'grid', gap: 2, fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
       {label}
       <textarea
@@ -123,8 +126,8 @@ export default function BuyerPlaybooks({ playbooks, canEdit }: { playbooks: Play
         <div>
           <div className="lf-eyebrow">Buyer playbooks</div>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-            How you sell to each kind of buyer. The live coach folds the matched playbook — by lead tag, or the
-            default — into its guidance, and only ever asserts the approved claims written here.
+            How you sell to each kind of buyer. The live coach folds the matched playbook — by lead tag, or the default
+            — into its guidance, and only ever asserts the approved claims written here.
           </p>
         </div>
         {canEdit && !editing && (

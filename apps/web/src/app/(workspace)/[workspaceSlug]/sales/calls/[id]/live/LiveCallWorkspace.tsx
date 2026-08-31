@@ -334,9 +334,7 @@ export default function LiveCallWorkspace({
           >
             {mm}:{ss}
           </span>
-          {stage && phase === 'live' && (
-            <Badge tone="wine">{stage.toLowerCase().replace(/_/g, ' ')}</Badge>
-          )}
+          {stage && phase === 'live' && <Badge tone="wine">{stage.toLowerCase().replace(/_/g, ' ')}</Badge>}
           <Badge tone={phase === 'live' ? 'viridian' : phase === 'done' ? 'slate' : 'brass'}>
             {phase === 'idle' ? 'ready' : phase === 'wrapping' ? 'wrapping up' : phase}
           </Badge>
@@ -354,7 +352,11 @@ export default function LiveCallWorkspace({
               <button className="lf-btn" onClick={start}>
                 Start simulated call
               </button>
-              <button className="lf-btn lf-btn--secondary" onClick={micStart} title="Coach the phone call you are on, via this device's microphone">
+              <button
+                className="lf-btn lf-btn--secondary"
+                onClick={micStart}
+                title="Coach the phone call you are on, via this device's microphone"
+              >
                 Coach a real call (microphone)
               </button>
             </>
@@ -572,7 +574,9 @@ export default function LiveCallWorkspace({
               hints.map((hint, i) => (
                 <div key={i} style={{ display: 'grid', gap: 4 }}>
                   <span style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
-                    <Badge tone={HINT_TONE[hint.kind] ?? 'slate'}>{HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}</Badge>
+                    <Badge tone={HINT_TONE[hint.kind] ?? 'slate'}>
+                      {HINT_LABEL[hint.kind] ?? hint.kind.toLowerCase()}
+                    </Badge>
                     <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-4)' }}>
                       {hint.source === 'gemini' ? 'Gemini' : 'heuristic'} · {Math.floor(hint.at / 60)}:
                       {String(hint.at % 60).padStart(2, '0')}
