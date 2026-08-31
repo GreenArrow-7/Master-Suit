@@ -13,6 +13,14 @@ import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 const params = z.object({ id: z.string().cuid() });
 
+/**
+ * How long one live chunk may spend in speech-to-text before it is abandoned.
+ *
+ * Chunks arrive every ~5s, so a slow provider must lose its chunk rather than
+ * queue behind itself. Deliberately not the batch path's 60s-per-attempt.
+ */
+const LIVE_CHUNK_DEADLINE_MS = 8_000;
+
 /** True when the transcript BEFORE this chunk already carried an amount — the
  *  budget was mentioned earlier and its match hint has already fired. */
 function parseHadAmountBefore(windowWithChunk: string, chunk: string): boolean {
@@ -119,12 +127,46 @@ export const POST = route(
       });
     }
 
-    const result = await getTranscriptionProvider(providerKey, credentials ?? {}).transcribe({
-      audio,
-      mimeType: req.headers.get('content-type') ?? 'audio/webm',
-      language: query.language ?? 'en',
+    /**
+     * One chunk gets one short deadline, and a failure is not an error.
+     *
+     * The batch transcription path is built for a finished recording: a 60s
+     * per-attempt ceiling, three attempts, exponential backoff. On a *live*
+     * call that is the wrong shape entirely — a five-second chunk spent up to
+     * five minutes inside a Gemini 503 before 500-ing the request, which
+     * stopped the coaching feed dead while the agent was still talking.
+     *
+     * So the chunk races a deadline of its own and a lost race is answered
+     * 200 with an empty transcript: the call keeps streaming, the next chunk
+     * gets its own chance, and the workspace shows what is wrong rather than
+     * an error page. Speech that was missed is missed — one dropped sentence
+     * costs less than a coaching panel that stops.
+     */
+    const transcribed = await Promise.race([
+      getTranscriptionProvider(providerKey, credentials ?? {}).transcribe({
+        audio,
+        mimeType: req.headers.get('content-type') ?? 'audio/webm',
+        language: query.language ?? 'en',
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), LIVE_CHUNK_DEADLINE_MS)),
+    ]).catch((err: unknown) => {
+      logger.warn(
+        { err: (err as Error).message, callId: call.id },
+        'live chunk transcription failed — dropping this chunk',
+      );
+      return null;
     });
-    const text = result.text?.trim() ?? '';
+
+    if (!transcribed) {
+      return {
+        text: '',
+        hints: [],
+        stage: null,
+        /** Rendered as a notice; the client keeps sending chunks. */
+        sttUnavailable: `Speech-to-text did not answer within ${LIVE_CHUNK_DEADLINE_MS / 1000}s — this chunk was skipped.`,
+      };
+    }
+    const text = transcribed.text?.trim() ?? '';
 
     let windowText = text;
     if (text) {
