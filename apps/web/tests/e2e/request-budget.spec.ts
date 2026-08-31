@@ -142,8 +142,13 @@ test.describe('Request budget: the five hot navigations', () => {
       // Directly guards the TopBar Dashboard control staying a <Link>: as a raw
       // <a> this click is a document load and the assertion fails.
       const requests = await requestsDuring(page, origin, async () => {
-        // exact: the sidebar brand link's label is "<workspace> dashboard".
-        await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+        // Scoped to the banner, which is what "via the top bar" means and what
+        // the <Link> guard above is about. Unscoped it is ambiguous: the nav
+        // refactor gave the sidebar its own exactly-"Dashboard" link, so the
+        // locator resolved to two elements and Playwright refused to click
+        // either. `exact` still earns its place — it excludes the sidebar brand
+        // link, whose label is "<workspace> dashboard".
+        await page.getByRole('banner').getByRole('link', { name: 'Dashboard', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));
       });
       assertBudget('lead detail → dashboard', requests);
