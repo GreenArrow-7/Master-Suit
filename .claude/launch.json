@@ -5,22 +5,48 @@
       "name": "web-prod",
       "cwd": "apps/web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start:local"],
+      "runtimeArgs": [
+        "run",
+        "start:local"
+      ],
       "port": 3000
     },
     {
       "name": "web",
       "cwd": "apps/web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "web-dev-3005",
       "cwd": "apps/web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "-p", "3005"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3005"
+      ],
       "port": 3005
+    },
+    {
+      "name": "web-prod-3100",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:local",
+        "--",
+        "-p",
+        "3100"
+      ],
+      "port": 3100,
+      "url": "https://master-suite-app-3100.aue.devtunnels.ms"
     }
   ]
 }

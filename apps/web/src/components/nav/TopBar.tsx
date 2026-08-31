@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { signOut } from '@/lib/auth/signOut';
 import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
 import { useTheme } from '@/lib/useTheme';
 
@@ -529,7 +530,7 @@ export default function TopBar({
               <button
                 className="lf-account-pop__item"
                 onClick={() => {
-                  void fetch('/api/v1/auth/logout', { method: 'POST' }).finally(() => {
+                  void signOut().finally(() => {
                     window.location.href = '/login';
                   });
                 }}

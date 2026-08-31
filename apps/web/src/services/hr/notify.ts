@@ -157,6 +157,26 @@ export async function notifyHr(ctx: Ctx, notification: HrNotification): Promise<
       body: notification.body ?? '',
     });
 
+    /**
+     * A second job rather than one more step inside the first, and the reason is
+     * the retry.
+     *
+     * The email job rethrows so BullMQ retries it, and its idempotency is the
+     * `emailedAt: null` filter — a stamp push has no equivalent of. Sharing the
+     * job would mean every SMTP failure re-rang every phone that had already
+     * received the notification. Separate jobs let the email retry and the push
+     * stay at most-once. It carries the record rather than the event name
+     * because the push needs a destination to open, not a subject line.
+     */
+    await enqueue('notifications', 'hr-event-push', {
+      tenantId: ctx.tenantId,
+      userIds: recipients,
+      title: notification.title,
+      body: notification.body ?? '',
+      objectType: notification.objectType ?? null,
+      recordId: notification.recordId ?? null,
+    });
+
     return { recipients: recipients.length };
   } catch (error) {
     logger.error({ err: error, event: notification.event, tenantId: ctx.tenantId }, 'hr notification failed');

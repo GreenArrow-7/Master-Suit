@@ -247,6 +247,45 @@ export const envSchema = z.object({
   LIVE_STREAM_WS_URL: z.string().url().optional().or(z.literal('')),
   LIVE_STREAM_PORT: z.coerce.number().int().min(1).max(65535).default(8090),
 
+  /**
+   * Native push, for the Capacitor builds in apps/mobile.
+   *
+   * Two transports because the two stores give no choice: `@capacitor/push-
+   * notifications` hands back an APNs token on iOS and an FCM token on Android,
+   * and routing iOS through Firebase as well would mean the Firebase iOS SDK,
+   * AppDelegate swizzling and a Mac to compile it. Both are spoken directly
+   * here instead — see src/lib/push/send.ts.
+   *
+   * All of it optional. A deployment with neither set writes its in-app
+   * notifications and sends its emails exactly as before; push is skipped with a
+   * log line and nothing fails. That is what makes this safe to merge before the
+   * store accounts exist.
+   */
+  // Firebase service account, from the JSON key: `project_id`, `client_email`,
+  // `private_key`. Only Android traffic uses it.
+  FCM_PROJECT_ID: z.string().optional(),
+  FCM_CLIENT_EMAIL: z.string().email().optional().or(z.literal('')),
+  // The PEM as it appears in the JSON, `\n` escapes and all — send.ts unescapes
+  // them. Pasting it with real newlines into a .env file is what breaks first.
+  FCM_PRIVATE_KEY: z.string().optional(),
+  // Apple: a .p8 signing key (`APNS_KEY`), its Key ID, the Team ID, and the
+  // bundle id the notification is addressed to — which must equal `appId` in
+  // apps/mobile/capacitor.config.js or Apple rejects every send with 400.
+  APNS_KEY: z.string().optional(),
+  APNS_KEY_ID: z.string().optional(),
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_BUNDLE_ID: z.string().optional(),
+  // Apple runs a separate sandbox host for development builds; a token minted by
+  // a TestFlight or Xcode build is rejected by production and vice versa.
+  // Not `.default('false')`: `.env.example` declares its keys with empty values,
+  // and an empty string is a value zod's enum rejects rather than a default it
+  // fills in — the failure tests/unit/env-example-parses.spec.ts exists for.
+  APNS_SANDBOX: z
+    .enum(['true', 'false'])
+    .optional()
+    .or(z.literal(''))
+    .transform((value) => value === 'true'),
+
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),

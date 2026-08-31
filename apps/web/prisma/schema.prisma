@@ -1014,6 +1014,7 @@ model User {
   tickets             Ticket[]              @relation("TicketAgent")
   campaigns           Campaign[]            @relation("CampaignOwner")
   notifications       Notification[]
+  deviceTokens        DeviceToken[]
   targets             EmployeeTarget[]
   calls               Call[]                @relation("CallerUser")
   practiceSessions    PracticeSession[]     @relation("PracticeUser")
@@ -5037,6 +5038,42 @@ model Notification {
 
   @@index([tenantId, userId, readAt, createdAt(sort: Desc)])
   @@index([tenantId, kind, emailedAt])
+}
+
+/// One phone, one row. The APNs or FCM registration token a Notification is
+/// delivered to when the recipient is carrying the native app.
+///
+/// **It deliberately carries no `tenantId`, and that is the security property
+/// rather than an omission.** The token is minted by the device, and the same
+/// device hands back the same token no matter who signs in on it. If the row
+/// were tenant-scoped, a sales rep signing out and a payroll clerk signing in on
+/// the same handset would leave two rows for one phone, and the clerk would
+/// receive the rep's notification titles on the lock screen — under row-level
+/// security the second sign-in could not even see the first row to remove it.
+/// A globally unique token means sign-in *moves* the row, so a device can only
+/// ever be owned by the account currently on it.
+///
+/// The tenant is still pinned: `userId` points at the tenant-scoped `User`, so
+/// every read here is already inside one workspace. See `GLOBAL_MODELS` in
+/// src/lib/db.ts, where the guard exemption this needs is argued.
+model DeviceToken {
+  id       String @id @default(cuid())
+  userId   String
+  token    String @unique
+  /// 'ios' or 'android'. It decides which of the two push transports sends —
+  /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
+  /// that silently never rings. Written only by /api/v1/devices, behind a
+  /// closed zod enum.
+  platform String
+  /// Stamped on every re-registration, which the app does at each launch. A
+  /// token that has not been seen for months belongs to an app that was deleted
+  /// without telling anyone; the transports prune those on rejection.
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model AuditLog {

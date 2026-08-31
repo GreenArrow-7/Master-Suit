@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Fraunces, Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import { PRODUCT_NAME } from '@/lib/branding';
+import ServiceWorkerRegistration from '@/components/pwa/ServiceWorkerRegistration';
 import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 
@@ -78,7 +79,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
          */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }
