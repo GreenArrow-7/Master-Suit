@@ -171,11 +171,23 @@ export default function WorkspaceSidebar({
       : {
           // "Daily" in the HR module, matching the source HRMS's grouping; "Work"
           // everywhere else.
-          label: activeModule === 'people' ? 'Daily' : 'Work',
+          // "Daily" in the HR module, matching the source HRMS's grouping;
+          // "My day" everywhere else — the Sales module had a *second* group
+          // also called "My day" directly below this one, so the two have been
+          // merged rather than left to read as two answers to the same question.
+          label: activeModule === 'people' ? 'Daily' : 'My day',
           items: [
-            { label: 'Overview', href: `/${slug}/dashboard`, icon: 'home' },
-            { label: 'Notifications', href: `/${slug}/notifications`, icon: 'bell' },
+            /**
+             * "Dashboard", not "Overview".
+             *
+             * This sat two rows above an item called "Sales overview" pointing
+             * at a different page, and neither label said which was which. The
+             * URL is /dashboard and the top bar already calls it Dashboard, so
+             * this is the name that was already in use everywhere else.
+             */
+            { label: 'Dashboard', href: `/${slug}/dashboard`, icon: 'home' },
             { label: 'My tasks', href: `/${slug}/tasks`, icon: 'task' },
+            { label: 'Notifications', href: `/${slug}/notifications`, icon: 'bell' },
           ],
         };
     // People was rendered unfiltered — every HR screen shown to everyone in an
@@ -251,7 +263,7 @@ export default function WorkspaceSidebar({
         ? []
         : [
             {
-              label: 'My day',
+              label: 'Sales',
               items: [
                 { label: 'Sales overview', href: `/${slug}/sales`, icon: 'home' as const },
                 { label: 'My targets', href: `/${slug}/sales/targets`, icon: 'report' as const },
@@ -265,6 +277,15 @@ export default function WorkspaceSidebar({
               ],
             },
           ]),
+      /**
+       * Records, then the work done against them.
+       *
+       * "Pipeline" held nine items and three different kinds of thing: the four
+       * records a deal moves through, the day-to-day work logged against them,
+       * and an admin screen for distributing leads. Nine is past the point where
+       * a group is scanned rather than read, and the mixture is why Calendar sat
+       * under a heading called Pipeline.
+       */
       {
         label: 'Pipeline',
         items: [
@@ -272,11 +293,24 @@ export default function WorkspaceSidebar({
           { label: 'Opportunities', href: `/${slug}/sales/opportunities`, icon: 'deal', permission: 'opportunities' },
           { label: 'Accounts', href: `/${slug}/sales/accounts`, icon: 'company', permission: 'accounts' },
           { label: 'Contacts', href: `/${slug}/sales/contacts`, icon: 'contact', permission: 'contacts' },
+        ],
+      },
+      {
+        label: 'Activity',
+        items: [
+          // Calls moves here from "Engage": a call is something you did against
+          // a record, which is what everything else in this group is.
+          { label: 'Calls', href: `/${slug}/sales/calls`, icon: 'call', permission: 'calls' },
           { label: 'Activities', href: `/${slug}/sales/activities`, icon: 'activity', permission: 'activities' },
-          { label: 'Tasks', href: `/${slug}/sales/tasks`, icon: 'task', permission: 'tasks' },
+          /**
+           * "All tasks", not "Tasks". The group above the fold has "My tasks"
+           * pointing at /tasks; this points at /sales/tasks, which lists
+           * everyone's. Two items called almost the same thing, one word apart,
+           * is how people learn to click both every time.
+           */
+          { label: 'All tasks', href: `/${slug}/sales/tasks`, icon: 'task', permission: 'tasks' },
           { label: 'Calendar', href: `/${slug}/sales/calendar`, icon: 'calendar', permission: 'tasks' },
           { label: 'Site visits', href: `/${slug}/sales/site-visits`, icon: 'attendance', permission: 'visits' },
-          { label: 'Allocation', href: `/${slug}/sales/allocation`, icon: 'lead', permission: 'allocation' },
         ],
       },
       {
@@ -302,19 +336,23 @@ export default function WorkspaceSidebar({
           { label: 'Referrals', href: `/${slug}/sales/clients?view=referrals`, icon: 'lead', permission: 'referrals' },
         ],
       },
+      /**
+       * Section names are nouns from here down.
+       *
+       * "Engage", "Grow", "Operate" and "Insight" name what you are supposedly
+       * doing rather than what is inside, and nothing about the word Grow tells
+       * anyone that Forms is under it. A heading in a fifty-item sidebar is a
+       * signpost, and a signpost has to name the destination.
+       */
       {
-        label: 'Engage',
+        label: 'Conversations',
         items: [
-          { label: 'Calls', href: `/${slug}/sales/calls`, icon: 'call', permission: 'calls' },
-          { label: 'Events', href: `/${slug}/sales/events`, icon: 'calendar', permission: 'events' },
-          { label: 'Campaigns', href: `/${slug}/sales/campaigns`, icon: 'campaign', permission: 'campaigns' },
           {
             label: 'Inbox',
             href: `/${slug}/sales/communications/inbox`,
             icon: 'activity',
             permission: 'communications',
           },
-          { label: 'Social Leads', href: `/${slug}/sales/social-leads`, icon: 'campaign', permission: 'leads' },
           {
             label: 'Communications',
             href: `/${slug}/sales/communications`,
@@ -324,8 +362,13 @@ export default function WorkspaceSidebar({
         ],
       },
       {
-        label: 'Grow',
+        // Was split across "Engage" and "Grow" — campaigns in one, the forms and
+        // pages those campaigns point at in the other.
+        label: 'Marketing',
         items: [
+          { label: 'Campaigns', href: `/${slug}/sales/campaigns`, icon: 'campaign', permission: 'campaigns' },
+          { label: 'Social Leads', href: `/${slug}/sales/social-leads`, icon: 'campaign', permission: 'leads' },
+          { label: 'Events', href: `/${slug}/sales/events`, icon: 'calendar', permission: 'events' },
           { label: 'Forms', href: `/${slug}/sales/forms`, icon: 'document', permission: 'forms' },
           {
             label: 'Landing pages',
@@ -333,16 +376,20 @@ export default function WorkspaceSidebar({
             icon: 'document',
             permission: 'landingpages',
           },
-          { label: 'Automation', href: `/${slug}/sales/automation`, icon: 'settings', permission: 'automation' },
         ],
       },
       {
-        label: 'Operate',
+        // Forms and Landing pages have moved up to Marketing, beside the
+        // campaigns that point at them. What is left here is the machinery a
+        // workspace configures once, so Automation and Allocation join it.
+        label: 'Operations',
         items: [
           { label: 'Field sales', href: `/${slug}/sales/field-sales`, icon: 'company', permission: 'fieldsales' },
           { label: 'Service', href: `/${slug}/sales/service`, icon: 'shield', permission: 'tickets' },
-          { label: 'Documents', href: `/${slug}/sales/documents`, icon: 'document', permission: 'documents' },
           { label: 'Products', href: `/${slug}/sales/products`, icon: 'deal', permission: 'products' },
+          { label: 'Documents', href: `/${slug}/sales/documents`, icon: 'document', permission: 'documents' },
+          { label: 'Allocation', href: `/${slug}/sales/allocation`, icon: 'lead', permission: 'allocation' },
+          { label: 'Automation', href: `/${slug}/sales/automation`, icon: 'settings', permission: 'automation' },
         ],
       },
       {
@@ -370,8 +417,23 @@ export default function WorkspaceSidebar({
           },
         ],
       },
+      /**
+       * "Insight" held two unrelated groups: three reporting screens, and the
+       * four call-quality tools — all gated on `calls`, all about reviewing and
+       * improving how people talk to customers. Splitting them means somebody
+       * looking for Coaching is no longer looking under a reporting heading.
+       */
       {
-        label: 'Insight',
+        label: 'Call quality',
+        items: [
+          { label: 'Call audits', href: `/${slug}/sales/call-audits`, icon: 'shield', permission: 'calls' },
+          { label: 'Coaching', href: `/${slug}/sales/coaching`, icon: 'people', permission: 'calls' },
+          { label: 'Playbook', href: `/${slug}/sales/playbook`, icon: 'document', permission: 'calls' },
+          { label: 'Practice', href: `/${slug}/sales/practice`, icon: 'activity', permission: 'calls' },
+        ],
+      },
+      {
+        label: 'Reports',
         items: [
           { label: 'Leadership', href: `/${slug}/sales/leadership`, icon: 'report', permission: 'reports' },
           { label: 'Reports', href: `/${slug}/sales/reports`, icon: 'report', permission: 'reports' },
@@ -383,10 +445,6 @@ export default function WorkspaceSidebar({
             icon: 'report',
             permission: ['dashboards', 'leads'],
           },
-          { label: 'Call audits', href: `/${slug}/sales/call-audits`, icon: 'shield', permission: 'calls' },
-          { label: 'Coaching', href: `/${slug}/sales/coaching`, icon: 'people', permission: 'calls' },
-          { label: 'Playbook', href: `/${slug}/sales/playbook`, icon: 'document', permission: 'calls' },
-          { label: 'Practice', href: `/${slug}/sales/practice`, icon: 'activity', permission: 'calls' },
         ],
       },
     ];

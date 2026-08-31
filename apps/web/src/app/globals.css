@@ -5460,3 +5460,103 @@ body,
     border-color 180ms ease,
     color 180ms ease;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Account menu (top bar)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Density, theme, help and sign-out, collapsed from four separate buttons in a
+   bar that carried ten controls. Three of the four are set once and never
+   touched again; keeping them in the bar cost daily attention for a yearly
+   decision.
+
+   Not hidden at any breakpoint, deliberately: sign-out lives in here, and the
+   sidebar's own control is absent on tablet and behind the drawer on a phone. */
+.lf-account-menu > summary {
+  list-style: none;
+}
+.lf-account-menu > summary::-webkit-details-marker {
+  display: none;
+}
+/* The disclosure triangle is suppressed above; this is the affordance. */
+.lf-account-menu[open] > summary {
+  background: var(--lf-surface-2);
+}
+
+.lf-account-pop {
+  width: 260px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+/* A rule between groups rather than around each: three bordered boxes inside a
+   bordered panel is the box-in-box the design system forbids. */
+.lf-account-pop__group {
+  display: grid;
+  gap: 2px;
+  padding: 6px 4px;
+}
+.lf-account-pop__group + .lf-account-pop__group {
+  border-top: 1px solid var(--lf-line);
+}
+
+.lf-account-pop__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  /* 36px, not the 44 a touch target wants: this menu is suppressed on phones
+     where the tab bar carries navigation, and a taller row here would make a
+     nine-item menu scroll on a laptop. */
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--lf-radius-sm);
+  background: transparent;
+  color: var(--lf-ink);
+  font: inherit;
+  font-size: var(--lf-text-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.lf-account-pop__item:hover {
+  background: var(--lf-surface-2);
+}
+
+/* The current setting, so the row reads "Theme — Dark Classic" rather than
+   making somebody open the screen to find out what is on. */
+.lf-account-pop__value {
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-2xs);
+  white-space: nowrap;
+}
+
+.lf-account-pop__note {
+  padding: 2px 8px;
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-2xs);
+  line-height: 1.5;
+}
+
+/*
+ * Phone app-bar controls meet the touch minimum.
+ *
+ * The bell, Create and the account menu were rendering 40px tall — `lf-btn--sm`
+ * sizing carried straight from the desktop bar into a header meant to be
+ * thumbed. MOBILE_UI_GUIDELINES puts the floor at 44, and the account menu was
+ * the worst of them at 36px wide because its label is a single glyph.
+ *
+ * min-* rather than height, so a control with more in it than an icon still
+ * grows. 44 fits inside the 56px bar with room either side.
+ */
+@media (max-width: 760px) {
+  .lf-shell-actions .lf-btn,
+  .lf-shell-actions .lf-account-menu > summary {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

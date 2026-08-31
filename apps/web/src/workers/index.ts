@@ -109,8 +109,7 @@ async function start() {
 
   // Schedulers only after every consumer is attached, so a repeatable job can
   // never be armed by a process that turns out to be unable to run it.
-  await armCampaignScheduler();
-  await armMaintenanceScheduler();
+  const schedulers = [...(await armCampaignScheduler()), ...(await armMaintenanceScheduler())];
 
   // The realtime call engine: only where a public wss URL says vendors will
   // actually be pointed at it. Without one, dialling works exactly as before
@@ -126,7 +125,13 @@ async function start() {
   }
 
   logger.info(
-    { queues: workers.map((w) => w.name), schedulers: ['campaign-sweep', 'retention-daily'] },
+    /**
+     * `schedulers` was a hard-coded pair and had already drifted: it still read
+     * ['campaign-sweep', 'retention-daily'] after a third schedule was added, so
+     * the one line that says what this process arms was quietly wrong. The arm
+     * functions now report what they armed.
+     */
+    { queues: workers.map((w) => w.name), schedulers },
     'workers started',
   );
 }
