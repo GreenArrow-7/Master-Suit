@@ -59,12 +59,12 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           </Link>
         </div>
         <h1 style={{ margin: '8px 0 0' }}>{candidate.fullName}</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
           {candidate.requisition.title}
           {candidate.requisition.department ? ` · ${candidate.requisition.department.name}` : ''} ·{' '}
           <span className="lf-badge">{candidate.stage.replace('_', ' ')}</span>
         </p>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-sm)' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
           {candidate.email}
           {candidate.phone ? ` · ${candidate.phone}` : ''}
           {candidate.source ? ` · via ${candidate.source}` : ''}
@@ -76,7 +76,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 10 }}>
           <div>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Hired</h2>
-            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               {employee
                 ? `The employee record ${employee.employeeNumber} exists and is linked to this application.`
                 : 'An invitation has been issued. The employee record is created when it is accepted, and will link back here.'}
@@ -156,7 +156,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         {myInterviews.length > 0 && (
           <div style={{ marginTop: 12 }}>
             <h3 style={{ fontSize: 'var(--lf-text-md)', margin: '0 0 8px' }}>My scorecard</h3>
-            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               Only the panel can score an interview. Submitting again replaces your own.
             </p>
             <WorkspaceRecordForm
@@ -319,7 +319,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {recruiter && acceptedOffer && !hired && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Complete the hire</h2>
-          <p style={{ margin: '6px 0 12px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '6px 0 12px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Issues an invitation to {candidate.email}. The employee record is created when they accept and sets their
             password — nobody else ever knows it — and it will date from {date(acceptedOffer.joiningDate)} rather than
             the day they click the link.

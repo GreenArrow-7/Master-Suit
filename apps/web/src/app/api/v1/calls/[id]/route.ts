@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { notifyAboutCall } from '@/services/crm/notify';
+import { recordTargetProgress } from '@/services/targets/progress';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -64,6 +65,17 @@ export const PATCH = route(
      */
     if (body.status && body.status !== existing.status) {
       const label = updated.recipientNumber;
+      /**
+       * Target progress rides the same transition as the notification: the
+       * status change is the moment the work becomes countable. Credited to
+       * the caller — CALLS_* metrics measure the rep who dialled.
+       */
+      if (['COMPLETED', 'MISSED', 'FAILED'].includes(body.status)) {
+        await recordTargetProgress(ctx, updated.callerId, 'CALLS_ATTEMPTED');
+      }
+      if (body.status === 'COMPLETED') {
+        await recordTargetProgress(ctx, updated.callerId, 'CALLS_CONNECTED');
+      }
       if (body.status === 'MISSED') {
         await notifyAboutCall(ctx, updated, 'call.missed', `Missed call from ${label}`, updated.notes ?? undefined);
       } else if (body.status === 'COMPLETED') {

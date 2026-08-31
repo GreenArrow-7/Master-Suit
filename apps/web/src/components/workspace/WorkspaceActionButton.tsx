@@ -14,6 +14,7 @@ export default function WorkspaceActionButton({
   endpoint,
   body,
   label,
+  ariaLabel,
   confirm,
   promptFor,
   variant = 'default',
@@ -21,6 +22,12 @@ export default function WorkspaceActionButton({
   endpoint: string;
   body: Record<string, unknown>;
   label: string;
+  /**
+   * Required when `label` is a glyph. A roster remove button whose visible
+   * content is "×" reads to a screen reader as "multiplication sign" — the
+   * accessible name has to say what the button removes.
+   */
+  ariaLabel?: string;
   confirm?: string;
   promptFor?: { name: string; label: string; required?: boolean };
   variant?: 'default' | 'ghost' | 'danger';
@@ -72,6 +79,7 @@ export default function WorkspaceActionButton({
             className="lf-input"
             style={{ minWidth: 180 }}
             autoFocus
+            aria-label={promptFor.label}
             placeholder={promptFor.label}
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -101,6 +109,7 @@ export default function WorkspaceActionButton({
           type="button"
           disabled={busy}
           onClick={start}
+          aria-label={ariaLabel}
         >
           {busy ? 'Working…' : label}
         </button>

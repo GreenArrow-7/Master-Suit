@@ -124,7 +124,10 @@ body {
   align-items: center;
   gap: 12px;
   padding: 0 28px;
-  background: rgb(255 255 255 / 0.94);
+  /* The surface token at 94%, not white at 94%: in Dark Classic this bar was
+     the one piece of chrome that stayed a white strip across every dark page,
+     with near-white ink rendered on top of it. */
+  background: color-mix(in srgb, var(--lf-surface) 94%, transparent);
   border-bottom: 1px solid var(--lf-line);
   backdrop-filter: blur(14px);
 }
@@ -784,7 +787,7 @@ body {
 @media (max-width: 760px) {
   .lf-filter-trigger {
     display: inline-flex;
-    min-height: 40px;
+    min-height: 44px;
   }
 
   /* Collapsed, not removed: the fields keep their values and still submit with
@@ -897,7 +900,35 @@ body {
     flex: none;
   }
   .lf-list-header__actions .lf-btn {
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  /*
+   * The ••• menu leaves the strip entirely on a phone.
+   *
+   * Anchored absolutely it was doubly unusable here: the strip above scrolls
+   * (overflow-x: auto), and a scroll container clips absolutely-positioned
+   * descendants — and `right: 0` hangs a 190px menu off a button that sits at
+   * the LEFT edge of a phone header, so what survived the clipping was at
+   * x = -112, off the screen. Measured, not inferred: the open menu's box was
+   * -112,189 at 390px with zero visible pixels.
+   *
+   * Fixed positioning ignores overflow ancestors, so the menu becomes a small
+   * action panel above the tab bar — the same place the filter sheet already
+   * taught thumbs to look. z-index 120: above the tab bar (44) and sheets
+   * (60s), below the nav drawer (200).
+   */
+  .lf-overflow__menu {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    z-index: 120;
+    box-shadow: var(--lf-shadow-3);
+  }
+  .lf-overflow__menu > * {
+    min-height: 44px;
   }
 }
 
@@ -926,7 +957,8 @@ body {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
-    background: rgb(255 255 255 / 0.96);
+    /* Token, not white: this fixed bar ignored dark and glass entirely. */
+    background: color-mix(in srgb, var(--lf-surface) 96%, transparent);
     border-top: 1px solid var(--lf-line);
     backdrop-filter: blur(14px);
     /* Home-indicator safe area on iOS, zero elsewhere. */
@@ -989,11 +1021,11 @@ body {
 
   /* Anything below the touch floor gets a hit area without growing visually. */
   .lf-shell-actions .lf-btn--sm {
-    min-height: 40px;
+    min-height: 44px;
   }
   .lf-mobile-nav-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     top: 8px;
     left: 8px;
     border-radius: var(--lf-radius);
@@ -1094,10 +1126,10 @@ body {
     place-items: center;
     position: fixed;
     z-index: 45;
-    left: 10px;
-    top: 10px;
-    width: 34px;
-    height: 34px;
+    left: 8px;
+    top: 6px;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--lf-line);
     border-radius: 7px;
     background: var(--lf-surface);
@@ -1367,18 +1399,20 @@ a:hover {
   border-left-width: 3px;
   border-radius: var(--lf-radius);
   background: var(--lf-vermillion-sub);
-  color: #8c2a1a;
+  /* The accent token, as the badges above pair it: the hardcoded dark reds
+     and browns were ~1.9:1 against the sub backgrounds' dark-theme values. */
+  color: var(--lf-vermillion);
   font-size: var(--lf-text-sm);
 }
 .lf-alert[data-tone='brass'] {
   border-color: var(--lf-brass);
   background: var(--lf-brass-sub);
-  color: #6e4f12;
+  color: var(--lf-brass);
 }
 .lf-alert[data-tone='viridian'] {
   border-color: var(--lf-viridian);
   background: var(--lf-viridian-sub);
-  color: #0b4a41;
+  color: var(--lf-viridian);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -1996,7 +2030,14 @@ a:hover {
    v21 uses it too. Semantic reds/greens (breach, won) are untouched; they mean
    the same thing in both modules.
    ═══════════════════════════════════════════════════════════════════════════ */
-:root[data-lf-module='people'] {
+:root[data-lf-module='people']:not([data-theme='dark']):not([data-theme='glass']) {
+  /* Scoped to the light theme, deliberately. This block overrides canvas,
+     surface and ink with light literals at 0,2,0 specificity, which BEAT the
+     0,1,0 dark/glass token blocks — so a dark-theme user opening People got
+     white tables carrying dark-theme status chips: a half-light, half-dark
+     render nobody designed. Until the People skin has a real dark variant, a
+     dark or glass user gets the standard dark palette here, which is coherent;
+     the green identity returns whenever the theme is light. */
   /* Burgundy ramp → the source HRMS's forest ramp, slot for slot, so every
      token consumer (buttons, focus rings, fills, selection) follows. Values are
      the reference stylesheet's own, confirmed against the screenshots: the
@@ -2265,7 +2306,7 @@ a:hover {
   padding: 10px 12px;
   border-left: 3px solid var(--lf-brass, #b98f4c);
   background: var(--lf-brass-sub, #f7f0df);
-  color: #6b4c12;
+  color: var(--lf-brass);
   font-size: var(--lf-text-sm);
   border-radius: var(--lf-radius-sm);
 }
@@ -2405,14 +2446,14 @@ a:hover {
   line-height: 1.6;
 }
 .lf-callout--info {
-  border-color: #2c5578;
-  background: #e8f0f7;
-  color: #26445f;
+  border-color: var(--lf-info);
+  background: var(--lf-info-sub);
+  color: var(--lf-info);
 }
 .lf-callout--warn {
   border-color: var(--lf-brass, #b98f4c);
   background: var(--lf-brass-sub, #f7f0df);
-  color: #6b4c12;
+  color: var(--lf-brass);
 }
 @media (max-width: 960px) {
   .lf-security {
@@ -3362,7 +3403,7 @@ a:hover {
   border: 1px solid var(--lf-vermillion);
   border-radius: var(--lf-radius);
   background: var(--lf-vermillion-sub);
-  color: #8c2a1a;
+  color: var(--lf-vermillion);
   font-size: var(--lf-text-xs);
 }
 .lf-ai-suggest {
@@ -4059,7 +4100,7 @@ a:hover {
 /* A failed message is marked by a border and the word "Failed", not by red
    alone — colour is not available to every reader (§73). */
 .lf-msg[data-failed='true'] {
-  border-color: #b4341f;
+  border-color: var(--lf-danger);
   border-left-width: 3px;
 }
 
@@ -4088,7 +4129,7 @@ a:hover {
 .lf-msg__error {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #b4341f;
+  color: var(--lf-danger);
 }
 
 .lf-inbox__composer {
@@ -4109,7 +4150,7 @@ a:hover {
 }
 
 .lf-inbox__error {
-  color: #b4341f;
+  color: var(--lf-danger);
 }
 
 .lf-inbox__context {
@@ -4663,9 +4704,9 @@ a:hover {
 }
 
 .lf-channel__mode[data-mode='SIMULATED'] {
-  color: #8a6a2f;
-  border-color: #c8a86a;
-  background: #fdf7ec;
+  color: var(--lf-brass);
+  border-color: var(--lf-brass);
+  background: var(--lf-brass-sub);
 }
 
 .lf-channel__mode[data-mode='NOT_CONFIGURED'] {
@@ -4714,9 +4755,9 @@ a:hover {
   font-size: 12px;
   padding: 7px 9px;
   border-radius: 8px;
-  background: #fdf7ec;
-  border: 1px solid #e6d3ae;
-  color: #7a5c22;
+  background: var(--lf-brass-sub);
+  border: 1px solid var(--lf-brass);
+  color: var(--lf-brass);
 }
 
 .lf-channel__manage {
@@ -4815,9 +4856,9 @@ a:hover {
   margin: 0;
   padding: 9px 11px;
   border-radius: 9px;
-  background: #fdf7ec;
-  border: 1px solid #e6d3ae;
-  color: #7a5c22;
+  background: var(--lf-brass-sub);
+  border: 1px solid var(--lf-brass);
+  color: var(--lf-brass);
   font-size: 13px;
 }
 .lf-meta__alert p {
@@ -4903,7 +4944,7 @@ a:hover {
 .lf-meta__eventerr {
   flex-basis: 100%;
   font-size: 12px;
-  color: #b4341f;
+  color: var(--lf-danger);
   overflow-wrap: anywhere;
 }
 
@@ -5115,7 +5156,7 @@ a:hover {
 }
 .lf-social__note {
   font-size: 12px;
-  color: #7a5c22;
+  color: var(--lf-brass);
 }
 .lf-social__assign {
   display: grid;
@@ -5559,4 +5600,46 @@ body,
     min-height: 44px;
     min-width: 44px;
   }
+}
+
+/* Phone touch floor for the two close buttons the audit measured small: the
+   sheet close (40px) and the AI panel close (28px on a panel that goes
+   full-screen here). Desktop keeps their compact sizes. */
+@media (max-width: 760px) {
+  .lf-sheet__close {
+    width: 44px;
+    height: 44px;
+  }
+  .lf-ai-close {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Field validation states
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Painted from the .lf-field wrapper's data-invalid, which components/forms/
+   Field.tsx sets, so the input needs no per-form styling and no cloned props.
+   Vermillion is the existing status red — no new color. */
+.lf-label__req {
+  color: var(--lf-vermillion);
+  font-weight: 700;
+}
+.lf-field[data-invalid] .lf-input {
+  border-color: var(--lf-vermillion);
+}
+.lf-field[data-invalid] .lf-input:focus {
+  outline-color: var(--lf-vermillion);
+}
+.lf-field__error {
+  color: var(--lf-vermillion);
+  font-size: var(--lf-text-2xs);
+  line-height: 1.4;
+}
+.lf-field__hint {
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-2xs);
+  line-height: 1.4;
 }

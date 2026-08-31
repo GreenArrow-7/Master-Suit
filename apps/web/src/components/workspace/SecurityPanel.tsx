@@ -83,14 +83,14 @@ export default function SecurityPanel({
         </div>
       )}
       {notice && (
-        <div role="status" style={{ color: 'var(--lf-ink-600)' }}>
+        <div role="status" style={{ color: 'var(--lf-ink-2)' }}>
           {notice}
         </div>
       )}
 
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Password</h2>
-        <p style={{ margin: '6px 0 14px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+        <p style={{ margin: '6px 0 14px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           Changing your password signs out every other session. The one you are using now stays open.
         </p>
         <form onSubmit={changePassword} className="lf-form-grid" style={{ maxWidth: 460 }}>
@@ -137,7 +137,7 @@ export default function SecurityPanel({
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 10 }}>
         <div>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Sessions</h2>
-          <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             If you think someone else has access to your account — a laptop left open, a lost phone — sign out
             everywhere. This signs out <em>this</em> device too, on purpose: leaving the current session alive would
             leave an attacker&apos;s alive as well.
@@ -177,7 +177,7 @@ export default function SecurityPanel({
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>
             Two-factor authentication <span className="lf-badge">{status.enabled ? 'on' : 'off'}</span>
           </h2>
-          <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             A code from an authenticator app, in addition to your password. With it on, a stolen password is not enough
             to sign in as you.
             {status.enabled
@@ -236,7 +236,7 @@ export default function SecurityPanel({
               {enrolment.secret}
             </code>
             <details>
-              <summary style={{ cursor: 'pointer', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-600)' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
                 Set-up URL, if your app takes one
               </summary>
               <code
@@ -338,7 +338,7 @@ export default function SecurityPanel({
             </form>
 
             <details>
-              <summary style={{ cursor: 'pointer', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-600)' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
                 Turn two-factor authentication off
               </summary>
               <form
@@ -371,7 +371,7 @@ export default function SecurityPanel({
                   Turn off
                 </button>
               </form>
-              <p style={{ margin: '8px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-xs)' }}>
+              <p style={{ margin: '8px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-xs)' }}>
                 Both your password and a current code are needed, so a borrowed unlocked session cannot remove your
                 second factor.
               </p>

@@ -139,10 +139,21 @@ export default function CalendarView({
             <div
               key={i}
               onClick={() => day && setSelectedDay(isSelected ? null : String(day))}
+              /* Click-only day cells were unreachable from the keyboard: no
+                 tab stop, no Enter. Empty leading cells stay inert. */
+              role={day ? 'button' : undefined}
+              tabIndex={day ? 0 : undefined}
+              aria-pressed={day ? isSelected : undefined}
+              onKeyDown={(e) => {
+                if (day && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  setSelectedDay(isSelected ? null : String(day));
+                }
+              }}
               style={{
                 minHeight: 64,
                 padding: 'var(--lf-space-1)',
-                background: isSelected ? 'var(--lf-wine-50, #fdf2f4)' : 'var(--lf-surface, #fff)',
+                background: isSelected ? 'var(--lf-wine-050)' : 'var(--lf-surface, #fff)',
                 cursor: day ? 'pointer' : 'default',
               }}
             >

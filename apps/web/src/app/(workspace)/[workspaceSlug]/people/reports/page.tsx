@@ -49,7 +49,7 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Reports</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           Each report carries the permission for the data behind it, not for reporting — so someone who can read
           headcount cannot export salary cost. You are shown {reports.length} of the reports that exist; the rest need
           permissions your role does not have.
@@ -57,7 +57,7 @@ export default async function Page({
       </section>
 
       {reports.length === 0 ? (
-        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', color: 'var(--lf-ink-600)' }}>
+        <section className="lf-card" style={{ padding: 'var(--lf-space-5)', color: 'var(--lf-ink-2)' }}>
           Your role does not allow any reports yet.
         </section>
       ) : (
@@ -75,11 +75,11 @@ export default async function Page({
                       padding: 'var(--lf-space-4)',
                       textDecoration: 'none',
                       color: 'inherit',
-                      borderColor: report.key === selected?.key ? 'var(--lf-accent)' : undefined,
+                      borderColor: report.key === selected?.key ? 'var(--lf-wine-600)' : undefined,
                     }}
                   >
                     <strong>{report.title}</strong>
-                    <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+                    <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
                       {report.description}
                     </p>
                   </Link>
@@ -103,7 +103,7 @@ export default async function Page({
           >
             <div>
               <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>{selected.title}</h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
                 {result ? `${result.rows.length} rows` : 'Could not run this report.'}
               </p>
             </div>
@@ -141,7 +141,7 @@ export default async function Page({
                 rows={result.rows.map((row) => result.columns.map((column) => format(row[column.key])))}
               />
             ) : (
-              <p style={{ color: 'var(--lf-ink-600)' }}>
+              <p style={{ color: 'var(--lf-ink-2)' }}>
                 This report could not be run. It may need a permission your role does not have.
               </p>
             )}

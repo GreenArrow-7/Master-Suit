@@ -30,6 +30,7 @@ const GRID_COLUMNS = {
   currency: true,
   probability: true,
   expectedCloseDate: true,
+  actualCloseDate: true,
   ownerId: true,
   accountId: true,
   createdAt: true,

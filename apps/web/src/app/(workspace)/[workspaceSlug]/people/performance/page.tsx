@@ -61,7 +61,7 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Performance</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           You write your self-assessment first, so your manager&apos;s rating is informed by it. Their assessment stays
           hidden from you until it has been calibrated and released, and only you can acknowledge the result.
         </p>
@@ -107,7 +107,7 @@ export default async function Page({
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>My review</h2>
-            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               {STATUS_HELP[myReview.status]}
             </p>
           </div>
@@ -138,7 +138,7 @@ export default async function Page({
           {myReview.selfComments && (
             <div>
               <strong>What I said</strong>
-              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-600)' }}>{myReview.selfComments}</p>
+              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-2)' }}>{myReview.selfComments}</p>
             </div>
           )}
 
@@ -151,11 +151,11 @@ export default async function Page({
                   : ''}
                 )
               </strong>
-              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-600)' }}>{myReview.managerComments}</p>
+              <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-2)' }}>{myReview.managerComments}</p>
             </div>
           ) : (
             myReview.status !== 'PENDING_SELF' && (
-              <p style={{ margin: 0, color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-sm)' }}>
+              <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
                 Your manager&apos;s assessment is released once it has been calibrated.
               </p>
             )
@@ -215,7 +215,7 @@ export default async function Page({
       {toCalibrate.length > 0 && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Awaiting calibration</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             The manager&apos;s rating is kept alongside the final one, so a moved rating stays visible to the employee
             who disputes it.
           </p>
@@ -344,7 +344,7 @@ export default async function Page({
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 10 }}>
           <div>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Cycle administration</h2>
-            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
               Opening a cycle creates one review per eligible employee, so an unstarted review is visible rather than
               merely absent. {competencies.length} competencies are configured.
             </p>

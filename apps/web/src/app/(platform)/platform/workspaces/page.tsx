@@ -107,7 +107,7 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
                     <Link href={`/platform/workspaces/${workspace.id}`}>
                       <strong>{workspace.displayName}</strong>
                     </Link>
-                    <div style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>{workspace.slug}</div>
+                    <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>{workspace.slug}</div>
                   </td>
                   <td>
                     <span className="lf-badge">{workspace.status}</span>

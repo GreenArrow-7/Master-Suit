@@ -75,7 +75,7 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Roster</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', maxWidth: '78ch' }}>
+        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
           Every assignment is checked for overlaps, rest between shifts, consecutive days and approved leave — including
           the ones a bulk fill or a week copy creates. Conflicts are refused rather than flagged, because a roster that
           saves a conflict in amber is a roster nobody trusts.
@@ -111,7 +111,7 @@ export default async function Page({
                         {entry.shift.code}
                       </span>
                       {entry.source !== 'ROSTER' && (
-                        <span style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>
+                        <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
                           {entry.source.toLowerCase()}
                         </span>
                       )}
@@ -120,12 +120,13 @@ export default async function Page({
                           endpoint={`${actions}/roster-remove`}
                           body={{ entryId: entry.id }}
                           label="×"
+                          ariaLabel={`Remove ${entry.shift.code} on ${date(entry.workDate)}`}
                           variant="ghost"
                           confirm={`Remove ${entry.shift.code} on ${date(entry.workDate)}?`}
                         />
                       )}
                       {employeeId === self?.id && !planner && (
-                        <span style={{ color: 'var(--lf-ink-500)', fontSize: 'var(--lf-text-xs)' }}>you</span>
+                        <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>you</span>
                       )}
                     </span>
                   ))}
@@ -186,7 +187,7 @@ export default async function Page({
       {myUpcoming.length > 0 && (
         <section>
           <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Ask to change one of my shifts</h2>
-          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+          <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
             Pick one of your upcoming shifts, then either a different shift or a colleague&apos;s day to swap into — one
             or the other, not both. A manager decides it, and an approved swap moves both sides at once.
           </p>
@@ -265,7 +266,7 @@ export default async function Page({
           <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 10 }}>
             <div>
               <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Copy this week forward</h2>
-              <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+              <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
                 Copies {date(anchor)} – {date(addDays(anchor, 6))} onto the following week. Days that would breach a
                 rest rule or land on approved leave are reported instead of placed.
               </p>

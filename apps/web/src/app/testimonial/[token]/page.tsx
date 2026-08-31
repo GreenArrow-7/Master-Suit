@@ -49,7 +49,7 @@ export default async function TestimonialPage({ params }: { params: Promise<{ to
         ) : (
           <>
             {request.requestMessage && (
-              <p style={{ whiteSpace: 'pre-wrap', color: 'var(--lf-text-2)' }}>{request.requestMessage}</p>
+              <p style={{ whiteSpace: 'pre-wrap', color: 'var(--lf-ink-2)' }}>{request.requestMessage}</p>
             )}
             <TestimonialForm token={decodeURIComponent(token)} />
           </>

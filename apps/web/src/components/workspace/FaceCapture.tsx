@@ -271,7 +271,7 @@ export default function FaceCapture({
       </div>
 
       {status && (
-        <div role="status" style={{ color: 'var(--lf-ink-600)', fontSize: 'var(--lf-text-sm)' }}>
+        <div role="status" style={{ color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           {status}
         </div>
       )}
@@ -281,7 +281,7 @@ export default function FaceCapture({
         </div>
       )}
       {mode === 'enrol' && samples > 0 && phase === 'working' && (
-        <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-500)' }}>
+        <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
           Sample {samples} of {Math.max(samplesRequired, 4)}
         </div>
       )}

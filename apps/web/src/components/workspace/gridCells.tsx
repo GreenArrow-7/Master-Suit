@@ -182,7 +182,9 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
         case 'probability':
           return row.probability == null ? dash : <span className="lf-num">{row.probability}%</span>;
         case 'expectedCloseDate':
-          return date(row.expectedCloseDate);
+          // A closed deal's real close date beats the forecast that may never
+          // have been entered; open deals keep showing the forecast.
+          return date(row.actualCloseDate ?? row.expectedCloseDate);
         case 'owner':
           return row.owner?.fullName ?? dash;
         case 'updatedAt':

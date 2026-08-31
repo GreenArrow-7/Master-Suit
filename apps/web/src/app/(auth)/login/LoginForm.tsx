@@ -113,6 +113,10 @@ export default function LoginForm() {
           <div className="lf-field">
             <label className="lf-label" htmlFor="email">
               Email
+              <span className="lf-label__req" aria-hidden="true">
+                {' '}
+                *
+              </span>
             </label>
             <input
               id="email"
@@ -130,6 +134,10 @@ export default function LoginForm() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <label className="lf-label" htmlFor="password">
                 Password
+                <span className="lf-label__req" aria-hidden="true">
+                  {' '}
+                  *
+                </span>
               </label>
               <Link href="/forgot-password" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-wine-700)' }}>
                 Forgot password?

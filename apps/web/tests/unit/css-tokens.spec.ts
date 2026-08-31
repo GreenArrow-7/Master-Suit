@@ -38,14 +38,27 @@ function declaredTokens(): Set<string> {
   return declared;
 }
 
+/** Every .tsx under src — inline styles are where these bugs actually live. */
+function allTsx(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...allTsx(full));
+    else if (entry.name.endsWith('.tsx')) out.push(full);
+  }
+  return out;
+}
+
 /**
  * Uses are `var(--lf-name)` in the stylesheets and in the inline styles that
- * components still carry — the bug was in a component, so a stylesheet-only
- * scan would have missed it entirely.
+ * components carry. This scanned ONLY TopBar.tsx at first — the file the
+ * original bug was in — and an app-wide audit then found 83 more uses of
+ * six tokens that had never existed (--lf-ink-600 alone appeared 65 times).
+ * A guard scoped to where the last bug was is not a guard.
  */
 function usedTokens(): Map<string, Set<string>> {
   const used = new Map<string, Set<string>>();
-  const files = [...sources, join(root, 'components', 'nav', 'TopBar.tsx')];
+  const files = [...sources, ...allTsx(join(root, 'components')), ...allTsx(join(root, 'app'))];
 
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
