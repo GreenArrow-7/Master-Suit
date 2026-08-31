@@ -56,12 +56,8 @@ export default function ForgotPasswordForm() {
       )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="email">
+        <label className="lf-label" data-required htmlFor="email">
           Email
-          <span className="lf-label__req" aria-hidden="true">
-            {' '}
-            *
-          </span>
         </label>
         <input
           id="email"

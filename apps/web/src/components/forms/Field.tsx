@@ -36,14 +36,8 @@ export default function Field({
 }) {
   return (
     <div className="lf-field" data-invalid={error ? '' : undefined}>
-      <label className="lf-label" htmlFor={htmlFor}>
+      <label className="lf-label" data-required={required ? '' : undefined} htmlFor={htmlFor}>
         {label}
-        {required && (
-          <span className="lf-label__req" aria-hidden="true">
-            {' '}
-            *
-          </span>
-        )}
       </label>
       {children}
       {hint && !error && <span className="lf-field__hint">{hint}</span>}
