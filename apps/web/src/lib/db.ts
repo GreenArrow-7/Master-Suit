@@ -52,6 +52,12 @@ export const GLOBAL_MODELS = new Set([
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
+  // Infrastructure, not customer data: one row per (queue, worker process),
+  // reporting that something is draining that queue. It carries no tenantId
+  // because a worker is not a tenant's — it drains jobs for every workspace on
+  // the deployment, so a tenant-scoped copy would be meaningless and a per-tenant
+  // read would report a green queue that is only green for somebody else.
+  'WorkerHeartbeat',
   // Operator key-value settings; carries no tenantId at all.
   'PlatformSetting',
   // Not a bootstrap case — the tenant is an *input* to every grant lookup, and

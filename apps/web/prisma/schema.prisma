@@ -5592,6 +5592,29 @@ model IntegrationConnection {
 // WEBHOOK EVENTS (idempotent processing)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Proof that a worker process was alive, and when it last was.
+///
+/// `queueHasWorkers` asks BullMQ who is attached *right now*. That answers "is
+/// anything draining this queue" and cannot answer "did something stop", which
+/// is the failure this platform has actually had — a worker process dead in
+/// production for months while every producer kept enqueuing happily. A live
+/// query returns false for a queue that never had a worker and for one whose
+/// worker died an hour ago, and those need different responses.
+///
+/// One row per (queue, instance), rewritten on a timer. A stale `lastSeenAt` is
+/// the signal: it says a worker was there, and when it stopped.
+model WorkerHeartbeat {
+  queue      String
+  /// Which process. Several replicas may drain one queue, and a heartbeat that
+  /// collapsed them would go green while all but one were dead.
+  instanceId String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@id([queue, instanceId])
+  @@index([lastSeenAt])
+}
+
 model WebhookEvent {
   id           String    @id @default(cuid())
   tenantId     String
