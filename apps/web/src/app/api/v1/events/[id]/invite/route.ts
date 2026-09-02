@@ -6,6 +6,7 @@ import { NotFound, Invalid } from '@/lib/errors';
 import { getWhatsAppProvider } from '@/lib/integrations/whatsapp';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { rsvpToken } from '@/lib/events/rsvpToken';
+import { requireMutableEvent } from '@/services/crm/eventVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -38,6 +39,7 @@ const BATCH_LIMIT = 100;
 export const POST = route(
   { module: 'events', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
+    await requireMutableEvent(ctx, params.id, 'EDIT');
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

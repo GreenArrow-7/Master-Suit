@@ -125,7 +125,17 @@ describe('sending an invitation', () => {
   it('refuses a second open invitation for the same address', async () => {
     const email = address('duplicate');
     await inviteUser(adminCtx(), { email, fullName: 'First', roleId: memberRoleId });
-    await expect(inviteUser(adminCtx(), { email, fullName: 'Second', roleId: memberRoleId })).rejects.toThrow();
+    /**
+     * Asserting the *status*, not merely that something threw.
+     *
+     * `rejects.toThrow()` passed while the second invitation escaped as a raw
+     * P2002 from Prisma, which the API kernel turned into `500 Internal error`.
+     * A duplicate invitation is an ordinary operator slip and has to say so, so
+     * the assertion now pins the 409 that says it.
+     */
+    await expect(inviteUser(adminCtx(), { email, fullName: 'Second', roleId: memberRoleId })).rejects.toMatchObject({
+      status: 409,
+    });
   });
 });
 

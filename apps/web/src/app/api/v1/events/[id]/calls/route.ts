@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
+import { requireVisibleEvent } from '@/services/crm/eventVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -26,6 +27,9 @@ const BATCH_LIMIT = 200;
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
+    // Reading the event is enough here: the permission being exercised is
+    // `calls:CREATE`, and the event is the context the call is logged against.
+    await requireVisibleEvent(ctx, params.id);
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

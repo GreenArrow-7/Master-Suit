@@ -5587,6 +5587,22 @@ enum EventType {
   HYBRID
 }
 
+/// Who an event is for, as a deliberate choice by whoever created it.
+///
+/// `SCOPED` is the default and behaves like every other CRM record: the
+/// permission scope over its host decides who sees it. `ORGANIZATION` is the
+/// explicit company-wide announcement — the all-hands, the office closure, the
+/// launch everyone is meant to see — and is visible to every member of the
+/// workspace holding `events:VIEW`.
+///
+/// Without this, "make it visible to everyone" had no expression, and the only
+/// way to achieve it was to leave *every* event tenant-wide, which is what the
+/// code did.
+enum EventVisibility {
+  SCOPED
+  ORGANIZATION
+}
+
 enum EventStatus {
   DRAFT
   PUBLISHED
@@ -5612,16 +5628,19 @@ enum InviteChannel {
 }
 
 model Event {
-  id                 String      @id @default(cuid())
+  id                 String          @id @default(cuid())
   tenantId           String
   campaignId         String?
   title              String
   description        String?
-  eventType          EventType   @default(PHYSICAL)
-  status             EventStatus @default(DRAFT)
+  eventType          EventType       @default(PHYSICAL)
+  status             EventStatus     @default(DRAFT)
+  /// Defaults to SCOPED. The migration backfills existing rows to ORGANIZATION
+  /// so nobody loses sight of an event they can see today.
+  visibility         EventVisibility @default(SCOPED)
   startAt            DateTime
   endAt              DateTime
-  timezone           String      @default("Asia/Dubai")
+  timezone           String          @default("Asia/Dubai")
   hostId             String?
   location           String?
   address            String?
@@ -5629,14 +5648,14 @@ model Event {
   longitude          Float?
   meetingUrl         String?
   capacity           Int?
-  registeredCount    Int         @default(0)
-  attendedCount      Int         @default(0)
+  registeredCount    Int             @default(0)
+  attendedCount      Int             @default(0)
   externalCalendarId String?
   externalMeetId     String?
   notes              String?
   reminderSentAt     DateTime?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   createdById        String?
   updatedById        String?
   deletedAt          DateTime?
@@ -5648,6 +5667,7 @@ model Event {
   @@index([tenantId, status, startAt])
   @@index([tenantId, campaignId])
   @@index([tenantId, hostId])
+  @@index([tenantId, visibility])
 }
 
 model EventInvitee {
