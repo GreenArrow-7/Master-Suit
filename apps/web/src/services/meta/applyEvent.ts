@@ -13,13 +13,11 @@
  */
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { enqueue } from '@/lib/queue';
 import { connectionCredentials } from '@/lib/integrations/connection';
-import { findDuplicates } from '@/services/leads/findDuplicates';
 import { applySocialComment } from '@/services/social/applySocialComment';
+import { ingestProviderLead } from '@/services/leads/ingestProviderLead';
+import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
-import { nextReference } from '@/services/shared/reference';
-import { withTx } from '@/lib/db';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
 
 /** Pinned in one place; Meta sunsets a version roughly two years after release. */
@@ -76,26 +74,16 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
   const fields = await fetchLeadFields(leadgenId, credentials.accessToken);
   const answers = Object.fromEntries(fields.map((f) => [f.name, f.value]));
 
-  const fullName =
-    answers.full_name ?? ([answers.first_name, answers.last_name].filter(Boolean).join(' ').trim() || null);
-  const email = answers.email?.trim().toLowerCase() ?? null;
-  const rawPhone = answers.phone_number ?? answers.phone ?? null;
-  const phoneNormalized = rawPhone ? normalizePhone(rawPhone, 'AE') : null;
-
-  if (!fullName && !email && !phoneNormalized) {
-    logger.warn({ tenantId, leadgenId }, 'meta lead carried no identifying field');
-    return;
-  }
-
-  // The same duplicate rules every other entry point obeys (§9).
-  const [existing] = await findDuplicates(tenantId, { email, phoneNormalized, fullName });
-
   /**
-   * Attribution (§40). First touch is written only when the lead is new — a
-   * customer who first arrived from the website and later filled in a Facebook
-   * form did not become a Facebook lead, and overwriting that is exactly the
-   * "thoughtless overwrite" §40 warns against. The Meta identifiers go into
-   * metadata either way, so the touch is still recorded on an existing lead.
+   * Everything below the Graph call is provider-agnostic and lives in
+   * services/leads/ingestProviderLead.ts.
+   *
+   * This function's job is now exactly the part only Meta can do: exchange a
+   * `leadgen_id` for the answers, and map Meta's field names onto the common
+   * shape. Deduplication, routing, attribution merging, stage and source
+   * selection, distribution and automation are shared with every other source —
+   * which is what lets the demo generator exercise this pipeline instead of a
+   * parallel one.
    */
   const attribution = {
     metaLeadgenId: leadgenId,
@@ -108,127 +96,34 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
     receivedAt: new Date().toISOString(),
   };
 
-  if (existing) {
+  return ingestProviderLead({
+    tenantId,
+    provider: `meta:${connectionId}`,
+    externalLeadId: leadgenId,
+    occurredAt: event.occurredAt,
+    identity: {
+      fullName: answers.full_name ?? ([answers.first_name, answers.last_name].filter(Boolean).join(' ').trim() || null),
+      email: answers.email ?? null,
+      phone: answers.phone_number ?? answers.phone ?? null,
+    },
+    formId: event.lead?.formId ?? null,
+    // AD_LEAD_FORM, not SOCIAL: RecordSource already has the precise term for a
+    // lead that came from an ad's lead form, and the reports read it. A routing
+    // rule may override it — some workspaces report Instagram and Facebook
+    // separately.
+    source: 'AD_LEAD_FORM',
+    sourceDetail: `facebook:${event.lead?.formId ?? 'leadgen'}`,
+    attribution,
+    attributionKey: 'metaLeadgen',
     /**
-     * Merged, not replaced. `customData` is a single Json column shared with
-     * whatever else the tenant keeps on a lead, so assigning an object literal
-     * would silently delete all of it — §40's thoughtless overwrite, applied to
-     * the customer's own data rather than just their attribution.
-     *
-     * `source` and `sourceDetail` are deliberately left alone: someone who first
-     * arrived through the website and later filled in a Facebook form is still a
-     * website lead. This records the touch without rewriting first contact.
+     * The webhook route already claimed this delivery on
+     * `WebhookEvent(tenantId, 'meta:<id>', externalId)` before enqueuing, and
+     * that externalId is the webhook change id rather than the leadgen id — so
+     * claiming again here would be a second, different row rather than a
+     * duplicate guard. Retries of this job are covered by that first claim.
      */
-    const current = await prisma.lead.findFirst({
-      where: { id: existing.id, tenantId },
-      select: { customData: true },
-    });
-    await prisma.lead.update({
-      where: { id: existing.id, tenantId },
-      data: {
-        lastActivityAt: event.occurredAt,
-        customData: { ...((current?.customData ?? {}) as Record<string, unknown>), metaLeadgen: attribution },
-      },
-    });
-    logger.info({ tenantId, leadId: existing.id, leadgenId }, 'meta lead attached to existing customer');
-    return { leadId: existing.id, created: false };
-  }
-
-  /**
-   * What this form means to the CRM, if an administrator has said (§20).
-   *
-   * Without a rule the behaviour is exactly what it was before Phase 2: default
-   * stage, default source, distribution engine picks the owner. A rule narrows
-   * that, and a disabled rule stops lead creation without discarding the event —
-   * the WebhookEvent row is already stored, so turning the form back on does not
-   * lose the record that it fired.
-   */
-  const routing = event.lead?.formId
-    ? await prisma.metaLeadFormRouting.findUnique({
-        where: { tenantId_providerFormId: { tenantId, providerFormId: event.lead.formId } },
-        select: {
-          id: true,
-          enabled: true,
-          source: true,
-          stageId: true,
-          priority: true,
-          assignedUserId: true,
-          assignedTeamId: true,
-        },
-      })
-    : null;
-
-  if (routing && !routing.enabled) {
-    logger.info(
-      { tenantId, leadgenId, formId: event.lead?.formId },
-      'meta lead form routing is disabled — not creating a lead',
-    );
-    return { skipped: 'routing-disabled' as const };
-  }
-
-  // The rule's stage when it names one, the tenant default otherwise. A rule
-  // whose stage was deleted falls back rather than failing the ingestion.
-  const stage = routing?.stageId
-    ? await prisma.leadStage.findFirst({ where: { tenantId, id: routing.stageId }, select: { id: true } })
-    : null;
-  const fallbackStage =
-    stage ?? (await prisma.leadStage.findFirst({ where: { tenantId, isDefault: true }, select: { id: true } }));
-  if (!fallbackStage) throw new Error('tenant has no default lead stage');
-
-  const lead = await withTx(tenantId, async (tx) => {
-    return tx.lead.create({
-      data: {
-        tenantId,
-        reference: await nextReference(tx, tenantId, 'LEAD'),
-        fullName: fullName ?? email ?? phoneNormalized!,
-        email,
-        phone: rawPhone,
-        phoneNormalized,
-        stageId: fallbackStage.id,
-        // AD_LEAD_FORM, not SOCIAL: RecordSource already has the precise term
-        // for a lead that came from an ad's lead form, and the reports read it.
-        // A routing rule may override it — some workspaces report Instagram and
-        // Facebook separately.
-        source: routing?.source ?? 'AD_LEAD_FORM',
-        priority: routing?.priority ?? 'MEDIUM',
-        // A named owner or team from the rule; distribution fills the gap below
-        // when the rule names neither.
-        ownerId: routing?.assignedUserId ?? null,
-        teamId: routing?.assignedTeamId ?? null,
-        sourceDetail: `facebook:${event.lead?.formId ?? 'leadgen'}`,
-        // They completed a lead form asking to be contacted.
-        consentStatus: 'IMPLIED',
-        // customData, not campaignId: Lead.campaignId is a foreign key to a CRM
-        // Campaign, and putting a Meta ad id in it would point at nothing.
-        customData: { metaLeadgen: attribution },
-      },
-      select: { id: true },
-    });
+    alreadyClaimed: true,
   });
-
-  if (routing) {
-    // Best-effort: the lead is already committed, and failing to stamp "last
-    // lead" must not send the job back through ingestion.
-    await prisma.metaLeadFormRouting
-      .update({ where: { id: routing.id }, data: { lastLeadAt: event.occurredAt } })
-      .catch(() => {});
-  }
-
-  /**
-   * The same after-commit pipeline a website or manual lead gets.
-   *
-   * Distribution is skipped only when the rule already named an owner — running
-   * it anyway would let the engine reassign a lead an administrator deliberately
-   * routed. A rule naming only a team still goes through distribution, which is
-   * what picks a person within it.
-   */
-  await Promise.all([
-    ...(routing?.assignedUserId ? [] : [enqueue('distribution', 'assign-lead', { tenantId, leadId: lead.id })]),
-    enqueue('automation', 'trigger', { tenantId, event: 'record.created', object: 'LEAD', recordId: lead.id }),
-  ]);
-
-  logger.info({ tenantId, leadId: lead.id, leadgenId, connectionId }, 'meta lead created');
-  return { leadId: lead.id, created: true };
 }
 
 async function fetchLeadFields(leadgenId: string, accessToken: string) {

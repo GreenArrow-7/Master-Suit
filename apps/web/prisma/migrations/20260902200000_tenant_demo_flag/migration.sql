@@ -1,0 +1,12 @@
+-- Marks a workspace as a demo/sandbox.
+--
+-- Needed before the demo social-lead generator can exist at all. That generator
+-- creates real CRM leads through the real ingestion pipeline — which is the
+-- point of it — so without a per-tenant opt-in it is an authenticated
+-- lead-injection endpoint that any workspace could point at its own production
+-- data.
+--
+-- Defaults to false: a workspace is a real customer unless somebody explicitly
+-- says otherwise. No existing row is marked, deliberately — turning a live
+-- workspace into a demo one has to be a decision, not a migration side effect.
+ALTER TABLE "Tenant" ADD COLUMN "isDemo" BOOLEAN NOT NULL DEFAULT false;

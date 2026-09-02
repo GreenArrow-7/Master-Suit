@@ -376,6 +376,14 @@ model Tenant {
   trialStartedAt DateTime?
   trialEndsAt    DateTime?
   workspaceName  String?
+  /// This workspace is a demo/sandbox, not a real customer.
+  ///
+  /// The switch that lets a tenant generate simulated inbound leads. It is a
+  /// column rather than a plan code or a slug convention because it gates a
+  /// write path: without an explicit, per-tenant opt-in, the demo generator is
+  /// an authenticated lead-injection endpoint pointed at production data.
+  /// Defaults to false, so a workspace is real unless somebody says otherwise.
+  isDemo         Boolean   @default(false)
   archivedAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

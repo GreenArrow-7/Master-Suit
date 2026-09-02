@@ -466,8 +466,12 @@ async function main() {
   // 2. Tenant ────────────────────────────────────────────────────────────────
   const tenant = await db.tenant.upsert({
     where: { slug: DEMO_WORKSPACE.slug },
-    update: {},
+    // `isDemo` on an existing row too: the flag gates the simulated lead
+    // connector, and a workspace seeded before the column existed would
+    // otherwise be a demo workspace that cannot generate demo data.
+    update: { isDemo: true },
     create: {
+      isDemo: true,
       slug: DEMO_WORKSPACE.slug,
       legalName: DEMO_WORKSPACE.legalName,
       displayName: DEMO_WORKSPACE.displayName,
@@ -1210,8 +1214,9 @@ async function main() {
     // A demo tenant must come back ACTIVE on a re-seed: an archived/soft-deleted
     // row (which is how the second workspace's only login got refused with
     // NO_ACTIVE_WORKSPACE) otherwise survives every top-up.
-    update: { status: 'ACTIVE', deletedAt: null },
+    update: { status: 'ACTIVE', deletedAt: null, isDemo: true },
     create: {
+      isDemo: true,
       slug: SECOND_WORKSPACE.slug,
       legalName: SECOND_WORKSPACE.legalName,
       displayName: SECOND_WORKSPACE.displayName,
