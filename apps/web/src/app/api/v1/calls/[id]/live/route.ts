@@ -9,6 +9,7 @@ import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 /**
  * Relay mode: the call is live at a telephony vendor and the realtime engine
@@ -88,6 +89,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params },
   async ({ ctx, params, req }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

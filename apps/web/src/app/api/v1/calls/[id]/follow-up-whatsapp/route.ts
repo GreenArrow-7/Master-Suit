@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { serviceWindowOpen } from '@/lib/integrations/whatsapp';
 import { draftFollowUpWhatsApp } from '@/lib/ai/followUpEmail';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -20,6 +21,7 @@ const params = z.object({ id: z.string().cuid() });
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true, leadId: true },

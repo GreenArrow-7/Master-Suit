@@ -7,6 +7,7 @@ import { enqueue, queueHasWorkers } from '@/lib/queue';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { transcriptionProviderFor } from '@/lib/integrations/transcription';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -29,6 +30,7 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -116,6 +118,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const transcript = await prisma.transcript.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

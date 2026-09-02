@@ -62,11 +62,14 @@ export default function MobileTabBar({
   lastUsed?: string | null;
 }) {
   const pathname = usePathname();
-  const module = resolveActiveProduct(pathname, modules, lastUsed);
+  // Not named `module`: Next forbids assigning to that identifier
+  // (@next/next/no-assign-module-variable) because it shadows the CommonJS
+  // binding the bundler emits.
+  const product = resolveActiveProduct(pathname, modules, lastUsed);
 
   // The daily loop differs by module; the shape does not.
   const items =
-    module === 'people'
+    product === 'people'
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Conflict } from '@/lib/errors';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -23,6 +24,7 @@ export const POST = route(
     auditEvent: 'CONSENT_RECORDED',
   },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -61,6 +63,7 @@ export const POST = route(
 export const DELETE = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

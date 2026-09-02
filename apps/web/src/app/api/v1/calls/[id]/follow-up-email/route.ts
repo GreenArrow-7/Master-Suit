@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { Invalid, NotFound } from '@/lib/errors';
 import { sendMail } from '@/lib/mailer';
 import { draftFollowUpEmail } from '@/lib/ai/followUpEmail';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -66,6 +67,7 @@ async function loadContext(tenantId: string, callId: string) {
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const { call, analysis, transcript, companyName } = await loadContext(ctx.tenantId, params.id);
     const recipient = await recipientFor(ctx.tenantId, call);
 
@@ -111,6 +113,7 @@ export const PUT = route(
     rateLimit: { max: 20, windowSeconds: 300 },
   },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const { call } = await loadContext(ctx.tenantId, params.id);
     const recipient = await recipientFor(ctx.tenantId, call);
 

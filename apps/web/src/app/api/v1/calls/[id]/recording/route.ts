@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Forbidden } from '@/lib/errors';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -19,6 +20,7 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -43,6 +45,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
