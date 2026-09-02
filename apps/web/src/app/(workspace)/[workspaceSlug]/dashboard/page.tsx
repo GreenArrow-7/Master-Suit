@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { usableModules } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 
@@ -19,11 +20,15 @@ import { myEmployee } from '@/services/hr/leave';
 export default async function WorkspaceDashboard({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx, workspace } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
-  const modules = new Set(
-    workspace.moduleEntitlements
-      .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state))
-      .map((item) => item.module),
-  );
+  /**
+   * The same validity rule the API gate uses — see lib/security/entitlements.ts.
+   *
+   * This page used to test `state` and nothing else, while every endpoint also
+   * tested `endsAt`. A subscription left ACTIVE past its end date therefore
+   * advertised its product here, on the workspace landing page, and then refused
+   * the person on the screen it sent them to.
+   */
+  const modules = new Set<string>(usableModules(workspace.moduleEntitlements));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);

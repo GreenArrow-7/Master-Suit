@@ -1,8 +1,10 @@
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { usableModules } from '@/lib/security/entitlements';
+import { ACTIVE_PRODUCT_COOKIE } from '@/lib/nav/activeProduct';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
@@ -100,6 +102,7 @@ export default async function WorkspaceLayout({
         slug={shell.slug}
         name={shell.displayName}
         modules={shell.modules}
+        lastUsed={shell.lastProduct}
         permitted={shell.permitted}
         workspaces={shell.availableWorkspaces}
         user={shell.user}
@@ -121,7 +124,7 @@ export default async function WorkspaceLayout({
         />
         <main className="lf-page-main">{children}</main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
-        <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
+        <MobileTabBar slug={shell.slug} modules={shell.modules} lastUsed={shell.lastProduct} />
       </div>
       <AssistantWidget slug={shell.slug} />
       <NativePush />
@@ -137,9 +140,10 @@ async function loadShell(workspaceSlug: string) {
     const ctx = await requestCtx();
     const workspace = await requestWorkspace(ctx, workspaceSlug);
     const now = new Date();
-    const modules = workspace.moduleEntitlements
-      .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state) && (!item.endsAt || item.endsAt > now))
-      .map((item) => item.module);
+    // One rule, shared with the API gate and the product hub — see
+    // lib/security/entitlements.ts. Previously spelled out here and, differently,
+    // on the dashboard.
+    const modules = usableModules(workspace.moduleEntitlements, now);
     const memberships = await prisma.workspaceMembership.findMany({
       where: { salesUserId: ctx.actor.id, status: 'ACTIVE', tenant: { deletedAt: null } },
       // The switcher renders two strings; the full Tenant row is ~30 columns.
@@ -206,6 +210,14 @@ async function loadShell(workspaceSlug: string) {
           : false,
       plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
+      /**
+       * The product the viewer last used, for the shared routes that have a
+       * genuine choice. A cookie rather than localStorage because this is
+       * rendered on the server: the sidebar writes it on navigation, and an
+       * unrecognised or no-longer-owned value is discarded by
+       * `resolveActiveProduct` rather than trusted.
+       */
+      lastProduct: (await cookies()).get(ACTIVE_PRODUCT_COOKIE)?.value ?? null,
       availableWorkspaces:
         memberships.length > 0
           ? memberships.map((membership) => ({ slug: membership.tenant.slug, name: membership.tenant.displayName }))

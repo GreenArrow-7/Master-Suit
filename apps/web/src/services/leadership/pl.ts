@@ -212,8 +212,17 @@ async function payrollByGroup(
   currency: string,
   caveats: string[],
 ): Promise<Map<string | null, Prisma.Decimal>> {
+  // `endsAt` as well as `state`: an entitlement left ACTIVE past its end date is
+  // refused everywhere else (lib/security/entitlements.ts), and reading payroll
+  // out of a workspace whose HR term has expired would have leaked salary
+  // figures the rest of the product had already stopped serving.
   const entitled = await prisma.moduleEntitlement.findFirst({
-    where: { tenantId, module: 'HRMS', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+    where: {
+      tenantId,
+      module: 'HRMS',
+      state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] },
+      OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+    },
     select: { id: true },
   });
   if (!entitled) {

@@ -38,10 +38,20 @@ export default async function PlatformOverviewPage() {
         tx.platformUser.count({ where: { deletedAt: null } }),
         tx.employeeProfile.count({ where: { tenantId: { not: '' }, deletedAt: null } }),
         tx.moduleEntitlement.count({
-          where: { tenantId: { not: '' }, module: 'HRMS', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+          where: {
+            tenantId: { not: '' },
+            module: 'HRMS',
+            state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] },
+            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          },
         }),
         tx.moduleEntitlement.count({
-          where: { tenantId: { not: '' }, module: 'SALES', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+          where: {
+            tenantId: { not: '' },
+            module: 'SALES',
+            state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] },
+            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          },
         }),
         tx.platformAuditEvent.findMany({
           take: 9,

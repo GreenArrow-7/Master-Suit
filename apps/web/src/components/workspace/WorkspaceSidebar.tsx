@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { PRODUCT_NAME } from '@/lib/branding';
+import { ACTIVE_PRODUCT_COOKIE, resolveActiveProduct } from '@/lib/nav/activeProduct';
 
 /**
  * `permission` accepts a list because a screen can need more than one grant.
@@ -50,10 +51,13 @@ export default function WorkspaceSidebar({
   workspaces,
   user,
   serviceMode = false,
+  lastUsed = null,
 }: {
   slug: string;
   name: string;
   modules: string[];
+  /** The product the viewer last used, for shared routes. Server-read cookie. */
+  lastUsed?: string | null;
   /** Permission modules the signed-in role may VIEW, resolved server-side. */
   permitted: string[];
   /**
@@ -109,19 +113,20 @@ export default function WorkspaceSidebar({
    * word. Matching `ModuleTheme`'s test keeps the sidebar, the top bar and the
    * palette telling the same story.
    */
-  const moduleSegment = pathname.split('/')[2];
-  const activeModule: 'people' | 'sales' =
-    moduleSegment === 'people'
-      ? 'people'
-      : moduleSegment === 'sales'
-        ? 'sales'
-        : // Neutral routes (/dashboard, /notifications, /tasks, /admin/*, /profile/*)
-          // follow entitlement rather than a hardcoded 'sales': an HRMS-only
-          // workspace must not land on the Sales rail, which an org_admin's
-          // wildcard grants otherwise populate in full. Mirrors MobileTabBar.
-          modules.includes('SALES')
-          ? 'sales'
-          : 'people';
+  const activeModule = resolveActiveProduct(pathname, modules, lastUsed);
+
+  /**
+   * Reachability, not merely ownership.
+   *
+   * A product is offered when the company has bought it *and* this viewer holds
+   * a permission inside it — the same pair the product hub and the API gate
+   * apply. `employee` and `leads` are the entry permissions each product's
+   * landing screen requires, so offering the link when they are absent would
+   * produce a switcher that navigates straight to a refusal.
+   */
+  const canUsePeople = modules.includes('HRMS') && permitted.includes('employee');
+  const canUseSales = modules.includes('SALES') && permitted.includes('leads');
+  const canSwitchProduct = canUsePeople && canUseSales;
 
   // Remembering the module is a side effect and belongs here. Closing the
   // mobile drawer is not: setting state synchronously in an effect causes a
@@ -129,6 +134,11 @@ export default function WorkspaceSidebar({
   // happens instead — on the link click.
   useEffect(() => {
     window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
+    // Also a cookie: the workspace layout renders the phone tab bar on the
+    // server and cannot read localStorage, so without this a shared route was
+    // decided by entitlement again on first paint. `SameSite=Lax` and no
+    // `HttpOnly` — it is a navigation preference, not a credential.
+    document.cookie = `${ACTIVE_PRODUCT_COOKIE}=${activeModule}; path=/; max-age=31536000; SameSite=Lax`;
   }, [activeModule, slug]);
 
   // The bottom tab bar's Menu button asks for the drawer. An event rather than
@@ -231,7 +241,7 @@ export default function WorkspaceSidebar({
            * navigation and theme, which is why the HR screens looked missing.
            * Every entry now stays inside /people/*.
            */
-          label: 'Administration',
+          label: 'HR administration',
           items: (
             [
               {
@@ -240,14 +250,12 @@ export default function WorkspaceSidebar({
                 icon: 'company',
                 permission: 'employee',
               },
-              { label: 'Users', href: `/${slug}/people/users`, icon: 'people', permission: 'users' },
               {
                 label: 'Face recognition activity',
                 href: `/${slug}/people/face-activity`,
                 icon: 'shield',
                 permission: 'employee',
               },
-              { label: 'Roles & permissions', href: `/${slug}/people/roles`, icon: 'shield', permission: 'roles' },
               { label: 'HR policy', href: `/${slug}/people/settings`, icon: 'settings', permission: 'employee' },
             ] as Item[]
           ).filter((item) => itemAllowed(item, permitted)),
@@ -485,7 +493,24 @@ export default function WorkspaceSidebar({
       { label: 'Settings', href: `/${slug}/admin/settings`, icon: 'settings', permission: 'settings' },
       { label: 'Audit logs', href: `/${slug}/admin/audit`, icon: 'report', permission: 'auditlogs' },
     ] as Item[]
-  ).filter((item) => itemAllowed(item, permitted));
+  )
+    .filter((item) => itemAllowed(item, permitted))
+    /**
+     * Inside People, the two company screens that have an in-module twin point
+     * at it.
+     *
+     * `/people/users` and `/people/roles` are thin wrappers that render the very
+     * same directory inside the HR shell. Listing both sets gave the People
+     * sidebar two "Users" entries going to one screen; listing only the
+     * `/admin/*` ones sent an HR administrator through a neutral route whose
+     * shell is decided by a cookie. Rewriting the href keeps one entry per
+     * authority and keeps the person in the module they are working in.
+     */
+    .map((item) =>
+      activeModule === 'people' && (item.href.endsWith('/admin/users') || item.href.endsWith('/admin/roles'))
+        ? { ...item, href: item.href.replace('/admin/', '/people/') }
+        : item,
+    );
 
   return (
     <>
@@ -543,23 +568,40 @@ export default function WorkspaceSidebar({
           </button>
         </div>
 
-        {/* The HR module's own navigation carries no product switcher — the
-            reference has none. "Overview" still reaches the workspace root,
-            which is where both modules are listed, so nobody is stranded. */}
-        {!collapsed && activeModule !== 'people' && (
+        {/*
+          The product switcher, in every shell that has somewhere to switch to.
+          
+          It used to be hidden inside People (`activeModule !== 'people'`), on
+          the reasoning that the HR reference design has none and "Overview
+          still reaches the workspace root". In a product where one company can
+          own both, that made moving HR → Sales a detour through the dashboard
+          while Sales → HR was one click — and it read as though HR were a
+          separate application you had to leave.
+
+          Rendered only when the viewer can actually reach both products:
+          entitlement alone is not enough, or a Sales-only user in a company
+          that also owns HRMS is offered a rail that will refuse them.
+        */}
+        {!collapsed && canSwitchProduct && (
           <div className="lf-module-switch" aria-label="Product modules">
-            {modules.includes('SALES') && (
-              <Link href={`/${slug}/sales`} aria-current={activeModule === 'sales' ? 'page' : undefined}>
-                <Icon name="lead" />
-                Sales
-              </Link>
-            )}
-            {/* Never the current tab here: this switcher renders only outside
-                the HR module, which has no switcher of its own. */}
-            {modules.includes('HRMS') && (
-              <Link href={`/${slug}/people`}>
+            {canUsePeople && (
+              <Link
+                href={`/${slug}/people`}
+                aria-current={activeModule === 'people' ? 'page' : undefined}
+                onClick={() => setMobileOpen(false)}
+              >
                 <Icon name="people" />
                 People
+              </Link>
+            )}
+            {canUseSales && (
+              <Link
+                href={`/${slug}/sales`}
+                aria-current={activeModule === 'sales' ? 'page' : undefined}
+                onClick={() => setMobileOpen(false)}
+              >
+                <Icon name="lead" />
+                Sales
               </Link>
             )}
           </div>
@@ -585,9 +627,30 @@ export default function WorkspaceSidebar({
                 ))}
               </section>
             ))}
-          {activeModule !== 'people' && administration.length > 0 && (
+          {/*
+            Company administration, in every shell.
+
+            This section was rendered only outside People
+            (`activeModule !== 'people'`), and the things in it belong to the
+            *company*, not to Sales: company profile, users, roles, subscription,
+            integrations, security, audit logs. An HR-only workspace has no Sales
+            shell to render them in, so its administrator could not reach any of
+            them from the navigation at all — the subscription they pay for
+            included.
+
+            It is labelled "Company" rather than "Administration" because the
+            People shell has its own Administration group directly above, holding
+            HR *product* settings (attendance locations, HR policy, face
+            activity). Two groups called the same thing, one company-wide and one
+            product-specific, is the confusion this split exists to remove.
+
+            Safe to render here now: these are neutral `/admin/*` and `/profile/*`
+            routes, and until `resolveActiveProduct` started remembering the last
+            product, opening one from People swapped the whole shell to Sales.
+          */}
+          {administration.length > 0 && (
             <section className="lf-nav-section">
-              {!collapsed && <div className="lf-nav-label">Administration</div>}
+              {!collapsed && <div className="lf-nav-label">Company</div>}
               {administration.map((item) => (
                 <NavLink
                   key={item.href}

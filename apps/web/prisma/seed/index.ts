@@ -548,11 +548,23 @@ async function main() {
       update: { state: 'ACTIVE' },
       create: { tenantId, module: productModule, state: 'ACTIVE' },
     });
-    await db.subscriptionModule.upsert({
-      where: { subscriptionId_module: { subscriptionId: seededSubscription.id, module: productModule } },
-      update: { state: 'ACTIVE' },
-      create: { subscriptionId: seededSubscription.id, module: productModule, state: 'ACTIVE' },
+    // Find-or-create rather than upsert: a company may hold several product
+    // rows for one module (a bundle beside a standalone contract), so
+    // (subscriptionId, module) is no longer unique. Re-seeding must not add a
+    // second row on every run.
+    const existingProduct = await db.subscriptionModule.findFirst({
+      where: { subscriptionId: seededSubscription.id, module: productModule },
     });
+    if (existingProduct) {
+      await db.subscriptionModule.update({
+        where: { id: existingProduct.id },
+        data: { state: 'ACTIVE', planId: plan.id, endsAt: null, canceledAt: null },
+      });
+    } else {
+      await db.subscriptionModule.create({
+        data: { subscriptionId: seededSubscription.id, module: productModule, planId: plan.id, state: 'ACTIVE' },
+      });
+    }
   }
   console.log(`  tenant ${tenant.displayName} (${tenantId})`);
 
@@ -1230,11 +1242,24 @@ async function main() {
       update: { state: 'ACTIVE' },
       create: { tenantId: second.id, module: productModule, state: 'ACTIVE' },
     });
-    await db.subscriptionModule.upsert({
-      where: { subscriptionId_module: { subscriptionId: secondSubscription.id, module: productModule } },
-      update: { state: 'ACTIVE' },
-      create: { subscriptionId: secondSubscription.id, module: productModule, state: 'ACTIVE' },
+    const existingSecondProduct = await db.subscriptionModule.findFirst({
+      where: { subscriptionId: secondSubscription.id, module: productModule },
     });
+    if (existingSecondProduct) {
+      await db.subscriptionModule.update({
+        where: { id: existingSecondProduct.id },
+        data: { state: 'ACTIVE', planId: secondPlan.id, endsAt: null, canceledAt: null },
+      });
+    } else {
+      await db.subscriptionModule.create({
+        data: {
+          subscriptionId: secondSubscription.id,
+          module: productModule,
+          planId: secondPlan.id,
+          state: 'ACTIVE',
+        },
+      });
+    }
   }
 
   // Same role catalogue as the primary workspace: roles are per-tenant rows.

@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
+import {
+  cancelProductSubscription,
+  setTenantModules,
+  syncModuleEntitlements,
+  updateProductSubscription,
+} from '@/services/platform/subscriptions';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
@@ -89,40 +95,40 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
           data: { planId: plan?.id, state: body.subscriptionState },
         });
       }
-      if (body.subscriptionState) {
-        await tx.moduleEntitlement.updateMany({
-          where: { tenantId: current.id },
-          data: { state: body.subscriptionState },
-        });
-      }
+      /**
+       * Module access is written to the product subscriptions and derived from
+       * there — this route no longer edits `ModuleEntitlement` itself.
+       *
+       * The two blocks this replaces disagreed with each other. The first pushed
+       * a state across every module with no filter; the second then wrote each
+       * module's entitlement *and* its subscription row with a slightly
+       * different expression for the same value. Whichever ran last won, and
+       * unticking Sales set `endsAt` on HR as well.
+       */
       if (body.enabledModules) {
-        for (const productModule of ['HRMS', 'SALES'] as const) {
-          const enabled = body.enabledModules.includes(productModule);
-          await tx.moduleEntitlement.upsert({
-            where: { tenantId_module: { tenantId: current.id, module: productModule } },
-            update: {
-              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
-              endsAt: enabled ? body.trialEndsAt : new Date(),
-            },
-            create: {
-              tenantId: current.id,
-              module: productModule,
-              state: enabled ? (body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE') : 'CANCELED',
-              endsAt: enabled ? body.trialEndsAt : new Date(),
-            },
-          });
-          if (current.subscription) {
-            await tx.subscriptionModule.upsert({
-              where: { subscriptionId_module: { subscriptionId: current.subscription.id, module: productModule } },
-              update: { state: enabled ? (body.subscriptionState ?? current.subscription.state) : 'CANCELED' },
-              create: {
-                subscriptionId: current.subscription.id,
-                module: productModule,
-                state: enabled ? (body.subscriptionState ?? current.subscription.state) : 'CANCELED',
-              },
-            });
-          }
+        await setTenantModules(
+          current.id,
+          body.enabledModules,
+          {
+            state: body.subscriptionState ?? current.subscription?.state ?? 'ACTIVE',
+            // A trial end date is the term the operator typed for the modules
+            // they left ticked; unticked ones are cancelled by the service.
+            endsAt: null,
+            ...(body.trialEndsAt === undefined ? {} : { trialEndsAt: body.trialEndsAt }),
+          },
+          tx,
+        );
+      } else if (body.subscriptionState) {
+        // No module list given: re-state the account's products, each keeping
+        // its own module and dates.
+        const products = await tx.subscriptionModule.findMany({
+          where: { subscription: { tenantId: current.id } },
+          select: { id: true },
+        });
+        for (const product of products) {
+          await updateProductSubscription(product.id, { state: body.subscriptionState }, tx);
         }
+        await syncModuleEntitlements(current.id, tx);
       }
       if (body.revokeSessions) {
         await tx.platformSession.updateMany({
@@ -197,10 +203,23 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
         where: { tenantId: current.id },
         data: { state: 'CANCELED', canceledAt: now },
       });
-      await tx.moduleEntitlement.updateMany({
-        where: { tenantId: current.id },
-        data: { state: 'CANCELED', endsAt: now },
+      /**
+       * Cancel the products, then derive — not the other way round.
+       *
+       * Writing `ModuleEntitlement` directly here would have been undone by the
+       * next reconcile: the product rows would still read ACTIVE, and
+       * `getEffectiveModules` would hand a deleted workspace its modules back.
+       * Since entitlements became derived state, the only durable way to end
+       * access is to end the purchase.
+       */
+      const products = await tx.subscriptionModule.findMany({
+        where: { subscription: { tenantId: current.id }, state: { not: 'CANCELED' } },
+        select: { id: true },
       });
+      for (const product of products) {
+        await cancelProductSubscription(product.id, tx, now);
+      }
+      await syncModuleEntitlements(current.id, tx, now);
       await tx.platformSession.updateMany({
         where: { activeTenantId: current.id, revokedAt: null },
         data: { revokedAt: now, revokedReason: 'WORKSPACE_DELETED' },

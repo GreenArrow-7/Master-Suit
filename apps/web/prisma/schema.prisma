@@ -604,9 +604,12 @@ model SubscriptionPlan {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  subscriptions TenantSubscription[]
-  planModules   PlanModule[]
-  planLimits    PlanLimit[]
+  subscriptions        TenantSubscription[]
+  planModules          PlanModule[]
+  planLimits           PlanLimit[]
+  /// Per-product subscriptions on this plan. A plan can now be bought for one
+  /// module without dragging the rest of the bundle along.
+  productSubscriptions SubscriptionModule[]
 }
 
 model TenantSubscription {
@@ -672,17 +675,56 @@ model PlanLimit {
   @@unique([planId, key])
 }
 
+/// One purchased product, and the authoritative record of what a company owns.
+///
+/// This is the "product subscription" the commercial model is built on: a
+/// company holds one billing container (TenantSubscription) and one row here per
+/// product it has bought, each carrying its own plan, state and dates. That is
+/// what lets ABC Real Estate run HRMS_PRO and SALES_BASIC side by side, and what
+/// lets Sales be cancelled without touching HR.
+///
+/// ── Why the (subscriptionId, module) unique is gone ─────────────────────────
+///
+/// It made "two sources provide SALES" unrepresentable, and that is a real
+/// commercial state: a bundle that includes Sales overlapping with a standalone
+/// Sales contract during a migration, or a promotional term running alongside a
+/// paid one. With one row permitted, expiring the bundle removed Sales even
+/// though the customer was still paying for it under the other agreement.
+/// `getEffectiveModules` answers "is any source usable", so several rows for one
+/// module is the normal case rather than a corruption to be prevented.
 model SubscriptionModule {
-  id             String             @id @default(cuid())
-  subscriptionId String
-  module         ModuleKey
-  state          SubscriptionState  @default(ACTIVE)
-  limits         Json               @default("{}")
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(cuid())
+  subscriptionId     String
+  module             ModuleKey
+  /// This product's own plan. Nullable because rows migrated from the
+  /// single-plan era inherit the container's plan until one is set explicitly —
+  /// see getEffectiveModules, which falls back rather than treating null as "no
+  /// plan" and refusing access to a paying customer.
+  planId             String?
+  state              SubscriptionState @default(ACTIVE)
+  limits             Json              @default("{}")
+  metadata           Json              @default("{}")
+  /// Access begins here. Defaults to now so an existing row keeps working.
+  startsAt           DateTime          @default(now())
+  /// Hard stop. A row whose endsAt has passed is unusable whatever its state
+  /// says — a state column left at ACTIVE by a failed billing job must not
+  /// outlive the term the customer actually paid for.
+  endsAt             DateTime?
+  trialEndsAt        DateTime?
+  graceEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  canceledAt         DateTime?
+  externalCustomerId String?
+  externalContractId String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  @@unique([subscriptionId, module])
+  subscription TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan?  @relation(fields: [planId], references: [id])
+
+  @@index([subscriptionId, module])
+  @@index([module, state])
+  @@index([planId])
 }
 
 model WorkspaceUsage {
@@ -1088,7 +1130,7 @@ model PlatformUser {
   memberships           WorkspaceMembership[]
   passwordHistory       PasswordHistory[]
   sessions              PlatformSession[]
-  platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
+  platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
   serviceCredentials    PlatformServiceCredential[]
@@ -5057,14 +5099,14 @@ model Notification {
 /// every read here is already inside one workspace. See `GLOBAL_MODELS` in
 /// src/lib/db.ts, where the guard exemption this needs is argued.
 model DeviceToken {
-  id       String @id @default(cuid())
-  userId   String
-  token    String @unique
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
   /// 'ios' or 'android'. It decides which of the two push transports sends —
   /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
   /// that silently never rings. Written only by /api/v1/devices, behind a
   /// closed zod enum.
-  platform String
+  platform   String
   /// Stamped on every re-registration, which the app does at each launch. A
   /// token that has not been seen for months belongs to an app that was deleted
   /// without telling anyone; the transports prune those on rejection.
