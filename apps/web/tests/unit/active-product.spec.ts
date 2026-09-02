@@ -53,6 +53,15 @@ describe('resolveActiveProduct', () => {
     expect(resolveActiveProduct('/abc/dashboard', ['SALES'])).toBe('sales');
   });
 
+  it('keeps the pre-existing Sales default on a neutral route with nothing remembered', () => {
+    // Not a preference of this change: the workspace dashboard already rendered
+    // the Sales rail for a both-module company, and tests/e2e/mobile.spec.ts and
+    // tests/e2e/request-budget.spec.ts both depend on it. The fix is about
+    // *module* routes, where the URL is authoritative.
+    expect(resolveActiveProduct('/abc/dashboard', both)).toBe('sales');
+    expect(resolveActiveProduct('/abc/admin/settings', both)).toBe('sales');
+  });
+
   it('never puts an HRMS-only workspace on the Sales rail', () => {
     expect(resolveActiveProduct('/abc/admin/users', ['HRMS'], 'sales')).toBe('people');
   });

@@ -112,7 +112,14 @@ test.describe('Request budget: the five hot navigations', () => {
     await test.step('warmup: compile/visit every route once', async () => {
       // First visits pay dev-server route compilation; the measured pass below
       // must observe steady-state behaviour, not compile time.
-      for (const path of ['/dashboard', '/sales/leads', '/people/employees', '/admin/settings']) {
+      //
+      // Order is load-bearing, and deliberately so. The sidebar remembers the
+      // last product used and applies it on neutral routes like `/dashboard`
+      // (lib/nav/activeProduct.ts), so ending the warmup inside People would
+      // leave the measured pass on the HR rail — where `sales/leads` is not a
+      // link at all. Ending on Sales makes the remembered product match what
+      // the measured step below actually navigates.
+      for (const path of ['/dashboard', '/people/employees', '/admin/settings', '/sales/leads']) {
         await page.goto(`/${workspace.slug}${path}`);
         await page.waitForLoadState('networkidle');
       }

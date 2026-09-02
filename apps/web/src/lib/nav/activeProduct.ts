@@ -75,5 +75,17 @@ export function resolveActiveProduct(
 
   if (canPeople && !canSales) return 'people';
   if (canSales && !canPeople) return 'sales';
-  return 'people';
+
+  /**
+   * Both products, and nothing remembered: Sales.
+   *
+   * This is the behaviour that was already there, and it is deliberately left
+   * alone. The bug being fixed is that entitlement decided the product on
+   * *module* routes, where the URL already says the answer; on a genuinely
+   * neutral route with no stored preference there is no better signal than the
+   * default the product already had, and changing it was an unrequested
+   * behaviour change — it moved a both-module workspace's `/dashboard` from the
+   * Sales rail to the People one.
+   */
+  return 'sales';
 }
