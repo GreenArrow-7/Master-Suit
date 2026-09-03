@@ -5,6 +5,7 @@ import { Forbidden, NotFound, Conflict } from '@/lib/errors';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getWhatsAppProvider, serviceWindowOpen } from '@/lib/integrations/whatsapp';
+import { loggedWhatsApp } from '@/services/integrations/loggedWhatsApp';
 import { SENDABLE } from '@/services/meta/templates';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -152,7 +153,7 @@ export const POST = route(
       throw Forbidden('WhatsApp is not connected for this workspace.');
     }
 
-    const provider = getWhatsAppProvider('meta', credentials);
+    const provider = loggedWhatsApp(getWhatsAppProvider('meta', credentials), ctx.tenantId);
 
     let result;
     let sentText: string;

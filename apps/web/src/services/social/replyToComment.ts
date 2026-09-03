@@ -18,6 +18,7 @@ import { visibilityWhere } from '@/lib/security/visibility';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { replyCapability } from '@/lib/integrations/meta/replyCapability';
 import { sendMetaReply } from '@/lib/integrations/meta/send';
+import { categoriseIntegrationError, recordIntegrationEvent } from '@/services/integrations/eventLog';
 import type { Ctx } from '@/lib/security/rbac';
 import type { SocialReplyKind } from '@prisma/client';
 
@@ -110,6 +111,7 @@ export async function replyToSocialComment(ctx: Ctx, input: ReplyInput) {
     const metadata = (connection?.metadata ?? {}) as Record<string, string>;
 
     if (credentials?.accessToken) {
+      const startedAt = Date.now();
       const sent = await sendMetaReply({
         provider: enquiry.provider,
         kind: input.kind,
@@ -118,6 +120,28 @@ export async function replyToSocialComment(ctx: Ctx, input: ReplyInput) {
         accessToken: credentials.accessToken,
         body,
       });
+
+      /**
+       * Recorded here rather than through `withIntegrationEvent`, because
+       * `sendMetaReply` returns refusals instead of throwing them — deliberately,
+       * since a refusal from Meta is an outcome a salesperson reads rather than
+       * an exception for the platform to swallow. A wrapper that keys off throws
+       * would record every one of those as a success.
+       */
+      await recordIntegrationEvent({
+        tenantId: ctx.tenantId,
+        provider: enquiry.provider,
+        direction: 'OUTBOUND',
+        operation: input.kind === 'PUBLIC' ? 'publicReply' : 'privateReply',
+        outcome: sent.ok ? 'OK' : 'FAILED',
+        durationMs: Date.now() - startedAt,
+        ...(sent.ok
+          ? { externalId: sent.providerReplyId, entityType: 'SocialComment', entityId: enquiry.id }
+          : // No status code to read: the helper has already reduced Meta's
+            // answer to its message, so the category comes from the text.
+            { errorCategory: categoriseIntegrationError(new Error(sent.error)), detail: sent.error }),
+      });
+
       /**
        * Nothing is written when Meta refuses. A row saying we answered, when the
        * customer heard nothing, is worse than the error — it stops the SLA

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { NotFound, Invalid } from '@/lib/errors';
 import { getWhatsAppProvider } from '@/lib/integrations/whatsapp';
+import { loggedWhatsApp } from '@/services/integrations/loggedWhatsApp';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { rsvpToken } from '@/lib/events/rsvpToken';
 import { requireMutableEvent } from '@/services/crm/eventVisibility';
@@ -69,7 +70,7 @@ export const POST = route(
     });
     if (invitees.length === 0) return { sent: 0, failed: 0, remaining: 0 };
 
-    const provider = getWhatsAppProvider('meta', credentials);
+    const provider = loggedWhatsApp(getWhatsAppProvider('meta', credentials), ctx.tenantId);
     const when = event.startAt.toLocaleString('en-GB', {
       dateStyle: 'full',
       timeStyle: 'short',

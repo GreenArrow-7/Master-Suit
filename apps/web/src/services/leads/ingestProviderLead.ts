@@ -1,6 +1,7 @@
 import type { RecordSource } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { categoriseIntegrationError, httpStatusOf, recordIntegrationEvent } from '@/services/integrations/eventLog';
 import { enqueue } from '@/lib/queue';
 import { findDuplicates } from '@/services/leads/findDuplicates';
 import { normalizePhone } from '@/services/leads/normalizePhone';
@@ -95,7 +96,70 @@ async function claim(event: ProviderLeadEvent): Promise<boolean> {
   }
 }
 
+/**
+ * Ingests one provider lead and writes down what became of it.
+ *
+ * The recording wraps the work rather than living inside it because every one of
+ * the five exits is an answer somebody wants: a lead was created, a lead was
+ * attached to a customer who already existed, the delivery was a redelivery, the
+ * routing rule is switched off, or the payload carried nothing to contact anyone
+ * on. Before this, four of those five were a log line and then nothing.
+ */
 export async function ingestProviderLead(event: ProviderLeadEvent): Promise<IngestResult> {
+  const { tenantId } = event;
+
+  const common = {
+    tenantId,
+    provider: event.provider,
+    direction: 'INBOUND' as const,
+    operation: 'lead',
+    externalId: event.externalLeadId,
+  };
+
+  try {
+    const result = await runIngest(event);
+    await recordIntegrationEvent(
+      'leadId' in result
+        ? {
+            ...common,
+            outcome: 'OK',
+            detail: result.created ? 'lead created' : 'attached to an existing customer',
+            entityType: 'Lead',
+            entityId: result.leadId,
+          }
+        : {
+            ...common,
+            // Not a failure of the provider, and not a success either: nothing
+            // was produced, on purpose. SKIPPED is what makes the difference
+            // visible without raising an alarm about working behaviour.
+            outcome: result.skipped === 'no-identity' ? 'FAILED' : 'SKIPPED',
+            ...(result.skipped === 'no-identity'
+              ? // The provider sent a form submission with no name, email or
+                // phone. Nothing on this side can fix that, and it is the one
+                // skip that means something is actually wrong.
+                { errorCategory: 'INVALID_REQUEST' as const, detail: 'the submission carried no name, email or phone' }
+              : { detail: SKIP_DETAIL[result.skipped] }),
+          },
+    );
+    return result;
+  } catch (err) {
+    await recordIntegrationEvent({
+      ...common,
+      outcome: 'FAILED',
+      errorCategory: categoriseIntegrationError(err),
+      detail: err instanceof Error ? err.message : String(err),
+      httpStatus: httpStatusOf(err),
+    });
+    throw err;
+  }
+}
+
+const SKIP_DETAIL: Record<'duplicate-event' | 'routing-disabled', string> = {
+  'duplicate-event': 'a redelivery of an event already ingested — the first one was kept',
+  'routing-disabled': 'the lead form routing rule for this form is switched off',
+};
+
+async function runIngest(event: ProviderLeadEvent): Promise<IngestResult> {
   const { tenantId } = event;
 
   if (!event.alreadyClaimed && !(await claim(event))) {

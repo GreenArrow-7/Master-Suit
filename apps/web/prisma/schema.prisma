@@ -581,6 +581,7 @@ model Tenant {
   unitPlans                  UnitPlan[]
   userTeams                  UserTeam[]
   webhookEvents              WebhookEvent[]
+  integrationEvents          IntegrationEvent[]
   referenceCounters          TenantReferenceCounter[]
   platformAccessGrants       PlatformAccessGrant[]
 
@@ -5669,6 +5670,115 @@ model WebhookEvent {
 
   @@unique([tenantId, provider, externalId])
   @@index([provider, processed, createdAt])
+}
+
+/// Which way the traffic went.
+enum IntegrationDirection {
+  /// A provider called us — a webhook, a delivery receipt, a lead form.
+  INBOUND
+  /// We called a provider — a dial, a reply, a template send.
+  OUTBOUND
+}
+
+/// How the exchange ended.
+///
+/// `SKIPPED` exists because the two-value version forced a lie. A redelivered
+/// webhook that the idempotency claim correctly refused is not a failure — the
+/// system did exactly the right thing — but calling it OK hides the one fact
+/// worth recording, which is that it arrived and produced nothing. Same for a
+/// lead form whose routing rule is switched off: deliberate, not broken, and
+/// precisely the answer to "where did my lead go".
+enum IntegrationOutcome {
+  /// It worked. `entityType`/`entityId` name what it produced, if anything.
+  OK
+  /// Nothing was wrong and nothing was produced. `detail` says why.
+  SKIPPED
+  /// The provider refused, or could not be reached. `errorCategory` says which.
+  FAILED
+}
+
+/// What kind of failure, so a person can tell "fix your credentials" from
+/// "wait" without reading a stack trace.
+///
+/// Categories rather than status codes because the vendors disagree about
+/// codes: Meta answers 200 with an error body, Twilio 401 for a bad token and
+/// 403 for a suspended account, Knowlarity 400 for both. The category is what an
+/// administrator acts on; `httpStatus` is kept beside it for whoever wants the
+/// raw fact.
+enum IntegrationErrorCategory {
+  /// Credentials rejected — wrong, revoked, or expired. Someone must reconnect.
+  AUTH
+  /// Authenticated, but not allowed to do this. A missing scope or permission.
+  PERMISSION
+  /// Throttled. Nothing is wrong; it needs to be slower.
+  RATE_LIMIT
+  /// The provider refused what we sent. A bug on our side, or bad input.
+  INVALID_REQUEST
+  /// The thing addressed does not exist at the provider.
+  NOT_FOUND
+  /// The provider is down or erroring. Retryable, and not our fault.
+  UNAVAILABLE
+  /// No answer inside the deadline.
+  TIMEOUT
+  /// Genuinely unclassified. A growing count here means this list needs a case.
+  UNKNOWN
+}
+
+/// One line per exchange with an external provider, in either direction.
+///
+/// §33 asks a question this platform could not answer: "why are Facebook leads
+/// not arriving?" `WebhookEvent` answers half of it — it is the idempotency
+/// claim for inbound deliveries, and it records that one arrived and whether it
+/// processed. It cannot answer the other half, because it has no notion of an
+/// outbound call at all: every reply, dial and template send was logged to
+/// stdout and then gone.
+///
+/// Deliberately NOT folded into `WebhookEvent`. That table's whole job is the
+/// `(tenantId, provider, externalId)` unique that makes redelivery idempotent,
+/// and outbound calls have no external id to claim before they are made — two
+/// identical sends are two events, not one. Overloading it would mean either
+/// breaking the claim or inventing fake ids to satisfy it.
+///
+/// This is a log, not a ledger: nothing reads it to make a decision, so a failed
+/// write here must never fail the call it describes.
+model IntegrationEvent {
+  id        String               @id @default(cuid())
+  tenantId  String
+  /// Matches `IntegrationConnection.provider` — 'meta', 'twilio', 'demo'.
+  provider  String
+  direction IntegrationDirection
+  /// What was attempted, in this application's words: 'initiateCall',
+  /// 'leadgen', 'sendTemplate'. Not the vendor's endpoint, which changes.
+  operation String
+  outcome   IntegrationOutcome
+
+  /// Only ever set on `FAILED`. What an administrator should do about it.
+  errorCategory IntegrationErrorCategory?
+  /// The provider's own words on a failure, or the reason on a skip. Truncated,
+  /// and never our credentials — the adapters keep those out of their messages.
+  detail        String?
+  httpStatus    Int?
+
+  /// How many tries it took, including the one that succeeded.
+  attempts   Int  @default(1)
+  durationMs Int?
+
+  /// The provider's id for the thing — a call SID, a leadgen id, a message id.
+  externalId String?
+
+  /// What this produced on our side, when it produced something. The missing
+  /// half of "the lead arrived": which lead.
+  entityType String?
+  entityId   String?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, provider, createdAt(sort: Desc)])
+  @@index([tenantId, direction, outcome, createdAt(sort: Desc)])
+  /// The retention sweep reads across tenants, by age.
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

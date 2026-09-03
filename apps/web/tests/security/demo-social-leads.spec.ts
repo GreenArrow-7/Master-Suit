@@ -129,6 +129,45 @@ describe('demo social lead connector', () => {
     expect(after.sourceDetail).toBe('demo:website');
   });
 
+  it('records the inbound event and names the lead it produced', async () => {
+    /**
+     * §33's question — "why are Facebook leads not arriving?" — needs the
+     * arrival written down, not just the lead. A lead with no event says
+     * nothing about the delivery that made it, and a delivery that made no
+     * lead used to say nothing at all.
+     */
+    const externalLeadId = `evt-${Date.now()}`;
+    const result = await generateDemoLead(demoTenantId, { source: 'FACEBOOK', externalLeadId });
+    const leadId = 'leadId' in result ? result.leadId : null;
+
+    const event = await prisma.integrationEvent.findFirstOrThrow({
+      where: { tenantId: demoTenantId, externalId: externalLeadId },
+    });
+    expect(event.direction).toBe('INBOUND');
+    expect(event.outcome).toBe('OK');
+    expect(event.provider).toBe('demo:FACEBOOK');
+    expect(event.entityType).toBe('Lead');
+    expect(event.entityId).toBe(leadId);
+    expect(event.errorCategory).toBeNull();
+  });
+
+  it('records a redelivery as SKIPPED, so a missing lead has an explanation', async () => {
+    const externalLeadId = `dup-${Date.now()}`;
+    await generateDemoLead(demoTenantId, { source: 'INSTAGRAM', externalLeadId });
+    await generateDemoLead(demoTenantId, { source: 'INSTAGRAM', externalLeadId });
+
+    const events = await prisma.integrationEvent.findMany({
+      where: { tenantId: demoTenantId, externalId: externalLeadId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events.map((e) => e.outcome)).toEqual(['OK', 'SKIPPED']);
+    // SKIPPED rather than FAILED: the claim did its job. Calling this a failure
+    // would put working idempotency on an error dashboard.
+    expect(events[1]!.detail).toMatch(/redelivery/i);
+    expect(events[1]!.errorCategory).toBeNull();
+    expect(events[1]!.entityId).toBeNull();
+  });
+
   it('keeps every demo lead inside its own workspace', async () => {
     expect(await prisma.lead.count({ where: { tenantId: realTenantId } })).toBe(0);
   });
