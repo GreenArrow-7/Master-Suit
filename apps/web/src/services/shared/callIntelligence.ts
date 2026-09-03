@@ -11,6 +11,8 @@
  * enqueues the next one. Failures are recorded on the row *and* rethrown, so
  * BullMQ's backoff gets its chance and the UI still has something to show.
  */
+import type { TranscriptionState } from '@prisma/client';
+
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
@@ -53,11 +55,83 @@ async function consented(tenantId: string, callId: string): Promise<boolean> {
   return Boolean(consent?.consentGiven && !consent.withdrawnAt);
 }
 
+/**
+ * Writes what happened to the transcription onto the call itself.
+ *
+ * The transcript row cannot carry this: on every outcome worth explaining there
+ * is no transcript row to carry it. So the state lives on `Call`, which exists
+ * from the moment somebody dials, and rides along on the call detail response
+ * that the screen already fetches.
+ *
+ * `countsAsAttempt` is false for the transition the queue makes after a run has
+ * already been counted — see `markTranscriptionExhausted`. Double-counting there
+ * would make every terminal failure read as one attempt more than it took.
+ */
+async function markTranscription(
+  tenantId: string,
+  callId: string,
+  state: TranscriptionState,
+  detail?: string,
+  countsAsAttempt = true,
+): Promise<void> {
+  await prisma.call
+    .updateMany({
+      where: { id: callId, tenantId },
+      data: {
+        transcriptionState: state,
+        transcriptionDetail: detail?.slice(0, 500) ?? null,
+        transcriptionUpdatedAt: new Date(),
+        ...(countsAsAttempt ? { transcriptionAttempts: { increment: 1 } } : {}),
+      },
+    })
+    // Never the reason a transcription fails. This is the record of what
+    // happened, and losing the record must not also lose the transcript.
+    .catch((err) =>
+      logger.warn({ err: (err as Error).message, callId, state }, 'could not record transcription state'),
+    );
+}
+
+/**
+ * The queue has stopped trying. Called from the `ai` worker once BullMQ reports
+ * a `transcribe` job has spent its last attempt, and from the inline fallback,
+ * where the first failure is also the last because there is no queue behind it.
+ */
+export async function markTranscriptionExhausted(tenantId: string, callId: string, detail: string): Promise<void> {
+  await markTranscription(tenantId, callId, 'FAILED', detail, false);
+}
+
 // ── 1. Transcript ────────────────────────────────────────────────────────────
 
+/**
+ * Runs the transcription and records where it got to.
+ *
+ * The state write wraps the work rather than living inside it so that every exit
+ * — including the throw — passes through one place. The previous shape returned
+ * from five points and threw from three, and a state write at each would have
+ * been eight chances to add one and forget one.
+ *
+ * A throw records `RETRYING`, never `FAILED`: this function cannot see how many
+ * attempts the queue has left. Only the worker knows that, and it calls
+ * `markTranscriptionExhausted` when the answer is none.
+ */
 export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
   const { tenantId, callId } = job;
-  if (!(await consented(tenantId, callId))) return skipped('consent absent or withdrawn');
+  try {
+    const { outcome, state } = await runTranscription(job);
+    await markTranscription(tenantId, callId, state, outcome.reason);
+    return outcome;
+  } catch (err) {
+    await markTranscription(tenantId, callId, 'RETRYING', (err as Error).message);
+    throw err;
+  }
+}
+
+/** The transcription itself. Its caller owns the state row. */
+async function runTranscription(job: TranscribeJob): Promise<{ outcome: Outcome; state: TranscriptionState }> {
+  const { tenantId, callId } = job;
+  if (!(await consented(tenantId, callId))) {
+    return { outcome: skipped('consent absent or withdrawn'), state: 'SKIPPED' };
+  }
 
   const [existing, recording] = await Promise.all([
     prisma.transcript.findFirst({ where: { callId, tenantId } }),
@@ -67,9 +141,11 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
     // Already transcribed — carry the chain forward rather than stopping, so a
     // replayed job still reaches analysis.
     await enqueue('ai', 'analyse', { tenantId, callId });
-    return skipped('transcript already exists');
+    // READY rather than SKIPPED: the step did nothing, but a transcript exists,
+    // and the state describes the call rather than the run.
+    return { outcome: skipped('transcript already exists'), state: 'READY' };
   }
-  if (!recording) return skipped('no recording');
+  if (!recording) return { outcome: skipped('no recording'), state: 'SKIPPED' };
   if (recording.storageBucket === 'provider') {
     // The ingest worker has not finished pulling the media into our bucket.
     // Thrown, not skipped: the queue's backoff is exactly the right wait.
@@ -78,14 +154,14 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
 
   const credentials = await connectionCredentials(tenantId, 'transcription');
   const provider = transcriptionProviderFor(credentials);
-  if (!provider) return skipped('no speech-to-text provider connected');
+  if (!provider) return { outcome: skipped('no speech-to-text provider connected'), state: 'SKIPPED' };
 
   const result = await getTranscriptionProvider(provider, credentials ?? {}).transcribe({
     audio: await getObject(recording.storageKey),
     mimeType: recording.mimeType,
     language: job.language ?? 'en',
   });
-  if (!result.text) return skipped('no speech recognised');
+  if (!result.text) return { outcome: skipped('no speech recognised'), state: 'SKIPPED' };
 
   /**
    * Speaker attribution is what makes the rest of the pipeline work: the
@@ -120,7 +196,7 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
   });
 
   await enqueue('ai', 'analyse', { tenantId, callId });
-  return { done: true };
+  return { outcome: { done: true }, state: 'READY' };
 }
 
 // ── 2. Analysis ──────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import { getUploadMaxMb } from '@/lib/platform-settings';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
-import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
+import { analyseAndAudit, markTranscriptionExhausted, transcribeCall } from '@/services/shared/callIntelligence';
 import { assertCallInScope, requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
@@ -179,7 +179,23 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     } else {
       const tenantId = ctx.tenantId;
       void transcribeCall({ tenantId, callId, language })
-        .then(() => analyseAndAudit(tenantId, callId))
+        .then(
+          () => analyseAndAudit(tenantId, callId),
+          async (err) => {
+            /**
+             * Two arguments rather than a trailing `.catch`, so this only sees a
+             * failure of the transcription itself. A trailing catch would also
+             * catch `analyseAndAudit` blowing up and mark a transcript that
+             * exists and is readable as FAILED.
+             *
+             * There is no queue behind this path, so the first failure is the
+             * last one — leaving it at RETRYING would promise a retry that
+             * nothing is going to run.
+             */
+            await markTranscriptionExhausted(tenantId, callId, (err as Error).message);
+            throw err;
+          },
+        )
         .catch((err) => logger.error({ err: (err as Error).message, callId }, 'inline transcription chain failed'));
     }
 

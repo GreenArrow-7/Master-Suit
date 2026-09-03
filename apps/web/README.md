@@ -6,7 +6,7 @@ branding, interface, wording and source code.
 
 <!-- schema-stats:start -->
 
-202 models · 107 enums · 440 indexes · 103 unique constraints
+202 models · 108 enums · 440 indexes · 103 unique constraints
 <!-- schema-stats:end -->
 
 _(generated — `node scripts/schema-stats.mjs --write`, checked in CI)_

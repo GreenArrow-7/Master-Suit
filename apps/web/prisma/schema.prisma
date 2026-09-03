@@ -5294,6 +5294,26 @@ enum AnalysisStatus {
   INSUFFICIENT_DATA
 }
 
+/// Where the transcription of one call got to.
+///
+/// `RETRYING` and `FAILED` are deliberately separate. A job that failed once and
+/// is waiting on BullMQ's backoff is not a problem anybody should act on; one
+/// that has spent all four attempts is. Collapsing them would either cry wolf on
+/// every transient 429 or stay silent through a real outage.
+enum TranscriptionState {
+  /// Queued, or never asked for. Nothing has run yet.
+  PENDING
+  /// A run failed and another is scheduled.
+  RETRYING
+  /// Deliberately not transcribed — no consent, no recording, no provider, no
+  /// speech in the audio. `transcriptionDetail` says which.
+  SKIPPED
+  /// A transcript exists.
+  READY
+  /// Every attempt was spent. Nothing further will happen without a person.
+  FAILED
+}
+
 model Call {
   id              String                 @id @default(cuid())
   tenantId        String
@@ -5325,6 +5345,23 @@ model Call {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   deletedAt       DateTime?
+
+  /// What happened to the attempt to transcribe this call, and why.
+  ///
+  /// Absence of a `Transcript` row used to be the only signal, and it is four
+  /// different situations wearing one face: nothing was ever asked for, a job is
+  /// waiting its turn, the recording was deliberately not transcribed (consent
+  /// withdrawn, no provider connected, silence), or the vendor kept refusing
+  /// until the retries ran out. The first three are fine and the fourth needs
+  /// somebody. A person looking at the call screen could not tell them apart —
+  /// the transcript endpoint answered 404 to all four.
+  transcriptionState     TranscriptionState @default(PENDING)
+  /// The reason, in the words the vendor or the pipeline used. Shown to a person.
+  transcriptionDetail    String?
+  /// How many times the job has run. `FAILED` after n attempts reads differently
+  /// from `FAILED` on the first try — one is an outage, the other is a bad file.
+  transcriptionAttempts  Int                @default(0)
+  transcriptionUpdatedAt DateTime?
 
   recording  Recording?
   consent    RecordingConsent?

@@ -1,3 +1,4 @@
+import type { TranscriptionState } from '@prisma/client';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -122,7 +123,46 @@ export const GET = route(
     const transcript = await prisma.transcript.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
-    if (!transcript) throw NotFound('Transcript');
+    if (!transcript) {
+      /**
+       * Still a 404 — there is no transcript — but it says which of the four
+       * reasons applies. A bare "Transcript not found" answered identically for
+       * a job still queued, a recording nobody consented to, and four spent
+       * attempts against a vendor that is down, which left the caller to guess.
+       */
+      const call = await prisma.call.findFirst({
+        where: { id: params.id, tenantId: ctx.tenantId },
+        select: { transcriptionState: true, transcriptionDetail: true, transcriptionAttempts: true },
+      });
+      throw NotFound(call ? `Transcript — ${describeTranscription(call)}` : 'Transcript');
+    }
     return transcript;
   },
 );
+
+/**
+ * The transcription state as a sentence, for the 404 a reader gets instead of a
+ * transcript. Deliberately in the response rather than only in a log: the person
+ * who needs it is looking at a call screen, not at Loki.
+ */
+function describeTranscription(call: {
+  transcriptionState: TranscriptionState;
+  transcriptionDetail: string | null;
+  transcriptionAttempts: number;
+}): string {
+  const because = call.transcriptionDetail ? `: ${call.transcriptionDetail}` : '';
+  switch (call.transcriptionState) {
+    case 'READY':
+      // A transcript that is READY but absent means somebody deleted the row.
+      return `it was transcribed, but the transcript is gone${because}`;
+    case 'RETRYING':
+      return `transcription failed and will be retried (attempt ${call.transcriptionAttempts})${because}`;
+    case 'FAILED':
+      return `transcription failed after ${call.transcriptionAttempts} attempt${call.transcriptionAttempts === 1 ? '' : 's'}${because}`;
+    case 'SKIPPED':
+      return `this call was not transcribed${because}`;
+    case 'PENDING':
+    default:
+      return 'transcription has not run yet';
+  }
+}
