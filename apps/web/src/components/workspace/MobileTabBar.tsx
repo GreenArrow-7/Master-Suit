@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { resolveActiveProduct } from '@/lib/nav/activeProduct';
 
 /**
  * The phone's primary navigation.
@@ -45,12 +46,30 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export default function MobileTabBar({ slug, module }: { slug: string; module: 'sales' | 'people' }) {
+/**
+ * `modules` says which products the company owns; the *path* says which one the
+ * viewer is in. The layout used to decide this and got it wrong for every
+ * company owning both — see lib/nav/activeProduct.ts. Resolving it here, where
+ * the pathname already is, removes the chance of the two disagreeing.
+ */
+export default function MobileTabBar({
+  slug,
+  modules,
+  lastUsed,
+}: {
+  slug: string;
+  modules: readonly string[];
+  lastUsed?: string | null;
+}) {
   const pathname = usePathname();
+  // Not named `module`: Next forbids assigning to that identifier
+  // (@next/next/no-assign-module-variable) because it shadows the CommonJS
+  // binding the bundler emits.
+  const product = resolveActiveProduct(pathname, modules, lastUsed);
 
   // The daily loop differs by module; the shape does not.
   const items =
-    module === 'people'
+    product === 'people'
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },

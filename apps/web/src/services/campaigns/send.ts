@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getWhatsAppProvider } from '@/lib/integrations/whatsapp';
+import { loggedWhatsApp } from '@/services/integrations/loggedWhatsApp';
 import { connectionCredentials } from '@/lib/integrations/connection';
 
 /**
@@ -96,7 +97,7 @@ export async function sendCampaignBatch(input: {
     take: BATCH_LIMIT,
   });
 
-  const provider = getWhatsAppProvider('meta', credentials);
+  const provider = loggedWhatsApp(getWhatsAppProvider('meta', credentials), tenantId);
   let sent = 0;
   let failed = 0;
 

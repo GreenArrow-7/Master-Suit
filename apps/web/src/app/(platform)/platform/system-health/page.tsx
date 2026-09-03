@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { redis } from '@/lib/redis';
 import { env } from '@/lib/env';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import { queueHealth } from '@/lib/workerHeartbeat';
+import { QUEUE_NAMES } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +55,16 @@ export default async function Page() {
     }),
   ]);
 
+  /**
+   * Queue consumers, from the persisted heartbeat rather than a live query.
+   *
+   * `queueHasWorkers` would answer "is anything attached right now", which reads
+   * the same for a queue nobody has ever run and one whose worker died an hour
+   * ago. This board exists for the second case — the worker that was dead in
+   * production for months — so it wants the distinction, and the timestamp.
+   */
+  const queues = await queueHealth(QUEUE_NAMES).catch(() => []);
+
   const probes: Probe[] = [
     {
       component: 'PostgreSQL',
@@ -75,6 +87,22 @@ export default async function Page() {
       status: 'Configured',
       detail: env.APP_URL,
     },
+    ...queues.map((queue) => ({
+      component: `Worker · ${queue.queue}`,
+      status:
+        queue.state === 'LIVE'
+          ? ('Healthy' as const)
+          : queue.state === 'STALE'
+            ? ('Unavailable' as const)
+            : ('Configured' as const),
+      detail:
+        queue.state === 'LIVE'
+          ? `${queue.instances} consumer${queue.instances === 1 ? '' : 's'} · last beat ${queue.lastSeenAt?.toISOString() ?? 'unknown'}`
+          : queue.state === 'STALE'
+            ? // The sentence a person can act on: it ran, and it stopped.
+              `No consumer. Last seen ${queue.lastSeenAt?.toISOString() ?? 'unknown'}`
+            : 'No consumer has ever reported — is the worker process deployed?',
+    })),
   ];
 
   return (

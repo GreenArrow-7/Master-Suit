@@ -102,7 +102,26 @@ export async function POST(req: Request) {
               planId: plan.id,
               state,
               trialEndsAt,
-              modules: { create: body.enabledModules.map((module) => ({ module, state })) },
+              /**
+               * The product rows carry the same terms the entitlement below is
+               * created with, so the first reconcile is a no-op.
+               *
+               * `endsAt: trialEndsAt` mirrors the entitlement exactly, including
+               * the awkward case: an operator who types a trial end date already
+               * in the past gets `state = ACTIVE` from the line above, and the
+               * entitlement is created already expired. Leaving `endsAt` null on
+               * the product would make `syncModuleEntitlements` hand that
+               * workspace open-ended access the moment anything reconciled it.
+               */
+              modules: {
+                create: body.enabledModules.map((module) => ({
+                  module,
+                  state,
+                  planId: plan.id,
+                  trialEndsAt,
+                  endsAt: trialEndsAt,
+                })),
+              },
             },
           },
           moduleEntitlements: {

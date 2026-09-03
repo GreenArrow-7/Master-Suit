@@ -37,6 +37,7 @@ import { isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { storeCapture } from './captureVault';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
+import type { BiometricConsentPurpose } from '@prisma/client';
 
 export type PunchType = 'CHECK_IN' | 'CHECK_OUT';
 export type PunchResult =
@@ -356,28 +357,66 @@ export async function preflight(
 
 // ── Consent and enrolment ──────────────────────────────────────────────────
 
-export async function activeConsent(ctx: Ctx, employeeId: string) {
+/**
+ * The purpose every biometric path in this file asks about.
+ *
+ * Named rather than implied. Face data here exists to answer "is this the person
+ * clocking in?" and nothing else — it is deliberately not an authentication
+ * factor for Master-Suit, which continues to sign people in with a password and,
+ * where configured, a second factor. Anything that later wants face data for
+ * another purpose has to ask for its own consent under its own value, which is
+ * the whole reason the column exists.
+ */
+export const ATTENDANCE_FACE_PURPOSE = 'ATTENDANCE_FACE_VERIFICATION' as const;
+
+/**
+ * The employee's live consent for one purpose.
+ *
+ * Scoped by purpose, and every biometric gate in this file goes through it:
+ * `enrolFace`, `requestChallenge` and `punch`. Consent granted for attendance
+ * therefore cannot authorise a use nobody has asked the employee about.
+ */
+export async function activeConsent(
+  ctx: Ctx,
+  employeeId: string,
+  purpose: BiometricConsentPurpose = ATTENDANCE_FACE_PURPOSE,
+) {
   return prisma.biometricConsent.findFirst({
-    where: { tenantId: ctx.tenantId, employeeId, grantedAt: { not: null }, withdrawnAt: null },
+    where: { tenantId: ctx.tenantId, employeeId, purpose, grantedAt: { not: null }, withdrawnAt: null },
     orderBy: { createdAt: 'desc' },
   });
 }
 
 /** Consent is the employee's own to give. Nobody grants it on their behalf. */
-export async function grantConsent(ctx: Ctx, policyVersion = 'PDPL-2026-01') {
+export async function grantConsent(
+  ctx: Ctx,
+  policyVersion = 'PDPL-2026-01',
+  options: { purpose?: BiometricConsentPurpose; consentVersion?: string } = {},
+) {
   const employee = await myEmployee(ctx);
   if (!employee) throw NotFound('Employee');
-  const existing = await activeConsent(ctx, employee.id);
+  const purpose = options.purpose ?? ATTENDANCE_FACE_PURPOSE;
+  const existing = await activeConsent(ctx, employee.id, purpose);
   if (existing) return existing;
 
   const consent = await prisma.biometricConsent.create({
-    data: { tenantId: ctx.tenantId, employeeId: employee.id, grantedAt: new Date(), policyVersion },
+    data: {
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      purpose,
+      grantedAt: new Date(),
+      policyVersion,
+      consentVersion: options.consentVersion ?? null,
+      // Non-biometric context only — who recorded it and from where. The audit
+      // question is "what were they shown, and when", not what their face is.
+      metadata: { recordedByUserId: ctx.actor.id, ip: ctx.ip, userAgent: ctx.userAgent },
+    },
   });
   await audit(ctx, {
     event: 'CONSENT_RECORDED',
     objectType: 'biometric_consent',
     recordId: consent.id,
-    metadata: { action: 'biometric.consent.granted', policyVersion },
+    metadata: { action: 'biometric.consent.granted', purpose, policyVersion },
   });
   return consent;
 }
@@ -387,15 +426,29 @@ export async function grantConsent(ctx: Ctx, policyVersion = 'PDPL-2026-01') {
  * consent is withdrawn has no lawful basis, and a withdrawal that leaves the
  * data in place is not a withdrawal.
  */
-export async function withdrawConsent(ctx: Ctx, employeeId?: string) {
+export async function withdrawConsent(
+  ctx: Ctx,
+  employeeId?: string,
+  purpose: BiometricConsentPurpose = ATTENDANCE_FACE_PURPOSE,
+) {
   const self = await myEmployee(ctx);
   const targetId = employeeId ?? self?.id;
   if (!targetId) throw NotFound('Employee');
   if (targetId !== self?.id && !isHrAdmin(ctx)) throw Forbidden('You can only withdraw your own biometric consent.');
 
+  /**
+   * Scoped to the purpose being withdrawn, and the templates go with it.
+   *
+   * Withdrawing attendance consent must not disturb the person's account: they
+   * keep their login, their HR access and their Sales access, and only the
+   * biometric permission ends. The template deletion stays unconditional for
+   * this purpose because the templates exist solely to serve it — keeping
+   * biometrics after consent is withdrawn has no lawful basis. A second purpose
+   * with templates of its own would need its own deletion here.
+   */
   const [consents, templates] = await Promise.all([
     prisma.biometricConsent.updateMany({
-      where: { tenantId: ctx.tenantId, employeeId: targetId, withdrawnAt: null },
+      where: { tenantId: ctx.tenantId, employeeId: targetId, purpose, withdrawnAt: null },
       data: { withdrawnAt: new Date() },
     }),
     prisma.hrFaceTemplate.deleteMany({ where: { tenantId: ctx.tenantId, employeeId: targetId } }),
@@ -405,7 +458,7 @@ export async function withdrawConsent(ctx: Ctx, employeeId?: string) {
     event: 'CONSENT_WITHDRAWN',
     objectType: 'biometric_consent',
     recordId: targetId,
-    metadata: { action: 'biometric.consent.withdrawn', templatesDeleted: templates.count },
+    metadata: { action: 'biometric.consent.withdrawn', purpose, templatesDeleted: templates.count },
   });
   return { consentsWithdrawn: consents.count, templatesDeleted: templates.count };
 }

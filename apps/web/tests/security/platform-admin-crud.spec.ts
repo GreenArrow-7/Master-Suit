@@ -11,6 +11,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { isEntitlementUsable } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { createPlatformSessionToken } from '../helpers/session';
@@ -205,8 +206,31 @@ describe('subscriptions', () => {
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
+    /**
+     * The dropped module must be unusable — which is the security property this
+     * test is about, and is now asserted directly rather than through the proxy
+     * of a missing row.
+     *
+     * Entitlements became derived state (services/platform/subscriptions.ts), so
+     * a downgrade cancels the Sales *product* and the projection follows it to
+     * CANCELED. The row is deliberately kept: `assertModuleEntitlement` refuses
+     * CANCELED and missing identically, and keeping it is what lets the console
+     * still answer "did this company ever have Sales?". Deleting it threw that
+     * away, and — now that the product rows are authoritative — would have been
+     * undone by the next reconcile anyway.
+     */
     const entitlements = await prisma.moduleEntitlement.findMany({ where: { tenantId } });
-    expect(entitlements.map((e) => e.module)).toEqual(['HRMS']);
+    expect(entitlements.filter((e) => isEntitlementUsable(e)).map((e) => e.module)).toEqual(['HRMS']);
+    const sales = entitlements.find((e) => e.module === 'SALES');
+    expect(sales, 'the Sales row is kept as history').toBeDefined();
+    expect(isEntitlementUsable(sales), 'Sales is no longer usable after the downgrade').toBe(false);
+
+    // And the products behind it are cancelled, so nothing can re-derive access.
+    const salesProducts = await prisma.subscriptionModule.findMany({
+      where: { subscription: { tenantId }, module: 'SALES' },
+    });
+    expect(salesProducts.every((row) => row.state === 'CANCELED')).toBe(true);
+
     const tenant = await prisma.tenant.findFirst({ where: { id: tenantId } });
     expect(tenant?.planCode).toBe(hrmsPlanCode);
   });

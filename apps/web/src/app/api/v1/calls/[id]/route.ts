@@ -4,12 +4,14 @@ import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { recordTargetProgress } from '@/services/targets/progress';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       include: {
@@ -52,6 +54,7 @@ const patchBody = z
 export const PATCH = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'CALL_COMPLETED' },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const existing = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

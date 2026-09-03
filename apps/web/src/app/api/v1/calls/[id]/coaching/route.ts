@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
-import { resolveOwnerIds } from '@/lib/security/visibility';
+import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -14,20 +14,12 @@ const params = z.object({ id: z.string().cuid() });
  * coaching on it — the rep being coached most of all. Writing requires seeing
  * someone *else's* calls (TEAM or wider), which is the existing definition of
  * "manager" here; a self-note is just the call's own notes field.
+ *
+ * The rule itself now lives in services/crm/callVisibility.ts. It was written
+ * here first and correctly, and was the only call route that had it — moving it
+ * out is what let the other fourteen use it.
  */
-async function assertCallVisible(ctx: Ctx, callId: string) {
-  const call = await prisma.call.findFirst({
-    where: { id: callId, tenantId: ctx.tenantId, deletedAt: null },
-    select: { id: true, callerId: true },
-  });
-  if (!call) throw NotFound('Call');
-
-  const scope = scopeFor(ctx, 'calls', 'VIEW');
-  if (call.callerId === ctx.actor.id || scope === 'ORGANIZATION') return call;
-  if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw Forbidden();
-  if (!(await resolveOwnerIds(ctx, scope)).includes(call.callerId)) throw Forbidden();
-  return call;
-}
+const assertCallVisible = requireVisibleCall;
 
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params },

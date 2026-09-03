@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { NotFound, Conflict } from '@/lib/errors';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
 import { ANALYSIS_STALE_MS, analyseAndAudit } from '@/services/shared/callIntelligence';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -27,6 +28,7 @@ const params = z.object({ id: z.string().cuid() });
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const [call, transcript, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.transcript.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
@@ -64,6 +66,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });
@@ -108,6 +111,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

@@ -5,6 +5,12 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
+import {
+  cancelProductSubscription,
+  setTenantModules,
+  syncModuleEntitlements,
+  updateProductSubscription,
+} from '@/services/platform/subscriptions';
 
 const updateSchema = z
   .object({
@@ -57,39 +63,53 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ subscr
         include: { plan: true, modules: true, tenant: true },
       });
 
+      /**
+       * The commercial decision is written to the product rows; entitlements are
+       * then derived from them.
+       *
+       * This route used to compute entitlements itself, and it is the reason
+       * cancelling one product cancelled every product: both branches below
+       * wrote `where: { tenantId }` with no module filter. Everything now goes
+       * through services/platform/subscriptions.ts, which scopes each write to
+       * the product it belongs to and recomputes the projection afterwards.
+       */
       if (plan) {
         const planModules = plan.planModules.filter((m: any) => m.enabled).map((m: any) => m.module);
         await tx.tenant.update({ where: { id: current.tenantId }, data: { planCode: plan.code } });
-        // Modules not in the new plan end now; ones it adds start now.
-        await tx.moduleEntitlement.deleteMany({
-          where: { tenantId: current.tenantId, module: { notIn: planModules } },
-        });
-        for (const moduleKey of planModules) {
-          await tx.moduleEntitlement.upsert({
-            where: { tenantId_module: { tenantId: current.tenantId, module: moduleKey } },
-            update: { state: body.state ?? updated.state, endsAt: null },
-            create: { tenantId: current.tenantId, module: moduleKey, state: body.state ?? updated.state },
-          });
-        }
-        await tx.subscriptionModule.deleteMany({
-          where: { subscriptionId: current.id, module: { notIn: planModules } },
-        });
-        for (const moduleKey of planModules) {
-          await tx.subscriptionModule.upsert({
-            where: { subscriptionId_module: { subscriptionId: current.id, module: moduleKey } },
-            update: { state: body.state ?? updated.state },
-            create: { subscriptionId: current.id, module: moduleKey, state: body.state ?? updated.state },
-          });
-        }
+        // A plan swap re-states which products the company holds: the new plan's
+        // modules are sold (or re-termed), and anything it drops is cancelled.
+        await setTenantModules(
+          current.tenantId,
+          planModules,
+          {
+            planCode: plan.code,
+            state: body.state ?? updated.state,
+            endsAt: null,
+            ...(body.trialEndsAt === undefined ? {} : { trialEndsAt: body.trialEndsAt }),
+            ...(body.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: body.currentPeriodEnd }),
+          },
+          tx,
+        );
       } else if (body.state) {
-        await tx.moduleEntitlement.updateMany({
-          where: { tenantId: current.tenantId },
-          data: { state: body.state, ...(body.state === 'CANCELED' ? { endsAt: new Date() } : { endsAt: null }) },
-        });
-        await tx.subscriptionModule.updateMany({
+        // No plan change: apply the new state to every product this container
+        // holds, one row at a time so each keeps its own dates.
+        const products = await tx.subscriptionModule.findMany({
           where: { subscriptionId: current.id },
-          data: { state: body.state },
+          select: { id: true },
         });
+        for (const product of products) {
+          await updateProductSubscription(
+            product.id,
+            {
+              state: body.state,
+              endsAt: body.state === 'CANCELED' ? new Date() : null,
+              ...(body.trialEndsAt === undefined ? {} : { trialEndsAt: body.trialEndsAt }),
+              ...(body.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: body.currentPeriodEnd }),
+            },
+            tx,
+          );
+        }
+        await syncModuleEntitlements(current.tenantId, tx);
       }
 
       await tx.platformAuditEvent.create({
@@ -141,14 +161,23 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ subsc
         where: { id: current.id },
         data: { state: 'CANCELED', canceledAt: now },
       });
-      await tx.moduleEntitlement.updateMany({
-        where: { tenantId: current.tenantId },
-        data: { state: 'CANCELED', endsAt: now },
+      /**
+       * Cancels the whole account — every product the company holds.
+       *
+       * Deliberately still a thing: "this customer is leaving" is a real
+       * operation. What changed is that it is now the *only* way to cancel
+       * everything. Removing a single product is
+       * DELETE .../subscriptions/{id}/modules/{module}, which leaves the rest
+       * running; before, both did the same thing and only one of them meant to.
+       */
+      const products = await tx.subscriptionModule.findMany({
+        where: { subscriptionId: current.id, state: { not: 'CANCELED' } },
+        select: { id: true },
       });
-      await tx.subscriptionModule.updateMany({
-        where: { subscriptionId: current.id },
-        data: { state: 'CANCELED' },
-      });
+      for (const product of products) {
+        await cancelProductSubscription(product.id, tx, now);
+      }
+      await syncModuleEntitlements(current.tenantId, tx, now);
       await tx.platformAuditEvent.create({
         data: {
           tenantId: current.tenantId,

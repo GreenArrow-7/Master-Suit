@@ -23,15 +23,50 @@ docker compose -f ../web/infra/docker-compose.yml up -d face
 First boot downloads the buffalo_l pack (~275 MB) into the `facemodels` volume,
 so it survives image rebuilds. The health check allows five minutes for that.
 
+Without Docker — every dependency has a prebuilt wheel on every platform we
+support, so this needs no compiler:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python download_models.py          # ~275 MB, once
+FACE_SERVICE_TOKEN=<secret> .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8081
+```
+
 Point the web app at it with `FACE_SERVICE_URL`. Unset means face check-in is
 unavailable and attendance fails closed with a 503 naming what is missing —
 there is no PIN fallback and no degraded mode that lets a punch through.
 
+## Verifying that it actually matches faces
+
+`/health` answering `ready: true` says the graphs loaded. It does not say the
+engine separates people, which is the only thing it exists to do.
+
+```bash
+cd ../web
+npx tsx scripts/verify-face-matching.ts <same-person-a> <same-person-b> <someone-else>
+```
+
+Two photographs of one person in different head poses, and one of somebody else.
+The script drives the application's own client and matching code — `analyse`,
+`cosine`, `bestMatch`, `verifyLiveness` from `src/services/hr/face.ts` — so what
+it scores is the path a check-in takes, not a reimplementation of it. It prints
+the cosine on each pair against `FACE_MATCH_THRESHOLD`, runs each liveness
+challenge, and exits non-zero if the same person is refused, a different person
+is accepted, a movement that did not happen passes, or a face substituted
+mid-challenge gets through.
+
+It is not part of CI and is not meant to be: it needs the sidecar running, the
+275 MB of graphs downloaded, and photographs of real people. The rules it
+depends on — the cosine maths, the template round trip, the challenge
+directions, the spread threshold — are pinned with synthetic vectors in
+`apps/web/tests/hr/attendance.spec.ts`, which does run in CI. This script is the
+other half: whether the engine underneath those rules works on real faces.
+
 ## Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/health` | `{ready, model, detail}`. `detail` names the missing piece and the command that fixes it. |
+| Method | Path       | Purpose                                                                                           |
+| ------ | ---------- | ------------------------------------------------------------------------------------------------- |
+| `GET`  | `/health`  | `{ready, model, detail}`. `detail` names the missing piece and the command that fixes it.         |
 | `POST` | `/analyse` | `{frames: [base64]}` → one detection per frame: embedding, pose, detector score, blur, face area. |
 
 Quality failures are returned per frame rather than raised, so the caller learns

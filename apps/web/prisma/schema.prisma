@@ -376,6 +376,14 @@ model Tenant {
   trialStartedAt DateTime?
   trialEndsAt    DateTime?
   workspaceName  String?
+  /// This workspace is a demo/sandbox, not a real customer.
+  ///
+  /// The switch that lets a tenant generate simulated inbound leads. It is a
+  /// column rather than a plan code or a slug convention because it gates a
+  /// write path: without an explicit, per-tenant opt-in, the demo generator is
+  /// an authenticated lead-injection endpoint pointed at production data.
+  /// Defaults to false, so a workspace is real unless somebody says otherwise.
+  isDemo         Boolean   @default(false)
   archivedAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -573,6 +581,7 @@ model Tenant {
   unitPlans                  UnitPlan[]
   userTeams                  UserTeam[]
   webhookEvents              WebhookEvent[]
+  integrationEvents          IntegrationEvent[]
   referenceCounters          TenantReferenceCounter[]
   platformAccessGrants       PlatformAccessGrant[]
 
@@ -604,9 +613,12 @@ model SubscriptionPlan {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  subscriptions TenantSubscription[]
-  planModules   PlanModule[]
-  planLimits    PlanLimit[]
+  subscriptions        TenantSubscription[]
+  planModules          PlanModule[]
+  planLimits           PlanLimit[]
+  /// Per-product subscriptions on this plan. A plan can now be bought for one
+  /// module without dragging the rest of the bundle along.
+  productSubscriptions SubscriptionModule[]
 }
 
 model TenantSubscription {
@@ -672,17 +684,56 @@ model PlanLimit {
   @@unique([planId, key])
 }
 
+/// One purchased product, and the authoritative record of what a company owns.
+///
+/// This is the "product subscription" the commercial model is built on: a
+/// company holds one billing container (TenantSubscription) and one row here per
+/// product it has bought, each carrying its own plan, state and dates. That is
+/// what lets ABC Real Estate run HRMS_PRO and SALES_BASIC side by side, and what
+/// lets Sales be cancelled without touching HR.
+///
+/// ── Why the (subscriptionId, module) unique is gone ─────────────────────────
+///
+/// It made "two sources provide SALES" unrepresentable, and that is a real
+/// commercial state: a bundle that includes Sales overlapping with a standalone
+/// Sales contract during a migration, or a promotional term running alongside a
+/// paid one. With one row permitted, expiring the bundle removed Sales even
+/// though the customer was still paying for it under the other agreement.
+/// `getEffectiveModules` answers "is any source usable", so several rows for one
+/// module is the normal case rather than a corruption to be prevented.
 model SubscriptionModule {
-  id             String             @id @default(cuid())
-  subscriptionId String
-  module         ModuleKey
-  state          SubscriptionState  @default(ACTIVE)
-  limits         Json               @default("{}")
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(cuid())
+  subscriptionId     String
+  module             ModuleKey
+  /// This product's own plan. Nullable because rows migrated from the
+  /// single-plan era inherit the container's plan until one is set explicitly —
+  /// see getEffectiveModules, which falls back rather than treating null as "no
+  /// plan" and refusing access to a paying customer.
+  planId             String?
+  state              SubscriptionState @default(ACTIVE)
+  limits             Json              @default("{}")
+  metadata           Json              @default("{}")
+  /// Access begins here. Defaults to now so an existing row keeps working.
+  startsAt           DateTime          @default(now())
+  /// Hard stop. A row whose endsAt has passed is unusable whatever its state
+  /// says — a state column left at ACTIVE by a failed billing job must not
+  /// outlive the term the customer actually paid for.
+  endsAt             DateTime?
+  trialEndsAt        DateTime?
+  graceEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  canceledAt         DateTime?
+  externalCustomerId String?
+  externalContractId String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  @@unique([subscriptionId, module])
+  subscription TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan?  @relation(fields: [planId], references: [id])
+
+  @@index([subscriptionId, module])
+  @@index([module, state])
+  @@index([planId])
 }
 
 model WorkspaceUsage {
@@ -1088,7 +1139,7 @@ model PlatformUser {
   memberships           WorkspaceMembership[]
   passwordHistory       PasswordHistory[]
   sessions              PlatformSession[]
-  platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
+  platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
   serviceCredentials    PlatformServiceCredential[]
@@ -2344,18 +2395,44 @@ model HrSettlementSnapshot {
   @@index([offboardingCaseId])
 }
 
+/// What biometric data may be used for, named explicitly.
+///
+/// One value today, and that is the point. A single boolean "the employee
+/// consented to face data" is a permission slip with no expiry and no subject:
+/// it would silently cover door access, workstation unlock or general sign-in
+/// the day any of those were built, on a consent the person gave for clocking
+/// in. Naming the purpose means a new use needs a new consent, and refusing is
+/// a decision the employee actually gets to make.
+enum BiometricConsentPurpose {
+  /// Verifying identity at attendance check-in and check-out. Nothing else —
+  /// face is deliberately not an authentication factor for Master-Suit itself.
+  ATTENDANCE_FACE_VERIFICATION
+}
+
 model BiometricConsent {
-  id            String          @id @default(cuid())
-  tenantId      String
-  employeeId    String
-  grantedAt     DateTime?
-  withdrawnAt   DateTime?
-  policyVersion String
-  createdAt     DateTime        @default(now())
-  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id             String                  @id @default(cuid())
+  tenantId       String
+  employeeId     String
+  /// Why this consent was given. Scoping every read through it is what stops
+  /// consent granted for attendance authorising anything else.
+  purpose        BiometricConsentPurpose @default(ATTENDANCE_FACE_VERIFICATION)
+  grantedAt      DateTime?
+  withdrawnAt    DateTime?
+  /// The privacy policy in force when consent was given.
+  policyVersion  String
+  /// The version of the consent wording the employee was actually shown.
+  /// Separate from the policy: the text can be reworded without the policy
+  /// changing, and "what were they told?" is the question an audit asks.
+  consentVersion String?
+  /// Non-biometric context for the audit trail — who recorded it, from where.
+  /// Never holds face data.
+  metadata       Json                    @default("{}")
+  createdAt      DateTime                @default(now())
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee       EmployeeProfile         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId])
+  @@index([tenantId, employeeId, purpose])
 }
 
 enum HrScanStatus {
@@ -5057,14 +5134,14 @@ model Notification {
 /// every read here is already inside one workspace. See `GLOBAL_MODELS` in
 /// src/lib/db.ts, where the guard exemption this needs is argued.
 model DeviceToken {
-  id       String @id @default(cuid())
-  userId   String
-  token    String @unique
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
   /// 'ios' or 'android'. It decides which of the two push transports sends —
   /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
   /// that silently never rings. Written only by /api/v1/devices, behind a
   /// closed zod enum.
-  platform String
+  platform   String
   /// Stamped on every re-registration, which the app does at each launch. A
   /// token that has not been seen for months belongs to an app that was deleted
   /// without telling anyone; the transports prune those on rejection.
@@ -5218,6 +5295,26 @@ enum AnalysisStatus {
   INSUFFICIENT_DATA
 }
 
+/// Where the transcription of one call got to.
+///
+/// `RETRYING` and `FAILED` are deliberately separate. A job that failed once and
+/// is waiting on BullMQ's backoff is not a problem anybody should act on; one
+/// that has spent all four attempts is. Collapsing them would either cry wolf on
+/// every transient 429 or stay silent through a real outage.
+enum TranscriptionState {
+  /// Queued, or never asked for. Nothing has run yet.
+  PENDING
+  /// A run failed and another is scheduled.
+  RETRYING
+  /// Deliberately not transcribed — no consent, no recording, no provider, no
+  /// speech in the audio. `transcriptionDetail` says which.
+  SKIPPED
+  /// A transcript exists.
+  READY
+  /// Every attempt was spent. Nothing further will happen without a person.
+  FAILED
+}
+
 model Call {
   id              String                 @id @default(cuid())
   tenantId        String
@@ -5249,6 +5346,23 @@ model Call {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   deletedAt       DateTime?
+
+  /// What happened to the attempt to transcribe this call, and why.
+  ///
+  /// Absence of a `Transcript` row used to be the only signal, and it is four
+  /// different situations wearing one face: nothing was ever asked for, a job is
+  /// waiting its turn, the recording was deliberately not transcribed (consent
+  /// withdrawn, no provider connected, silence), or the vendor kept refusing
+  /// until the retries ran out. The first three are fine and the fourth needs
+  /// somebody. A person looking at the call screen could not tell them apart —
+  /// the transcript endpoint answered 404 to all four.
+  transcriptionState     TranscriptionState @default(PENDING)
+  /// The reason, in the words the vendor or the pipeline used. Shown to a person.
+  transcriptionDetail    String?
+  /// How many times the job has run. `FAILED` after n attempts reads differently
+  /// from `FAILED` on the first try — one is an outage, the other is a bad file.
+  transcriptionAttempts  Int                @default(0)
+  transcriptionUpdatedAt DateTime?
 
   recording  Recording?
   consent    RecordingConsent?
@@ -5516,6 +5630,29 @@ model IntegrationConnection {
 // WEBHOOK EVENTS (idempotent processing)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Proof that a worker process was alive, and when it last was.
+///
+/// `queueHasWorkers` asks BullMQ who is attached *right now*. That answers "is
+/// anything draining this queue" and cannot answer "did something stop", which
+/// is the failure this platform has actually had — a worker process dead in
+/// production for months while every producer kept enqueuing happily. A live
+/// query returns false for a queue that never had a worker and for one whose
+/// worker died an hour ago, and those need different responses.
+///
+/// One row per (queue, instance), rewritten on a timer. A stale `lastSeenAt` is
+/// the signal: it says a worker was there, and when it stopped.
+model WorkerHeartbeat {
+  queue      String
+  /// Which process. Several replicas may drain one queue, and a heartbeat that
+  /// collapsed them would go green while all but one were dead.
+  instanceId String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@id([queue, instanceId])
+  @@index([lastSeenAt])
+}
+
 model WebhookEvent {
   id           String    @id @default(cuid())
   tenantId     String
@@ -5535,6 +5672,115 @@ model WebhookEvent {
   @@index([provider, processed, createdAt])
 }
 
+/// Which way the traffic went.
+enum IntegrationDirection {
+  /// A provider called us — a webhook, a delivery receipt, a lead form.
+  INBOUND
+  /// We called a provider — a dial, a reply, a template send.
+  OUTBOUND
+}
+
+/// How the exchange ended.
+///
+/// `SKIPPED` exists because the two-value version forced a lie. A redelivered
+/// webhook that the idempotency claim correctly refused is not a failure — the
+/// system did exactly the right thing — but calling it OK hides the one fact
+/// worth recording, which is that it arrived and produced nothing. Same for a
+/// lead form whose routing rule is switched off: deliberate, not broken, and
+/// precisely the answer to "where did my lead go".
+enum IntegrationOutcome {
+  /// It worked. `entityType`/`entityId` name what it produced, if anything.
+  OK
+  /// Nothing was wrong and nothing was produced. `detail` says why.
+  SKIPPED
+  /// The provider refused, or could not be reached. `errorCategory` says which.
+  FAILED
+}
+
+/// What kind of failure, so a person can tell "fix your credentials" from
+/// "wait" without reading a stack trace.
+///
+/// Categories rather than status codes because the vendors disagree about
+/// codes: Meta answers 200 with an error body, Twilio 401 for a bad token and
+/// 403 for a suspended account, Knowlarity 400 for both. The category is what an
+/// administrator acts on; `httpStatus` is kept beside it for whoever wants the
+/// raw fact.
+enum IntegrationErrorCategory {
+  /// Credentials rejected — wrong, revoked, or expired. Someone must reconnect.
+  AUTH
+  /// Authenticated, but not allowed to do this. A missing scope or permission.
+  PERMISSION
+  /// Throttled. Nothing is wrong; it needs to be slower.
+  RATE_LIMIT
+  /// The provider refused what we sent. A bug on our side, or bad input.
+  INVALID_REQUEST
+  /// The thing addressed does not exist at the provider.
+  NOT_FOUND
+  /// The provider is down or erroring. Retryable, and not our fault.
+  UNAVAILABLE
+  /// No answer inside the deadline.
+  TIMEOUT
+  /// Genuinely unclassified. A growing count here means this list needs a case.
+  UNKNOWN
+}
+
+/// One line per exchange with an external provider, in either direction.
+///
+/// §33 asks a question this platform could not answer: "why are Facebook leads
+/// not arriving?" `WebhookEvent` answers half of it — it is the idempotency
+/// claim for inbound deliveries, and it records that one arrived and whether it
+/// processed. It cannot answer the other half, because it has no notion of an
+/// outbound call at all: every reply, dial and template send was logged to
+/// stdout and then gone.
+///
+/// Deliberately NOT folded into `WebhookEvent`. That table's whole job is the
+/// `(tenantId, provider, externalId)` unique that makes redelivery idempotent,
+/// and outbound calls have no external id to claim before they are made — two
+/// identical sends are two events, not one. Overloading it would mean either
+/// breaking the claim or inventing fake ids to satisfy it.
+///
+/// This is a log, not a ledger: nothing reads it to make a decision, so a failed
+/// write here must never fail the call it describes.
+model IntegrationEvent {
+  id        String               @id @default(cuid())
+  tenantId  String
+  /// Matches `IntegrationConnection.provider` — 'meta', 'twilio', 'demo'.
+  provider  String
+  direction IntegrationDirection
+  /// What was attempted, in this application's words: 'initiateCall',
+  /// 'leadgen', 'sendTemplate'. Not the vendor's endpoint, which changes.
+  operation String
+  outcome   IntegrationOutcome
+
+  /// Only ever set on `FAILED`. What an administrator should do about it.
+  errorCategory IntegrationErrorCategory?
+  /// The provider's own words on a failure, or the reason on a skip. Truncated,
+  /// and never our credentials — the adapters keep those out of their messages.
+  detail        String?
+  httpStatus    Int?
+
+  /// How many tries it took, including the one that succeeded.
+  attempts   Int  @default(1)
+  durationMs Int?
+
+  /// The provider's id for the thing — a call SID, a leadgen id, a message id.
+  externalId String?
+
+  /// What this produced on our side, when it produced something. The missing
+  /// half of "the lead arrived": which lead.
+  entityType String?
+  entityId   String?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, provider, createdAt(sort: Desc)])
+  @@index([tenantId, direction, outcome, createdAt(sort: Desc)])
+  /// The retention sweep reads across tenants, by age.
+  @@index([createdAt])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENTS & RSVP
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5543,6 +5789,22 @@ enum EventType {
   ONLINE
   PHYSICAL
   HYBRID
+}
+
+/// Who an event is for, as a deliberate choice by whoever created it.
+///
+/// `SCOPED` is the default and behaves like every other CRM record: the
+/// permission scope over its host decides who sees it. `ORGANIZATION` is the
+/// explicit company-wide announcement — the all-hands, the office closure, the
+/// launch everyone is meant to see — and is visible to every member of the
+/// workspace holding `events:VIEW`.
+///
+/// Without this, "make it visible to everyone" had no expression, and the only
+/// way to achieve it was to leave *every* event tenant-wide, which is what the
+/// code did.
+enum EventVisibility {
+  SCOPED
+  ORGANIZATION
 }
 
 enum EventStatus {
@@ -5570,16 +5832,19 @@ enum InviteChannel {
 }
 
 model Event {
-  id                 String      @id @default(cuid())
+  id                 String          @id @default(cuid())
   tenantId           String
   campaignId         String?
   title              String
   description        String?
-  eventType          EventType   @default(PHYSICAL)
-  status             EventStatus @default(DRAFT)
+  eventType          EventType       @default(PHYSICAL)
+  status             EventStatus     @default(DRAFT)
+  /// Defaults to SCOPED. The migration backfills existing rows to ORGANIZATION
+  /// so nobody loses sight of an event they can see today.
+  visibility         EventVisibility @default(SCOPED)
   startAt            DateTime
   endAt              DateTime
-  timezone           String      @default("Asia/Dubai")
+  timezone           String          @default("Asia/Dubai")
   hostId             String?
   location           String?
   address            String?
@@ -5587,14 +5852,14 @@ model Event {
   longitude          Float?
   meetingUrl         String?
   capacity           Int?
-  registeredCount    Int         @default(0)
-  attendedCount      Int         @default(0)
+  registeredCount    Int             @default(0)
+  attendedCount      Int             @default(0)
   externalCalendarId String?
   externalMeetId     String?
   notes              String?
   reminderSentAt     DateTime?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
   createdById        String?
   updatedById        String?
   deletedAt          DateTime?
@@ -5606,6 +5871,7 @@ model Event {
   @@index([tenantId, status, startAt])
   @@index([tenantId, campaignId])
   @@index([tenantId, hostId])
+  @@index([tenantId, visibility])
 }
 
 model EventInvitee {

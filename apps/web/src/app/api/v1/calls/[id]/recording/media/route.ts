@@ -12,7 +12,8 @@ import { getUploadMaxMb } from '@/lib/platform-settings';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
-import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
+import { analyseAndAudit, markTranscriptionExhausted, transcribeCall } from '@/services/shared/callIntelligence';
+import { assertCallInScope, requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -30,6 +31,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
   async ({ ctx, params }) => {
+    await requireVisibleCall(ctx, params.id);
     const [recording, consent] = await Promise.all([
       prisma.recording.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
       prisma.recordingConsent.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
@@ -99,10 +101,17 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     if (declared > maxBytes + 64 * 1024) throw tooLarge();
 
     const [call, consent] = await Promise.all([
-      prisma.call.findFirst({ where: { id: callId, tenantId: ctx.tenantId, deletedAt: null }, select: { id: true } }),
+      prisma.call.findFirst({
+        where: { id: callId, tenantId: ctx.tenantId, deletedAt: null },
+        select: { id: true, callerId: true },
+      }),
       prisma.recordingConsent.findFirst({ where: { callId, tenantId: ctx.tenantId } }),
     ]);
     if (!call) throw new AppError(404, 'not-found', 'Call not found.');
+    // This handler is multipart and bypasses the JSON kernel, so it authorises
+    // the record itself. Without it, `calls:EDIT` at OWN could attach a
+    // recording to a colleague's call.
+    await assertCallInScope(ctx, call);
     // The same rule the JSON recording endpoint enforces, checked before a byte
     // is read: recording must never begin without active consent.
     if (!consent?.consentGiven || consent.withdrawnAt) {
@@ -170,7 +179,23 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     } else {
       const tenantId = ctx.tenantId;
       void transcribeCall({ tenantId, callId, language })
-        .then(() => analyseAndAudit(tenantId, callId))
+        .then(
+          () => analyseAndAudit(tenantId, callId),
+          async (err) => {
+            /**
+             * Two arguments rather than a trailing `.catch`, so this only sees a
+             * failure of the transcription itself. A trailing catch would also
+             * catch `analyseAndAudit` blowing up and mark a transcript that
+             * exists and is readable as FAILED.
+             *
+             * There is no queue behind this path, so the first failure is the
+             * last one — leaving it at RETRYING would promise a retry that
+             * nothing is going to run.
+             */
+            await markTranscriptionExhausted(tenantId, callId, (err as Error).message);
+            throw err;
+          },
+        )
         .catch((err) => logger.error({ err: (err as Error).message, callId }, 'inline transcription chain failed'));
     }
 

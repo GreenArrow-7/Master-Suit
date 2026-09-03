@@ -68,6 +68,26 @@ async function assertSeatAvailable(ctx: Ctx) {
   }
 }
 
+/**
+ * `workspaceInvitation.create`, with the unique violation translated.
+ *
+ * The check above handles the ordinary case and produces the better message.
+ * This handles the race between that read and this write — two administrators
+ * inviting the same person at the same moment — which would otherwise still
+ * escape as a 500. Narrow on purpose: only P2002 on this table is converted,
+ * so a genuine fault is still a fault.
+ */
+async function createInvitation(args: Parameters<typeof prisma.workspaceInvitation.create>[0]) {
+  try {
+    return await prisma.workspaceInvitation.create(args);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'P2002') {
+      throw Conflict('An invitation to that address is already open. Resend or revoke it instead.');
+    }
+    throw error;
+  }
+}
+
 export async function inviteUser(ctx: Ctx, input: InviteInput) {
   const email = input.email.trim().toLowerCase();
 
@@ -83,10 +103,31 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
   });
   if (alreadyHere) throw Conflict('That person is already a member of this workspace.');
 
+  /**
+   * An invitation already open for this address.
+   *
+   * `WorkspaceInvitation` carries a unique on (tenantId, pendingKey), so the
+   * database has always refused the second one — but it refused it by raising
+   * P2002 out of `create` below, which nothing caught. Sending the same
+   * invitation twice, which is an ordinary operator slip, therefore answered
+   * `500 Internal error`: no indication that an invitation was already waiting,
+   * and nothing to do about it but guess.
+   *
+   * Checked here so the answer names the cause, and re-checked by the catch
+   * below because this read and that write are not atomic.
+   */
+  const alreadyInvited = await prisma.workspaceInvitation.findFirst({
+    where: { tenantId: ctx.tenantId, pendingKey: email },
+    select: { id: true },
+  });
+  if (alreadyInvited) {
+    throw Conflict('An invitation to that address is already open. Resend or revoke it instead.');
+  }
+
   await assertSeatAvailable(ctx);
 
   const token = randomBytes(32).toString('base64url');
-  const invitation = await prisma.workspaceInvitation.create({
+  const invitation = await createInvitation({
     data: {
       tenantId: ctx.tenantId,
       email,

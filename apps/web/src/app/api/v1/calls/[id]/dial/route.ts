@@ -6,6 +6,7 @@ import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { callbackSecrets, TelephonyConfigError, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
 import { streamToken } from '@/lib/integrations/telephony/stream';
+import { requireVisibleCall } from '@/services/crm/callVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -32,6 +33,7 @@ const body = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
+    await requireVisibleCall(ctx, params.id);
     const [call, actor] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.user.findFirst({ where: { id: ctx.actor.id, tenantId: ctx.tenantId }, select: { phone: true } }),

@@ -15,6 +15,7 @@
  */
 import { prisma } from '@/lib/db';
 import { connectionCredentials } from '../connection';
+import { loggedTelephony } from '@/services/integrations/loggedTelephony';
 import { telephonyProvider } from './index';
 import { TELEPHONY_VENDORS, TelephonyConfigError } from './types';
 import type { TelephonyProvider, TelephonyVendor } from './types';
@@ -106,7 +107,9 @@ export async function resolveTelephony(tenantId: string): Promise<ResolvedTeleph
   if (!credentials) throw new TelephonyConfigError(`${vendor} credentials are missing.`);
 
   return {
-    provider: telephonyProvider(vendor, credentials, connection.webhookKey),
+    // Wrapped here rather than in the factory: this is the one place a tenant
+    // and a provider are both in scope, and the factory is deliberately pure.
+    provider: loggedTelephony(telephonyProvider(vendor, credentials, connection.webhookKey), tenantId),
     vendor,
     connectionId: connection.id,
     webhookKey: connection.webhookKey,

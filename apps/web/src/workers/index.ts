@@ -11,6 +11,7 @@ import { startMediaWorker } from './media';
 import { startNotificationsWorker } from './notifications';
 import { startSlaWorker } from './sla';
 import { startWebhookWorker } from './webhook';
+import { startHeartbeat, WORKER_INSTANCE_ID } from '@/lib/workerHeartbeat';
 
 /**
  * Entry point for the worker process (PROCESS_ROLE=worker) — `npm run worker`
@@ -88,6 +89,7 @@ async function ready(worker: Worker): Promise<void> {
 }
 
 const workers: Worker[] = [];
+let stopHeartbeat: (() => void) | null = null;
 
 async function start() {
   for (const [name, startWorker] of Object.entries(CONSUMERS)) {
@@ -124,6 +126,15 @@ async function start() {
     worker.on('error', (err) => logger.error({ err, queue: worker.name }, 'worker error'));
   }
 
+  /**
+   * Start reporting only once every consumer is attached.
+   *
+   * A heartbeat written before `ready` would claim a queue is being drained by a
+   * process that is still connecting, which is exactly the false green this
+   * exists to remove.
+   */
+  stopHeartbeat = startHeartbeat(workers.map((worker) => worker.name));
+
   logger.info(
     /**
      * `schedulers` was a hard-coded pair and had already drifted: it still read
@@ -131,7 +142,7 @@ async function start() {
      * the one line that says what this process arms was quietly wrong. The arm
      * functions now report what they armed.
      */
-    { queues: workers.map((w) => w.name), schedulers },
+    { queues: workers.map((w) => w.name), schedulers, instanceId: WORKER_INSTANCE_ID },
     'workers started',
   );
 }
@@ -142,6 +153,9 @@ async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, 'workers shutting down');
+  // Stop beating before draining: a heartbeat written while closing would say
+  // this process is consuming a queue it is in the middle of letting go of.
+  stopHeartbeat?.();
   await Promise.allSettled(workers.map((worker) => worker.close()));
   process.exit(0);
 }

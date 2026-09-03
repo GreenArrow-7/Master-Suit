@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getCalendarProvider } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { eventVisibilityWhere } from '@/services/crm/eventVisibility';
 
 const createBody = z
   .object({
@@ -22,6 +23,16 @@ const createBody = z
     capacity: z.number().int().positive().optional(),
     campaignId: z.string().cuid().optional(),
     notes: z.string().max(2000).optional(),
+    /**
+     * Who the event is for. `SCOPED` (the default) behaves like every other CRM
+     * record; `ORGANIZATION` is the deliberate company-wide announcement that
+     * every member holding `events:VIEW` can see.
+     *
+     * Publishing company-wide is a read grant only — editing it still requires
+     * scope over the host, so this cannot be used to hand the company write
+     * access to an event.
+     */
+    visibility: z.enum(['SCOPED', 'ORGANIZATION']).optional(),
   })
   .strict()
   .refine((d) => d.endAt > d.startAt, { message: 'endAt must be after startAt' });
@@ -78,7 +89,10 @@ const listQuery = z
 export const GET = route(
   { module: 'events', productModule: 'SALES', action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
-    const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
+    // Was `{ tenantId, deletedAt: null }` and nothing else, so `events:VIEW` at
+    // OWN listed every event in the company. See services/crm/eventVisibility.ts
+    // for why events need their own rule rather than the call one.
+    const where: Record<string, unknown> = await eventVisibilityWhere(ctx);
     if (query.status) where.status = query.status;
     if (query.upcoming === 'true') where.startAt = { gte: new Date() };
     if (query.campaignId) where.campaignId = query.campaignId;

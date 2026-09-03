@@ -140,7 +140,13 @@ describe('Meta Lead Ads → CRM', () => {
   it('ignores a lead form that returned nothing identifying', async () => {
     vi.stubGlobal('fetch', graphOk([{ name: 'consent', values: ['yes'] }]));
     findDuplicates.mockResolvedValue([]);
-    await expect(applyMetaEvent({ ...base, event: leadgenEvent })).resolves.toBeUndefined();
+    /**
+     * The behaviour is unchanged — no lead is created — but the shared
+     * ingestion service now *says why* rather than returning undefined, so the
+     * assertion pins the reason. A bare `toBeUndefined()` would also have been
+     * satisfied by a handler that fell out of a switch having done nothing.
+     */
+    await expect(applyMetaEvent({ ...base, event: leadgenEvent })).resolves.toEqual({ skipped: 'no-identity' });
     expect(prisma.lead.create).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { acquireSlot, releaseSlot } from '@/lib/queueFairness';
 import { recordQueueDeferred } from '@/lib/metrics';
 import {
   analyseCall,
+  markTranscriptionExhausted,
   runCallAudit,
   transcribeCall,
   type AuditJob,
@@ -46,7 +47,7 @@ const DEFER_MS = 5_000;
 const defer = () => DEFER_MS + Math.floor(Math.random() * DEFER_MS);
 
 export function startAiWorker() {
-  return new Worker(
+  const worker = new Worker(
     'ai',
     async (job, token) => {
       const tenantId = (job.data as { tenantId?: string }).tenantId;
@@ -81,6 +82,33 @@ export function startAiWorker() {
     },
     { connection: redis, concurrency: GLOBAL },
   );
+
+  /**
+   * The one place that knows a transcription is finally beaten.
+   *
+   * `transcribeCall` records `RETRYING` on every failure because it cannot see
+   * the attempt budget; BullMQ can, and reports it here once the job has spent
+   * the last one. Without this the call sits at `RETRYING` for ever and nobody
+   * learns that nothing more is coming — which is the whole gap this closes.
+   *
+   * `attemptsMade` has already been incremented by the time this fires, so the
+   * comparison is against the configured total rather than one less. A job that
+   * was `DelayedError`-deferred for tenant fairness never reaches here: that
+   * path is not a failure and does not count as an attempt.
+   */
+  worker.on('failed', (job, err) => {
+    if (job?.name !== 'transcribe') return;
+    const budget = job.opts.attempts ?? 1;
+    if (job.attemptsMade < budget) return;
+
+    const { tenantId, callId } = job.data as TranscribeJob;
+    if (!tenantId || !callId) return;
+    void markTranscriptionExhausted(tenantId, callId, err.message).catch((markErr) =>
+      logger.error({ err: (markErr as Error).message, callId }, 'could not mark transcription exhausted'),
+    );
+  });
+
+  return worker;
 }
 
 async function dispatch(job: { name: string; data: unknown }) {

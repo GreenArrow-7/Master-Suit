@@ -143,10 +143,25 @@ describe('P2-5: the telephony webhook is rate limited before it touches the data
   it('answers 429 once the window is spent', async () => {
     const limit = limits.webhook(integrationKey);
 
-    // The budget is spent through the limiter itself rather than by sending 600
-    // requests: the point under test is that the route consumes the bucket
-    // before it touches the database, not how large the bucket is.
-    for (let i = 0; i < limit.max; i++) await consume(limit);
+    /**
+     * The budget is spent through the limiter itself rather than by sending 600
+     * requests: the point under test is that the route consumes the bucket
+     * before it touches the database, not how large the bucket is.
+     *
+     * Spent in parallel, and re-spent if the window rolled underneath us.
+     * `windowKey` is `rl:<key>:floor(now / windowSeconds)`, so a budget spent
+     * across a boundary lands partly in one window and partly in the next and
+     * fills neither — the request that follows is then allowed and this asserts
+     * 401 instead of 429. Six hundred *sequential* round-trips took long enough
+     * under a loaded full-suite run to hit that, which is why this failed only
+     * in a whole-suite run and always passed alone.
+     */
+    const windowIndex = () => Math.floor(Date.now() / (limit.windowSeconds * 1000));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const before = windowIndex();
+      await Promise.all(Array.from({ length: limit.max }, () => consume(limit)));
+      if (windowIndex() === before) break;
+    }
 
     const response = await telephonyWebhook(
       new Request('http://localhost/api/v1/webhooks/telephony', {

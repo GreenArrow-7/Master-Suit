@@ -34,6 +34,46 @@ interface CachedEntitlement {
   endsAt: string | null;
 }
 
+/**
+ * The rule that decides whether an entitlement row grants access.
+ *
+ * Exported because it was being re-implemented by eye on every surface that
+ * shows a module, and the copies disagreed: the workspace layout tested state
+ * *and* `endsAt`, the dashboard tested only state, and the API tested both. A
+ * subscription left ACTIVE past its end date was therefore refused by every
+ * endpoint while still being advertised on the landing page and the sidebar.
+ *
+ * `endsAt` is the hard stop — the same rule `isProductSubscriptionUsable` in
+ * services/platform/subscriptions.ts applies to the purchase this row is derived
+ * from, so the projection cannot outlive the product it projects.
+ */
+export function isEntitlementUsable(
+  entitlement: { state: string; endsAt?: Date | string | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!entitlement) return false;
+  if (!['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state)) return false;
+  if (!entitlement.endsAt) return true;
+  return new Date(entitlement.endsAt) > now;
+}
+
+/**
+ * The modules a workspace can actually use, from rows already loaded.
+ *
+ * For callers that hold `tenant.moduleEntitlements` — the layout, the dashboard,
+ * the product switcher — so they answer "which products does this company have"
+ * with the same rule the API gate uses, without a second query.
+ */
+export function usableModules(
+  entitlements: readonly { module: string; state: string; endsAt?: Date | string | null }[],
+  now: Date = new Date(),
+): ProductModule[] {
+  return entitlements
+    .filter((entitlement) => isEntitlementUsable(entitlement, now))
+    .map((entitlement) => entitlement.module)
+    .filter((module): module is ProductModule => (PRODUCT_MODULES as readonly string[]).includes(module));
+}
+
 export async function assertModuleEntitlement(tenantId: string, module: ProductModule) {
   const entitlement = await cached<CachedEntitlement | null>(key(tenantId, module), TTL_SECONDS, async () => {
     const row = await prisma.moduleEntitlement.findUnique({
@@ -42,11 +82,7 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     return row ? { state: row.state, endsAt: row.endsAt?.toISOString() ?? null } : null;
   });
 
-  const usable =
-    entitlement &&
-    ['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state) &&
-    (!entitlement.endsAt || new Date(entitlement.endsAt) > new Date());
-  if (!usable) {
+  if (!isEntitlementUsable(entitlement)) {
     throw Forbidden(`${module === 'HRMS' ? 'HR' : 'Sales'} is not enabled for this company.`);
   }
   return entitlement;

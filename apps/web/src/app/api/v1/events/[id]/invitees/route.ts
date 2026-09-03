@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { requireMutableEvent } from '@/services/crm/eventVisibility';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -25,6 +26,7 @@ const addBody = z
 export const POST = route(
   { module: 'events', productModule: 'SALES', action: 'EDIT', params, body: addBody },
   async ({ ctx, params, body }) => {
+    await requireMutableEvent(ctx, params.id, 'EDIT');
     const created = await prisma.eventInvitee.createMany({
       data: body.invitees.map((inv) => ({
         tenantId: ctx.tenantId,

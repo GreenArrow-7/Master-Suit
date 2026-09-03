@@ -78,6 +78,7 @@ export interface RetentionResult {
    *  recording was still hosted by the telephony vendor and we never ingested it. */
   recordingObjects: number;
   oldWebhookEvents: number;
+  oldIntegrationEvents: number;
   expiredSessions: number;
   attendanceCaptures: number;
   purgeSummary: Record<string, number>;
@@ -99,6 +100,7 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     expiredRecordings: 0,
     recordingObjects: 0,
     oldWebhookEvents: 0,
+    oldIntegrationEvents: 0,
     expiredSessions: 0,
     attendanceCaptures: 0,
     purgeSummary: {},
@@ -181,6 +183,47 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
   );
   if (result.oldWebhookEvents > 0) {
     logger.info({ count: result.oldWebhookEvents, dryRun }, 'retention: purged old webhook events');
+  }
+
+  /**
+   * Integration events older than 30 days.
+   *
+   * The same window as the webhook events above, and on purpose: they describe
+   * the same traffic from two angles, and two windows would mean the inbound log
+   * and its claim disagreed about what happened last month. Every outcome ages
+   * out together, failures included — a failure nobody has looked at in thirty
+   * days is not being investigated, and keeping it longer only makes the table
+   * the thing that needs investigating.
+   *
+   * `createdAt` rather than a processed flag: nothing processes these, so age is
+   * the only axis. The dedicated index on it is what makes this a range scan
+   * instead of a table scan every night.
+   */
+  result.oldIntegrationEvents = await withPlatformTx(
+    async (tx) => {
+      /**
+       * Raw, for the same reason the recording and soft-delete sweeps are: this
+       * crosses every tenant, and the Prisma tenant guard — correctly — refuses
+       * a model-API call with no tenantId. `IntegrationEvent` holds provider
+       * error messages that quote back what was sent, so exempting it from the
+       * guard to make one nightly query convenient would be the wrong trade.
+       *
+       * Safe because `withPlatformTx` sets `app.platform_admin` inside the
+       * transaction the statement runs in, which is what the RLS policy checks.
+       */
+      if (dryRun) {
+        const [row] = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+          `SELECT count(*) FROM "IntegrationEvent" WHERE "createdAt" < $1`,
+          thirtyDaysAgo,
+        );
+        return Number(row?.count ?? 0);
+      }
+      return tx.$executeRawUnsafe(`DELETE FROM "IntegrationEvent" WHERE "createdAt" < $1`, thirtyDaysAgo);
+    },
+    { timeoutMs: TX_TIMEOUT_MS },
+  );
+  if (result.oldIntegrationEvents > 0) {
+    logger.info({ count: result.oldIntegrationEvents, dryRun }, 'retention: purged old integration events');
   }
 
   // ── 3. Soft-deleted records older than 90 days ─────────────────────────────

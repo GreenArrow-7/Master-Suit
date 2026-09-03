@@ -7,6 +7,8 @@ import { socialSlaState, socialSlaTarget, queueRank } from '@/services/social/sl
 import { replyCapability } from '@/lib/integrations/meta/replyCapability';
 import PageHeader from '@/components/ui/PageHeader';
 import SocialLeadList from '@/components/workspace/SocialLeadList';
+import DemoLeadConnector from '@/components/workspace/DemoLeadConnector';
+import { demoLeadStatus } from '@/services/leads/providers/demoSocialLeads';
 
 export const metadata = { title: 'Social Leads' };
 
@@ -41,6 +43,7 @@ export default async function SocialLeadsPage({
   const { workspaceSlug } = await params;
   const { tab = 'all', channel } = await searchParams;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'SALES', permission: ['leads', 'VIEW'] });
+  const demo = await demoLeadStatus(ctx.tenantId);
 
   // The same row scoping every other list uses: a rep sees their own, a manager
   // their team's. Unassigned is included so somebody can pick an enquiry up.
@@ -248,6 +251,11 @@ export default async function SocialLeadsPage({
         description="Review and respond to sales enquiries coming from Facebook and Instagram."
         breadcrumbs={[{ label: 'Engage' }, { label: 'Social Leads' }]}
       />
+      {/* Only where the workspace is a demo one and the viewer administers
+          integrations. The server refuses everyone else regardless. */}
+      {demo.enabled && can(ctx, 'integrations', 'MANAGE_CONFIGURATION') && (
+        <DemoLeadConnector slug={workspaceSlug} sources={demo.sources} />
+      )}
 
       <SocialLeadList
         leads={JSON.parse(JSON.stringify(leads))}
