@@ -1,49 +1,54 @@
 import type { Metadata } from 'next';
-import { Fraunces, Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono, Manrope } from 'next/font/google';
 import { PRODUCT_NAME } from '@/lib/branding';
 import ServiceWorkerRegistration from '@/components/pwa/ServiceWorkerRegistration';
 import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 
 /**
- * The HRMS module's faces, self-hosted.
+ * The two YOUHAN faces, self-hosted, plus the diagnostics mono.
  *
  * next/font downloads these at build time and serves them from our own origin,
- * which is what the `font-src 'self'` CSP allows — a Google Fonts <link>, the
- * way the source HRMS loaded them, would be blocked.
+ * which is what the `font-src 'self'` CSP allows — a Google Fonts <link> would
+ * be blocked. That CSP is also why this list is the *only* place a face can be
+ * added: tokens.css previously named 'Inter' without anything loading it, so
+ * every Sales screen had silently been rendering in Segoe UI.
  *
- * Fraunces is the display serif on the HR screens (page and card headings);
- * Inter Tight is the body face; JetBrains Mono carries the geofence and GPS
- * diagnostics. The Sales module keeps its own sans stack — these are exposed as
- * variables and applied only under the People theme.
+ * Inter is the product face — headings, tables, controls, forms, body: one
+ * family for the whole working UI. Manrope is the marketing site's face and
+ * appears here only in the brand lockup (the wordmark beside the YH mark, the
+ * login headline); two weights, nothing else. JetBrains Mono carries figures,
+ * the geofence and the GPS diagnostics.
+ *
+ * Fraunces and Inter Tight were the People module's separate serif identity and
+ * are gone with it: one product, one type system.
  */
-const fraunces = Fraunces({
+const manrope = Manrope({
   subsets: ['latin'],
-  weight: ['400', '600'],
-  variable: '--lf-font-fraunces',
+  weight: ['600', '700'],
+  variable: '--yh-font-manrope',
   display: 'swap',
 });
-const interTight = Inter_Tight({
+const inter = Inter({
   subsets: ['latin'],
   weight: ['400', '500', '600'],
-  variable: '--lf-font-inter-tight',
+  variable: '--yh-font-inter',
   display: 'swap',
 });
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
-  variable: '--lf-font-jetbrains',
+  variable: '--yh-font-mono',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
   title: { default: PRODUCT_NAME, template: `%s · ${PRODUCT_NAME}` },
-  description:
-    'A modular business platform: Sales CRM, People & HR, and multi-tenant platform administration on one login, one permission model and one audit trail.',
+  description: 'Sales, people, operations and intelligence connected in one platform.',
 };
 
 export const viewport = {
-  themeColor: '#2E0B16',
+  themeColor: '#020817',
   width: 'device-width',
   initialScale: 1,
   /**
@@ -61,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-density="comfortable"
-      className={`${fraunces.variable} ${interTight.variable} ${jetbrainsMono.variable}`}
+      className={`${manrope.variable} ${inter.variable} ${jetbrainsMono.variable}`}
       // The stored theme is applied by the script below before first paint, so
       // this attribute is intentionally absent here rather than set to 'light':
       // rendering light and correcting it after hydration is the flash.

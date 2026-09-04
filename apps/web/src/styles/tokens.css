@@ -1,23 +1,31 @@
 /* ═════════════════════════════════════════════════════════════════════════════
-   LeadFlow CRM — Burgundy design system
+   YOUHAN ONE — design tokens
 
-   THE PROBLEM THIS SOLVES
-   Red is already load-bearing in a CRM: breached SLA, lost deal, rejected
-   document, destructive action. Making burgundy the brand colour puts two reds
-   in the same field of view and destroys both meanings.
+   youhan.in is the dark, cinematic brand. ONE is the workspace built by the
+   same company: a LIGHT working surface, a midnight sidebar, and the brand's
+   blue spent only where it means something. People run this application for
+   hours; the canvas is #F7F9FC and the text is near-black because readability
+   is the premium.
 
-   THE RESOLUTION
-   1. Burgundy is pushed deep enough (#3A0F1C – #6B1D33) that in the chrome it
-      reads as near-black structure, not as a warning.
-   2. Alerts move to vermillion (#C8412C) — hotter, lighter, unmistakably
-      separate at a glance and at 3 m from the monitor.
-   3. The other semantic slots leave the primary/success/warning cliché entirely:
-      antique brass for at-risk, viridian for won. Both are burgundy's natural
-      companions on the wheel, so the palette stays one family.
-   4. Neutrals are PEARL, not cream. Burgundy on cream with a serif is the wine-
-      label default; burgundy on cool pearl reads jewel-like and stays a tool.
-   5. Ink is warm-shifted (#1C1418, a red-black) so text sits in the same family
-      as the brand rather than fighting it with a blue-black.
+   HOW THE FILE IS ORGANISED
+   1. `--yh-*` are the canonical brand tokens. New code uses these.
+   2. `--lf-*` are aliases onto them. ~400 existing call sites reference the old
+      names; renaming all of them would be a large diff for no visual change and
+      a real regression risk, so the old names survive as a thin alias layer.
+      Nothing but this file should define an `--lf-*` colour.
+
+   THE COLOUR BUDGET
+   Neutral first. Brand blue is for: the primary action, links, focus, the
+   selected navigation indicator. Cyan is for: that indicator, and AI. A
+   business state is never a brand colour — won is green, breached is red, due
+   is amber, informational is blue — because "breached" and "brand" must never
+   look alike.
+
+   PRIMARY IS BRAND BLUE, NOT CYAN
+   #00D9F5 against white is 1.7:1. It cannot carry text or be a filled button on
+   a light canvas. Brand blue (#2455E6) is the primary action; azure (#087BF5)
+   is links, focus and hover; cyan is reserved for marks on midnight chrome and
+   for the intelligence surfaces, where it is legible and where it means "AI".
    ═════════════════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -35,68 +43,128 @@
      to rest below it. */
   --lf-fab-gutter: 80px;
 
-  /* ── Burgundy ramp ───────────────────────────────────────────────────────
-     900 is chrome. 700 is the brand. 500 is interaction. The tints carry
-     selection and fills without ever approaching alert saturation. */
-  --lf-wine-900: #2e0b16; /* app rail, deepest chrome */
-  --lf-wine-800: #3a0f1c;
-  --lf-wine-700: #6b1d33; /* THE burgundy — primary actions, brand */
-  --lf-wine-600: #7c2440;
-  --lf-wine-500: #8e2b47; /* hover, active */
-  --lf-wine-300: #c08a9c;
-  --lf-wine-200: #e4ced6;
-  --lf-wine-100: #f1e3e8;
-  --lf-wine-050: #fbf5f7;
+  /* ── Brand constants ─────────────────────────────────────────────────────
+     These do not change between themes. They are YOUHAN. */
+  --yh-midnight: #020817; /* sidebar, brand areas */
+  --yh-navy: #071426; /* deep navy — the lighter end of midnight chrome */
+  --yh-navy-lift: #0d2b52; /* the far corner of a midnight gradient */
+  --yh-cyan: #00d9f5; /* the accent: nav indicator, AI. On dark chrome only. */
+  --yh-azure: #087bf5; /* links, focus, hover */
+  --yh-blue: #2455e6; /* brand blue — the primary action */
+  /* Ink for the surfaces that are midnight in every theme — the sidebar, the
+     auth story, a toast. These do not follow the appearance setting, so their
+     text colour cannot be `--yh-text` either. */
+  --yh-on-midnight: #dbe5f2;
+  --yh-on-midnight-muted: rgb(219 229 242 / 0.62);
 
-  /* ── Pearl neutrals — cool, faint red undertone, never cream ───────────── */
-  --lf-canvas: #f3f0f1;
-  --lf-surface: #ffffff;
-  --lf-surface-2: #faf8f9;
-  --lf-line: #e4dde0;
-  --lf-line-2: #cfc4c9;
+  /* ── Surfaces (light theme) ────────────────────────────────────────────── */
+  --yh-bg: #f7f9fc; /* the primary workspace */
+  --yh-surface: #ffffff; /* cards, tables, forms */
+  --yh-surface-elevated: #f2f5f8; /* soft surface: table heads, wells */
+  --yh-border: #dde3ea;
+  --yh-border-strong: #c5cdd8;
 
-  /* ── Warm-shifted ink ──────────────────────────────────────────────────── */
-  --lf-ink: #1c1418;
-  --lf-ink-2: #5f545a;
-  --lf-ink-3: #8e8288;
-  --lf-ink-4: #b3a8ae;
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --yh-text: #111827;
+  --yh-text-secondary: #667085;
+  --yh-text-muted: #8a94a6;
+  --yh-text-faint: #a9b2c0;
 
-  /* ── Semantics. Deliberately not primary/success/warning. ──────────────── */
-  --lf-brass: #a87a22; /* at risk, pending, awaiting */
-  --lf-brass-sub: #f7f0df;
-  --lf-viridian: #12655a; /* won, converted, verified, SLA met */
-  --lf-viridian-sub: #e0eeeb;
-  --lf-vermillion: #c8412c; /* breached, lost, rejected, destructive */
-  --lf-vermillion-sub: #fbe9e6;
-  /* Alias, not a new red: components reach for "danger" as a name and several
-     already did — against a token that did not exist, silently. */
-  --lf-danger: var(--lf-vermillion);
-  /* Informational callout pair; the warn/positive tones had tokens, info was a
-     hardcoded pastel patch that ignored dark and glass. */
-  --lf-info: #2c5578;
-  --lf-info-sub: #e8f0f7;
-  --lf-slate: #5f545a; /* open, no state */
-  --lf-slate-sub: #f0ecee;
+  /* ── Action ───────────────────────────────────────────────────────────────
+     `--yh-on-primary` exists because the primary colour flips role between
+     themes: on light it is a deep blue carrying white text; on dark it is a
+     bright blue carrying midnight text. Hardcoding #fff on .lf-btn is what gave
+     the previous dark theme a 2.7:1 primary button. */
+  --yh-primary: var(--yh-blue);
+  --yh-primary-hover: #1c48d1;
+  --yh-on-primary: #ffffff;
 
-  /* ── Chart ramp. Four hues that stay legible side by side and print. ───── */
-  --lf-chart-1: #6b1d33;
-  --lf-chart-2: #a87a22;
-  --lf-chart-3: #12655a;
-  --lf-chart-4: #5f545a;
-  --lf-chart-5: #c08a9c;
-  --lf-chart-6: #8e2b47;
+  /* ── Semantic status. Deliberately not brand-coloured. ────────────────── */
+  --yh-success: #0e7c66;
+  --yh-success-sub: #dcf2ec;
+  --yh-warning: #b45309;
+  --yh-warning-sub: #fdf1d8;
+  --yh-danger: #c4342c;
+  --yh-danger-hover: #a82a23;
+  --yh-danger-sub: #fbeae7;
+  --yh-info: #087bf5;
+  --yh-info-sub: #e4f0fe;
+  --yh-neutral: #5a6980;
+  --yh-neutral-sub: #eef1f6;
+
+  /* Cyan is unreadable as text on a light canvas; this is the ink-weight
+     version for the few places a cyan *word* is needed off dark chrome — the
+     AI INSIGHT label, chiefly. */
+  --yh-cyan-ink: #0b7f95;
+
+  /* ═══ Alias layer: the historical --lf-* names, remapped ═══════════════════
+     The old ramp was named for burgundy. The slots are unchanged — 900/800 are
+     chrome, 700 is the brand, 500 is hover, the low numbers are tints — only
+     the hues moved. */
+  --lf-wine-900: var(--yh-midnight);
+  --lf-wine-800: var(--yh-navy);
+  --lf-wine-700: var(--yh-primary);
+  --lf-wine-600: #1c48d1;
+  --lf-wine-500: var(--yh-primary-hover);
+  --lf-wine-300: #93b4f7;
+  --lf-wine-200: #cadefb; /* selection */
+  --lf-wine-100: #e6effe;
+  --lf-wine-050: #f3f7ff;
+
+  --lf-canvas: var(--yh-bg);
+  --lf-surface: var(--yh-surface);
+  --lf-surface-2: var(--yh-surface-elevated);
+  --lf-line: var(--yh-border);
+  --lf-line-2: var(--yh-border-strong);
+
+  --lf-ink: var(--yh-text);
+  --lf-ink-2: var(--yh-text-secondary);
+  --lf-ink-3: var(--yh-text-muted);
+  --lf-ink-4: var(--yh-text-faint);
+
+  /* The historical semantic names. `brass` is at-risk/pending, `viridian` is
+     won/verified, `vermillion` is breached/lost/destructive. */
+  --lf-brass: var(--yh-warning);
+  --lf-brass-sub: var(--yh-warning-sub);
+  --lf-viridian: var(--yh-success);
+  --lf-viridian-sub: var(--yh-success-sub);
+  --lf-vermillion: var(--yh-danger);
+  --lf-vermillion-sub: var(--yh-danger-sub);
+  --lf-danger: var(--yh-danger);
+  --lf-info: var(--yh-info);
+  --lf-info-sub: var(--yh-info-sub);
+  --lf-slate: var(--yh-neutral);
+  --lf-slate-sub: var(--yh-neutral-sub);
+
+  /* ── Chart / categorical ramp ─────────────────────────────────────────────
+     Ready for the tables and charts that come after this pass; nothing on the
+     three redesigned surfaces reads these yet. Brand blue leads and cyan
+     follows, then the widest-separated hues that still sit in one family.
+     Mid-tone on purpose: a series is a fill, so it needs 3:1 against its
+     ground, and one value that clears that on both white and midnight keeps
+     its identity when the theme changes. */
+  --lf-chart-1: #3b82f6; /* blue */
+  --lf-chart-2: #06b6d4; /* cyan */
+  --lf-chart-3: #10b981; /* green */
+  --lf-chart-4: #f59e0b; /* amber */
+  --lf-chart-5: #8b5cf6; /* violet */
+  --lf-chart-6: #64748b; /* slate */
 
   /* ── Type ───────────────────────────────────────────────────────────────
-     Instrument Serif appears in exactly two places: the wordmark and the hero
-     metrics. That is the one place boldness is spent. Everywhere else is a
-     disciplined sans, because a data grid set in a display face is a costume.
-     Instrument Serif + Instrument Sans ship as a designed pair. */
-  /* Operational screens use one deliberately quiet sans family. The previous
-     serif metrics made the workspace feel like a marketing dashboard. */
-  --lf-font-display: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-ui: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-body: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
-  --lf-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+     Inter, everywhere in the product: headings, tables, controls, body. One
+     face, chosen for small-size legibility and tabular figures. Manrope — the
+     marketing site's face — appears only in the brand lockup (the wordmark
+     beside the YH mark, and the login headline), never on a working screen.
+
+     Both are self-hosted by next/font in app/layout.tsx. They must be, not
+     merely named: `font-src 'self'` blocks Google's CDN, and the previous
+     stylesheet named 'Inter' without loading it — so the whole product had
+     silently been rendering in Segoe UI. */
+  --yh-font-brand: var(--yh-font-manrope), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-display: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-ui: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-body: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --lf-font-mono: var(--yh-font-mono), ui-monospace, monospace;
 
   --lf-text-2xs: 0.625rem; /* 10px — eyebrow labels */
   --lf-text-xs: 0.6875rem; /* 11px — grid meta, badges */
@@ -129,6 +197,7 @@
   --lf-row-compact: 32px;
   --lf-row: var(--lf-row-comfortable);
 
+  /* The 4/8 spacing scale. Every component composes from these steps. */
   --lf-space-1: 4px;
   --lf-space-2: 8px;
   --lf-space-3: 12px;
@@ -137,9 +206,8 @@
   --lf-space-6: 24px;
   --lf-space-8: 32px;
   --lf-space-10: 40px;
+  --lf-space-12: 48px;
 
-  /* Controls sit at 6/9, cards at 13, hero surfaces at 16 — structured, not
-     bubbly, and the three tiers stay visibly distinct. */
   /* ── Responsive tiers ─────────────────────────────────────────────────────
      Three intentional experiences, not one layout scaled down. Every new
      responsive rule MUST use one of these boundaries — the codebase had grown
@@ -161,37 +229,40 @@
   --lf-bp-tablet: 1023px;
   --lf-bp-desktop: 1024px;
 
+  /* Controls at 6/8, cards at 12, the largest surfaces at 14. Nothing rounder:
+     a 20px corner reads as a consumer app, and this is not one. */
   --lf-radius-sm: 6px;
-  --lf-radius: 9px;
-  --lf-radius-lg: 13px;
-  --lf-radius-xl: 16px;
+  --lf-radius: 8px;
+  --lf-radius-lg: 12px;
+  --lf-radius-xl: 14px;
 
   /* Commercial design-token aliases shared by Sales, People and Platform. */
-  --background: var(--lf-canvas);
-  --surface: var(--lf-surface);
-  --surface-elevated: var(--lf-surface-2);
-  --border: var(--lf-line);
-  --text-primary: var(--lf-ink);
-  --text-secondary: var(--lf-ink-2);
-  --text-muted: var(--lf-ink-3);
-  --primary: var(--lf-wine-700);
-  --primary-hover: var(--lf-wine-500);
-  --success: var(--lf-viridian);
-  --warning: var(--lf-brass);
-  --danger: var(--lf-vermillion);
-  --information: #315c7d;
+  --background: var(--yh-bg);
+  --surface: var(--yh-surface);
+  --surface-elevated: var(--yh-surface-elevated);
+  --border: var(--yh-border);
+  --text-primary: var(--yh-text);
+  --text-secondary: var(--yh-text-secondary);
+  --text-muted: var(--yh-text-muted);
+  --primary: var(--yh-primary);
+  --primary-hover: var(--yh-primary-hover);
+  --success: var(--yh-success);
+  --warning: var(--yh-warning);
+  --danger: var(--yh-danger);
+  --information: var(--yh-info);
 
-  /* Shadows are wine-tinted, not neutral grey. On a pearl canvas a grey shadow
-     reads dirty; a wine-tinted one reads as depth. */
-  --lf-shadow-1: 0 1px 2px rgb(46 11 22 / 0.07);
-  --lf-shadow-2: 0 4px 14px rgb(46 11 22 / 0.1), 0 1px 3px rgb(46 11 22 / 0.06);
-  --lf-shadow-3: 0 18px 44px rgb(46 11 22 / 0.16);
+  /* Shadows are midnight-tinted and faint. A card is defined by its border;
+     the shadow is there only for the surfaces that float. */
+  --lf-shadow-1: 0 1px 2px rgb(17 24 39 / 0.05);
+  --lf-shadow-2: 0 4px 12px rgb(17 24 39 / 0.08), 0 1px 3px rgb(17 24 39 / 0.05);
+  --lf-shadow-3: 0 16px 40px rgb(17 24 39 / 0.14);
 
-  --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--lf-wine-500);
+  --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--yh-azure);
 
-  /* Brass hairline. The one metallic accent, used only to mark the active
-     navigation item and the active stage segment. Restraint is the point. */
-  --lf-brass-edge: linear-gradient(180deg, #d9b25e 0%, #a87a22 50%, #7c5714 100%);
+  /* The signal hairline: cyan into azure. Used two pixels at a time — the
+     active navigation row, the active stage segment, the AI surface's edge. */
+  --lf-brass-edge: linear-gradient(180deg, var(--yh-cyan) 0%, var(--yh-azure) 100%);
+  --yh-signal-edge: var(--lf-brass-edge);
 }
 
 [data-density='compact'] {
@@ -199,49 +270,63 @@
   --lf-text-sm: 0.75rem;
 }
 
-/* ── Dark Classic: the rail colour swallows the whole canvas ─────────────── */
-/* Glassy shares this block and overrides only its surfaces further down. */
+/* ── Dark (opt-in) ─────────────────────────────────────────────────────────
+   Not the default, and not the design: the product is a light workspace. This
+   remains an appearance setting for people who choose it, and it uses the
+   brand's own surface stack — #020817 / #0A1729 / #0D1C30 — so it is at least
+   the same colours as youhan.in rather than an interpretation of them. Glassy
+   shares this block and overrides only its surfaces further down. */
 [data-theme='dark'],
 [data-theme='glass'] {
-  --lf-canvas: #1a0a11;
-  --lf-surface: #24101a;
-  --lf-surface-2: #2e1622;
-  --lf-line: #3d2130;
-  --lf-line-2: #573145;
+  --yh-bg: #020817;
+  --yh-surface: #0a1729;
+  --yh-surface-elevated: #0d1c30;
+  --yh-border: #1b2c44;
+  --yh-border-strong: #2a3e5c;
 
-  --lf-ink: #f3e9ec;
-  --lf-ink-2: #c4afb8;
-  --lf-ink-3: #9a838e;
-  --lf-ink-4: #74606b;
+  --yh-text: #f7f9fc;
+  --yh-text-secondary: #9aa7b8;
+  --yh-text-muted: #68768a;
+  --yh-text-faint: #4c5a6e;
 
-  --lf-wine-700: #c4718c;
-  --lf-wine-600: #b7647f;
-  --lf-wine-500: #d08aa1;
-  --lf-wine-100: #3a1826;
-  --lf-wine-050: #2c1220;
+  /* The role flip described at --yh-on-primary: bright fill, midnight label.
+     This is also what makes the primary readable *as text* on #0A1729, which a
+     dark-enough-for-white-text blue could never be. */
+  --yh-primary: #4d9bff;
+  --yh-primary-hover: #6fb2ff;
+  --yh-on-primary: #041024;
 
-  --lf-brass: #d9b25e;
-  --lf-brass-sub: #35280f;
-  --lf-viridian: #4fb3a2;
-  --lf-viridian-sub: #0f2e29;
-  --lf-vermillion: #ee8478;
-  --lf-vermillion-sub: #3a1714;
-  --lf-info: #7fb0d8;
-  --lf-info-sub: #142633;
-  --lf-slate: #a2919a;
-  --lf-slate-sub: #2c1f26;
+  --lf-wine-600: #3d8bf5;
+  --lf-wine-300: #2f5480;
+  --lf-wine-200: #16305a;
+  --lf-wine-100: #102340;
+  --lf-wine-050: #0b1a2e;
+
+  --yh-success: #34d399;
+  --yh-success-sub: #06281f;
+  --yh-warning: #f5b23d;
+  --yh-warning-sub: #33260c;
+  --yh-danger: #f97066;
+  --yh-danger-hover: #ff8d84;
+  --yh-danger-sub: #35110e;
+  --yh-info: #38bdf8;
+  --yh-info-sub: #0a2438;
+  --yh-neutral: #94a3b8;
+  --yh-neutral-sub: #16233a;
+
+  --yh-cyan-ink: var(--yh-cyan);
 
   --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
   --lf-shadow-3: 0 18px 44px rgb(0 0 0 / 0.55);
 }
 
-/* ── Glassy ───────────────────────────────────────────────────────────────
+/* ── Glassy (opt-in) ──────────────────────────────────────────────────────
  *
- * Selector list, not a separate palette. Glassy is Dark Classic with the
- * surfaces made translucent, so it inherits every ink, accent and status colour
- * above and cannot drift out of sync with them — the failure mode of a second
- * dark theme maintained by hand.
+ * Selector list, not a separate palette. Glassy is Dark with the surfaces made
+ * translucent, so it inherits every ink, accent and status colour above and
+ * cannot drift out of sync with them — the failure mode of a second dark theme
+ * maintained by hand.
  *
  * The overrides below are only the ones translucency actually requires. Anything
  * a reader has to *read* — text, focus rings, status pills — is inherited
@@ -251,27 +336,27 @@
 [data-theme='glass'] {
   /* A canvas with structure in it. Blur over a flat colour is invisible: the
      effect is entirely in what shows through, so there has to be something to
-     show. Two soft wine pools, fixed, so scrolling does not drag them. */
-  --lf-canvas: #150710;
+     show. Two soft pools, fixed, so scrolling does not drag them. */
+  --yh-bg: #030b1c;
   --lf-canvas-wash:
-    radial-gradient(1100px 620px at 12% -8%, rgb(150 60 95 / 0.28), transparent 60%),
-    radial-gradient(880px 520px at 96% 6%, rgb(90 50 110 / 0.22), transparent 62%);
+    radial-gradient(1100px 620px at 12% -8%, rgb(0 217 245 / 0.1), transparent 60%),
+    radial-gradient(880px 520px at 96% 6%, rgb(36 85 230 / 0.16), transparent 62%);
 
   /* Panels. Alpha, not a solid — everything else here follows from that. */
-  --lf-surface: rgb(255 255 255 / 0.055);
-  --lf-surface-2: rgb(255 255 255 / 0.085);
-  --lf-line: rgb(255 255 255 / 0.11);
-  --lf-line-2: rgb(255 255 255 / 0.2);
+  --yh-surface: rgb(255 255 255 / 0.05);
+  --yh-surface-elevated: rgb(255 255 255 / 0.08);
+  --yh-border: rgb(255 255 255 / 0.11);
+  --yh-border-strong: rgb(255 255 255 / 0.2);
 
   /*
    * Where data lives, opacity goes up.
    *
-   * §9 is explicit that tables of leads and calls stay highly readable, and a
-   * table is the one place a background pattern competes directly with rows of
-   * small text. These are near-opaque on purpose: the glass reads at the panel
-   * edge, not through the numbers.
+   * Tables of leads and calls stay highly readable, and a table is the one
+   * place a background pattern competes directly with rows of small text.
+   * These are near-opaque on purpose: the glass reads at the panel edge, not
+   * through the numbers.
    */
-  --lf-glass-solid: rgb(32 16 26 / 0.92);
+  --lf-glass-solid: rgb(10 23 41 / 0.93);
   --lf-glass-blur: 14px;
   --lf-glass-blur-strong: 20px;
   /* A single top highlight is what reads as "pane of glass" rather than

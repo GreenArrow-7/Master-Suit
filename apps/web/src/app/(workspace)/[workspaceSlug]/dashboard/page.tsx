@@ -4,6 +4,7 @@ import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
+import AiInsight from '@/components/ui/AiInsight';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -501,53 +502,37 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
 
   return (
     <div className="lf-page-stack">
-      {/* The greeting band: where you are, how the operation stands, in one
-          glance. The same band the platform console leads with, so the product
-          opens the same way on both sides of the door. */}
-      <section className="lf-command-band">
-        <div
-          className="lf-command-band__row"
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: 24,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div>
-            <div className="lf-eyebrow">{workspace.displayName} · Overview</div>
-            <h1 className="lf-command-band__headline">
-              Good {daypart}
-              {firstName ? (
-                <>
-                  , <strong>{firstName}</strong>
-                </>
-              ) : null}
-              .
-            </h1>
-            <p className="lf-command-band__sub">
-              {attention.length > 0
-                ? `${attention.length} ${attention.length === 1 ? 'queue needs' : 'queues need'} your attention today.`
-                : 'All clear — nothing is waiting on you right now.'}
-            </p>
-          </div>
-          {bandStats.length > 0 && (
-            <div className="lf-stat-strip">
-              {bandStats.map((stat) => (
-                <Link key={stat.label} href={stat.href}>
-                  <span className="lf-figure">{stat.value}</span>
-                  <span className="lf-eyebrow" style={{ color: 'rgb(243 233 236 / 0.55)' }}>
-                    {stat.label}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
+      {/* The greeting: who you are and what the day holds, on the workspace's
+          own light surface. This used to be a midnight band with the figures
+          inside it; the figures are cards now, because a number a person acts
+          on belongs on the surface they act on, and the dark band is the
+          sidebar's job. */}
+      <header className="lf-dash-head">
+        <div>
+          <h1>
+            Good {daypart}
+            {firstName ? `, ${firstName}` : ''}.
+          </h1>
+          <p>Here’s what needs your attention today.</p>
         </div>
-      </section>
+        <div className="lf-dash-meta">
+          {workspace.displayName}
+          {sales && salesScope !== 'ORGANIZATION' ? ` · ${salesScope === 'OWN' ? 'My' : 'Team'} view` : ''}
+        </div>
+      </header>
+
+      {/* The business, in three or four numbers. Each is scoped by the
+          viewer's grant, and the label says so ("My pipeline", "Team pipeline"). */}
+      {bandStats.length > 0 && (
+        <div className="lf-kpi-grid">
+          {bandStats.map((stat) => (
+            <Link key={stat.label} className="lf-kpi" href={stat.href}>
+              <span className="lf-kpi__label">{stat.label}</span>
+              <span className="lf-kpi__value">{stat.value}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       {attention.length > 0 && (
         <div className="lf-attention">
@@ -561,6 +546,30 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
             </Link>
           ))}
         </div>
+      )}
+
+      {calls && (calls[1] > 0 || calls[2] > 0) && (
+        <AiInsight
+          label="AI insight"
+          action={
+            <Link className="lf-link" href={`/${workspace.slug}/sales/call-audits`}>
+              View call audits →
+            </Link>
+          }
+        >
+          {calls[1] > 0 && (
+            <p style={{ margin: 0 }}>
+              <strong>{calls[1]}</strong> call {calls[1] === 1 ? 'audit has' : 'audits have'} been scored by AI and{' '}
+              {calls[1] === 1 ? 'is' : 'are'} waiting for a human review.
+            </p>
+          )}
+          {calls[2] > 0 && (
+            <p style={{ margin: calls[1] > 0 ? '6px 0 0' : 0 }}>
+              Average audit score is <strong>{avgScore}</strong> across {calls[2]} reviewed{' '}
+              {calls[2] === 1 ? 'audit' : 'audits'}.
+            </p>
+          )}
+        </AiInsight>
       )}
 
       {/* A representative's day leads with their own work; an administrator's

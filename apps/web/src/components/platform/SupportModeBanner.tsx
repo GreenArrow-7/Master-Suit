@@ -42,8 +42,11 @@ export default function SupportModeBanner({
         justifyContent: 'space-between',
         gap: 16,
         padding: '8px 20px',
-        background: 'var(--lf-brass-edge, #B8860B)',
-        color: '#1b1206',
+        // Amber, not the brand gradient it used to wear. This banner says
+        // "you are looking at someone else's data" — that is a warning, and a
+        // warning painted in the brand colour stops reading as one.
+        background: 'var(--yh-warning)',
+        color: 'var(--yh-on-primary)',
         fontSize: 'var(--lf-text-sm)',
       }}
     >

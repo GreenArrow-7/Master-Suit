@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { PRODUCT_NAME } from '@/lib/branding';
+import { COMPANY_NAME, PRODUCT_NAME } from '@/lib/branding';
+import YouhanMark from '@/components/brand/YouhanMark';
 
 /**
  * `permission` accepts a list because a screen can need more than one grant.
@@ -499,27 +500,33 @@ export default function WorkspaceSidebar({
       </button>
       {mobileOpen && <div className="lf-mobile-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
       <aside className="lf-workspace-sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen}>
+        {/*
+         * Product first, workspace second.
+         *
+         * This block used to lead with the tenant's name and print the product
+         * underneath in 10px grey. That is the wrong way round for a platform
+         * with a brand: the top-left corner is where a person confirms which
+         * application they are in, and the workspace is already named in the top
+         * bar's crumb on every screen. So the lockup is [YH] YOUHAN ONE, and the
+         * workspace sits beneath it — still switchable, still always visible.
+         */}
         <div className="lf-sidebar-brand">
-          <Link href={`/${slug}/dashboard`} className="lf-brand-mark" aria-label={`${name} dashboard`}>
-            {initials(name)}
+          <Link
+            href={`/${slug}/dashboard`}
+            className="lf-brand-mark"
+            aria-label={`${PRODUCT_NAME} — ${name} dashboard`}
+          >
+            <YouhanMark size={34} />
           </Link>
           {!collapsed && (
             <div className="lf-brand-copy">
-              <strong>{name}</strong>
+              <strong>{PRODUCT_NAME}</strong>
               {workspaces.length > 1 ? (
                 <select
+                  className="lf-brand-workspace-switch"
                   value={slug}
                   aria-label="Switch workspace"
                   onChange={(event) => router.push(`/${event.target.value}/dashboard`)}
-                  style={{
-                    width: '100%',
-                    marginTop: 2,
-                    border: 0,
-                    padding: 0,
-                    background: 'transparent',
-                    color: 'rgb(255 255 255 / .48)',
-                    fontSize: 10,
-                  }}
                 >
                   {workspaces.map((workspace) => (
                     <option key={workspace.slug} value={workspace.slug}>
@@ -528,9 +535,7 @@ export default function WorkspaceSidebar({
                   ))}
                 </select>
               ) : (
-                /* The HR module names itself HRMS beneath the workspace, as the
-                   source HRMS does; the rest of the product keeps its own name. */
-                <span>{activeModule === 'people' ? 'HRMS' : PRODUCT_NAME}</span>
+                <span>{name}</span>
               )}
             </div>
           )}
@@ -543,10 +548,12 @@ export default function WorkspaceSidebar({
           </button>
         </div>
 
-        {/* The HR module's own navigation carries no product switcher — the
-            reference has none. "Overview" still reaches the workspace root,
-            which is where both modules are listed, so nobody is stranded. */}
-        {!collapsed && activeModule !== 'people' && (
+        {/* The switcher renders in both modules now.
+            It used to be hidden inside People, because the HR module wore a
+            separate identity that had no switcher of its own — so getting from
+            Attendance back to Leads meant a detour through the dashboard. There
+            is one product now, and one way between its two halves. */}
+        {!collapsed && (
           <div className="lf-module-switch" aria-label="Product modules">
             {modules.includes('SALES') && (
               <Link href={`/${slug}/sales`} aria-current={activeModule === 'sales' ? 'page' : undefined}>
@@ -554,10 +561,8 @@ export default function WorkspaceSidebar({
                 Sales
               </Link>
             )}
-            {/* Never the current tab here: this switcher renders only outside
-                the HR module, which has no switcher of its own. */}
             {modules.includes('HRMS') && (
-              <Link href={`/${slug}/people`}>
+              <Link href={`/${slug}/people`} aria-current={activeModule === 'people' ? 'page' : undefined}>
                 <Icon name="people" />
                 People
               </Link>
@@ -627,6 +632,8 @@ export default function WorkspaceSidebar({
               Signing out does belong beside the account, which is the argument
               this button was added on. It loses to being present at every
               width. */}
+          {/* The parent company, once, at the foot of the rail — not a tagline. */}
+          {!collapsed && <div className="lf-sidebar-built-by">Built by {COMPANY_NAME}</div>}
         </div>
       </aside>
     </>
