@@ -6437,3 +6437,25 @@ a.lf-kpi:hover {
 .lf-auth {
   grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
 }
+
+/* Fields inside a toolbar: compact on a desktop (the placeholder is the
+   label), labelled inside the phone filter sheet where there is room. */
+.lf-toolbar .lf-field {
+  margin: 0;
+  min-width: 0;
+}
+@media (min-width: 761px) {
+  .lf-toolbar .lf-field > .lf-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .lf-toolbar .lf-field .lf-input,
+  .lf-toolbar .lf-field .lf-select {
+    height: 34px;
+    font-size: var(--lf-text-sm);
+  }
+}
