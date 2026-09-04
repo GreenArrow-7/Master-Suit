@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import PageHeader from '@/components/ui/PageHeader';
+import { practiceRecommendation } from '@/services/shared/practiceRecommendation';
 import PracticeWorkspace from './PracticeWorkspace';
 
 export const metadata = { title: 'Practice' };
@@ -12,7 +13,7 @@ export default async function PracticePage() {
   const since = new Date();
   since.setHours(0, 0, 0, 0);
 
-  const [objections, history, settings, usedToday] = await Promise.all([
+  const [objections, history, settings, usedToday, recommendation] = await Promise.all([
     prisma.objection.findMany({
       where: { tenantId: ctx.tenantId, isActive: true, deletedAt: null },
       orderBy: { name: 'asc' },
@@ -38,6 +39,8 @@ export default async function PracticePage() {
     prisma.practiceSession.count({
       where: { tenantId: ctx.tenantId, userId: ctx.actor.id, startedAt: { gte: since } },
     }),
+    // Advisory, from the rep's own audits — a failure must not take the page down.
+    practiceRecommendation(ctx.tenantId, ctx.actor.id).catch(() => null),
   ]);
 
   const cap = settings?.practiceDailyCap ?? 10;
@@ -49,7 +52,12 @@ export default async function PracticePage() {
         description="Rehearse against an AI prospect — openers, discovery, objections and closes — and get scored on the same things call audits look for."
       />
 
-      <PracticeWorkspace objections={objections} remainingToday={Math.max(0, cap - usedToday)} capEnabled={cap > 0} />
+      <PracticeWorkspace
+        objections={objections}
+        remainingToday={Math.max(0, cap - usedToday)}
+        capEnabled={cap > 0}
+        recommendation={recommendation}
+      />
 
       {history.length > 0 && (
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}>

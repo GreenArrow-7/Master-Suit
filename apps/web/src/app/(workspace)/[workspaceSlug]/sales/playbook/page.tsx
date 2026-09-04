@@ -4,18 +4,26 @@ import { can } from '@/lib/security/rbac';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import PlaybookEditor from './PlaybookEditor';
+import BuyerPlaybooks, { type PlaybookRow } from './BuyerPlaybooks';
 
 export const metadata = { title: 'Objection Playbook' };
 
 export default async function PlaybookPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
 
-  const objections = await prisma.objection.findMany({
-    where: { tenantId: ctx.tenantId, deletedAt: null },
-    orderBy: { name: 'asc' },
-    take: 200,
-    include: { _count: { select: { matches: true } } },
-  });
+  const [objections, playbooks] = await Promise.all([
+    prisma.objection.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null },
+      orderBy: { name: 'asc' },
+      take: 200,
+      include: { _count: { select: { matches: true } } },
+    }),
+    prisma.salesPlaybook.findMany({
+      where: { tenantId: ctx.tenantId, deletedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      take: 100,
+    }),
+  ]);
 
   const canEdit = can(ctx, 'calls', 'CREATE');
 
@@ -52,6 +60,8 @@ export default async function PlaybookPage() {
           }))}
         />
       )}
+
+      <BuyerPlaybooks playbooks={playbooks as PlaybookRow[]} canEdit={canEdit} />
     </>
   );
 }

@@ -2,6 +2,8 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { leadCallContext } from '@/services/leads/callContext';
+import { geminiCredential } from '@/lib/ai/gemini';
 import LiveCallWorkspace from './LiveCallWorkspace';
 
 export const metadata = { title: 'Live Call' };
@@ -28,19 +30,19 @@ export default async function LiveCallPage({
     redirect(`/${params.workspaceSlug}/sales/calls/${call.id}`);
   }
 
-  const lead = call.leadId
-    ? await prisma.lead.findFirst({
-        where: { tenantId: ctx.tenantId, id: call.leadId },
-        select: {
-          id: true,
-          fullName: true,
-          company: true,
-          phone: true,
-          score: true,
-          stage: { select: { name: true } },
-        },
-      })
-    : null;
+  // The full pre-call briefing: profile, open requirement, last-call recap and
+  // matching inventory — the same context the live coach prompt carries.
+  const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId) : null;
+  // The workspace's own key when it has one, the deployment's otherwise — the
+  // same resolution the coach itself uses, so the banner cannot contradict it.
+  const credential = await geminiCredential(ctx.tenantId).catch(() => null);
+
+  // A call placed through a real vendor is displayed, not simulated: the
+  // realtime engine produces its events and this page only shows them.
+  const transport =
+    call.externalCallId && call.providerName && !['demo-simulation', 'live-mic'].includes(call.providerName)
+      ? ('vendor' as const)
+      : ('demo' as const);
 
   return (
     <LiveCallWorkspace
@@ -52,8 +54,9 @@ export default async function LiveCallPage({
         notes: call.notes,
         agentName: call.caller.fullName,
       }}
-      lead={lead ? { ...lead, stageName: lead.stage?.name ?? null } : null}
-      hasGemini={Boolean(process.env.GEMINI_API_KEY)}
+      transport={transport}
+      context={context}
+      hasGemini={Boolean(credential?.key)}
     />
   );
 }

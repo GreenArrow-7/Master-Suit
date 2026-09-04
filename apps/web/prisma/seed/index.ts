@@ -625,6 +625,48 @@ async function main() {
     branches.set(code, b.id);
   }
 
+  /**
+   * A geofence per office, because attendance is unusable without one.
+   *
+   * Nothing seeded these, so every workspace had zero work locations — and
+   * `hrWorkLocation` is what geofenced check-in measures a punch against. The
+   * visible symptom was elsewhere: Add user offers "eligible for geofenced
+   * attendance", which reveals a required location select, which had nothing
+   * to select, so the form could not be submitted at all.
+   *
+   * Coordinates are the real centres of the districts the branches name, so a
+   * demo check-in behaves like the real thing rather than passing everywhere.
+   * `radiusMeters` is deliberately generous: a tower's centre is not its
+   * doorway, and a geofence that rejects the people it is meant to admit is
+   * worse than one that is wide.
+   */
+  const locationSpecs: [string, number, number][] = [
+    ['BB', 25.1857, 55.2766],
+    ['JLT', 25.0693, 55.139],
+    ['DT', 25.1972, 55.2744],
+    ['REEM', 24.4977, 54.4084],
+    ['SHJ', 25.3463, 55.4209],
+  ];
+  for (const [code, latitude, longitude] of locationSpecs) {
+    const branch = branchSpecs.find((spec) => spec[0] === code)!;
+    await db.hrWorkLocation.upsert({
+      where: { tenantId_code: { tenantId, code } },
+      update: {},
+      create: {
+        tenantId,
+        code,
+        name: branch[1],
+        locationType: 'BRANCH_OFFICE',
+        emirate: branch[3],
+        latitude,
+        longitude,
+        radiusMeters: 250,
+        status: 'ACTIVE',
+        workingDays: [1, 2, 3, 4, 5],
+      },
+    });
+  }
+
   const deptSpecs = [
     ['SALES', 'Sales'],
     ['MKTG', 'Marketing'],

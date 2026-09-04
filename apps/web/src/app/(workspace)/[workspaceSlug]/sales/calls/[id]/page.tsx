@@ -8,7 +8,11 @@ import CallActions from './CallActions';
 import AuditDelete from './AuditDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
+import WhatsAppFollowUp from './WhatsAppFollowUp';
 import CoachingNotes, { type CoachingNoteView } from './CoachingNotes';
+import RequirementSuggestion, { type DetectedRequirementView } from './RequirementSuggestion';
+import TemperaturePanel from './TemperaturePanel';
+import { temperatureFromAnalysis } from '@/lib/ai/temperature';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 
 export const metadata = { title: 'Call Detail' };
@@ -86,9 +90,30 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const lead = call.leadId
     ? await prisma.lead.findFirst({
         where: { id: call.leadId, tenantId: ctx.tenantId },
-        select: { id: true, fullName: true, company: true },
+        select: { id: true, fullName: true, company: true, score: true },
       })
     : null;
+
+  // Explainable post-call temperature, computed on the way out — writing it to
+  // the lead is the agent's explicit act via the temperature route.
+  const temperature = lead && analysis?.status === 'COMPLETED' ? temperatureFromAnalysis(analysis) : null;
+
+  // The requirement the AI heard on this call, staged for review. Lives in the
+  // analysis rawOutput, so old rows and providerless rows both work unchanged.
+  const detectedRequirement =
+    analysis?.status === 'COMPLETED'
+      ? (((analysis.rawOutput as Record<string, unknown> | null)?.detectedRequirement ??
+          null) as DetectedRequirementView | null)
+      : null;
+  const openRequirement =
+    lead && detectedRequirement
+      ? await prisma.clientRequirement.findFirst({
+          where: { tenantId: ctx.tenantId, leadId: lead.id, deletedAt: null, status: 'OPEN' },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true },
+        })
+      : null;
+  const canSuggestRequirement = openRequirement ? can(ctx, 'requirements', 'EDIT') : can(ctx, 'requirements', 'CREATE');
 
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
   // Wildcard-granted to administrator roles only; QA reviews, admins erase.
@@ -143,6 +168,21 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           with the consent record. */}
       <div className="lf-detail">
         <div className="lf-detail__main" style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
+          {lead && temperature && (
+            <TemperaturePanel
+              callId={params.id}
+              result={temperature}
+              leadScore={lead.score}
+              canApply={can(ctx, 'leads', 'EDIT')}
+            />
+          )}
+          {lead && detectedRequirement && canSuggestRequirement && (
+            <RequirementSuggestion
+              leadId={lead.id}
+              existingRequirementId={openRequirement?.id ?? null}
+              detected={detectedRequirement}
+            />
+          )}
           <AnalysisPanel
             analysis={
               analysis
@@ -398,6 +438,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           />
 
           <FollowUpComposer callId={params.id} />
+
+          <WhatsAppFollowUp callId={params.id} />
 
           {/* Consent details */}
           {call.consent && (
