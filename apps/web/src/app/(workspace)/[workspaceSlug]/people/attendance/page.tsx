@@ -5,6 +5,8 @@ import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access'
 import { myEmployee } from '@/services/hr/leave';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import TableSearch from '@/components/workspace/TableSearch';
+import PageHeader from '@/components/ui/PageHeader';
+import Badge from '@/components/ui/Badge';
 
 export const metadata = { title: 'Attendance' };
 
@@ -111,39 +113,28 @@ export default async function Page({
 
   return (
     <div className="lf-page-stack">
-      <section>
-        <div className="lf-eyebrow">Attendance</div>
-        <h1 style={{ margin: '8px 0 0' }}>Attendance</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '90ch' }}>
-          One row per day, built from accepted check-ins and check-outs. Times are shown in Asia/Dubai. A day stays open
-          until a check-out is recorded.
-        </p>
-      </section>
+      <PageHeader
+        title="Attendance"
+        description="One row per day from accepted check-ins and check-outs, in Asia/Dubai. A day stays open until a check-out is recorded."
+        actions={<ExportCsv filename={`attendance-${iso(from)}-to-${iso(to)}.csv`} csv={csv} />}
+      />
 
-      <form className="lf-card lf-att__filters" method="get">
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="att-from">
-            From
-          </label>
-          <input id="att-from" className="lf-input" type="date" name="from" defaultValue={iso(from)} />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="att-to">
-            To
-          </label>
-          <input id="att-to" className="lf-input" type="date" name="to" defaultValue={iso(to)} />
-        </div>
-        <button className="lf-btn" type="submit">
+      {/* The date range is a toolbar, like every other list's controls — not a
+          labelled card-form with its own Apply button above the numbers. */}
+      <form className="lf-toolbar" method="get">
+        <input className="lf-input" type="date" name="from" defaultValue={iso(from)} aria-label="From" />
+        <span style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>to</span>
+        <input className="lf-input" type="date" name="to" defaultValue={iso(to)} aria-label="To" />
+        <button className="lf-btn lf-btn--secondary lf-btn--sm" type="submit">
           Apply
         </button>
-        <ExportCsv filename={`attendance-${iso(from)}-to-${iso(to)}.csv`} csv={csv} />
       </form>
 
-      <div className="lf-life__kpis">
+      <div className="lf-kpi-grid">
         {kpis.map(([label, value]) => (
-          <article className="lf-card lf-life__kpi" key={label}>
-            <div className="lf-eyebrow">{label}</div>
-            <div className="lf-life__kpi-value">{value}</div>
+          <article className="lf-kpi" key={label}>
+            <span className="lf-kpi__label">{label}</span>
+            <span className="lf-kpi__value">{value}</span>
           </article>
         ))}
       </div>
@@ -175,9 +166,19 @@ export default async function Page({
                     <td data-label="Hours">{hhmm(row.workMinutes ?? 0)}</td>
                     <td data-label="Location">{row.location?.name ?? '—'}</td>
                     <td data-label="Status">
-                      <span className="lf-badge">
+                      <Badge
+                        tone={
+                          row.checkOutAt
+                            ? 'viridian'
+                            : row.checkInAt
+                              ? 'brass'
+                              : row.status === 'ABSENT'
+                                ? 'vermillion'
+                                : 'slate'
+                        }
+                      >
                         {row.checkOutAt ? 'complete' : row.checkInAt ? 'open' : row.status.toLowerCase()}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}

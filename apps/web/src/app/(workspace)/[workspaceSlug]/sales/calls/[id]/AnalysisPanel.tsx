@@ -55,8 +55,8 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
   if (!analysis) {
     return (
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI Analysis
+        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
+          AI analysis
         </div>
         <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
           No analysis yet. Upload a transcript and trigger analysis from the Actions panel.
@@ -68,8 +68,8 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
   if (analysis.status === 'PROCESSING') {
     return (
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI Analysis
+        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
+          AI analysis
         </div>
         <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-brass)' }}>Analysis in progress…</p>
       </section>
@@ -79,8 +79,8 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
   if (analysis.status === 'FAILED') {
     return (
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI Analysis
+        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
+          AI analysis
         </div>
         <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-vermillion)' }}>
           Analysis failed: {analysis.errorMessage ?? 'Unknown error'}
@@ -108,7 +108,7 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
           marginBottom: 'var(--lf-space-3)',
         }}
       >
-        <div className="lf-eyebrow">AI Analysis</div>
+        <div className="lf-ai-label">AI analysis</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {analysis.humanCorrected && (
             <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-viridian)', fontWeight: 500 }}>
@@ -132,20 +132,9 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
         </div>
       </div>
 
-      {/* AI disclaimer */}
-      <div
-        style={{
-          fontSize: 'var(--lf-text-2xs)',
-          color: 'var(--lf-ink-3)',
-          fontStyle: 'italic',
-          marginBottom: 12,
-          padding: '6px 8px',
-          background: 'var(--lf-surface-2, #f5f5f5)',
-          borderRadius: 4,
-        }}
-      >
+      <p className="lf-ai-disclaimer">
         AI-generated suggestions — review and correct as needed. Uncertain items are flagged below.
-      </div>
+      </p>
 
       {analysis.summary && (
         <div style={{ marginBottom: 16 }}>
@@ -177,16 +166,27 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
         </div>
       )}
 
-      <Section title="Client Needs" items={analysis.clientNeeds} />
-      <Section title="Buying Signals" items={analysis.buyingSignals} tone="var(--lf-viridian)" />
+      {/* What changes the next action comes first; the record of what was
+          said folds behind a disclosure. Ten sections at one level meant the
+          buying signal sat as low as the topic list. */}
+      <Section title="Buying signals" items={analysis.buyingSignals} tone="var(--lf-viridian)" />
       <Section title="Objections" items={analysis.objections} tone="var(--lf-vermillion)" />
-      <Section title="Commitments" items={analysis.commitments} />
-      <Section title="Action Items" items={analysis.actionItems} tone="var(--lf-viridian)" />
-      <Section title="Next Steps" items={analysis.nextSteps} tone="var(--lf-viridian)" />
       <Section title="Risks" items={analysis.risks} tone="var(--lf-vermillion)" />
-      <Section title="Topics Discussed" items={analysis.topicsDiscussed} />
-      <Section title="Topics Missed" items={analysis.topicsMissed} tone="var(--lf-vermillion)" />
-      <Section title="Compliance Flags" items={analysis.complianceFlags} tone="var(--lf-vermillion)" />
+      <Section title="Compliance flags" items={analysis.complianceFlags} tone="var(--lf-vermillion)" />
+      <Section title="Next steps" items={analysis.nextSteps} tone="var(--lf-viridian)" />
+      <Section title="Action items" items={analysis.actionItems} tone="var(--lf-viridian)" />
+      {(analysis.clientNeeds.length > 0 ||
+        analysis.commitments.length > 0 ||
+        analysis.topicsDiscussed.length > 0 ||
+        analysis.topicsMissed.length > 0) && (
+        <details className="lf-more">
+          <summary>What was discussed</summary>
+          <Section title="Client needs" items={analysis.clientNeeds} />
+          <Section title="Commitments" items={analysis.commitments} />
+          <Section title="Topics discussed" items={analysis.topicsDiscussed} />
+          <Section title="Topics missed" items={analysis.topicsMissed} tone="var(--lf-vermillion)" />
+        </details>
+      )}
 
       {analysis.uncertainItems.length > 0 && (
         <div

@@ -111,7 +111,7 @@ export default async function LeadsPage({
       <ListHeader
         title="Leads"
         count={pageRows.length}
-
+        noun="lead"
         capped={hasMore}
         // Adding a lead is what someone came here to do; import, export and
         // column choice are housekeeping and fold behind the disclosure.
@@ -140,26 +140,63 @@ export default async function LeadsPage({
         }
       />
 
-      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="Saved views">
-        {[
-          ['All leads', ''],
-          ['My leads', 'mine'],
-          ['Unassigned', 'unassigned'],
-          ['Overdue follow-up', 'overdue'],
-          ['SLA breached', 'breached'],
-          ['High score', 'high_score'],
-        ].map(([label, key]) => (
-          <SalesLink
-            key={label}
-            className="lf-tab"
-            href={key ? `/leads?filter=${key}` : '/leads'}
-            aria-selected={(params.filter ?? '') === key}
-            role="tab"
+      {/* One toolbar: search, the saved views as chips, and a way back to
+          the unfiltered list. Search and view compose — the chips carry the
+          current query and the form carries the current view. */}
+      <div className="lf-toolbar">
+        <form className="lf-toolbar__search" method="get" role="search">
+          {params.filter && <input type="hidden" name="filter" value={params.filter} />}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
           >
-            {label}
+            <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            name="q"
+            type="search"
+            className="lf-input"
+            defaultValue={params.q ?? ''}
+            placeholder="Search name, company, email, phone or reference"
+            aria-label="Search leads"
+          />
+        </form>
+        <nav className="lf-chips" aria-label="Saved views">
+          {[
+            ['All', ''],
+            ['Mine', 'mine'],
+            ['Unassigned', 'unassigned'],
+            ['Overdue', 'overdue'],
+            ['SLA breached', 'breached'],
+            ['High score', 'high_score'],
+          ].map(([label, key]) => {
+            const query = new URLSearchParams({
+              ...(key ? { filter: key } : {}),
+              ...(params.q ? { q: params.q } : {}),
+            });
+            const suffix = query.toString();
+            return (
+              <SalesLink
+                key={label}
+                className="lf-chip"
+                href={suffix ? `/leads?${suffix}` : '/leads'}
+                aria-current={(params.filter ?? '') === key ? 'page' : undefined}
+              >
+                {label}
+              </SalesLink>
+            );
+          })}
+        </nav>
+        {(params.q || params.filter) && (
+          <SalesLink className="lf-btn lf-btn--ghost lf-btn--sm" href="/leads">
+            Clear all
           </SalesLink>
-        ))}
-      </nav>
+        )}
+      </div>
 
       {data.length === 0 ? (
         <div className="lf-card">

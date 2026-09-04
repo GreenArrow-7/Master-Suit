@@ -12,6 +12,7 @@ import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
+import CommandPalette from '@/components/nav/CommandPalette';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +125,14 @@ export default async function WorkspaceLayout({
         <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
       </div>
       <AssistantWidget slug={shell.slug} />
+      {/* ⌘K. Same navigation model as the rail, so it can only offer what the
+          rail would. */}
+      <CommandPalette
+        slug={shell.slug}
+        modules={shell.modules}
+        permitted={shell.permitted}
+        serviceMode={shell.serviceMode}
+      />
       <NativePush />
     </div>
   );

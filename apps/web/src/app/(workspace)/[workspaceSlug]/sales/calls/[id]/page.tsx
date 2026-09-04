@@ -136,210 +136,13 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
         </div>
       </div>
 
-      {/* One sentence about the call — hairline facts, not five centred boxes. */}
-      <section
-        className="lf-card"
-        style={{ padding: 'var(--lf-space-4) var(--lf-space-5)', marginBottom: 'var(--lf-space-5)' }}
-      >
-        <div className="lf-stat-strip lf-stat-strip--light">
-          <div>
-            <span className="lf-figure lf-num" style={{ fontSize: '1.4rem' }}>
-              {fmtDuration(call.durationSecs)}
-            </span>
-            <span className="lf-eyebrow">Duration</span>
-          </div>
-          <div>
-            <span className="lf-figure" style={{ fontSize: '1.4rem', textTransform: 'capitalize' }}>
-              {call.status.toLowerCase().replace(/_/g, ' ')}
-            </span>
-            <span className="lf-eyebrow">Status</span>
-          </div>
-          <div>
-            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
-              <Badge tone={hasConsent ? 'viridian' : 'vermillion'}>{hasConsent ? 'given' : 'none'}</Badge>
-            </span>
-            <span className="lf-eyebrow" style={{ display: 'block' }}>
-              Consent
-            </span>
-          </div>
-          <div>
-            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
-              <Badge tone={call.transcript ? 'viridian' : 'slate'}>
-                {call.transcript ? `${call.transcript.wordCount} words` : 'none'}
-              </Badge>
-            </span>
-            <span className="lf-eyebrow" style={{ display: 'block' }}>
-              Transcript
-            </span>
-          </div>
-          <div>
-            <span style={{ display: 'inline-block', padding: '6px 0 4px' }}>
-              <Badge
-                tone={
-                  analysis?.status === 'COMPLETED' ? 'viridian' : analysis?.status === 'FAILED' ? 'vermillion' : 'slate'
-                }
-              >
-                {analysis?.status?.toLowerCase() ?? 'none'}
-              </Badge>
-            </span>
-            <span className="lf-eyebrow" style={{ display: 'block' }}>
-              AI analysis
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: 'var(--lf-space-4)',
-        }}
-      >
-        {/* Left column */}
-        <div style={{ display: 'grid', gap: 'var(--lf-space-4)', alignContent: 'start' }}>
-          <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              Notes
-            </div>
-            <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', whiteSpace: 'pre-wrap' }}>
-              {call.notes || 'No notes recorded.'}
-            </p>
-          </section>
-
-          <CallActions
-            callId={params.id}
-            hasConsent={!!hasConsent}
-            callStatus={call.status}
-            hasTranscript={!!call.transcript}
-            hasAnalysis={!!analysis}
-            hasRecording={!!call.recording}
-          />
-
-          <FollowUpComposer callId={params.id} />
-
-          {/* Consent details */}
-          {call.consent && (
-            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-                Consent Details
-              </div>
-              <dl
-                style={{
-                  fontSize: 'var(--lf-text-sm)',
-                  color: 'var(--lf-ink-2)',
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  gap: '4px 12px',
-                  margin: 0,
-                }}
-              >
-                <dt style={{ fontWeight: 500 }}>Method</dt>
-                <dd style={{ margin: 0 }}>{call.consent.method?.toLowerCase() ?? '—'}</dd>
-                <dt style={{ fontWeight: 500 }}>Given at</dt>
-                <dd style={{ margin: 0 }}>{call.consent.givenAt?.toLocaleString('en-GB') ?? '—'}</dd>
-                {call.consent.withdrawnAt && (
-                  <>
-                    <dt style={{ fontWeight: 500, color: 'var(--lf-vermillion)' }}>Withdrawn</dt>
-                    <dd style={{ margin: 0, color: 'var(--lf-vermillion)' }}>
-                      {call.consent.withdrawnAt.toLocaleString('en-GB')}
-                    </dd>
-                  </>
-                )}
-              </dl>
-            </section>
-          )}
-
-          {call.recording && (
-            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-                Recording
-              </div>
-              <dl
-                style={{
-                  fontSize: 'var(--lf-text-sm)',
-                  color: 'var(--lf-ink-2)',
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  gap: '4px 12px',
-                  margin: 0,
-                }}
-              >
-                <dt style={{ fontWeight: 500 }}>Format</dt>
-                <dd style={{ margin: 0 }}>{call.recording.mimeType}</dd>
-                <dt style={{ fontWeight: 500 }}>Duration</dt>
-                <dd style={{ margin: 0 }}>{fmtDuration(call.recording.durationSecs)}</dd>
-                {call.recording.sizeBytes && (
-                  <>
-                    <dt style={{ fontWeight: 500 }}>Size</dt>
-                    <dd style={{ margin: 0 }}>{(call.recording.sizeBytes / 1024 / 1024).toFixed(1)} MB</dd>
-                  </>
-                )}
-              </dl>
-
-              {/*
-                Playback, with a scrubber the browser draws.
-
-                A native <audio> element is the whole feature: seek, speed and
-                keyboard control for free, and better than a hand-rolled
-                scrubber would be. `preload="none"` because a call recording is
-                megabytes and most visits to this page never press play.
-
-                `storageBucket === 'provider'` means the media is still on the
-                telephony vendor's servers — the ingest worker has not pulled it
-                into our bucket yet, and the download route refuses it until it
-                has. Saying so beats a player that fails silently.
-              */}
-              {call.recording.storageBucket === 'provider' ? (
-                <p className="lf-hint" style={{ marginTop: 'var(--lf-space-3)' }}>
-                  Still transferring from the telephony provider. It will play once the media worker has it.
-                </p>
-              ) : (
-                <audio
-                  controls
-                  preload="none"
-                  src={`/api/v1/calls/${call.id}/recording/media`}
-                  style={{ width: '100%', marginTop: 'var(--lf-space-3)' }}
-                >
-                  Your browser cannot play audio.
-                </audio>
-              )}
-            </section>
-          )}
-
-          <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              Follow-ups
-            </div>
-            {followUps.length === 0 ? (
-              <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>No follow-ups from this call.</p>
-            ) : (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 'var(--lf-space-5)',
-                  fontSize: 'var(--lf-text-sm)',
-                  color: 'var(--lf-ink-2)',
-                }}
-              >
-                {followUps.map((f) => (
-                  <li key={f.id} style={{ marginBottom: 4 }}>
-                    <span style={{ fontWeight: 500 }}>{f.title}</span>
-                    <span style={{ color: 'var(--lf-ink-3)', marginLeft: 8 }}>
-                      due {f.dueAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                    </span>{' '}
-                    <Badge tone={f.status === 'COMPLETED' ? 'viridian' : f.status === 'OPEN' ? 'brass' : 'slate'}>
-                      {f.status.toLowerCase()}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        {/* Right column: AI Analysis + Audits */}
-        <div style={{ display: 'grid', gap: 'var(--lf-space-4)', alignContent: 'start' }}>
+      {/* Intelligence on the left, where the eye lands: the analysis, then
+          what the playbook found, the audits, coaching, and the rep's own
+          notes. Facts and actions on the right. This was an auto-fit grid of
+          twelve equal cards in which the AI verdict sat in column two, level
+          with the consent record. */}
+      <div className="lf-detail">
+        <div className="lf-detail__main" style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
           <AnalysisPanel
             analysis={
               analysis
@@ -528,7 +331,193 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               })}
             </section>
           )}
+          <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+              Notes
+            </div>
+            <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', whiteSpace: 'pre-wrap' }}>
+              {call.notes || 'No notes recorded.'}
+            </p>
+          </section>
         </div>
+
+        <aside className="lf-detail__side">
+          {/* The five facts that were a strip of centred figures above two
+              columns of cards. As a list beside the analysis they answer
+              "is there anything to analyse" without taking a band of the page. */}
+          <section className="lf-panel">
+            <dl className="lf-kv">
+              <div>
+                <dt>Duration</dt>
+                <dd className="lf-num">{fmtDuration(call.durationSecs)}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd style={{ textTransform: 'capitalize' }}>{call.status.toLowerCase().replace(/_/g, ' ')}</dd>
+              </div>
+              <div>
+                <dt>Consent</dt>
+                <dd>
+                  <Badge tone={hasConsent ? 'viridian' : 'vermillion'}>{hasConsent ? 'given' : 'none'}</Badge>
+                </dd>
+              </div>
+              <div>
+                <dt>Transcript</dt>
+                <dd>
+                  <Badge tone={call.transcript ? 'viridian' : 'slate'}>
+                    {call.transcript ? `${call.transcript.wordCount} words` : 'none'}
+                  </Badge>
+                </dd>
+              </div>
+              <div>
+                <dt>AI analysis</dt>
+                <dd>
+                  <Badge
+                    tone={
+                      analysis?.status === 'COMPLETED'
+                        ? 'viridian'
+                        : analysis?.status === 'FAILED'
+                          ? 'vermillion'
+                          : 'slate'
+                    }
+                  >
+                    {analysis?.status?.toLowerCase() ?? 'none'}
+                  </Badge>
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <CallActions
+            callId={params.id}
+            hasConsent={!!hasConsent}
+            callStatus={call.status}
+            hasTranscript={!!call.transcript}
+            hasAnalysis={!!analysis}
+            hasRecording={!!call.recording}
+          />
+
+          <FollowUpComposer callId={params.id} />
+
+          {/* Consent details */}
+          {call.consent && (
+            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+                Consent Details
+              </div>
+              <dl
+                style={{
+                  fontSize: 'var(--lf-text-sm)',
+                  color: 'var(--lf-ink-2)',
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr',
+                  gap: '4px 12px',
+                  margin: 0,
+                }}
+              >
+                <dt style={{ fontWeight: 500 }}>Method</dt>
+                <dd style={{ margin: 0 }}>{call.consent.method?.toLowerCase() ?? '—'}</dd>
+                <dt style={{ fontWeight: 500 }}>Given at</dt>
+                <dd style={{ margin: 0 }}>{call.consent.givenAt?.toLocaleString('en-GB') ?? '—'}</dd>
+                {call.consent.withdrawnAt && (
+                  <>
+                    <dt style={{ fontWeight: 500, color: 'var(--lf-vermillion)' }}>Withdrawn</dt>
+                    <dd style={{ margin: 0, color: 'var(--lf-vermillion)' }}>
+                      {call.consent.withdrawnAt.toLocaleString('en-GB')}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </section>
+          )}
+
+          {call.recording && (
+            <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+              <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+                Recording
+              </div>
+              <dl
+                style={{
+                  fontSize: 'var(--lf-text-sm)',
+                  color: 'var(--lf-ink-2)',
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr',
+                  gap: '4px 12px',
+                  margin: 0,
+                }}
+              >
+                <dt style={{ fontWeight: 500 }}>Format</dt>
+                <dd style={{ margin: 0 }}>{call.recording.mimeType}</dd>
+                <dt style={{ fontWeight: 500 }}>Duration</dt>
+                <dd style={{ margin: 0 }}>{fmtDuration(call.recording.durationSecs)}</dd>
+                {call.recording.sizeBytes && (
+                  <>
+                    <dt style={{ fontWeight: 500 }}>Size</dt>
+                    <dd style={{ margin: 0 }}>{(call.recording.sizeBytes / 1024 / 1024).toFixed(1)} MB</dd>
+                  </>
+                )}
+              </dl>
+
+              {/*
+                Playback, with a scrubber the browser draws.
+
+                A native <audio> element is the whole feature: seek, speed and
+                keyboard control for free, and better than a hand-rolled
+                scrubber would be. `preload="none"` because a call recording is
+                megabytes and most visits to this page never press play.
+
+                `storageBucket === 'provider'` means the media is still on the
+                telephony vendor's servers — the ingest worker has not pulled it
+                into our bucket yet, and the download route refuses it until it
+                has. Saying so beats a player that fails silently.
+              */}
+              {call.recording.storageBucket === 'provider' ? (
+                <p className="lf-hint" style={{ marginTop: 'var(--lf-space-3)' }}>
+                  Still transferring from the telephony provider. It will play once the media worker has it.
+                </p>
+              ) : (
+                <audio
+                  controls
+                  preload="none"
+                  src={`/api/v1/calls/${call.id}/recording/media`}
+                  style={{ width: '100%', marginTop: 'var(--lf-space-3)' }}
+                >
+                  Your browser cannot play audio.
+                </audio>
+              )}
+            </section>
+          )}
+
+          <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
+              Follow-ups
+            </div>
+            {followUps.length === 0 ? (
+              <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>No follow-ups from this call.</p>
+            ) : (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 'var(--lf-space-5)',
+                  fontSize: 'var(--lf-text-sm)',
+                  color: 'var(--lf-ink-2)',
+                }}
+              >
+                {followUps.map((f) => (
+                  <li key={f.id} style={{ marginBottom: 4 }}>
+                    <span style={{ fontWeight: 500 }}>{f.title}</span>
+                    <span style={{ color: 'var(--lf-ink-3)', marginLeft: 8 }}>
+                      due {f.dueAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    </span>{' '}
+                    <Badge tone={f.status === 'COMPLETED' ? 'viridian' : f.status === 'OPEN' ? 'brass' : 'slate'}>
+                      {f.status.toLowerCase()}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </aside>
       </div>
     </>
   );

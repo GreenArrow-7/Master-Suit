@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PageHeader from '@/components/ui/PageHeader';
+import Badge from '@/components/ui/Badge';
 
 export default async function EmployeesPage({
   params,
@@ -57,53 +58,60 @@ export default async function EmployeesPage({
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="People"
         title="Employees"
         description={
           rows.length === 500
-            ? `Showing the first 500 employee records — narrow with search.`
+            ? `Showing the first 500 employees — narrow with search.`
             : query
-              ? `${rows.length} employee records matching "${query}".`
-              : `${rows.length} employee records in this workspace.`
+              ? `${rows.length} employees matching "${query}".`
+              : `${rows.length} employees in this workspace.`
         }
-        breadcrumbs={[{ label: 'People', href: `/${workspaceSlug}/people` }, { label: 'Employees' }]}
         actions={
-          <Link className="lf-btn" href={`/${workspaceSlug}/people/employees/new`}>
+          <Link className="lf-btn lf-btn--sm" href={`/${workspaceSlug}/people/employees/new`}>
             Invite employee
           </Link>
         }
       />
-      <form className="lf-card lf-filters" method="get" role="search">
-        <div className="lf-field lf-filters__search">
-          <label className="lf-label" htmlFor="emp-q">
-            Search employees
-          </label>
+      {/* The same toolbar as the Sales lists: a search box, and a way back.
+          The labelled card-form with its own Search button was the one place
+          in the product where finding a record took a form submission. */}
+      <div className="lf-toolbar">
+        <form className="lf-toolbar__search" method="get" role="search">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+          </svg>
           <input
-            id="emp-q"
             className="lf-input"
             name="q"
             type="search"
             defaultValue={query ?? ''}
-            placeholder="Name, work email or employee number"
+            placeholder="Search by name, work email or employee number"
+            aria-label="Search employees"
             // Native, no client JS: an empty or whitespace-only submission would
             // navigate to `?q=`, which reads as a search that matched nothing
-            // rather than no search at all. `required` blocks empty; the pattern
-            // blocks spaces.
+            // rather than no search at all.
             required
             pattern=".*\S.*"
             title="Type a name, work email or employee number"
           />
-        </div>
-        <button className="lf-btn" type="submit">
-          Search
-        </button>
+        </form>
         {query && (
-          <Link className="lf-btn lf-btn--ghost" href={`/${workspaceSlug}/people/employees`}>
-            Clear
+          <Link className="lf-btn lf-btn--ghost lf-btn--sm" href={`/${workspaceSlug}/people/employees`}>
+            Clear all
           </Link>
         )}
-      </form>
+      </div>
       <WorkspaceTable
+        // The toolbar above already searches server-side; a second, client-side
+        // box over the same rows was two controls with one accessible name.
+        searchable={false}
         empty={
           query
             ? `Nothing matches "${query}". Search covers name, work email and employee number.`
@@ -119,7 +127,7 @@ export default async function EmployeesPage({
           employee.department?.name ?? '—',
           employee.designation ?? '—',
           employee.membership.salesUser?.role.name ?? employee.membership.roleSnapshot ?? '—',
-          employee.employmentStatus,
+          <Badge key="status" value={employee.employmentStatus} />,
         ])}
       />
     </div>

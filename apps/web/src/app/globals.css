@@ -5619,3 +5619,821 @@ a.lf-kpi:hover {
   font-size: var(--lf-text-2xs);
   color: var(--lf-ink-2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design system — the product-wide primitives every screen composes from.
+
+   Rules appended here deliberately override the older per-screen rules above
+   at equal specificity: this is where the two table systems become one, where
+   the three page-header patterns become one, and where the toolbar, the
+   command palette, the attention list and the detail layout live.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page header: 28px, one line of context, one primary action ─────────── */
+.lf-list-header__title,
+.lf-page-title,
+:where(.lf-page-main) h1 {
+  margin: 0;
+  font: 650 28px/1.2 var(--lf-font-ui);
+  letter-spacing: -0.02em;
+  color: var(--lf-ink);
+}
+.lf-list-header__count,
+.lf-page-description {
+  margin: 3px 0 0;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-list-header,
+.lf-page-header {
+  align-items: flex-end;
+  margin-bottom: var(--lf-space-4);
+}
+/* Eyebrow + breadcrumb + title was three lines saying one thing. */
+.lf-page-header .lf-eyebrow,
+.lf-list-header .lf-eyebrow {
+  display: none;
+}
+
+/* ── One table ───────────────────────────────────────────────────────────── */
+.lf-table-wrap,
+.lf-grid-wrap {
+  box-shadow: none;
+}
+.lf-table,
+.lf-grid {
+  font-size: var(--lf-text-sm);
+}
+.lf-table {
+  min-width: 640px;
+}
+.lf-table th,
+.lf-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 40px;
+  padding: 0 var(--lf-space-3);
+  background: var(--lf-surface-2);
+  border-bottom: 1px solid var(--lf-line);
+  color: var(--lf-ink-2);
+  font: 500 11px/1 var(--lf-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lf-table td,
+.lf-grid tbody td {
+  height: 44px;
+  padding: 0 var(--lf-space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+  color: var(--lf-ink);
+  vertical-align: middle;
+}
+.lf-table tbody tr:hover,
+.lf-grid tbody tr:hover,
+.lf-grid tbody tr:hover .lf-sticky {
+  background: color-mix(in srgb, var(--lf-surface-2) 55%, var(--lf-surface));
+}
+.lf-grid tbody tr[aria-selected='true'],
+.lf-grid tbody tr[aria-selected='true'] .lf-sticky {
+  background: var(--lf-wine-050);
+}
+.lf-grid thead th[aria-sort]:hover {
+  color: var(--yh-primary);
+}
+
+/* ── Toolbar: search · view chips · compact filters · clear ─────────────── */
+.lf-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2);
+  margin-bottom: var(--lf-space-3);
+}
+.lf-toolbar__search {
+  position: relative;
+  flex: 1 1 240px;
+  max-width: 440px;
+  min-width: 0;
+}
+.lf-toolbar__search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--lf-ink-3);
+  pointer-events: none;
+}
+.lf-toolbar__search .lf-input {
+  height: 34px;
+  padding-left: 32px;
+  background: var(--lf-surface);
+}
+.lf-toolbar .lf-select,
+.lf-toolbar .lf-input {
+  height: 34px;
+  font-size: var(--lf-text-sm);
+}
+.lf-toolbar__spacer {
+  flex: 1 1 auto;
+}
+.lf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-1);
+}
+.lf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface);
+  color: var(--lf-ink-2);
+  font: 500 12.5px/1 var(--lf-font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.lf-chip:hover {
+  color: var(--lf-ink);
+  border-color: var(--lf-line-2);
+}
+.lf-chip[aria-current='page'],
+.lf-chip[aria-selected='true'] {
+  background: var(--lf-wine-050);
+  border-color: var(--lf-wine-300);
+  color: var(--yh-primary);
+}
+@media (max-width: 760px) {
+  .lf-toolbar__search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .lf-toolbar__search .lf-input {
+    height: 40px;
+  }
+  .lf-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  .lf-chip {
+    height: 36px;
+  }
+}
+
+/* ── Rail: groups, the long tail behind a disclosure ────────────────────── */
+.lf-workspace-sidebar:not([data-collapsed='true']) {
+  width: 240px;
+}
+.lf-nav-group {
+  margin-bottom: 14px;
+}
+.lf-nav-group > summary.lf-nav-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+  padding-right: 14px;
+  user-select: none;
+}
+.lf-nav-group > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-nav-group > summary.lf-nav-label::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease;
+  opacity: 0.8;
+}
+.lf-nav-group[open] > summary.lf-nav-label::after {
+  transform: rotate(45deg);
+}
+.lf-nav-group > summary.lf-nav-label:hover {
+  color: rgb(255 255 255 / 0.6);
+}
+.lf-nav-label {
+  padding: 0 16px 6px;
+  color: rgb(255 255 255 / 0.38);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.lf-nav-link {
+  min-height: 32px;
+  padding: 6px 12px 6px 14px;
+  margin: 0 8px;
+  border-radius: var(--lf-radius-sm);
+  font-size: 12.5px;
+  color: rgb(255 255 255 / 0.7);
+}
+.lf-nav-link:hover {
+  background: rgb(255 255 255 / 0.05);
+}
+.lf-nav-link[aria-current='page'] {
+  background: rgb(255 255 255 / 0.08);
+  font-weight: 600;
+}
+.lf-nav-link[aria-current='page']::before {
+  inset: 8px auto 8px -8px;
+  width: 3px;
+}
+.lf-nav-icon {
+  opacity: 0.66;
+}
+.lf-nav-link[aria-current='page'] .lf-nav-icon {
+  opacity: 1;
+}
+[data-collapsed='true'] .lf-nav-label {
+  display: none;
+}
+[data-collapsed='true'] .lf-nav-link {
+  justify-content: center;
+  margin: 0 8px;
+  padding: 8px 0;
+}
+[data-collapsed='true'] .lf-nav-link[aria-current='page']::before {
+  inset: 6px auto 6px -8px;
+}
+
+/* ── Command palette (⌘K) ────────────────────────────────────────────────── */
+.lf-cmdk-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+  color: var(--lf-ink-3);
+  font: 400 var(--lf-text-sm)/1 var(--lf-font-ui);
+  text-align: left;
+  cursor: text;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.lf-cmdk-trigger:hover {
+  border-color: var(--lf-line-2);
+}
+.lf-cmdk-trigger svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.lf-cmdk-trigger span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-cmdk-trigger kbd,
+.lf-cmdk kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--lf-line-2);
+  border-radius: var(--lf-radius-sm);
+  background: var(--lf-surface-2);
+  color: var(--lf-ink-3);
+  font: 500 var(--lf-text-2xs)/1.2 var(--lf-font-mono);
+}
+.lf-cmdk__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgb(2 8 23 / 0.4);
+}
+.lf-cmdk {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 91;
+  width: min(600px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  box-shadow: var(--lf-shadow-3);
+  overflow: hidden;
+  animation: lf-pop-open 120ms ease-out;
+  transform-origin: top center;
+}
+@keyframes lf-cmdk-open {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.lf-cmdk {
+  animation-name: lf-cmdk-open;
+}
+.lf-cmdk__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--lf-line);
+  color: var(--lf-ink-3);
+}
+.lf-cmdk__field svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.lf-cmdk__input {
+  flex: 1;
+  min-width: 0;
+  height: 50px;
+  border: 0;
+  background: transparent;
+  color: var(--lf-ink);
+  font: 400 15px/1 var(--lf-font-ui);
+}
+.lf-cmdk__input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.lf-cmdk__list {
+  max-height: min(52vh, 440px);
+  overflow-y: auto;
+  padding: 6px;
+}
+.lf-cmdk__group {
+  padding: 10px 10px 4px;
+  font: 600 var(--lf-text-2xs)/1 var(--lf-font-ui);
+  letter-spacing: var(--lf-track-wide);
+  text-transform: uppercase;
+  color: var(--lf-ink-3);
+}
+.lf-cmdk__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: var(--lf-radius-sm);
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+  cursor: pointer;
+}
+.lf-cmdk__item[aria-selected='true'] {
+  background: var(--lf-wine-050);
+  color: var(--lf-ink);
+}
+.lf-cmdk__empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-sm);
+}
+.lf-cmdk__foot {
+  display: flex;
+  gap: var(--lf-space-4);
+  padding: 8px 14px;
+  border-top: 1px solid var(--lf-line);
+  background: var(--lf-surface-2);
+  color: var(--lf-ink-3);
+  font-size: var(--lf-text-2xs);
+}
+.lf-cmdk__foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (max-width: 760px) {
+  .lf-cmdk {
+    top: 8px;
+    width: calc(100vw - 16px);
+  }
+  .lf-cmdk__foot {
+    display: none;
+  }
+  .lf-cmdk-trigger span {
+    display: none;
+  }
+  .lf-cmdk-trigger kbd {
+    display: none;
+  }
+  .lf-cmdk-trigger {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+/* ── Attention centre: a list you act on, not chips you glance at ───────── */
+.lf-attn {
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  overflow: hidden;
+}
+.lf-attn__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  padding: 12px 16px 10px;
+}
+.lf-attn__head h2 {
+  margin: 0;
+  font: 600 var(--lf-text-base)/1.3 var(--lf-font-ui);
+  color: var(--lf-ink);
+}
+.lf-attn__head span {
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+}
+.lf-attn__row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: var(--lf-space-3);
+  min-height: 46px;
+  padding: 6px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+  color: var(--lf-ink);
+  text-decoration: none;
+  transition: background 120ms ease;
+}
+.lf-attn__row:hover {
+  background: var(--lf-surface-2);
+}
+.lf-attn__count {
+  display: inline-grid;
+  place-items: center;
+  height: 26px;
+  min-width: 40px;
+  padding: 0 6px;
+  border-radius: var(--lf-radius-sm);
+  font: 650 var(--lf-text-sm)/1 var(--lf-font-ui);
+  font-variant-numeric: tabular-nums;
+  background: var(--lf-slate-sub);
+  color: var(--lf-slate);
+}
+.lf-attn__row[data-tone='vermillion'] .lf-attn__count {
+  background: var(--lf-vermillion-sub);
+  color: var(--lf-vermillion);
+}
+.lf-attn__row[data-tone='brass'] .lf-attn__count {
+  background: var(--lf-brass-sub);
+  color: var(--lf-brass);
+}
+.lf-attn__row[data-tone='info'] .lf-attn__count {
+  background: var(--lf-info-sub);
+  color: var(--lf-info);
+}
+.lf-attn__row[data-tone='viridian'] .lf-attn__count {
+  background: var(--lf-viridian-sub);
+  color: var(--lf-viridian);
+}
+.lf-attn__label {
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.lf-attn__hint {
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+  white-space: nowrap;
+}
+.lf-attn__go {
+  color: var(--lf-ink-4);
+  font-size: 14px;
+  text-align: right;
+}
+@media (max-width: 760px) {
+  .lf-attn__row {
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+  }
+  .lf-attn__hint {
+    display: none;
+  }
+}
+
+/* ── Panel + key/value list: compact context, not a grid of tiles ───────── */
+.lf-panel {
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  padding: 12px 16px 6px;
+}
+.lf-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  margin-bottom: 4px;
+}
+.lf-panel__head h2 {
+  margin: 0;
+  font: 600 var(--lf-text-base)/1.3 var(--lf-font-ui);
+  color: var(--lf-ink);
+}
+.lf-panel__head a {
+  font-size: var(--lf-text-xs);
+  white-space: nowrap;
+}
+.lf-kv {
+  margin: 0;
+}
+.lf-kv > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  padding: 9px 0;
+  border-top: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
+}
+.lf-kv dt {
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-kv dd {
+  margin: 0;
+  font-size: var(--lf-text-sm);
+  font-weight: 600;
+  color: var(--lf-ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.lf-panel-duo {
+  gap: var(--lf-space-4);
+}
+
+/* KPI cards, compact. A number is not more important because it is larger. */
+.lf-kpi {
+  padding: 12px 16px;
+}
+.lf-kpi__value {
+  margin-top: 6px;
+  font-size: 24px;
+}
+
+/* ── Detail layout: record on the left, status and actions on the right ─── */
+.lf-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--lf-space-4);
+  align-items: start;
+}
+.lf-detail__main {
+  min-width: 0;
+}
+.lf-detail__side {
+  position: sticky;
+  top: 80px;
+  display: grid;
+  gap: var(--lf-space-3);
+}
+@media (max-width: 1023px) {
+  .lf-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lf-detail__side {
+    position: static;
+    order: -1;
+  }
+}
+
+/* ── Menus: one popover for every "choose one of these" ─────────────────── */
+.lf-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--lf-surface);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  box-shadow: var(--lf-shadow-2);
+  animation: lf-pop-open 120ms ease-out;
+}
+.lf-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--lf-radius-sm);
+  background: none;
+  color: var(--lf-ink);
+  font: 400 var(--lf-text-sm)/1.3 var(--lf-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.lf-menu__item:hover,
+.lf-menu__item[aria-current='true'] {
+  background: var(--lf-surface-2);
+}
+.lf-menu__item[aria-current='true'] {
+  font-weight: 600;
+  color: var(--yh-primary);
+}
+.lf-menu__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+
+/* Tabs: the active line is brand blue, the hover is neutral. */
+.lf-tab:hover {
+  background: var(--lf-surface-2);
+}
+.lf-empty__mark {
+  color: var(--lf-ink-3);
+  background: var(--lf-surface-2);
+  border-color: var(--lf-line);
+}
+
+/* ── Record screens: header, side panel controls, disclosure ────────────── */
+.lf-record-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lf-space-3);
+  min-width: 0;
+}
+.lf-record-head__title {
+  margin: 0;
+  font: 650 22px/1.2 var(--lf-font-ui);
+  letter-spacing: -0.02em;
+  color: var(--lf-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-record-head__meta {
+  margin-top: 2px;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink-2);
+}
+.lf-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: var(--lf-text-sm);
+}
+.lf-panel--tight {
+  padding: 12px 16px 4px;
+}
+.lf-actionrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lf-space-2);
+  padding-bottom: 12px;
+}
+/* An inline value that is also a control. Reads as the value until hovered. */
+.lf-kv__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: -4px -8px -4px 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--lf-radius-sm);
+  background: none;
+  color: var(--lf-ink);
+  font: 600 var(--lf-text-sm)/1.3 var(--lf-font-ui);
+  text-align: right;
+  cursor: pointer;
+}
+.lf-kv__btn:hover {
+  background: var(--lf-surface-2);
+}
+.lf-kv dd .lf-badge {
+  vertical-align: middle;
+}
+.lf-kv dd .lf-score {
+  justify-content: flex-end;
+}
+
+/* "More" on a record: a native disclosure, styled once. */
+.lf-more {
+  margin-top: 4px;
+  border-top: 1px solid var(--lf-line);
+  padding-top: 8px;
+}
+.lf-more > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--lf-text-sm);
+  font-weight: 500;
+  color: var(--yh-azure);
+}
+.lf-more > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-more > summary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg) translateY(-1px);
+  transition: transform 150ms ease;
+}
+.lf-more[open] > summary::before {
+  transform: rotate(45deg) translateY(-2px);
+}
+.lf-more[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* ── Charts (recharts) ─────────────────────────────────────────────────────
+   Recharts writes colour as SVG presentation attributes, which cannot resolve
+   var(); `fill` and `stroke` are also CSS properties, so tokens work here.
+   Muted grid, slate labels; series colour is the component's (literal) ramp. */
+.recharts-cartesian-axis-tick-value,
+.recharts-polar-angle-axis-tick-value,
+.recharts-pie-label-text,
+.recharts-label {
+  fill: var(--lf-ink-2);
+  font-family: var(--lf-font-ui);
+  font-size: var(--lf-text-xs);
+}
+.recharts-cartesian-grid line,
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: var(--lf-line);
+}
+.recharts-legend-item-text {
+  color: var(--lf-ink-2) !important;
+  font-size: var(--lf-text-xs);
+}
+.recharts-tooltip-cursor {
+  fill: color-mix(in srgb, var(--lf-ink) 6%, transparent);
+}
+.recharts-default-tooltip {
+  border-radius: var(--lf-radius) !important;
+  box-shadow: var(--lf-shadow-2);
+}
+
+/* Hero figures are the working face, not a display face. */
+.lf-hero-figure {
+  font-size: 24px;
+  font-weight: 650;
+}
+.lf-metric-card__value {
+  font-size: 24px;
+}
+
+/* Toolbar inputs size to their content; only the search box stretches. */
+.lf-toolbar > .lf-input,
+.lf-toolbar > .lf-select {
+  width: auto;
+  flex: 0 0 auto;
+}
+/* An icon rail has no room for a group label, open or closed. */
+[data-collapsed='true'] .lf-nav-group > summary.lf-nav-label {
+  display: none;
+}
+/* The stage rail on a phone: thirteen segments cannot each carry a word, so
+   the inactive ones become ticks and the active one keeps its name. */
+@media (max-width: 760px) {
+  .lf-rail__seg:not([data-state='active']) {
+    flex: 0 0 8px;
+    min-width: 0;
+    padding: 0;
+    font-size: 0;
+  }
+  .lf-rail__seg[data-state='active'] {
+    flex: 1 1 auto;
+  }
+}
+
+/* Login: brand 40, form 60. */
+.lf-auth {
+  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+}

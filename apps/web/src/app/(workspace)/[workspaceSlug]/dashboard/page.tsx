@@ -485,7 +485,6 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    */
   const myDayPanel = mine ? (
     <Summary
-      accent="var(--lf-brass)"
       link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
       title="My day"
       values={(
@@ -535,17 +534,24 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       )}
 
       {attention.length > 0 && (
-        <div className="lf-attention">
+        <section className="lf-attn" aria-label="Needs attention">
+          <div className="lf-attn__head">
+            <h2>Needs attention</h2>
+            <span>
+              {attention.length} {attention.length === 1 ? 'queue' : 'queues'} · each opens the filtered list
+            </span>
+          </div>
           {attention.map((item) => (
-            <Link key={item.label} className="lf-attention__item" data-tone={item.tone} href={item.href}>
-              <span className="lf-attention__count">{item.count}</span>
-              <span>
-                <span className="lf-attention__label">{item.label}</span>
-                <span className="lf-attention__hint">{item.hint}</span>
+            <Link key={item.label} className="lf-attn__row" data-tone={item.tone} href={item.href}>
+              <span className="lf-attn__count">{item.count}</span>
+              <span className="lf-attn__label">{item.label}</span>
+              <span className="lf-attn__hint">{item.hint}</span>
+              <span className="lf-attn__go" aria-hidden="true">
+                →
               </span>
             </Link>
           ))}
-        </div>
+        </section>
       )}
 
       {calls && (calls[1] > 0 || calls[2] > 0) && (
@@ -650,71 +656,67 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
           </table>
         </section>
       )}
-      {people && (
-        <Summary
-          accent="var(--lf-viridian)"
-          link={{ href: `/${workspace.slug}/people`, label: 'Open People →' }}
-          title="People summary"
-          values={[
-            ['Total employees', people[0]],
-            ['Present today', people[1]],
-            ['Absent today', people[2]],
-            ['On leave', people[3]],
-            ['Pending approvals', people[4]],
-            ['Upcoming holidays', people[5]],
-          ]}
-        />
-      )}
-      {calls && (
-        <Summary
-          accent="var(--lf-wine-700)"
-          link={{ href: `/${workspace.slug}/sales/call-audits`, label: 'Open call audits →' }}
-          title="Call quality"
-          values={[
-            ['Calls today', calls[0]],
-            ['Audits awaiting review', calls[1]],
-            ['Reviewed audits', calls[2]],
-            ['Average audit score', avgScore],
-          ]}
-        />
-      )}
-      {!workerView && myDayPanel}
+      <div className="lf-panel-duo">
+        {people && (
+          <Summary
+            link={{ href: `/${workspace.slug}/people`, label: 'Open People →' }}
+            title="People summary"
+            values={[
+              ['Total employees', people[0]],
+              ['Present today', people[1]],
+              ['Absent today', people[2]],
+              ['On leave', people[3]],
+              ['Pending approvals', people[4]],
+              ['Upcoming holidays', people[5]],
+            ]}
+          />
+        )}
+        {calls && (
+          <Summary
+            link={{ href: `/${workspace.slug}/sales/call-audits`, label: 'Open call audits →' }}
+            title="Call quality"
+            values={[
+              ['Calls today', calls[0]],
+              ['Audits awaiting review', calls[1]],
+              ['Reviewed audits', calls[2]],
+              ['Average audit score', avgScore],
+            ]}
+          />
+        )}
+        {!workerView && myDayPanel}
 
-      {(showSubscription || security) && (
-        <div className="lf-panel-duo">
-          {showSubscription && (
-            <Summary
-              title="Subscription"
-              values={[
-                ['Current plan', workspace.subscription?.plan.name ?? workspace.planCode],
-                ['Enabled modules', [...modules].join(' + ')],
-                ['Users', `${workspace._count.memberships} / ${workspace.maxUsers ?? '∞'}`],
-                ['Employees', `${workspace._count.employeeProfiles} / ${workspace.maxEmployees ?? '∞'}`],
-                ['Status', workspace.subscription?.state ?? 'NONE'],
-                [
-                  'Trial / renewal',
-                  workspace.trialEndsAt?.toLocaleDateString('en-AE') ??
-                    workspace.subscription?.currentPeriodEnd?.toLocaleDateString('en-AE') ??
-                    'Not set',
-                ],
-              ]}
-            />
-          )}
-          {security && (
-            <Summary
-              title="Security today"
-              link={{ href: `/${workspace.slug}/admin/audit`, label: 'Open audit log →' }}
-              values={[
-                ['Failed sign-ins', security[0]],
-                ['Locked or disabled', security[1]],
-                ['Active accounts', security[2]],
-                ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
-                ['Audited events', security[4]],
-              ]}
-            />
-          )}
-        </div>
-      )}
+        {showSubscription && (
+          <Summary
+            title="Subscription"
+            values={[
+              ['Current plan', workspace.subscription?.plan.name ?? workspace.planCode],
+              ['Enabled modules', [...modules].join(' + ')],
+              ['Users', `${workspace._count.memberships} / ${workspace.maxUsers ?? '∞'}`],
+              ['Employees', `${workspace._count.employeeProfiles} / ${workspace.maxEmployees ?? '∞'}`],
+              ['Status', workspace.subscription?.state ?? 'NONE'],
+              [
+                'Trial / renewal',
+                workspace.trialEndsAt?.toLocaleDateString('en-AE') ??
+                  workspace.subscription?.currentPeriodEnd?.toLocaleDateString('en-AE') ??
+                  'Not set',
+              ],
+            ]}
+          />
+        )}
+        {security && (
+          <Summary
+            title="Security today"
+            link={{ href: `/${workspace.slug}/admin/audit`, label: 'Open audit log →' }}
+            values={[
+              ['Failed sign-ins', security[0]],
+              ['Locked or disabled', security[1]],
+              ['Active accounts', security[2]],
+              ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
+              ['Audited events', security[4]],
+            ]}
+          />
+        )}
+      </div>
 
       {!people && !sales && !mine && !security && !showSubscription && (
         <p style={{ color: 'var(--lf-ink-3)' }}>
@@ -726,43 +728,40 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
 }
 
 /**
- * One dashboard panel. The two product modules carry their identity color as a
- * keyline and dot — viridian is People across the product, wine is Sales — and
- * everything else stays neutral, so color on this page always means "module"
- * except brass, which marks work waiting on the viewer.
+ * One dashboard panel: a title, an optional link, and a key/value list.
+ *
+ * This used to render each value as a metric tile — "Absent today: 0" in a
+ * 28px numeral inside its own bordered card, six to a panel. A number is not
+ * more important for being larger, and a wall of zeros is not information. A
+ * list reads top to bottom in one glance and takes a third of the height.
  */
 function Summary({
   title,
   values,
-  accent,
   link,
 }: {
   title: string;
   values: [string, string | number][];
-  accent?: string;
   link?: { href: string; label: string };
 }) {
   return (
-    <section
-      className="lf-module-panel"
-      style={accent ? ({ ['--panel-accent' as string]: accent } as React.CSSProperties) : undefined}
-    >
-      <div className="lf-module-panel__head">
-        <h2 className="lf-module-panel__title">{title}</h2>
+    <section className="lf-panel">
+      <div className="lf-panel__head">
+        <h2>{title}</h2>
         {link && (
-          <Link className="lf-module-panel__link" href={link.href}>
+          <Link className="lf-link" href={link.href}>
             {link.label}
           </Link>
         )}
       </div>
-      <div className="lf-metric-grid">
+      <dl className="lf-kv">
         {values.map(([label, value]) => (
-          <article className="lf-metric-card" key={label}>
-            <div className="lf-eyebrow">{label}</div>
-            <div className="lf-metric-card__value">{value}</div>
-          </article>
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
         ))}
-      </div>
+      </dl>
     </section>
   );
 }
