@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { PRODUCT_NAME } from '@/lib/branding';
 
 /**
  * The one place that knows an AI provider's wire format.
@@ -124,7 +125,9 @@ function openRouterHeaders(key: string): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${key}`,
     'Content-Type': 'application/json',
-    'X-Title': 'Master Suite',
+    // Shown in the workspace owner's OpenRouter dashboard, so it names the
+    // product they bought rather than the one it used to be called.
+    'X-Title': PRODUCT_NAME,
   };
   const referer = process.env.APP_URL;
   if (referer) headers['HTTP-Referer'] = referer;

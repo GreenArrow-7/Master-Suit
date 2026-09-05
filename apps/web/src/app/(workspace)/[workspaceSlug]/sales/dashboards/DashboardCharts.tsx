@@ -3,19 +3,29 @@
 import MetricCard from '@/components/ui/MetricCard';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
-// Design system colors hardcoded for recharts (can't read CSS vars in SVG props)
-const WINE = '#722F37';
-const BRASS = '#B5A642';
-const VIRIDIAN = '#40826D';
-const VERMILLION = '#E34234';
+/**
+ * The chart ramp, repeated as literals.
+ *
+ * Recharts sets these as SVG presentation attributes (`fill`, `stroke`), and a
+ * presentation attribute cannot resolve `var()` — this is the one place in the
+ * product allowed to hold colour values rather than token names. They are the
+ * same six as `--lf-chart-1…6` in tokens.css: brand blue leads, cyan follows,
+ * then the widest-separated hues that still sit in one family. No rainbow.
+ */
+const BLUE = '#3B82F6';
+const CYAN = '#06B6D4';
+const GREEN = '#10B981';
+const AMBER = '#F59E0B';
+const VIOLET = '#8B5CF6';
 const SLATE = '#64748B';
-const PIPELINE_COLORS = [WINE, BRASS, VIRIDIAN, VERMILLION, SLATE, '#8B5CF6', '#0EA5E9', '#F59E0B'];
+const PIPELINE_COLORS = [BLUE, CYAN, GREEN, AMBER, VIOLET, SLATE, '#2455E6', '#0E7490'];
+/** SLA is a status, not a category: breached is red and met is green everywhere. */
 const SLA_COLORS: Record<string, string> = {
-  ON_TRACK: SLATE,
-  AT_RISK: BRASS,
-  BREACHED: VERMILLION,
-  MET: VIRIDIAN,
-  PAUSED: '#94A3B8',
+  ON_TRACK: BLUE,
+  AT_RISK: AMBER,
+  BREACHED: '#EF4444',
+  MET: GREEN,
+  PAUSED: SLATE,
 };
 
 interface Props {
@@ -50,14 +60,14 @@ export default function DashboardCharts({
           gap: 'var(--lf-space-4)',
         }}
       >
-        <MetricCard label="Total Leads" value={totalLeads} tone="wine" />
-        <MetricCard label="New This Month" value={newThisMonth} tone="brass" />
-        {openTasks !== null && <MetricCard label="Open Tasks" value={openTasks} tone="slate" />}
+        <MetricCard label="Total leads" value={totalLeads} />
+        <MetricCard label="New this month" value={newThisMonth} />
+        {openTasks !== null && <MetricCard label="Open tasks" value={openTasks} tone="slate" />}
         {overdueTasks !== null && (
-          <MetricCard label="Overdue Tasks" value={overdueTasks} tone={overdueTasks > 0 ? 'vermillion' : 'viridian'} />
+          <MetricCard label="Overdue tasks" value={overdueTasks} tone={overdueTasks > 0 ? 'vermillion' : 'viridian'} />
         )}
         {activitiesThisMonth !== null && (
-          <MetricCard label="Activities This Month" value={activitiesThisMonth} tone="slate" />
+          <MetricCard label="Activities this month" value={activitiesThisMonth} tone="slate" />
         )}
       </div>
 
@@ -65,12 +75,16 @@ export default function DashboardCharts({
       {leadsByStage.length > 0 && (
         <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-            Pipeline by Stage
+            Pipeline by stage
           </div>
           <ResponsiveContainer width="100%" height={Math.max(200, leadsByStage.length * 40)}>
             <BarChart data={leadsByStage} layout="vertical" margin={{ left: 20, right: 20 }}>
               <XAxis type="number" hide />
-              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 13, fill: 'var(--lf-ink-2)' }} />
+              {/* No `fill` here: recharts writes it as an SVG presentation
+                  attribute, which cannot resolve var(), so the label fell back
+                  to black. The colour comes from the `.recharts-*` rules in
+                  globals.css, where `fill` is a CSS property and tokens work. */}
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
               <Tooltip
                 contentStyle={{
                   background: 'var(--lf-surface)',
@@ -101,7 +115,7 @@ export default function DashboardCharts({
         {leadsBySource.length > 0 && (
           <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
             <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              Leads by Source
+              Leads by source
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
@@ -128,7 +142,7 @@ export default function DashboardCharts({
         {slaStats.length > 0 && (
           <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
             <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              SLA Health
+              SLA health
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>

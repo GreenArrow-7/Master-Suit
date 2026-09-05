@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger';
+import { ASSISTANT_NAME, PRODUCT_NAME } from '@/lib/branding';
 import { geminiCredential, geminiModel, type GeminiCredential } from '../gemini';
 import { assertAiBudget, recordAiUsage } from '../usage';
 import { generateWithTools, type ModelToolCall, type Turn } from '../provider';
@@ -42,7 +43,9 @@ interface ChatMessage {
 
 const SYSTEM = (ctx: Ctx, page: AssistantContext | undefined, today: string) =>
   [
-    'You are Manath AI, the in-app assistant of the Manath Homes CRM.',
+    // Not "the Manath Homes CRM": that is one tenant's name, and this prompt
+    // runs for every workspace on the platform.
+    `You are ${ASSISTANT_NAME}, the in-app assistant of ${PRODUCT_NAME}.`,
     'RULES:',
     '- Answer ONLY from data returned by the tools. Never invent calls, meetings, people, numbers or dates.',
     // The line liveCoach and draftReply already carry, and this one did not.
@@ -426,7 +429,7 @@ async function* templateMode(
         .match(/(?:to|for)\s+(.+)$/i)?.[1]
         ?.replace(/^(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday)\s*(to|:)?\s*/i, '')
         .slice(0, 80)
-        .trim() || (isTask ? 'Task from Manath AI' : 'Follow up');
+        .trim() || (isTask ? `Task from ${ASSISTANT_NAME}` : 'Follow up');
     const { data } = await runTool(isTask ? 'createTask' : 'createFollowUp', {
       title,
       dueAt: tomorrow.toISOString(),

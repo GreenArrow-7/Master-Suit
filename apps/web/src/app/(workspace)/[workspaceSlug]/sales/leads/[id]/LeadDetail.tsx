@@ -176,6 +176,9 @@ export default function LeadDetail({
     })();
   };
 
+  const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
+  const openTaskCount = lead.tasks.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
+
   return (
     <>
       {error && (
@@ -184,16 +187,14 @@ export default function LeadDetail({
         </div>
       )}
 
-      {/* Header */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 'var(--lf-space-4)',
-          margin: 'var(--lf-space-3) 0 var(--lf-space-4)',
-        }}
-      >
-        <span className="lf-avatar" style={{ width: 44, height: 44, fontSize: 'var(--lf-text-base)' }}>
+      {/* Record on the left; state and actions on the right.
+          The header used to carry eight controls and six facts in one wrapping
+          flex row, and every fact worth knowing about the lead sat behind the
+          Overview tab. The side panel is where "what state is this in, what can
+          I do about it" lives on every record screen now — visible whichever
+          tab is open, sticky while the timeline scrolls. */}
+      <header className="lf-record-head" style={{ marginBottom: 'var(--lf-space-4)' }}>
+        <span className="lf-avatar lf-avatar--lg">
           {lead.fullName
             .split(' ')
             .slice(0, 2)
@@ -201,194 +202,230 @@ export default function LeadDetail({
             .join('')}
         </span>
         <div style={{ minWidth: 0 }}>
-          <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
-            {lead.fullName}
-          </h1>
-          {(lead.company || lead.jobTitle) && (
-            <div style={{ marginTop: 2, fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              {[lead.jobTitle, lead.company].filter(Boolean).join(' · ')}
-            </div>
-          )}
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)', marginTop: 6, flexWrap: 'wrap' }}
-          >
-            <span className="lf-num" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-              {lead.reference}
-            </span>
-            <Badge value={lead.priority} />
-            <Badge value={lead.slaState} />
-            <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
-              Owner:{' '}
-              {lead.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)', fontStyle: 'normal' }}>Unassigned</em>}
-            </span>
-            <span className="lf-score" title={`Lead score ${lead.score} of 100`}>
-              <span className="lf-score__bar">
-                <span className="lf-score__fill" style={{ width: `${lead.score}%` }} />
-              </span>
-              Score {lead.score}
-              {lead.grade ? ` · ${lead.grade}` : ''}
-            </span>
+          <h1 className="lf-record-head__title">{lead.fullName}</h1>
+          <div className="lf-record-head__meta">
+            {[lead.jobTitle, lead.company].filter(Boolean).join(' · ')}
+            {(lead.jobTitle || lead.company) && ' · '}
+            <span className="lf-num">{lead.reference}</span>
           </div>
-        </div>
-
-        <div
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            gap: 'var(--lf-space-2)',
-            flexWrap: 'wrap',
-            position: 'relative',
-          }}
-        >
-          {/* Call — the one primary action on a lead. */}
-          <button
-            className="lf-btn lf-btn--sm"
-            disabled={!lead.phone}
-            title={lead.phone ? `Call ${lead.phone}` : 'No phone number'}
-            onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
-          >
-            Call
-          </button>
-
-          {/* Email */}
-          <button
-            className="lf-btn lf-btn--secondary lf-btn--sm"
-            disabled={!lead.email}
-            title={lead.email ? `Email ${lead.email}` : 'No email address'}
-            onClick={() => lead.email && window.open(`mailto:${lead.email}`)}
-          >
-            Email
-          </button>
-
-          {/* WhatsApp */}
-          {lead.phone && (
-            <button
-              className="lf-btn lf-btn--secondary lf-btn--sm"
-              onClick={() => window.open(`https://wa.me/${lead.phone!.replace(/[^0-9]/g, '')}`)}
-            >
-              WhatsApp
-            </button>
-          )}
-
-          {/* Stage change */}
-          <div style={{ position: 'relative' }}>
-            <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setShowStageMenu((v) => !v)}>
-              Stage &#9662;
-            </button>
-            {showStageMenu && (
-              <Dropdown onClose={() => setShowStageMenu(false)}>
-                {stages.map((s) => (
-                  <button
-                    key={s.key}
-                    className="lf-btn lf-btn--ghost lf-btn--sm"
-                    style={{ width: '100%', textAlign: 'left', fontWeight: s.key === lead.stage.key ? 600 : 400 }}
-                    onClick={() => handleStageChange(s.key)}
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </Dropdown>
-            )}
-          </div>
-
-          {/* Assign */}
-          {canAssign && (
-            <div style={{ position: 'relative' }}>
-              <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setShowAssign((v) => !v)}>
-                Assign &#9662;
-              </button>
-              {showAssign && (
-                <Dropdown onClose={() => setShowAssign(false)}>
-                  <button
-                    className="lf-btn lf-btn--ghost lf-btn--sm"
-                    style={{ width: '100%', textAlign: 'left', color: 'var(--lf-vermillion)' }}
-                    onClick={() => handleAssign(null)}
-                  >
-                    Unassign
-                  </button>
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      className="lf-btn lf-btn--ghost lf-btn--sm"
-                      style={{ width: '100%', textAlign: 'left' }}
-                      onClick={() => handleAssign(u.id)}
-                    >
-                      {u.fullName}
-                    </button>
-                  ))}
-                </Dropdown>
-              )}
-            </div>
-          )}
-
-          {/* Edit and Delete live behind More: neither is a moment-to-moment
-              action, and a permanently red Delete outshouted every real one. */}
-          {(canEdit || canDelete) && (
-            <div style={{ position: 'relative' }}>
-              <button
-                className="lf-btn lf-btn--secondary lf-btn--sm"
-                aria-haspopup="menu"
-                onClick={() => setShowMore((v) => !v)}
-              >
-                More &#9662;
-              </button>
-              {showMore && (
-                <Dropdown onClose={() => setShowMore(false)}>
-                  {canEdit && (
-                    <button
-                      className="lf-btn lf-btn--ghost lf-btn--sm"
-                      style={{ width: '100%', textAlign: 'left' }}
-                      onClick={() => {
-                        setShowMore(false);
-                        setEditing(!editing);
-                      }}
-                    >
-                      {editing ? 'Cancel edit' : 'Edit details'}
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      className="lf-btn lf-btn--ghost lf-btn--sm"
-                      style={{ width: '100%', textAlign: 'left', color: 'var(--lf-vermillion)' }}
-                      disabled={busy}
-                      onClick={() => {
-                        setShowMore(false);
-                        void handleDelete();
-                      }}
-                    >
-                      Delete lead…
-                    </button>
-                  )}
-                </Dropdown>
-              )}
-            </div>
-          )}
         </div>
       </header>
 
-      {/* Tabs */}
-      <nav className="lf-tabs" style={{ margin: 'var(--lf-space-5) 0 var(--lf-space-4)' }} role="tablist">
-        {TABS.map((t) => (
-          <button key={t} className="lf-tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {t}
-            {t === 'Tasks' && lead.tasks.length > 0 && <span className="lf-tab__count">{lead.tasks.length}</span>}
-            {t === 'Timeline' && lead.activities.length > 0 && (
-              <span className="lf-tab__count">{lead.activities.length}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+      <div className="lf-detail">
+        <div className="lf-detail__main">
+          <nav className="lf-tabs" style={{ margin: '0 0 var(--lf-space-4)' }} role="tablist">
+            {TABS.map((t) => (
+              <button key={t} className="lf-tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+                {t}
+                {t === 'Tasks' && lead.tasks.length > 0 && <span className="lf-tab__count">{lead.tasks.length}</span>}
+                {t === 'Timeline' && lead.activities.length > 0 && (
+                  <span className="lf-tab__count">{lead.activities.length}</span>
+                )}
+              </button>
+            ))}
+          </nav>
 
-      {/* Tab content */}
-      {tab === 'Overview' && (
-        <OverviewTab lead={lead} editing={editing} setEditing={setEditing} patchLead={patchLead} />
-      )}
-      {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
-      {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
-      {tab === 'Notes' && <NotesTab lead={lead} patchLead={patchLead} canEdit={canEdit} />}
-      {tab === 'Documents' && (
-        <DocumentsTab documents={lead.documents} leadId={lead.id} canEdit={canEdit} canDelete={canDeleteDocuments} />
-      )}
+          {tab === 'Overview' && (
+            <OverviewTab lead={lead} editing={editing} setEditing={setEditing} patchLead={patchLead} />
+          )}
+          {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
+          {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
+          {tab === 'Notes' && <NotesTab lead={lead} patchLead={patchLead} canEdit={canEdit} />}
+          {tab === 'Documents' && (
+            <DocumentsTab
+              documents={lead.documents}
+              leadId={lead.id}
+              canEdit={canEdit}
+              canDelete={canDeleteDocuments}
+            />
+          )}
+        </div>
+
+        <aside className="lf-detail__side">
+          <section className="lf-panel lf-panel--tight">
+            {/* Call is the one primary action on a lead; everything else is
+                secondary, and Edit / Delete stay behind More. */}
+            <div className="lf-actionrow">
+              <button
+                className="lf-btn lf-btn--sm"
+                disabled={!lead.phone}
+                title={lead.phone ? `Call ${lead.phone}` : 'No phone number'}
+                onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
+              >
+                Call
+              </button>
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                disabled={!lead.email}
+                title={lead.email ? `Email ${lead.email}` : 'No email address'}
+                onClick={() => lead.email && window.open(`mailto:${lead.email}`)}
+              >
+                Email
+              </button>
+              {lead.phone && (
+                <button
+                  className="lf-btn lf-btn--secondary lf-btn--sm"
+                  onClick={() => window.open(`https://wa.me/${lead.phone!.replace(/[^0-9]/g, '')}`)}
+                >
+                  WhatsApp
+                </button>
+              )}
+              {(canEdit || canDelete) && (
+                <div style={{ position: 'relative', marginLeft: 'auto' }}>
+                  <button
+                    className="lf-btn lf-btn--ghost lf-btn--sm"
+                    aria-haspopup="menu"
+                    aria-expanded={showMore}
+                    onClick={() => setShowMore((v) => !v)}
+                  >
+                    More &#9662;
+                  </button>
+                  {showMore && (
+                    <Dropdown onClose={() => setShowMore(false)}>
+                      {canEdit && (
+                        <button
+                          className="lf-menu__item"
+                          onClick={() => {
+                            setShowMore(false);
+                            setEditing(!editing);
+                            setTab('Overview');
+                          }}
+                        >
+                          {editing ? 'Cancel edit' : 'Edit details'}
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="lf-menu__item"
+                          style={{ color: 'var(--lf-vermillion)' }}
+                          disabled={busy}
+                          onClick={() => {
+                            setShowMore(false);
+                            void handleDelete();
+                          }}
+                        >
+                          Delete lead…
+                        </button>
+                      )}
+                    </Dropdown>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <dl className="lf-kv">
+              <div>
+                <dt>Stage</dt>
+                <dd style={{ position: 'relative' }}>
+                  <button
+                    className="lf-kv__btn"
+                    aria-haspopup="menu"
+                    aria-expanded={showStageMenu}
+                    onClick={() => setShowStageMenu((v) => !v)}
+                  >
+                    {lead.stage.name} &#9662;
+                  </button>
+                  {showStageMenu && (
+                    <Dropdown onClose={() => setShowStageMenu(false)}>
+                      {stages.map((s) => (
+                        <button
+                          key={s.key}
+                          className="lf-menu__item"
+                          aria-current={s.key === lead.stage.key ? 'true' : undefined}
+                          onClick={() => handleStageChange(s.key)}
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </Dropdown>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Owner</dt>
+                <dd style={{ position: 'relative' }}>
+                  {canAssign ? (
+                    <>
+                      <button
+                        className="lf-kv__btn"
+                        aria-haspopup="menu"
+                        aria-expanded={showAssign}
+                        onClick={() => setShowAssign((v) => !v)}
+                      >
+                        {lead.owner?.fullName ?? (
+                          <em style={{ fontStyle: 'normal', color: 'var(--lf-brass)' }}>Unassigned</em>
+                        )}{' '}
+                        &#9662;
+                      </button>
+                      {showAssign && (
+                        <Dropdown onClose={() => setShowAssign(false)}>
+                          <button
+                            className="lf-menu__item"
+                            style={{ color: 'var(--lf-vermillion)' }}
+                            onClick={() => handleAssign(null)}
+                          >
+                            Unassign
+                          </button>
+                          {users.map((u) => (
+                            <button
+                              key={u.id}
+                              className="lf-menu__item"
+                              aria-current={u.fullName === lead.owner?.fullName ? 'true' : undefined}
+                              onClick={() => handleAssign(u.id)}
+                            >
+                              {u.fullName}
+                            </button>
+                          ))}
+                        </Dropdown>
+                      )}
+                    </>
+                  ) : (
+                    (lead.owner?.fullName ?? 'Unassigned')
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Priority</dt>
+                <dd>
+                  <Badge value={lead.priority} />
+                </dd>
+              </div>
+              <div>
+                <dt>SLA</dt>
+                <dd>
+                  <Badge value={lead.slaState} />
+                </dd>
+              </div>
+              <div>
+                <dt>Score</dt>
+                <dd>
+                  <span className="lf-score" title={`Lead score ${lead.score} of 100`}>
+                    <span className="lf-score__bar">
+                      <span className="lf-score__fill" style={{ width: `${lead.score}%` }} />
+                    </span>
+                    {lead.score}
+                    {lead.grade ? ` · ${lead.grade}` : ''}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>{followUpOverdue ? 'Follow-up overdue' : 'Next follow-up'}</dt>
+                <dd style={followUpOverdue ? { color: 'var(--lf-vermillion)' } : undefined}>
+                  {lead.nextFollowUpAt ? fmtDate(lead.nextFollowUpAt) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Last activity</dt>
+                <dd>{lead.lastActivityAt ? fmtDate(lead.lastActivityAt) : '—'}</dd>
+              </div>
+              <div>
+                <dt>Open tasks</dt>
+                <dd>{openTaskCount}</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
+      </div>
     </>
   );
 }
@@ -398,27 +435,8 @@ export default function LeadDetail({
 function Dropdown({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9 }} onClick={onClose} />
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: '100%',
-          marginTop: 4,
-          zIndex: 10,
-          background: 'var(--lf-surface)',
-          border: '1px solid var(--lf-line)',
-          borderRadius: 6,
-          padding: 'var(--lf-space-1)',
-          minWidth: 180,
-          boxShadow: '0 4px 12px rgba(0,0,0,.12)',
-          maxHeight: 280,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1,
-        }}
-      >
+      <div className="lf-menu__scrim" onClick={onClose} />
+      <div className="lf-menu" role="menu">
         {children}
       </div>
     </>
@@ -468,11 +486,6 @@ function OverviewTab({
     setSaving(false);
   };
 
-  const openTasks = lead.tasks.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
-  const lastActivity = lead.lastActivityAt ? fmtDate(lead.lastActivityAt) : '—';
-  const nextFollowUp = lead.nextFollowUpAt;
-  const isOverdue = nextFollowUp ? new Date(nextFollowUp) < new Date() : false;
-
   const fields: [string, string, keyof typeof form | null][] = [
     ['Email', lead.email ?? '—', 'email'],
     ['Phone', lead.phone ?? '—', 'phone'],
@@ -486,34 +499,8 @@ function OverviewTab({
     ['Created', fmtDate(lead.createdAt), null],
   ];
 
-  const pulse: { label: string; value: string; color?: string }[] = [
-    { label: 'Open tasks', value: String(openTasks) },
-    { label: 'Activities', value: String(lead.activities.length) },
-    { label: 'Last activity', value: lastActivity },
-    {
-      label: isOverdue ? 'Follow-up overdue' : 'Next follow-up',
-      value: nextFollowUp ? fmtDate(nextFollowUp) : '—',
-      color: isOverdue ? 'var(--lf-vermillion)' : undefined,
-    },
-  ];
-
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-4)' }}>
-      {/* One sentence about the lead, not four boxes: hairline-separated
-          figures, the same fact-family the dashboards speak. */}
-      <section className="lf-card" style={{ padding: 'var(--lf-space-4) var(--lf-space-5)' }}>
-        <div className="lf-stat-strip lf-stat-strip--light">
-          {pulse.map((item) => (
-            <div key={item.label}>
-              <span className="lf-figure" style={{ fontSize: '1.4rem', color: item.color }}>
-                {item.value}
-              </span>
-              <span className="lf-eyebrow">{item.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
         <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
           Details

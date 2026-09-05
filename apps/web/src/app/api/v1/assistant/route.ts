@@ -18,7 +18,7 @@ const body = z
   .strict();
 
 /**
- * Manath AI. The model never sees the database — see lib/ai/assistant. SSE out:
+ * ONE Intelligence. The model never sees the database — see lib/ai/assistant. SSE out:
  * status / delta / sources / action / done / error events, one JSON per line.
  * Rate-limited per user so a chat loop cannot burn the model budget. The AI
  * activity log (user, tools used, page, errors) is the structured log line the

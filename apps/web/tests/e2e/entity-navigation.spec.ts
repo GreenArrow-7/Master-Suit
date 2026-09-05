@@ -49,9 +49,9 @@ test.describe('Clicking a record opens that record', () => {
    */
   async function expectSalesShell(page: Page) {
     await expect(page.locator('html')).toHaveAttribute('data-lf-module', 'sales');
-    // The search box renders only when the top bar thinks it is not in People.
-    await expect(page.getByRole('search')).toBeVisible();
-    // A Sales-only sidebar entry; the People navigation has no Opportunities.
+    // One shell for both modules now: the ⌘K trigger renders everywhere, and
+    // the rail carries the Sales group whatever the module.
+    await expect(page.getByRole('button', { name: 'Search and jump to any page' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Opportunities', exact: true })).toBeVisible();
   }
 
@@ -141,7 +141,8 @@ test.describe('Clicking a record opens that record', () => {
     // a disabled one.
     await page.goto(`/${workspace.slug}/people/leave`);
     await expect(page.locator('html')).toHaveAttribute('data-lf-module', 'people');
-    await expect(page.getByRole('search')).toHaveCount(0);
+    // The rail no longer swaps per module; the People group is simply there.
+    await expect(page.getByRole('link', { name: 'Employees', exact: true })).toBeVisible();
 
     // ── The bell, on the module that raises most of the notifications ───────
     // It always rendered here — `hidden` lost to `.lf-shell-actions { display:

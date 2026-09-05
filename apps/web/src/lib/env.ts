@@ -179,7 +179,7 @@ export const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
+  EMAIL_FROM: z.string().default('YOUHAN ONE <no-reply@localhost>'),
   /**
    * Extra hosts the media worker may fetch a recording from, comma-separated.
    *
@@ -227,7 +227,7 @@ export const envSchema = z.object({
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),
 
   /**
-   * The Meta app Master Suite itself is registered as, so one App Review covers
+   * The Meta app the platform itself is registered as, so one App Review covers
    * every workspace. These identify the *platform*; the Page tokens they produce
    * are per-tenant and live encrypted on the connection.
    *

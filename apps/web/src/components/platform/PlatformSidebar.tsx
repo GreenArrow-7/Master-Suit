@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { PRODUCT_NAME } from '@/lib/branding';
+import YouhanMark from '@/components/brand/YouhanMark';
 
 /**
  * Two groups, because the console has two jobs and an operator arrives knowing
@@ -49,7 +50,7 @@ export default function PlatformSidebar({ email }: { email: string }) {
       <aside className="lf-workspace-sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen}>
         <div className="lf-sidebar-brand">
           <Link href="/platform" className="lf-brand-mark" aria-label="Platform overview">
-            M
+            <YouhanMark size={34} />
           </Link>
           {!collapsed && (
             <div className="lf-brand-copy">

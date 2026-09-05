@@ -1,5 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#1b1710"/>
-  <text x="16" y="21" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
-        font-size="13" font-weight="700" text-anchor="middle" fill="#e8b04b" letter-spacing="0.5">MS</text>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1ce8ff"/>
+      <stop offset="45%" stop-color="#0a6bff"/>
+      <stop offset="100%" stop-color="#3d8bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="#020817"/>
+  <g fill="url(#g)" transform="translate(4 4.5) scale(0.01765)">
+    <path d="M30 90 L240 90 L640 548 C680 585 720 570 760 570 L1010 570 L1010 740 L760 740 C640 740 570 705 510 636 Z"/>
+    <path d="M510 100 L735 100 L735 545 L510 320 Z"/>
+    <path d="M510 672 L735 758 L735 915 L510 1090 Z"/>
+    <path d="M1010 235 L1290 35 L1290 1085 L1010 1085 Z"/>
+  </g>
 </svg>

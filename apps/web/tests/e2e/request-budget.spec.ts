@@ -155,27 +155,25 @@ test.describe('Request budget: the five hot navigations', () => {
     });
 
     await test.step('employees', async () => {
-      // Module switch first (its own navigation, not measured), then the item.
-      await page.locator(`a[href="/${workspace.slug}/people"]`).first().click();
-      await page.waitForLoadState('networkidle');
+      // One rail for both modules: Employees is a click away from any page,
+      // with no module switch to make first.
       const requests = await requestsDuring(page, origin, async () => {
         await page.locator(`aside a[href="/${workspace.slug}/people/employees"]`).first().click();
         await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible();
       });
-      assertBudget('people → employees', requests);
+      assertBudget('dashboard → employees', requests);
     });
 
     await test.step('settings', async () => {
-      // The HR chrome has no product switcher by design; Overview is the way
-      // back to the sales chrome, where the admin section lives.
-      await page.locator(`aside a[href="/${workspace.slug}/dashboard"]`).first().click();
-      await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));
-      await page.waitForLoadState('networkidle');
+      // Admin is a collapsed group in the rail; opening it is DOM only, and it
+      // happens outside the measured window so the budget counts the
+      // navigation alone.
+      await page.locator('aside summary', { hasText: 'Admin' }).click();
       const requests = await requestsDuring(page, origin, async () => {
         await page.locator(`aside a[href="/${workspace.slug}/admin/settings"]`).first().click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/admin/settings`));
       });
-      assertBudget('sales → settings', requests);
+      assertBudget('employees → settings', requests);
     });
   });
 });

@@ -67,30 +67,50 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
               ` · ${rows[0]?.currency ?? 'AED'} ${pipelineTotal.toLocaleString('en-AE')} open pipeline`}
           </>
         }
+        secondaryActions={
+          can(ctx, 'settings', 'MANAGE_CONFIGURATION') ? (
+            <ColumnEditor object="OPPORTUNITY" current={columns.map((c) => c.key)} />
+          ) : undefined
+        }
         actions={
-          <>
-            <form method="get" role="search">
-              <input
-                name="q"
-                type="search"
-                className="lf-input"
-                defaultValue={params.q ?? ''}
-                placeholder="Search opportunities"
-                aria-label="Search opportunities"
-                style={{ height: 28, width: 180, fontSize: 'var(--lf-text-xs)' }}
-              />
-            </form>
-            {can(ctx, 'settings', 'MANAGE_CONFIGURATION') && (
-              <ColumnEditor object="OPPORTUNITY" current={columns.map((c) => c.key)} />
-            )}
-            {can(ctx, 'opportunities', 'CREATE') && (
-              <SalesLink className="lf-btn lf-btn--sm" href="/opportunities/new">
-                Add opportunity
-              </SalesLink>
-            )}
-          </>
+          can(ctx, 'opportunities', 'CREATE') ? (
+            <SalesLink className="lf-btn lf-btn--sm" href="/opportunities/new">
+              Add opportunity
+            </SalesLink>
+          ) : undefined
         }
       />
+
+      {/* The search box lived in the header's action cluster, 180px wide at
+          28px tall, beside two buttons. It is a toolbar control, like the
+          Leads list's, so it lives in the toolbar. */}
+      <div className="lf-toolbar">
+        <form className="lf-toolbar__search" method="get" role="search">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            name="q"
+            type="search"
+            className="lf-input"
+            defaultValue={params.q ?? ''}
+            placeholder="Search opportunities by name"
+            aria-label="Search opportunities"
+          />
+        </form>
+        {params.q && (
+          <SalesLink className="lf-btn lf-btn--ghost lf-btn--sm" href="/opportunities">
+            Clear all
+          </SalesLink>
+        )}
+      </div>
 
       {data.length === 0 ? (
         <div className="lf-card">
