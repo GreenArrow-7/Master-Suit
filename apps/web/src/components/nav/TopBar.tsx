@@ -22,15 +22,6 @@ function pageTitle(pathname: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-function peoplePageTitle(pathname: string): string {
-  const segments = pathname.split('/').filter(Boolean);
-  const tail = segments[2] === 'people' ? segments.slice(3) : segments.slice(1);
-  const leaf = tail[tail.length - 1];
-  if (!leaf) return 'Overview';
-  const words = leaf.replace(/-/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
 interface NotificationItem {
   id: string;
   kind: string;
@@ -362,35 +353,47 @@ export default function TopBar({
    * Rather than build cross-entity search, this sends the query to the list
    * each area already filters by `?q=`, and says which list that is.
    */
-  const target =
-    module === 'people'
-      ? { href: `${basePath}/people/employees`, placeholder: 'Search employees…', label: 'Search employees' }
-      : module === 'platform'
-        ? // The owner's search means different things in the two halves of the
-          // console. On the identity screens it must find a person, which is the
-          // whole point of arriving there.
-          pathname.startsWith('/platform/users')
-          ? { href: '/platform/users', placeholder: 'Search users, email, workspace…', label: 'Search platform users' }
-          : { href: '/platform/workspaces', placeholder: 'Search workspaces…', label: 'Search workspaces' }
-        : { href: `${basePath}/sales/leads`, placeholder: 'Search leads…', label: 'Search leads' };
+  // Platform console only — see the trigger below for the workspace shell.
+  // The owner's search means different things in the two halves of the
+  // console: on the identity screens it must find a person.
+  const target = pathname.startsWith('/platform/users')
+    ? { href: '/platform/users', placeholder: 'Search users, email, workspace…', label: 'Search platform users' }
+    : { href: '/platform/workspaces', placeholder: 'Search workspaces…', label: 'Search workspaces' };
 
   return (
     <header className="lf-shell-topbar">
-      {/* The HR module leads with the reference's breadcrumb — "Workspace ·
-          Page" — before the operational controls. */}
-      {module === 'people' && workspaceName && (
-        <div className="lf-shell-crumb">
-          {workspaceName} · <b>{peoplePageTitle(pathname)}</b>
-        </div>
-      )}
-      {/* The HR topbar stays crumb-only: the employee directory carries its own
-          search (labelled "Search employees"), so a topbar twin would give two
-          controls one accessible name — and the pair overflows a 375px phone. */}
-      {/* Phone only: the bar has to say where you are, because the desktop
-          breadcrumb and the sidebar's active row are both off-screen. */}
+      {/* Phone only: the bar has to say where you are, because the sidebar's
+          active row is off-screen. */}
       <span className="lf-appbar-title">{pageTitle(pathname)}</span>
 
-      {module !== 'people' && (
+      {/* Inside a workspace the box is the ⌘K palette's trigger — the palette
+          jumps to any page and searches every list that reads ?q=, so one
+          control does what a per-module search box did for one list. The
+          platform console has no palette and keeps its search form. */}
+      {module !== 'platform' && (
+        <button
+          type="button"
+          className="lf-shell-search lf-cmdk-trigger"
+          onClick={() => window.dispatchEvent(new CustomEvent('lf:cmdk'))}
+          aria-label="Search and jump to any page"
+          aria-keyshortcuts="Control+K Meta+K"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
+          </svg>
+          <span>Search or jump to…</span>
+          <kbd>⌘K</kbd>
+        </button>
+      )}
+
+      {module === 'platform' && (
         <form
           className="lf-shell-search"
           action={target.href}

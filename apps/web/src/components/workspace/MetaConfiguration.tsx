@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { PRODUCT_NAME } from '@/lib/branding';
 
 /**
  * The Meta configuration surface: connection, assets, capabilities, lead forms
@@ -486,7 +487,7 @@ function RoutingDrawer({
                 [
                   'rules',
                   'Use existing lead distribution',
-                  'Master Suite assigns this lead using your current distribution rules.',
+                  `${PRODUCT_NAME} assigns this lead using your current distribution rules.`,
                 ],
                 ['user', 'Assign to a person', 'Every lead from this form goes straight to one person.'],
                 ['team', 'Route to a team', "The team's distribution rules choose who inside it takes the lead."],

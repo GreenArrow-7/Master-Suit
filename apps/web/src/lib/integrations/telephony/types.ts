@@ -19,7 +19,14 @@ export const isTelephonyVendor = (value: string): value is TelephonyVendor =>
  * "Exotel cannot hang up a call from the API" is a product fact, not a bug.
  */
 export type Capability =
-  'OUTBOUND_CALL' | 'CLICK_TO_CALL' | 'CALL_RECORDING' | 'CALL_STATUS' | 'END_CALL' | 'SIGNED_WEBHOOK';
+  | 'OUTBOUND_CALL'
+  | 'CLICK_TO_CALL'
+  | 'CALL_RECORDING'
+  | 'CALL_STATUS'
+  | 'END_CALL'
+  | 'SIGNED_WEBHOOK'
+  /** The vendor can fork live call audio to a WebSocket (Twilio Media Streams). */
+  | 'LIVE_STREAM';
 
 export interface CallRequest {
   /** The number the client sees. A vendor-provisioned virtual number. */
@@ -39,6 +46,12 @@ export interface CallRequest {
   /** Where status and recording callbacks are delivered. */
   callbackUrl: string;
   recordingEnabled?: boolean;
+  /**
+   * Fork live call audio to this WebSocket for real-time coaching. Only acted
+   * on by vendors with the LIVE_STREAM capability; the parameters travel in the
+   * stream's start event so the engine can authenticate and attribute it.
+   */
+  stream?: { url: string; parameters: Record<string, string> };
 }
 
 /**

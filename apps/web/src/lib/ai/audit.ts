@@ -109,27 +109,40 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   }
 
   const model = await geminiModel(input.tenantId);
-  await assertAiBudget(input.tenantId, credential);
 
-  const response = await withRetry(
-    'gemini-audit',
-    () =>
-      generateStructured({
-        credential: { key: apiKey, provider: credential.provider },
-        model,
-        prompt: buildAuditPrompt(input),
-        schema: AUDIT_SCHEMA,
-        temperature: 0.1,
-        maxOutputTokens: 4096,
-        timeoutMs: AI_TIMEOUT_MS,
-      }),
-    { maxAttempts: 3, retryOn: isTransient },
-  );
-  await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
+  try {
+    await assertAiBudget(input.tenantId, credential);
 
-  const parsed = JSON.parse(response.text);
-  const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
-  const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
+    const response = await withRetry(
+      'gemini-audit',
+      () =>
+        generateStructured({
+          credential: { key: apiKey, provider: credential.provider },
+          model,
+          prompt: buildAuditPrompt(input),
+          schema: AUDIT_SCHEMA,
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+          timeoutMs: AI_TIMEOUT_MS,
+        }),
+      { maxAttempts: 3, retryOn: isTransient },
+    );
+    await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
 
-  return { ...parsed, overallScore, maxScore };
+    const parsed = JSON.parse(response.text);
+    const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
+    const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
+
+    return { ...parsed, overallScore, maxScore };
+  } catch (err) {
+    // Same trade as analyzeTranscript: a refused provider leaves the rep a
+    // keyword scorecard that says it is one, not an empty audit panel.
+    const { simulateAudit } = await import('./simulated');
+    logger.warn({ err: (err as Error).message, model }, 'audit provider refused — degrading to the keyword pass');
+    const result = simulateAudit(input);
+    return {
+      ...result,
+      suggestions: ['Scored without the model — re-run once the AI provider is available.', ...result.suggestions],
+    };
+  }
 }

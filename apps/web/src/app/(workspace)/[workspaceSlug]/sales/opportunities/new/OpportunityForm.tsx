@@ -86,12 +86,8 @@ export default function OpportunityForm({
       )}
 
       <div className="lf-field">
-        <label className="lf-label" htmlFor="name">
+        <label className="lf-label" data-required htmlFor="name">
           Opportunity name
-          <span className="lf-label__req" aria-hidden="true">
-            {' '}
-            *
-          </span>
         </label>
         <input
           id="name"

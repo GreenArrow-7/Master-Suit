@@ -34,14 +34,23 @@ const SCENARIOS = [
   { key: 'CLOSE', label: 'Close', hint: 'Ask for the commitment and make the next step concrete.' },
 ];
 
+export interface Recommendation {
+  scenario: string;
+  objectionId?: string;
+  objectionName?: string;
+  reasons: string[];
+}
+
 export default function PracticeWorkspace({
   objections,
   remainingToday,
   capEnabled,
+  recommendation,
 }: {
   objections: { id: string; name: string }[];
   remainingToday: number;
   capEnabled: boolean;
+  recommendation: Recommendation | null;
 }) {
   const router = useRouter();
   const [scenario, setScenario] = useState('OPENER');
@@ -52,7 +61,56 @@ export default function PracticeWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [prospectEnded, setProspectEnded] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream; parts: Blob[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Voice practice (§24): one spoken turn per press. The transcript lands in
+   * the input for the rep to read and edit — speech is input, never a bypass
+   * of review, and the audio is transcribed server-side then discarded.
+   */
+  async function toggleRecording() {
+    if (recorderRef.current) {
+      recorderRef.current.recorder.stop();
+      return;
+    }
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const parts: Blob[] = [];
+      recorder.ondataavailable = (e) => parts.push(e.data);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        const blob = new Blob(parts, { type: 'audio/webm' });
+        if (blob.size < 1000) return;
+        setBusy(true);
+        try {
+          const res = await fetch('/api/v1/practice/transcribe', {
+            method: 'POST',
+            headers: { 'content-type': 'audio/webm' },
+            body: blob,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok)
+            throw new Error(data.errors?.[0]?.message ?? data.detail ?? `Transcription failed (${res.status})`);
+          if (data.text) setInput((current) => (current ? `${current} ${data.text}` : data.text));
+          else setError('Nothing recognised — try again closer to the microphone.');
+        } catch (e) {
+          setError((e as Error).message);
+        }
+        setBusy(false);
+      };
+      recorderRef.current = { recorder, stream, parts };
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setError('Microphone access was refused.');
+    }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -69,14 +127,18 @@ export default function PracticeWorkspace({
     return data;
   }
 
-  async function start() {
+  async function start(pick?: { scenario: string; objectionId?: string }) {
+    const chosenScenario = pick?.scenario ?? scenario;
+    const chosenObjection = pick ? (pick.objectionId ?? '') : objectionId;
+    setScenario(chosenScenario);
+    setObjectionId(chosenObjection);
     setBusy(true);
     setError('');
     setScore(null);
     setProspectEnded(false);
     try {
-      const body: Record<string, unknown> = { scenario };
-      if (scenario === 'OBJECTION' && objectionId) body.objectionId = objectionId;
+      const body: Record<string, unknown> = { scenario: chosenScenario };
+      if (chosenScenario === 'OBJECTION' && chosenObjection) body.objectionId = chosenObjection;
       const data = await api('/api/v1/practice', 'POST', body);
       setSession({ ...data, turns: [] });
     } catch (e) {
@@ -154,6 +216,47 @@ export default function PracticeWorkspace({
           </p>
         ) : (
           <>
+            {recommendation && (
+              <div
+                className="lf-card"
+                style={{
+                  padding: 'var(--lf-space-3) var(--lf-space-4)',
+                  marginBottom: 'var(--lf-space-3)',
+                  border: '1px solid var(--lf-primary, #2447C7)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>
+                      Recommended drill:{' '}
+                      <span style={{ textTransform: 'capitalize' }}>{recommendation.scenario.toLowerCase()}</span>
+                      {recommendation.objectionName ? ` — ${recommendation.objectionName}` : ''}
+                    </div>
+                    <ul
+                      style={{
+                        margin: '4px 0 0',
+                        paddingLeft: 'var(--lf-space-4)',
+                        fontSize: 'var(--lf-text-2xs)',
+                        color: 'var(--lf-ink-3)',
+                      }}
+                    >
+                      {recommendation.reasons.map((reason, i) => (
+                        <li key={i}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <button
+                    className="lf-btn lf-btn--sm"
+                    disabled={busy || remainingToday <= 0}
+                    onClick={() =>
+                      start({ scenario: recommendation.scenario, objectionId: recommendation.objectionId })
+                    }
+                  >
+                    Start this drill
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
               {SCENARIOS.map((s) => (
                 <button
@@ -188,7 +291,7 @@ export default function PracticeWorkspace({
               </select>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'var(--lf-space-3)' }}>
-              <button className="lf-btn" onClick={start} disabled={busy || remainingToday <= 0}>
+              <button className="lf-btn" onClick={() => start()} disabled={busy || remainingToday <= 0}>
                 {busy ? 'Starting…' : 'Start practising'}
               </button>
               <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
@@ -260,12 +363,28 @@ export default function PracticeWorkspace({
           <input
             className="lf-input"
             style={{ flex: 1 }}
-            placeholder={prospectEnded ? 'The prospect has wrapped up — finish for your score.' : 'Say something…'}
+            placeholder={
+              recording
+                ? 'Recording — click the mic again to stop…'
+                : prospectEnded
+                  ? 'The prospect has wrapped up — finish for your score.'
+                  : 'Say something, or use the mic…'
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
             maxLength={2000}
           />
+          <button
+            type="button"
+            className={`lf-btn lf-btn--secondary${recording ? ' lf-btn--danger' : ''}`}
+            onClick={toggleRecording}
+            disabled={busy}
+            title="Speak your reply — it lands in the box for you to review before sending"
+            aria-pressed={recording}
+          >
+            {recording ? '■ Stop' : '🎙'}
+          </button>
           <button type="submit" className="lf-btn" disabled={busy || !input.trim()}>
             {busy ? '…' : 'Send'}
           </button>

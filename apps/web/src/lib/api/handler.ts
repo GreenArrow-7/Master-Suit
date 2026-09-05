@@ -138,7 +138,13 @@ export function route<
       const rawParams = context?.params != null ? await context.params.catch(() => ({})) : {};
       const url = new URL(req.url);
       const rawQuery = Object.fromEntries(url.searchParams);
-      const rawBody = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await req.json().catch(() => ({})) : {};
+      // A binary upload (e.g. a live audio chunk) must reach the handler with
+      // its stream untouched — consuming it here as JSON would leave
+      // `req.arrayBuffer()` a disturbed stream. Routes that declare a body
+      // schema still get the old behaviour whatever the content-type says.
+      const wantsJson = Boolean(spec.body) || (req.headers.get('content-type') ?? '').includes('json');
+      const rawBody =
+        wantsJson && ['POST', 'PATCH', 'PUT'].includes(req.method) ? await req.json().catch(() => ({})) : {};
 
       const params = spec.params ? parse(spec.params, rawParams) : (rawParams as P);
       const query = spec.query ? parse(spec.query, rawQuery) : (rawQuery as unknown as Q);

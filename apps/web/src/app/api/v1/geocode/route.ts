@@ -29,7 +29,7 @@ export const GET = route(
     url.searchParams.set('addressdetails', '0');
 
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'MasterSuite-HRMS/1.0 (work-location geocoding)' },
+      headers: { 'User-Agent': 'YouhanOne/1.0 (work-location geocoding)' },
       // A slow geocoder must not hang the request thread indefinitely.
       signal: AbortSignal.timeout(6_000),
     }).catch(() => null);

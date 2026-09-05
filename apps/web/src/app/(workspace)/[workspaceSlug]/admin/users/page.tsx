@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import FilterSheet from '@/components/workspace/FilterSheet';
+import PageHeader from '@/components/ui/PageHeader';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -97,16 +98,25 @@ export default async function UsersPage({
 
   return (
     <div className="lf-page-stack">
-      <section>
-        <div className="lf-eyebrow">Administration</div>
-        <h1 style={{ margin: '8px 0 0' }}>Users</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '90ch' }}>
-          Everyone with an account. Roles decide what each person can reach — you can only administer accounts at or
-          below your own level.
-        </p>
-      </section>
+      <PageHeader
+        title="Users"
+        description="Everyone with an account. Roles decide what each person can reach — you can only administer accounts at or below your own level."
+        actions={
+          /* A plain link, not SalesLink: SalesLink resolves module-relative
+             hrefs against the CURRENT module, and from /admin that produced
+             /admin/users/new — no such route. The only add-user form in the
+             product is the People module's. */
+          mayManage ? (
+            <Link className="lf-btn lf-btn--sm" href={`/${workspaceSlug}/people/users/new`}>
+              Add user
+            </Link>
+          ) : undefined
+        }
+      />
 
-      <form className="lf-card lf-users__filters" method="get">
+      {/* The same toolbar as every list. FilterSheet keeps the phone
+          behaviour: inline here, a bottom sheet below the phone tier. */}
+      <form className="lf-toolbar" method="get">
         {/* Inline on a desktop, a bottom sheet on a phone — the fields are
             repositioned, never unmounted, so they still submit. */}
         <FilterSheet activeCount={[search, query.role, showAll ? 'all' : ''].filter(Boolean).length || undefined}>
@@ -145,17 +155,12 @@ export default async function UsersPage({
             </select>
           </div>
         </FilterSheet>
-        <button className="lf-btn lf-btn--secondary" type="submit">
-          Filter
+        <button className="lf-btn lf-btn--secondary lf-btn--sm" type="submit">
+          Apply
         </button>
-        {/* A plain link, not SalesLink: SalesLink resolves module-relative
-            hrefs against the CURRENT module, and from /admin that produced
-            /admin/users/new — no such route, so Next matched [userId]="new"
-            and the button dead-ended on "not found". The only add-user form in
-            the product is the People module's. */}
-        {mayManage && (
-          <Link className="lf-btn" href={`/${workspaceSlug}/people/users/new`}>
-            + Add user
+        {(search || query.role || showAll) && (
+          <Link className="lf-btn lf-btn--ghost lf-btn--sm" href={`/${workspaceSlug}/admin/users`}>
+            Clear all
           </Link>
         )}
       </form>

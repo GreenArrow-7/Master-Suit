@@ -114,11 +114,10 @@ test.describe('Refusal, empty and search states', () => {
     // leave queue *and* the plan, seat usage and renewal date to anyone who
     // could sign in. A sales representative has no business reading either.
     //
-    // The anchor is the greeting band's eyebrow, not a page title: the 2026-08
-    // redesign replaced the static "Business overview" heading with a greeting
-    // headline whose text changes with the clock and the viewer's name. The
-    // eyebrow is the one line on the band that is stable per workspace.
-    await expect(page.getByText(`${workspace.displayName} · Overview`)).toBeVisible();
+    // The anchor is the header's supporting line, not the greeting: the
+    // greeting changes with the clock and the viewer's name, the line under it
+    // does not.
+    await expect(page.getByText(/what needs your attention today/)).toBeVisible();
     await expect(page.getByText('People summary')).toHaveCount(0);
     await expect(page.getByText('Pending approvals')).toHaveCount(0);
     await expect(page.getByText(/Subscription|Seats used|Renews/)).toHaveCount(0);

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { entityRoute } from '@/lib/nav/entityRoute';
+import { ASSISTANT_NAME, ASSISTANT_TAGLINE } from '@/lib/branding';
 
 type EntityType = 'lead' | 'account' | 'contact' | 'opportunity' | 'call';
 
@@ -280,29 +281,40 @@ export default function AssistantWidget({ slug }: { slug: string }) {
 
   if (!open)
     return (
-      <button type="button" className="lf-ai-fab" aria-label="Open Manath AI" onClick={() => setOpen(true)}>
-        ✦
+      <button type="button" className="lf-ai-fab" aria-label={`Open ${ASSISTANT_NAME}`} onClick={() => setOpen(true)}>
+        {/* The intelligence node: a cyan point with a ring around it, drawn
+            rather than set as a glyph so it is the same mark at any size and
+            does not depend on an emoji font. */}
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="1.25" />
+          <circle cx="10" cy="10" r="3.25" fill="currentColor" />
+        </svg>
       </button>
     );
 
   return (
-    <div className="lf-ai-panel" role="dialog" aria-label="Manath AI">
+    <div className="lf-ai-panel" role="dialog" aria-label={ASSISTANT_NAME}>
       <div className="lf-ai-head">
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <strong style={{ fontSize: 'var(--lf-text-base)' }}>Manath AI</strong>
+            <strong className="lf-ai-title">{ASSISTANT_NAME}</strong>
             {context && (
               <span className="lf-badge" data-tone="wine">
                 Viewing: {context.entityType}
               </span>
             )}
           </div>
-          <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>CRM copilot</div>
+          <div className="lf-ai-subtitle">{ASSISTANT_TAGLINE}</div>
         </div>
         <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm" onClick={newChat} aria-label="New chat">
           New chat
         </button>
-        <button type="button" className="lf-ai-close" onClick={() => setOpen(false)} aria-label="Close Manath AI">
+        <button
+          type="button"
+          className="lf-ai-close"
+          onClick={() => setOpen(false)}
+          aria-label={`Close ${ASSISTANT_NAME}`}
+        >
           ×
         </button>
       </div>
@@ -368,11 +380,11 @@ export default function AssistantWidget({ slug }: { slug: string }) {
                     </button>
                   </div>
                 ) : action.state === 'done' ? (
-                  <span style={{ color: 'var(--lf-viridian, #16a34a)', fontWeight: 600 }}>Done ✓</span>
+                  <span style={{ color: 'var(--lf-viridian)', fontWeight: 600 }}>Done ✓</span>
                 ) : action.state === 'cancelled' ? (
                   <span style={{ color: 'var(--lf-ink-3)' }}>Cancelled</span>
                 ) : (
-                  <span style={{ color: 'var(--lf-vermillion, #b3261e)' }}>{action.detail}</span>
+                  <span style={{ color: 'var(--lf-vermillion)' }}>{action.detail}</span>
                 )}
               </div>
             ))}
@@ -397,7 +409,7 @@ export default function AssistantWidget({ slug }: { slug: string }) {
           maxLength={4000}
           value={draft}
           placeholder="Ask about your pipeline…"
-          aria-label="Message Manath AI"
+          aria-label={`Message ${ASSISTANT_NAME}`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

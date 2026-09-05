@@ -179,7 +179,7 @@ export const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  EMAIL_FROM: z.string().default('Master Suite <no-reply@localhost>'),
+  EMAIL_FROM: z.string().default('YOUHAN ONE <no-reply@localhost>'),
   /**
    * Extra hosts the media worker may fetch a recording from, comma-separated.
    *
@@ -227,7 +227,7 @@ export const envSchema = z.object({
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),
 
   /**
-   * The Meta app Master Suite itself is registered as, so one App Review covers
+   * The Meta app the platform itself is registered as, so one App Review covers
    * every workspace. These identify the *platform*; the Page tokens they produce
    * are per-tenant and live encrypted on the connection.
    *
@@ -236,6 +236,16 @@ export const envSchema = z.object({
    */
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
+
+  /**
+   * The realtime call engine (worker process): where telephony vendors fork
+   * live call audio. LIVE_STREAM_WS_URL is the PUBLIC wss:// URL the vendor is
+   * told to connect to (through the tunnel/load balancer); unset means live
+   * coaching of vendor calls is off and dialling behaves exactly as before.
+   * LIVE_STREAM_PORT is where the worker listens for those connections.
+   */
+  LIVE_STREAM_WS_URL: z.string().url().optional().or(z.literal('')),
+  LIVE_STREAM_PORT: z.coerce.number().int().min(1).max(65535).default(8090),
 
   /**
    * Native push, for the Capacitor builds in apps/mobile.

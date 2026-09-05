@@ -1,4 +1,4 @@
-import { prisma } from '../db';
+import { prisma, withPlatformTx } from '../db';
 import { Forbidden, Invalid } from '../errors';
 
 /**
@@ -126,7 +126,18 @@ export async function revokeGrants(platformUserId: string, tenantId: string): Pr
   return count;
 }
 
-/** Every live grant across the platform. For the metrics endpoint. */
+/**
+ * Every live grant across the platform. For the metrics endpoint.
+ *
+ * The one caller here that spans tenants, and therefore the one that needs
+ * `withPlatformTx`. The table is under row-level security (20260826120000), so a
+ * count with no tenant pinned and no `app.platform_admin` asserted does not
+ * error — it returns 0, which is also the healthy value. A gauge that reads
+ * "nobody has write access into a customer's data" while blind is worse than no
+ * gauge at all.
+ */
 export async function liveGrantCount(): Promise<number> {
-  return prisma.platformAccessGrant.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } });
+  return withPlatformTx((tx) =>
+    tx.platformAccessGrant.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
+  );
 }

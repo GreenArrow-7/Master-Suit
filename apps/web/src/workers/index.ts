@@ -1,5 +1,6 @@
 import type { Worker } from 'bullmq';
 import type { QueueName } from '@/lib/queue';
+import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { startAiWorker } from './ai';
 import { startAutomationWorker } from './automation';
@@ -109,6 +110,14 @@ async function start() {
   // Schedulers only after every consumer is attached, so a repeatable job can
   // never be armed by a process that turns out to be unable to run it.
   const schedulers = [...(await armCampaignScheduler()), ...(await armMaintenanceScheduler())];
+
+  // The realtime call engine: only where a public wss URL says vendors will
+  // actually be pointed at it. Without one, dialling works exactly as before
+  // and no port is opened.
+  if (env.LIVE_STREAM_WS_URL) {
+    const { startLiveStreamServer } = await import('./liveStream');
+    startLiveStreamServer();
+  }
 
   for (const worker of workers) {
     worker.on('failed', (job, err) => logger.error({ err, queue: worker.name, jobId: job?.id }, 'job failed'));

@@ -5,6 +5,7 @@ import { env } from '@/lib/env';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { callbackSecrets, TelephonyConfigError, UNSIGNED_VENDORS } from '@/lib/integrations/telephony';
 import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
+import { streamToken } from '@/lib/integrations/telephony/stream';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -65,15 +66,29 @@ export const POST = route(
     // Consent is checked at the point the vendor is told to record, not only at
     // the point the file is stored — the vendor must never hold media the client
     // did not agree to.
+    const consent = await prisma.recordingConsent.findFirst({ where: { callId: call.id, tenantId: ctx.tenantId } });
+    const consented = Boolean(consent?.consentGiven && !consent.withdrawnAt);
     const wantsRecording = body.record && telephony.recordingEnabled;
-    if (wantsRecording && telephony.consentRequired) {
-      const consent = await prisma.recordingConsent.findFirst({ where: { callId: call.id, tenantId: ctx.tenantId } });
-      if (!consent?.consentGiven || consent.withdrawnAt) {
-        throw Invalid([
-          { field: 'record', code: 'no_consent', message: 'Record consent before asking the provider to record.' },
-        ]);
-      }
+    if (wantsRecording && telephony.consentRequired && !consented) {
+      throw Invalid([
+        { field: 'record', code: 'no_consent', message: 'Record consent before asking the provider to record.' },
+      ]);
     }
+
+    // Live coaching: fork the call audio to the realtime engine — only where a
+    // public engine URL is configured, the vendor can fork, and consent is on
+    // file. Streaming is processing the conversation, same as recording it.
+    const stream =
+      env.LIVE_STREAM_WS_URL && telephony.provider.capabilities.includes('LIVE_STREAM') && consented
+        ? {
+            url: `${env.LIVE_STREAM_WS_URL.replace(/\/$/, '')}/twilio-media`,
+            parameters: {
+              tenantId: ctx.tenantId,
+              callId: call.id,
+              token: streamToken(ctx.tenantId, call.id),
+            },
+          }
+        : undefined;
 
     // The callback URL carries the connection key in the path. Vendors that
     // cannot sign their callbacks additionally carry a derived bearer token,
@@ -97,6 +112,7 @@ export const POST = route(
         agentNumber,
         callbackUrl,
         recordingEnabled: wantsRecording,
+        stream,
       });
 
       return prisma.call.update({

@@ -280,6 +280,15 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
       },
     });
 
+    // Provenance rows for what the AI heard (§7): one per stated field, with the
+    // extractor's confidence and quote. Rewritten per run — same delete-then-
+    // insert rule as the playbook matcher, because the answer is a function of
+    // the analysis as it is now. Best effort: losing provenance must not lose
+    // the analysis.
+    await writeDetectedRequirements(tenantId, callId, call.leadId, result.detectedRequirement).catch((err) =>
+      logger.warn({ err: (err as Error).message, callId }, 'detected-requirement provenance write failed'),
+    );
+
     await notify(tenantId, call.callerId, {
       kind: 'CALL_ANALYSIS_READY',
       title: 'Call analysis is ready',
@@ -305,6 +314,34 @@ export async function analyseCall(job: CallJob): Promise<Outcome> {
     });
     throw err;
   }
+}
+
+/** One row per stated requirement field, values stringified for one column. */
+export async function writeDetectedRequirements(
+  tenantId: string,
+  callId: string,
+  leadId: string | null,
+  detected: import('@/lib/ai/analysis').DetectedRequirement | null | undefined,
+): Promise<number> {
+  await prisma.detectedRequirement.deleteMany({ where: { tenantId, callId } });
+  if (!detected) return 0;
+
+  const { confidence, evidence, ...facts } = detected;
+  const rows = Object.entries(facts)
+    .filter(([, value]) => (Array.isArray(value) ? value.length > 0 : value != null))
+    .map(([field, value]) => ({
+      tenantId,
+      callId,
+      leadId,
+      field,
+      value: Array.isArray(value) ? value.join(', ') : String(value),
+      confidence: confidence ?? null,
+      sourceQuote: evidence?.slice(0, 500) ?? null,
+    }));
+  if (!rows.length) return 0;
+
+  const written = await prisma.detectedRequirement.createMany({ data: rows, skipDuplicates: true });
+  return written.count;
 }
 
 // ── 3. Audit ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { PRODUCT_NAME } from '@/lib/branding';
+import { PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_SHORT_NAME } from '@/lib/branding';
 
 /**
  * Web app manifest — what makes the application installable on Android and iOS.
@@ -18,13 +18,14 @@ import { PRODUCT_NAME } from '@/lib/branding';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: PRODUCT_NAME,
-    short_name: PRODUCT_NAME,
-    description:
-      'A modular business platform: Sales CRM, People & HR, and multi-tenant platform administration on one login, one permission model and one audit trail.',
+    // The home-screen label has room for about twelve characters before Android
+    // truncates it, which is what the short form exists for.
+    short_name: PRODUCT_SHORT_NAME,
+    description: PRODUCT_DESCRIPTION,
     start_url: '/',
     display: 'standalone',
-    background_color: '#1b1710',
-    theme_color: '#2E0B16',
+    background_color: '#020817',
+    theme_color: '#020817',
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

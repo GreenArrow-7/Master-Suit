@@ -476,6 +476,7 @@ model Tenant {
   dashboards                 Dashboard[]
   dashboardWidgets           DashboardWidget[]
   departments                Department[]
+  detectedRequirements       DetectedRequirement[]
   developers                 Developer[]
   dialerSessions             DialerSession[]
   distributionRules          DistributionRule[]
@@ -550,6 +551,7 @@ model Tenant {
   referrals                  Referral[]
   referralCodes              ReferralCode[]
   reports                    Report[]
+  salesPlaybooks             SalesPlaybook[]
   roles                      Role[]
   rolePermissions            RolePermission[]
   sLAs                       SLA[]
@@ -7646,4 +7648,71 @@ model CoachingNote {
 
   @@index([tenantId, callId, createdAt(sort: Desc)])
   @@index([tenantId, authorId])
+}
+
+/// A buyer-type playbook: how this workspace sells to one kind of customer.
+///
+/// The live coach folds the matched playbook into its prompt, so the guidance
+/// an agent hears mid-call is the workspace's own strategy, not a generic
+/// script. `approvedClaims` is the honesty half: the coach may only assert what
+/// leadership has put in writing here.
+model SalesPlaybook {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+  /// The fallback when no tag matches. At most one enforced in the route, not
+  /// the schema — a partial unique index on a boolean buys little over a check
+  /// at the single write site.
+  isDefault   Boolean @default(false)
+
+  /// Lead tags that select this playbook (first active overlap wins). Empty
+  /// means selectable only as the default.
+  leadTags String[] @default([])
+
+  discoveryQuestions String[] @default([])
+  approvedClaims     String[] @default([])
+  objectionGuidance  String?
+  closingStrategy    String?
+  followUpStrategy   String?
+  complianceNotes    String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+}
+
+/// One requirement fact the AI heard on one call — the provenance record.
+///
+/// The editable "suggested CRM update" panel reads the analysis row; these rows
+/// are why an applied requirement can later answer "where did 1.8M come from?":
+/// each carries the model's confidence and the words it was extracted from.
+/// Rewritten per analysis run (delete-then-insert), same rule as ObjectionMatch.
+model DetectedRequirement {
+  id       String  @id @default(cuid())
+  tenantId String
+  callId   String
+  leadId   String?
+
+  /// Which requirement field: purpose, budgetMin, budgetMax, bedroomsMin,
+  /// bedroomsMax, propertyType, locations, timeline.
+  field       String
+  value       String
+  confidence  Float?
+  /// The transcript words this was read from, verbatim and short.
+  sourceQuote String?
+  detectedAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, callId, field])
+  @@index([tenantId, leadId])
 }

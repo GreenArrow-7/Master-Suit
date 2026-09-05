@@ -199,13 +199,8 @@ export default function NewCallForm() {
         </div>
 
         <label className="lf-field" data-invalid={fieldErrors.recipientNumber ? '' : undefined}>
-          <span className="lf-label">
+          <span className="lf-label" data-required={!lead?.phone ? '' : undefined}>
             Phone Number{' '}
-            {!lead?.phone && (
-              <span className="lf-label__req" aria-hidden="true">
-                *
-              </span>
-            )}
           </span>
           <input
             name="recipientNumber"
