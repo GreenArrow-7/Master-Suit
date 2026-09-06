@@ -1,0 +1,41 @@
+# Caddy for the small single host. Two site blocks share one proxy config:
+#
+#   {$APP_DOMAIN}   public hostname, certificate from Let's Encrypt over
+#                   HTTP-01 (ports 80 and 443 both reach this container).
+#   89.167.94.197   the bare IP, kept so the old URL keeps working. Let's
+#                   Encrypt does not issue for IP addresses, so this one uses
+#                   Caddy's internal CA as before (browsers warn once).
+#
+# A client connecting to the bare IP sends no SNI; default_sni names the
+# certificate to use in that case.
+{
+	email {$ACME_EMAIL}
+	default_sni 89.167.94.197
+}
+
+(app) {
+	encode zstd gzip
+
+	reverse_proxy web:3000 {
+		# The application reads X-Forwarded-For right to left and skips hops
+		# inside TRUSTED_PROXY_CIDRS, which covers this container's address.
+		header_up X-Real-IP {remote_host}
+	}
+
+	request_body {
+		max_size 32MB
+	}
+
+	# Token-gated scrape endpoint; not public. Prometheus reaches web:3000 directly.
+	@metrics path /api/metrics
+	respond @metrics 404
+}
+
+{$APP_DOMAIN} {
+	import app
+}
+
+89.167.94.197 {
+	tls internal
+	import app
+}

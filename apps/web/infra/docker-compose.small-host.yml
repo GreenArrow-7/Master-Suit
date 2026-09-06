@@ -1,0 +1,37 @@
+# Overlay for a small single host (2 vCPU, 4 GB) reached by IP address.
+# Layer it last, after docker-compose.azure.yml:
+#
+#   docker compose --env-file ../.env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f docker-compose.azure.yml -f docker-compose.small-host.yml ...
+#
+# Three things change, nothing else:
+#   * Caddy serves on the IP with its internal CA (see Caddyfile.intranet),
+#     because there is no hostname for an ACME certificate.
+#   * One worker instead of two. Every queue still has a consumer; the second
+#     replica only bought throughput this host does not have memory for.
+#   * Postgres is sized for a quarter of the box rather than half of a larger
+#     one. The base file's command is restated in full because Compose replaces
+#     a `command` list, it does not merge it.
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.intranet:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+  worker:
+    deploy:
+      replicas: 1
+
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_connections=100
+      - -c
+      - random_page_cost=1.1
