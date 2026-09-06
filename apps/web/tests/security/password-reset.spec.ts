@@ -248,7 +248,7 @@ describe('password reset for an account with no workspace', () => {
     expect(res.status).toBe(200);
 
     const user = await prisma.platformUser.findUnique({ where: { id: soloId }, select: { passwordHash: true } });
-    expect(verifyPassword(user!.passwordHash!, NEW_PASSWORD)).toBe(true);
+    expect(await verifyPassword(user!.passwordHash!, NEW_PASSWORD)).toBe(true);
     expect(await prisma.platformSession.count({ where: { platformUserId: soloId, revokedAt: null } })).toBe(0);
     expect(await prisma.platformAuditEvent.count({ where: { actorUserId: soloId, event: 'PASSWORD_RESET' } })).toBe(1);
   });
