@@ -1087,6 +1087,7 @@ model PlatformUser {
 
   memberships           WorkspaceMembership[]
   passwordHistory       PasswordHistory[]
+  passwordResetTokens   PasswordResetToken[]
   sessions              PlatformSession[]
   platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
@@ -2813,8 +2814,13 @@ model UserTeam {
 
 model PasswordResetToken {
   id        String    @id @default(cuid())
-  tenantId  String
-  userId    String
+  /// The credential lives on PlatformUser, so this is what a reset acts on.
+  /// tenantId/userId are set when the account has a workspace, which is where
+  /// the password policy and the audit entry come from; a platform-only
+  /// account (the owner before any workspace exists) has neither.
+  platformUserId String?
+  tenantId  String?
+  userId    String?
   tokenHash String    @unique
   ipAddress String?
   userAgent String?
@@ -2822,10 +2828,13 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId])
   @@index([tenantId, userId])
   @@index([expiresAt])
 }

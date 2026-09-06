@@ -32,7 +32,7 @@ let platformUserId = '';
 async function issueToken(expiresAt = new Date(Date.now() + 30 * 60_000)) {
   const token = randomBytes(32).toString('base64url');
   await prisma.passwordResetToken.create({
-    data: { tenantId, userId: salesUserId, tokenHash: sha256(token), expiresAt },
+    data: { platformUserId, tenantId, userId: salesUserId, tokenHash: sha256(token), expiresAt },
   });
   return token;
 }
@@ -194,5 +194,46 @@ describe('P0-3 password reset changes the credential login actually reads', () =
       newPassword: 'ForgedToken5!',
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('password reset for an account with no workspace', () => {
+  // The platform owner exists before any workspace does. The credential is the
+  // same PlatformUser row, so the reset must work with no tenant to consult.
+  const soloEmail = `solo-${suffix}@reset.test`;
+  let soloId = '';
+
+  beforeAll(async () => {
+    const solo = await prisma.platformUser.create({
+      data: {
+        email: soloEmail,
+        normalizedEmail: soloEmail,
+        fullName: 'Solo Owner',
+        passwordHash: await hashPassword(OLD_PASSWORD),
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date(),
+      },
+    });
+    soloId = solo.id;
+  });
+
+  afterAll(async () => {
+    if (soloId) await prisma.platformUser.delete({ where: { id: soloId } }).catch(() => {});
+  });
+
+  it('resets the credential, ends sessions and records a platform audit event', async () => {
+    await createPlatformSessionToken(soloId);
+    const token = randomBytes(32).toString('base64url');
+    await prisma.passwordResetToken.create({
+      data: { platformUserId: soloId, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 30 * 60_000) },
+    });
+
+    const res = await post(resetPassword, '/api/v1/auth/reset-password', { token, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+
+    const user = await prisma.platformUser.findUnique({ where: { id: soloId }, select: { passwordHash: true } });
+    expect(verifyPassword(user!.passwordHash!, NEW_PASSWORD)).toBe(true);
+    expect(await prisma.platformSession.count({ where: { platformUserId: soloId, revokedAt: null } })).toBe(0);
+    expect(await prisma.platformAuditEvent.count({ where: { actorUserId: soloId, event: 'PASSWORD_RESET' } })).toBe(1);
   });
 });
