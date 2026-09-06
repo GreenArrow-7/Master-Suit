@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { hashPassword, checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
-import { revokeAllSessions } from '@/lib/auth/session';
+import { revokeAllPlatformSessions } from '@/lib/auth/session';
 import { readJsonBody } from '@/lib/api/read-body';
 
 /**
@@ -46,26 +46,23 @@ export async function POST(req: Request) {
     if (!record || record.usedAt || record.expiresAt < now) {
       throw Unauthorized('This reset link is invalid or has expired.');
     }
-    const tenant = await prisma.tenant.findUnique({ where: { id: record.tenantId } });
-    if (!tenant || tenant.deletedAt || tenant.status !== 'ACTIVE') {
-      throw Unauthorized('This reset link is invalid or has expired.');
-    }
-
     // The credential lives on PlatformUser and nowhere else. This route used to
     // write the User copy instead, which login never reads — so the reset was
     // inert and the old, possibly leaked, password kept working.
-    const membership = await prisma.workspaceMembership.findUnique({
-      where: { salesUserId: record.userId },
-      select: { platformUserId: true },
-    });
-    if (!membership) {
-      // No platform identity means no credential to reset. Fail rather than
-      // reporting success on a write that could not authenticate anyone.
-      logger.error({ requestId, userId: record.userId }, 'reset-password: user has no workspace membership');
+    const platformUserId = record.platformUserId;
+    if (!platformUserId) {
+      // Issued before tokens named their platform identity; long expired by now.
       throw Unauthorized('This reset link is invalid or has expired.');
     }
 
-    const policy = await passwordPolicy(tenant.id);
+    // The workspace is optional (a platform-only account has none), but one the
+    // token names must still be entitled to have anyone sign in at all.
+    const tenant = record.tenantId ? await prisma.tenant.findUnique({ where: { id: record.tenantId } }) : null;
+    if (record.tenantId && (!tenant || tenant.deletedAt || tenant.status !== 'ACTIVE')) {
+      throw Unauthorized('This reset link is invalid or has expired.');
+    }
+
+    const policy = tenant ? await passwordPolicy(tenant.id) : DEFAULT_POLICY;
     const weak = checkPolicy(body.newPassword, policy);
     if (weak.length) {
       throw Invalid(weak.map((message) => ({ field: 'newPassword', code: 'policy', message })));
@@ -73,38 +70,60 @@ export async function POST(req: Request) {
     // The reuse window applies here too. A forgotten password is the most likely
     // moment for someone to reach for one they have used before, which is
     // precisely what the rule exists to prevent.
-    await assertNotReused(membership.platformUserId, body.newPassword, policy);
+    await assertNotReused(platformUserId, body.newPassword, policy);
 
     const previous = await prisma.platformUser.findUnique({
-      where: { id: membership.platformUserId },
+      where: { id: platformUserId },
       select: { passwordHash: true },
     });
     const passwordHash = await hashPassword(body.newPassword);
 
     await prisma.$transaction([
       prisma.platformUser.update({
-        where: { id: membership.platformUserId },
+        where: { id: platformUserId },
         data: { passwordHash, passwordChangedAt: now, failedLoginCount: 0, lockedUntil: null },
       }),
-      prisma.passwordResetToken.update({ where: { tenantId: tenant.id, id: record.id }, data: { usedAt: now } }),
+      // Scoped the way invitations are consumed (`{ tenantId, id }`): the guard
+      // needs a tenant term on every write, and a platform-only token carries
+      // `tenantId: null`, which pins exactly that row rather than any tenant's.
+      prisma.passwordResetToken.update({
+        where: { id: record.id, tenantId: record.tenantId },
+        data: { usedAt: now },
+      }),
     ]);
-    await recordPreviousPassword(membership.platformUserId, previous?.passwordHash ?? null);
+    await recordPreviousPassword(platformUserId, previous?.passwordHash ?? null);
 
     // A password reset invalidates every existing session — the whole point of the
-    // flow. revokeAllSessions covers both the Session and PlatformSession rows.
-    await revokeAllSessions(tenant.id, record.userId, undefined, 'PASSWORD_RESET');
+    // flow. There is one session store, keyed by platform identity.
+    await revokeAllPlatformSessions(platformUserId, 'PASSWORD_RESET');
 
-    await prisma.auditLog.create({
-      data: {
-        tenantId: tenant.id,
-        actorUserId: record.userId,
-        actorType: 'USER',
-        event: 'PASSWORD_CHANGED',
-        objectType: 'user',
-        recordId: record.userId,
-        requestId,
-      },
-    });
+    // The workspace audit log needs a workspace; the platform log takes either.
+    if (tenant && record.userId) {
+      await prisma.auditLog.create({
+        data: {
+          tenantId: tenant.id,
+          actorUserId: record.userId,
+          actorType: 'USER',
+          event: 'PASSWORD_CHANGED',
+          objectType: 'user',
+          recordId: record.userId,
+          requestId,
+        },
+      });
+    } else {
+      await prisma.platformAuditEvent.create({
+        data: {
+          actorUserId: platformUserId,
+          event: 'PASSWORD_RESET',
+          objectType: 'platform_user',
+          objectId: platformUserId,
+          requestId,
+          ipAddress: record.ipAddress,
+          userAgent: record.userAgent,
+          metadata: { result: 'ok', via: 'reset-link' },
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
   } catch (err) {

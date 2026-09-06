@@ -63,15 +63,18 @@ export async function POST(req: Request) {
       },
     });
 
+    // A workspace is optional: the platform owner exists before any workspace
+    // does, and the credential being reset lives on PlatformUser either way.
     const membership = identity?.memberships[0];
-    const eligible = identity && !identity.deletedAt && identity.status === 'ACTIVE' && membership?.salesUserId;
+    const eligible = identity && !identity.deletedAt && identity.status === 'ACTIVE';
 
     if (eligible) {
       const token = randomBytes(32).toString('base64url');
       await prisma.passwordResetToken.create({
         data: {
-          tenantId: membership.tenantId,
-          userId: membership.salesUserId!,
+          platformUserId: identity.id,
+          tenantId: membership?.tenantId ?? null,
+          userId: membership?.salesUserId ?? null,
           tokenHash: sha256(token),
           ipAddress: ip,
           userAgent: req.headers.get('user-agent'),
@@ -88,7 +91,7 @@ export async function POST(req: Request) {
           'If it was not you, no action is needed — nothing has changed.',
       );
     } else {
-      // Not found, deleted, suspended, or in no active workspace. Recorded for
+      // Not found, deleted or suspended. Recorded for
       // the security log; answered identically to the caller.
       logger.info({ requestId, reason: identity ? 'INELIGIBLE' : 'UNKNOWN_ACCOUNT' }, 'password reset not issued');
     }

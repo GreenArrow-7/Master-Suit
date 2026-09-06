@@ -44,6 +44,9 @@ export default defineConfig({
     // Falls back to DATABASE_URL so an existing single-role checkout still runs
     // `prisma generate`; deployments set both explicitly.
     url: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || '',
-    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
+    // Only `migrate dev` / `migrate diff` use a shadow database; `migrate deploy`
+    // never does. Deployments set the variable empty rather than unset, and
+    // Prisma 7 refuses an empty string (P1013), so omit it in that case.
+    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL || undefined,
   },
 });
