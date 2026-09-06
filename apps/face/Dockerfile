@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 FACE_MODEL_DIR=/models
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY face_engine.py main.py download_models.py ./
+COPY face_engine.py main.py download_models.py tokens.py ./
 
 # One worker: each holds its own copy of the ONNX graphs in memory. Scale with
 # replicas rather than workers if you need more throughput.
