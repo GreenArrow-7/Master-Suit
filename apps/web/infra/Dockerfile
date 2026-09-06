@@ -54,6 +54,10 @@ RUN npx prisma generate && \
 FROM node:22-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
+# The standalone server binds to $HOSTNAME, which Docker sets to the container
+# id, so without this it listens on the bridge address only and the loopback
+# HEALTHCHECK below can never reach it.
+ENV HOSTNAME=0.0.0.0
 
 # ── Which commit is this? ───────────────────────────────────────────────────
 #
