@@ -23,6 +23,11 @@ CMD ["npm", "run", "dev"]
 # ── build ────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS build
 WORKDIR /app
+# `next build` runs the TypeScript check in one process, which exceeds Node's
+# default heap on this schema (CI gives it 6 GB, .github/workflows/ci.yml). The
+# deployment VM has 4 GB plus swap; this stage is discarded, so it costs the
+# runtime image nothing.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # `next build` evaluates lib/env.ts while collecting page data, so the whole zod
