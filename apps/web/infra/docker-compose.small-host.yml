@@ -1,0 +1,66 @@
+# Overlay for a small single host (2 vCPU, 4 GB) reached by IP address.
+# Layer it last, after docker-compose.azure.yml:
+#
+#   docker compose --env-file ../.env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f docker-compose.azure.yml -f docker-compose.small-host.yml ...
+#
+# Three things change, nothing else:
+#   * Caddy serves on the IP with its internal CA (see Caddyfile.intranet),
+#     because there is no hostname for an ACME certificate.
+#   * One worker instead of two. Every queue still has a consumer; the second
+#     replica only bought throughput this host does not have memory for.
+#   * Postgres is sized for a quarter of the box rather than half of a larger
+#     one. The base file's command is restated in full because Compose replaces
+#     a `command` list, it does not merge it.
+#
+# Restart reliability (2026-09-06, phase 2):
+#   * postgres, redis and mailpit get `restart: unless-stopped`. The base file
+#     leaves them without a policy (fine for a laptop), so after a daemon
+#     restart or reboot web and worker came back but their dependencies did
+#     not, and web's liveness check still reported healthy.
+#   * worker gets a real healthcheck: PING plus a read-only CLIENT LIST proving
+#     all 9 BullMQ consumers hold a Redis connection. Same signal the app's
+#     masterapp_queue_workers metric uses. Update the 9 when QUEUE_NAMES changes.
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.intranet:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+  worker:
+    deploy:
+      replicas: 1
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "const R=require('ioredis');
+          const r=new R(process.env.REDIS_URL,{maxRetriesPerRequest:1,connectTimeout:3000,lazyConnect:true});
+          r.connect().then(async()=>{const p=await r.ping();const l=await r.client('LIST');
+          const n=l.split('\n').filter(x=>/name=bull:/.test(x)).length;r.disconnect();
+          process.exit(p==='PONG'&&n>=9?0:1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_connections=100
+      - -c
+      - random_page_cost=1.1
+
+  redis:
+    restart: unless-stopped
+
+  mailpit:
+    restart: unless-stopped
