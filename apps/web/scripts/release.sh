@@ -42,12 +42,39 @@ STATE_DIR="${RELEASE_STATE_DIR:-/var/lib/master-suite}"
 say()  { printf '[release] %s\n' "$1"; }
 fail() { printf '\n[release] %s\n\n' "$1" >&2; exit 1; }
 
+# A host-specific overlay, applied last when the host has one.
+#
+# It describes the machine rather than the release, so it is untracked and lives
+# only on the host that needs it — which is exactly why this lookup is a file
+# test and not a committed path. The VM this was found on keeps a
+# `docker-compose.small-host.yml` holding one worker replica instead of two, a
+# Postgres tuned for 4 GB, and an intranet Caddyfile in place of the ACME one.
+#
+# Without this, `release.sh production` composed a *different* deployment from
+# the one running: `docker compose ls` showed the live project on
+# base+prod+azure+small-host while this function returned base+prod+azure. A
+# promotion would have quietly scaled the workers up, dropped the Postgres
+# tuning and switched Caddy to a certificate it cannot get — a reconfiguration
+# wearing a deploy's clothes, and the machine it does that to is the one least
+# able to absorb it.
+#
+# `if` rather than `[ ... ] && VAR=...` because this file runs under `set -e`,
+# and the terse form's exit status is the test's.
+host_overlay() {
+  if [ -f "${INFRA}/docker-compose.small-host.yml" ]; then
+    printf ' -f %s' "${INFRA}/docker-compose.small-host.yml"
+  fi
+}
+
 dc_for() {
   case "$1" in
     staging)
       echo "docker compose --env-file ${APP_DIR}/.env.staging -f ${INFRA}/docker-compose.yml -f ${INFRA}/docker-compose.prod.yml -f ${INFRA}/docker-compose.staging.yml" ;;
     production)
-      echo "docker compose --env-file ${APP_DIR}/.env.production -f ${INFRA}/docker-compose.yml -f ${INFRA}/docker-compose.prod.yml -f ${INFRA}/docker-compose.azure.yml" ;;
+      # Staging deliberately does not take the host overlay: it names production's
+      # caddy/worker/postgres services, and docker-compose.staging.yml has already
+      # made its own choices for all three.
+      echo "docker compose --env-file ${APP_DIR}/.env.production -f ${INFRA}/docker-compose.yml -f ${INFRA}/docker-compose.prod.yml -f ${INFRA}/docker-compose.azure.yml$(host_overlay)" ;;
     *) fail "Unknown environment '$1'. Use staging or production." ;;
   esac
 }
