@@ -83,7 +83,13 @@ export async function POST(req: Request) {
         where: { id: platformUserId },
         data: { passwordHash, passwordChangedAt: now, failedLoginCount: 0, lockedUntil: null },
       }),
-      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: now } }),
+      // Scoped the way invitations are consumed (`{ tenantId, id }`): the guard
+      // needs a tenant term on every write, and a platform-only token carries
+      // `tenantId: null`, which pins exactly that row rather than any tenant's.
+      prisma.passwordResetToken.update({
+        where: { id: record.id, tenantId: record.tenantId },
+        data: { usedAt: now },
+      }),
     ]);
     await recordPreviousPassword(platformUserId, previous?.passwordHash ?? null);
 

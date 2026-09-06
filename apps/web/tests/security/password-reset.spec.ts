@@ -188,6 +188,15 @@ describe('P0-3 password reset changes the credential login actually reads', () =
     }
   });
 
+  it('refuses a password that fails the policy and leaves the token unspent', async () => {
+    const token = await issueToken();
+    const res = await post(resetPassword, '/api/v1/auth/reset-password', { token, newPassword: 'short' });
+    expect(res.status).toBe(422);
+    const row = await prisma.passwordResetToken.findUnique({ where: { tokenHash: sha256(token) } });
+    expect(row?.usedAt).toBeNull();
+    expect(await loginWouldAccept('short')).toBe(false);
+  });
+
   it('refuses a token that names no real record', async () => {
     const res = await post(resetPassword, '/api/v1/auth/reset-password', {
       token: 'not-a-token-anyone-issued',
@@ -224,8 +233,15 @@ describe('password reset for an account with no workspace', () => {
   it('resets the credential, ends sessions and records a platform audit event', async () => {
     await createPlatformSessionToken(soloId);
     const token = randomBytes(32).toString('base64url');
+    // A platform-only token: no workspace, so both ownership columns are null.
     await prisma.passwordResetToken.create({
-      data: { platformUserId: soloId, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 30 * 60_000) },
+      data: {
+        platformUserId: soloId,
+        tenantId: null,
+        userId: null,
+        tokenHash: sha256(token),
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      },
     });
 
     const res = await post(resetPassword, '/api/v1/auth/reset-password', { token, newPassword: NEW_PASSWORD });
@@ -235,5 +251,24 @@ describe('password reset for an account with no workspace', () => {
     expect(verifyPassword(user!.passwordHash!, NEW_PASSWORD)).toBe(true);
     expect(await prisma.platformSession.count({ where: { platformUserId: soloId, revokedAt: null } })).toBe(0);
     expect(await prisma.platformAuditEvent.count({ where: { actorUserId: soloId, event: 'PASSWORD_RESET' } })).toBe(1);
+  });
+
+  it('a workspace-bound token cannot touch the platform-only account', async () => {
+    // The workspace fixture's token names its own PlatformUser; consuming it must
+    // change that credential only, and never the solo owner's password or sessions.
+    const soloBefore = await prisma.platformUser.findUnique({ where: { id: soloId }, select: { passwordHash: true } });
+    await createPlatformSessionToken(soloId);
+    const token = await issueToken();
+    const res = await post(resetPassword, '/api/v1/auth/reset-password', {
+      token,
+      newPassword: 'CrossTenantAttempt5!',
+    });
+    expect(res.status).toBe(200);
+    const soloAfter = await prisma.platformUser.findUnique({ where: { id: soloId }, select: { passwordHash: true } });
+    expect(soloAfter!.passwordHash).toBe(soloBefore!.passwordHash);
+    expect(await prisma.platformSession.count({ where: { platformUserId: soloId, revokedAt: null } })).toBe(1);
+    const spent = await prisma.passwordResetToken.findUnique({ where: { tokenHash: sha256(token) } });
+    expect(spent?.usedAt).not.toBeNull();
+    expect(spent?.tenantId).toBe(tenantId);
   });
 });
