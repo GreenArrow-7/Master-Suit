@@ -518,6 +518,68 @@ Affected documentation: `docs/RISK_CLASSIFICATION.md`,
 
 ---
 
+### EVC-019 — Whether one human may fill both R4 code-review slots
+
+Status: OPEN · Severity: C2 · Release impact: NON-BLOCKING for non-production
+CI and staging, **BLOCKING for production release of any R4 change reviewed by
+a single human**
+Domain: Engineering process · Affected component: human code review, R4
+
+Evidence A — Level E4 — `docs/sdd/RISK_TO_PROCESS_MATRIX.md`, "Human code
+review" row, R4 column: **"2 reviewers, one security-literate"**. It gives a
+count and a qualification. It does not say whether the two must be distinct
+people.
+
+Evidence B — Level E4 — `docs/sdd/HUMAN_APPROVAL_GATES.md`:
+"**One human may perform both the code review and the convergence acceptance**
+where the risk matrix permits, but the two decisions are recorded separately."
+
+This permits one human across **two different gates**. It does not address one
+human filling **two slots of the same gate**, and reading it as though it did
+is the over-read this conflict exists to stop.
+
+Evidence C — Level E4 — `docs/sdd/AGENT_ROLE_MODEL.md`, "What separate sessions
+do and do not buy": *"Two sessions of one model are not two reviewers."*
+
+The principle cuts against one actor holding both slots — the point being that
+duplicating an actor does not duplicate independence. But it is written about
+**AI models**, not humans, and is not stated as a rule about human reviewers.
+
+Evidence D — Level E1/E2 — `SDD-V051` enforces only that the reviewing actor
+differs from the **executing** actor, and that the reviewing session is not the
+executed session. It is silent on reviewer-versus-reviewer.
+
+Material impact: Process, and specifically release integrity. `SPEC-0005` is an
+R4 change whose two required code reviews — `REV-0002` and `REV-0003` — carry
+the same `actorId`, `GreenArrow-7`. If the standard requires distinct humans,
+one further genuine reviewer is needed before production release. If it does
+not, the current records already satisfy the gate.
+
+Current conclusion: **AMBIGUOUS.** No document explicitly permits it and none
+explicitly forbids it. The nearest permission is about different gates; the
+nearest prohibition is about AI sessions.
+
+Confidence: High that the ambiguity is real. This is a policy question, not an
+evidence question.
+
+**A correction that belongs in this record.** On 2026-09-08 an agent reported
+this as `NOT REQUIRED`, citing Evidence B. That was an over-read: Evidence B is
+about code review and convergence acceptance, two distinct gates, not two slots
+of one gate. The earlier answer is withdrawn here rather than left standing.
+
+**The one question that closes it:**
+
+> At R4, may a single human satisfy both required code-review slots — including
+> the security-literate one — or must the two reviewers be distinct people?
+
+**Interim position, so nothing is blocked that need not be:** the ambiguity does
+not affect non-production CI, staging deployment or staging verification, and
+`SPEC-0005`'s implementation is unaffected either way. It is carried into the
+production release gate, where it must be answered.
+
+**Decision owner:** the owner of the SDD standard.
+
+
 ## Resolved Conflicts
 
 Resolved entries keep their original disagreement intact and gain a
