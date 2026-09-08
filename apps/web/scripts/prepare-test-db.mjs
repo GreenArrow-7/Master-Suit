@@ -115,11 +115,10 @@ adminUrl.pathname = '/postgres';
 adminUrl.search = '';
 
 function psql(url, sql) {
-  return execFileSync(
-    'docker',
-    ['exec', '-i', 'master-saas-postgres-1', 'psql', url.toString(), '-tAc', sql],
-    { encoding: 'utf8', shell: false },
-  ).trim();
+  return execFileSync('docker', ['exec', '-i', 'master-saas-postgres-1', 'psql', url.toString(), '-tAc', sql], {
+    encoding: 'utf8',
+    shell: false,
+  }).trim();
 }
 
 /**
@@ -220,5 +219,7 @@ try {
   process.stdout.write(`prepare-test-db: ${database} is ready.\n`);
 } catch (error) {
   // The message may embed a connection string, so only the type is surfaced.
-  die(`preparation failed (${error?.constructor?.name ?? 'Error'}). Is the local Postgres container running? Try \`npm run docker:up\`.`);
+  die(
+    `preparation failed (${error?.constructor?.name ?? 'Error'}). Is the local Postgres container running? Try \`npm run docker:up\`.`,
+  );
 }
