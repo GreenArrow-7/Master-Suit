@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "notes": "Machine-readable mirror of the register in docs/sdd/VALIDATION_EXCEPTIONS.md, which remains the human-readable authority. Same split as spec.md and sdd.json: prose decides, metadata is checked. An entry here suppresses nothing unless it is APPROVED by a permitted human role and names exactly one rule and one specification.",
+  "exceptions": [
+    {
+      "exceptionId": "EXC-001",
+      "ruleId": "SDD-V060",
+      "specId": "SPEC-0002",
+      "status": "APPROVED",
+      "decision": "approved",
+      "actorType": "human",
+      "approvingRole": "Solution Architect",
+      "requestedBy": "AI, Convergence Reviewer role",
+      "effectiveDate": "2026-09-08",
+      "expiry": null,
+      "expiryCondition": "Ends if SPEC-0002 becomes SUPERSEDED or CANCELLED, or if its statusHistory or specification approval date is ever amended. The exempted fact is an immutable historical date, so no calendar expiry can end it without making the repository fail again for a reason nobody could act on.",
+      "risk": "R3",
+      "reason": "SPEC-0002 entered APPROVED_FOR_IMPLEMENTATION on 2026-09-07, before EVC-015 was resolved and before SDD-V060 existed. D2 later settled the policy in favour of mandatory R3 specification approval, and D1 supplied that approval on 2026-09-08. Both dates are truthful and neither may be altered.",
+      "scope": "The single historical implementation transition of SPEC-0002 that occurred before EVC-015 was resolved and before SDD-V060 machine enforcement existed. Nothing else.",
+      "nonPrecedential": true,
+      "statement": "Non-precedential. Does not authorize any future R3 implementation transition without timely specification approval.",
+      "compensatingControl": "The deviation stays visible in five places and is not hidden by this exception: CONV-004 (the original gate crossing), CONV-011 (the machine finding), the manifest statusHistory note at the point of transition, spec.md's approval section, and the INFO-severity EXCEPTED finding the validator continues to emit. SDD-V060 remains fully active for every other specification, and a synthetic future-R3 fixture proves a late approval still fails.",
+      "evidenceRef": "docs/evidence/phase-b3-agent-integration/historical-exception-audit.md; CONV-011; D2; D1"
+    }
+  ]
+}

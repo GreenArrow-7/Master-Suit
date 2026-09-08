@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0002",
+  "slug": "agent-integration-controlled-execution",
+  "kind": "change",
+  "risk": "R3",
+  "status": "VERIFYING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-07",
+      "note": "CL-001 to CL-005 raised"
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-07",
+      "note": "Entered on a written requester instruction. No Product Owner or Solution Architect approval exists; the gate is UNRESOLVED and the deviation is recorded in spec.md and convergence.md."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-07",
+      "note": "CHG-001 adds TASK-011 and TASK-012 to remediate CONV-006 and CONV-007; CHG-002 corrects two gate assessments. No approval granted."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "Test plan executed and results recorded; VER-0001 to VER-0007."
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-08",
+      "note": "D10 accepted by the reviewer role (gate 6 at R3). Verdict PASS WITH ACCEPTED LIMITATIONS; five ACCEPTED_RISK findings remain limitations, not resolved."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "CHG-007 / TASK-018: remediate the task-scope parser defect found by SPEC-0003/CONV-008. Reopened from CONVERGED, the same mechanism used by CHG-005 and CHG-006."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "TASK-018 implemented and verified: VER-0008, REV-0010. Ten new tests, B3 suite 48 -> 58."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "CHG-008: TASK-019 historical session evidence (CONV-009), TASK-020 repository-wide scope validation (CONV-008 residual), TASK-021 meta-artefact scope model."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "CHG-008 complete: TASK-019, TASK-020, TASK-021 implemented and verified. VER-0009, REV-0011. B3 58 -> 70 tests, B2 89 -> 93."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "D1, human governance decisions, recorded 2026-09-08; role clarified by the approver 2026-09-08 as Product Owner",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "architecture",
+      "role": "Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "D3, human governance decisions, recorded 2026-09-08",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "security",
+      "role": "Application Security",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "D4, CONV-001 residual risk accepted with compensating controls",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "residualRisk",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "D5 CONV-003 and D7 CONV-009, accepted as bootstrap and historical limitations",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "residualRisk",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "CONV-012 accepted as a historical execution-process risk; scope CONV-012 only",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "residualRisk",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "CONV-014 accepted as a narrowly scoped historical bootstrap risk; non-precedential; scope CONV-014 only",
+      "date": "2026-09-08"
+    },
+    {
+      "gate": "convergence",
+      "role": "reviewer",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "D10 final human convergence acceptance, 2026-09-08. Verdict accepted: PASS WITH ACCEPTED LIMITATIONS. Phase B3 only; not production release, deployment, migration, destructive-operation or Phase B4 authorisation, and no compensating control waived.",
+      "date": "2026-09-08"
+    }
+  ],
+  "reviews": [
+    {
+      "reviewer": "Qualified Human Code Reviewer",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "D9, REV-0004"
+    },
+    {
+      "reviewer": "Qualified Human Code Reviewer",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "D9 addendum, REV-0009, post-D9 control-plane changes"
+    }
+  ],
+  "evidenceConflicts": []
+}

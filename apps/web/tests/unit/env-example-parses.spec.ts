@@ -29,7 +29,11 @@ const root = path.resolve(__dirname, '../..');
 /** `KEY=value` lines only — comments, blanks and `export ` prefixes are not input. */
 function parseEnvFile(file: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const line of readFileSync(path.join(root, file), 'utf8').split('\n')) {
+  // Split on either line ending. On a CRLF checkout `split('\n')` leaves a
+  // trailing `\r`, and the pattern below ends `(.*)$` — `.` excludes line
+  // terminators and `$` without the `m` flag anchors to end-of-input — so no
+  // line matched and the file appeared to declare nothing at all.
+  for (const line of readFileSync(path.join(root, file), 'utf8').split(/\r?\n/)) {
     const match = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
     if (!match) continue;
     // Values are taken verbatim, quotes and all, because that is what

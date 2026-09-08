@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0003",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": "ASES-0003",
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b4-independent-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Both declared defects are actually fixed, and the tests prove it rather than assert it. E2E-005 checks the region exists and is empty before any query, then carries the no-match message. That is exactly the pair of defects SPEC-0003 was written for.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "ACC-003, ACC-004"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "No ARIA was added where native semantics already worked. The input keeps type=search for its role and a real label element for its name; no role, aria-label or aria-labelledby was introduced. Only aria-live and aria-hidden were added, and both values are literals with no user-controlled input.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "ACC-001, ACC-002"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The live region updates on every keystroke and, at zero matches, appends the full sentence 'Nothing on this page matches. Clear the box to see every row again.' Typing three characters that match nothing produces three announcements each ending in that sentence. This is louder than the previous behaviour, which never announced the message at all. FR-005 forbids introducing a debounce, so it cannot be resolved inside this specification.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "ACC-004, FR-005"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The visible count and the visible message are now aria-hidden, so a screen-reader user browsing the page statically reads both from the visually hidden region rather than at their visual position. This is the conventional pattern for a visible/announced pair and avoids double-speaking, but it does move where that text sits in the reading order.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "AD-006"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "E2E-006 asserts against /platform/audit, and WorkspaceTable renders no search box until a table has eight rows or more. The case passed, but that row count is a property of accumulated audit data rather than something the suite establishes for itself, so it could fail on a freshly reset database.",
+      "artifact": "apps/web/tests/e2e/tablesearch-a11y.spec.ts",
+      "reference": "E2E-006, AC-007"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "AD-006 is a genuine deviation from AD-003's literal wording and is declared as one in plan.md rather than taken quietly. Implementing AD-003 literally would have relocated the visible message beside the search input, which NFR-003 forbids; two approved statements conflicted and the conflict was recorded rather than resolved by silent preference.",
+      "artifact": "specs/SPEC-0003-tablesearch-accessibility/plan.md",
+      "reference": "AD-003, AD-006, NFR-003"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Scope discipline held in both directions. ASES-0001 declared apps/web/tests/ prohibited, so the implementing session could not write its own passing test; ASES-0002 declared apps/web/src/ prohibited, so the testing session could not edit the component to make a test pass. Both scope-checks returned PASS with attribution SESSION 1.",
+      "artifact": "specs/SPEC-0003-tablesearch-accessibility/execution/ASES-0002.json",
+      "reference": "TASK-001, TASK-003"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "No overengineering. The diff is 19 added lines of which 10 are comment, one extracted string constant, one new element, and two attribute changes. No abstraction, no dependency, no debounce, no keyboard handler, no clear button. FR-006 verified: zero matches for onKey, keydown, keyup, Escape or addEventListener in the component.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "FR-006, NFR-001, NFR-004"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Security screen found nothing. No dangerouslySetInnerHTML, innerHTML, eval, fetch, prisma, process.env, localStorage, sessionStorage, document.cookie or window.location in the diff. The search query is deliberately not interpolated into the live region; only row counts and a module constant reach it. No .focus() call, so no focus theft; no key handler, so no keyboard trap introduced. E2E-001 proves focus enters and leaves in both directions.",
+      "artifact": "apps/web/src/components/workspace/TableSearch.tsx",
+      "reference": "DATA-001, ACC-005"
+    }
+  ],
+  "notes": [
+    "APPROVE for the work as scoped. Every requirement that survived the CL-001 withdrawals is met, all seven Playwright cases pass in a real browser, and nothing outside the two authorised files changed.",
+    "Reviewed under an actor distinct from both implementing sessions and from the tester, per SDD-V051.",
+    "This is an AI review. It satisfies no human gate. R2 requires one human code reviewer under docs/sdd/RISK_TO_PROCESS_MATRIX.md, and that review has not happened. The two MINOR findings about announcement verbosity and reading order are the ones most worth a human's judgement, because both are matters of taste that a browser test cannot settle.",
+    "No real screen reader was exercised anywhere in this pilot. The evidence is the browser accessibility tree as Playwright reads it, and that is what the specification claims - nothing more."
+  ]
+}

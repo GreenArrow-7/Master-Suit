@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0007",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0006",
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b3-independent-reviewer",
+  "decision": "REQUEST_CHANGES",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "summary": "SPEC-0002 fails its own new rule: SDD-V060 reports the specification approval as dated after implementation began. validate --all returns 1 error and the B2 self-check IT-005/006 fails. This blocks D10 under the stated eligibility criteria.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/sdd.json",
+      "reference": "CONV-011"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Gate separation is sound. SDD-V059 governs specification approval, SDD-V020 governs R4/R5 implementation readiness, and UT-035 asserts the latter is unchanged and not re-reported as the former.",
+      "artifact": "tools/sdd/lib/validate.mjs",
+      "reference": "TASK-015"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Every rejection path is exercised: absent, malformed, not approved, ai actor, cross-specification evidence, and unpermitted role. Each returns a distinct reason and none echoes artefact content.",
+      "artifact": "tools/sdd/lib/approvals.mjs",
+      "reference": "SEC-004"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "Gate 1 at R4/R5 requires Product Owner AND Solution Architect and remains unenforced. Named explicitly in VALIDATION_RULES.md as not covered, so it is a known gap rather than an assumed one.",
+      "artifact": "docs/sdd/VALIDATION_RULES.md",
+      "reference": "TASK-015"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The cross-specification check reads evidenceRef text. A record with no evidenceRef cannot be caught this way; the field is free text and not a structural binding.",
+      "artifact": "tools/sdd/lib/approvals.mjs",
+      "reference": "UT-032"
+    }
+  ],
+  "notes": [
+    "REQUEST_CHANGES because a blocking condition now exists, not because the implementation is wrong. The implementation is correct; it correctly indicts the specification that commissioned it.",
+    "The only legitimate routes are a human-approved scoped exception under docs/sdd/VALIDATION_EXCEPTIONS.md, or a human decision to accept the failing state. Softening SDD-V060 is not one of them.",
+    "Reviewed under an actor distinct from the implementing session b3-approval-enforcement and the tester, per SDD-V051.",
+    "This is an AI review and satisfies no human gate."
+  ]
+}

@@ -1,0 +1,61 @@
+# git status --porcelain (captured 2026-09-07T16:41:00Z)
+
+ M apps/web/src/app/(auth)/login/LoginForm.tsx
+ M apps/web/src/app/(auth)/login/page.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/dashboard/page.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/layout.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/LeadImport.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/[id]/LeadDetail.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page.tsx
+ M apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/page.tsx
+ M apps/web/src/app/globals.css
+ M apps/web/src/app/icon.svg
+ M apps/web/src/app/layout.tsx
+ M apps/web/src/app/manifest.ts
+ M apps/web/src/components/assistant/AssistantWidget.tsx
+ M apps/web/src/components/auth/AuthShell.tsx
+ M apps/web/src/components/brand/YouhanMark.tsx
+ M apps/web/src/components/nav/CommandPalette.tsx
+ M apps/web/src/components/nav/TopBar.tsx
+ M apps/web/src/components/platform/SupportModeBanner.tsx
+ M apps/web/src/components/ui/AiInsight.tsx
+ M apps/web/src/components/ui/Badge.tsx
+ M apps/web/src/components/ui/EmptyState.tsx
+ M apps/web/src/components/ui/MetricCard.tsx
+ M apps/web/src/components/ui/PageHeader.tsx
+ M apps/web/src/components/ui/StageRail.tsx
+ M apps/web/src/components/workspace/ColumnEditor.tsx
+ M apps/web/src/components/workspace/ConfigurableGrid.tsx
+ M apps/web/src/components/workspace/ListHeader.tsx
+ M apps/web/src/components/workspace/MobileTabBar.tsx
+ M apps/web/src/components/workspace/Pager.tsx
+ M apps/web/src/components/workspace/WorkspaceSidebar.tsx
+ M apps/web/src/components/workspace/WorkspaceTopBar.tsx
+ M apps/web/src/lib/nav/workspaceNav.ts
+ M apps/web/src/styles/tokens.css
+?? AGENTS.md
+?? CLAUDE.md
+?? apps/web/src/app/(workspace)/[workspaceSlug]/ai/
+?? apps/web/src/lib/nav/modKey.ts
+?? docs/EVIDENCE_CONFLICTS.md
+?? docs/PHASE_A_GAP_ANALYSIS.md
+?? docs/RISK_CLASSIFICATION.md
+?? docs/SYSTEM_INVENTORY.md
+?? docs/architecture/
+?? docs/evidence/phase-a-foundation/
+?? docs/evidence/phase-b1-sdd-foundation/
+?? docs/evidence/phase-b2-sdd-verification-enforcement/
+?? docs/operations/
+?? docs/sdd/
+?? docs/security/
+?? docs/standards/
+?? sdd.config.json
+?? specs/
+?? tools/
+
+# counts
+modified tracked: 34
+untracked: 19
+
+# Every " M" entry is the PRE-EXISTING UI redesign, untouched by Phase B2.

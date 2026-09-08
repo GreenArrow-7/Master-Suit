@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0008",
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "spec0004-security-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "SEC-001 holds. Every assertion in the two touched security test files was compared against its original. guarded-prologue keeps its detection pattern byte-for-byte and changes only how the exemption set is compared. observability keeps the 0o600 requirement verbatim and now runs it in its own case, so the portable half of the invariant is not lost with it. Nothing was deleted, loosened or replaced by a weaker matcher.",
+      "artifact": "apps/web/tests/security/guarded-prologue.spec.ts",
+      "reference": "SEC-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "SEC-002 holds and is the strongest outcome here. The tool-permission check previously examined 39,757 characters of a 45,552-character file per tool, so every tool appeared to read every model and the check proved nothing while failing loudly. It now examines a 2,752-character body. ST-002 pins that with three assertions, including that no tool body may exceed half the file.",
+      "artifact": "apps/web/tests/security/assistant-guardrails.spec.ts",
+      "reference": "SEC-002"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "No AI permission model was touched. The 11 failures were a test extraction defect, not drift; searchLeads reads exactly prisma.lead and always did. SPEC-0003/CONV-011 recorded the opposite and is corrected in the readiness evidence, without rewriting the closed pilot.",
+      "artifact": "apps/web/src/lib/ai/assistant/tools.ts",
+      "reference": "CONV-011"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The bootstrap fails closed on three independent conditions and each was probed: a non-loopback host, a database whose name does not identify it as a test database, and a name containing prod, staging, stage or live. It creates no migration, touches no schema file, and surfaces only an error type on failure because a Prisma message can embed a connection string.",
+      "artifact": "apps/web/scripts/prepare-test-db.mjs",
+      "reference": "NFR-004"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The permission-catalogue fix creates exactly the rows it created before. The P2002 branch re-reads the row the winner created and rethrows if it is somehow absent, so a losing writer cannot silently proceed without a permission. No role gains anything it did not already have.",
+      "artifact": "apps/web/tests/helpers/fixtures.ts",
+      "reference": "TASK-009"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The Playwright remedy is a readiness probe, not a mask. It waits for a determinate condition and stops; retries stays 0, no timeout was raised, and no sleep replaces a real wait. apps/web/src/ is prohibited for TASK-008, so no authentication product behaviour could change - and none did.",
+      "artifact": "apps/web/tests/e2e/helpers.ts",
+      "reference": "NFR-006"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The two POSIX mode assertions never execute on this workstation, so their continued correctness rests on CI running Linux. EVC-014 records that as DOCUMENTED rather than measured, and it was not measured here either. A regression in those two would be invisible locally.",
+      "artifact": "apps/web/tests/unit/observability.spec.ts",
+      "reference": "REG-005"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The readiness probe warms one workspace route by requesting a slug that does not exist. It is discarded without assertion, which is correct, but it does mean a genuinely broken workspace route would not be caught by the probe - only by the test that later uses it.",
+      "artifact": "apps/web/tests/e2e/helpers.ts",
+      "reference": "FR-008"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "NFR-002 holds: no file under apps/web/src/ was changed. RC-4 was not repaired, not downgraded and not bundled; it remains at R4 with its own decision packet. EVC-016 was not renamed, broadened or repurposed.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "NFR-002"
+    }
+  ],
+  "notes": [
+    "APPROVE for SPEC-0004 as scoped. 20 of 24 failures fixed at the cause, no assertion weakened, no product code touched, and the four remaining failures are reported as blocked rather than silenced.",
+    "Reviewed under an actor distinct from every implementing session and from the tester, per SDD-V051.",
+    "This is an AI review. It satisfies no human gate. R2 requires one human code reviewer and a convergence acceptance; neither has happened.",
+    "The two MINOR findings are the ones worth a human eye: both are places where the change is correct but its correctness is not observable from this platform."
+  ]
+}

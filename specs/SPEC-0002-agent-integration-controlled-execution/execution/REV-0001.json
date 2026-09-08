@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": null,
+  "reviewType": "convergence-review",
+  "reviewerRole": "CONVERGENCE_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b3-convergence-review",
+  "decision": "REQUEST_CHANGES",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "MAJOR",
+      "summary": "ST-002 in the SPEC-0001 suite fails: agent.mjs and its test import child_process outside the reviewed allowlist. Code is safe; the allowlist is stale.",
+      "artifact": "tools/sdd/tests/validator.test.mjs",
+      "reference": "CONV-006"
+    },
+    {
+      "severity": "MAJOR",
+      "summary": "scopeFindings does not subtract the session initialChangedPaths, so scope-check attributes pre-existing dirty files to the agent.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-007"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "One session governs one task of ten. The bootstrap boundary is stated rather than disguised, but it is not a governed phase.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/convergence.md",
+      "reference": "CONV-003"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Separation of duty here is two labels, not two minds. This review is itself an example.",
+      "artifact": "docs/sdd/AGENT_ROLE_MODEL.md",
+      "reference": "CONV-001"
+    }
+  ],
+  "notes": [
+    "REQUEST_CHANGES, not APPROVE: two open defects were found in the session's own output and neither was fixed.",
+    "This is an AI review under a different actor label. It satisfies no human gate and does not discharge convergence acceptance at R3.",
+    "The reviewer and the executing session share a model. Correlated blind spots are not excluded by this review."
+  ]
+}

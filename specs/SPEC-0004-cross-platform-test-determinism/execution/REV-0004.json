@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0004",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0011",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "human",
+  "actorId": "GreenArrow-7",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Six MINOR findings from REV-0003 were carried into this review and none was made a condition of approval: CR-001 the deadline message blames compilation for what may be a 5xx; CR-002 one deadline shared across four sequential probes; CR-003 a case named byte-identical now compares LF-normalised text; CR-004 the POSIX split re-runs the entrypoint script; CR-005 ensurePermission declared above the constants it types against; CR-006 ST-002 bounds are ratios of file length.",
+      "artifact": "docs/evidence/phase-b4-pilot2-readiness/16-spec0004-code-review-packet.md",
+      "reference": "REV-0003"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Confirmed unchanged by SPEC-0004: apps/web/src application code, Prisma schema, migrations, authentication behaviour, authorization behaviour, tenant isolation, dependency versions, lockfile, and production and staging infrastructure. Evidence is in packet 16 with the command output behind each claim.",
+      "artifact": "docs/evidence/phase-b4-pilot2-readiness/16-spec0004-code-review-packet.md",
+      "reference": "CONV-001"
+    }
+  ],
+  "notes": [
+    "This record discharges the R2 human code-review gate. RISK_TO_PROCESS_MATRIX.md requires 1 reviewer at R2; this is that reviewer. CONV-001 moves to RESOLVED.",
+    "PROVENANCE, stated plainly so a later auditor can weigh it. The decision was made by a human, GreenArrow-7, and given explicitly in session on 2026-09-08 as 'APPROVE the SPEC-0004 code review as the human reviewer'. The JSON file was written by an AI agent transcribing that decision. The agent did not make the decision and does not hold the reviewer role. If this project requires the record file itself to be authored by the human rather than transcribed, this record should be re-created by them.",
+    "What the decision rests on: the regenerated final-diff packet at docs/evidence/phase-b4-pilot2-readiness/16-spec0004-code-review-packet.md, which groups all ten changed files as TEST, SCRIPT, DOC and HARNESS, names the task and requirement behind each, and carries the nine findings from REV-0003. The agent did not witness a line-by-line reading and does not assert one.",
+    "Scope of this gate: the code review only. It is NOT convergence acceptance, which is gate 6 and is recorded separately. It does not disposition CONV-002 (the POSIX platform limitation) and it does not decide CONV-006 (whether db:test:prepare should seed). Both remain OPEN, so SPEC-0004 does not converge on the strength of this record.",
+    "REV-0001, REV-0002 and REV-0003 are not overwritten or superseded. All three are AI reviews with satisfiesHumanGate false and remain in the record as the engineering opinions they were."
+  ]
+}

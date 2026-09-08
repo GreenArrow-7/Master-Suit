@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0001",
+  "slug": "sdd-verification-enforcement",
+  "kind": "change",
+  "risk": "R3",
+  "status": "CONVERGED",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-07",
+      "note": "CL-001 to CL-005 raised"
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-07",
+      "note": "CHG-001 scope change: apply the CI workflow"
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-07"
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "spec.md#approval",
+      "date": "2026-09-07"
+    },
+    {
+      "gate": "architecture",
+      "role": "Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "spec.md#approval",
+      "date": "2026-09-07"
+    },
+    {
+      "gate": "architecture",
+      "role": "DevOps / Production Engineering",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "change-record.md#chg-001",
+      "date": "2026-09-07"
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": [
+    "EVC-014"
+  ]
+}

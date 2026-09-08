@@ -1,0 +1,32 @@
+# Phase A deliverable files — existence, size, line count, sha256
+# captured 2026-09-07T15:10:46Z at commit f16ed67
+# includes the EQ-05 / EQ-06 wording corrections recorded in evidence-audit.md
+
+PRESENT  AGENTS.md                                         9832 bytes    182 lines  sha256=1ec3dad497d85d259e5bbf521a9bf7cdc2bce6af33b422f39e04c773ae31ecb9
+PRESENT  CLAUDE.md                                         3770 bytes     78 lines  sha256=a012dd809979e91ca18852cbf5d91f93827a19715824746b13fc6b5336f86748
+PRESENT  docs/SYSTEM_INVENTORY.md                         17509 bytes    223 lines  sha256=fe327f71e8e6d8627faa7338552da7edf2b777d36a26be3fb845f9945cc7bd58
+PRESENT  docs/PHASE_A_GAP_ANALYSIS.md                     16115 bytes    298 lines  sha256=18140d5c94f5eaaed9f26df8c2ee7ebe011caa4928f5276e0d2ce18574ccecc1
+PRESENT  docs/RISK_CLASSIFICATION.md                       3659 bytes     42 lines  sha256=ea3bfdc939c089e0a526983be2e97c00fb8863c90f9aedb83a36f048afeba070
+PRESENT  docs/EVIDENCE_CONFLICTS.md                       19698 bytes    445 lines  sha256=49200b724ab8bdc8fb0adfcf15666c232d98c10ddb339d63b25ba4932a729eb8
+PRESENT  docs/architecture/SYSTEM_OVERVIEW.md              7745 bytes    157 lines  sha256=388f589d100a8029d6a5fb56556a1fb11c7f0cdfe6dd00f345d5fde97b45da68
+PRESENT  docs/architecture/FRONTEND.md                     5919 bytes    114 lines  sha256=55f6e643d9f2d12fbcca40c3265bca17e5bb91d4d3e946a1397d5f5775432745
+PRESENT  docs/architecture/BACKEND.md                      8007 bytes    152 lines  sha256=2714074accfe0b81d91d5e1082e7f16d6c1ab68235faf4dda41118f5b1c6875b
+PRESENT  docs/architecture/DATABASE.md                     8883 bytes    137 lines  sha256=5747a8631752120b81a5f18aa3ce541c5f8ca88c97bef4d244f7e0d0beb081a0
+PRESENT  docs/architecture/DATA_FLOW.md                    8144 bytes    171 lines  sha256=bfe57cab17c55b1eed9d3ad10a1d93deb55f5c6ece7637e3c576d37d19c831e8
+PRESENT  docs/architecture/INTEGRATIONS.md                 8825 bytes     57 lines  sha256=62dde3a827dffe503a963671d2b274c73896c0e713c36d26a18180a348d4d050
+PRESENT  docs/security/SECURITY_MODEL.md                   7398 bytes    110 lines  sha256=192f75f81395592223f6ee9f63f27989e0b6991cd8f55399ccc5f6b58a43d072
+PRESENT  docs/security/AUTHENTICATION.md                   7030 bytes    143 lines  sha256=221fd52064a17bd944e6ee9bc3c986d57a9958c9a68cfd57abb21ea1167ed14a
+PRESENT  docs/security/AUTHORIZATION.md                    5859 bytes     96 lines  sha256=18be908f6a652cf94f1ebc35d6905492f46e83fc1c9bfa3db39ffeff62cb3301
+PRESENT  docs/security/SECRETS_AND_CONFIG.md               7641 bytes    108 lines  sha256=e11863f03e514ffb0269310ce89eba15c5f8fdffb86643e990a0f433deb85424
+PRESENT  docs/security/SECURITY_OBSERVATIONS.md            7859 bytes    144 lines  sha256=a79f1cff3612459cd28ae6abeb7177ac7a54002f8f360054cd2937ba8dc8cca7
+PRESENT  docs/operations/ENVIRONMENTS.md                   2786 bytes     41 lines  sha256=07b7847469781495ac4f8e480ff8e76a197286515dde4e888e64655851e8cd28
+PRESENT  docs/operations/DEPLOYMENT.md                     5423 bytes    105 lines  sha256=9103ab8170154182f51e674e922d9b7024a0e41c1624ffa7614c9929a515b803
+PRESENT  docs/operations/BACKUP_RESTORE.md                 3608 bytes     75 lines  sha256=ff0fc360b9505dcd416eaaefc086e42552fab562fe82e4bd252ee2201c971da6
+PRESENT  docs/operations/ROLLBACK.md                       2814 bytes     30 lines  sha256=d845ef3ef5563941da204ec309c450cbdd74d78c20fa0295d7eb23bd6b2961a0
+PRESENT  docs/operations/OBSERVABILITY.md                  4064 bytes     80 lines  sha256=aaa2cb592caa25b2ad7c20397cee71068522fbab5de6d9452ba5be288c5a2f6d
+PRESENT  docs/standards/CODING_STANDARDS.md                5316 bytes    114 lines  sha256=b56495edabb260b29158bda255d2e233039ad7b991a4e1a4921f8bf6e1ff7190
+PRESENT  docs/standards/API_STANDARDS.md                   4931 bytes    118 lines  sha256=283e8f9241fe16ee2054c80fb1cd2a70fffb04b55f9abdd192cb7d6cd10addfe
+PRESENT  docs/standards/ERROR_HANDLING.md                  3565 bytes     79 lines  sha256=b7393c022b9d6909a33418781ac4949d34167e67bbc1dc93338f1f81837a724a
+PRESENT  docs/standards/LOGGING.md                         3102 bytes     68 lines  sha256=11e1e9f0c2de4a32a4d12926ed79b5949c8e77abf427a955fb93433054183091
+
+expected 26 / present 26

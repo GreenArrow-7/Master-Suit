@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0000",
+  "specId": "SPEC-0000",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": null,
+  "taskIds": ["TASK-000"],
+  "startedFromCommit": "REPLACE-WITH-COMMIT",
+  "initialChangedPaths": [],
+  "allowedPaths": [],
+  "prohibitedPaths": [],
+  "requiredTests": [],
+  "verifiedTests": [],
+  "requiredApprovals": [],
+  "status": "READY",
+  "result": null,
+  "notes": [
+    "Prefer: node tools/sdd/cli.mjs agent create-session --spec SPEC-NNNN --role ROLE --task TASK-NNN",
+    "That command derives scope, tests and commit from the approved task and refuses to write when preflight fails.",
+    "Notes carry unexpected findings, scope deviations and new unknowns. Never command output, never a credential."
+  ]
+}

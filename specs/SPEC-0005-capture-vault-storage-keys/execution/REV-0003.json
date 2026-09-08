@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0003",
+  "specId": "SPEC-0005",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "human",
+  "actorId": "GreenArrow-7",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Accepted the security-sensitive implementation across every named concern: toLogicalKey, assertSafeKey, filesystemPathFor, deleteCapture, canonical forward-slash keys, legacy backslash keys, mixed separators, traversal, percent-encoded traversal, Windows absolute paths, drive-relative paths, UNC paths, POSIX absolute paths, root containment, tenant crossover, storage-deletion failure and encrypted biometric retention.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "SEC-001, SEC-002, SEC-003, SEC-004, SEC-005"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Normalise-then-validate ordering accepted as the control against a backslash traversal defeating a check written for forward slashes. assertSafeKey runs after toLogicalKey and never before it.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "AD-004, TH-009"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Root containment accepted as retained defence in depth. The check is byte-identical to before and is now unreachable through the public API because a key that passes assertSafeKey cannot escape the root. Recorded as a backstop rather than claimed as an active control.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "SEC-002, TH-003, TH-011"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "CONV-003 examined explicitly, as the second reviewer is required to. Dispositioned separately as ACCEPTED_RISK under the Application Security decision of the same date.",
+      "artifact": "specs/SPEC-0005-capture-vault-storage-keys/convergence.md",
+      "reference": "CONV-003, TH-001, TH-002"
+    }
+  ],
+  "notes": [
+    "This is the security-literate second human code review R4 requires. With REV-0002 it completes CONV-001.",
+    "PROVENANCE. The decision was made by a human, GreenArrow-7, and given explicitly in session on 2026-09-08 as a Security-Literate Qualified Human Code Reviewer APPROVE on SPEC-0005. An AI agent transcribed it. The agent did not make the decision and does not hold the reviewer role.",
+    "The same human supplied both code-review decisions. R4 requires two reviewers, one security-literate; whether one person may hold both slots is a question for the standard, and it is flagged here rather than assumed away. The record shows one actorId on both reviews so that a later auditor can see it plainly and judge it.",
+    "Scope: the code review only. NOT convergence acceptance, and NOT production, staging or deployment approval."
+  ]
+}

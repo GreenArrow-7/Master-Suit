@@ -69,8 +69,15 @@ const ALLOWED: Record<string, string> = {
 function bodyOf(name: string): string {
   const start = source.indexOf(`name: '${name}',`);
   expect(start, `tool ${name} not found in source`).toBeGreaterThan(-1);
-  const end = source.indexOf('\n  },\n', start);
-  return source.slice(start, end);
+  // Newline-agnostic. The delimiter was the literal `'\n  },\n'`, which never
+  // occurs in a CRLF checkout — `indexOf` returned -1 and `slice(start, -1)`
+  // handed back nearly the whole file, so every tool appeared to read every
+  // model mentioned after it and the check was vacuous where it mattered most.
+  const closer = /\r?\n {2}\},\r?\n/g;
+  closer.lastIndex = start;
+  const match = closer.exec(source);
+  expect(match, `tool ${name} has no closing delimiter`).not.toBeNull();
+  return source.slice(start, match!.index);
 }
 
 /**
@@ -101,6 +108,26 @@ describe('every tool declares what it reads', () => {
     // assertion below vacuously true.
     expect(TOOLS.length).toBeGreaterThanOrEqual(15);
     expect(modelsRead('getCalendar').length).toBeGreaterThan(0);
+  });
+
+  // ST-002 (SPEC-0004). The delimiter regression this file survived was worse
+  // than a red suite: `bodyOf` returned nearly the whole file, so every tool
+  // "read" every model and the coverage check below proved nothing while
+  // appearing to prove everything. A bounded body is the property that makes
+  // the rest of this file meaningful, so it is asserted rather than assumed.
+  it('extracts a bounded tool body, not the rest of the file', () => {
+    const body = bodyOf('searchLeads');
+    expect(body.length).toBeLessThan(source.length / 4);
+    expect(body).toContain("name: 'searchLeads'");
+
+    // searchLeads resolves leads and nothing else. If this ever grows, the
+    // tool genuinely reads more and its `requires` must say so.
+    expect(modelsRead('searchLeads')).toEqual(['lead']);
+
+    // Every tool must terminate; none may swallow its neighbours.
+    for (const tool of TOOLS) {
+      expect(bodyOf(tool.name).length, `${tool.name} body is unbounded`).toBeLessThan(source.length / 2);
+    }
   });
 
   it.each(TOOLS.map((t) => [t.name, t] as const))('%s covers every model it reads', (name, tool) => {

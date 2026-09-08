@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0001",
+  "taskIds": ["TASK-010"],
+  "tests": [
+    { "id": "REG-001", "outcome": "PASS", "note": "Agent read commands leave the fixture tree byte-identical" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "36 of 36 pass" },
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 1, "note": "53 of 54 pass; ST-002 fails, recorded as CONV-006" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" },
+    { "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0002 --session ASES-0001 --base HEAD", "exitCode": 1, "note": "reports pre-existing dirty files; defect recorded as CONV-007" }
+  ],
+  "result": "PARTIAL",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-tester-session",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "REG-001 is the only test TASK-010 requires, and it passes.",
+    "result is PARTIAL rather than PASS because two commands in the same run returned non-zero. Recording PASS on the strength of the required test alone would hide both.",
+    "ST-002 fails because B3 added a second legitimate git caller outside a SPEC-0001 security allowlist. The fix is outside TASK-010 scope and was not applied.",
+    "scope-check reports the 34 pre-existing application files as violations. The fix is outside TASK-010 scope and was not applied."
+  ]
+}

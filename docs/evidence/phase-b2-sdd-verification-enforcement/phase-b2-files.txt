@@ -1,0 +1,101 @@
+# Phase B2 artifact manifest — SHA-256 after all final edits
+# captured 2026-09-07T17:06:23Z at commit f16ed67
+# this manifest does not hash itself
+
+## Validator tooling — tools/sdd/ (30 files, including fixtures)
+tools/sdd/README.md                                                  3286 bytes    80 lines sha256=af4b793cd2d371252e6ebe8828d330795a4342062dac588bb1ff8a96598053cf
+tools/sdd/cli.mjs                                                    6758 bytes   213 lines sha256=a2e734bcd646fae623e8407ee471cc6b7cd723212ac5fc620b48256e2278bd74
+tools/sdd/lib/approvals.mjs                                          1791 bytes    62 lines sha256=4f2f36457feaba10520d063795176606a197c08bf8c40522b798e830860bf212
+tools/sdd/lib/diff.mjs                                               2338 bytes    70 lines sha256=ded505a3b1f9dad4702eb30ce75276117f38ba8ca32a24beb6e9a96cc64cfc21
+tools/sdd/lib/discover.mjs                                           4367 bytes   147 lines sha256=79666becda7244fa365bd269c7f37e8c0ff41a4036382a6d7295276974d74e8f
+tools/sdd/lib/lifecycle.mjs                                          3593 bytes   128 lines sha256=a7558a33a11270b90b0194dfa8d8e153280f6294fad9a1a23ab7a39771d1d881
+tools/sdd/lib/manifest.mjs                                           3696 bytes   118 lines sha256=b2016d904d3ba00fa18c249dfb8cfb7ba9f7a32775b72642043cb93213b2ce23
+tools/sdd/lib/markdown.mjs                                           4599 bytes   136 lines sha256=4c4acc6796a0bcc872f33c9767da51e94a3084e0444b93c1b437660b0a4dda51
+tools/sdd/lib/traceability.mjs                                       3729 bytes   106 lines sha256=138febea8ed32bb662a907a38a4ea6a7968a079fa7cf8e965241534d38db6cf7
+tools/sdd/lib/validate.mjs                                          18323 bytes   457 lines sha256=89b8e7bddae0f56ac6d9a837a1f8fb0f781f6c2858360fb6dfd5654dae3d6855
+tools/sdd/rules/rules.mjs                                            4383 bytes    64 lines sha256=e3cd7123baaccaf31c083cfbf7d391586466c6dca88e2be9e03cd1482c251d80
+tools/sdd/tests/fixtures/build-fixtures.mjs                         10520 bytes   344 lines sha256=fe1ef66ecd72678b4d4cb504add6568872c40498aa94062ead168b53dbcfed2e
+tools/sdd/tests/fixtures/valid/specs/SPEC-0001-lightweight-example/sdd.json   1104 bytes    57 lines sha256=3e7772ca6c085b7e605ff2ef2c79376bb7cde10503ab0b02584ef5bf14767ab8
+tools/sdd/tests/fixtures/valid/specs/SPEC-0001-lightweight-example/spec.md    411 bytes    27 lines sha256=c78904ef7af31dd1996ea1ab8814d73cd8765904c4d93a5b0656ba27e4dc1ce0
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/convergence.md    114 bytes     7 lines sha256=4c2a48278483feefdfe595341d84957e6524355f65e38e624ba49c1f56778c32
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/plan.md    144 bytes     8 lines sha256=c28cee3a660d553e4d318405ba113f62863587f04db402e8c1278f1993ea7c19
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/sdd.json   1478 bytes    74 lines sha256=65bd99aa1e8930ef05538c5452897f079b71967d92333759d3e5bfd303246a2f
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/spec.md    375 bytes    19 lines sha256=ef2873591405bcad4fbc1d6ac10453b772c6b17e36f6ec52ea82f1547031dbf2
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/tasks.md    161 bytes     8 lines sha256=ce3d5a40f1e4a1ad476ab318de2c11e0129950646225febb4d48d60058a71c4f
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/test-plan.md    178 bytes     6 lines sha256=16ed7a6bf4c0cce64890bdf93a8097fc7e0ed9285d66a6e87fe3ed6b9dc571a4
+tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/traceability.md    175 bytes     6 lines sha256=d11b8c4564e808199ce03a5d43979c3e9bc84c5df3f11ebf4ea2ec6a8584ac7d
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/clarifications.md    232 bytes     9 lines sha256=09607d95025738ff2055d63ea8fc6be5e9cbcb59059525e877d08ec84084a005
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/plan.md    146 bytes     8 lines sha256=ac9f791f2f3b0fab93e92dd821aaf825b16da4569c2170ae1bfd2bade2feb632
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/sdd.json   1625 bytes    77 lines sha256=5e07715af921e2737ab74322e28bfa297806a59d623bdccb21578f95a5a2f20d
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/spec.md    480 bytes    23 lines sha256=2a1dd4563cfbd2880cccb2237c644e98c553ae5d417aa877f77d4bec53c08e56
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/tasks.md    191 bytes     8 lines sha256=6f4f602c71bd5925bd7c0451e20267eb7a7a1771edbe560f6c8e30ecfb2bf3d6
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/test-plan.md    233 bytes     7 lines sha256=a26ecf7502f783a2049fb6272c9f7c2341a59ad65064a5457b148ffef5f6a984
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/threat-model.md    329 bytes    18 lines sha256=32cf1cf70cc2f75f9275f2940bd24b6c76a3afb8bcc0d7ae11c1e1acf001b4ee
+tools/sdd/tests/fixtures/valid/specs/SPEC-0003-security-example/traceability.md    300 bytes    11 lines sha256=645306c4c79bdc89e39df99755759416f1e4aec3289a1caab2d3c70909d468d3
+tools/sdd/tests/validator.test.mjs                                  21745 bytes   501 lines sha256=2b268a36adf00353e223f03cde807ca760179b136ace9104cbcc47d45d5ab801
+
+## Governing specification — SPEC-0001 (10 files)
+specs/SPEC-0001-sdd-verification-enforcement/change-record.md        3699 bytes    81 lines sha256=2fc29e3f42833924815ff6d0f733f7e0cf491ae9e0e4a2c2802781344d0da014
+specs/SPEC-0001-sdd-verification-enforcement/clarifications.md       6430 bytes   169 lines sha256=40f1a3fb94d8ed107235908627fe9e3c1e0eb241e9d6451f4232b3a30bd398d1
+specs/SPEC-0001-sdd-verification-enforcement/convergence.md          5608 bytes   110 lines sha256=aeadb1fb50407fc5d0c0a2866a50044fa0e36f3381dda7d47a6f12bc463d6374
+specs/SPEC-0001-sdd-verification-enforcement/plan.md                 6837 bytes   190 lines sha256=c4c05e1c11592e1dd5c379cd5aca1b2f0eda0bdbd3fc9600c46811649bb55674
+specs/SPEC-0001-sdd-verification-enforcement/sdd.json                2176 bytes   101 lines sha256=35674aaa24b89bd23e67bef78c33692590d68d28c639aa19f4915a610c47f18e
+specs/SPEC-0001-sdd-verification-enforcement/spec.md                11850 bytes   264 lines sha256=958b33921dfb203bf6007eb0d6e84ecb391f366c62655a2ad81dfcdc54d5daef
+specs/SPEC-0001-sdd-verification-enforcement/tasks.md                7435 bytes   178 lines sha256=22ccb1073ee438d5f447337719fa0ff7e8b925683faf1cc59c294f0ce802a9e8
+specs/SPEC-0001-sdd-verification-enforcement/test-plan.md            6336 bytes   141 lines sha256=1c358d3d9136e65d378ddfa10b5d28e836324684bb2122905ee081b5db127812
+specs/SPEC-0001-sdd-verification-enforcement/threat-model.md         7539 bytes   189 lines sha256=33227f30b68f00d10311c63865ebfc60c986bc1c84e7c10a94d6f2f34d92f9ee
+specs/SPEC-0001-sdd-verification-enforcement/traceability.md         4408 bytes    78 lines sha256=eea5783a8b25059c778dd8087b540bf6c9a4cd8c63ba6806036222105e411d38
+
+## Created by Phase B2 — documentation, configuration and CI (9)
+docs/sdd/MACHINE_CONTRACT.md                                         5600 bytes   155 lines sha256=76b9fd4afaafd3d024af5f7cd38a7cf187b62309b86b8e73c30a55b9e1417092
+docs/sdd/VALIDATION_RULES.md                                         6848 bytes   136 lines sha256=fa03f4ecc177806e24f82aa1ed01cb7eac3f4907fab3ae7c8fa3bb063db7c44f
+docs/sdd/ENFORCEMENT_STANDARD.md                                     6430 bytes   150 lines sha256=e9dc9a0c5708cc582151a6d916a91b7927bd0b3f66a67a9876b568cb30a03aa6
+docs/sdd/VALIDATION_EXCEPTIONS.md                                    3066 bytes    71 lines sha256=484672f0a0f6767bbca0977ebaf3a82bb032cf7c1a5eeb9ad01aef3eda27dc5d
+docs/sdd/CI_ENFORCEMENT.md                                           5005 bytes   134 lines sha256=9d5ffd35bf3b76ff76b80f50b28270c4e5a7513a126f858e990fa3907246cdf2
+docs/sdd/schemas/sdd-manifest.schema.json                            5275 bytes   128 lines sha256=2a22a92bdca4b824855b25612515c4b2352d676eed9d36a9c7a434edf0e282b9
+specs/templates/SDD_MANIFEST_TEMPLATE.json                            493 bytes    23 lines sha256=8d9bf3f3c9c706a01f180acafe39e51e1dc91c2edcc2c666a2d01ecd02ef045f
+sdd.config.json                                                       603 bytes    10 lines sha256=e831da3e6f1e47db8dc0319d407163e5870633b7ed34000590d6983538e857f6
+.github/workflows/sdd-validate.yml                                   1832 bytes    60 lines sha256=18c685c485f3c0f9920bf7dd7008c9d9808fa9fc0b024100c412074a36bd4891
+
+## Modified by Phase B2 — Phase A and B1 documents (10)
+AGENTS.md                                                           12355 bytes   220 lines sha256=592f5ed17def72405bd33bdf548977d875011c1d87e14b6d7178b8162b68aa26
+CLAUDE.md                                                            6243 bytes   116 lines sha256=be3fb9a0b41c4cd9f51e24d377ea8722f25d32cabb7e0009dfc9eff32245c5d6
+specs/README.md                                                      5528 bytes   121 lines sha256=73110016fc1ee63ec9eb911b86cd32c6a29ebae62377ba394aa463f4dcb2ddea
+specs/templates/SPEC_TEMPLATE.md                                     5739 bytes   184 lines sha256=0693211bf508d56b2eb5c1f06a4df0832ed48d30ca2aa74722e8e3ef17691f08
+docs/sdd/IDENTIFIER_STANDARD.md                                      5657 bytes   128 lines sha256=0805d66f80ef4321f6b1e8e01a1a4a6302bcad8ad52e0a4fc5e2ccfc993878bc
+docs/sdd/ARTIFACT_AUTHORITY.md                                       6942 bytes   136 lines sha256=dc779e8cc6e09e77f15353179ccab4c8d0b7771ed193f504cdfd7479d1115b59
+docs/sdd/SPEC_LIFECYCLE.md                                           6429 bytes   156 lines sha256=7d478d8eb681d8cdaebcfdf4c8babd583cd113a716b9573dcdc558a1ee19b342
+docs/sdd/TRACEABILITY_STANDARD.md                                    3979 bytes    95 lines sha256=02b8d4d253048cb59b7a7a3b42d6ee5cc2c2b3b6f2a10708222c563a79255ea9
+docs/sdd/HUMAN_APPROVAL_GATES.md                                     5678 bytes   119 lines sha256=e8a28bc889d1392d98c5a57f9fcc9f255d4215e785d455d3463b8a00cb0be0cf
+docs/sdd/SDD_WORKFLOW.md                                             9550 bytes   198 lines sha256=52d727bdcdbd292fb505c83a862f5d1d2e1e894935248e091d2110b1741174bc
+
+## Phase B2 verification evidence (27 hashed + this manifest = 28)
+docs/evidence/phase-b2-sdd-verification-enforcement/SUMMARY.md       4861 bytes    98 lines sha256=862caa088c7c36c7e81e05395add755b611ff876f8987f3177b3170301f9ebee
+docs/evidence/phase-b2-sdd-verification-enforcement/acceptance.md    7205 bytes   146 lines sha256=e101f59909a31ffa07ca1b50975467680b5a1db1716db092484656d12cab0db9
+docs/evidence/phase-b2-sdd-verification-enforcement/application-change-check.md   2961 bytes    61 lines sha256=6fa87053bfef1fc2d5fc8a41eaf9083cfc8dcb5ebf764176503529ee915db9d7
+docs/evidence/phase-b2-sdd-verification-enforcement/approval-validation-audit.md   3803 bytes    83 lines sha256=1b7719434b951a60e1c980567e0c5750ebe6849f298c62ee6a5598b512a1cceb
+docs/evidence/phase-b2-sdd-verification-enforcement/b2-spec-audit.md   6102 bytes   130 lines sha256=615d34404c4f09d47e4420d8b2ed42b32dc95c996103f26d3f797c7fbc358359
+docs/evidence/phase-b2-sdd-verification-enforcement/ci-enforcement-audit.md   4253 bytes    91 lines sha256=4d574388102201b6abde6d53022273e0d58de2900902e15a707918b6bc89677d
+docs/evidence/phase-b2-sdd-verification-enforcement/convergence-validation-audit.md   1841 bytes    44 lines sha256=c9fc02659ae2d4a569757cdde25a65bc16063774e12ad042733033d2a737901d
+docs/evidence/phase-b2-sdd-verification-enforcement/cross-reference-audit.md   2971 bytes    75 lines sha256=c90cc020869c7a70128c76928a8e2c9cb862776b4acfbfc07b26288638c0f87c
+docs/evidence/phase-b2-sdd-verification-enforcement/current-commit.txt    414 bytes    11 lines sha256=c5d0322f7345c2803dd12df9c31d49bb3ab8b4fbcb727c5132771a764514a1b9
+docs/evidence/phase-b2-sdd-verification-enforcement/dependency-change-check.md   1660 bytes    42 lines sha256=953c0b0c058515541069628a26bedbe1344efbff9bd875e8b545914be826f9d1
+docs/evidence/phase-b2-sdd-verification-enforcement/diff-aware-validation-audit.md   2791 bytes    72 lines sha256=d665d4a3445baba74041000ec1eb5b8369c0ffbaa0e80ee612d921bf877d49a8
+docs/evidence/phase-b2-sdd-verification-enforcement/git-diff-stat.txt   2373 bytes    40 lines sha256=cbb88a3e99a60d5878366e7be93558472dc890faac9b3c95922863d660d2668f
+docs/evidence/phase-b2-sdd-verification-enforcement/infrastructure-change-check.md   2193 bytes    51 lines sha256=f18f67ba212d0f33cf1f7b8a4091497b0a03417b975a32ff5c1e2b983a9124b8
+docs/evidence/phase-b2-sdd-verification-enforcement/invalid-fixture-results.md   4782 bytes    87 lines sha256=3cb41c1023d36e45e83b7b866c79231618d4b0b4d1e76c6f360834866f7ebc3f
+docs/evidence/phase-b2-sdd-verification-enforcement/known-limitations.md   4733 bytes   104 lines sha256=a9eb91f80fa8fe00a7b333c66af3e1e600dd4af28ea808cabd06c1f4a79d9464
+docs/evidence/phase-b2-sdd-verification-enforcement/lifecycle-validation-audit.md   2078 bytes    48 lines sha256=83b2dfe07c478ae71f32b3c8cb8b127bb86e0301b21d554a91cd1d9db0656b11
+docs/evidence/phase-b2-sdd-verification-enforcement/machine-contract-audit.md   2614 bytes    57 lines sha256=742a3a917fc8d971513f5ad71e62a85602f0f850e16fc7d5b5798ac466b8a73d
+docs/evidence/phase-b2-sdd-verification-enforcement/migration-change-check.md    872 bytes    26 lines sha256=9084c26c03c37d2e17183fc00949117a17519da7eba8b517e1fe87c1aa503f3f
+docs/evidence/phase-b2-sdd-verification-enforcement/performance-check.md   1799 bytes    47 lines sha256=22758c67dff1879bb2a675233e5add73a814ea09e09db9b11ef992cd68ac9ca7
+docs/evidence/phase-b2-sdd-verification-enforcement/repository-status.txt   2406 bytes    61 lines sha256=5cd0d04e195d830cabb2c34d04ce63c051472c81319a6e6bc5255c33f6a3d377
+docs/evidence/phase-b2-sdd-verification-enforcement/secret-scan-result.md   3284 bytes    84 lines sha256=f0212744cbdb6e97cc3afdd4209a336f88102e58c0d6cd896ce1f24973535118
+docs/evidence/phase-b2-sdd-verification-enforcement/security-review.md   6179 bytes    67 lines sha256=fb93e33cd679da94449b5d45e40d820908d8b8359f6dc02cb2e8787526891671
+docs/evidence/phase-b2-sdd-verification-enforcement/traceability-validation-audit.md   2266 bytes    50 lines sha256=406d7a6f6f05d54d7efc142fbe0431a6ffac7f6910c6bec55e56d0219ecc9ec3
+docs/evidence/phase-b2-sdd-verification-enforcement/transition-policy-audit.md   2341 bytes    56 lines sha256=980089a54550ae44a8e793195aa4abc0965ac0f8da7615d31ba8e224712b63da
+docs/evidence/phase-b2-sdd-verification-enforcement/valid-fixture-results.md   2051 bytes    49 lines sha256=81d3fe593319f4541af1d241623df78cb9c0d9247768cd42e89601504debf79c
+docs/evidence/phase-b2-sdd-verification-enforcement/validation-rule-audit.md   2592 bytes    62 lines sha256=b48355b9fc1604a7f71a4899c08fa993cf91398ddfb2bcc10e6898b99f56d02b
+docs/evidence/phase-b2-sdd-verification-enforcement/validator-test-results.md   5655 bytes   121 lines sha256=32f7ecbfa429e37b1a1f07fe1a1eede3e0105bd551738c5c04607f300cb6e920
+
+totals: tooling 30 · spec 10 · new 9 · modified 10 · evidence 28

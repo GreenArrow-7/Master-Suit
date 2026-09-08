@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0003",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0012",
+  "taskIds": ["TASK-004", "TASK-006", "TASK-008", "TASK-009"],
+  "tests": [
+    {
+      "id": "IT-005",
+      "outcome": "PASS",
+      "note": "5 of 5, 7 passed each. Cold runs 1-3 each began with port 3000 confirmed free (every listener killed and the port polled until nothing answered), so Playwright spawned its own dev server; runs 4 and 5 reused a server left running. This supersedes VER-0002's 4 of 5, which was against the previous readiness implementation."
+    },
+    {
+      "id": "IT-001",
+      "outcome": "PASS",
+      "note": "db:test:reset from empty: database dropped and recreated, 65 migrations applied, seed applied. 25s."
+    },
+    {
+      "id": "IT-002",
+      "outcome": "PASS",
+      "note": "second consecutive db:test:prepare: 'already exists; leaving its data alone', 'No pending migrations to apply', seed re-applied idempotently. 8s. Nothing destroyed."
+    },
+    {
+      "id": "IT-003",
+      "outcome": "PASS",
+      "note": "prepare never drops; reset announces the drop by name. Unchanged by the seed addition."
+    },
+    {
+      "id": "IT-006",
+      "outcome": "PASS",
+      "note": "Full suite from the CI-equivalent baseline: 1914 passed, 4 failed, 2 skipped of 1920. Separately, the full suite against a genuinely empty permission catalogue (dropped, migrated, NOT seeded): 1913 passed, 4 failed, 3 skipped, zero skipped files - so the ensurePermission P2002 race fix still holds where the race is actually possible."
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx playwright test tests/e2e/tablesearch-a11y.spec.ts (x5, 3 cold-start cycles + 2 normal)",
+      "exitCode": 0,
+      "note": "run exit codes 0,0,0,0,0"
+    },
+    { "command": "npm run db:test:reset", "exitCode": 0, "note": "drop, create, 65 migrations, seed" },
+    { "command": "npm run db:test:prepare", "exitCode": 0, "note": "second run; no migration applied; seed idempotent" },
+    { "command": "npm test", "exitCode": 1, "note": "seeded baseline: 1914 passed, 4 failed, 2 skipped of 1920. The 4 are RC-4" },
+    { "command": "npm test", "exitCode": 1, "note": "empty-catalogue baseline: 1913 passed, 4 failed, 3 skipped of 1920. The 4 are RC-4" },
+    { "command": "npx tsc --noEmit", "exitCode": 0, "note": "clean" },
+    { "command": "npx eslint tests/e2e/helpers.ts", "exitCode": 0, "note": "clean" },
+    { "command": "node tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "93 of 93" },
+    { "command": "node tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "70 of 70" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "spec0004-rework",
+  "environment": "local, Windows 11, Node v24.18.0, next dev with Turbopack, loopback Docker PostgreSQL and Redis, master_saas_test prepared by db:test:prepare",
+  "notes": [
+    "CONV-004 remediation verified. warmApiRoutes polls all four required API routes until each answers as its own implementation says it should, instead of gating one and discarding another's status. Expected responses were measured on a cold dev server before being encoded: 405 for the POST-only login route, 401 application/problem+json for the two route()-wrapped workspace routes, 401 application/json for the platform-owner route.",
+    "The cold-start requirement was taken literally. Before each of the first three runs every listener on port 3000 was killed and the port polled until nothing answered, so route compilation genuinely started from nothing. Two earlier five-run checks were run against whatever server happened to exist; one of them was silently reusing a stray dev server left over from a previous probe, which is recorded here because it means those earlier numbers were measuring less than they claimed.",
+    "Seed parity verified. db:test:prepare now matches the CI sequence (migrate, then seed, then test). The one test that skipped locally and ran in CI - tests/permission/engagement-modules.spec.ts, 'grants each role exactly what it already had on leads - never more' - now executes and passes locally. Skips fall from 3 to 2, and the remaining 2 are the POSIX file-mode assertions.",
+    "The permission-catalogue race was re-proved where it can actually occur. Seeding removes the empty catalogue that made the race possible, so the seeded run no longer exercises it; a separate run against a dropped, migrated, unseeded database was used instead. 1913 passed, 4 failed, 3 skipped, zero skipped files - the same shape as before the seed change.",
+    "No assertion was weakened, no test deleted or skipped to reach any of these numbers, and no Playwright retry, sleep or raised timeout was added. retries stays 0.",
+    "The four remaining failures are RC-4 and are unchanged: they are a product defect in biometric capture path construction, classified R4, excluded from this specification by explicit human instruction, and specified separately as SPEC-0005 with no code written."
+  ]
+}

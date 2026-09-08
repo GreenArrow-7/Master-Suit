@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0006",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0006",
+  "taskIds": ["TASK-015"],
+  "tests": [
+    { "id": "UT-026", "outcome": "PASS", "note": "R3 with a Product Owner approval passes" },
+    { "id": "UT-027", "outcome": "PASS", "note": "R3 with a Solution Architect approval passes" },
+    { "id": "UT-028", "outcome": "PASS", "note": "no specification approval is rejected" },
+    { "id": "UT-029", "outcome": "PASS", "note": "actorType ai cannot satisfy the gate" },
+    { "id": "UT-030", "outcome": "PASS", "note": "unsupported role rejected" },
+    { "id": "UT-031", "outcome": "PASS", "note": "an approval for another gate does not satisfy it" },
+    { "id": "UT-032", "outcome": "PASS", "note": "an approval naming another specification does not satisfy it" },
+    { "id": "UT-033", "outcome": "PASS", "note": "malformed record rejected" },
+    { "id": "UT-034", "outcome": "PASS", "note": "R2 unaffected" },
+    { "id": "UT-035", "outcome": "PASS", "note": "R4/R5 implementation gate unchanged; SDD-V059 and SDD-V060 distinct; ordering reported rather than guessed" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 1, "note": "77 of 78 pass; IT-005/006 fails because SPEC-0002 now trips SDD-V060" },
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "48 of 48 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 1, "note": "1 error: SDD-V060 on SPEC-0002" },
+    { "command": "node tools/sdd/cli.mjs validate --all --root tools/sdd/tests/fixtures/valid", "exitCode": 0, "note": "all four valid fixtures clean, including the new R3 SPEC-0004" }
+  ],
+  "result": "PARTIAL",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "All ten required tests pass, plus three extra covering ordering and gate separation.",
+    "result is PARTIAL, not PASS: the suite and validate --all both return non-zero. Recording PASS on the strength of the required tests alone would hide a blocking condition.",
+    "SDD-V060 fires on SPEC-0002 because its specification approval is dated 2026-09-08 and it entered APPROVED_FOR_IMPLEMENTATION on 2026-09-07. This outcome was written into CHG-005 before the work began. The rule was not softened to avoid it.",
+    "SPEC-0001 passes both new rules: its approval is same-day, so ordering is not proven late.",
+    "SDD-V020 (R4/R5 implementation readiness) is unchanged and asserted unchanged by UT-035.",
+    "No machine-contract change was needed: gate is already an enumeration distinguishing specification from implementation."
+  ]
+}

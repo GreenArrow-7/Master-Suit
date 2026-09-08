@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0002",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0010",
+  "reviewerSessionId": "ASES-0012",
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "spec0004-rework-review",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "id": "RF-001",
+      "severity": "INFO",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "The readiness probe issues unauthenticated GETs to four API routes and asserts each is refused. It authenticates nothing, sends no credential, and reads no response body. It cannot weaken an authorization check because it never passes one.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "RF-002",
+      "severity": "MINOR",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "The probe encodes 401 as the expected answer for three routes. That is an authorization outcome, so a future change that accidentally made one of them anonymous would now break the probe rather than pass silently. This is a side benefit, not a designed control, and is recorded as such rather than claimed as a security test.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "RF-003",
+      "severity": "MINOR",
+      "file": "apps/web/scripts/prepare-test-db.mjs",
+      "summary": "The script now answers ALLOW_DEMO_SEED=yes on the operator's behalf. That gate exists because the seed provisions dozens of active, email-verified logins. It is answered only after the script's own loopback, test-database-name and deployed-marker checks have all passed, and the seed keeps its two independent gates (NODE_ENV and APP_ENV), neither of which this passes. The remaining risk is an operator whose .env.test points somewhere unexpected, which the loopback and name checks already refuse.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "RF-004",
+      "severity": "MAJOR",
+      "file": "apps/web/scripts/prepare-test-db.mjs",
+      "summary": "The seed ends by printing a banner containing the demo password shared by every seeded account. Inheriting its stdio would have made db:test:prepare print a credential, contradicting the script's own stated property. Fixed before this review closed: stdio is ['ignore','pipe','pipe'], the output is not echoed even on failure, and the failure path tells the operator to run the seed directly instead.",
+      "status": "RESOLVED"
+    },
+    {
+      "id": "RF-005",
+      "severity": "INFO",
+      "file": "apps/web/SETUP.md",
+      "summary": "Documentation only. It names no credential and no connection string, and it warns against the one substitution that would seed the wrong database.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "RF-006",
+      "severity": "INFO",
+      "file": "apps/web/tests/permission/engagement-modules.spec.ts",
+      "summary": "Not modified. The seed makes an existing authorization assertion execute that previously skipped: it proves the engagement migration granted no role more than its leads access. Coverage increases; no assertion changed.",
+      "status": "ACCEPTED"
+    }
+  ],
+  "notes": [
+    "Scope of this review: the rework delta only - apps/web/tests/e2e/helpers.ts, apps/web/scripts/prepare-test-db.mjs and apps/web/SETUP.md. REV-0001 covers the original diff and is not superseded.",
+    "No assertion was changed by this delta. The readiness probe contains no assertion at all; it throws on a timeout or on a contract mismatch, and both messages name what was seen.",
+    "No application source file was touched. apps/web/src/ was a prohibited path for both implementation sessions and scope-check attributes exactly one path to ASES-0010 and two to ASES-0011.",
+    "This review is actorType ai and satisfiesHumanGate false. It does not discharge the R2 human code review, which is CONV-001 and remains OPEN."
+  ]
+}

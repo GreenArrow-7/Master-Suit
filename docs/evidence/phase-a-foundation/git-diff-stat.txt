@@ -1,0 +1,39 @@
+ apps/web/src/app/(auth)/login/LoginForm.tsx        |   61 +-
+ apps/web/src/app/(auth)/login/page.tsx             |    6 +-
+ .../(workspace)/[workspaceSlug]/dashboard/page.tsx |  468 ++-
+ .../src/app/(workspace)/[workspaceSlug]/layout.tsx |   38 +-
+ .../[workspaceSlug]/sales/leads/LeadGrid.tsx       |  526 +--
+ .../[workspaceSlug]/sales/leads/LeadImport.tsx     |  147 +-
+ .../sales/leads/[id]/LeadDetail.tsx                | 1056 ++---
+ .../[workspaceSlug]/sales/leads/[id]/page.tsx      |   67 +-
+ .../[workspaceSlug]/sales/leads/page.tsx           |   48 +-
+ apps/web/src/app/globals.css                       | 4370 +++++++++++---------
+ apps/web/src/app/icon.svg                          |   22 +-
+ apps/web/src/app/layout.tsx                        |   25 +-
+ apps/web/src/app/manifest.ts                       |    4 +-
+ .../src/components/assistant/AssistantWidget.tsx   |   88 +-
+ apps/web/src/components/auth/AuthShell.tsx         |   82 +-
+ apps/web/src/components/brand/YouhanMark.tsx       |   39 +-
+ apps/web/src/components/nav/CommandPalette.tsx     |   23 +-
+ apps/web/src/components/nav/TopBar.tsx             |  295 +-
+ .../src/components/platform/SupportModeBanner.tsx  |   22 +-
+ apps/web/src/components/ui/AiInsight.tsx           |   43 +-
+ apps/web/src/components/ui/Badge.tsx               |   67 +-
+ apps/web/src/components/ui/EmptyState.tsx          |   18 +-
+ apps/web/src/components/ui/MetricCard.tsx          |   65 +-
+ apps/web/src/components/ui/PageHeader.tsx          |   13 +-
+ apps/web/src/components/ui/StageRail.tsx           |   49 +-
+ apps/web/src/components/workspace/ColumnEditor.tsx |  196 +-
+ .../src/components/workspace/ConfigurableGrid.tsx  |   26 +-
+ apps/web/src/components/workspace/ListHeader.tsx   |   35 +-
+ apps/web/src/components/workspace/MobileTabBar.tsx |   15 +-
+ apps/web/src/components/workspace/Pager.tsx        |   26 +-
+ .../src/components/workspace/WorkspaceSidebar.tsx  |  120 +-
+ .../src/components/workspace/WorkspaceTopBar.tsx   |   24 +-
+ apps/web/src/lib/nav/workspaceNav.ts               |  249 +-
+ apps/web/src/styles/tokens.css                     |  618 ++-
+ 34 files changed, 4874 insertions(+), 4077 deletions(-)
+
+# All entries above are PRE-EXISTING USER CHANGES (UI redesign), not Phase A.
+# Phase A added untracked documentation files only; they do not appear in
+# 'git diff --stat' because they are not tracked.

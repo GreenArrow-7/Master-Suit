@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0002",
+  "specId": "SPEC-0003",
+  "sessionId": "ASES-0004",
+  "taskIds": ["TASK-006"],
+  "tests": [
+    { "id": "E2E-006", "outcome": "PASS", "note": "Creates 8 departments through POST /hr/departments, asserts the table holds exactly 8 rows, then finds the searchbox by the default accessible name Search. 12.6s" },
+    { "id": "E2E-001", "outcome": "PASS", "note": "Re-run unchanged" },
+    { "id": "E2E-002", "outcome": "PASS", "note": "Re-run unchanged" },
+    { "id": "E2E-003", "outcome": "PASS", "note": "Re-run unchanged" },
+    { "id": "E2E-005", "outcome": "PASS", "note": "Re-run unchanged" },
+    { "id": "REG-001", "outcome": "PASS", "note": "Re-run unchanged" },
+    { "id": "REG-002", "outcome": "PASS", "note": "Re-run unchanged" }
+  ],
+  "commands": [
+    { "command": "npx tsc --noEmit", "exitCode": 0, "note": "whole app, clean" },
+    { "command": "npx eslint tests/e2e/tablesearch-a11y.spec.ts", "exitCode": 0, "note": "clean" },
+    { "command": "npm run docker:up", "exitCode": 0, "note": "loopback services restarted for the re-run" },
+    { "command": "npx playwright test tests/e2e/tablesearch-a11y.spec.ts", "exitCode": 0, "note": "7 passed in 1.2m, chromium, workers 1" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b4-conv006-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0, loopback Docker services, Chromium via Playwright 1.51",
+  "notes": [
+    "CONV-006 is remediated rather than accepted. E2E-006 no longer depends on any row it did not create: it creates exactly SEARCHABLE_FROM departments through an endpoint the product already exposes, asserts the table holds exactly that many, and only then looks for the search box.",
+    "The suite is now independent of accumulated data in every case. E2E-001 to E2E-005, REG-001 and REG-002 already established their own workspace; E2E-006 was the last case that borrowed state.",
+    "No dependency was added, no fixture file was created, no test-only route was introduced, and TableSearch.tsx was not touched - it is a prohibited path for TASK-006.",
+    "Residual: SEARCHABLE_FROM is stated in both WorkspaceTable.tsx and the spec file. If the component threshold changes the test fails loudly rather than silently passing, which is the safe direction, but the duplication is real and is recorded rather than hidden."
+  ]
+}

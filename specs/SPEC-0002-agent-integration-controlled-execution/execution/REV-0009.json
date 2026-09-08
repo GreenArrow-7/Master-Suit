@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0009",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0005",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "human",
+  "actorId": "qualified-human-code-reviewer-addendum",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [],
+  "notes": [
+    "Supplemental human code review of the post-D9 control-plane changes. ADDENDUM to REV-0004, which is not replaced and remains the record of the pre-D9 review.",
+    "The decision supplied was APPROVE. No findings, comments or rationale were stated by the reviewer, so none are recorded here and none are invented.",
+    "Scope, as set out in docs/evidence/phase-b3-agent-integration/d9-addendum-review-packet.md: the generic validation exception mechanism (tools/sdd/lib/exceptions.mjs), exception parsing, matching, scope enforcement and fail-closed handling, actorType and approving-role checks, cross-specification and cross-rule protection, SDD-V059, SDD-V060, late-approval ordering, the exact convergence verdict parser, duplicate and ambiguous verdict handling, the new B2 validator tests, the exception negative fixtures, and the TASK-016 invariant test.",
+    "Anchored to ASES-0005 because the reviewed code spans the post-D9 sessions ASES-0005 (TASK-014), ASES-0006 (TASK-015) and ASES-0007 (TASK-016), together with TASK-017, which ran outside a session and is recorded as CONV-014.",
+    "This is a human code-review decision only. It is not architecture approval, security risk acceptance, production approval, or final convergence acceptance.",
+    "Standing limitation, unchanged: actorType human is a self-declared label. This record proves a claim was made in a commit, not that a particular person made it."
+  ]
+}
