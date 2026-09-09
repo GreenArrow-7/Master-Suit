@@ -520,8 +520,8 @@ Affected documentation: `docs/RISK_CLASSIFICATION.md`,
 
 ### EVC-019 — May one qualified human fill both R4 reviewer slots?
 
-Status: **OPEN** · Severity: C2 · Release impact: **BLOCKING for any R4 change
-reaching merge**
+Status: **RESOLVED 2026-09-09** · Severity: C2 · Release impact: was **BLOCKING
+for any R4 change reaching merge**
 Domain: Engineering process · Affected component: human code review at R4
 
 Raised 2026-09-09 by the release owner while authorizing the `BUG-008`
@@ -558,18 +558,33 @@ this is answered. Any future `R4` change meets the same wall.
 Confidence: High that the ambiguity exists; the register takes no position on
 which reading is correct.
 
-**Required decision — the SDD standard owner / governance owner, and only
-them.** Exactly one of:
+## Decision
 
-- **YES** — distinct humans are required.
-- **NO** — the same qualified human may satisfy both reviewer slots.
+> **YES — two distinct human reviewers are required.**
 
-Record the decision, the deciding human's role, and the date, in the same shape
-`EVC-015`, `EVC-017` and `EVC-018` use.
+| Field | Value |
+|---|---|
+| Decision | `YES` — the two `R4` reviewer slots must be occupied by two distinct human persons |
+| Actor type | `human` |
+| Role | SDD standard owner / governance owner |
+| Date | 2026-09-09 |
+| Provenance | Given in session on 2026-09-09, in direct answer to this entry's bounded question, by the operator who confirmed they hold the governance-owner role. Transcribed by an AI agent, which did not choose the answer and was not offered the option to. |
 
-**Not permitted, and stated because the temptation is obvious:** an AI review
-may not occupy either slot, whichever way this is decided. No agent may answer
-this entry, and none has.
+**Reading now settled:** `R4`'s "2 reviewers, one security-literate" is a
+four-eyes control. One signature can never satisfy it, however qualified the
+signer. An AI review may not occupy either slot.
+
+**Consequence for `BUG-008`**, which is `R4` and implemented:
+
+| Requirement | Status |
+|---|---|
+| Reviewer 1 — human, security-literate | **outstanding** |
+| Reviewer 2 — human, distinct person | **outstanding** |
+| Application Security review (gate 3) | **outstanding**, and separate from both |
+
+`docs/RISK_CLASSIFICATION.md` and `docs/sdd/RISK_TO_PROCESS_MATRIX.md` are
+correct as written; this entry records which of their two readings governs, and
+neither document needs editing.
 
 ## Resolved Conflicts
 
