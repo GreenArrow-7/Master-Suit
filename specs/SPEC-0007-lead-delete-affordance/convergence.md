@@ -220,7 +220,7 @@ failed**, including:
 ### One self-inflicted failure on the way, and what it cost
 
 The first run after the `BUG-008` guard landed was **1 failed / 1934 passed**.
-`tests/tenant/ai-usage-console.spec.ts` renders that page as a plain function
+`apps/web/tests/tenant/ai-usage-console.spec.ts` renders that page as a plain function
 to assert its numbers, and `requirePlatformPage()` reads `headers()`, which
 needs a request scope.
 
