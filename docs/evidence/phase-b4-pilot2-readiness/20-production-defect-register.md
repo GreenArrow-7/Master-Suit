@@ -127,6 +127,7 @@ read-only evidence only.
 | `BUG-008` | The platform console's redirect body carries the control-plane page | `R4` | High if reached, latent | `REPRODUCED` — **not fixed**, stopped at the `R4` gate; `SEC-OBS-014` |
 | `BUG-009` | Task deletion is granted, filtered for, and unreachable | `R3` | Medium | `FIXING` — `405` before, `200` after |
 | `BUG-010` | Lead document upload | `R1` | None found | `CANNOT_REPRODUCE` — already implemented and secure; coverage added |
+| `BUG-011` | An administrator cannot delete a call | `R3` | Medium | `FIXING` — `405` before, `200` after; also closed a recording-media gap deletion would have exposed |
 
 
 ### BUG-004 — webhook rate-limit test races a fixed-window boundary
