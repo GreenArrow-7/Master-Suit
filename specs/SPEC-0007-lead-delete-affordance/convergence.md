@@ -201,6 +201,48 @@ and human-only (`docs/RISK_CLASSIFICATION.md`), so it is recorded for the
 owner rather than attempted: until a bucket exists on the runner, the storage
 half of document handling has no CI coverage anywhere.
 
+## Second authorization round — 2026-09-09, release owner
+
+`BUG-008` implemented, `EVC-005` repaired, monitoring restored, staging
+environment created, `EVC-019` filed, `EVC-004` packet assembled.
+
+### Full gate on `1d654cb` — every step green
+
+`gh run view 34379300553` → `success`. **Playwright: 55 passed, 1 skipped, 0
+failed**, including:
+
+| Assertion | Result |
+|---|---|
+| `REG-003` — a refused platform request returns no control-plane content in its body | **passed (336 ms)** |
+| `REG-001` — an administrator deletes a lead from the list | **passed (8.3 s)** |
+| `REG-002` — document upload | upload asserted; storage half skipped, CI has no bucket |
+
+### One self-inflicted failure on the way, and what it cost
+
+The first run after the `BUG-008` guard landed was **1 failed / 1934 passed**.
+`tests/tenant/ai-usage-console.spec.ts` renders that page as a plain function
+to assert its numbers, and `requirePlatformPage()` reads `headers()`, which
+needs a request scope.
+
+The fix was to split the gate from the body — `renderAiUsage` — so the gate
+stays unconditional on the route and a rendering assertion does not have to
+mint a session to make a rendering assertion. **Making the guard tolerate a
+missing request scope would have let authorization silently no-op, and was not
+considered.** Re-measured after the split: unauthorized requests to
+`/platform`, `/platform/ai-usage` and `/platform/users` all return ~16 KB with
+no marker; the owner still gets `200` and full content.
+
+### What the authorization did not buy
+
+- **Staging** — environment created; the three secrets are absent and, more to
+  the point, describe a host that does not exist. No credential fabricated.
+- **`EVC-004`** — evidence assembled and matching the baseline; the disposition
+  table is blank, and only Application Security may fill it.
+- **`EVC-019`** — filed as `OPEN`. `BUG-008` is `R4` and cannot merge until it
+  is answered.
+- **`BUG-008` AppSec review** — outstanding, and reserved to a human by the
+  same authorization that permitted the implementation.
+
 ## Verdict
 
 `CHG-001` through `CHG-004`: **converged**. `BUG-006` is fixed and has a test
