@@ -10,7 +10,7 @@
  * right. Refusing them by throwing them onto a sign-in screen while they are
  * signed in is what made it read as the application being broken.
  */
-import { expect, test } from '@playwright/test';
+import { expect, request as playwrightRequest, test } from '@playwright/test';
 import {
   createWorkspaceViaWizard,
   login,
@@ -80,6 +80,40 @@ test.describe('workspace creation, per persona', () => {
     await expect(alert).toBeVisible({ timeout: 30_000 });
     // The field, not just the verdict.
     await expect(alert).toContainText('enabledModules');
+  });
+
+  /**
+   * BUG-008 / SEC-OBS-014 regression, and it has to be asserted on the response
+   * body rather than on the screen.
+   *
+   * A layout cannot stop the page beneath it rendering. While the console's
+   * only gate was its layout, `GET /platform` answered `307` **with a body** —
+   * the fully rendered control plane, including workspace names, the owner's
+   * address and the platform security ledger — to a caller with no session at
+   * all. A browser follows the `Location` and displays none of it, so nothing
+   * that drives a browser can catch this. `curl` reads it, and so does this.
+   *
+   * `maxRedirects: 0` is the whole point: following the redirect would fetch
+   * the login page and find it clean.
+   */
+  test('a refused platform request returns no control-plane content in its body', async ({ baseURL }) => {
+    // A context of its own, with no storage state, so there is genuinely no session.
+    const anonymous = await playwrightRequest.newContext({ baseURL });
+    try {
+      for (const path of ['/platform', '/platform/workspaces', '/platform/users', '/platform/audit']) {
+        const response = await anonymous.get(path, { maxRedirects: 0 });
+        expect(response.status(), `${path} should refuse`).toBe(307);
+
+        const body = await response.text();
+        // Tied to a workspace this run actually created, so it cannot pass by
+        // the data merely being absent.
+        expect(body, `${path} leaked a workspace name`).not.toContain(host.displayName);
+        expect(body, `${path} leaked the platform owner`).not.toContain('Recent platform activity');
+        expect(body, `${path} leaked the security ledger`).not.toContain('Privileged without MFA');
+      }
+    } finally {
+      await anonymous.dispose();
+    }
   });
 
   /** CASE B — a company administrator. Denied, and told why. */

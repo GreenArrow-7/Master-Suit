@@ -2,12 +2,14 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PlatformRowActions from '@/components/platform/PlatformRowActions';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export const dynamic = 'force-dynamic';
 
 const SUBSCRIPTION_STATES = ['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELED'] as const;
 
 export default async function SubscriptionsPage() {
+  await requirePlatformPage();
   // Platform reads span every tenant, so they run with app.platform_admin set.
   // Without it the RLS policies match no rows and the console reported zero
   // employees, no modules and no subscriptions for perfectly healthy workspaces.
