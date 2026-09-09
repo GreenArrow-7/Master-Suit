@@ -270,3 +270,84 @@ ClamAV, and that is the only place they have ever been exercised.
 `.github/workflows/*` is `R5` in `docs/RISK_CLASSIFICATION.md` — human-only —
 so it is recorded here rather than attempted.
 
+---
+
+## Packet F — post-reboot durability. **IMPLEMENTED and lifecycle-tested.**
+
+### The recurrence risk, precisely
+
+Nothing brings this stack up at boot. Docker's `restart: unless-stopped` does,
+and it **restarts** containers — it never **recreates** them. A restarted
+container keeps the mount setup it was created with, which is why the
+2026-09-07 kernel change broke the only two services that depend on a `tmpfs`
+being reapplied.
+
+### What was implemented
+
+`scripts/recreate-runtime-services.sh` + `infra/systemd/master-suite-recreate-runtime.service`,
+a `oneshot` unit ordered `After=docker.service network-online.target`.
+
+**Scoped to `prometheus` and `alertmanager` only, and that is deliberate.**
+`docker-compose.prod.yml` resolves the application images as
+`${IMAGE_TAG:-dev}`. A whole-stack `up -d` at boot with `IMAGE_TAG` unset would
+silently recreate web and worker from `master-suite/web:dev` — a stale image
+that has already caused one outage on this host. Naming exactly the two
+services that need recreating means the application containers cannot be
+touched by the fallback.
+
+`IMAGE_TAG` is still resolved, because Compose interpolates the whole file
+before selecting services. It is read from a **running container**, never
+defaulted, and the script **fails closed** if it cannot be determined or
+resolves to `dev`.
+
+### Explicitly not done
+
+No root containers. No world-writable directories. No cron loop. No blind
+periodic restarts. It runs once, after Docker, and is a no-op when nothing
+needs recreating.
+
+### Lifecycle test — passed, without rebooting
+
+```
+systemctl start master-suite-recreate-runtime.service   →  Result=success, status=0
+  IMAGE_TAG=c879c6c7f7e8; recreating prometheus alertmanager
+  infra-prometheus-1   health=healthy  restarts=0   (recreated 18:00:25)
+  infra-alertmanager-1 health=healthy  restarts=0   (recreated 18:00:25)
+```
+
+| Check | Result |
+|---|---|
+| Correct tag resolved from a running container | `c879c6c7f7e8`, not `dev` |
+| Only the two services recreated | yes — new `Created` on both |
+| **Application containers untouched** | `infra-web-1` / `infra-worker-1` still `StartedAt 07:43:18`, same image |
+| Targets still scraping afterwards | `up{prometheus}=1`, `up{master-suite}=1` |
+| Fail-closed when the tag is unresolvable | exit `1`, Compose never invoked — tested with a shim |
+| Enabled at boot | `multi-user.target.wants` symlink created |
+
+**A real reboot has NOT been performed.** Proving the boot path end to end
+requires rebooting production, and that needs your explicit approval. Everything
+short of the reboot itself is tested.
+
+---
+
+## Packet G — monitoring self-detection. **DESIGNED, not implemented.**
+
+Prometheus cannot alert that Prometheus is down, and an Alertmanager that is
+down delivers nothing. The 2026-09-07 outage ran two days and was found by a
+person reading `docker ps`.
+
+Every option needs something **outside this host**, which is why none was
+implemented under an authorization scoped to this host:
+
+| Option | What it needs | Notes |
+|---|---|---|
+| External uptime check on `/api/health` | an external service | simplest; proves the app, not the monitoring |
+| Dead-man's switch (Healthchecks.io / Cronitor / equivalent) | an external endpoint + token | the standard answer: an always-firing alert routed out; **absence** is the signal |
+| Alertmanager heartbeat receiver on a second host | a second host | no external dependency, but there is no second host |
+| Host watchdog posting to an external collector | an external collector | independent of Prometheus entirely |
+
+**Release-impact classification: NOT release-blocking, but it is the control
+that would have caught this outage on day one rather than day three.** Recommend
+the dead-man's switch as a follow-up with a named owner. It cannot be closed
+from inside this host.
+
