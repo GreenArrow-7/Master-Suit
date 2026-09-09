@@ -518,6 +518,59 @@ Affected documentation: `docs/RISK_CLASSIFICATION.md`,
 
 ---
 
+### EVC-019 — May one qualified human fill both R4 reviewer slots?
+
+Status: **OPEN** · Severity: C2 · Release impact: **BLOCKING for any R4 change
+reaching merge**
+Domain: Engineering process · Affected component: human code review at R4
+
+Raised 2026-09-09 by the release owner while authorizing the `BUG-008`
+remediation, which is `R4` and therefore lands on this rule immediately.
+
+**The bounded question, and it is the only question here:**
+
+> For an `R4` change requiring "2 reviewers, one security-literate", must those
+> two reviewer slots be occupied by **two distinct human persons**?
+
+Evidence A — Level E4 — `docs/RISK_CLASSIFICATION.md`, row "Human code review",
+`R4` cell: **"2 reviewers (one security-literate)"**.
+
+Evidence B — Level E4 — `docs/sdd/RISK_TO_PROCESS_MATRIX.md`, same row, `R4`
+cell: **"2 reviewers, one security-literate"**. `R5` reads "2 reviewers plus the
+operator who will run it", which distinguishes a *third* participant by function
+and so implies the first two are also participants rather than roles — but it
+says so only by implication.
+
+Evidence C — Level E4 — neither document defines "reviewer" as a person, a
+role, or a distinct account. Nothing anywhere states that one individual holding
+both competencies may or may not satisfy both slots.
+
+**Why it cannot be inferred.** Read as *roles*, one suitably qualified engineer
+signs twice and the rule is satisfied. Read as *people*, it is a
+four-eyes control and one signature can never satisfy it. The two readings give
+opposite answers on the same change, and the difference is the entire value of
+the control — so picking one silently would be deciding the governance question
+rather than applying it.
+
+Material impact: `BUG-008` is `R4`, implemented, and cannot reach merge until
+this is answered. Any future `R4` change meets the same wall.
+
+Confidence: High that the ambiguity exists; the register takes no position on
+which reading is correct.
+
+**Required decision — the SDD standard owner / governance owner, and only
+them.** Exactly one of:
+
+- **YES** — distinct humans are required.
+- **NO** — the same qualified human may satisfy both reviewer slots.
+
+Record the decision, the deciding human's role, and the date, in the same shape
+`EVC-015`, `EVC-017` and `EVC-018` use.
+
+**Not permitted, and stated because the temptation is obvious:** an AI review
+may not occupy either slot, whichever way this is decided. No agent may answer
+this entry, and none has.
+
 ## Resolved Conflicts
 
 Resolved entries keep their original disagreement intact and gain a
