@@ -4,7 +4,7 @@
   "slug": "lead-delete-affordance",
   "kind": "bugfix",
   "risk": "R2",
-  "status": "IMPLEMENTING",
+  "status": "VERIFYING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": null,
@@ -56,6 +56,11 @@
       "status": "IMPLEMENTING",
       "date": "2026-09-09",
       "note": "Second pass against the four product requirements. Lead document upload investigated end to end and found already implemented and secure - BUG-010, no defect, coverage added. Task deletion implemented - BUG-009: tasks:DELETE was granted in production, Task.deletedAt existed, every list already filtered it, and the endpoint answered 405. Platform console denial UX fixed for a signed-in non-owner. A bounded 40-check functionality matrix on the production image found exactly two failures, both now closed. One new R4 defect found and deliberately NOT fixed: BUG-008, the console's refusal returns the control-plane page in the redirect body; it reproduces on the unmodified production image, and moving authorization into eleven pages needs the R4 gate."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "Full gate green on rc/incident-2026-09-09 at 90ee47a (PR #49, base main so E2E runs): all 34 CI steps pass including E2E, Build and Audit. Playwright 54 passed, 1 skipped, 0 failed. REG-001 - an administrator deletes a lead from the list - executed and passed at 6.3s. All three workspace-persona assertions passed, and the pre-existing 'a workspace administrator cannot reach the platform area' still passes, so the denial-UX change weakened nothing. REG-002 skips its storage half because CI has no object storage; registered for the R5 owner. Audit is green for the first time since 2026-09-08 via PR #48. BUG-008 remains open at the R4 gate and is deliberately not in this change."
     }
   ],
   "approvals": [
