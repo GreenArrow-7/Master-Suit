@@ -6,7 +6,7 @@
 |---|---|
 | Specification ID | `SPEC-0007` |
 | Title | Lead deletion affordance and workspace-provisioning diagnosability |
-| Status | `IMPLEMENTING` |
+| Status | `VERIFYING` |
 | Risk | `R2` |
 | Owner | Engineering |
 | Created | 2026-09-09 |

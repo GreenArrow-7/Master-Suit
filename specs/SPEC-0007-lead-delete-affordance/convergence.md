@@ -174,6 +174,26 @@ and skips only the storage half, only on a `5xx` from `putObject`, with the gap
 named. A `4xx` is still a failure, so the product refusing is never mistaken
 for the runner lacking a bucket.
 
+### Second run — `90ee47a` — **every gate green**
+
+`gh run view 34366512152` — `verify` in 18m14s, all thirty-four steps `✓`,
+including **E2E**, **Build** and **Audit**. Playwright: **54 passed, 1 skipped,
+0 failed.**
+
+| Assertion | Result |
+|---|---|
+| `REG-001` — an administrator deletes a lead from the list | **passed (6.3s)** — executed by the Playwright runner, not argued |
+| `REG-002` — a document uploads to the lead, lists, and downloads | **skipped**, storage gap named; the upload half asserted |
+| the platform owner creates a workspace through the wizard | **passed (11.4s)** |
+| a rejected field is named on the review step | **passed (3.1s)** |
+| a workspace administrator is refused the console without being logged out | **passed (4.9s)** |
+| a workspace administrator cannot reach the platform area (pre-existing) | **passed (3.6s)** — the denial-UX change did not weaken it |
+| **Audit** | **passed** — first green since 2026-09-08, via #48 |
+
+`REG-001` failing before the fix and passing after is now demonstrated by the
+runner rather than by an equivalent harness, which is what the earlier record
+could not claim.
+
 ### Gap registered, not fixed
 
 CI has no object storage. Adding a service to `.github/workflows/*` is `R5`
