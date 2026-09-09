@@ -10,7 +10,8 @@
  * right. Refusing them by throwing them onto a sign-in screen while they are
  * signed in is what made it read as the application being broken.
  */
-import { expect, request as playwrightRequest, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { PROTECTED_PLATFORM_ROUTES, fetchPlatformRefusal, sessionCookieFor } from './platform-refusal';
 import {
   createWorkspaceViaWizard,
   login,
@@ -30,6 +31,8 @@ const host = {
   modules: ['SALES'] as ('SALES' | 'HRMS')[],
 };
 
+let hostWorkspaceId = '';
+
 test.describe('workspace creation, per persona', () => {
   test.describe.configure({ mode: 'serial' });
 
@@ -45,6 +48,7 @@ test.describe('workspace creation, per persona', () => {
 
     const id = await createWorkspaceViaWizard(page, host);
     expect(id).toBeTruthy();
+    hostWorkspaceId = id;
 
     // Provisioned, not merely inserted: the administrator it created can sign
     // in and the workspace's first page loads for them.
@@ -83,36 +87,62 @@ test.describe('workspace creation, per persona', () => {
   });
 
   /**
-   * BUG-008 / SEC-OBS-014 regression, and it has to be asserted on the response
-   * body rather than on the screen.
+   * `REG-003` — BUG-008 / SEC-OBS-014, across every protected route and every
+   * persona that must not reach it.
    *
-   * A layout cannot stop the page beneath it rendering. While the console's
-   * only gate was its layout, `GET /platform` answered `307` **with a body** —
-   * the fully rendered control plane, including workspace names, the owner's
-   * address and the platform security ledger — to a caller with no session at
-   * all. A browser follows the `Location` and displays none of it, so nothing
-   * that drives a browser can catch this. `curl` reads it, and so does this.
+   * Asserted on the **body of the refusal**, with redirects not followed. The
+   * security property is not "the request was redirected" — it is that the
+   * protected page body was never generated. Following the redirect inspects
+   * the login page and proves nothing, which is why `fetchPlatformRefusal`
+   * owns `maxRedirects: 0` rather than each call site repeating it.
    *
-   * `maxRedirects: 0` is the whole point: following the redirect would fetch
-   * the login page and find it clean.
+   * Markers are route-specific: a string that only appears if that page's own
+   * body rendered. A generic marker list would pass while a different page
+   * leaked something else.
    */
-  test('a refused platform request returns no control-plane content in its body', async ({ baseURL }) => {
-    // A context of its own, with no storage state, so there is genuinely no session.
-    const anonymous = await playwrightRequest.newContext({ baseURL });
-    try {
-      for (const path of ['/platform', '/platform/workspaces', '/platform/users', '/platform/audit']) {
-        const response = await anonymous.get(path, { maxRedirects: 0 });
-        expect(response.status(), `${path} should refuse`).toBe(307);
+  test('no protected platform route leaks its body to an unauthorized caller', async ({ baseURL }) => {
+    const routes = PROTECTED_PLATFORM_ROUTES.map((r) => ({
+      ...r,
+      path: r.path.replace('{workspaceId}', hostWorkspaceId),
+    }));
+    // Every route the fix covers, not a sample of them.
+    expect(routes.length).toBe(11);
 
-        const body = await response.text();
-        // Tied to a workspace this run actually created, so it cannot pass by
-        // the data merely being absent.
-        expect(body, `${path} leaked a workspace name`).not.toContain(host.displayName);
-        expect(body, `${path} leaked the platform owner`).not.toContain('Recent platform activity');
-        expect(body, `${path} leaked the security ledger`).not.toContain('Privileged without MFA');
+    // A signed-in company administrator: `platformRole` USER, correctly refused
+    // the control plane. The second persona that must see nothing.
+    const admin = await sessionCookieFor(baseURL!, host.adminEmail, host.adminPassword);
+
+    for (const { path, markers } of routes) {
+      for (const persona of [undefined, admin]) {
+        const who = persona ? 'workspace administrator' : 'anonymous';
+        const { response, body } = await fetchPlatformRefusal(baseURL!, path, persona);
+        expect(response.status(), `${path} (${who}) should refuse`).toBeGreaterThanOrEqual(300);
+
+        for (const marker of markers) {
+          expect(body, `${path} (${who}) leaked "${marker}"`).not.toContain(marker);
+        }
+        // The workspace this run created, which several of these pages list.
+        expect(body, `${path} (${who}) leaked a workspace name`).not.toContain(host.displayName);
       }
-    } finally {
-      await anonymous.dispose();
+    }
+  });
+
+  /**
+   * The other half of the property: refusing everyone is not a fix, it is an
+   * outage. The owner must still get each page.
+   */
+  test('the platform owner still reaches every protected route', async ({ page }) => {
+    await loginPlatformOwner(page);
+    for (const { path, markers } of PROTECTED_PLATFORM_ROUTES) {
+      const target = path.replace('{workspaceId}', hostWorkspaceId);
+      const response = await page.request.get(target);
+      expect(response.status(), `${target} should serve the owner`).toBe(200);
+      const body = await response.text();
+      // Present, not merely 200: the page's own content rendered.
+      expect(
+        markers.some((m) => body.includes(m)),
+        `${target} served the owner no page content`,
+      ).toBe(true);
     }
   });
 

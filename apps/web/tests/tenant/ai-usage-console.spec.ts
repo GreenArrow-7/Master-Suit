@@ -281,13 +281,14 @@ describe('the rendered page', () => {
   }
 
   it('puts the workspace’s spend on the page, both columns', async () => {
-    // The page's body, not its default export: the route now gates on
-    // `requirePlatformPage()`, which reads `headers()` and therefore needs a
-    // request scope this test has no business minting. What is asserted here is
-    // what the page puts on screen, which is exactly what `renderAiUsage` is.
-    // The gate itself is covered by REG-003.
-    const { renderAiUsage } = await import('@/app/(platform)/platform/ai-usage/page');
-    const text = strings(await renderAiUsage());
+    // The loader and the view, not the route module. `page.tsx` exports only
+    // its default now — it authorizes, then reads, then renders — so there is
+    // no function on it that produces the protected page without the gate.
+    // This still asserts the whole database-to-screen path: real rows in,
+    // rendered strings out. The gate itself is covered by REG-003.
+    const { loadAiUsage } = await import('@/app/(platform)/platform/ai-usage/data');
+    const { default: AiUsageView } = await import('@/app/(platform)/platform/ai-usage/AiUsageView');
+    const text = strings(AiUsageView(await loadAiUsage()));
 
     // The name is what an operator scans for; the numbers are what they act on.
     expect(text).toContain(`Live ${suffix}`);
