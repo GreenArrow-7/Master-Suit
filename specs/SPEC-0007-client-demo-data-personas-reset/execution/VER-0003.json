@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0003",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0003",
+  "taskIds": [
+    "TASK-007"
+  ],
+  "tests": [
+    {
+      "id": "E2E-001",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "E2E-002",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "E2E-003",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "E2E-004",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "E2E-005",
+      "outcome": "PASS",
+      "note": ""
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 28 files, 447 tests, 0 failures"
+    },
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 5 passed"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "FINAL"
+    },
+    {
+      "command": "npx eslint <changed files>",
+      "exitCode": 0,
+      "note": "FINAL: 0 errors"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "FINAL: no schema change"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo on loopback PostgreSQL",
+  "notes": [
+    "Run against a warm dev server. A cold first run fails at login on route compilation, which is a harness characteristic and not a product defect.",
+    "FINAL VERIFICATION, re-run twice after CL-007. The first re-run failed on the Sales accounts screen and exposed a genuine non-idempotence in the seed (the account manager accumulated 8 more accounts per seed until she owned all 12, emptying the reps’ TEAM-scoped view). Fixed in crm.ts; the suite then passed 5/5."
+  ]
+}

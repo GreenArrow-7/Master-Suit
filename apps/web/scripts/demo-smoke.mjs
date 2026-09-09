@@ -7,7 +7,7 @@
  * Configuration comes from the environment (falling back to .env for the
  * password so nothing secret lives in source control):
  *   DEMO_URL       target origin        (default http://localhost:3000)
- *   DEMO_EMAIL     account to test      (default demo@manathhomes.ae)
+ *   DEMO_EMAIL     account to test      (default demo@example.com)
  *   DEMO_PASSWORD  the seeded password  (required, from env or .env)
  *
  * Verifies: the login endpoint answers 200 with a workspace destination, the
@@ -26,7 +26,7 @@ for (const line of fs.readFileSync(path.join(appRoot, '.env'), 'utf8').split('\n
 }
 
 const BASE = process.env.DEMO_URL ?? 'http://localhost:3000';
-const EMAIL = process.env.DEMO_EMAIL ?? 'demo@manathhomes.ae';
+const EMAIL = process.env.DEMO_EMAIL ?? 'demo@example.com';
 const PASSWORD = process.env.DEMO_PASSWORD;
 if (!PASSWORD) {
   console.error('DEMO_PASSWORD is not set (env or apps/web/.env). Refusing to guess.');

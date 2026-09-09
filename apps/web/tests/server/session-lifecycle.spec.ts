@@ -25,7 +25,7 @@ const password = `Session-${suffix}-Secure!42`;
 let platformUserId = '';
 
 beforeAll(async () => {
-  const tenant = await prisma.tenant.findFirst({ where: { slug: 'manath-homes' } });
+  const tenant = await prisma.tenant.findFirst({ where: { slug: 'youhan-one-demo' } });
   const role = await prisma.role.findFirst({ where: { tenantId: tenant!.id, key: 'org_admin' } });
   const passwordHash = await hashPassword(password);
 

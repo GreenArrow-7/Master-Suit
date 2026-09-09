@@ -130,7 +130,7 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
           description="Set the legal identity, regional defaults and workspace address."
         />
         <div className="lf-form-grid">
-          <Field label="Workspace name" name="workspaceName" placeholder="Manath Homes" required />
+          <Field label="Workspace name" name="workspaceName" placeholder="Acme Group" required />
           <Field label="Display name" name="displayName" required />
           <Field label="Legal name" name="legalName" required />
           <Field

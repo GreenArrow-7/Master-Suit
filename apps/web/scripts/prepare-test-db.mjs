@@ -181,9 +181,42 @@ function seed() {
       env: { ...process.env, ...env, ALLOW_DEMO_SEED: 'yes' },
     });
   } catch (error) {
+    /**
+     * Show why it failed. Redacted, not withheld.
+     *
+     * This used to print only the exit code, on the ground that the seed ends
+     * by printing a shared demo password. The reasoning was sound and the
+     * result was not: a `P2002` naming the exact model and constraint became
+     * "the seed failed (exit 1)", and the cause had to be rediscovered by
+     * running the seed by hand.
+     *
+     * Two things make echoing safe here. The seed only prints a password when
+     * stdout is a TTY and none was supplied, and stdio is `pipe` above, so it
+     * withholds by construction. The redaction below is the second line of
+     * defence rather than the first — belt and braces, because the cost of
+     * being wrong once is a credential in CI output.
+     *
+     * A spawn failure (`error.status` undefined, `error.code` set) is reported
+     * as such rather than as a seed exit code, so "tsx is missing" and "the
+     * seed refused" stop looking identical.
+     */
+    const SECRET = /(password|secret|token|api[_-]?key|postgres(ql)?:\/\/)/i;
+    const redact = (text) =>
+      String(text ?? '')
+        .split(/\r?\n/)
+        .map((line) => (SECRET.test(line) ? '  [redacted line]' : line))
+        .filter((line) => line.trim().length > 0)
+        .slice(-25)
+        .join('\n');
+
+    const spawned = error?.status !== undefined && error?.status !== null;
+    const detail = [redact(error?.stdout), redact(error?.stderr)].filter(Boolean).join('\n');
     die(
-      `the seed failed (exit ${error?.status ?? 'unknown'}). Its output is not echoed because it ends by ` +
-        `printing the demo password. Run it directly to see why: ALLOW_DEMO_SEED=yes npm run db:seed`,
+      (spawned
+        ? `the seed exited ${error.status}.`
+        : `the seed could not be started (${error?.code ?? 'unknown spawn error'}).`) +
+        (detail ? `\n\n${detail}\n` : '') +
+        `\nCredential-bearing lines above are redacted. Full output: ALLOW_DEMO_SEED=yes npm run db:seed`,
     );
   }
   process.stdout.write(`prepare-test-db: seeded ${database}.\n`);

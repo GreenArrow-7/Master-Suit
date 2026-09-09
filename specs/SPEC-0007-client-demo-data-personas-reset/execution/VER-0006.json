@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0006",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0006",
+  "taskIds": [
+    "TASK-010"
+  ],
+  "tests": [
+    {
+      "id": "ST-012",
+      "outcome": "PASS",
+      "note": "demo@youhan.in ACTIVE, org_admin, platformRole USER, one membership; resolved by address not role"
+    },
+    {
+      "id": "ST-013",
+      "outcome": "PASS",
+      "note": "leads, opportunities, accounts and HR employees all 200 on one session"
+    },
+    {
+      "id": "ST-014",
+      "outcome": "PASS",
+      "note": "refused every leadersfort resource; no 500"
+    },
+    {
+      "id": "ST-015",
+      "outcome": "PASS",
+      "note": "refused /api/v1/platform/workspaces"
+    },
+    {
+      "id": "ST-016",
+      "outcome": "PASS",
+      "note": "6 tables read by the client login all relrowsecurity AND relforcerowsecurity"
+    },
+    {
+      "id": "UT-012",
+      "outcome": "PASS",
+      "note": "runbook names the single client login and marks the others internal; failed red first, before docs/DEMO.md was written"
+    },
+    {
+      "id": "E2E-006",
+      "outcome": "PASS",
+      "note": "one session across Sales and HRMS as demo@youhan.in, cookie unchanged, platform API refused"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --reporter=default",
+      "exitCode": 0,
+      "note": "157 files, 1987 passed, 2 skipped, 0 failed — CI-equivalent invocation, default file parallelism"
+    },
+    {
+      "command": "npx playwright test demo-walkthrough",
+      "exitCode": 0,
+      "note": "6 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "0 errors, 131 warnings, all pre-existing"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "no schema change"
+    },
+    {
+      "command": "npm run check:test-data",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npm run db:test:reset",
+      "exitCode": 0,
+      "note": "fresh seed of the test database"
+    },
+    {
+      "command": "npm run db:test:prepare",
+      "exitCode": 0,
+      "note": "top-up over that fresh seed — the path that exposed the P2002 defect below"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 warnings, none in SPEC-0007 or SPEC-0008"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0007 --session ASES-0006 --base a04c7e3",
+      "exitCode": 0,
+      "note": "PASS, 2 SDD-V052 warnings"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo and master_saas_test on loopback PostgreSQL. No staging or production access of any kind.",
+  "notes": [
+    "CHG-004 is RAISED and NOT APPROVED. These tests prove the code behaves as built; they do not resolve the requirement conflict with DATA-005, and no agent may.",
+    "Defect found and fixed inside this task: the client persona was first inserted mid-list in userSpecs, which renumbers every employeeCode after it. A top-up seed then handed the newcomer a code an existing employee already held and died on P2002 against EmployeeProfile.employeeNumber. Found only because prepare-test-db.mjs runs the seed WITHOUT --reset; the fresh path was green throughout and would have shipped it. Fixed by appending the persona last, which renumbers nobody, and verified by reset-then-top-up.",
+    "The 24 release-blocking failures were reconciled, not re-fixed: 20 are owned by SPEC-0004 (CONVERGED, R2) and 4 by SPEC-0005 (CONVERGED, R4). Both were already committed on dev/yourhan-next. The demo branch was based on f16ed67, which predates them. Resolved by merging a04c7e3 after removing 369 hand-copied corpus files that upstream now tracks; 364 were byte-identical to upstream and 5 were stale snapshots that upstream strictly supersedes. Nothing was reimplemented.",
+    "CONV-004 is closed by evidence, not by a workflow change: the suite passes at default file parallelism, which is exactly how CI invokes it. Two consecutive runs, 0 unexpected failures. The --no-file-parallelism requirement was an artefact of the pre-merge state.",
+    "The 2 skipped tests are observability.spec.ts's POSIX file-mode assertions, gated on process.platform !== 'win32'. They run on CI's Linux, so CI's skip-rejection gate does not fire. Not a suppression.",
+    "The E2E suite reads APP_URL from .env, which pins it to port 3005; the committed webServer gate therefore never matches a dev server started on 3000. Environmental, recorded rather than worked around: the run above used the project's own web-dev-3005 launch configuration and the committed config unmodified."
+  ]
+}

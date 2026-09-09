@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0001",
+  "taskIds": [
+    "TASK-001",
+    "TASK-002",
+    "TASK-003",
+    "TASK-004",
+    "TASK-005"
+  ],
+  "tests": [
+    {
+      "id": "UT-001",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-002",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-003",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-005",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-007",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-008",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-009",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "UT-010",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-001",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-002",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-009",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "REG-001",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "REG-002",
+      "outcome": "PASS",
+      "note": ""
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 28 files, 447 tests, 0 failures"
+    },
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 5 passed"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "FINAL"
+    },
+    {
+      "command": "npx eslint <changed files>",
+      "exitCode": 0,
+      "note": "FINAL: 0 errors"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "FINAL: no schema change"
+    },
+    {
+      "command": "npx vitest run --no-file-parallelism  (run A, pristine fixture)",
+      "exitCode": 1,
+      "note": "24 failed / 1939 passed / 1963; 5 files, all pre-existing; no SPEC-0007 file failed"
+    },
+    {
+      "command": "npx vitest run --no-file-parallelism  (run B, no reseed, state left by run A)",
+      "exitCode": 1,
+      "note": "identical: 24 failed / 1939 passed / 1963, same 5 files; no SPEC-0007 file failed"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo on loopback PostgreSQL",
+  "notes": [
+    "UT-004 and UT-006 are covered by the corpus assertions inside UT-004/UT-005 in tests/hr/demo-dataset.spec.ts and by npm run check:test-data, which passed.",
+    "The timezone regression (UT-009b) fails against the original local-midnight implementation and passes against the UTC one.",
+    "FINAL VERIFICATION, after CL-007 domain normalisation and the account-book idempotence fix. Earlier counts in this record described the pre-CL-007 state and are superseded, not deleted: initial verification 446 tests, fix verification 447 after the fresh-versus-top-up regression was added, final verification 447 with all addresses on example.com.",
+    "FLAKINESS REMEDIATION, 2026-09-09. Two defects in this specification’s own tests, both the same mistake — depending on ambient state the test does not control. (1) tests/hr/demo-reset.spec.ts spawned the seed with { ...process.env }, so a subprocess gated entirely on environment variables inherited whatever earlier files had left in the shared environment; several suites mutate it globally. Fixed with a hermetic child environment. (2) The IT-003/IT-004 round trip read the ambient database state and called it the baseline, then asserted a fresh reset reproduced it; the retention sweep in tests/tenant deletes aged rows across every tenant, so the comparison was between a swept state and a rebuilt one. Fixed by seeding the baseline the test then asserts against.",
+    "Both were found by running the suite repeatedly, not by reading it. Neither was retired on a single green run: two consecutive full runs agree, the second deliberately starting from the state the first left behind."
+  ]
+}

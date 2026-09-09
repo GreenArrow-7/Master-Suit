@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0002",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0002",
+  "taskIds": [
+    "TASK-006"
+  ],
+  "tests": [
+    {
+      "id": "ST-001",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-002",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-003",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-004",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-005",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-008",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-009",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-010",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "ST-011",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-006",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-007",
+      "outcome": "PASS",
+      "note": ""
+    },
+    {
+      "id": "IT-008",
+      "outcome": "PASS",
+      "note": ""
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 28 files, 447 tests, 0 failures"
+    },
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 5 passed"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "FINAL"
+    },
+    {
+      "command": "npx eslint <changed files>",
+      "exitCode": 0,
+      "note": "FINAL: 0 errors"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "FINAL: no schema change"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo on loopback PostgreSQL",
+  "notes": [
+    "ST-002 is narrower than the test plan first described. The cross-tenant read proof over a NOBYPASSRLS role lives in tests/tenant/rls.spec.ts and covers every tenant including this one; duplicating it needs RLS_DATABASE_URL, which a demo database has not got. ST-002 here asserts the property that proof depends on: every HR table this specification writes has RLS enabled and forced.",
+    "ST-010 asserts that a demonstration login resolves to a real per-account rate-limit bucket and carries no platform role, rather than hammering the login route — which would lock the machine out for fifteen minutes. The throttle behaviour itself is exercised by tests/security/ratelimit.spec.ts.",
+    "FINAL VERIFICATION, re-run after CL-007 changed every persona address. The security cases resolve personas by role from the database rather than by hard-coded address, so they needed no edit — which is why they caught nothing and should not have."
+  ]
+}

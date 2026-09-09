@@ -21,6 +21,15 @@ export interface CrmCtx {
   int: (min: number, max: number) => number;
   chance: (p: number) => boolean;
   businessDate: (daysBack: number) => Date;
+  /**
+   * The demonstration personas, by address — `DEMO_PERSONA_EMAILS` in index.ts.
+   *
+   * Passed in rather than recognised by domain. `seedDemoSpotlight` used to
+   * select these accounts with a `@manathhomes.(com|ae)` test; SPEC-0007/CL-007
+   * moved them to example.com, where that test would match all forty seeded
+   * logins and give every one of them the spotlight treatment.
+   */
+  demoPersonaEmails: readonly string[];
 }
 
 // ── content pools: a Dubai brokerage's book of business ─────────────────────
@@ -123,7 +132,7 @@ const FOLLOW_UP_TITLES = [
 
 // per-criterion evidence quotes, timestamped the way the auditor formats them
 const EVIDENCE: Record<string, string[]> = {
-  Greeting: ['[00:04] "Good morning, this is {agent} calling from Manath Homes."'],
+  Greeting: ['[00:04] "Good morning, this is {agent} calling from YOUHAN ONE Demo."'],
   Introduction: [
     '[00:11] "Am I speaking with {customer}?"',
     '[00:19] "You enquired about apartments earlier this week."',
@@ -195,9 +204,30 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     return d;
   };
 
+/**
+ * SPEC-0007/DATA-005 · CHG-004 — a demonstration domain that cannot receive mail.
+ *
+ * The account names are plausible UAE company names, and this used to append
+ * `.ae` to them: `alfuttaimrealty.ae`, and 25 contact addresses on domains like
+ * it. Several of those are or could become **real registered domains belonging
+ * to real companies**, which is precisely the mailbox `DATA-005` exists to keep
+ * a misdirected message away from.
+ *
+ * `CL-007` was asked this question and its Option A answer — move everything to
+ * a reserved domain — was applied only to the ten persona logins. The generated
+ * account and contact books were missed, so the requirement was never actually
+ * satisfied. Found by `UT-013` on its first run.
+ *
+ * A subdomain of `example.com` is reserved by RFC 2606 along with the parent, so
+ * `alfuttaimrealty.example.com` still reads as that company's own domain on a
+ * demonstration screen while being unroutable. It keeps the realism the CL-007
+ * discussion did not want to lose, and gives up nothing.
+ */
+const demoDomain = (name: string) => `${name.toLowerCase().replace(/[^a-z]/g, '')}.example.com`;
+
   // 1. Accounts ──────────────────────────────────────────────────────────────
   const accountRows = ACCOUNTS.map(([name, accountType, industry], i) => {
-    const domain = name.toLowerCase().replace(/[^a-z]/g, '') + '.ae';
+    const domain = demoDomain(name);
     const owner = sellers[i % sellers.length]!;
     return {
       tenantId,
@@ -234,7 +264,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     const first = pick(CONTACT_FIRST);
     const last = pick(CONTACT_LAST);
     const account = accounts[i % accounts.length]!;
-    const domain = account.name.toLowerCase().replace(/[^a-z]/g, '') + '.ae';
+    const domain = demoDomain(account.name);
     const cell = mobile();
     return {
       tenantId,
@@ -411,7 +441,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       title: 'Marina Vista launch script',
       isDefault: true,
       content: [
-        'Good morning/afternoon, this is {agent} calling from Manath Homes.',
+        'Good morning/afternoon, this is {agent} calling from YOUHAN ONE Demo.',
         'Confirm the contact, disclose recording, and ask for two minutes.',
         'Discovery: end use or investment, budget band, preferred area, timeline.',
         'Pitch Marina Vista Residences: from AED 1.2M, 60/40 payment plan, Q4 2027 handover.',
@@ -920,10 +950,10 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     // title, type, isPast, location
     ['Marina Vista Open House', 'PHYSICAL', true, 'Marina Vista Sales Centre, Dubai Marina'],
     ['Downtown Penthouse Private Viewing', 'PHYSICAL', true, 'Downtown Skyline One, Downtown Dubai'],
-    ['Ramadan Investor Majlis', 'PHYSICAL', true, 'Manath Homes HQ, Business Bay'],
+    ['Ramadan Investor Majlis', 'PHYSICAL', true, 'YOUHAN ONE Demo HQ, Business Bay'],
     ['Creek Gate Project Launch', 'PHYSICAL', false, 'Creek Gate Pavilion, Creek Harbour'],
     ['Investing in Dubai Off-Plan — Webinar', 'ONLINE', false, 'Online'],
-    ['Broker Partner Briefing', 'HYBRID', false, 'Manath Homes HQ, Business Bay'],
+    ['Broker Partner Briefing', 'HYBRID', false, 'YOUHAN ONE Demo HQ, Business Bay'],
   ];
   let inviteeCount = 0;
   for (let e = 0; e < eventSpecs.length; e++) {
@@ -935,7 +965,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       data: {
         tenantId,
         title,
-        description: `${title} hosted by Manath Homes.`,
+        description: `${title} hosted by YOUHAN ONE Demo.`,
         eventType,
         status: isPast ? 'COMPLETED' : 'PUBLISHED',
         startAt,
@@ -943,7 +973,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         hostId: managers[e % managers.length]!.id,
         location,
         address: eventType === 'ONLINE' ? null : location,
-        meetingUrl: eventType === 'PHYSICAL' ? null : 'https://meet.manathhomes.ae/demo',
+        meetingUrl: eventType === 'PHYSICAL' ? null : 'https://meet.youhan-one-demo.example.com/demo',
         capacity: int(20, 120),
         registeredCount: invitees.length,
         attendedCount: isPast ? Math.max(1, invitees.length - 1) : 0,
@@ -1003,7 +1033,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
       leadId: onContact ? null : lead.id,
       contactId: onContact ? contact.id : null,
       accountId: onContact ? contact.accountId : null,
-      fromAddress: channel === 'EMAIL' ? 'sales@manathhomes.ae' : '+97144480300',
+      fromAddress: channel === 'EMAIL' ? 'sales@example.com' : '+97144480300',
       toAddress:
         channel === 'EMAIL' || i === 29
           ? ((onContact ? contact.email : lead.email) ?? 'unknown@example.com')
@@ -1126,7 +1156,7 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
         },
         ipAddress: `94.204.${int(1, 254)}.${int(1, 254)}`,
         userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15',
-        referrerUrl: 'https://manathhomes.ae/marina-vista',
+        referrerUrl: 'https://youhan-one-demo.example.com/marina-vista',
         utm: { source: 'google', medium: 'cpc', campaign: 'marina-vista-launch' },
         createdAt: businessDate(30),
       };
@@ -1249,7 +1279,7 @@ function makeTranscript(
   const c = (s: string) => t.push(`Customer: ${s}`);
 
   a(
-    `Good ${pick(['morning', 'afternoon'])}, this is ${agent} calling from Manath Homes. Am I speaking with ${customer}?`,
+    `Good ${pick(['morning', 'afternoon'])}, this is ${agent} calling from YOUHAN ONE Demo. Am I speaking with ${customer}?`,
   );
   c(`Yes, this is ${customer}. What is this regarding?`);
   a(
@@ -1350,7 +1380,12 @@ function makeTranscript(
  */
 export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
   const { tenantId } = ctx;
-  const demoUsers = ctx.users.filter((u) => u.email && /@manathhomes\.(com|ae)$/i.test(u.email));
+  // Selected by the persona list rather than by domain. CL-007 moved these
+  // accounts to example.com, where the old `@manathhomes.(com|ae)` test matches
+  // nothing at all — the spotlight would silently do nothing and the
+  // demonstration logins would lose their owned leads, follow-ups and targets.
+  const personas = new Set(ctx.demoPersonaEmails.map((e) => e.toLowerCase()));
+  const demoUsers = ctx.users.filter((u) => u.email && personas.has(u.email.toLowerCase()));
   if (demoUsers.length === 0) return;
 
   const leads = await db.lead.findMany({
@@ -1517,10 +1552,24 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
   // queue skews to leads still at the top of the funnel.
   const accountManager = demoUsers.find((u) => u.email?.startsWith('account.manager@'));
   if (accountManager) {
-    const unowned = await db.account.findMany({
+    /**
+     * Only if she has no book yet.
+     *
+     * Without this the step is not idempotent, and it is the one part of the
+     * spotlight that is not: every seed handed her eight *more* accounts, so a
+     * fresh seed followed by a top-up left her owning all twelve. The visible
+     * symptom was the Sales persona's accounts screen going empty — the reps
+     * see accounts at TEAM scope, and there were none left outside her book.
+     *
+     * Found by SPEC-0007's fresh-versus-top-up determinism case. The header of
+     * this function already claims the spotlight is "idempotent per user";
+     * that was true of the lead slices and false here.
+     */
+    const alreadyOwned = await db.account.count({ where: { tenantId, ownerId: accountManager.id } });
+    const unowned = alreadyOwned >= 8 ? [] : await db.account.findMany({
       where: { tenantId, ownerId: { not: accountManager.id } },
       orderBy: { name: 'asc' },
-      take: 8,
+      take: 8 - alreadyOwned,
       select: { id: true },
     });
     if (unowned.length > 0) {

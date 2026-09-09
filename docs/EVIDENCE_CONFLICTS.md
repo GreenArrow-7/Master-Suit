@@ -960,3 +960,78 @@ requirement itself is unchanged.
 **First application.** `SPEC-0005` (RC-4 capture-vault), whose gate 5 now has
 an identified holder. **That identifies who must decide; it is not a decision,
 and `SPEC-0005` remains `READY_FOR_APPROVAL` with zero approvals recorded.**
+
+### EVC-020 — SPEC-0004 records the SDD tooling's own tests as fully green, and on Windows they are not
+
+Status: OPEN · Severity: C2 · Release impact: NON-BLOCKING for CI, which runs
+Linux; **BLOCKING for any claim that the tooling suites are platform-neutral**
+Domain: Engineering process · Affected component: `tools/sdd/tests/`,
+`SPEC-0004` convergence evidence
+
+Evidence A — Level E1 — `specs/SPEC-0004-cross-platform-test-determinism/convergence.md`
+records, as convergence evidence:
+
+| B2 | `node tools/sdd/tests/validator.test.mjs` | 93 / 93 |
+| B3 | `node tools/sdd/tests/agent.test.mjs` | 70 / 70 |
+
+Evidence B — Level E1 — Measured at `a04c7e3` on Windows 11, with
+`tools/` byte-identical to the commit (`git status --porcelain tools/` empty):
+
+| B2 | `node --test tools/sdd/tests/validator.test.mjs` | **91 / 93** |
+| B3 | `node --test tools/sdd/tests/agent.test.mjs` | **69 / 70** |
+
+Failing: `SDD-V027 requirement with no test coverage`,
+`SDD-V029 acceptance criterion without a verification mapping`,
+`UT-114 SDD-V045 a task declaring no scope cannot be implemented`.
+
+Evidence C — Level E1 — Root cause, proven rather than inferred. Each failing
+case corrupts a known-good fixture with a string replace, then asserts the
+validator notices. The needles are LF-terminated and the fixtures are CRLF, so
+the replace matches nothing, the fixture stays valid, and the rule never fires.
+Measured directly against
+`tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/test-plan.md`:
+
+- fixture contains CRLF: **true**
+- LF-terminated needle present: **false**
+- CRLF-terminated needle present: **true**
+
+These tests therefore do not fail on Windows because the validator is wrong.
+They fail because they cannot construct the invalid input they exist to detect
+— which is the worse of the two, since on any platform where the replace
+silently no-ops the case would pass *while testing nothing*.
+
+## Why this is a conflict and not simply a bug
+
+`SPEC-0004` is the specification for cross-platform test determinism. Its stated
+root cause RC-1 is CRLF handling, and the defect here is RC-1 exactly. Its scope
+covered four vitest suites under `apps/web/tests/`; `tools/sdd/tests/` was not
+in it. So the specification that exists to eliminate this class recorded a green
+result for two suites still carrying it.
+
+The reasonable reading is that B2 and B3 were measured on Linux, where CRLF
+fixtures are not produced by checkout and the needles match. That does not make
+the record wrong so much as unqualified: it states a count without the platform
+it was taken on, and `SPEC-0004` is precisely the context in which the platform
+is the whole point.
+
+## What is not being claimed
+
+- Not that `SPEC-0004` failed. Its own four suites are green on both platforms;
+  that was verified here as part of an unrelated integration.
+- Not that CI is affected. CI runs Linux; these three pass there.
+- Not that anyone reported a false result. The likeliest explanation is a
+  Linux measurement recorded without its platform.
+
+## Resolution options
+
+- **A — Fix the three tests** to be line-ending agnostic, the way `SPEC-0004`
+  fixed its four. Smallest change, removes the class from the tooling too.
+- **B — Amend the convergence record** to state the platform each count was
+  taken on, and add the Windows counts beside them.
+- **C — Both.** A is the fix; B is the honesty about what the record meant.
+
+Raised by an agent during `SPEC-0007`/`TASK-010`, from a measurement taken for
+an unrelated reason. Not fixed here: `tools/` is outside that task's scope, and
+`SPEC-0004` is converged and owned elsewhere. Recorded rather than repaired,
+and rather than left unmentioned because it was inconvenient to the run that
+found it.

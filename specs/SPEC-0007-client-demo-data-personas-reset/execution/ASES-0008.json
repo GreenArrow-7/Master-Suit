@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0008",
+  "specId": "SPEC-0007",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": null,
+  "taskIds": [
+    "TASK-012"
+  ],
+  "startedFromCommit": "a04c7e3762f0e8e959aa31294ae4139907c7066e",
+  "initialChangedPaths": [
+    "apps/web/playwright.config.ts",
+    "apps/web/prisma/seed/crm.ts",
+    "apps/web/prisma/seed/hr.ts",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/scripts/demo-smoke.mjs",
+    "apps/web/scripts/ensure-workspace-admin.mjs",
+    "apps/web/scripts/mobile-audit.mjs",
+    "apps/web/scripts/prepare-test-db.mjs",
+    "apps/web/scripts/seed-realestate-demo.mjs",
+    "apps/web/scripts/seed-role-defaults.ts",
+    "apps/web/src/app/(platform)/platform/workspaces/new/NewWorkspaceForm.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/profile/role/page.tsx",
+    "apps/web/src/app/api/v1/calls/[id]/live/route.ts",
+    "apps/web/src/lib/ai/liveCoach.ts",
+    "apps/web/src/services/meta/config.ts",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts",
+    "apps/web/tests/hr/demo-dataset.spec.ts",
+    "apps/web/tests/hr/demo-docs.spec.ts",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts",
+    "apps/web/tests/hr/demo-reset.spec.ts",
+    "apps/web/tests/security/demo-personas.spec.ts",
+    "apps/web/tests/server/session-lifecycle.spec.ts",
+    "docs/DEMO.md",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "specs/SPEC-0007-client-demo-data-personas-reset/",
+    "specs/SPEC-0008-demo-environment-deployment/"
+  ],
+  "initialDigests": {
+    "apps/web/playwright.config.ts": "8a4e06f8ea380e362420d0cc007f2b71f2e7c8a00903709eb0a7cd6ff5ae6cb8",
+    "apps/web/prisma/seed/crm.ts": "9e739bc2c4e2ad60e69908de4611e6362e2e44fc68df2d4996207a8dbc3900e7",
+    "apps/web/prisma/seed/hr.ts": "fd2a0a7ed46b7ffde191fae0ccd175f5d11e4277b787955b7d8ffb52e3c04884",
+    "apps/web/prisma/seed/index.ts": "fdce04905bd8cd90af737b005bece84e3e6dcea15567ae4998c8a3b555f9189d",
+    "apps/web/scripts/demo-smoke.mjs": "014a6f25cabe879f6f4691f3d28240a190e61ca5faa42c84e256625453fef0c8",
+    "apps/web/scripts/ensure-workspace-admin.mjs": "5059f7bf940a9020dc2a2a78d17ad711cab0fc765cda0db3a79940af6e553326",
+    "apps/web/scripts/mobile-audit.mjs": "515b4acf0be9f5d4c0ca269dd5d34b89fbdc60cb447b4b58973fdbb9a1e273f6",
+    "apps/web/scripts/prepare-test-db.mjs": "2b492d0adc87cc0055385bbcdedadfc8719df252a8f6d947273257971b749b5c",
+    "apps/web/scripts/seed-realestate-demo.mjs": "cc7302f2ef8e8919ae3d1f3f4617d1b9a733a4e8407c6cb7e9fcdc700bb134c2",
+    "apps/web/scripts/seed-role-defaults.ts": "59cccede8ccfe48800cf5250af3181216beb50d26dc8b734fd541f26db66de6d",
+    "apps/web/src/app/(platform)/platform/workspaces/new/NewWorkspaceForm.tsx": "50ad876b89311ba0ad9d7a5a4b0f4a6c6d78d6cd369763705e24254c3a725d3f",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/profile/role/page.tsx": "dfa812b8a3240b6be3986d0e6952326abea8c1e503f58a4528038cd55d365f91",
+    "apps/web/src/app/api/v1/calls/[id]/live/route.ts": "03958b4c39a666dbfef8a9151c6e3947e1c2a2fa99ea2775a0f19ba1f3f2e2ea",
+    "apps/web/src/lib/ai/liveCoach.ts": "75c5ab81b5e4c6f1676766834754603c3eb96df1bccd76790c322cc93150fe71",
+    "apps/web/src/services/meta/config.ts": "a72e6770223b7d695df3c600a6f7fc212f27ca0b82eedae25dabd97812a2fd7e",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts": "46d5e204c59b4073226bbb3d33c1dec6b70ea7668e160dc15a235ec49d511537",
+    "apps/web/tests/hr/demo-dataset.spec.ts": "e970c6458680556254716bdc0c111fd39d2f08b2cd364effa97fbe07648fb4e3",
+    "apps/web/tests/hr/demo-docs.spec.ts": "5be8b8ff7562b250f9369747bdc1c04eacec13575d718a60a76b76d4da61d9fc",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts": "0b83b1507c535d3a75c42eddcb46da7ff9ef00ed429965fde2880289a880a68b",
+    "apps/web/tests/hr/demo-reset.spec.ts": "dcb5bcc194a27de78a5f6f847d633d768361b623515189358913d975c197c525",
+    "apps/web/tests/security/demo-personas.spec.ts": "92ac14ad6ae802366f416bd93a2506a363a45725e2e37fb518163e8af2f616c0",
+    "apps/web/tests/server/session-lifecycle.spec.ts": "04dc1eca9eec6cb641e7c65f2f2a544ea124e76774b56c90aa9bd8294ba119b0",
+    "docs/DEMO.md": "ba1765f35d1886460c378fbdcc409eda482b95d2e7e0bd8eb8af9de6210781b5",
+    "docs/EVIDENCE_CONFLICTS.md": "e124ccc5f7ef77deecb0cd4475eea111d978d827799def3c3057a8144d75c019",
+    "specs/SPEC-0007-client-demo-data-personas-reset/": "<directory>",
+    "specs/SPEC-0008-demo-environment-deployment/": "<directory>"
+  },
+  "allowedPaths": [
+    "apps/web/scripts/prepare-test-db.mjs",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/tests/hr/",
+    "apps/web/playwright.config.ts"
+  ],
+  "prohibitedPaths": [
+    "apps/web/src/lib/security/",
+    "apps/web/src/lib/auth/",
+    "apps/web/prisma/migrations/",
+    ".github/workflows/"
+  ],
+  "requiredTests": [
+    "UT-015"
+  ],
+  "requiredApprovals": [],
+  "status": "COMPLETE",
+  "result": {
+    "summary": "TASK-012 executed: CONV-008, CONV-009 and CONV-011 closed, and CHG-005's rebrand verified in a browser.",
+    "verificationRef": "VER-0008",
+    "unexpectedFindings": [
+      "CONV-008 was worse than recorded. The finding described a script hiding the seed's error; the vitest harness had a second hole in the opposite direction - spawnSync reports a process that never ran as status null, and null !== 0 satisfied every refusal assertion in the file. Four security-gate tests would have reported the gates as proven while the seed had not run.",
+      "The reset coverage test parses the seed source, so refactoring the teardown broke it. It failed loudly, which is the correct outcome; its anchors were moved to follow the code and an assertion for CONV-011 was added."
+    ],
+    "scopeDeviations": [
+      "The rebrand under CHG-005 touched apps/web/src/ - the role page and the live-coach script - which TASK-012 prohibits. Those edits belong to CHG-005 rather than to this task and are recorded as CONV-012 and CONV-013; they were made before this session was opened."
+    ],
+    "newUnknowns": [
+      "Whether the redaction pattern in prepare-test-db.mjs is broad enough for output shapes not yet seen; it is a denylist, and a denylist is only as good as its last surprise."
+    ]
+  },
+  "verifiedTests": [
+    "UT-015"
+  ],
+  "verificationRef": "VER-0008"
+}

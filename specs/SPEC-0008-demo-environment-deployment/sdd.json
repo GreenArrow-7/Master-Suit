@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0008",
+  "slug": "demo-environment-deployment",
+  "kind": "change",
+  "risk": "R5",
+  "status": "READY_FOR_APPROVAL",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": null,
+    "changeRecord": null,
+    "approvalPacket": "approval-packet.md",
+    "provisioningChecklist": "provisioning-checklist.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-08",
+      "note": "Allocated for the demo environment track, split from SPEC-0007 so that the R3 data work is not held behind R5 infrastructure gates. The split is the reason both exist: taking the higher level for the combined work would have blocked the dataset, and taking the lower would have smuggled infrastructure past its gates."
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-08",
+      "note": "Four ambiguities raised. CL-004 answered from the specification's own requirements: no scheduled backup, because the environment holds only deterministically reproducible synthetic data. CL-001 hosting and CL-002 address cannot be answered from the repository and must be settled before provisioning."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08",
+      "note": "Classified R5 against docs/RISK_CLASSIFICATION.md on four independent triggers: infrastructure files, a workflow file, environment variables in a deployed environment, and host, DNS and TLS. Verified that no demo runtime exists today: there is no demo compose file beside the staging and production ones, the deployment workflow offers staging and production only, and no demo deployment credential exists. The application contract for the demo environment does exist and is honoured by the environment enum and the boot cross-check."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "AD-001 to AD-009 recorded, with an operational plan covering provisioning, deployment, rollback, recovery, decommissioning and the interval between demonstrations. Outbound safety is achieved by environment configuration rather than by changing shared application code, so that no demo-awareness enters the production request path. Schema and migration impact NONE."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete for R5. Stops here. Gates 1, 2, 3 and 5 are all UNRESOLVED, no infrastructure exists, and nothing has been provisioned or deployed. R5 execution is human-only; an agent prepared these artefacts and may not run any task in them. | 2026-09-09: Business authorisation recorded: build a dedicated demo environment, APP_ENV=demo, dedicated demo database, deployment through GitHub, HTTPS browser access for clients; not the production customer database and no production customer data. CL-001 resolved to a dedicated demo environment with a separate VM recommended; CL-002 resolved to public HTTPS with the stated conditions. Two facts still block provisioning and are not decisions an agent can make or a gate can waive: no host is evidenced, and no domain, DNS record or certificate exists. The four R5 gates remain unrecorded — a business instruction to proceed is not a role-specific technical approval of the architecture, threat model or implementation readiness. | 2026-09-09 (second): R5 approval packet prepared (approval-packet.md) with the exact decision each of gates 1, 2, 3 and 5 is being asked for. Measured evidence added rather than inferred: the repository has 0 GitHub Actions environments, 0 secrets and 0 variables, so deploy.yml has never run successfully for staging or production either - adding demo is not an increment on a working pipeline. youhan.in resolves and its DNS is managed at GoDaddy, so CL-002's domain question is partly answered; demo.youhan.in is NXDOMAIN and no certificate exists. Caddyfile.staging evidences that staging holds a restored production snapshot and is tunnel-only, which closes CL-001 Option A on safety rather than on cost. Recommendation: gates 1, 2 and 3 are decidable now; gate 5 should be HELD until a host exists and the empty-pipeline finding is explained. All four gates remain UNRESOLVED. Nothing provisioned, no DNS created, no secret read or written, no workflow file touched."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-09",
+      "note": "Returned from READY_FOR_APPROVAL to PLANNED on an authoritative business requirement: the demo environment must hold FUNCTIONAL/CODE PARITY with production, and must never receive production data. Added FR-013 to FR-020, DATA-004, DATA-005, SEC-009, OBS-004, OBS-005, AC-011 to AC-018, AD-010 to AD-018, TH-014 to TH-021, CTRL-016 to CTRL-024, TASK-009 to TASK-013, and the parity test cases. No change record was written and none is required: docs/sdd/CHANGE_CONTROL.md begins change control at the first approval and this specification has none - the artefact set is simply no longer complete, which is what PLANNED means. Two new clarifications: CL-005, whether automatic demo synchronisation is authorised (gate 3, recommendation C - detect automatically, deploy manually); CL-006, the drift target. Measured evidence: build-once/promote, per-commit immutable images, BUILD_COMMIT baked into the image and exported as masterapp_build_info, per-environment deployed-version state and a checksum-based migration-ordering gate ALL ALREADY EXIST. Four gaps: no demo target in release.sh dc_for(), release.sh builds locally instead of pulling the GHCR artefact, no cross-environment parity comparison, no drift policy. Nothing implemented, nothing deployed; R5 execution remains human-only."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-09",
+      "note": "Artefact set complete again after the parity requirement and the 2026-09-09 architecture adjustment. CL-005 RESOLVED to Option C: automatic parity detection, manual/approved demo synchronisation, and no standing autonomous deployment credential - SEC-009 narrowed so the parity job holds no deployment credential for any environment, closing TH-014 by absent capability rather than by a guard. Production's deployment mechanism is NOT changed: measured that docker-compose.prod.yml names a LOCAL image tag and release.sh builds only when that tag is absent, so the demo path can pull the CI-built GHCR image, tag it locally, and get promotion with no edit to release.sh, the prod compose file, or either existing deploy target - the only shared-code edit is an additive demo case in dc_for(), with REG-001 asserting staging and production unchanged. Mandatory registry pull for all environments is deferred and recommended as SPEC-0009. Parity in this phase is SHA-based, not digest-based, and that limitation is stated rather than overclaimed; short SHAs are expanded via git rev-parse before comparison because production bakes GIT_SHA from IMAGE_TAG (--short=12) while demo bakes the full 40. provisioning-checklist.md added, listing every gate 5 prerequisite with its owner and closing evidence. This is the highest state the current approvals legally support: gates 1, 2, 3 and 5 all remain UNRESOLVED, and gate 5 is explicitly HELD on three prerequisites that are facts rather than decisions - no host, no hostname/DNS/TLS, and a pipeline with 0 GitHub environments, 0 secrets and 0 variables. Nothing provisioned, nothing deployed, no production access."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-09",
+      "note": "Returned to PLANNED for the pre-approval reconciliation pass. Two corrections drove it. (1) A reported contradiction was real as stated: apps/web/scripts/release.sh DOES require changes - dc_for() is at line 69 of that file and its default branch fails on an unknown environment, so demo cannot be selected without editing it. TASK-009 now lists all four sites exactly (dc_for case, its error text, the status loop, two usage strings) and records that no edit is needed at the promotion branch, which is guarded on production and never reached by demo. Staging and production behaviour unchanged; REG-001 is the evidence. (2) AD-021, found while reconciling: the production image stage is Next.js standalone output and carries no prisma CLI, which is why both existing migrate services build target build. Publishing only web and worker would force the demo host to build its migrate image, contradicting the no-rebuild requirement - so build-images.yml gains a third matrix entry. Also added: FR-016 extended with UNKNOWN; AD-020 short-to-full SHA resolution in CI via git rev-parse --disambiguate with one/zero/many semantics verified against this repository; FR-021 and AD-022 trusted-proxy configuration set to the demo Compose subnet and never 0.0.0.0/0; FR-022 and AD-023 recovery objectives, RPO the last deployed commit and RTO within two hours; FR-023 and AD-024 reset covering every seeded workspace, closing the gap SPEC-0007/CONV-011 records; TASK-014, TASK-015; UT-007, UT-008, OPS-016 to OPS-019, ST-018; AC-019 to AC-022; and the host specification and SSH host-key enrolment procedure in the provisioning checklist."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-09",
+      "note": "Reconciliation complete; artefact set complete again. Gate decision texts revision 3 in approval-packet.md supersede revision 2, which is retained rather than rewritten, and state plainly what revision 2 got wrong. This is the highest lifecycle state the current approvals legally support: PLANNED -> READY_FOR_APPROVAL, with gates 1, 2, 3 and 5 all UNRESOLVED and gate 5 explicitly HELD on a fourteen-item checklist of which one item is ready. Validator PASS, 0 errors. Nothing implemented, nothing provisioned, nothing deployed, no production access."
+    }
+  ],
+  "approvals": [],
+  "reviews": [],
+  "evidenceConflicts": [
+    "EVC-003",
+    "EVC-005"
+  ]
+}

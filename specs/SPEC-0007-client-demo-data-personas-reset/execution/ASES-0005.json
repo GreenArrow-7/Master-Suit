@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0005",
+  "specId": "SPEC-0007",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": null,
+  "taskIds": [
+    "TASK-009"
+  ],
+  "startedFromCommit": "f16ed677516fb07f31832a5d725e13efb477c34d",
+  "initialChangedPaths": [
+    ".github/workflows/sdd-validate.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "apps/web/prisma/seed/crm.ts",
+    "apps/web/prisma/seed/hr.ts",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/scripts/demo-smoke.mjs",
+    "apps/web/scripts/ensure-workspace-admin.mjs",
+    "apps/web/scripts/mobile-audit.mjs",
+    "apps/web/scripts/prepare-test-db.mjs",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts",
+    "apps/web/tests/e2e/tablesearch-a11y.spec.ts",
+    "apps/web/tests/hr/demo-dataset.spec.ts",
+    "apps/web/tests/hr/demo-docs.spec.ts",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts",
+    "apps/web/tests/hr/demo-reset.spec.ts",
+    "apps/web/tests/security/demo-personas.spec.ts",
+    "docs/DEMO.md",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "docs/RISK_CLASSIFICATION.md",
+    "docs/evidence/phase-a-foundation/",
+    "docs/evidence/phase-b1-sdd-foundation/",
+    "docs/evidence/phase-b2-sdd-verification-enforcement/",
+    "docs/evidence/phase-b3-agent-integration/",
+    "docs/evidence/phase-b4-pilot-readiness/",
+    "docs/evidence/phase-b4-pilot/",
+    "docs/evidence/phase-b4-pilot2-readiness/",
+    "docs/sdd/",
+    "sdd.config.json",
+    "specs/",
+    "tools/"
+  ],
+  "initialDigests": {
+    ".github/workflows/sdd-validate.yml": "eb311821d96f3525b0acaf276e7534dff1053c4278ecfdd33a649305ec465248",
+    "AGENTS.md": "f0c00e8cb62a12394abae2be59699422d943eac3649b7c207b181ee01ca86c2a",
+    "CLAUDE.md": "4c7d49d9bf65ba99717d88fe31eea1bf99ffe46df28c9bc0cf199f493a5e9668",
+    "apps/web/prisma/seed/crm.ts": "620918f037b7b5d719fc493c2e8350abd6856fc47ecd3c43752452fa54d54632",
+    "apps/web/prisma/seed/hr.ts": "fd2a0a7ed46b7ffde191fae0ccd175f5d11e4277b787955b7d8ffb52e3c04884",
+    "apps/web/prisma/seed/index.ts": "b88b6e2fcc1415c1f42538c076d146c806f02db62370a31db5c6d213dbc97db0",
+    "apps/web/scripts/demo-smoke.mjs": "014a6f25cabe879f6f4691f3d28240a190e61ca5faa42c84e256625453fef0c8",
+    "apps/web/scripts/ensure-workspace-admin.mjs": "69098a2ee8d52994f619f701c0ca43f501a16eec0ea0128e0e2cbd75b5fc5eaa",
+    "apps/web/scripts/mobile-audit.mjs": "d3dd95b50229261b73a121a48ca4dd0c8e8e209c4761dd10b979887fe77a124d",
+    "apps/web/scripts/prepare-test-db.mjs": "8160b0ba65612f49905dc558a680bc1e8c7c8ffb6a8500568664184e80ad12fd",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts": "ae7bbdaad6ca4192ee035312cc67b7aa0d75a36ba9ad9acec4eecbe5211dc748",
+    "apps/web/tests/e2e/tablesearch-a11y.spec.ts": "9681f1c22fbb063af3758e3cab3ecbc7afd7724582ae32b96fdd30f2a48d28fc",
+    "apps/web/tests/hr/demo-dataset.spec.ts": "2e454bc520f0e57d39d661c0431169da33ce29ffa5cc9eb6c3650c473e7f6ccf",
+    "apps/web/tests/hr/demo-docs.spec.ts": "d1bede723605524af697b415e7a852bbedc76a5c4d8991601dcf25b349efb9db",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts": "ba5a565551a38cc990f131f5e46c1f7e49a2302172b2a63f2f272a3f7bd52c69",
+    "apps/web/tests/hr/demo-reset.spec.ts": "5281ff6cfbed2c27635fdbdefd45de2f73570b293db4570ff89291ece43022fc",
+    "apps/web/tests/security/demo-personas.spec.ts": "c6581206f238444e09e19dcfab620c8248ca4ccfbcfe5bb1e811c40aa0f144a4",
+    "docs/DEMO.md": "c2cd13300e2792a12760847220d38078d05be847f61796603c93c7522ca55bf4",
+    "docs/EVIDENCE_CONFLICTS.md": "998a2e471303b5ae71bd1457ce98a8e15eba27b56e275859a3b93ed170760cfe",
+    "docs/RISK_CLASSIFICATION.md": "ea3bfdc939c089e0a526983be2e97c00fb8863c90f9aedb83a36f048afeba070",
+    "docs/evidence/phase-a-foundation/": "<directory>",
+    "docs/evidence/phase-b1-sdd-foundation/": "<directory>",
+    "docs/evidence/phase-b2-sdd-verification-enforcement/": "<directory>",
+    "docs/evidence/phase-b3-agent-integration/": "<directory>",
+    "docs/evidence/phase-b4-pilot-readiness/": "<directory>",
+    "docs/evidence/phase-b4-pilot/": "<directory>",
+    "docs/evidence/phase-b4-pilot2-readiness/": "<directory>",
+    "docs/sdd/": "<directory>",
+    "sdd.config.json": "e831da3e6f1e47db8dc0319d407163e5870633b7ed34000590d6983538e857f6",
+    "specs/": "<directory>",
+    "tools/": "<directory>"
+  },
+  "allowedPaths": [
+    "apps/web/tests/e2e/",
+    "docs/DEMO.md"
+  ],
+  "prohibitedPaths": [
+    "apps/web/src/",
+    "apps/web/prisma/"
+  ],
+  "requiredTests": [
+    "E2E-006",
+    "ST-005",
+    "E2E-004"
+  ],
+  "requiredApprovals": [],
+  "status": "COMPLETE",
+  "result": "Single client-facing login designated and proven. E2E-006 passes: one account, one session, Sales then HRMS, session cookie unchanged, platform console still refused.",
+  "verifiedTests": [
+    "E2E-006",
+    "ST-005",
+    "E2E-004"
+  ],
+  "finalChangedPaths": [
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts",
+    "docs/DEMO.md"
+  ],
+  "notes": [
+    "No role, workspace, entitlement or seed change was needed. org_admin is platformRole USER in a workspace entitled to both SALES and HRMS holding both datasets; the requirement was a designation, not a capability.",
+    "DEFECT FOUND AND FIXED: the suite assumed a warm dev server. The first spec paid the route-compile cost during its login, the shared helper filled the form before hydration, and the submit arrived empty — the server answered \"2 fields failed validation\", which reads like a bad credential. A warm-up in beforeAll fixes it here rather than patching the shared helper, which other specs also use.",
+    "The Sales and HR personas are retained as internal security fixtures and are documented as NOT client credentials."
+  ]
+}

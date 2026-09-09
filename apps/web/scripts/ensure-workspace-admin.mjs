@@ -4,8 +4,8 @@
  * a temporary password exactly once.
  *
  * Usage:
- *   node scripts/ensure-workspace-admin.mjs manath-homes \
- *     --name "System Administrator" --email admin@manathhomes.ae --code ADM-001
+ *   node scripts/ensure-workspace-admin.mjs youhan-one-demo \
+ *     --name "System Administrator" --email admin@example.com --code ADM-001
  *
  * ── Why a script and not a page ────────────────────────────────────────────
  *

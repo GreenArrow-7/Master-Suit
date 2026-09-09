@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0005",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0005",
+  "taskIds": [
+    "TASK-009"
+  ],
+  "tests": [
+    {
+      "id": "E2E-006",
+      "outcome": "PASS",
+      "note": "one login, both modules, session cookie unchanged"
+    },
+    {
+      "id": "E2E-004",
+      "outcome": "PASS",
+      "note": "tenant-scoped, not a platform administrator; ran inside the same 6-case playwright run recorded below"
+    },
+    {
+      "id": "ST-005",
+      "outcome": "PASS",
+      "note": "no persona reaches the platform control plane; ran inside the same vitest run recorded below"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts",
+      "exitCode": 0,
+      "note": "6 passed"
+    },
+    {
+      "command": "npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "28 files, 447 tests, 0 failures"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npx eslint <changed files>",
+      "exitCode": 0,
+      "note": "0 errors"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "no schema change"
+    },
+    {
+      "command": "npm run check:test-data",
+      "exitCode": 0,
+      "note": ""
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo on loopback PostgreSQL",
+  "notes": [
+    "CHG-003 approved by the Product Owner on 2026-09-09; TASK-009 executed under that approval.",
+    "Record completed 2026-09-09. TASK-009 required E2E-006, ST-005 and E2E-004; only E2E-006 was listed by id when this record was first written, so SDD-V057 rightly refused the session. The two missing cases were not unrun - both executed and passed inside the commands already recorded here, and both passed again on 2026-09-09 (playwright 6/6, vitest 157 files / 1987 passed). The ids are added rather than the omission left standing; nothing about the outcome changed."
+  ]
+}

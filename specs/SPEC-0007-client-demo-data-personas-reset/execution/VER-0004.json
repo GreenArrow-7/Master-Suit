@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0004",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0004",
+  "taskIds": [
+    "TASK-008"
+  ],
+  "tests": [
+    {
+      "id": "UT-011",
+      "outcome": "PASS",
+      "note": ""
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 28 files, 447 tests, 0 failures"
+    },
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts",
+      "exitCode": 0,
+      "note": "FINAL after CL-007: 5 passed"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "FINAL"
+    },
+    {
+      "command": "npx eslint <changed files>",
+      "exitCode": 0,
+      "note": "FINAL: 0 errors"
+    },
+    {
+      "command": "npm run check:drift",
+      "exitCode": 0,
+      "note": "FINAL: no schema change"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo on loopback PostgreSQL",
+  "notes": [
+    "UT-011 checks only what is mechanical: that the runbook names the personas, the commands and the exclusions, and that it carries no credential. Whether it is clear is a human judgement left to convergence.",
+    "FINAL VERIFICATION. UT-011 re-run after the runbook was updated with the example.com addresses."
+  ]
+}

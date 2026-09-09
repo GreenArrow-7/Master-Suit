@@ -89,19 +89,37 @@ export default defineConfig({
 
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
-  webServer: {
-    command: 'npm run dev',
-    // Gate on the server the suite will actually talk to. With APP_URL set
-    // (a developer pointing the suite at a production build on another port)
-    // the gate attaches to that server and never spawns a dev server of its
-    // own — a run must not depend on whatever happens to occupy port 3000.
-    url: `${process.env.APP_URL ?? 'http://localhost:3000'}/login`,
-    // Locally, attach to the server the developer already has running. In CI
-    // there is never one, and silently reusing a stale process would test the
-    // wrong build.
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  /**
+   * CONV-009. The gate watches the server this config actually starts.
+   *
+   * It used to gate on `APP_URL ?? localhost:3000` while unconditionally
+   * running `npm run dev`, which binds 3000. With `APP_URL` set to another
+   * port — as `.env` does — the gate waited 180 seconds for a server the
+   * command it had just run was never going to bind, then failed with a
+   * message naming neither port.
+   *
+   * The comment here already described the right behaviour: with `APP_URL`
+   * set, attach to that server rather than spawning one. Only the code did
+   * not. So `webServer` is now omitted entirely in that case, which is what
+   * "attach" means to Playwright, and the gate and the command can no longer
+   * disagree about a port because there is only one of them.
+   *
+   * CI sets no `APP_URL`, so it still starts its own server and gates on it.
+   */
+  ...(process.env.APP_URL
+    ? {}
+    : {
+        webServer: {
+          command: 'npm run dev',
+          // Gate on the server this block starts, and nothing else.
+          url: 'http://localhost:3000/login',
+          // Locally, attach to the server the developer already has running. In
+          // CI there is never one, and silently reusing a stale process would
+          // test the wrong build.
+          reuseExistingServer: !process.env.CI,
+          timeout: 180_000,
+          stdout: 'pipe' as const,
+          stderr: 'pipe' as const,
+        },
+      }),
 });
