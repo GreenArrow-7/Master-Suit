@@ -1281,3 +1281,60 @@ of any one change.
 
 Raised by an agent on 2026-09-09 while running the full check set for
 `SPEC-0007`.
+
+## EVC-021, addendum 2 — 2026-09-09: no role owns the standard that would have to change
+
+Directed to design a concurrent-allocation collision rule and to obtain the
+governance approval required before amending a `NORMATIVE` document, I looked
+for who that approval belongs to. **The governance model does not say.**
+
+- `docs/sdd/IDENTIFIER_STANDARD.md` is marked `NORMATIVE — engineering process
+  requirement` and names no owner. Its "Authority / References" section lists
+  documents it defers to, not a role that may change it.
+- `docs/sdd/HUMAN_APPROVAL_GATES.md` defines six functional roles — Product
+  Owner, Solution Architect, Application Security, QA / Release Engineering,
+  DevOps / Production Engineering, Human Release Authority — each scoped to
+  **product** decisions. None is given authority over the engineering process
+  standards themselves.
+- `docs/sdd/ARTIFACT_AUTHORITY.md` places `AGENTS.md` at the top of the
+  authority chain and binds every level below it, but describes no procedure
+  for amending either `AGENTS.md` or the `docs/sdd/*` standards that implement
+  it.
+- `docs/sdd/CHANGE_CONTROL.md` governs changes to approved **specifications**,
+  not to the standards those specifications are written against.
+
+So the seven gates cover changing the product and none covers changing the
+rules. The closest fit by subject matter is the **Solution Architect**, whose
+listed ownership is "approach, patterns, architecture and data model" — an
+identifier scheme is a pattern — but that is an inference, not a rule, and this
+register exists so that inferences are not quietly promoted to facts.
+
+**This is a second finding, distinct from the collision itself.** `EVC-021`
+records that two branches allocated `SPEC-0007` and that the standard forbids
+the only obvious remedies. This addendum records that even a human who wants to
+fix the standard has no defined route to do so. The first is a gap in a rule;
+this is a gap in the meta-rule, and it will block the next process defect too,
+whatever that turns out to be.
+
+**Recommended shape of the amendment, ready to apply once someone may approve
+it.** The normal rule stands — approved identifiers never change. One exception,
+narrowly drawn: where two branches allocate the same identifier before either
+can see the other's allocation, the allocation whose **first valid human
+approval is earlier** retains the number, and the later one moves to the next
+free identifier. Deterministic, independent of publication order, branch
+visibility or which agent noticed first.
+
+On the timestamps as they stand — `client-demo-data-personas-reset` first
+approved 2026-09-08, `lead-delete-affordance` first approved 2026-09-09 — that
+rule retains `SPEC-0007` for the demonstration specification and moves the
+lead-delete one. **That is the opposite of the "renumber the unpublished side"
+preference stated earlier**, and it moves a specification belonging to an
+actively-worked pull request. Both consequences are stated here rather than
+discovered during execution.
+
+The next free identifier, recomputed across every remote branch and this
+worktree on 2026-09-09, is **`SPEC-0010`**. It must be recomputed again at the
+moment of application; two identifiers have been allocated in this repository
+in the last day.
+
+Nothing is renumbered. No standard is edited. Raised by an agent on 2026-09-09.
