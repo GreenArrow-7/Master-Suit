@@ -302,3 +302,88 @@ Run against the **real HTTPS hostname**, not localhost:
 Until then gate 5 stays HOLD. Holding it costs nothing — it blocks execution,
 not preparation — and approving it against three absent prerequisites would put
 something untrue in the record.
+
+---
+
+# Discovery re-run against the repository, 2026-09-09 (post `#48` merge)
+
+Measured, not recalled. Three things the earlier packet stated need correcting
+or sharpening before anyone provisions against it.
+
+## 1. `METRICS_TOKEN_demo` is not a GitHub secret
+
+The gate 3 packet lists it among "new credentials introduced", alongside the
+deploy secrets, which reads as though it belongs in the GitHub `demo`
+environment. **It does not.** `.github/workflows/deploy.yml` never references
+`METRICS_TOKEN` in any form. The value is consumed by Compose from the host's
+own environment file:
+
+| File | Line | Reads |
+|---|---|---|
+| `apps/web/infra/docker-compose.azure.yml` | 294 | `${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.production}` |
+| `apps/web/infra/docker-compose.staging.yml` | 258 | `${METRICS_TOKEN:?set METRICS_TOKEN in apps/web/.env.staging}` |
+| `apps/web/infra/docker-compose.yml` | 289 | `${METRICS_TOKEN:-}` |
+
+So it is generated on the demo host by `npm run secrets .env.demo` and never
+travels through GitHub. The security requirement behind it — read-only, never
+reusable as a deployment credential — is unchanged; only the place it lives is
+corrected. Provisioning it as a GitHub secret would create a credential nothing
+reads, which is worse than none, because it looks configured.
+
+## 2. The exact GitHub configuration, from the workflow rather than from memory
+
+`deploy.yml` builds every name by interpolating the environment input, so the
+suffix is literally the environment name:
+
+| Kind | Name | Source | Required |
+|---|---|---|---|
+| secret | `DEPLOY_HOST_demo` | `deploy.yml:136` | yes — the run fails closed naming it |
+| secret | `DEPLOY_USER_demo` | `deploy.yml:137` | yes — same |
+| secret | `DEPLOY_KEY_demo` | `deploy.yml:138` | yes — same |
+| secret | `DEPLOY_KNOWN_HOSTS_demo` | `deploy.yml:156` | **yes for demo.** Absent, line 168 warns and accepts the host key on first use. That trust-on-first-use path is exactly what gate 3 forbids for a publicly reachable host, and the workflow will not stop you |
+| variable | `DEPLOY_PATH_demo` | `deploy.yml:177` | optional; defaults to `/opt/master-suite` |
+
+Four secrets and one optional variable. Not five secrets.
+
+## 3. `demo` is not a value `deploy.yml` will accept
+
+`.github/workflows/deploy.yml:48` declares:
+
+```yaml
+options: [staging, production]
+```
+
+There is no `demo`. The workflow cannot be dispatched for this environment at
+all until that list is widened — so creating the GitHub environment and its
+secrets first would produce a fully configured environment that nothing can
+target. **Order matters: the workflow change comes first.**
+
+This is an additive one-line change to a file the risk model puts at `R5`
+(`.github/workflows/*`), and it is in addition to the four `release.sh` edits
+already recorded in `TASK-009`. Confirmed still outstanding:
+
+| File | Change | Status |
+|---|---|---|
+| `.github/workflows/deploy.yml` | add `demo` to the environment options | **not done** |
+| `apps/web/scripts/release.sh` | `dc_for()` case, its error text, the `status` loop, two usage strings — lines 71-78, 110, 132, 141 | **not done** |
+| `.github/workflows/build-images.yml` | publish a third `migrate` image; the matrix at lines 30-33 builds `web` and `worker` only | **not done** (`AD-021`) |
+
+## 4. Environment state as measured
+
+| Item | State |
+|---|---|
+| GitHub environments | **1** — `staging`, created by the `#47` workstream, 0 protection rules |
+| `demo` environment | **absent** (HTTP 404) |
+| Repository secrets / variables | **0 / 0** |
+| `staging` environment secrets / variables | **0 / 0** |
+| `demo.youhan.in` | **NXDOMAIN** |
+| GHCR package listing | not readable with the available token scope (`read:packages` absent); image presence unverified from here |
+
+The `staging` environment's existence is worth noting for one reason only: it
+proves someone holds the access needed to create an environment. It is **not**
+a demo environment and must not be reused as one — separate database, separate
+secrets and separate host are the whole point, and `apps/web/infra/Caddyfile.staging`
+documents staging as tunnel-only while holding a restored production snapshot.
+
+Gate 5 remains **HOLD**. Nothing above changes that; it makes the list of what
+is missing exact.
