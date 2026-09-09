@@ -4,7 +4,7 @@
   "slug": "lead-delete-affordance",
   "kind": "bugfix",
   "risk": "R2",
-  "status": "IMPLEMENTING",
+  "status": "VERIFYING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": null,
@@ -46,6 +46,11 @@
       "status": "IMPLEMENTING",
       "date": "2026-09-09",
       "note": "Implemented. The compiler found the second LeadGrid caller (sales/smart-views/page.tsx) because the new prop is required rather than optional - an administrator working from a saved view had the same missing control."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "Pushed as 21705d7, PR #47 into dev/yourhan-next. GitHub SDD validation: success. CI: every gate passes except Audit, which fails on three advisories published between 2026-09-08 and 2026-09-09 (next critical, nodemailer high, sharp high). This change touches no dependency - git diff 63daf3d..21705d7 over package.json and package-lock.json is empty - and re-running the release candidate's own CI on 2026-09-09 reproduced the identical single failure at 63daf3d with E2E green, so the RC is no longer CI-green either. E2E did not run on this PR because ci.yml gates it on base_ref == main; it runs on the RC PR."
     }
   ],
   "approvals": [

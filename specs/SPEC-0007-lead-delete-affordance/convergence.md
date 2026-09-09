@@ -82,6 +82,55 @@ provisioning path — that a rejected control-plane mutation must be recorded.
 | `DELETE /api/v1/tasks/[id]` answers `405` | Observed, out of scope, needs its own record |
 | Platform console redirects a signed-in non-owner to `/login` | Candidate explanation `C1` for `BUG-007`; unevidenced and authorization-adjacent, so deliberately not changed on a hunch |
 
+## CI on the new SHA
+
+`21705d7`, PR #47 into `dev/yourhan-next`.
+
+| Gate | Result |
+|---|---|
+| SDD validation (GitHub) | **success** |
+| CI → typecheck, lint, format, schema drift, tenant isolation, raw-SQL scope, README schema counts, observability drift, Redis auth, face token gate, backup round trip, unit tests, integration (server), build | **all pass** |
+| CI → E2E | **did not run.** `ci.yml` gates the Playwright steps on `github.event_name == 'push' \|\| github.base_ref == 'main'`, and this PR targets `dev/yourhan-next`. It runs when the release-candidate PR to `main` next runs. |
+| CI → Audit | **fails** |
+
+### The Audit failure is inherited, not introduced
+
+`git diff 63daf3d..21705d7 -- apps/web/package.json apps/web/package-lock.json`
+is **empty** — this change touches no dependency. To settle it rather than
+assert it, the release candidate's own CI run was re-run on 2026-09-09: PR #46
+at `63daf3d`, which passed on 2026-09-08, now **fails at the same single step,
+`Audit`, with every other gate including E2E green**.
+
+Three advisories published between 2026-09-08 and 2026-09-09:
+`next` (critical, two RCEs, fix requires `next@16.3.4` — outside the stated
+range), `nodemailer` (high, four advisories, `npm audit fix` is sufficient),
+`sharp` (high, via `libheif`, dragged by the `next` bump).
+
+**The release candidate is therefore no longer CI-green either**, and that is
+a release-management fact rather than a defect in this change. Bumping a
+framework major inside a P0 incident fix is exactly the drive-by
+`docs/sdd/BUG_WORKFLOW.md` forbids, so it is registered here and left alone.
+
+### `REG-001` fail-before / pass-after
+
+The spec itself has not yet been executed by a runner, because the E2E gate did
+not run on this PR — stated plainly rather than glossed. What **was** executed,
+against both images, is the spec's own assertions driven by an equivalent
+Playwright harness using the identical locators
+(`getByRole('checkbox', { name: 'Select <lead>' })`, `page.once('dialog')`,
+`getByRole('button', { name: 'Delete', exact: true })`):
+
+- against `master-suite/web:c879c6c7f7e8`: **0** matching Delete buttons after
+  selection — the click has nothing to hit;
+- against the image built from this branch: **1**, the confirmation reads
+  "Delete 1 lead(s)? They will no longer appear in any list.",
+  `DELETE /api/v1/leads/… → 200`, the row leaves the list and `deletedAt` is
+  set.
+
+So the assertions are demonstrated to fail before and pass after; what remains
+unproven is the spec file's own wiring under the Playwright runner, and that is
+the release-candidate PR's E2E run to establish.
+
 ## Verdict
 
 `CHG-001` through `CHG-004`: **converged**. `BUG-006` is fixed and has a test
