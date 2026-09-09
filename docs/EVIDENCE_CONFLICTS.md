@@ -1392,3 +1392,134 @@ the suite result is unchanged — but the acceptance was taken over a red CI gat
 that nobody could see. Recorded here rather than quietly fixed, because the
 reviewer is entitled to know the evidence set was incomplete when they signed
 it.
+
+---
+
+### EVC-024 — `demo.youhan.in` now resolves to the customer production host
+
+**Severity: high. This blocks `SPEC-0008` deployment entirely and is not a
+documentation defect.**
+
+**Documented state.** `SPEC-0008` gate 2 approved *"Hosting: a separate VM"* and
+explicitly **declined** co-locating the demonstration with another environment,
+on the evidence that the other environment holds real customer data. The
+provisioning checklist's `B1` asks for an approved, dedicated demo host.
+
+**Actual state, measured 2026-09-09 21:22 UTC.** A DNS A record now points
+`demo.youhan.in` at `89.167.94.197`. That address is not a new host. It is
+**named literally, in this repository, in the production deployment
+configuration**:
+
+```
+apps/web/infra/Caddyfile.intranet:38    89.167.94.197 {
+apps/web/infra/Caddyfile.intranet:14        default_sni 89.167.94.197
+```
+
+`Caddyfile.intranet` is mounted only by `apps/web/infra/docker-compose.small-host.yml`,
+and that overlay is applied by exactly one branch of `apps/web/scripts/release.sh`:
+
+```
+release.sh:63  host_overlay() { if [ -f "${INFRA}/docker-compose.small-host.yml" ]; ...
+release.sh:77  production) ... docker-compose.azure.yml$(host_overlay)
+```
+
+`host_overlay` appears nowhere else. The `staging` branch at line 71 deliberately
+does not take it, and says so at lines 74-76. So the overlay naming this IP is
+production's, and only production's.
+
+**Runtime observations, `89.167.94.197`, 2026-09-09 21:22 UTC** — GET only, no
+authentication attempted, nothing mutated:
+
+| Probe | Result |
+|---|---|
+| `http://89.167.94.197/` | `308` to `https://89.167.94.197/`, `Server: Caddy` |
+| `https://89.167.94.197/api/health` | `200` `{"status":"ok","checks":{"database":"up","redis":"up"}}` |
+| `https://89.167.94.197/` | `307` to `/login`; `X-Powered-By: Next.js`; HSTS `max-age=63072000; includeSubDomains; preload` |
+| login page | carries `YOUHAN ONE` branding |
+| TLS without SNI | `CN=Caddy Local Authority - ECC Intermediate`, 12-hour validity — matches `tls internal` at `Caddyfile.intranet:39` |
+| TLS with SNI `demo.youhan.in` | **handshake fails** — no certificate, no site block |
+| `https://demo.youhan.in/` from the public internet | fails at TLS; nothing is served |
+
+**What is and is not currently exposed.** The public cannot reach the
+application through `demo.youhan.in`: port 80 answers with a redirect to a
+hostname whose TLS handshake fails. **No customer data is being served over the
+new name today.** What is true today is narrower and still serious — production's
+reverse proxy is answering for a hostname intended for a public demonstration,
+and `Caddyfile.intranet:34` contains a `{$APP_DOMAIN}` site block. If
+`APP_DOMAIN` in that host's `.env.production` were ever set to
+`demo.youhan.in`, Caddy would obtain a Let's Encrypt certificate over HTTP-01 —
+DNS already points at it — and begin serving **the production application** at
+the demonstration hostname. That is one environment variable away.
+
+**Why deploying the demo here would be worse than the co-location gate 2
+refused.** Gate 2 declined *staging*, which holds a restored snapshot. This is
+the live system:
+
+1. Synthetic demonstration data and real customer data on one host.
+2. `release.sh` on that host resolves `host_overlay()` for production. A demo
+   environment added to the same script and the same host puts a destructive
+   `--reset` seed one argument away from production's compose stack.
+3. `SPEC-0007`'s reset destroys and rebuilds every seeded workspace. Its guards
+   read `NODE_ENV`, `APP_ENV` and the database name — none of which distinguishes
+   two stacks on one machine as reliably as two machines do.
+4. A public demonstration login would be added to the attack surface of the host
+   serving customers.
+
+**Not repaired, and not repairable by an agent.** Whether `89.167.94.197` is
+still production, has been repurposed, or is a rebuild is a fact only its
+operator holds. The repository says production; that is the only evidence
+available from here, and the burden is on establishing otherwise rather than on
+assuming it.
+
+**Required decision.** Either a dedicated host is provided for the demo and the
+A record is repointed at it, or a human with operational knowledge states what
+`89.167.94.197` is now and, if the co-location is genuinely intended, that is a
+change to `SPEC-0008`'s approved architecture requiring gate 2 to be reopened —
+not something to be absorbed during deployment.
+
+Raised by an agent on 2026-09-09 while verifying DNS before deployment. No
+change was made to the host, no credential was used, and no endpoint beyond
+`/api/health*` and the unauthenticated login page was requested.
+
+## EVC-023, addendum 2 — 2026-09-09: the corrected rule was still wrong
+
+Addendum 1 replaced "a Windows `format:check` is uninformative" with "run
+`prettier --check` against only the files a change touches". That is better and
+it is still not reliable, and the next change proved it within the hour.
+
+`SPEC-0009`'s implementation edits one string in `apps/web/package.json`.
+`npx prettier --check package.json` **failed**. It is not a defect:
+
+| Artefact | Line endings | Prettier |
+|---|---|---|
+| `apps/web/package.json` in the working tree | CRLF (3 617 bytes) | **fails** |
+| the same bytes with `\r\n` → `\n` | LF (3 520 bytes) | clean |
+| `git show HEAD:apps/web/package.json` | LF | clean |
+
+`core.autocrlf=true` checks files out as CRLF, so *any* working-tree file that
+has not been rewritten by Prettier itself fails `--check` regardless of its
+content. Addendum 1's rule happened to work only because the procedure used
+there was `prettier --write` followed by `--check`: `--write` normalises to LF
+as a side effect, so the re-check passed and the files `--write` actually
+modified were the genuinely misformatted five. The diagnosis was right; the rule
+extracted from it was not.
+
+**The rule, third attempt.** Check what git will commit, not what is on disk.
+Either normalise first, or read the file out of the index:
+
+```bash
+git show :apps/web/package.json > /tmp/p.json && npx prettier --check /tmp/p.json
+```
+
+`prettier --write <changed files>` followed by `--check` remains a valid
+procedure — it answers "is the content wrong" by fixing it — but it is a
+mutation, not an inspection, and it cannot be used to *verify* a change without
+also changing it.
+
+**Why this keeps happening.** Every rule written here so far has tried to work
+around `core.autocrlf=true` on a repository with no `.gitattributes`, and each
+one has held until a file arrived through a path the rule did not anticipate.
+The underlying repair — `* text=auto eol=lf` in `.gitattributes` and a
+re-checkout — remains outside the scope of any open specification, and this is
+the second finding it has produced. Recorded so that the next person to write a
+workaround can see there have been two.
