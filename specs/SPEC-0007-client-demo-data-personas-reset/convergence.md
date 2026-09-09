@@ -910,3 +910,51 @@ cause is that the exit code was read from a pipeline ending in `tail`, which
 reports `tail`'s status and not eslint's — the same mistake was repeated once in
 this session and caught only by re-running eslint with its output discarded.
 
+
+## Re-verified on the integrated baseline, 2026-09-09
+
+The evidence above was taken at `a91a60f`, before the dependency remediation
+existed on this branch. Pull request `#48` has since been merged to
+`dev/yourhan-next` as `98fa066` and merged here as `4c16f55`, which moves
+`next` `16.2.12` to `16.3.4`, `nodemailer` to `9.1.1` and `sharp` to `0.35.4`.
+
+A framework minor sits on the request path every one of these assertions runs
+through, so the whole set was taken again rather than carried forward.
+
+| Check | Result on `4c16f55` |
+|---|---|
+| `npm ci` | exit 0; reproduced `next@16.3.4`, `nodemailer@9.1.1`, `sharp@0.35.4` |
+| `npm audit --omit=dev --audit-level=high` | **exit 0, `found 0 vulnerabilities`** — 0 critical, 0 high, 0 moderate, 0 low |
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint .` | exit 0 |
+| `npm run test` run E | **157 files, 1992 passed, 2 skipped, 0 failed** |
+| `npm run test` run F | **157 files, 1992 passed, 2 skipped, 0 failed** |
+| `node --test tools/sdd/tests/validator.test.mjs` | 91/93 — the two `EVC-020` Windows CRLF cases, unchanged |
+| `node --test tools/sdd/tests/agent.test.mjs` | 69/70 — the one `EVC-020` case, unchanged |
+| `validate --all` | PASS, 0 errors, 7 warnings |
+| `validate --spec SPEC-0007` | PASS, 0 errors, 0 warnings |
+| Client walkthrough vs the rebuilt demonstration | **6/6**; teardown removed 0 workspaces and 0 accounts |
+| Rendered branding, 10 pages, local | 10/10 free of the previous customer name |
+| Rendered branding, 10 pages, through the public tunnel | 10/10 free of the previous customer name |
+
+Six consecutive full-suite runs now stand: A to D before the upgrade, E and F
+after it, every one 1992 passed with 0 failed at the default parallelism CI
+uses.
+
+**One incidental confirmation.** `apps/web/tests/tenant/ai-usage-console.spec.ts` passes
+here on `next@16.3.4`. The same file is currently failing on
+`fix/p0-lead-delete-affordance`, whose head does **not** carry the upgrade — so
+that failure belongs to that branch and is not caused by the framework move.
+Stated because the coincidence invites the opposite conclusion.
+
+**One behaviour change the upgrade surfaced, out of scope here.** Starting the
+local production preview now prints a warning that `next start` does not work
+with the `output: 'standalone'` configuration `apps/web/next.config.ts` sets.
+The preview serves correctly regardless, and **production is unaffected** —
+`apps/web/infra/Dockerfile` already uses `node server.js`, the supported
+entrypoint. Only `apps/web/scripts/start-local-prod.mjs` is affected. Recorded
+as a follow-up rather than fixed inside this specification.
+
+The demonstration was taken down for the upgrade and rebuilt on `16.3.4`;
+`http://localhost:3100/login` and the public tunnel both answer 200 and both
+branding sweeps were run against that rebuilt instance.
