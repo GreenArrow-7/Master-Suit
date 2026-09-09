@@ -150,3 +150,23 @@ needs the change, a rebuild of that service, and then:
 - a test alert traverses the path, where that is safe to trigger.
 
 **No release should be called production-ready while alerting is off.**
+
+---
+
+## Packet E — CI has no object storage (`R5`, low urgency)
+
+`.github/workflows/ci.yml` starts Postgres and Redis. `scripts/generate-secrets.mjs`
+copies `.env.example`, which points `S3_ENDPOINT` at `http://127.0.0.1:9000` —
+nothing listens there on a runner, so `putObject` cannot succeed.
+
+**Consequence:** the storage half of document handling has no CI coverage
+anywhere. Upload, download, delete, the size cap and the antivirus refusal were
+all verified against the deployed image in a disposable stack with MinIO and
+ClamAV, and that is the only place they have ever been exercised.
+`REG-002` skips that half on a runner with the reason named.
+
+**Fix, when someone with `R5` authority wants it:** a `minio/minio` service in
+`ci.yml` alongside Postgres and Redis, with `S3_ENDPOINT` pointed at it.
+`.github/workflows/*` is `R5` in `docs/RISK_CLASSIFICATION.md` — human-only —
+so it is recorded here rather than attempted.
+

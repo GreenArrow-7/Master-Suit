@@ -131,6 +131,56 @@ So the assertions are demonstrated to fail before and pass after; what remains
 unproven is the spec file's own wiring under the Playwright runner, and that is
 the release-candidate PR's E2E run to establish.
 
+## Full-gate CI, including Playwright — PR #49, base `main`
+
+E2E is gated in `ci.yml` on `github.event_name == 'push' || github.base_ref == 'main'`,
+so a PR into `dev/yourhan-next` skips it. A draft PR whose base **is** `main`
+(#49, `DO NOT MERGE`) was opened solely to make the full gate execute on the
+exact release-candidate content. Merging still goes #47 and #48 into
+`dev/yourhan-next`, then #46 into `main`.
+
+### First run — `956754a`
+
+**51 passed, 1 failed.** Every gate before E2E green: typecheck, lint, format
+check, schema drift, tenant isolation, raw-SQL scope, README schema counts,
+observability drift, Redis auth, face token gate, backup round trip, unit
+tests, integration (server).
+
+The three new persona assertions all passed on the first attempt:
+
+| Spec | Result |
+|---|---|
+| `platform-workspace-create` — the platform owner creates a workspace through the wizard | **passed** (10.7s) |
+| `platform-workspace-create` — a rejected field is named on the review step | **passed** (4.1s) |
+| `platform-workspace-create` — a workspace administrator is refused the console without being logged out | **passed** (6.5s) |
+| `platform-workspace-edit` — a workspace administrator cannot reach the platform area | **passed**, unchanged by the denial-UX change |
+
+The one failure was `REG-002`: the uploaded document never appeared in the
+list. **The cause is the environment, not the product.** `ci.yml` runs Postgres
+and Redis only, and `.env.example` points `S3_ENDPOINT` at `127.0.0.1:9000`, so
+`putObject` cannot succeed on a runner. Lead document upload — with download,
+delete, `403`, `404`, path traversal, the size cap and an EICAR refusal — was
+verified end to end against the deployed image in a disposable stack that does
+have MinIO and ClamAV (`bug-010.md`).
+
+**And it took `REG-001` with it.** `crm-lifecycle` is a serial describe, so the
+abort left the lead-delete regression — the reason this change exists —
+reported as "did not run". That is the more serious half of the failure: a
+false red in an unrelated test hid the one that matters.
+
+`REG-002` now asserts unconditionally as far as the environment allows — the
+control is present, pressing it issues the `POST`, and the server accepts it —
+and skips only the storage half, only on a `5xx` from `putObject`, with the gap
+named. A `4xx` is still a failure, so the product refusing is never mistaken
+for the runner lacking a bucket.
+
+### Gap registered, not fixed
+
+CI has no object storage. Adding a service to `.github/workflows/*` is `R5`
+and human-only (`docs/RISK_CLASSIFICATION.md`), so it is recorded for the
+owner rather than attempted: until a bucket exists on the runner, the storage
+half of document handling has no CI coverage anywhere.
+
 ## Verdict
 
 `CHG-001` through `CHG-004`: **converged**. `BUG-006` is fixed and has a test
