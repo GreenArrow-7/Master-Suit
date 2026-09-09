@@ -1523,3 +1523,70 @@ The underlying repair — `* text=auto eol=lf` in `.gitattributes` and a
 re-checkout — remains outside the scope of any open specification, and this is
 the second finding it has produced. Recorded so that the next person to write a
 workaround can see there have been two.
+
+## EVC-024, correction — 2026-09-09: what the evidence actually supports
+
+Corrected on the instruction of the human requester. The entry above states two
+things more strongly than its evidence carries, and the difference matters
+because a reader deciding whether customer data is at risk would be misled by
+the stronger reading.
+
+**What the evidence supports, restated exactly:**
+
+1. **Repository configuration associates `89.167.94.197` with production.**
+   `apps/web/infra/Caddyfile.intranet` names the address literally, that file is
+   mounted only by `apps/web/infra/docker-compose.small-host.yml`, and
+   `apps/web/scripts/release.sh` applies that overlay only in its `production`
+   branch. This is an association recorded in the repository. It is not a
+   runtime confirmation of the host's present role.
+2. **Public probes confirm a running YOUHAN ONE application** at that address,
+   reporting `database: up` and `redis: up`.
+3. **The host's current customer-production status requires confirmation** from
+   the infrastructure owner or from authorized authenticated inspection. The
+   repository is evidence of intent at the time it was written; a host can be
+   repurposed without the repository saying so.
+
+**What the entry above overclaims, withdrawn:**
+
+- *"No customer data is being served over the new name today."* **Withdrawn.**
+  What was actually observed is narrower: HTTPS requests to
+  `https://demo.youhan.in/` failed at the TLS handshake, from one client, at one
+  moment, from one network vantage point, on 2026-09-09 at 21:22 UTC. That is
+  evidence about those requests. It is not evidence that no path exists, that no
+  other client or resolver sees something different, that the state has not
+  changed since, or that nothing is reachable by another route. A failed probe
+  proves a probe failed.
+- *"The public cannot reach the application through `demo.youhan.in`."*
+  **Withdrawn** for the same reason, and replaced by: the requests made were
+  refused at TLS.
+
+**What does not change.** The blocking conclusion stands and does not depend on
+the withdrawn sentences. A demonstration environment must not be deployed onto a
+host that the repository associates with production until that host's role is
+confirmed, and the `{$APP_DOMAIN}` block at `Caddyfile.intranet:34` remains one
+environment variable from issuing a public certificate for a hostname that now
+resolves to that address. If anything, weakening the exposure claim strengthens
+the case for treating this as blocking: less is known than the original wording
+implied.
+
+**Standing instruction while unconfirmed.** `89.167.94.197` is treated as
+production. No change to its `APP_DOMAIN`, Caddy configuration, firewall,
+containers, volumes, databases or deployment state; no demo seed, reset or
+migration run against it. Nothing has been changed on it, and no credential has
+been used against it.
+
+## Condition required to close EVC-024
+
+One of:
+
+- **(a)** A dedicated demo host is provided, `demo.youhan.in` is repointed at
+  it, and this entry closes as superseded by the deployment on that host; or
+- **(b)** The infrastructure owner confirms `89.167.94.197` is **not** customer
+  production and states what it is, in which case co-location is still a
+  departure from the architecture gate 2 approved and requires gate 2 to be
+  reopened rather than absorbed; or
+- **(c)** The A record for `demo.youhan.in` is removed, returning the hostname
+  to `NXDOMAIN` and dissolving the association, pending (a).
+
+**(c) is the interim action** if no replacement host exists yet. It touches only
+the record added for the demonstration and **no production DNS record**.

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0009",
+  "sessionId": "ASES-0001",
+  "taskIds": [
+    "TASK-002"
+  ],
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; loopback PostgreSQL, Redis, MinIO and Mailpit with disposable databases. Scratch copies of the two manifests in a temporary directory for the resolution experiments. No staging or production access, and no credential used against any host.",
+  "tests": [
+    {
+      "id": "ST-001",
+      "outcome": "PASS",
+      "note": "npm audit --omit=dev --audit-level=high exits 0 from the committed lockfile: 0 critical, 0 high, 0 moderate, 0 low"
+    },
+    {
+      "id": "ST-002",
+      "outcome": "PASS",
+      "note": "no audit ignore file exists; .github/workflows/ci.yml is byte-identical to origin/main and its Audit step is still npm audit --omit=dev --audit-level=high; no overrides entry pins a package below a fixed version"
+    },
+    {
+      "id": "ST-003",
+      "outcome": "PASS",
+      "note": "overrides.sharp is ^0.35.4 in apps/web/package.json and the lockfile resolves sharp 0.35.4; asserted against both, because this change exists precisely because they can disagree"
+    },
+    {
+      "id": "ST-007",
+      "outcome": "PASS",
+      "note": "the declaration holds the floor: at ^0.35.4 the audit reports found 0 vulnerabilities; with the override forced to 0.35.3 and the lockfile regenerated, npm resolves node_modules/next/node_modules/sharp=0.35.3 and the audit reports 2 high including GHSA-rgj7-g3m4-5g8c. Run entirely in a temporary directory; the repository manifests were confirmed untouched by it"
+    },
+    {
+      "id": "UT-001",
+      "outcome": "PASS",
+      "note": "diff confined: one line of apps/web/package.json, and in the lockfile 0 packages added, 0 removed and 0 resolved versions changed across 831 entries"
+    },
+    {
+      "id": "UT-005",
+      "outcome": "PASS",
+      "note": "all 5 overrides entries enumerated - postcss ^8.5.18, sharp ^0.35.4, nanoid ^3.3.17, deepmerge-ts ^8.0.1, mysql2 ^3.24.3 - and none names a package carrying a current production advisory"
+    },
+    {
+      "id": "UT-002",
+      "outcome": "PASS",
+      "note": "npm ci from the committed lockfile exits 0 and installs sharp 0.35.4. Run against an isolated copy of the two manifests rather than the repository tree, so the running demonstration server was not deprived of its node_modules mid-request; CI executes it against the tree itself"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npm audit --omit=dev --audit-level=high",
+      "exitCode": 0,
+      "note": "found 0 vulnerabilities"
+    },
+    {
+      "command": "npm ls sharp",
+      "exitCode": 0,
+      "note": "next@16.3.4 -> sharp@0.35.4"
+    },
+    {
+      "command": "npm install --package-lock-only --ignore-scripts",
+      "exitCode": 0,
+      "note": "lockfile reconciliation; npm audit fix and --force were not used at any point"
+    },
+    {
+      "command": "npm ci --ignore-scripts (isolated copy of the manifests)",
+      "exitCode": 0,
+      "note": "installs sharp 0.35.4"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npx eslint .",
+      "exitCode": 0,
+      "note": "exit code read with output discarded, not through a pipe"
+    },
+    {
+      "command": "npm run test",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "note": "Next.js 16.3.4"
+    },
+    {
+      "command": "npx prettier --check apps/web/package.json",
+      "exitCode": 1,
+      "note": "NOT a defect. The working-tree file is CRLF under core.autocrlf; the LF-normalised content that git commits is prettier-clean, and so is HEAD's. Registered as EVC-023 addendum 2, which corrects the checking rule"
+    },
+    {
+      "command": "node --test tools/sdd/tests/validator.test.mjs",
+      "exitCode": 1,
+      "note": "91/93 - the two EVC-020 Windows CRLF cases, untouched by this work"
+    },
+    {
+      "command": "node --test tools/sdd/tests/agent.test.mjs",
+      "exitCode": 1,
+      "note": "69/70 - the one EVC-020 Windows CRLF case, untouched by this work"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 warnings"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0009 --session ASES-0001",
+      "exitCode": 0,
+      "note": "PASS after the governance findings were moved to their own commit; the first run correctly refused docs/EVIDENCE_CONFLICTS.md as outside TASK-002 scope"
+    }
+  ],
+  "verifiedTests": [
+    "ST-001",
+    "ST-002",
+    "ST-003",
+    "ST-007",
+    "UT-001",
+    "UT-005",
+    "UT-002"
+  ],
+  "result": "PASS",
+  "notes": [
+    "Advisory evidence was refreshed at implementation time rather than carried forward: 0.35.4 is still the newest published 0.35.x, so the floor names the current fixed version and not a historical one.",
+    "The lockfile also drops a stale \"dev\": true flag on fsevents. A control test established this is not caused by the change: reconciling the UNMODIFIED package.json removes the same flag, so it is pre-existing drift inherited from PR #48's lockfile. It was kept rather than reverted, because reverting would leave the committed lockfile disagreeing with npm's own deterministic output. It moves one optional darwin-only package from 320 to 321 non-dev entries and the audit remains 0 at every severity.",
+    "RISK-002 assessed rather than asserted. The other four overrides entries - postcss, nanoid, deepmerge-ts, mysql2 - each declare a floor below the version currently resolved, which is the same structural property that made the sharp entry dangerous. None of them carries a current production advisory, so none is a vulnerability today; the finding is a latent pattern, not a defect, and UT-005 is what will notice if that changes.",
+    "ST-007 is the only test that can fail if this change is absent, because on the current graph every other assertion passes identically before and after. It is deliberately a test that breaks the thing it is proving."
+  ]
+}

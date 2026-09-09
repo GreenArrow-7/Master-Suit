@@ -5,7 +5,7 @@
 | Specification | `SPEC-0009` |
 | Slug | `runtime-dependency-security-remediation` |
 | Risk | `R4` |
-| Status | `READY_FOR_APPROVAL` |
+| Status | `VERIFYING` |
 | Owner | Application Security, with the application maintainer |
 | Supersedes | — |
 | Superseded by | — |
@@ -172,6 +172,12 @@ migration, no data movement, no configuration change.
 
 | Gate | Role | Decision | Date | Scope |
 |---|---|---|---|---|
-| Specification approval | Product Owner and Solution Architect | not recorded | — | — |
-| Security risk acceptance | Application Security | not recorded | — | — |
-| Implementation readiness | Solution Architect | not recorded | — | — |
+| Specification approval | Product Owner and Solution Architect | **approved** | 2026-09-09 | narrowed scope: the `sharp` override floor only |
+| Security risk acceptance | Application Security | **approved** | 2026-09-09 | `sharp >= 0.35.4`, caret floor, no suppression, CRITICAL 0 / HIGH 0, `RISK-002` accepted |
+| Implementation readiness | Solution Architect | **approved** | 2026-09-09 | `TASK-002` may begin; `apps/web/package.json` and `apps/web/package-lock.json` only |
+
+All three supplied explicitly in session by the human requester, transcribed by
+an agent. `docs/sdd/HUMAN_APPROVAL_GATES.md` permits one person to hold several
+functional roles provided the approver is not the sole author; the author here
+is an agent. `CL-006` is resolved by the same act — the approver elected the R4
+gate set rather than a lower one, so the specification stays `R4`.
