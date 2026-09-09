@@ -7,7 +7,7 @@
 | Prepared by | AI agent, CONVERGENCE_REVIEWER role |
 | Date | 2026-09-08; re-converged 2026-09-09 |
 | Recommended verdict (superseded) | `PASS WITH ACCEPTED LIMITATIONS` |
-| Accepted by | 2026-09-08 acceptance recorded below. **Re-convergence of 2026-09-09 is NOT accepted.** |
+| Accepted by | 2026-09-08 acceptance recorded below. **Re-convergence of 2026-09-09 accepted at gate 6 by the Qualified Human Reviewer against commit `9f97add`** — see the final section. |
 
 An agent prepared this report and recommended a verdict. The gate 6 acceptance
 recorded at the end is a human's, transcribed by an agent.
@@ -701,8 +701,13 @@ means.
 
 ### CONV-015 — the reset fix destabilised a suite that shares its database
 
-**Status:** `OPEN` · **Severity:** medium · **Owner:** the demo suites' owner ·
-**Release impact:** **BLOCKING for push**
+**Status:** `RESOLVED` · **Severity:** medium · **Owner:** the demo suites'
+owner · **Release impact:** no longer blocking
+
+*Raised `OPEN` and **BLOCKING for push** on 2026-09-09. Closed the same day
+under `TASK-013`; the disposition, the fix and its evidence are further down
+this file. The account below is left exactly as it was written, because how the
+finding was understood while it was open is part of the record.*
 
 **What happens.** `apps/web/tests/security/demo-personas.spec.ts` fails intermittently in
 a full run — roughly one run in three — with `401` where `200` is expected, and
@@ -958,3 +963,38 @@ as a follow-up rather than fixed inside this specification.
 The demonstration was taken down for the upgrade and rebuilt on `16.3.4`;
 `http://localhost:3100/login` and the public tunnel both answer 200 and both
 branding sweeps were run against that rebuilt instance.
+
+## Gate 6 — convergence acceptance, 2026-09-09
+
+| Field | Value |
+|---|---|
+| Gate | 6, convergence acceptance |
+| Role | Qualified Human Reviewer |
+| Actor type | human |
+| Decision | **approved** |
+| Date | 2026-09-09 |
+| Commit | `9f97add50c2ee20ba6a43fff496975f1b6185d89` |
+| Evidence | this file, and `execution/VER-0009.json` |
+
+**Decision as given.**
+
+> I accept SPEC-0007 convergence at Gate 6, verdict PASS.
+
+**What it accepts.** The re-convergence of 2026-09-09 as re-verified on the
+integrated dependency-fixed baseline: verdict `PASS`, OPEN findings **0**,
+`CONV-001` to `CONV-005` CLOSED, `CONV-006` to `CONV-016` RESOLVED,
+`ACCEPTED_RISK` 0.
+
+**What it supersedes.** The gate 6 acceptance recorded earlier on 2026-09-09,
+which was taken against evidence that predated `CONV-015` and `CONV-016`. That
+acceptance is retained rather than withdrawn: it was accurate about what it saw.
+
+**What it does not authorise.** Customer production access or deployment,
+`SPEC-0008`, infrastructure, DNS, TLS, or release. Release is gate 7 and belongs
+to the Human Release Authority.
+
+Decision supplied explicitly in session by the human requester acting as
+Qualified Human Reviewer and transcribed by an agent. The agent did not make it
+and does not hold it.
+
+`SPEC-0007` moves `VERIFYING` → `CONVERGED`. It is **not** `RELEASED`.
