@@ -142,7 +142,11 @@ export const GET = route(
       data: { status: 'IN_PROGRESS', startedAt, answeredAt: startedAt, providerName: 'demo-simulation' },
     });
 
-    const script = demoScript(agent?.fullName ?? 'The agent', lead?.fullName ?? 'the client', workspace?.displayName ?? 'our team');
+    const script = demoScript(
+      agent?.fullName ?? 'The agent',
+      lead?.fullName ?? 'the client',
+      workspace?.displayName ?? 'our team',
+    );
     const tenantId = ctx.tenantId;
     const callId = call.id;
 

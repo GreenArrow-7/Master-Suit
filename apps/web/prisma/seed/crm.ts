@@ -204,26 +204,26 @@ export async function seedCrm(db: PrismaClient, ctx: CrmCtx) {
     return d;
   };
 
-/**
- * SPEC-0007/DATA-005 · CHG-004 — a demonstration domain that cannot receive mail.
- *
- * The account names are plausible UAE company names, and this used to append
- * `.ae` to them: `alfuttaimrealty.ae`, and 25 contact addresses on domains like
- * it. Several of those are or could become **real registered domains belonging
- * to real companies**, which is precisely the mailbox `DATA-005` exists to keep
- * a misdirected message away from.
- *
- * `CL-007` was asked this question and its Option A answer — move everything to
- * a reserved domain — was applied only to the ten persona logins. The generated
- * account and contact books were missed, so the requirement was never actually
- * satisfied. Found by `UT-013` on its first run.
- *
- * A subdomain of `example.com` is reserved by RFC 2606 along with the parent, so
- * `alfuttaimrealty.example.com` still reads as that company's own domain on a
- * demonstration screen while being unroutable. It keeps the realism the CL-007
- * discussion did not want to lose, and gives up nothing.
- */
-const demoDomain = (name: string) => `${name.toLowerCase().replace(/[^a-z]/g, '')}.example.com`;
+  /**
+   * SPEC-0007/DATA-005 · CHG-004 — a demonstration domain that cannot receive mail.
+   *
+   * The account names are plausible UAE company names, and this used to append
+   * `.ae` to them: `alfuttaimrealty.ae`, and 25 contact addresses on domains like
+   * it. Several of those are or could become **real registered domains belonging
+   * to real companies**, which is precisely the mailbox `DATA-005` exists to keep
+   * a misdirected message away from.
+   *
+   * `CL-007` was asked this question and its Option A answer — move everything to
+   * a reserved domain — was applied only to the ten persona logins. The generated
+   * account and contact books were missed, so the requirement was never actually
+   * satisfied. Found by `UT-013` on its first run.
+   *
+   * A subdomain of `example.com` is reserved by RFC 2606 along with the parent, so
+   * `alfuttaimrealty.example.com` still reads as that company's own domain on a
+   * demonstration screen while being unroutable. It keeps the realism the CL-007
+   * discussion did not want to lose, and gives up nothing.
+   */
+  const demoDomain = (name: string) => `${name.toLowerCase().replace(/[^a-z]/g, '')}.example.com`;
 
   // 1. Accounts ──────────────────────────────────────────────────────────────
   const accountRows = ACCOUNTS.map(([name, accountType, industry], i) => {
@@ -1566,12 +1566,15 @@ export async function seedDemoSpotlight(db: PrismaClient, ctx: CrmCtx) {
      * that was true of the lead slices and false here.
      */
     const alreadyOwned = await db.account.count({ where: { tenantId, ownerId: accountManager.id } });
-    const unowned = alreadyOwned >= 8 ? [] : await db.account.findMany({
-      where: { tenantId, ownerId: { not: accountManager.id } },
-      orderBy: { name: 'asc' },
-      take: 8 - alreadyOwned,
-      select: { id: true },
-    });
+    const unowned =
+      alreadyOwned >= 8
+        ? []
+        : await db.account.findMany({
+            where: { tenantId, ownerId: { not: accountManager.id } },
+            orderBy: { name: 'asc' },
+            take: 8 - alreadyOwned,
+            select: { id: true },
+          });
     if (unowned.length > 0) {
       await db.account.updateMany({
         where: { tenantId, id: { in: unowned.map((a) => a.id) } },

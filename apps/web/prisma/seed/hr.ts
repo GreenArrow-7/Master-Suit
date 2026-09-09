@@ -312,10 +312,8 @@ export async function seedHr(db: PrismaClient, ctx: HrCtx): Promise<HrCounts> {
     };
   }
 
-  const departmentOf = (roleKey: string | null) =>
-    ROLE_DEPARTMENT[roleKey ?? ''] ?? 'OPS';
-  const designationOf = (roleKey: string | null) =>
-    ROLE_DESIGNATION[roleKey ?? ''] ?? 'ASSOC';
+  const departmentOf = (roleKey: string | null) => ROLE_DEPARTMENT[roleKey ?? ''] ?? 'OPS';
+  const designationOf = (roleKey: string | null) => ROLE_DESIGNATION[roleKey ?? ''] ?? 'ASSOC';
 
   // Two levels, built from seniority rather than at random: the most senior
   // profile overall heads the company, the most senior in each department heads

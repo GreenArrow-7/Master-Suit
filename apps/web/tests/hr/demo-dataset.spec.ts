@@ -98,7 +98,10 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
     });
 
     const heads = active.filter((e) => !e.managerMembershipId);
-    expect(heads.map((h) => h.employeeNumber), 'exactly one employee has no manager').toHaveLength(1);
+    expect(
+      heads.map((h) => h.employeeNumber),
+      'exactly one employee has no manager',
+    ).toHaveLength(1);
 
     const byMembership = new Map(active.map((e) => [e.membershipId, e]));
     for (const e of active) {
@@ -196,18 +199,23 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
   // ── UT-009 · FR-004, FR-007 ───────────────────────────────────────────────
   it('UT-009 attendance falls only on working days, never a weekend or a holiday', async () => {
     if (!seeded) return;
-    const rows = await db.hrAttendanceRecord.findMany({ where: t(), select: { workDate: true }, distinct: ['workDate'] });
+    const rows = await db.hrAttendanceRecord.findMany({
+      where: t(),
+      select: { workDate: true },
+      distinct: ['workDate'],
+    });
     expect(rows.length).toBeGreaterThanOrEqual(30);
     expect(rows.length).toBeLessThanOrEqual(60);
 
     const weekend = rows.filter((r) => WEEKEND.includes(r.workDate.getUTCDay()));
-    expect(weekend.map((r) => r.workDate.toISOString().slice(0, 10)), 'attendance on a weekend').toEqual([]);
+    expect(
+      weekend.map((r) => r.workDate.toISOString().slice(0, 10)),
+      'attendance on a weekend',
+    ).toEqual([]);
 
     const holidays = await db.hrHoliday.findMany({ where: t(), select: { holidayDate: true } });
     const holidayKeys = new Set(holidays.map((h) => h.holidayDate.toISOString().slice(0, 10)));
-    const onHoliday = rows
-      .map((r) => r.workDate.toISOString().slice(0, 10))
-      .filter((k) => holidayKeys.has(k));
+    const onHoliday = rows.map((r) => r.workDate.toISOString().slice(0, 10)).filter((k) => holidayKeys.has(k));
     expect(onHoliday, 'attendance on a holiday').toEqual([]);
   });
 
@@ -294,7 +302,10 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
       leave.filter((l) => l.status !== 'PENDING' && !l.approverId).length,
       'a decided leave request has no approver',
     ).toBe(0);
-    expect(leave.every((l) => l.days > 0), 'a leave request covers no days').toBe(true);
+    expect(
+      leave.every((l) => l.days > 0),
+      'a leave request covers no days',
+    ).toBe(true);
   });
 
   /** FR-007's coherence rule: the two modules must not contradict each other. */
@@ -313,10 +324,9 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
       });
       for (const row of overlapping) {
         checked += 1;
-        expect(
-          String(row.status),
-          `${key(row.workDate)} is inside an approved leave but is not marked ON_LEAVE`,
-        ).toBe('ON_LEAVE');
+        expect(String(row.status), `${key(row.workDate)} is inside an approved leave but is not marked ON_LEAVE`).toBe(
+          'ON_LEAVE',
+        );
       }
     }
     // If nothing overlapped, the assertion above proved nothing — say so rather
@@ -422,7 +432,6 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
     expect(liveSites, 'an account links to a non-reserved website').toEqual([]);
   });
 
-
   /**
    * SPEC-0007/UT-014 — the demonstration is YOUHAN ONE's, not a customer's.
    *
@@ -473,5 +482,4 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 HR demo dataset', () => {
       .map(([k, v]) => `${k}: ${String(v).slice(0, 70)}`);
     expect([...new Set(offenders)], 'client-visible demo data still names the old brand').toEqual([]);
   });
-
 });

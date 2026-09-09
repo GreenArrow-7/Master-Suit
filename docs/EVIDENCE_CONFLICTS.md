@@ -1338,3 +1338,57 @@ moment of application; two identifiers have been allocated in this repository
 in the last day.
 
 Nothing is renumbered. No standard is edited. Raised by an agent on 2026-09-09.
+
+## EVC-023, addendum — 2026-09-09: the noise was not merely noise; it hid five real failures
+
+The entry above concluded that a Windows `format:check` result "is not evidence
+about that gate", and recommended citing this entry instead of running it. That
+conclusion was correct and **insufficient**, and the branch it was written on
+proved it within the hour.
+
+`npm run format:check` on Linux CI (run `34385174549`, step 16) failed against
+`71c7456` with **five genuinely misformatted files**, every one of them
+introduced by this workstream in `c4c0631`:
+
+- `apps/web/prisma/seed/crm.ts`
+- `apps/web/prisma/seed/hr.ts`
+- `apps/web/prisma/seed/index.ts`
+- `apps/web/src/app/api/v1/calls/[id]/live/route.ts`
+- `apps/web/tests/hr/demo-dataset.spec.ts`
+
+The defects are real — a doc comment indented one level out from the constant it
+documents, a chained ternary Prettier wraps differently, and similar — and none
+of them is a line ending. The committed content is LF, because
+`core.autocrlf=true` normalises on commit; CI checked out exactly what a Linux
+developer would have and disagreed with it.
+
+**The failure this entry did not anticipate.** Locally those five sit inside a
+list of **908**. A real failure and 903 false ones are the same colour, so the
+advice "treat the local result as uninformative" quietly became "do not look at
+the gate at all", and five defects rode through six full-suite runs, an eslint
+pass, a validator pass, a human gate 6 acceptance and a push. A gate that cannot
+be read is not a gate that is merely unavailable; it is one that reports
+*success and failure identically*, which is worse than being absent, because an
+absent gate is noticed.
+
+**What was actually usable, and was not used.** Prettier accepts paths. Running
+`npx prettier --check` against **only the files a change touches** is unaffected
+by the repository-wide CRLF problem for any file the change has already written
+through Prettier, and for the rest it is a short enough list to read. That is
+what this entry should have recommended and did not. Applied afterwards to all
+23 `apps/web` files this branch touches: 5 needed reformatting, 18 were already
+clean, and the re-check passes.
+
+**Correction to the standing guidance.** A Windows `format:check` over the whole
+repository remains uninformative. A Windows `prettier --check <changed files>`
+is **not** uninformative and must be run before any push. The underlying repair
+is still a `.gitattributes` declaring `* text=auto eol=lf`, which is still
+outside the scope of any open specification.
+
+**Consequence for the gate 6 acceptance of 2026-09-09.** It was recorded against
+evidence that named `format:check` as unavailable rather than as unverified-and
+-failing. The specification's behaviour is unaffected — the diff is whitespace,
+the suite result is unchanged — but the acceptance was taken over a red CI gate
+that nobody could see. Recorded here rather than quietly fixed, because the
+reviewer is entitled to know the evidence set was incomplete when they signed
+it.

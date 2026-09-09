@@ -121,7 +121,6 @@ function safeHost(url: string | undefined): string {
   }
 }
 
-
 /**
  * The demonstration personas, by address.
  *
@@ -489,55 +488,55 @@ async function main() {
     console.log(`  Removing the existing ${label} tenant…`);
     const tenantId = existing.id;
     const t = { tenantId };
-      // Child-first: tenantId is a plain column on most tables, so the Tenant
-      // cascade does not reach them. Order matters where FKs do exist.
-      await db.callAudit.deleteMany({ where: t });
-      await db.aIAnalysis.deleteMany({ where: t });
-      await db.transcript.deleteMany({ where: t });
-      await db.recordingConsent.deleteMany({ where: t });
-      await db.recording.deleteMany({ where: t });
-      await db.call.deleteMany({ where: t });
-      await db.followUpTask.deleteMany({ where: t });
-      await db.targetProgress.deleteMany({ where: t });
-      await db.employeeTarget.deleteMany({ where: t });
-      await db.notification.deleteMany({ where: t });
-      await db.eventInvitee.deleteMany({ where: t });
-      await db.event.deleteMany({ where: t });
-      await db.campaignTalkingPoint.deleteMany({ where: t });
-      await db.campaignScript.deleteMany({ where: t });
-      await db.campaignQualification.deleteMany({ where: t });
-      await db.campaignMember.deleteMany({ where: t });
-      await db.formSubmission.deleteMany({ where: t });
-      await db.formField.deleteMany({ where: t });
-      await db.form.deleteMany({ where: t });
-      await db.landingPageVersion.deleteMany({ where: t });
-      await db.landingPage.deleteMany({ where: t });
-      await db.opportunityProduct.deleteMany({ where: t });
-      await db.auditLog.deleteMany({ where: t });
-      await db.leadScoreHistory.deleteMany({ where: t });
-      await db.leadAssignmentHistory.deleteMany({ where: t });
-      await db.leadStageHistory.deleteMany({ where: t });
-      await db.leadCustomFieldValue.deleteMany({ where: t });
-      await db.task.deleteMany({ where: t });
-      await db.activity.deleteMany({ where: t });
-      await db.communication.deleteMany({ where: t });
-      await db.document.deleteMany({ where: t });
-      await db.opportunity.deleteMany({ where: t });
-      await db.lossReason.deleteMany({ where: t });
-      await db.pipelineStage.deleteMany({ where: t });
-      await db.pipeline.deleteMany({ where: t });
-      await db.lead.deleteMany({ where: t });
-      await db.campaign.deleteMany({ where: t }); // after leads/opportunities, which reference it
-      await db.contact.deleteMany({ where: t });
-      await db.account.deleteMany({ where: t });
-      await db.duplicateRule.deleteMany({ where: t });
-      await db.leadCustomFieldDefinition.deleteMany({ where: t });
-      await db.leadStage.deleteMany({ where: t });
-      await db.activityType.deleteMany({ where: t });
-      await db.taskType.deleteMany({ where: t });
-      await db.product.deleteMany({ where: t });
-      await db.userTeam.deleteMany({ where: t });
-      await db.rolePermission.deleteMany({ where: t });
+    // Child-first: tenantId is a plain column on most tables, so the Tenant
+    // cascade does not reach them. Order matters where FKs do exist.
+    await db.callAudit.deleteMany({ where: t });
+    await db.aIAnalysis.deleteMany({ where: t });
+    await db.transcript.deleteMany({ where: t });
+    await db.recordingConsent.deleteMany({ where: t });
+    await db.recording.deleteMany({ where: t });
+    await db.call.deleteMany({ where: t });
+    await db.followUpTask.deleteMany({ where: t });
+    await db.targetProgress.deleteMany({ where: t });
+    await db.employeeTarget.deleteMany({ where: t });
+    await db.notification.deleteMany({ where: t });
+    await db.eventInvitee.deleteMany({ where: t });
+    await db.event.deleteMany({ where: t });
+    await db.campaignTalkingPoint.deleteMany({ where: t });
+    await db.campaignScript.deleteMany({ where: t });
+    await db.campaignQualification.deleteMany({ where: t });
+    await db.campaignMember.deleteMany({ where: t });
+    await db.formSubmission.deleteMany({ where: t });
+    await db.formField.deleteMany({ where: t });
+    await db.form.deleteMany({ where: t });
+    await db.landingPageVersion.deleteMany({ where: t });
+    await db.landingPage.deleteMany({ where: t });
+    await db.opportunityProduct.deleteMany({ where: t });
+    await db.auditLog.deleteMany({ where: t });
+    await db.leadScoreHistory.deleteMany({ where: t });
+    await db.leadAssignmentHistory.deleteMany({ where: t });
+    await db.leadStageHistory.deleteMany({ where: t });
+    await db.leadCustomFieldValue.deleteMany({ where: t });
+    await db.task.deleteMany({ where: t });
+    await db.activity.deleteMany({ where: t });
+    await db.communication.deleteMany({ where: t });
+    await db.document.deleteMany({ where: t });
+    await db.opportunity.deleteMany({ where: t });
+    await db.lossReason.deleteMany({ where: t });
+    await db.pipelineStage.deleteMany({ where: t });
+    await db.pipeline.deleteMany({ where: t });
+    await db.lead.deleteMany({ where: t });
+    await db.campaign.deleteMany({ where: t }); // after leads/opportunities, which reference it
+    await db.contact.deleteMany({ where: t });
+    await db.account.deleteMany({ where: t });
+    await db.duplicateRule.deleteMany({ where: t });
+    await db.leadCustomFieldDefinition.deleteMany({ where: t });
+    await db.leadStage.deleteMany({ where: t });
+    await db.activityType.deleteMany({ where: t });
+    await db.taskType.deleteMany({ where: t });
+    await db.product.deleteMany({ where: t });
+    await db.userTeam.deleteMany({ where: t });
+    await db.rolePermission.deleteMany({ where: t });
     await db.tenant.delete({ where: { id: tenantId } }); // cascades users, teams, branches, regions, roles
     console.log(`  Removed ${label}.`);
   }
@@ -1332,7 +1331,16 @@ async function main() {
   await seedCrm(db, { tenantId, users, rnd, pick, int, chance, businessDate, demoPersonaEmails: DEMO_PERSONA_EMAILS });
   // Outside seedCrm's accounts-guard: a top-up run that adds a new demo login
   // must still equip it with owned records.
-  await seedDemoSpotlight(db, { tenantId, users, rnd, pick, int, chance, businessDate, demoPersonaEmails: DEMO_PERSONA_EMAILS });
+  await seedDemoSpotlight(db, {
+    tenantId,
+    users,
+    rnd,
+    pick,
+    int,
+    chance,
+    businessDate,
+    demoPersonaEmails: DEMO_PERSONA_EMAILS,
+  });
 
   // The People module, which had configuration and employee profiles but no
   // attendance, leave, shifts or holidays — so every HR screen past the
