@@ -50,3 +50,38 @@ export const PATCH = route(
     });
   },
 );
+
+/**
+ * Soft delete, because `Task.deletedAt` already exists and every read path
+ * already filters on it — `sales/tasks/page.tsx` and the follow-up queues both
+ * do — so a deleted task leaves the lists without losing what happened.
+ *
+ * This handler was simply absent: `tasks:DELETE` is in the permission
+ * catalogue and is granted to Company Administrator, the column was there, the
+ * lists were already filtering on it, and the endpoint answered 405. Gated on
+ * `tasks:DELETE` rather than the `leads:EDIT` the rest of this file uses,
+ * because that is what every other delete route in the API does — accounts,
+ * contacts, campaigns, events, listings, projects, visits, documents and leads
+ * all gate on their own module's DELETE.
+ *
+ * Cancelling a task is not this. `status: 'CANCELLED'` keeps it on the board as
+ * a decision that was taken; this removes it from the board entirely.
+ */
+export const DELETE = route(
+  { module: 'tasks', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params }) => {
+    // Tenant-scoped and already-deleted-aware, so a second delete is a 404
+    // rather than a silent success on a row that is already gone.
+    const task = await prisma.task.findFirst({
+      where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw NotFound('Task');
+
+    await prisma.task.update({
+      where: { tenantId: ctx.tenantId, id: params.id },
+      data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+    });
+    return { ok: true };
+  },
+);

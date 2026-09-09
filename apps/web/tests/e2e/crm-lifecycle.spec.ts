@@ -119,6 +119,37 @@ test.describe('CRM lifecycle', () => {
     await expect(page.getByText(`Chase proposal ${run}`).first()).toBeVisible({ timeout: 30_000 });
   });
 
+  /**
+   * BUG-010 regression, and the answer to "can a user attach a document to a
+   * lead". The control, the route, the antivirus gate and the storage key were
+   * all already there; nothing had ever asserted them from the screen, and the
+   * production database held zero Document rows.
+   */
+  test('a document uploads to the lead, lists, and downloads', async ({ page }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    await page.goto(at(`/leads/${leadId}`));
+    await page.getByRole('tab', { name: 'Documents' }).click();
+    await expect(page.getByText('Upload document')).toBeVisible({ timeout: 30_000 });
+
+    const name = `brief-${run}.txt`;
+    await page.setInputFiles('input[type=file]', {
+      name,
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`lead brief ${run}`),
+    });
+
+    await expect(page.getByText(name).first()).toBeVisible({ timeout: 60_000 });
+
+    // Listed is not the same as retrievable: pull the bytes back through the
+    // authorised download route and check they are the ones that went in.
+    const link = page.getByRole('link', { name: /download/i }).first();
+    const href = await link.getAttribute('href');
+    expect(href).toBeTruthy();
+    const download = await page.request.get(href!);
+    expect(download.status()).toBe(200);
+    expect(await download.text()).toBe(`lead brief ${run}`);
+  });
+
   test('the lead becomes an opportunity carrying its value into the pipeline', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
@@ -138,6 +169,35 @@ test.describe('CRM lifecycle', () => {
     await expect(page.getByText(`Fit-out ${run}`).first()).toBeVisible();
     // The amount must survive the round trip, formatted or not.
     await expect(page.locator('body')).toContainText(/250[,.]?000/);
+  });
+
+  /**
+   * BUG-006 regression.
+   *
+   * The leads list offered no delete at all. An administrator holding
+   * `leads:DELETE` could select rows and assign, restage or add a task to them,
+   * and nothing on the screen removed one — the product's only delete was a
+   * single lead at a time behind the detail page's "More" menu. The permission,
+   * the API route and the service were all working the whole time, which is why
+   * this has to be asserted on the list rather than against the endpoint.
+   *
+   * Fails against the unfixed code: the Delete control does not exist.
+   */
+  test('an administrator deletes a lead from the list', async ({ page }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    const doomed = `Doomed ${run}`;
+    await post(page.request, 'leads', { fullName: doomed, email: `doomed.${run}@example.test` });
+
+    await page.goto(at(`/leads?q=${encodeURIComponent(doomed)}`));
+    await expect(page.getByText(doomed).first()).toBeVisible({ timeout: 30_000 });
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('checkbox', { name: `Select ${doomed}` }).check();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(page.getByText(doomed)).toHaveCount(0, { timeout: 30_000 });
+    await page.reload();
+    await expect(page.getByText(doomed)).toHaveCount(0, { timeout: 30_000 });
   });
 
   test('the opportunity closes won and leaves the open pipeline', async ({ page }) => {

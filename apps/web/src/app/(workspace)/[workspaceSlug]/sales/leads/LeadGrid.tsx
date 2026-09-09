@@ -37,6 +37,7 @@ export default function LeadGrid({
   taskTypes,
   canAssign,
   canEdit,
+  canDelete,
 }: {
   rows: LeadRow[];
   columns: ColumnDef[];
@@ -45,6 +46,7 @@ export default function LeadGrid({
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
   canEdit: boolean;
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -84,7 +86,7 @@ export default function LeadGrid({
     const failed = results.filter((res) => !res || !res.ok).length;
     setBusy(false);
     if (failed > 0) {
-      setError(`${failed} of ${ids.length} could not be updated.`);
+      setError(`${failed} of ${ids.length} could not be completed.`);
       return;
     }
     setAction(null);
@@ -123,6 +125,18 @@ export default function LeadGrid({
         priority: String(form.get('priority')),
       }),
     );
+
+  /**
+   * The only delete a lead ever had was behind the "More" menu on the detail
+   * page, one lead at a time — so an administrator holding `leads:DELETE` found
+   * no way to remove anything from the list they were looking at, and reported
+   * that deletion did not work. It is a soft delete: the row keeps its history
+   * and drops out of every list.
+   */
+  const deleteSelected = () => {
+    if (!window.confirm(`Delete ${selected.size} lead(s)? They will no longer appear in any list.`)) return;
+    void run((leadId) => fetch(`/api/v1/leads/${leadId}`, { method: 'DELETE' }));
+  };
 
   function header(column: ColumnDef) {
     const sortable = SORTABLE.has(column.key);
@@ -179,6 +193,16 @@ export default function LeadGrid({
                 onClick={() => setAction(action === 'task' ? null : 'task')}
               >
                 Add task
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className="lf-btn lf-btn--sm lf-btn--secondary"
+                style={{ color: 'var(--lf-vermillion)' }}
+                disabled={busy}
+                onClick={deleteSelected}
+              >
+                Delete
               </button>
             )}
             <button

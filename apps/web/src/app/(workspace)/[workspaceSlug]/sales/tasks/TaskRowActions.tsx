@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-/** Complete / reopen / cancel a task in place, against PATCH /api/v1/tasks/[id]. */
-export default function TaskRowActions({ id, status }: { id: string; status: string }) {
+/** Complete / reopen / cancel / delete a task in place, against /api/v1/tasks/[id]. */
+export default function TaskRowActions({ id, status, canDelete }: { id: string; status: string; canDelete: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -22,28 +22,48 @@ export default function TaskRowActions({ id, status }: { id: string; status: str
     }
   }
 
-  if (status === 'COMPLETED') {
-    return (
-      <button
-        type="button"
-        className="lf-btn lf-btn--secondary lf-btn--sm"
-        disabled={busy}
-        onClick={() => patch({ status: 'OPEN' })}
-      >
-        Reopen
-      </button>
-    );
+  /**
+   * Deleting is not cancelling. Cancelling keeps the task on the board as a
+   * decision someone took; this takes it off. It is a soft delete — every task
+   * list already filters `deletedAt` — but it is gone as far as the product is
+   * concerned, so it confirms first.
+   */
+  async function remove() {
+    if (!window.confirm('Delete this task? It will no longer appear in any list.')) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/v1/tasks/${id}`, { method: 'DELETE' });
+      if (res.ok) router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
-  if (status === 'CANCELLED') {
+
+  const deleteButton = canDelete ? (
+    <button
+      type="button"
+      className="lf-btn lf-btn--secondary lf-btn--sm"
+      style={{ color: 'var(--lf-vermillion)' }}
+      disabled={busy}
+      onClick={remove}
+    >
+      Delete
+    </button>
+  ) : null;
+
+  if (status === 'COMPLETED' || status === 'CANCELLED') {
     return (
-      <button
-        type="button"
-        className="lf-btn lf-btn--secondary lf-btn--sm"
-        disabled={busy}
-        onClick={() => patch({ status: 'OPEN' })}
-      >
-        Restore
-      </button>
+      <div style={{ display: 'flex', gap: 'var(--lf-space-2)', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          className="lf-btn lf-btn--secondary lf-btn--sm"
+          disabled={busy}
+          onClick={() => patch({ status: 'OPEN' })}
+        >
+          {status === 'COMPLETED' ? 'Reopen' : 'Restore'}
+        </button>
+        {deleteButton}
+      </div>
     );
   }
   return (
@@ -64,6 +84,7 @@ export default function TaskRowActions({ id, status }: { id: string; status: str
       >
         Cancel
       </button>
+      {deleteButton}
     </div>
   );
 }

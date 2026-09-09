@@ -112,6 +112,23 @@ most of the repository does not, because rewriting them converted them to LF.
 That is `REV-0003/CR-009`, and it has no effect on committed content —
 `core.autocrlf` normalises to LF in the index either way.
 
+### BUG-006 to BUG-010 — the 2026-09-09 production functionality incident
+
+Registered here so the identifier space stays authoritative; the records
+themselves are `specs/SPEC-0007-lead-delete-affordance/bug-00{6,7,8,9,10}.md`.
+Unlike everything above, these **were** reproduced against the deployed image
+`master-suite/web:c879c6c7f7e8` in a disposable stack, with production used as
+read-only evidence only.
+
+| ID | Title | Risk | Severity | Status |
+|---|---|---|---|---|
+| `BUG-006` | An administrator cannot delete leads | `R2` | High | `FIXING` — fixed, awaiting E2E on the release SHA |
+| `BUG-007` | Workspace creation reported as failing | `R2` | Unestablished | `CANNOT_REPRODUCE` — provisioning answers `201`; the denial UX for a non-owner is fixed |
+| `BUG-008` | The platform console's redirect body carries the control-plane page | `R4` | High if reached, latent | `REPRODUCED` — **not fixed**, stopped at the `R4` gate; `SEC-OBS-014` |
+| `BUG-009` | Task deletion is granted, filtered for, and unreachable | `R3` | Medium | `FIXING` — `405` before, `200` after |
+| `BUG-010` | Lead document upload | `R1` | None found | `CANNOT_REPRODUCE` — already implemented and secure; coverage added |
+
+
 ### BUG-004 — webhook rate-limit test races a fixed-window boundary
 
 | Field | Value |

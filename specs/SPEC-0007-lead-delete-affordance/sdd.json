@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0007",
+  "slug": "lead-delete-affordance",
+  "kind": "bugfix",
+  "risk": "R2",
+  "status": "IMPLEMENTING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": "plan.md",
+    "threatModel": null,
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-09",
+      "note": "Raised from a production report of two symptoms: an administrator cannot delete leads, and workspace creation fails. Registered as BUG-006 and BUG-007. The two were deliberately not assumed to share a cause."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-09",
+      "note": "BUG-006 reproduced on the exact deployed image (master-suite/web:c879c6c7f7e8): the leads list offers Assign, Change stage, Add task and no delete at all. Every layer below the screen verified working - permission granted at ORGANIZATION scope, route implemented, service soft-deletes, RLS policies and role grants identical to production, cross-tenant delete refused. BUG-007 did not reproduce: the wizard and the API both answer 201 on the same image, and PlatformAuditEvent shows the wizard has worked in production."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-09",
+      "note": "R2 path. Six files, no migration, no dependency, no environment change, nothing under lib/auth or lib/security. BUG-007 gets diagnosability, not a speculative fix - it has no reproduced cause."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-09",
+      "note": "Artefact set complete for R2: spec, plan, test plan, tasks, traceability, and the two bug records."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-09",
+      "note": "Gate 1, author-level, which is what R2 requires. See the approvals entry for the provenance."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Implemented. The compiler found the second LeadGrid caller (sales/smart-views/page.tsx) because the new prop is required rather than optional - an administrator working from a saved view had the same missing control."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "Pushed as 21705d7, PR #47 into dev/yourhan-next. GitHub SDD validation: success. CI: every gate passes except Audit, which fails on three advisories published between 2026-09-08 and 2026-09-09 (next critical, nodemailer high, sharp high). This change touches no dependency - git diff 63daf3d..21705d7 over package.json and package-lock.json is empty - and re-running the release candidate's own CI on 2026-09-09 reproduced the identical single failure at 63daf3d with E2E green, so the RC is no longer CI-green either. E2E did not run on this PR because ci.yml gates it on base_ref == main; it runs on the RC PR."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Second pass against the four product requirements. Lead document upload investigated end to end and found already implemented and secure - BUG-010, no defect, coverage added. Task deletion implemented - BUG-009: tasks:DELETE was granted in production, Task.deletedAt existed, every list already filtered it, and the endpoint answered 405. Platform console denial UX fixed for a signed-in non-owner. A bounded 40-check functionality matrix on the production image found exactly two failures, both now closed. One new R4 defect found and deliberately NOT fixed: BUG-008, the console's refusal returns the control-plane page in the redirect body; it reproduces on the unmodified production image, and moving authorization into eleven pages needs the R4 gate."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/spec.md",
+      "scope": "R2 bugfix: a bulk delete affordance on the leads grid over the existing DELETE endpoint, plus rejection logging and an error message on the workspace provisioning path.",
+      "note": "PROVENANCE, stated so it can be weighed rather than assumed. R2's gate 1 is author-level per docs/sdd/RISK_TO_PROCESS_MATRIX.md, but SDD-V022 requires a human on the specification gate at every level, and that refusal is correct. This entry therefore rests on a human instruction given in session on 2026-09-09: 'For R0-R3: continue autonomously according to governance', in a message that named both symptoms as P0 and listed the fix classes that were and were not acceptable. It is a standing class authorization, not a decision taken against this specification document, and an AI agent transcribed it - the same provenance as SPEC-0006. The R2 classification is argued explicitly in spec.md so a reviewer can reject it cheaply; if the R4 reading is taken instead, CHG-001 reverts on its own."
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": []
+}
