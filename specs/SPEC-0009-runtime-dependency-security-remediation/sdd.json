@@ -4,7 +4,7 @@
   "slug": "runtime-dependency-security-remediation",
   "kind": "change",
   "risk": "R4",
-  "status": "VERIFYING",
+  "status": "CONVERGED",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": "clarifications.md",
@@ -76,6 +76,11 @@
       "status": "VERIFYING",
       "date": "2026-09-09",
       "note": "VER-0001 recorded, result PASS. ST-007 is the decisive case: with the override forced to 0.35.3 the tree resolves the vulnerable sharp and the audit reports 2 high, while at ^0.35.4 it reports none - on the current graph every other assertion passes identically before and after, so without ST-007 the change would ship with no evidence it does anything. Full suite 157 files and 1992 passed with 0 failed; typecheck 0; eslint 0; build 0; npm ci reproduces sharp 0.35.4. Convergence prepared recommending PASS. Gate 6 at R4 for a security finding belongs to Application Security and is NOT recorded."
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-09",
+      "note": "Gate 6 accepted by Application Security against commit 17d7d0e and the convergence of 2026-09-09, verdict PASS. Implementation is one line of apps/web/package.json raising the sharp override floor to ^0.35.4; the production audit reports 0 at every severity and CI run 34408614004 passed every gate including Audit. Not RELEASED: release is gate 7 and belongs to the Human Release Authority."
     }
   ],
   "approvals": [
@@ -111,6 +116,18 @@
       "scope": "Gate 5 at R4, as presented in approval-packet.md: TASK-002 may begin, allowed scope apps/web/package.json and apps/web/package-lock.json only, with apps/web/src/, apps/web/prisma/, .github/workflows/ and apps/web/infra/ prohibited, and no test edited to accommodate the change.",
       "note": "Decision as given, verbatim: \"I approve SPEC-0009 gates 1, 3 and 5.\" Nothing further was stated. The scope recorded here is the text of specs/SPEC-0009-runtime-dependency-security-remediation/approval-packet.md, which was published to the approver before the decision and which the decision approves BY REFERENCE; the approver did not restate it and must not be read as having authored it. Transcribed by an agent, which did not make the decision and does not hold it.",
       "decisionText": "I approve SPEC-0009 gates 1, 3 and 5"
+    },
+    {
+      "gate": "convergence",
+      "role": "Application Security",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0009-runtime-dependency-security-remediation/convergence.md",
+      "commit": "17d7d0e0adcd7ab57b2f1c192deda35624978840",
+      "decisionText": "I approve SPEC-0009 gate 6 as Application Security",
+      "scope": "Gate 6 convergence acceptance at R4, where a security finding requires Application Security rather than a reviewer. Accepts the convergence of 2026-09-09 recommending PASS at commit 17d7d0e with CI run 34408614004 green including the Audit gate, and with it CONV-001 (RISK-002 accepted as a latent pattern rather than four vulnerabilities) and CONV-002 (RESOLVED).",
+      "note": "Decision as given, verbatim: \"I approve SPEC-0009 gate 6 as Application Security.\" Nothing further was stated; the scope is the convergence record it refers to, approved by reference. Transcribed by an agent, which did not make the decision and does not hold it. Does not authorise release; release is gate 7."
     }
   ],
   "reviews": [],

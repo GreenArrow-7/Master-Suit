@@ -5,7 +5,7 @@
 | Specification | `SPEC-0009` |
 | Slug | `runtime-dependency-security-remediation` |
 | Risk | `R4` |
-| Status | `VERIFYING` |
+| Status | `CONVERGED` |
 | Owner | Application Security, with the application maintainer |
 | Supersedes | — |
 | Superseded by | — |

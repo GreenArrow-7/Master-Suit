@@ -143,3 +143,28 @@ severity, and the control the change installs demonstrated by breaking it.
 
 Gate 6 at R4 for a security finding belongs to Application Security. Not
 accepted by an agent.
+
+## Gate 6 — convergence acceptance, 2026-09-09
+
+| Field | Value |
+|---|---|
+| Gate | 6, convergence acceptance |
+| Role | Application Security — the required role at `R4` for a security finding |
+| Actor type | human |
+| Decision | **approved** |
+| Date | 2026-09-09 |
+| Commit | `17d7d0e0adcd7ab57b2f1c192deda35624978840` |
+| CI | run `34408614004`, every gate green including `Audit` |
+
+**Decision as given, verbatim:**
+
+> I approve SPEC-0009 gate 6 as Application Security
+
+Nothing further was stated. The scope is this convergence record, approved by
+reference — including `CONV-001` (`RISK-002` accepted as a latent pattern, not
+four vulnerabilities) and `CONV-002` (RESOLVED). Transcribed by an agent, which
+did not make the decision and does not hold it.
+
+**Does not authorise release.** Release is gate 7, Human Release Authority.
+
+`SPEC-0009` moves `VERIFYING` → `CONVERGED`. It is **not** `RELEASED`.
