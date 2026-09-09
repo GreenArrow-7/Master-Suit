@@ -216,6 +216,7 @@ export default async function LeadsPage({
           taskTypes={taskTypes}
           canAssign={can(ctx, 'leads', 'ASSIGN')}
           canEdit={can(ctx, 'leads', 'EDIT')}
+          canDelete={can(ctx, 'leads', 'DELETE')}
         />
       )}
 
