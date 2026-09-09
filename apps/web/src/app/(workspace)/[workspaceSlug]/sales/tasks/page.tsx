@@ -169,7 +169,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       <Badge tone={STATUS_TONE[t.status] ?? 'slate'}>{t.status.replace(/_/g, ' ').toLowerCase()}</Badge>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {canCreate ? <TaskRowActions id={t.id} status={t.status} /> : null}
+                      {canCreate ? (
+                        <TaskRowActions id={t.id} status={t.status} canDelete={can(ctx, 'tasks', 'DELETE')} />
+                      ) : null}
                     </td>
                   </tr>
                 );

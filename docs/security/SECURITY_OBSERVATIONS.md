@@ -133,6 +133,41 @@ Required validation · Confidence · Status.
   loopback-bound dev services; Redis auth enforced; `dev/outbox` gated;
   40 security spec files. E1/E2/E3.
 
+**SEC-OBS-014** · Refused `/platform` requests return the control-plane page in the redirect body · E1/E3 · `apps/web/src/app/(platform)/platform/layout.tsx`
+- Relevance: the console's only gate is its layout, and ten of its eleven
+  pages assert nothing of their own. In the App Router a layout cannot stop
+  the page beneath it rendering, so the refusal sets the status and location
+  while the page's output is still serialised into that same response —
+  workspace names, the platform owner's address, platform-wide counts and the
+  platform security ledger, to an unauthenticated caller.
+- Evidence: reproduced against `master-suite/web:c879c6c7f7e8`, the deployed
+  image, in a disposable stack; a single unauthenticated `GET /platform`
+  returns `307` with a ~31 KB body containing them. Reproduces with no cookie,
+  with a company administrator's session and with an ordinary user's session.
+  Not introduced by the `BUG-007` denial-UX change — the unmodified image
+  behaves identically. `redirect()` and `forbidden()` both have this property.
+- Counter-evidence: **8 of 8 unauthenticated probes against production
+  returned a constant 23,735-byte shell containing none of it** — the page
+  loses the render race there.
+- Exploitability: Latent. Timing-dependent rather than mitigated; data volume,
+  cache warmth and load all move it, and timing is not a control.
+- Status: registered as `BUG-008`, `R4`, awaiting the gate. **Not fixed.**
+  Proposed remediation: assert in each platform page so no query runs and no
+  output exists, keeping the layout gate for navigation.
+
+**SEC-OBS-015** · Lead document upload carries no MIME allowlist · E1 · `apps/web/src/app/api/v1/documents/route.ts`
+- Relevance: any content type may be uploaded against a lead; the stored
+  display name also keeps the raw client filename.
+- Evidence: verified on the deployed image — the storage key is sanitised
+  (`../../../../etc/passwd` becomes `.._.._.._.._etc_passwd`), the same
+  sanitiser runs again in `Content-Disposition`, downloads are served
+  `attachment` with `X-Content-Type-Options: nosniff`, size is capped, and
+  ClamAV refuses an EICAR payload without storing it.
+- Exploitability: Not exploitable based on current evidence — `attachment`
+  plus `nosniff` is what carries it, so both are load-bearing and should not
+  be removed without replacing them with an allowlist.
+- Status: recorded, no change made.
+
 ## Evidence Sources
 
 E1: `apps/web/src/proxy.ts`, `src/app/api/**`, `src/lib/logger.ts`,

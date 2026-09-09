@@ -6,7 +6,7 @@
 |---|---|
 | Specification ID | `SPEC-0007` |
 | Title | Lead deletion affordance and workspace-provisioning diagnosability |
-| Status | `VERIFYING` |
+| Status | `IMPLEMENTING` |
 | Risk | `R2` |
 | Owner | Engineering |
 | Created | 2026-09-09 |
@@ -100,9 +100,13 @@ a server-side record and a client-side message that name the cause.
 - The absent `DELETE /api/v1/tasks/[id]` endpoint (405), observed during the
   mutation-matrix sweep and registered separately rather than absorbed here.
 - Fixing `BUG-007`. It has no reproduced cause to fix.
-- The platform console's redirect of a signed-in non-owner to `/login`
-  (`app/(platform)/platform/layout.tsx`). It is a plausible reading of symptom
-  2 but is not evidenced; recorded in `bug-007.md` as a candidate.
+- **`BUG-008`** — the platform console's refusal returns the control-plane
+  page in the redirect body. Reproduced, registered, and deliberately **not**
+  fixed here: moving authorization into eleven pages is `R4` and needs the
+  human gate and Application Security. See `bug-008.md`.
+- Re-gating the rest of the task API off `leads` and onto `tasks:*`.
+- A MIME allowlist for uploads, and the raw display filename — both recorded
+  in `bug-010.md`, neither a defect.
 
 ## Actors
 
@@ -126,6 +130,12 @@ Company Administrator (workspace, holds `leads:DELETE`); Sales user without
   typed — an administrator's password among the inputs — reaches a log.
 - `FR-007` — The create-workspace wizard, on a `422`, names the fields that
   failed rather than only the word "Validation failed".
+- `FR-008` — A signed-in account that is refused the platform console is told
+  that it lacks platform access, and is not sent to the sign-in screen.
+- `FR-009` — A caller with no session is still sent to the sign-in screen, and a
+  genuine failure resolving the session is no longer reported as either.
+- `FR-010` — A task can be deleted by a viewer holding `tasks:DELETE`, from the
+  task list, as a soft delete.
 
 ## Security requirements
 
@@ -169,6 +179,14 @@ failure rather than pretending it succeeded.
   status and cause, and with no field values.
 - `AC-005` — The full mutation matrix (lead create/update/delete, workspace
   create, workspace settings update) still passes.
+- `AC-006` — A company administrator reaching `/platform` lands on a page that
+  explains the lack of platform access; an anonymous caller still reaches
+  `/login`; the platform owner is unaffected.
+- `AC-007` — `DELETE /api/v1/tasks/[id]` answers `200` for a holder of
+  `tasks:DELETE` and the task leaves every list; the endpoint refused with
+  `405` before.
+- `AC-008` — Lead document upload, download, delete and every negative case
+  behave as `bug-010.md` records.
 
 ## Assumptions
 

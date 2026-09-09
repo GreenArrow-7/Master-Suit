@@ -4,7 +4,7 @@
   "slug": "lead-delete-affordance",
   "kind": "bugfix",
   "risk": "R2",
-  "status": "VERIFYING",
+  "status": "IMPLEMENTING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": null,
@@ -51,6 +51,11 @@
       "status": "VERIFYING",
       "date": "2026-09-09",
       "note": "Pushed as 21705d7, PR #47 into dev/yourhan-next. GitHub SDD validation: success. CI: every gate passes except Audit, which fails on three advisories published between 2026-09-08 and 2026-09-09 (next critical, nodemailer high, sharp high). This change touches no dependency - git diff 63daf3d..21705d7 over package.json and package-lock.json is empty - and re-running the release candidate's own CI on 2026-09-09 reproduced the identical single failure at 63daf3d with E2E green, so the RC is no longer CI-green either. E2E did not run on this PR because ci.yml gates it on base_ref == main; it runs on the RC PR."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Second pass against the four product requirements. Lead document upload investigated end to end and found already implemented and secure - BUG-010, no defect, coverage added. Task deletion implemented - BUG-009: tasks:DELETE was granted in production, Task.deletedAt existed, every list already filtered it, and the endpoint answered 405. Platform console denial UX fixed for a signed-in non-owner. A bounded 40-check functionality matrix on the production image found exactly two failures, both now closed. One new R4 defect found and deliberately NOT fixed: BUG-008, the console's refusal returns the control-plane page in the redirect body; it reproduces on the unmodified production image, and moving authorization into eleven pages needs the R4 gate."
     }
   ],
   "approvals": [

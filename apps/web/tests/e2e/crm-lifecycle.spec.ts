@@ -119,6 +119,37 @@ test.describe('CRM lifecycle', () => {
     await expect(page.getByText(`Chase proposal ${run}`).first()).toBeVisible({ timeout: 30_000 });
   });
 
+  /**
+   * BUG-010 regression, and the answer to "can a user attach a document to a
+   * lead". The control, the route, the antivirus gate and the storage key were
+   * all already there; nothing had ever asserted them from the screen, and the
+   * production database held zero Document rows.
+   */
+  test('a document uploads to the lead, lists, and downloads', async ({ page }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+    await page.goto(at(`/leads/${leadId}`));
+    await page.getByRole('tab', { name: 'Documents' }).click();
+    await expect(page.getByText('Upload document')).toBeVisible({ timeout: 30_000 });
+
+    const name = `brief-${run}.txt`;
+    await page.setInputFiles('input[type=file]', {
+      name,
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`lead brief ${run}`),
+    });
+
+    await expect(page.getByText(name).first()).toBeVisible({ timeout: 60_000 });
+
+    // Listed is not the same as retrievable: pull the bytes back through the
+    // authorised download route and check they are the ones that went in.
+    const link = page.getByRole('link', { name: /download/i }).first();
+    const href = await link.getAttribute('href');
+    expect(href).toBeTruthy();
+    const download = await page.request.get(href!);
+    expect(download.status()).toBe(200);
+    expect(await download.text()).toBe(`lead brief ${run}`);
+  });
+
   test('the lead becomes an opportunity carrying its value into the pipeline', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
