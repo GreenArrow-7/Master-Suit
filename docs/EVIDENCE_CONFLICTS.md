@@ -1035,3 +1035,249 @@ an unrelated reason. Not fixed here: `tools/` is outside that task's scope, and
 `SPEC-0004` is converged and owned elsewhere. Recorded rather than repaired,
 and rather than left unmentioned because it was inconvenient to the run that
 found it.
+
+
+### EVC-021 — `SPEC-0007` is allocated to two different specifications
+
+Status: OPEN · Severity: C3 · Release impact: **BLOCKING for any merge that
+brings both branches together**
+Domain: Engineering process · Affected component: `specs/`, identifier
+allocation
+
+Evidence A — Level E1 — This worktree contains
+`specs/SPEC-0007-client-demo-data-personas-reset/`, `sdd.json` declaring
+`specId: SPEC-0007`, risk `R3`, first status entry dated 2026-09-08.
+
+Evidence B — Level E1 — `origin/fix/p0-lead-delete-affordance` contains
+`specs/SPEC-0007-lead-delete-affordance/`, `sdd.json` declaring
+`specId: SPEC-0007`, risk `R2`, status `VERIFYING`, first status entry dated
+2026-09-09. That branch is PR #47, the P0 incident fix.
+
+Two different specifications, two different risk levels, one identifier.
+
+## Why it matters
+
+`docs/sdd/IDENTIFIER_STANDARD.md` exists so that a reference to `SPEC-0007`
+means one thing. Today it means two, and which one depends on the branch the
+reader is on. Every artefact that cites `SPEC-0007` — traceability rows, session
+records, verification records, commit messages — is ambiguous across the merge.
+
+The collision is latent while the branches are apart and becomes a real
+conflict the moment both reach the same branch: two directories, both valid,
+both claiming the identifier, and a validator that checks each in isolation and
+finds nothing wrong with either.
+
+## How it happened
+
+Both were allocated by computing "the next free number" against a corpus that
+did not yet contain the other. The demo work was allocated on 2026-09-08 while
+unpushed; the P0 work was allocated on 2026-09-09 against a remote that could
+not see it. Neither actor did anything careless — the procedure itself has no
+locking, and an unpushed allocation is invisible.
+
+That is the finding worth keeping: recomputing the next free identifier against
+your own checkout is not sufficient, and nothing currently makes that visible.
+
+## Resolution options
+
+- **A — Renumber the unpushed one.** The demo specification has never been
+  pushed; the P0 one has, and is in an open pull request under review. Renumbering
+  the unpushed side breaks fewer external references. It is a directory rename plus
+  every internal citation, and this specification's artefacts are extensive.
+- **B — Renumber the P0 one.** Smaller artefact set, but it is under active
+  review and renumbering mid-review invalidates what reviewers have already read.
+- **C — Allocate both a new number and retire 0007.** Unambiguous, and the most
+  work.
+
+**Recommendation: A**, on the ground that the unpublished side should yield to
+the published one. It is not an agent's decision: it changes an identifier that
+human approvals have already been recorded against.
+
+## Prevention
+
+Allocation should be checked against every remote branch, not only the local
+corpus — which is how this was found. Whether that becomes a validator rule is a
+separate question and is not proposed here.
+
+Raised by an agent on 2026-09-09 while recomputing the next free identifier for
+`SPEC-0009`. Not repaired: renumbering a specification that carries recorded
+human approvals is not an agent's call.
+
+---
+
+### EVC-022 — `UNOWNED-001` was classified unowned; PR #48 already owns and has fixed it
+
+**Documented state.** The unowned-defect register classified the three
+production dependency advisories that turned the CI `Audit` gate red as
+`UNOWNED-001`, and `SPEC-0009` was created to govern their remediation. Its
+`spec.md` opens by calling the failure "an external event that the project
+inherited" and treats the remediation as work still to be done.
+
+**Actual state.** `origin/fix/dependency-advisories-2026-09` exists, and pull
+request `#48` — *"security(deps): clear the three advisories that turned the
+Audit gate red"*, opened 2026-09-09T12:19Z against `dev/yourhan-next` — already
+carries the fix. Its CI run `34350379563` concluded `success`, `Audit`
+included. It has since been merged into `rc/incident-2026-09-09` (commit
+`956754a`), whose run `34366512152` passes the **entire** gate, `E2E` and
+`Audit` both green.
+
+The remediation on that branch is the same graph `SPEC-0009` independently
+derived: `next` `16.2.12` → `16.3.4`, `nodemailer` → `9.1.1`, `sharp` →
+`0.35.4`, one line of `apps/web/package.json`, everything else lockfile.
+
+**Why the classification was wrong.** The branch was absent from this
+checkout's remote-tracking refs when the register was compiled; it appeared as
+`* [new branch]` on the fetch that began `TASK-001`. The register was built
+from a stale view, and nothing in the procedure required re-fetching
+immediately before classifying. That is the same root cause as `EVC-021`,
+reached from the other direction: `EVC-021` is an allocation made invisible by
+not being pushed, this is an allocation made invisible by not being fetched.
+
+**Consequence.** `SPEC-0009`'s premise does not hold. Its remediation body
+duplicates delivered, CI-proven work and must not be implemented as written.
+
+**What does not duplicate.** One decision in `SPEC-0009` has no counterpart on
+`#48`: `CL-003`, the `overrides.sharp` floor. `#48` leaves it at `^0.35.0`.
+Measured in an isolated tree, an `overrides` entry outranks the parent
+package's own declared range — with `next@16.3.4` (which itself declares
+`sharp: ^0.35.4`) and `overrides.sharp` forced to `0.35.3`, npm resolved
+`node_modules/next/node_modules/sharp` to the vulnerable `0.35.3` and the audit
+reported 2 HIGH. The same tree at `^0.35.4` reports `found 0 vulnerabilities`.
+So while the override stands at `^0.35.0`, it is the override — not `next`'s
+own constraint — that decides the floor, and the floor the manifest guarantees
+is `0.35.0`, not `0.35.4`. Today's resolution is correct by luck of "highest
+matching", not by declaration.
+
+**Not resolved here.** Whether `SPEC-0009` is withdrawn, superseded by `#48`,
+or narrowed to the `CL-003` line alone is a specification-lifecycle decision at
+`R4`. No approvals have been recorded against `SPEC-0009`, so change control
+has not begun and either path is open.
+
+Raised by an agent on 2026-09-09, on the first read of `TASK-001`. Not
+resolved: an agent that has just been shown its own ownership classification
+was wrong is not the right actor to decide what happens to the specification
+built on it.
+
+## EVC-021, addendum — 2026-09-09: the governance model has no mechanism for this
+
+Directed to resolve the collision, I read `docs/sdd/IDENTIFIER_STANDARD.md`
+first, as instructed, to find the approved renumber or collision mechanism.
+**There is none, and the operation the resolution options assume is
+prohibited.**
+
+The standard is marked `NORMATIVE — engineering process requirement`, and says:
+
+- "`SPEC-NNNN` — four digits, zero-padded, allocated sequentially from
+  `SPEC-0001`. **The number never changes**, including when a specification is
+  superseded."
+- "The slug may be corrected for a typo; **the number may not change**."
+- Rule 1: "**Never renumber.** Approved identifiers are permanent."
+- Rule 2: "**Never reuse.** A deleted or withdrawn identifier stays reserved
+  forever."
+
+Rule 1 is not conditional on which side is more embedded, and both sides
+qualify as approved:
+
+| | Slug | Risk | Status | Recorded human approvals |
+|---|---|---|---|---|
+| A | `client-demo-data-personas-reset` | R3 | `IMPLEMENTING` | **3** — gate 1 Product Owner (2026-09-08), gate 6 reviewer (2026-09-08), gate 6 Qualified Human Reviewer (2026-09-09) |
+| B | `lead-delete-affordance` | R2 | `VERIFYING` | **1** — gate 1 Product Owner (2026-09-09) |
+
+So options A, B and C recorded above are all renumberings, and Rule 1 forbids
+each of them. The earlier recommendation of option A was made before this
+document had been read against the question, and it is withdrawn: it proposed
+an operation the standard prohibits.
+
+**The gap is real, not a misreading.** The standard assumes identifier
+allocation is serialised — one allocator, one sequence, gaps preserved. It has
+a rule for withdrawal, a rule for supersession and a rule for typos in the
+slug. It has no rule for the same number being allocated twice concurrently on
+two branches, because under its own assumptions that cannot happen. What made
+it happen is that allocation is checked against a local checkout, and an
+allocation that has not been pushed is invisible to the next allocator.
+
+**Next free identifier, recomputed at the moment of writing** (2026-09-09,
+across every remote branch and this worktree): remote branches carry
+`SPEC-0001` to `SPEC-0007`; this worktree additionally carries `SPEC-0008` and
+`SPEC-0009`. The next free number is therefore **`SPEC-0010`**.
+
+## What a human has to decide
+
+Every path out of this changes a `NORMATIVE` document or breaks it, so none is
+an agent's to take.
+
+1. **Amend `docs/sdd/IDENTIFIER_STANDARD.md`** to add a concurrent-allocation
+   rule — for example, that where one number has been allocated twice, the
+   allocation with the later first-approval date is renumbered to the next free
+   identifier, the vacated pairing is recorded here, and the old number stays
+   reserved against the moved specification under Rule 2. On the dates above
+   that renumbers **B** (first approved 2026-09-09) to `SPEC-0010`, not A —
+   which is the opposite of "renumber the unpublished one", and it is what a
+   date-based rule actually yields.
+2. **Amend the standard to prefer the published allocation**, which renumbers
+   **A** to `SPEC-0010`. This matches the operational-embedding preference, and
+   it moves the specification carrying three approvals rather than one.
+3. **Accept the collision** and require every reference to be slug-qualified
+   (`SPEC-0007-lead-delete-affordance`) rather than number-qualified. Cheapest
+   today; it makes `SPEC-NNNN` no longer a unique key, which is the property
+   the standard exists to provide.
+
+Both branches can be merged before this is settled — the two directories have
+different slugs, so git will not conflict and the validator checks `specId`
+against the directory name, not against uniqueness across the corpus. The
+collision is a governance defect, not a merge defect. It does not block
+release sequencing; it blocks being able to say `SPEC-0007` and be understood.
+
+Raised by an agent on 2026-09-09. Not resolved: resolving it requires either
+amending a `NORMATIVE` standard or knowingly violating it, and an agent may do
+neither.
+
+---
+
+### EVC-023 — `npm run format:check` cannot pass on a Windows checkout
+
+**Documented state.** `.github/workflows/ci.yml` runs `npm run format:check` as
+gate 3 and it passes on every green run. `CLAUDE.md` lists it among the checks
+to run before claiming completion, without qualification.
+
+**Actual state.** On this Windows checkout it reports **908 files** with style
+issues — very nearly the whole repository, including files no one has touched.
+
+**Cause, isolated.** Not formatting. Line endings. `git config core.autocrlf`
+is `true` and the repository has **no `.gitattributes`**, so the working tree is
+checked out CRLF; Prettier's `endOfLine` defaults to `lf` and `.prettierrc.json`
+does not override it.
+
+Demonstrated on one file, holding everything else constant — same content, same
+`--config .prettierrc.json`, both copies outside the project so neither picks up
+a different configuration:
+
+| Copy | Result |
+|---|---|
+| `apps/web/vitest.config.mts` as checked out (CRLF) | flagged |
+| the same bytes with `\r\n` → `\n` | `All matched files use Prettier code style!` |
+
+**Why it matters, and why it is not an emergency.** CI checks out LF on Linux
+and the gate passes there, so nothing is broken in the pipeline. What is broken
+is the local instruction: a developer on Windows who runs the documented
+pre-completion check gets 908 failures, none of them real, and the only way to
+tell that from a genuine regression is to know this. That is the same shape as
+`EVC-020` — a check whose result depends on the platform it runs on — but
+wider: `EVC-020` covers three fixture-driven cases in the SDD tooling suite,
+this covers the whole formatting gate.
+
+**Deliberately not repaired.** The obvious "fix" is `npm run format` — and it
+would rewrite 908 files, producing a diff that touches almost every source file
+in the repository for no behavioural reason and is unreviewable. The real fix is
+a `.gitattributes` declaring `* text=auto eol=lf`, followed by a re-checkout,
+which is a repository-wide change with its own review and is outside the scope
+of any specification currently open.
+
+**Consequence for evidence.** Until this is resolved, a `format:check` result
+from a Windows checkout is not evidence about the gate. Any convergence record
+citing it must either run it on Linux or cite this entry. Recorded here rather
+than reported per-specification, because it is a property of the repository, not
+of any one change.
+
+Raised by an agent on 2026-09-09 while running the full check set for
+`SPEC-0007`.

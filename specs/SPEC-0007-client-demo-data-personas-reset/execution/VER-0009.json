@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0009",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0009",
+  "taskIds": [
+    "TASK-013"
+  ],
+  "tests": [
+    {
+      "id": "ST-001",
+      "outcome": "PASS",
+      "note": "persona boundaries; the suite now resolves its fixture once, with no retry loop and no per-case re-resolve"
+    },
+    {
+      "id": "ST-002",
+      "outcome": "PASS",
+      "note": "role scoping at the route handler"
+    },
+    {
+      "id": "ST-003",
+      "outcome": "PASS",
+      "note": "Sales persona refused every HR resource; HR persona refused the Sales collections"
+    },
+    {
+      "id": "ST-004",
+      "outcome": "PASS",
+      "note": "each persona still reaches what its own role grants, so the refusals are not vacuous"
+    },
+    {
+      "id": "ST-005",
+      "outcome": "PASS",
+      "note": "cross-tenant refusal"
+    },
+    {
+      "id": "ST-009",
+      "outcome": "PASS",
+      "note": "platform control plane refused to a tenant-scoped account"
+    },
+    {
+      "id": "IT-003",
+      "outcome": "PASS",
+      "note": "a reset restores the baseline after Sales and HR data are mutated, now against the suite's own database"
+    },
+    {
+      "id": "IT-004",
+      "outcome": "PASS",
+      "note": "fresh reset and idempotent top-up produce the same active-employee set"
+    },
+    {
+      "id": "UT-015",
+      "outcome": "PASS",
+      "note": "a seed that cannot start is reported as a spawn failure, not as a refusal"
+    },
+    {
+      "id": "E2E-001",
+      "outcome": "PASS",
+      "note": "client walkthrough against the running demo build: Sales, HRMS, management, tenant scoping, payroll empty-state"
+    },
+    {
+      "id": "E2E-006",
+      "outcome": "PASS",
+      "note": "demo@youhan.in reaches Sales and HRMS in one unbroken session"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run tests/hr/demo-reset.spec.ts",
+      "exitCode": 0,
+      "note": "11 passed; provisioned, migrated and seeded its own database"
+    },
+    {
+      "command": "npx vitest run tests/hr/demo-reset.spec.ts tests/security/demo-personas.spec.ts",
+      "exitCode": 0,
+      "note": "2 files, 32 passed, at DEFAULT file parallelism - the combination that used to fail"
+    },
+    {
+      "command": "npm run test (run A)",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npm run test (run B)",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npm run test (run C)",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npm run test (run D, after the CONV-016 fix)",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npx eslint .",
+      "exitCode": 0,
+      "note": "was exit 1 with one no-control-regex ERROR before CONV-016 was fixed; exit code read with output discarded, not through a pipe"
+    },
+    {
+      "command": "npx prettier --check (changed files only)",
+      "exitCode": 0,
+      "note": "the repository-wide run is not evidence on Windows; see EVC-023"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 warnings"
+    },
+    {
+      "command": "node --test tools/sdd/tests/validator.test.mjs",
+      "exitCode": 1,
+      "note": "91/93 - the two EVC-020 Windows CRLF failures, SDD-V027 and SDD-V029, untouched by this work"
+    },
+    {
+      "command": "node --test tools/sdd/tests/agent.test.mjs",
+      "exitCode": 1,
+      "note": "69/70 - the one EVC-020 Windows CRLF failure, UT-114 SDD-V045, untouched by this work"
+    },
+    {
+      "command": "npx playwright test tests/e2e/demo-walkthrough.spec.ts (APP_URL=http://localhost:3100)",
+      "exitCode": 0,
+      "note": "6 passed in 38.5s; teardown removed 0 workspaces and 0 accounts, so the running demonstration was not disturbed"
+    },
+    {
+      "command": "authenticated rendered-branding sweep over 10 pages",
+      "exitCode": 0,
+      "note": "10/10 free of the previous customer name; YOUHAN ONE Demo present on all 8 workspace pages"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0007 --session ASES-0009",
+      "exitCode": 0,
+      "note": "PASS, 2 attribution warnings; 8 paths pre-existing and unchanged since the session opened"
+    }
+  ],
+  "verifiedTests": [
+    "ST-001",
+    "ST-002",
+    "ST-003",
+    "ST-004",
+    "ST-005",
+    "ST-009",
+    "IT-003",
+    "IT-004",
+    "UT-015",
+    "E2E-001",
+    "E2E-006"
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_test, the new master_saas_test_reset, and master_saas_demo on loopback PostgreSQL. The client walkthrough ran against the local production build on port 3100. No staging or production access.",
+  "notes": [
+    "CONV-015 closed by isolation rather than by another guard. tests/hr/demo-reset.spec.ts now owns <ambient>_reset, created and migrated by tests/helpers/isolated-db.ts on every run; its Prisma client and every seed subprocess point there, while the two gate cases that assert a refusal on a production- or staging-shaped database name still supply their own URL. The reset and persona suites then pass together at the default file parallelism CI uses.",
+    "Both prior mitigations were removed from tests/security/demo-personas.spec.ts, not kept. A bounded retry that waits for a fixture to be rebuilt would absorb a genuine 401 regression identically, and that file is where tenant isolation and platform-control-plane denial are asserted. Removing them raises the sensitivity of the security assertions.",
+    "CONV-016 found while running the full eslint rather than the test suite: a literal 0x08 byte in demo-reset-coverage.spec.ts made its explicit-deletion regex match nothing and made npm run lint exit 1. Fixed; the expression now finds 47 models. A scan of all 901 tracked and untracked TypeScript and JavaScript sources found it as the only stray control character in the repository.",
+    "Stability is four consecutive full-suite runs at default parallelism, not one. Baseline before the fix was 6 failed and 1986 passed; after, 1992 passed with 2 skipped in every run, so the six became passes and no test was lost or skipped to get there.",
+    "EVC-020 still holds: the SDD tooling suites report 91/93 and 69/70 on Windows, on exactly the three cases that document records, and none of them is touched by this work.",
+    "EVC-023 raised: npm run format:check cannot pass on a Windows checkout because of line endings, so a repository-wide format result from here is not evidence about that gate."
+  ]
+}

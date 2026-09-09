@@ -750,3 +750,163 @@ not reproduce on every run.
 **Recommendation:** do not push until this is closed. A branch whose CI fails
 one run in three is worse than one that fails every time, because it teaches
 people to re-run.
+
+---
+
+# Re-convergence, 2026-09-09 — the post-acceptance finding is closed
+
+### Disposition of the finding above
+
+**Status:** `RESOLVED` · **Severity:** medium · **Release impact:** no longer
+blocking
+
+**What was wrong with the two attempted fixes.** Both are now removed, and the
+reason matters more than the removal. They were guards against a structural
+conflict, and a guard against a race does not remove the race — it decides how
+often you see it. The bounded `beforeAll` wait and the per-case `beforeEach`
+re-resolve made the collision *usually* invisible, which is worse than visible:
+a genuine `401` regression in the file that asserts tenant isolation and
+platform-admin denial would have been absorbed by exactly the same retry that
+was absorbing the race. A suite that recovers from real failures is not a suite.
+
+**The fix.** `apps/web/tests/hr/demo-reset.spec.ts` now owns a separate
+database. `apps/web/tests/helpers/isolated-db.ts` derives it from the ambient
+connection by name — `<ambient>_reset` — creates it if absent, and brings it to
+the current migration on every run. The spec's own Prisma client and every seed
+subprocess it spawns point there; the two gate cases that assert a refusal on a
+production- or staging-shaped database name still supply their own URL, because
+the caller's environment is spread last.
+
+Migrating on every run is deliberate. `migrate deploy` is a no-op against an
+up-to-date database, and a second database is a second opportunity to make the
+mistake `apps/web/scripts/prepare-test-db.mjs` was written for: a test database
+that sat a migration behind while `check:drift` reported the schema clean.
+
+**What was rejected, and why.**
+
+- *Retries, waits, a longer poll.* Converts a deterministic conflict into a
+  slower one and hides real regressions. This is what was already there.
+- *Disabling file parallelism globally.* Fixes one collision by making every
+  unrelated file slower, and leaves the actual defect — two files owning one
+  fixture — in place for the next pair to rediscover. `CONV-004`'s recorded
+  preference is isolation over serialisation.
+- *Weakening the reset.* The destruction is the product behaviour under test.
+
+**No CI change is required.** The helper provisions the database itself rather
+than depending on a script CI does not run. CI has no `.env.test`, so it
+resolves `.env` and the isolated database is `leadflow_reset`, created by the
+same role that owns the service container. The name clears the seed's own
+database-name gate, which refuses only `prod`/`production`/`staging`/`stage`
+suffixes.
+
+**Evidence.**
+
+| Check | Result |
+|---|---|
+| `apps/web/tests/hr/demo-reset.spec.ts` alone | 11/11 pass, 93s |
+| reset + personas **concurrently, default parallelism** | 2 files, 32/32 pass, 55s |
+| `master_saas_test_reset` created | confirmed present in `pg_database` |
+| `npm run test` — run A | **157 files, 1992 passed, 2 skipped, 0 failed** |
+| `npm run test` — run B | **157 files, 1992 passed, 2 skipped, 0 failed** |
+| `npm run test` — run C | **157 files, 1992 passed, 2 skipped, 0 failed** |
+| `npx tsc --noEmit` | exit 0 |
+| `npx eslint` on the changed files | exit 0 |
+| `npx prettier --check` on the changed files | clean |
+
+Three consecutive runs at the default parallelism CI uses, no flags, no retries,
+no re-runs. The baseline taken before the fix was **6 failed / 1986 passed**;
+1986 + 6 = 1992, so the six failures became passes and no test was lost or
+skipped to achieve it.
+
+### Files changed for CONV-015
+
+| File | Change |
+|---|---|
+| `apps/web/tests/helpers/isolated-db.ts` | new — derives, creates and migrates the isolated database |
+| `apps/web/tests/hr/demo-reset.spec.ts` | points its client and its subprocesses at the isolated database; header rewritten |
+| `apps/web/tests/security/demo-personas.spec.ts` | the retry loop and the per-case re-resolve removed; a single `beforeAll` restored |
+
+No product source file was touched. The reset's behaviour is unchanged,
+including the `CONV-011` widening that caused the collision.
+
+## Finding status after this work
+
+| Findings | Count |
+|---|---|
+| `OPEN` | **0** |
+| `RESOLVED` | `CONV-006` to `CONV-015` |
+| `CLOSED` | `CONV-001` to `CONV-005` |
+| `ACCEPTED_RISK` | 0 |
+
+## Recommended verdict — re-convergence of 2026-09-09
+
+**PASS.**
+
+This supersedes the recommendation the 2026-09-09 gate 6 acceptance was recorded
+against. That acceptance was taken on evidence stating zero OPEN findings, and
+`CONV-015` was raised after it, which meant the evidence no longer said what the
+acceptance assumed. The specification's behaviour was never in question; the
+suite proving it was not reliably green. It now is, over three consecutive full
+runs at CI's own parallelism.
+
+A fresh gate 6 acceptance is therefore required. The previous one is not
+withdrawn and is not reused: it was accurate about what it saw.
+
+### CONV-016 — a coverage assertion in this specification was partly inert, and the Lint gate was red
+
+**Status:** `RESOLVED` · **Severity:** medium · **Owner:** mine ·
+**Release impact:** was **BLOCKING for push**
+
+**What was wrong.** `apps/web/tests/hr/demo-reset-coverage.spec.ts` line 80 read
+
+```
+matchAll(/<0x08>db\.(\w+)\.deleteMany\(/g)
+```
+
+where a word boundary was intended. The file carried a **literal backspace
+control character**, not the two characters `\` and `b`. A regex requiring a
+backspace before `db.` matches nothing, so `explicitlyDeleted()` returned an
+empty set on every run.
+
+**Consequence, in both directions.** The assertion *"every tenant-scoped model
+is cleared by cascade, by explicit deletion, or is a reviewed exclusion"* was
+evaluating with the explicit-deletion arm permanently empty. It passed only
+because cascades and the three reviewed exclusions happened to cover every
+model on their own — so a dimension the test claims to check was not being
+checked. Restored, the same expression finds **47** models deleted explicitly
+in the teardown. That arm is now load-bearing rather than decorative.
+
+It also failed `no-control-regex`, which is an eslint **error**, not a warning.
+`npm run lint` exited 1, so CI gate 2 would have failed on this branch on the
+first push. The three green full-suite runs recorded above did not reveal it,
+because vitest does not lint.
+
+**How it got there.** Mine, and mechanical: the line was written through a
+byte-range replacement while working around shell escaping, and the escape
+collapsed into the character it denotes. The lesson is not about regexes — it
+is that a full `npx eslint .` is not interchangeable with a green test suite,
+and a suite of 1 992 passing tests said nothing about it.
+
+**Fix.** The literal `0x08` replaced with `\b`. One character in one file, no
+other change. A scan of all 901 tracked and untracked TypeScript and JavaScript
+sources found this as the only stray control character in the repository.
+
+**Evidence.**
+
+| Check | Before | After |
+|---|---|---|
+| `npx eslint .` exit | **1** (1 error) | **0** |
+| models matched by `explicitlyDeleted()` | **0** | **47** |
+| `apps/web/tests/hr/demo-reset-coverage.spec.ts` | 6/6 pass (partly vacuous) | 6/6 pass |
+| `npm run test` run D | — | see below |
+
+**A prior verification record is wrong, and is corrected rather than edited.**
+`execution/VER-0008.json` records `npm run lint` as `exitCode: 0`, *"0 errors,
+131 warnings, all pre-existing"*. The control character was introduced in commit
+`c4c0631`, which is the commit `TASK-012` produced, so it was present when
+`VER-0008` was written and the lint gate was red at that moment. The record is
+left in place under "never erase"; this paragraph is the correction. The likely
+cause is that the exit code was read from a pipeline ending in `tail`, which
+reports `tail`'s status and not eslint's — the same mistake was repeated once in
+this session and caught only by re-running eslint with its output discarded.
+

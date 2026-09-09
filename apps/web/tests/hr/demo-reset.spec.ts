@@ -14,18 +14,22 @@
  *
  *   ALLOW_DEMO_SEED=yes npm run db:seed -- --reset
  *
- * ── Run this file without file parallelism ──────────────────────────────────
+ * ── This file owns its database (CONV-015) ──────────────────────────────────
  *
- * It is the only suite here that MUTATES the shared demo workspace: it deletes
- * leave, rewrites attendance and drops leads, then resets. Vitest runs files in
- * parallel by default, so run these together as:
+ * It is the only suite here that MUTATES the demo workspace: it deletes leave,
+ * rewrites attendance and drops leads, then resets — four times over. Other
+ * suites in this repository avoid collisions by creating their own tenants;
+ * this one cannot, because the shared fixture *is* what is being tested.
  *
- *   npx vitest run --no-file-parallelism tests/hr tests/security/demo-personas.spec.ts
+ * So it takes its own database instead, `<ambient>_reset`, created and migrated
+ * by `tests/helpers/isolated-db.ts`. Nothing else writes there and nothing here
+ * writes anywhere else, so this file and `tests/security/demo-personas.spec.ts`
+ * can run concurrently at full file parallelism.
  *
- * Without that flag the read-only suites observe this one mid-mutation and fail
- * for a reason that has nothing to do with the code under test. Other suites in
- * this repository avoid the problem by creating their own tenants; these share
- * one fixture on purpose, because the fixture *is* what is being tested.
+ * The header used to say "run this with --no-file-parallelism" instead. That
+ * was a note rather than a control — `npm test` does not pass it and neither
+ * does CI — and the persona suite failed roughly one full run in three because
+ * of it. The helper explains what else was considered and why it was rejected.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -33,10 +37,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { ensureIsolatedDatabase, isolatedDatabaseUrl } from '../helpers/isolated-db';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const url = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL;
-const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url! }) });
+
+/**
+ * Every connection in this file — the client below and the seed subprocesses —
+ * points here, never at the ambient database. If this is null the suite has no
+ * database at all and skips, exactly as it did before.
+ */
+const url = isolatedDatabaseUrl('reset');
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url ?? '' }) });
 
 const SLUG = 'youhan-one-demo';
 const SEED_TIMEOUT = 240_000;
@@ -44,12 +55,30 @@ const SEED_TIMEOUT = 240_000;
 let tenantId = '';
 let seeded = false;
 
+/**
+ * Provision, migrate and populate this file's own database.
+ *
+ * The seed here is not one of the assertions; it is the fixture the assertions
+ * start from. It runs with `--reset` so the starting point is the same whether
+ * the database was created a moment ago or left behind by an earlier run —
+ * which is the property the rest of the file relies on and, before CONV-015,
+ * the property the shared database could not offer.
+ */
 beforeAll(async () => {
+  if (!url) return;
+  await ensureIsolatedDatabase(url);
+
+  const populate = runSeed({ ALLOW_DEMO_SEED: 'yes' }, ['--reset']);
+  expect(
+    populate.code,
+    `could not seed the isolated reset database:\n${populate.failure ?? populate.out.slice(-800)}`,
+  ).toBe(0);
+
   const tenant = await db.tenant.findUnique({ where: { slug: SLUG }, select: { id: true } });
   if (!tenant) return;
   tenantId = tenant.id;
   seeded = (await db.hrAttendanceRecord.count({ where: { tenantId } })) > 0;
-});
+}, SEED_TIMEOUT + 120_000);
 
 /**
  * The keys the seed actually reads, plus what a Node process needs to start.
@@ -101,6 +130,19 @@ function runSeed(env: Record<string, string>, args: string[] = []) {
     const v = process.env[k];
     if (typeof v === 'string') base[k] = v;
   }
+  /**
+   * CONV-015. Point the subprocess at this file's own database.
+   *
+   * After the loop, so it overrides the ambient values `SEED_ENV_KEYS` just
+   * copied — those name the database every other suite is reading, and a
+   * `--reset` against it is the whole defect. Before the caller's `env`, which
+   * is spread last, so the two gate cases that assert a refusal on a
+   * production- or staging-shaped database name still supply their own.
+   */
+  if (url) {
+    base.DATABASE_URL = url;
+    base.MIGRATION_DATABASE_URL = url;
+  }
   const r = spawnSync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'prisma/seed/index.ts', ...args], {
     cwd: root,
     encoding: 'utf8',
@@ -122,7 +164,11 @@ function runSeed(env: Record<string, string>, args: string[] = []) {
    * ran and exited", and anything else is surfaced on `failure` for the caller
    * to assert against rather than silently inherit.
    */
-  const spawnFailure = r.error ? `${r.error.name}: ${r.error.message}` : r.status === null ? 'killed or timed out' : null;
+  const spawnFailure = r.error
+    ? `${r.error.name}: ${r.error.message}`
+    : r.status === null
+      ? 'killed or timed out'
+      : null;
   return {
     code: r.status,
     ran: r.status !== null && !r.error,
@@ -158,7 +204,7 @@ async function fingerprint() {
   return { fp: rows[0]?.fp ?? null, counts };
 }
 
-describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 demo reset', () => {
+describe.skipIf(!url)('SPEC-0007 demo reset', () => {
   it('the fixture is present', () => {
     expect(seeded, 'seed the demo database first').toBe(true);
   });
@@ -276,7 +322,7 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 demo reset', () => {
  * Slow: it runs the seed twice. It earns the time by being the only case that
  * would catch the defect coming back.
  */
-describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 seed determinism across fresh and top-up', () => {
+describe.skipIf(!url)('SPEC-0007 seed determinism across fresh and top-up', () => {
   it(
     'a fresh reset and an idempotent top-up produce the same active-employee set',
     async () => {

@@ -15,7 +15,7 @@
  * Skips rather than fails when it is absent, for the reason given in
  * tests/hr/demo-dataset.spec.ts.
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createSessionToken } from '../helpers/session';
 import { get } from '../helpers/request';
@@ -62,41 +62,27 @@ async function personaFor(tenantId: string, roleKey: string): Promise<Persona | 
 }
 
 /**
- * Retried, because another suite legitimately rebuilds this database.
+ * Resolved once. Nothing else writes to this database while this file runs.
  *
- * tests/hr/demo-reset.spec.ts exercises the seed's reset, and CONV-011 widened
- * what that removes: the reset now drops **every** seeded workspace rather than
- * only the primary one, so the second workspace this file needs is briefly
- * absent while it is rebuilt. Files run in parallel, so a full run occasionally
- * caught that window and reported the fixture as missing.
+ * CONV-015 was here. tests/hr/demo-reset.spec.ts used to share this database,
+ * and CONV-011 had widened what its reset destroys to **every** seeded
+ * workspace — so it would delete and recreate these tenants underneath this
+ * file, mid-run, with new ids. A session token minted at file start then
+ * belonged to a user that no longer existed and the request came back 401 while
+ * the fixture was perfectly present.
  *
- * The right answer is not to weaken the assertion or to serialise the whole
- * suite. The fixture does exist; it is being rebuilt. So this waits for the
- * rebuild, bounded, and still fails if the fixture is genuinely absent.
+ * Two mitigations lived here and both are gone: a bounded retry loop that
+ * waited for the rebuild, and a `beforeEach` that re-resolved every id before
+ * every case. Neither was a fix. They made a structural conflict *usually*
+ * invisible, which is worse than visible — a real 401 regression would have
+ * been absorbed by the same retry, in the file that asserts tenant isolation
+ * and platform-admin denial.
+ *
+ * The reset suite now owns a separate database (`tests/helpers/isolated-db.ts`),
+ * so this file is once again the only writer of what it reads and a single
+ * resolution is honest.
  */
 beforeAll(async () => {
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    await load();
-    if (ready || Date.now() > deadline) return;
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-}, 90_000);
-
-/**
- * Re-resolved before every case, not once for the file.
- *
- * Waiting for the fixture in beforeAll was not enough. The reset suite deletes
- * and recreates these workspaces, so the *ids* change: a session token minted
- * once at file start belongs to a user that no longer exists, and the request
- * comes back 401 while the fixture itself is perfectly present. That is what
- * IT-008 caught.
- *
- * Re-resolving per case costs a handful of indexed lookups and removes the
- * assumption that nothing else touches this database for the length of a file.
- * It is not a weakened assertion: every case still asserts exactly what it did.
- */
-beforeEach(async () => {
   await load();
 });
 
@@ -451,7 +437,9 @@ describe.skipIf(!process.env.DATABASE_URL)('SPEC-0007 persona access and underly
       'Department',
       'Designation',
     ];
-    const rows = await prisma.$queryRawUnsafe<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]>(
+    const rows = await prisma.$queryRawUnsafe<
+      { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]
+    >(
       `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relname = ANY($1::text[])`,

@@ -77,7 +77,7 @@ function teardownSource(): string {
 /** Models named by an explicit `db.<model>.deleteMany` in the teardown. */
 function explicitlyDeleted(): Set<string> {
   const names = new Set<string>();
-  for (const m of teardownSource().matchAll(/db\.(\w+)\.deleteMany\(/g)) {
+  for (const m of teardownSource().matchAll(/\bdb\.(\w+)\.deleteMany\(/g)) {
     // Prisma's client property is the model name with a lower-case initial.
     names.add(m[1]!.charAt(0).toUpperCase() + m[1]!.slice(1));
   }

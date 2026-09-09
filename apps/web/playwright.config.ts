@@ -17,6 +17,18 @@ try {
  */
 process.env.E2E_RUN_TAG ??= `e2e${Date.now().toString(36)}`;
 
+/**
+ * One reading of `APP_URL`, used by both places that care.
+ *
+ * `baseURL` below tests it with `??`, which accepts an empty string as a URL;
+ * the `webServer` block at the foot tests it for truthiness. With
+ * `APP_URL=` set to empty those two disagree — a server starts on 3000 while
+ * every request is made against `''`. Normalising once here means the config
+ * cannot hold two opinions about whether an external server exists, and it
+ * makes `APP_URL=` mean "there isn't one", which is the only sensible reading.
+ */
+const APP_URL = process.env.APP_URL || undefined;
+
 export default defineConfig({
   testDir: './tests/e2e',
   globalTeardown: './tests/e2e/globalTeardown.ts',
@@ -80,7 +92,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['list'], ['html', { open: 'never' }]] : [['list']],
 
   use: {
-    baseURL: process.env.APP_URL ?? 'http://localhost:3000',
+    baseURL: APP_URL ?? 'http://localhost:3000',
     navigationTimeout: 60_000,
     actionTimeout: 20_000,
     trace: 'retain-on-failure',
@@ -106,7 +118,7 @@ export default defineConfig({
    *
    * CI sets no `APP_URL`, so it still starts its own server and gates on it.
    */
-  ...(process.env.APP_URL
+  ...(APP_URL
     ? {}
     : {
         webServer: {

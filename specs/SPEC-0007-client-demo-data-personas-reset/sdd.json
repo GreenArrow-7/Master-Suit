@@ -4,7 +4,7 @@
   "slug": "client-demo-data-personas-reset",
   "kind": "change",
   "risk": "R3",
-  "status": "IMPLEMENTING",
+  "status": "VERIFYING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": "clarifications.md",
@@ -111,6 +111,11 @@
       "status": "IMPLEMENTING",
       "date": "2026-09-09",
       "note": "Reopened from CONVERGED, by the agent, on its own finding. CONV-015: the CONV-011 reset fix widened what a reset destroys, and the persona security suite shares that database and runs in parallel with the suite that exercises the reset - so personas are deleted and recreated with new ids mid-run and previously minted session tokens return 401. Roughly one full run in three fails. SDD-V032 refuses CONVERGED while a finding is OPEN, which is correct and is the reason for this transition. The gate 6 acceptance of 2026-09-09 is NOT deleted: it was given against evidence that was green when taken, and it stands as the record of that decision. What is withdrawn is the claim that the specification is currently converged. Two partial mitigations are kept because they are improvements; the remaining fix is test isolation, which is a design change and is not being made unilaterally after acceptance. Nothing pushed."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "TASK-013 executed under ASES-0009, verified by VER-0009. CONV-015 closed by isolation - the destructive reset suite now owns its own database rather than sharing the one the persona suite reads - and both mitigations that had been absorbing the race were removed rather than kept, because a bounded retry in the file asserting tenant isolation and platform-control-plane denial would absorb a genuine 401 regression identically. CONV-016 raised and closed in the same task: a literal 0x08 byte in demo-reset-coverage.spec.ts had made its explicit-deletion arm match nothing and made npm run lint exit 1, so CI gate 2 would have failed on first push; the expression now finds 47 models. Stability is four consecutive full-suite runs at default parallelism, each 157 files and 1992 passed with 2 skipped and 0 failed, against a pre-fix baseline of 6 failed and 1986 passed. Client walkthrough 6/6 against the running demonstration build with teardown removing nothing, and a rendered-branding sweep clean over 10 pages. OPEN findings 0. Awaiting a fresh gate 6 acceptance: the 2026-09-09 acceptance was taken against evidence that CONV-015 then invalidated, and it is neither withdrawn nor reused."
     }
   ],
   "approvals": [

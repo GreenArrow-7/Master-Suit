@@ -460,3 +460,22 @@ approval instruction was explicit that all other identities keep following
 **Security implications:** one is a redaction decision. `apps/web/scripts/prepare-test-db.mjs` withheld the seed's output because the seed can print a shared demo password, and the fix echoes it — so the echo redacts any line matching password, secret, token, api key or a connection string, and the seed already withholds the banner when stdout is not a terminal. The change makes diagnosis possible without making a credential printable.
 
 **Data and migration implications:** the reset now removes the secondary workspace as well as the primary. No schema change; a wider teardown of synthetic data on a disposable database.
+## TASK-013
+
+**Purpose:** close the two findings raised after the 2026-09-09 gate 6 acceptance, so the specification can be put to a fresh gate 6 without carrying known defects.
+
+**Requirements:** `FR-011`, `FR-012`, `FR-015`. Findings `CONV-015`, `CONV-016`.
+
+**Dependencies:** `TASK-012`.
+
+**Allowed scope:** `apps/web/tests/helpers/`, `apps/web/tests/hr/`, `apps/web/tests/security/`, `apps/web/playwright.config.ts`
+
+**Prohibited paths:** `apps/web/src/`, `apps/web/prisma/`, `apps/web/scripts/`, `apps/web/prisma/migrations/`, `.github/workflows/`, `apps/web/infra/`
+
+**Expected files and components:** the destructive reset suite running against a database it owns, so it and the persona suite can run concurrently at the default parallelism CI uses; the two retry-shaped mitigations removed from the persona suite; the stray control character removed from the reset-coverage regex so its explicit-deletion arm is load-bearing; one reading of `APP_URL` in the end-to-end configuration rather than two that can disagree.
+
+**Required tests:** `ST-001`, `ST-002`, `ST-003`, `ST-004`, `ST-005`, `ST-009`, `IT-003`, `IT-004`, `UT-015`, `E2E-001`, `E2E-006`
+
+**Security implications:** the persona suite is where tenant isolation and platform-control-plane denial are asserted, and both mitigations being removed were absorbing failures there. A retry that hides a race hides a regression identically, so removing them raises the sensitivity of the security assertions rather than lowering it. No product source file is touched and no control changes; the demo reset keeps the `CONV-011` behaviour that caused the collision.
+
+**Data and migration implications:** none to the product. The suite provisions an additional local test database, `<ambient>_reset`, holding synthetic data only, created and migrated by the harness on each run.

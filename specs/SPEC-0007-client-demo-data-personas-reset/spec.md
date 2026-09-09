@@ -6,7 +6,7 @@
 |---|---|
 | Specification ID | `SPEC-0007` |
 | Title | Client Demo — Sales + HRMS Data, Personas and Reset |
-| Status | `IMPLEMENTING` |
+| Status | `VERIFYING` |
 | Risk | `R3` |
 | Owner | Product Owner |
 | Created | 2026-09-08 |
