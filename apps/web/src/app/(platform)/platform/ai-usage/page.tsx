@@ -30,6 +30,23 @@ const nf = new Intl.NumberFormat('en-GB');
 
 export default async function AiUsagePage() {
   await requirePlatformPage();
+  return renderAiUsage();
+}
+
+/**
+ * The page's body, exported so it can be rendered without a request scope.
+ *
+ * `requirePlatformPage()` reads `headers()`, which only exists inside a
+ * request. `tests/tenant/ai-usage-console.spec.ts` renders this page as a plain
+ * function to assert the numbers it puts on screen, and that is a rendering
+ * assertion, not an authorization one — it should not have to mint a session to
+ * make it. Splitting the gate from the body keeps both honest: the gate is
+ * unconditional on the route, and the body stays directly testable.
+ *
+ * Nothing else may call this. The route above is the only path Next renders,
+ * and the gate is the first thing on it.
+ */
+export async function renderAiUsage() {
   const month = usageMetric('deployment').split(':').pop()!;
 
   /**
