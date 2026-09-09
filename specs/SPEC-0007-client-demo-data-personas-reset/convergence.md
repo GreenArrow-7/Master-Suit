@@ -689,3 +689,64 @@ Two things a reviewer should weigh rather than take on trust:
 | Date | 2026-09-09 |
 
 Not accepted. An agent recommends; a human accepts.
+
+
+---
+
+# Post-acceptance finding, 2026-09-09
+
+Recorded after gate 6 acceptance and after commit `c4c0631`. It is reported
+rather than quietly repaired because it changes what the accepted evidence
+means.
+
+### CONV-015 — the reset fix destabilised a suite that shares its database
+
+**Status:** `OPEN` · **Severity:** medium · **Owner:** the demo suites' owner ·
+**Release impact:** **BLOCKING for push**
+
+**What happens.** `apps/web/tests/security/demo-personas.spec.ts` fails intermittently in
+a full run — roughly one run in three — with `401` where `200` is expected, and
+occasionally a Prisma request error. It passes when run alone, and it passes
+when run beside `apps/web/tests/hr/demo-reset.spec.ts` alone.
+
+**Cause, and it is mine.** `CONV-011` widened the reset so it drops *every*
+seeded workspace rather than only the primary one. That is correct product
+behaviour and it is what was asked for. But `apps/web/tests/hr/demo-reset.spec.ts` exercises that
+reset against the same database `apps/web/tests/security/demo-personas.spec.ts` reads, and files run in
+parallel — so the second workspace is now briefly absent, and, worse, the
+personas are deleted and recreated with **new ids**, invalidating any session
+token minted earlier in the file.
+
+Before `CONV-011` the secondary workspace was never dropped, so the window was
+narrow enough never to be observed. Several consecutive full runs were green
+before that change and are not reliably green after it.
+
+**Two fixes attempted, both insufficient, both kept because they are
+improvements:**
+
+1. `beforeAll` now waits, bounded, for the fixture to reappear. It removes the
+   "fixture is present" failure and nothing else — the fixture was there; its
+   contents had changed.
+2. Personas are re-resolved before every case rather than once per file. This
+   removes the stale-token failures at case *start* and cannot help a rebuild
+   that lands mid-case.
+
+**Why it is not fixed here.** The remaining failure mode is genuine shared-state
+coupling between two files, and closing it properly means isolation rather than
+another guard: either the destructive suite gets its own database, or the two
+files are placed in a Vitest project that does not run them in parallel with
+each other. Both are design changes with CI consequences, and `CONV-004`'s
+recorded preference — proper isolation over globally serialising the suite —
+points at the project-scoped option rather than at `--no-file-parallelism`.
+
+**What this means for the gate 6 acceptance.** The acceptance was recorded
+against evidence that was green when it was taken, and the specification's own
+behaviour is not in question: every requirement still holds, and the
+demonstration works. What is now known is that the *suite* is not reliably
+green, and CI would fail intermittently. The verdict is not withdrawn by an
+agent, but a reviewer should know that the "0 failed" line supporting it does
+not reproduce on every run.
+
+**Recommendation:** do not push until this is closed. A branch whose CI fails
+one run in three is worse than one that fails every time, because it teaches
+people to re-run.

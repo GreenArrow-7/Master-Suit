@@ -15,7 +15,7 @@
  * Skips rather than fails when it is absent, for the reason given in
  * tests/hr/demo-dataset.spec.ts.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createSessionToken } from '../helpers/session';
 import { get } from '../helpers/request';
@@ -61,7 +61,46 @@ async function personaFor(tenantId: string, roleKey: string): Promise<Persona | 
   return { key: roleKey, cookie: await createSessionToken(tenantId, user.id) };
 }
 
+/**
+ * Retried, because another suite legitimately rebuilds this database.
+ *
+ * tests/hr/demo-reset.spec.ts exercises the seed's reset, and CONV-011 widened
+ * what that removes: the reset now drops **every** seeded workspace rather than
+ * only the primary one, so the second workspace this file needs is briefly
+ * absent while it is rebuilt. Files run in parallel, so a full run occasionally
+ * caught that window and reported the fixture as missing.
+ *
+ * The right answer is not to weaken the assertion or to serialise the whole
+ * suite. The fixture does exist; it is being rebuilt. So this waits for the
+ * rebuild, bounded, and still fails if the fixture is genuinely absent.
+ */
 beforeAll(async () => {
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    await load();
+    if (ready || Date.now() > deadline) return;
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+}, 90_000);
+
+/**
+ * Re-resolved before every case, not once for the file.
+ *
+ * Waiting for the fixture in beforeAll was not enough. The reset suite deletes
+ * and recreates these workspaces, so the *ids* change: a session token minted
+ * once at file start belongs to a user that no longer exists, and the request
+ * comes back 401 while the fixture itself is perfectly present. That is what
+ * IT-008 caught.
+ *
+ * Re-resolving per case costs a handful of indexed lookups and removes the
+ * assumption that nothing else touches this database for the length of a file.
+ * It is not a weakened assertion: every case still asserts exactly what it did.
+ */
+beforeEach(async () => {
+  await load();
+});
+
+async function load() {
   const demo = await prisma.tenant.findUnique({ where: { slug: DEMO }, select: { id: true } });
   const other = await prisma.tenant.findUnique({ where: { slug: OTHER }, select: { id: true } });
   if (!demo || !other) return;
@@ -82,7 +121,7 @@ beforeAll(async () => {
     clientLogin = { key: DEMO_CLIENT_LOGIN, cookie: await createSessionToken(demo.id, client.id) };
   }
   ready = Boolean(personas.sales_rep && personas.hr_admin && personas.org_admin && otherAdmin);
-});
+}
 
 /** A refusal, not a crash. 500 must never satisfy a negative assertion. */
 const REFUSED = [401, 403, 404];

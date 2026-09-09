@@ -4,7 +4,7 @@
   "slug": "client-demo-data-personas-reset",
   "kind": "change",
   "risk": "R3",
-  "status": "CONVERGED",
+  "status": "IMPLEMENTING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": "clarifications.md",
@@ -106,6 +106,11 @@
       "status": "CONVERGED",
       "date": "2026-09-09",
       "note": "Gate 6 convergence acceptance recorded: verdict PASS, accepted by a Qualified Human Reviewer and transcribed by an agent. OPEN findings 0; ACCEPTED_RISK 0. CONVERGED is not RELEASED: nothing has been committed, pushed, merged or deployed at the time of this transition, no demo environment exists, and SPEC-0008 remains at READY_FOR_APPROVAL with all four R5 gates unresolved."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Reopened from CONVERGED, by the agent, on its own finding. CONV-015: the CONV-011 reset fix widened what a reset destroys, and the persona security suite shares that database and runs in parallel with the suite that exercises the reset - so personas are deleted and recreated with new ids mid-run and previously minted session tokens return 401. Roughly one full run in three fails. SDD-V032 refuses CONVERGED while a finding is OPEN, which is correct and is the reason for this transition. The gate 6 acceptance of 2026-09-09 is NOT deleted: it was given against evidence that was green when taken, and it stands as the record of that decision. What is withdrawn is the claim that the specification is currently converged. Two partial mitigations are kept because they are improvements; the remaining fix is test isolation, which is a design change and is not being made unilaterally after acceptance. Nothing pushed."
     }
   ],
   "approvals": [
