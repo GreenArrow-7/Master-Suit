@@ -171,6 +171,42 @@ test.describe('CRM lifecycle', () => {
     expect(await download.text()).toBe(`lead brief ${run}`);
   });
 
+  /**
+   * BUG-011. An administrator holding `calls:DELETE` had no way to remove a
+   * call: the permission existed and two other routes already gated on it, the
+   * `Call.deletedAt` column existed, and every read path already filtered it —
+   * the endpoint and the control simply were not there. The same shape as the
+   * lead and task defects before it.
+   */
+  test('an administrator deletes a call from its detail page', async ({ page }) => {
+    await login(page, workspace.adminEmail, workspace.adminPassword);
+
+    const call = await post(page.request, 'calls', {
+      leadId,
+      recipientNumber: `+9715${run.slice(0, 8).replace(/\D/g, '') || '0000000'}`,
+      notes: `Disposable call ${run}`,
+    });
+    expect(call.id).toBeTruthy();
+
+    await page.goto(at(`/calls/${call.id}`));
+    // Armed, not immediate: the first press reveals the confirmation.
+    const arm = page.getByRole('button', { name: 'Delete', exact: true });
+    await expect(arm).toBeVisible({ timeout: 30_000 });
+    await arm.click();
+    await page.getByRole('button', { name: 'Delete call' }).click();
+
+    // Back on the list, and gone from it.
+    await expect(page).toHaveURL(/\/sales\/calls$/, { timeout: 30_000 });
+    await expect(page.getByText(`Disposable call ${run}`)).toHaveCount(0);
+
+    // The record itself is unreachable, and the API agrees.
+    const gone = await page.request.get(`/api/v1/calls/${call.id}`);
+    expect(gone.status()).toBe(404);
+    // Deleting it again is a 404, not a second success.
+    const again = await page.request.delete(`/api/v1/calls/${call.id}`);
+    expect(again.status()).toBe(404);
+  });
+
   test('the lead becomes an opportunity carrying its value into the pipeline', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
