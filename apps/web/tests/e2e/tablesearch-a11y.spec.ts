@@ -128,9 +128,7 @@ test.describe('TableSearch accessibility', () => {
   });
 
   // E2E-005 — ACC-003, ACC-004, AC-005
-  test('the status region exists before it has anything to say, and carries the no-match message', async ({
-    page,
-  }) => {
+  test('the status region exists before it has anything to say, and carries the no-match message', async ({ page }) => {
     await login(page, workspace.adminEmail, workspace.adminPassword);
     await page.goto(directory());
 
