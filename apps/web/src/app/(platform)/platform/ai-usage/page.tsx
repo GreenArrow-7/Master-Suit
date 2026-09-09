@@ -3,6 +3,7 @@ import { AI_METRIC_PREFIX, AI_MODEL_METRIC_PREFIX, AI_TOKEN_LIMIT_KEY, usageMetr
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import { aggregate, aggregateModels } from './aggregate';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'AI usage' };
@@ -28,6 +29,7 @@ export const metadata = { title: 'AI usage' };
 const nf = new Intl.NumberFormat('en-GB');
 
 export default async function AiUsagePage() {
+  await requirePlatformPage();
   const month = usageMetric('deployment').split(':').pop()!;
 
   /**

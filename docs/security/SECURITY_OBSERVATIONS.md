@@ -151,9 +151,17 @@ Required validation · Confidence · Status.
   loses the render race there.
 - Exploitability: Latent. Timing-dependent rather than mitigated; data volume,
   cache warmth and load all move it, and timing is not a control.
-- Status: registered as `BUG-008`, `R4`, awaiting the gate. **Not fixed.**
-  Proposed remediation: assert in each platform page so no query runs and no
-  output exists, keeping the layout gate for navigation.
+- Status: **REMEDIATED, pending AppSec signoff.** `lib/platform-page.ts`
+  exports `requirePlatformPage()` and it is the first statement of all eleven
+  platform pages, above every query, so a refused caller builds nothing and
+  there is no payload to serialise. The layout keeps its own gate. Measured
+  before and after on the deployed image and on the fix, five pages × three
+  unauthorized personas: every marker present before (`/platform/users` carried
+  92 KB — the platform user directory), none after; the owner still receives
+  `200` and full content on all ten console pages. `REG-003` asserts the body
+  of the refusal with `maxRedirects: 0`. `requirePlatformOwner` is unchanged —
+  who may enter is exactly what it was. Release-owner `R4` gate granted in
+  session 2026-09-09; **Application Security review outstanding.**
 
 **SEC-OBS-015** · Lead document upload carries no MIME allowlist · E1 · `apps/web/src/app/api/v1/documents/route.ts`
 - Relevance: any content type may be uploaded against a lead; the stored
