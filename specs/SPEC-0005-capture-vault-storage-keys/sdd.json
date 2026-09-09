@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0005",
+  "slug": "capture-vault-storage-keys",
+  "kind": "change",
+  "risk": "R4",
+  "status": "CONVERGED",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": null
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-08",
+      "note": "Allocated for RC-4, the biometric capture-path defect excluded from SPEC-0004's approved scope. EVC-016 is untouched and keeps its historical PC-01 meaning; this is a separate identifier, not a rename."
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-08",
+      "note": "Seven path compositions in captureVault read from source. Six are correct filesystem boundaries; one, pathFor at line 83, composes a persisted identifier with path.join. CL-R01 to CL-R03 answered from the repository; CL-001 and CL-002 cannot be, and are recorded open."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08",
+      "note": "capturePath verified as String? in the Prisma schema, so no migration is implied. Classified R4 on data class rather than diff size: the key is the only link between a row and an encrypted biometric image, and a key that will not resolve is a capture a PDPL deletion sweep cannot act on."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "AD-001 to AD-007 recorded. Historical-data rewriting is deliberately excluded and left to its own authorisation; backward-compatible reading is required first so that no existing capture can become unreachable, and in particular undeletable."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete for R4. Stops here. Gates 1, 2, 3 and 5 all UNRESOLVED, and no code written."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-08",
+      "note": "All four required R4 gates approved by a human: gate 1 (Product Owner and Solution Architect), gate 2 (Solution Architect), gate 3 (Application Security), gate 5 (Solution Architect, the role named by EVC-018). Each approval carries its own scope and its own explicit exclusions. None authorises production, staging, deployed-data mutation or historical-data migration."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "RC-4 implementation under the approved architecture: a persisted logical storage key with a canonical forward slash, and a physical filesystem path derived only at the I/O boundary. path.join is NOT globally replaced; each of the seven path compositions was classified as logical-key or filesystem-path and only the one that composes a persisted identifier changed."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "RC-4 implemented and verified. All four failures fixed at the cause; capture-vault suite 12 to 27 cases, all passing; product suite 1933 passed / 0 failed / 2 skipped across three consecutive runs. Schema and migration impact re-verified as NONE. REV-0001 is an AI security review and discharges no human gate. Two findings OPEN, both human gates: CONV-001 two human code reviewers, CONV-002 convergence acceptance by Application Security and QA / Release Engineering."
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-08",
+      "note": "Verdict PASS WITH ACCEPTED LIMITATIONS, accepted at gate 6 by Application Security and QA / Release Engineering. No CONV- finding is OPEN: CONV-001 RESOLVED by REV-0002 and REV-0003 (two human code reviews, one security-literate), CONV-002 RESOLVED by the gate-6 acceptances, CONV-003 ACCEPTED_RISK with a named human owner, CONV-004 RESOLVED. The one accepted limitation is the residual orphan-on-storage-failure path: the condition still exists, the system no longer reports success when it happens. NOT advanced to READY_FOR_RELEASE or RELEASED; this is not production, staging or deployment approval."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner and Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/24-spec0005-approval-block.md",
+      "scope": "Remediate the platform-dependent capture-vault storage-key defect. Persisted capture storage keys are platform independent with a canonical forward slash; filesystem-specific conversion happens only at filesystem I/O boundaries; encryption unchanged; tenant isolation unchanged; traversal and root containment still enforced; no unnecessary schema change; no unnecessary migration; no automatic deployed historical-data rewrite; legacy capture keys handled safely where technically feasible.",
+      "note": "Does NOT authorise production deployment, uncontrolled staging changes, deployed database mutation, historical-data migration, security-control weakening, or direct live-server patching. Decision supplied explicitly in session by the human requester and transcribed by an agent; the agent did not make it."
+    },
+    {
+      "gate": "architecture",
+      "role": "Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/24-spec0005-approval-block.md",
+      "scope": "Logical storage key is the persistent/database representation, platform independent, canonical forward slash. Physical filesystem path is derived only at the filesystem I/O boundary, may use OS-specific separators, and is never persisted back as a logical key. path.join is not globally replaced; every relevant path operation is classified as logical key or physical path and only the correct layer changes.",
+      "note": "Expected architecture impact: Prisma schema NONE, new migration NONE, historical-data migration NOT AUTHORISED. If implementation evidence contradicts those assumptions, work stops for that material architecture change. Transcribed from the human requester's explicit decision."
+    },
+    {
+      "gate": "security",
+      "role": "Application Security",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "specs/SPEC-0005-capture-vault-storage-keys/threat-model.md",
+      "scope": "Biometric capture retention, platform-independent storage keys, traversal handling, mixed separators, Windows drive paths, UNC paths, POSIX absolute paths, capture-root containment, tenant isolation, legacy stored keys, object deletion ordering, orphaned encrypted captures, storage-failure handling and auditability, all reviewed and approved for implementation.",
+      "note": "Security invariant carried into implementation: a physical-object deletion failure must not silently result in the system representing retention cleanup as successful where the approved product contract requires successful deletion. No security control may be weakened. Historical deployed-data state remains UNKNOWN - requires runtime/infrastructure verification. Transcribed from the human requester's explicit decision."
+    },
+    {
+      "gate": "implementation",
+      "role": "Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/24-spec0005-approval-block.md",
+      "scope": "Gate 5, the separate permission to begin writing code. Granted on the package containing an approved specification, defined architecture, threat model, test plan, bounded implementation tasks, data and schema impact assessment, legacy compatibility strategy, rollback strategy, verification strategy and operational considerations.",
+      "note": "Gate 5 is the role named by EVC-018. It does NOT constitute production approval, deployment approval, staging approval, code-review approval or convergence approval. Transcribed from the human requester's explicit decision."
+    },
+    {
+      "gate": "convergence",
+      "role": "Application Security and QA / Release Engineering",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "specs/SPEC-0005-capture-vault-storage-keys/convergence.md",
+      "scope": "Gate 6 convergence acceptance of SPEC-0005 at verdict PASS WITH ACCEPTED LIMITATIONS, together with the CONV-003 ACCEPTED_RISK disposition.",
+      "note": "R4 gate 6 requires Application Security for every security finding plus QA / Release Engineering; both accepted. Acknowledged in accepting: RC-4 complete, capture-vault 28 of 28, three consecutive full-suite runs with zero failures, the two Windows POSIX skips separately proved passing on Linux, two human code reviews approved, CONV-003 accepted as residual risk, schema unchanged, no migration, and NO production deployment included in this acceptance. Decisions supplied explicitly in session by the human requester and transcribed by an agent."
+    }
+  ],
+  "reviews": [
+    {
+      "reviewId": "REV-0002",
+      "reviewType": "code-review",
+      "role": "Qualified Human Code Reviewer",
+      "actorType": "human",
+      "actorId": "GreenArrow-7",
+      "decision": "APPROVE",
+      "satisfiesHumanGate": true,
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/25-rc4-human-review-packet.md",
+      "note": "First of the two human code reviews R4 requires. Decision given explicitly in session and transcribed by an agent."
+    },
+    {
+      "reviewId": "REV-0003",
+      "reviewType": "security-review",
+      "role": "Security-Literate Qualified Human Code Reviewer",
+      "actorType": "human",
+      "actorId": "GreenArrow-7",
+      "decision": "APPROVE",
+      "satisfiesHumanGate": true,
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/25-rc4-human-review-packet.md",
+      "note": "Security-literate second review; examined CONV-003 explicitly. Same actorId as REV-0002 - whether one person may hold both R4 reviewer slots is flagged in convergence.md rather than assumed."
+    }
+  ],
+  "evidenceConflicts": []
+}

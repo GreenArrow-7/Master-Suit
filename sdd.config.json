@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "specsRoot": "specs",
+  "ignoredDirectories": ["templates", "node_modules", ".git"],
+  "enforcementMode": "ADVISORY",
+  "transitionPhase": "B2",
+  "applicationPaths": ["apps/web/src", "apps/web/prisma", "apps/face", "apps/mobile"],
+  "documentationRoots": ["docs", "specs", "tools"],
+  "notes": "Repository settings for the SDD validator only. Behavioural requirements never belong here; see docs/sdd/MACHINE_CONTRACT.md. enforcementMode ADVISORY keeps the code-without-spec rule (SDD-V041) at WARNING during the brownfield transition; see docs/sdd/ENFORCEMENT_STANDARD.md."
+}

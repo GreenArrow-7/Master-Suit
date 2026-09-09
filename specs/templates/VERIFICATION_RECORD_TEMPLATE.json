@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0000",
+  "specId": "SPEC-0000",
+  "sessionId": "ASES-0000",
+  "taskIds": ["TASK-000"],
+  "tests": [
+    { "id": "UT-000", "outcome": "PASS", "note": "" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation",
+  "notes": [
+    "Every test id must already exist in test-plan.md; SDD-V054 rejects one that does not.",
+    "Record command names and exit codes only. Full output belongs in the CI log, not in a repository artefact.",
+    "result PASS requires every required test in scope to have run and passed. A skipped test is not a pass."
+  ]
+}

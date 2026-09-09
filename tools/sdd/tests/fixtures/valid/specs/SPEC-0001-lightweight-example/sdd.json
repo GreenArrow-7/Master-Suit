@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0001",
+  "slug": "lightweight-example",
+  "kind": "change",
+  "risk": "R1",
+  "status": "IMPLEMENTING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": null,
+    "threatModel": null,
+    "testPlan": null,
+    "tasks": null,
+    "traceability": null,
+    "convergence": null,
+    "changeRecord": null
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-01-01"
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-01-02"
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-01-03"
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-01-04"
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-01-05"
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-01-06"
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "sample",
+      "date": "2026-01-04"
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": []
+}

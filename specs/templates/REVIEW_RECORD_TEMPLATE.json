@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0000",
+  "specId": "SPEC-0000",
+  "sessionId": "ASES-0000",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": null,
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    { "severity": "OBSERVATION", "summary": "", "artifact": "", "reference": "" }
+  ],
+  "notes": [
+    "actorId must differ from the reviewed session's actorId, and reviewerSessionId must differ from sessionId. SDD-V051.",
+    "satisfiesHumanGate stays false for any AI reviewer. SDD-V053 rejects true when actorType is ai.",
+    "decision APPROVE is an engineering opinion. It never discharges a human approval gate."
+  ]
+}

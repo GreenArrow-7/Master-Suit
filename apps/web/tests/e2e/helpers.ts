@@ -8,6 +8,159 @@ import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
 
 /**
+ * Waits until every API route the suite depends on can actually answer.
+ *
+ * ── The failure this exists for ─────────────────────────────────────────────
+ *
+ * `webServer.url` gates on `/login`, which is a *page*. Under `next dev` a
+ * route is compiled on its first request, so the suite could start the moment
+ * the login page was ready while `/api/v1/auth/login` was still uncompiled —
+ * and an uncompiled route is answered by the catch-all 404, not held.
+ *
+ * That produced intermittent `beforeAll` failures with no pattern: three in
+ * eight runs, sometimes `POST /api/v1/auth/login 404`, sometimes
+ * `password settle failed: 404`. In one run the same login route answered
+ * `200` eleven times and `404` on the twelfth. It reads as a broken login or a
+ * broken MFA setup, which is where the first investigation went, and it is
+ * neither.
+ *
+ * ── Why this is a readiness probe and not a retry ───────────────────────────
+ *
+ * It waits for a determinate condition — every required route answers as its
+ * own implementation says it should — and then stops. It does not re-run a
+ * failed assertion, does not sleep for a fixed guess, and does not raise any
+ * timeout. `playwright.config.ts` keeps `retries: 0`, so a genuine intermittent
+ * product failure still fails the run.
+ *
+ * ── The correction that produced this version ───────────────────────────────
+ *
+ * The first version gated on one route and fired the others once, *discarding
+ * their status*. A discarded 404 is exactly the uncompiled-route signal the
+ * gate exists to wait out, so the suite could still begin before those routes
+ * had compiled — and it did, in run 4 of the second five-run confirmation.
+ *
+ * The reason recorded for discarding them was that a route under
+ * `/api/v1/workspaces/[workspaceSlug]/…` "returns a legitimate 404 for a
+ * workspace that does not exist". **That is wrong.** `route()` throws
+ * `Unauthorized` at its authorisation step, which runs *before* parameter
+ * validation and *before* `requireWorkspace` resolves the slug — so an
+ * unauthenticated request never reaches the workspace lookup and the slug's
+ * existence never matters. Measured on a cold dev server, every one of these
+ * paths answers on its first request:
+ *
+ *   GET /api/v1/auth/login                                   405, no body
+ *   GET …/workspaces/<any>/identity/self/password-change     401 problem+json
+ *   GET /api/v1/platform/workspaces                          401 application/json
+ *   GET …/workspaces/<any>/hr/departments                    401 problem+json
+ *
+ * So `readiness-probe` is not a workspace that has to exist. It is a slug that
+ * is never read, and that is why it is unambiguous.
+ */
+
+/** What each required route answers once it is compiled, verified from its own source. */
+const READY_PROBES = [
+  {
+    // POST-only (`export async function POST`), so a matched route with no GET
+    // export is answered by Next itself with 405 and an empty body. Reaching
+    // 405 means the module was resolved and its exports read.
+    path: '/api/v1/auth/login',
+    status: 405,
+    json: false,
+    why: 'POST-only route: 405 proves the module was matched and its exports read',
+  },
+  {
+    // route() → Unauthorized before params validation. handler.ts sets
+    // content-type: application/problem+json on every error it returns.
+    path: '/api/v1/workspaces/readiness-probe/identity/self/password-change',
+    status: 401,
+    json: true,
+    why: 'authenticated route(): unauthenticated GET is refused before the slug is read',
+  },
+  {
+    // Hand-rolled handler guarded by requirePlatformOwner; answers JSON.
+    path: '/api/v1/platform/workspaces',
+    status: 401,
+    json: true,
+    why: 'platform-owner route: unauthenticated GET is refused',
+  },
+  {
+    // The workspace wizard's first list call in the a11y spec goes here.
+    path: '/api/v1/workspaces/readiness-probe/hr/departments',
+    status: 401,
+    json: true,
+    why: 'authenticated route(): unauthenticated GET is refused before the slug is read',
+  },
+] as const;
+
+const PROBE_INTERVAL_MS = 250;
+const PROBE_DEADLINE_MS = 180_000;
+
+/**
+ * Not ready, as opposed to answering wrongly.
+ *
+ * An `/api/**` path that replies with HTML did not reach a route handler: that
+ * is the catch-all not-found page, which is what an uncompiled route gets. A
+ * connection error is the server still coming up, and a 5xx is it still
+ * starting. Everything else is a real application answer and is compared
+ * against the expectation above rather than waited out.
+ */
+function notReady(status: number, contentType: string): boolean {
+  return status === 0 || status >= 500 || contentType.includes('text/html');
+}
+
+let apiReady: Promise<void> | null = null;
+
+export function warmApiRoutes(request: APIRequestContext, deadlineMs = PROBE_DEADLINE_MS): Promise<void> {
+  apiReady ??= (async () => {
+    const until = Date.now() + deadlineMs;
+
+    for (const probe of READY_PROBES) {
+      let status = 0;
+      let contentType = '';
+
+      for (;;) {
+        try {
+          const response = await request.get(probe.path, { failOnStatusCode: false });
+          status = response.status();
+          contentType = response.headers()['content-type'] ?? '';
+        } catch {
+          // The server is still coming up; treated the same as an uncompiled route.
+          status = 0;
+          contentType = '';
+        }
+
+        if (status === probe.status && (!probe.json || contentType.includes('json'))) break;
+
+        if (!notReady(status, contentType)) {
+          // A determinate application answer that is not the one this route's
+          // implementation gives. Polling would burn the whole deadline and
+          // report a timeout for what is actually a changed contract, so it
+          // fails here and says which.
+          throw new Error(
+            `Readiness probe ${probe.path} answered ${status} (${contentType || 'no content-type'}), ` +
+              `but its implementation gives ${probe.status}${probe.json ? ' with a JSON body' : ''} — ${probe.why}. ` +
+              `If the route legitimately changed, update READY_PROBES in tests/e2e/helpers.ts.`,
+          );
+        }
+
+        if (Date.now() > until) {
+          throw new Error(
+            `API readiness timed out after ${deadlineMs}ms on ${probe.path}. ` +
+              `Last answer: ${status || 'no response'} (${contentType || 'no content-type'}); ` +
+              `expected ${probe.status}${probe.json ? ' with a JSON body' : ''}. ` +
+              `An HTML reply from an /api/ path is the catch-all not-found page, which means the ` +
+              `dev server never finished compiling this route.`,
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, PROBE_INTERVAL_MS));
+      }
+    }
+  })();
+  return apiReady;
+}
+
+/**
  * Clears the login rate-limit counters.
  *
  * Every request in this suite comes from one address, and the limiter allows ten
@@ -79,6 +232,8 @@ export function platformOwner() {
  * hide a broken sign-in behind twenty passing assertions.
  */
 export async function login(page: Page, email: string, password: string) {
+  // The API routes this flow posts to must be compiled before the first click.
+  await warmApiRoutes(page.request);
   // Self-sufficient rather than per-spec: with no trusted proxy configured the
   // whole suite shares one 'unknown' per-IP bucket (10 sign-ins / 5 min), so
   // whichever spec ran deepest in the order was the one that starved. Clearing
@@ -157,6 +312,8 @@ export async function logout(page: Page) {
  * the ordinary endpoint, and the code is verified server-side like any other.
  */
 export async function loginPlatformOwner(page: Page) {
+  // The API routes this flow posts to must be compiled before the first click.
+  await warmApiRoutes(page.request);
   await resetLoginThrottle(); // see login()
   const { email, password } = platformOwner();
   const secret = await ensureOwnerAuthenticator(email);

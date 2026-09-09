@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-NNNN",
+  "slug": "short-slug",
+  "kind": "change",
+  "risk": "R2",
+  "status": "DRAFT",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": null,
+    "threatModel": null,
+    "testPlan": null,
+    "tasks": null,
+    "traceability": null,
+    "convergence": null,
+    "changeRecord": null
+  },
+  "statusHistory": [{ "status": "DRAFT", "date": "YYYY-MM-DD" }],
+  "approvals": [],
+  "reviews": [],
+  "evidenceConflicts": []
+}

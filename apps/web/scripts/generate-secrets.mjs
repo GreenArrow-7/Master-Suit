@@ -32,9 +32,21 @@ const KEYS = [
  *   node scripts/generate-secrets.mjs .env     # .env only
  *
  * CI passes `.env` deliberately. `.env.test` points DATABASE_URL at a separate
- * `master_saas_test` database that a developer creates with `npm run setup`, and
- * Vitest prefers `.env.test` over `.env` — so generating it on a runner that has
- * only one database sent every suite at a database that does not exist.
+ * `master_saas_test` database, and Vitest prefers `.env.test` over `.env` — so
+ * generating it on a runner that has only one database sent every suite at a
+ * database that does not exist.
+ *
+ * `npm run setup` does NOT create or migrate `master_saas_test`. It runs
+ * `prisma migrate deploy` against `.env`, which resolves to `leadflow`, and
+ * `infra/docker-compose.yml` creates only that database. Locally, prepare the
+ * test database with:
+ *
+ *     npm run db:test:prepare
+ *
+ * An earlier version of this comment claimed `npm run setup` created it. It
+ * never did, and believing otherwise is why `master_saas_test` sat a migration
+ * behind long enough for eighteen tests to fail on a missing column while
+ * `check:drift` reported the schema clean.
  */
 const FORCE = process.argv.includes('--force');
 const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));

@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0003",
+  "slug": "tablesearch-accessibility",
+  "kind": "change",
+  "risk": "R2",
+  "status": "CONVERGED",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": null,
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-08",
+      "note": "First controlled product pilot, PC-02, selected by a human in B4.0."
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-08",
+      "note": "Seven questions resolved from repository evidence; CL-001 and CL-002 raised as product decisions and left OPEN."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08"
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "AD-001 to AD-005 recorded. One source file and one new test file."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete for R2. Stops here: R2 spec approval is the author's, and the author is an AI, which AGENTS.md forbids from self-approving. A human must approve or adopt authorship. CL-001 and CL-002 remain material and OPEN."
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-08",
+      "note": "Corrected downward by the B4.1 pre-implementation stop check. SPEC_LIFECYCLE.md requires material open questions to be closed before READY_FOR_APPROVAL is earned, and CL-001 and CL-002 are both material and OPEN. This is the honest lifecycle position, not a regression in the work. Decision packet: docs/evidence/phase-b4-pilot/02-decision-packet-spec-0003.md."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08",
+      "note": "CL-001 resolved to option (c), descope Escape; CL-002 resolved to option (a), no clear button. Both by a human Product Owner. No material clarification remains OPEN, which is the CLARIFYING exit criterion."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "Plan updated for the decisions: AD-004 WITHDRAWN with FR-003, FR-004, AC-004, E2E-004 and TASK-002. AD-006 added, recording the deliberate refinement of AD-003 needed to satisfy NFR-003."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete and internally consistent for R2, and this time the entry criteria are genuinely met: no material open question remains."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-08",
+      "note": "Gate 1 specification approval recorded from a human Product Owner, given because the AI author may not self-approve at R2. Scope bounded to SPEC-0003; the approver's exclusion list is reproduced in spec.md. Human code review and convergence acceptance remain outstanding."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "ASES-0001 implemented TASK-001 (status region); ASES-0002 implemented TASK-003 (Playwright spec). Both scope-checks PASS, attribution SESSION 1 each. TASK-002 not executed - WITHDRAWN."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "VER-0001 recorded. All 7 Playwright cases executed in Chromium and passed, exit 0. typecheck and lint clean. Result PARTIAL solely because prettier --check fails on CRLF line endings, a known Windows class that also fails on untouched files."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "CHG-001 / TASK-006: make E2E-006 establish its own row count, remediating CONV-006. Reopened from VERIFYING."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "TASK-006 complete: E2E-006 now establishes its own row count. Playwright 7/7 re-run. CONV-006 RESOLVED; CONV-008 RESOLVED under SPEC-0002/CHG-007. Four findings remain OPEN, all awaiting human disposition. | Closure: D-B4-01 to D-B4-07 recorded 2026-09-08. CONV-005 and CONV-007 RESOLVED; CONV-001, CONV-003, CONV-010, CONV-011, CONV-012 ACCEPTED_RISK with named human owners. OPEN=0. Verdict PASS WITH ACCEPTED LIMITATIONS, recommended not accepted - final human convergence acceptance outstanding."
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-08",
+      "note": "Final human convergence acceptance by a Qualified Human Reviewer, the role resolved by EVC-017. Verdict PASS WITH ACCEPTED LIMITATIONS. OPEN 0, RESOLVED 7, ACCEPTED_RISK 5. No release, staging or production authorization exists."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "SPEC-0003 spec.md Approval section; clarification decisions CL-001 (c) and CL-002 (a) recorded in clarifications.md",
+      "scope": "SPEC-0003 only. Does not authorize PC-01, CSV/export changes, new Escape behaviour, a new clear button, unrelated accessibility refactoring, authentication, authorization, tenant-isolation, backend/API, database, migrations, dependency changes, staging or production deployment, release approval, or resolution of EVC-016.",
+      "note": "Given because the R2 specification author is an AI and AGENTS.md forbids self-approval. Satisfies gate 1 only."
+    },
+    {
+      "gate": "convergence",
+      "role": "Qualified Human Reviewer",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "SPEC-0003 convergence.md, verdict PASS WITH ACCEPTED LIMITATIONS; authorised by EVC-017 Solution Architect policy resolution 2026-09-08",
+      "scope": "SPEC-0003 / B4 pilot #1 only. Does not authorize pilot #2, staging, production, release, deployment, migration, commit/push/merge, PC-01, resolution of EVC-016, or waiver of the required before-pilot-#2 actions.",
+      "note": "Final convergence acceptance. Accepts CONV-001, CONV-003, CONV-010, CONV-011 and CONV-012 as ACCEPTED_RISK, not as resolved findings, with their existing owners, scopes, rationales and follow-up requirements preserved. Recorded separately from the code review REV-0002, per the EVC-017 separation rule."
+    }
+  ],
+  "reviews": [
+    {
+      "reviewId": "REV-0001",
+      "type": "code-review",
+      "role": "QA_REVIEWER",
+      "actorType": "ai",
+      "decision": "APPROVE",
+      "date": "2026-09-08",
+      "satisfiesHumanGate": false,
+      "note": "Independent AI review. Satisfies no human gate."
+    },
+    {
+      "reviewId": "REV-0002",
+      "type": "code-review",
+      "role": "Qualified Human Code Reviewer",
+      "actorType": "human",
+      "decision": "APPROVE",
+      "date": "2026-09-08",
+      "satisfiesHumanGate": true,
+      "note": "D-B4-02. Satisfies the R2 human code review (1 reviewer). Code review only - not staging, production or convergence acceptance."
+    }
+  ],
+  "evidenceConflicts": []
+}

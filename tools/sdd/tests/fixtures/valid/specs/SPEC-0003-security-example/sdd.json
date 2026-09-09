@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0003",
+  "slug": "security-example",
+  "kind": "change",
+  "risk": "R4",
+  "status": "IMPLEMENTING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": null,
+    "changeRecord": null
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-01-01"
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-01-02"
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-01-03"
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-01-04"
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-01-05"
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-01-06"
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-01-07"
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "sample",
+      "date": "2026-01-05"
+    },
+    {
+      "gate": "security",
+      "role": "Application Security",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "sample",
+      "date": "2026-01-06"
+    },
+    {
+      "gate": "implementation",
+      "role": "Application Security",
+      "actorType": "human",
+      "decision": "approved",
+      "evidenceRef": "sample",
+      "date": "2026-01-06"
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": []
+}

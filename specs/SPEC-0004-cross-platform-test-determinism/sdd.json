@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0004",
+  "slug": "cross-platform-test-determinism",
+  "kind": "change",
+  "risk": "R2",
+  "status": "CONVERGED",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": "plan.md",
+    "threatModel": null,
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-08",
+      "note": "Pre-pilot-2 remediation. All 24 product-suite failures reproduced from a prepared local environment before any edit: 1892 passed, 24 failed."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08",
+      "note": "Four root causes derived from source, not from historical labels. RC-1 CRLF text scanning (17), RC-2 path separator in a test helper (1), RC-3 POSIX file mode (2), RC-4 product path.join in captureVault (4)."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "AD-001 to AD-006 recorded. RC-4 excluded: it is a product defect in biometric capture paths, classified R4, and bundling it would make this whole specification R4."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete for R2, no open clarification. Stops here: R2 specification approval is the author's, the author is an AI, and AGENTS.md forbids self-approval. EVC-017 resolved only the convergence gate, not gate 1."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-08",
+      "note": "Gate 1 approved by a human Product Owner. Authorship unchanged. RC-4 explicitly excluded from the approved scope."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "TASK-001 to TASK-005, TASK-008 and TASK-009 executed across eight controlled sessions. RC-4 deliberately not touched."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "VER-0001 and REV-0001 recorded. Product suite 1913 passed / 4 failed / 3 skipped; the 4 are RC-4. Playwright 5 of 5. B2 93/93, B3 70/70."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "Verification remediation. convergence.md recommends FAIL with CONV-004 and CONV-005 OPEN, and SPEC_LIFECYCLE.md states that a FAIL verdict returns the specification to IMPLEMENTING; the transition is also legal under SDD-V018 (VERIFYING -> IMPLEMENTING). No requirement, scope, architecture or security requirement changes, so CHANGE_CONTROL.md requires no CHG- entry. A human instructed a bounded rework covering CONV-004, CONV-005, test-database seed parity, the corresponding tests, traceability and evidence, and re-verification; that instruction is recorded here as the trigger and is NOT an approval record - it discharges no gate. The gate-1 Product Owner approval of 2026-09-08 already covers this scope: it names the bounded Playwright harness remediation and the deterministic master_saas_test bootstrap. Authorship unchanged. RC-4 still excluded."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "Rework complete and re-verified. VER-0003: Playwright 5 of 5 with three genuine cold starts; db:test:prepare now CI-equivalent (migrate then seed), proven fresh and idempotent; product suite 1914 passed / 4 failed / 2 skipped from that baseline, and 1913 / 4 / 3 with zero skipped files against a deliberately unseeded catalogue so the permission-race fix stayed proved where the race is possible. REV-0002 reviews the rework delta. CONV-004 and CONV-005 RESOLVED; CONV-006 raised for the gate-1 approver. Three findings remain OPEN and all three are human decisions."
+    },
+    {
+      "status": "CONVERGED",
+      "date": "2026-09-08",
+      "note": "Verdict PASS WITH ACCEPTED LIMITATIONS, accepted by a human at gate 6. No CONV- finding is OPEN: CONV-001 RESOLVED by REV-0004 (human code review), CONV-002 ACCEPTED_RISK with four conditions and a named human owner, CONV-004 and CONV-005 RESOLVED, CONV-006 RESOLVED as a confirmation of existing scope, CONV-003 NOT_APPLICABLE. Two items are carried into the release gate rather than closed here: BLK-007, the POSIX/Linux execution proof required by CONV-002 condition 4; and BUG-004, an intermittent fixed-window race in an unrelated webhook rate-limit test observed during the closure run and registered rather than absorbed. NOT advanced to READY_FOR_RELEASE or RELEASED, and this is not production, staging, deployment or SPEC-0005 approval."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "convergence",
+      "role": "Qualified Human Reviewer",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "specs/SPEC-0004-cross-platform-test-determinism/convergence.md",
+      "scope": "Gate 6 convergence acceptance of SPEC-0004 at verdict PASS WITH ACCEPTED LIMITATIONS, together with the CONV-002 ACCEPTED_RISK disposition and the CONV-006 scope confirmation.",
+      "note": "Per EVC-017, convergence acceptance for an AI-authored R0-R2 specification is exercised by a Qualified Human Reviewer. Decision supplied explicitly in session by a human and transcribed by an agent; the agent did not make it. Explicitly NOT production approval, staging approval, deployment approval or SPEC-0005 approval. CONV-002 condition 4 - proof from a POSIX/Linux execution environment - remains outstanding as a production gate, tracked as BLK-007."
+    },
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "SPEC-0004 spec.md; explicit human Gate-1 decision, pre-pilot-2 remediation pass",
+      "scope": "RC-1, RC-2, RC-3 remediation; deterministic master_saas_test bootstrap; inaccurate setup-documentation correction; bounded Playwright harness investigation and remediation; associated tests, traceability and evidence.",
+      "note": "Does NOT authorize RC-4 biometric capture-vault remediation, authentication redesign, authorization or tenant-boundary changes, production/staging access, deployment, migration outside the isolated local test environment, Pilot #2 implementation, PC-01, or EVC-016 resolution. Authorship is unchanged and remains AI, Planner role."
+    }
+  ],
+  "reviews": [
+    {
+      "reviewId": "REV-0004",
+      "reviewType": "code-review",
+      "role": "Qualified Human Code Reviewer",
+      "actorType": "human",
+      "actorId": "GreenArrow-7",
+      "decision": "APPROVE",
+      "satisfiesHumanGate": true,
+      "date": "2026-09-08",
+      "evidenceRef": "docs/evidence/phase-b4-pilot2-readiness/16-spec0004-code-review-packet.md",
+      "note": "Discharges the R2 human code-review gate; CONV-001 RESOLVED. Decision given explicitly in session by a human and transcribed by an agent - see REV-0004 provenance note. Does NOT discharge gate 6 convergence acceptance, and does not disposition CONV-002 or CONV-006."
+    }
+  ],
+  "evidenceConflicts": []
+}

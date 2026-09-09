@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0006",
+  "slug": "regression-suite-stability",
+  "kind": "change",
+  "risk": "R1",
+  "status": "VERIFYING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": null,
+    "threatModel": null,
+    "testPlan": null,
+    "tasks": null,
+    "traceability": null,
+    "convergence": null,
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-08",
+      "note": "Raised from BLK-008. Four seeded full-suite runs on 2026-09-08 gave 1914/4/2, 1914/4/2, 1913/5/2, 1913/5/2 - the four RC-4 failures constant, the fifth intermittent and a different test each time. The suite cannot serve as a release gate in that state."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-08",
+      "note": "Both root causes established from source rather than inferred. BUG-004: limits.webhook is max 600 / windowSeconds 60, keyed rl:<key>:<floor(now/60000)>, and 600 sequential consume() round-trips can straddle the boundary. BUG-005: vi.resetModules() plus a dynamic import charges a cold package resolution to a 30s test budget."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-08",
+      "note": "R1 lightweight path per docs/sdd/RISK_TO_PROCESS_MATRIX.md - a short spec.md and a change record, no separate plan or test-plan artefact. Two changes, CHG-001 and CHG-002, both confined to apps/web/tests/."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-08",
+      "note": "Artefact set complete for R1."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-08",
+      "note": "Gate 1 approved by a human. See the approvals entry for exactly what that approval rests on, including the fact that it is a standing class authorization rather than a per-specification decision."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-08",
+      "note": "CHG-001 and CHG-002 applied. Neither fix touches product code, raises a timeout, adds a retry or a sleep, or changes an assertion."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-08",
+      "note": "Both repaired files pass in isolation, 19 of 19. Typecheck and lint clean. Three consecutive full-suite runs are the acceptance evidence for AC-001."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-08",
+      "evidenceRef": "specs/SPEC-0006-regression-suite-stability/spec.md",
+      "scope": "R1 test-only stability repair of BUG-004 and BUG-005 under BLK-008, confined to apps/web/tests/.",
+      "note": "PROVENANCE, stated so it can be weighed rather than assumed. This rests on a standing instruction given in session on 2026-09-08: 'Agentic Engineers may automatically fix R0-R3 technical defects through the approved SDD/change workflow', in a message that named BUG-004 and BUG-005 as P0 and specified how each should and should not be repaired. It is a class authorization, not a decision taken against this specification document. An AI agent transcribed it. SDD-V022 refused an earlier attempt to record this gate with actorType ai, which was the correct refusal. If the approver considers a class authorization insufficient for a per-specification gate, CHG-001 and CHG-002 should be reverted - both are confined to two test files and revert cleanly."
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": []
+}

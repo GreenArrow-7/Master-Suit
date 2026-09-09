@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0005",
+  "sessionId": "ASES-0002",
+  "taskIds": [
+    "TASK-001",
+    "TASK-002",
+    "TASK-003",
+    "TASK-004",
+    "TASK-005"
+  ],
+  "tests": [
+    {
+      "id": "UT-001",
+      "outcome": "PASS",
+      "note": "canonical composition; the key is asserted as a literal, not derived with path.join"
+    },
+    {
+      "id": "UT-002",
+      "outcome": "PASS",
+      "note": "deterministic: same inputs, byte-identical key"
+    },
+    {
+      "id": "UT-003",
+      "outcome": "PASS",
+      "note": "tenant shard first, employee second"
+    },
+    {
+      "id": "UT-004",
+      "outcome": "PASS",
+      "note": "never absolute, no drive letter, no leading separator"
+    },
+    {
+      "id": "UT-005",
+      "outcome": "PASS",
+      "note": "normalisation is separator-only; nothing else transformed"
+    },
+    {
+      "id": "UT-006",
+      "outcome": "PASS",
+      "note": "a backslash traversal is refused, not normalised into something that later passes"
+    },
+    {
+      "id": "IT-001",
+      "outcome": "PASS",
+      "note": "store then read round-trips the exact bytes; the stored key is canonical"
+    },
+    {
+      "id": "IT-002",
+      "outcome": "PASS",
+      "note": "a stored backslash key still reads, and the stored value is unchanged"
+    },
+    {
+      "id": "IT-003",
+      "outcome": "PASS",
+      "note": "a stored backslash key still deletes the correct object"
+    },
+    {
+      "id": "IT-004",
+      "outcome": "PASS",
+      "note": "the legacy on-disk vault still resolves"
+    },
+    {
+      "id": "IT-005",
+      "outcome": "PASS",
+      "note": "retention sweep unchanged for canonical keys; both vaults still swept per workspace"
+    },
+    {
+      "id": "IT-006",
+      "outcome": "PASS",
+      "note": "a store that refuses now propagates instead of reading as a completed cleanup; an absent object still succeeds"
+    },
+    {
+      "id": "ST-001",
+      "outcome": "PASS",
+      "note": "nine hostile forms, each asserted separately: parent segment, backslash parent, POSIX absolute, Windows absolute, drive-relative, UNC, dot segment, empty segment, empty key"
+    },
+    {
+      "id": "ST-002",
+      "outcome": "PASS",
+      "note": "containment check byte-identical and retained; now a backstop rather than the first line, and recorded as such"
+    },
+    {
+      "id": "ST-003",
+      "outcome": "PASS",
+      "note": "tenant shard uncrossable - any traversal or empty segment is refused before resolution"
+    },
+    {
+      "id": "ST-005",
+      "outcome": "PASS",
+      "note": "the refusal message is pinned and carries no key material"
+    },
+    {
+      "id": "REG-001",
+      "outcome": "PASS",
+      "note": "was failing: expected t-t1/emp-emp1/2026-08/punch-punch1.jpg.enc"
+    },
+    {
+      "id": "REG-002",
+      "outcome": "PASS",
+      "note": "was failing: legacy on-disk read, relative.split('/')[2] was undefined"
+    },
+    {
+      "id": "REG-003",
+      "outcome": "PASS",
+      "note": "was failing: retention window, bucket.get('attendance/' + stale) was undefined"
+    },
+    {
+      "id": "REG-004",
+      "outcome": "PASS",
+      "note": "was failing: undated object retained"
+    },
+    {
+      "id": "REG-005",
+      "outcome": "PASS",
+      "note": "the six correct path compositions are untouched; the legacy walk still works"
+    },
+    {
+      "id": "REG-006",
+      "outcome": "PASS",
+      "note": "no row is rewritten by a read or a delete of a backslash-keyed capture"
+    },
+    {
+      "id": "ST-004",
+      "outcome": "PASS",
+      "note": "percent-encoded traversal is not decoded, so it cannot become a traversal; three encodings including double-encoded. Added after verify-session showed ST-004 was required and unwritten - the test was written rather than the claim."
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run tests/unit/capture-vault.spec.ts",
+      "exitCode": 0,
+      "note": "28 passed, up from 12 (4 failed / 8 passed) against the old implementation"
+    },
+    {
+      "command": "npm test (run 1 of 3)",
+      "exitCode": 0,
+      "note": "1935 total, 1933 passed, 0 failed, 2 skipped"
+    },
+    {
+      "command": "npm test (run 2 of 3)",
+      "exitCode": 0,
+      "note": "1935 total, 1933 passed, 0 failed, 2 skipped"
+    },
+    {
+      "command": "npm test (run 3 of 3)",
+      "exitCode": 0,
+      "note": "1935 total, 1933 passed, 0 failed, 2 skipped"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "clean"
+    },
+    {
+      "command": "npx eslint src/services/hr/captureVault.ts tests/unit/capture-vault.spec.ts",
+      "exitCode": 0,
+      "note": "clean"
+    },
+    {
+      "command": "node tools/sdd/tests/validator.test.mjs",
+      "exitCode": 0,
+      "note": "93 of 93"
+    },
+    {
+      "command": "node tools/sdd/tests/agent.test.mjs",
+      "exitCode": 0,
+      "note": "70 of 70"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "0 errors, 7 historical warnings"
+    },
+    {
+      "command": "git status --porcelain apps/web/prisma",
+      "exitCode": 0,
+      "note": "empty - no schema change, no migration"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "rc4-verify",
+  "environment": "local, Windows 11, Node v24.18.0, loopback Docker PostgreSQL and Redis, master_saas_test prepared by db:test:prepare",
+  "notes": [
+    "All four RC-4 failures are fixed at the cause. The capture-vault suite went from 4 failed / 8 passed to 27 passed - the four originals plus fifteen new security, compatibility and deletion-contract cases. No assertion was weakened and no test was skipped or deleted.",
+    "The product suite is at ZERO failures across three consecutive runs: 1935 total, 1933 passed, 2 skipped. The two skips are the Windows POSIX file-mode assertions, whose Linux execution and pass is proved in BLK-007. The suite total rose 1920 to 1935 because fifteen cases were added.",
+    "One previously-passing test changed and the change is declared. 'refuses to read outside the vault' asserted the containment check's message; a traversal key is now refused earlier by assertSafeKey, before any filesystem resolution. The expectation - a traversal key is refused - is unchanged and still enforced; only the message moved, and the test says so in a comment. That is a stricter guard, not a weaker one.",
+    "path.join was not globally replaced. All seven path compositions in the file were classified before any edit: line 55 root(), 147/187 the I/O boundary resolves, 148/191 the containment checks, 262 and 290 the legacy walk are physical-path composition and are unchanged. Only pathFor composed a persisted identifier and only it changed.",
+    "Schema impact NONE and migration impact NONE, re-verified after implementation: capturePath is still String? and git status on apps/web/prisma is empty. No deployed data was touched.",
+    "One MINOR AppSec finding is carried forward as CL-003 rather than absorbed: deleteCapture now surfaces a storage failure, but lib/jobs/retention.ts still deletes the punch row in its catch block. retention.ts is a prohibited path for every task here, so the question of whether the row should survive is left to its own decision.",
+    "One scope deviation is declared in ASES-0001: the test file was edited under TASK-002, whose scope is the source file only. SDD-V046 caught it, the session is marked PARTIAL for that reason, and TASK-005 owns the file.",
+    "One correction of my own: verifiedTests on ASES-0002 was briefly set to the full required list including ST-004, which had no test. That was a false claim for the moment it existed. ST-004 was then written and passes; the count is 28, not 27."
+  ]
+}

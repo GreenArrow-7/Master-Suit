@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youhan.one/schemas/sdd-manifest.schema.json",
+  "title": "YOUHAN ONE SDD manifest",
+  "description": "Machine-readable process metadata for one specification directory. Authority for intended behaviour remains spec.md; this file must never contain requirements or acceptance criteria. See docs/sdd/MACHINE_CONTRACT.md.",
+  "type": "object",
+  "required": ["schemaVersion", "specId", "slug", "kind", "risk", "status", "artifacts", "statusHistory", "approvals"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Supported manifest schema version. An unsupported value is SDD-V005."
+    },
+    "specId": {
+      "type": "string",
+      "pattern": "^SPEC-[0-9]{4}$",
+      "description": "Must match the specification directory name. SDD-V002."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Must match the directory suffix after the SPEC-NNNN- prefix."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["change", "bug", "emergency"],
+      "description": "Which workflow governs: CHANGE_WORKFLOW, BUG_WORKFLOW or EMERGENCY_CHANGE_WORKFLOW."
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["R0", "R1", "R2", "R3", "R4", "R5"],
+      "description": "Risk level per docs/RISK_CLASSIFICATION.md. Must match spec.md. SDD-V006, SDD-V012."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "CLARIFYING",
+        "READY_FOR_PLAN",
+        "PLANNED",
+        "READY_FOR_APPROVAL",
+        "APPROVED_FOR_IMPLEMENTATION",
+        "IMPLEMENTING",
+        "VERIFYING",
+        "CONVERGED",
+        "READY_FOR_RELEASE",
+        "RELEASED",
+        "ON_HOLD",
+        "CANCELLED",
+        "SUPERSEDED"
+      ],
+      "description": "Lifecycle state per docs/sdd/SPEC_LIFECYCLE.md. Must match spec.md and the last statusHistory entry. SDD-V007, SDD-V013, SDD-V019."
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Paths relative to the specification directory, or null where the artefact does not apply at this risk level. A path resolving outside the directory is rejected. SDD-V008.",
+      "properties": {
+        "spec": { "type": ["string", "null"] },
+        "clarifications": { "type": ["string", "null"] },
+        "plan": { "type": ["string", "null"] },
+        "threatModel": { "type": ["string", "null"] },
+        "testPlan": { "type": ["string", "null"] },
+        "tasks": { "type": ["string", "null"] },
+        "traceability": { "type": ["string", "null"] },
+        "convergence": { "type": ["string", "null"] },
+        "changeRecord": { "type": ["string", "null"] }
+      }
+    },
+    "statusHistory": {
+      "type": "array",
+      "description": "Ordered lifecycle history. Only legal transitions are permitted, and the last entry must equal status. SDD-V018, SDD-V019.",
+      "items": {
+        "type": "object",
+        "required": ["status", "date"],
+        "additionalProperties": false,
+        "properties": {
+          "status": { "type": "string" },
+          "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "description": "Gate decisions. A gate requiring a human is satisfied only by actorType human. SDD-V020, SDD-V021, SDD-V022, SDD-V034.",
+      "items": {
+        "type": "object",
+        "required": ["gate", "role", "actorType", "decision", "date"],
+        "additionalProperties": false,
+        "properties": {
+          "gate": {
+            "type": "string",
+            "enum": ["specification", "architecture", "security", "dataModel", "implementation", "convergence", "release", "emergency", "residualRisk"]
+          },
+          "role": { "type": "string" },
+          "actorType": { "type": "string", "enum": ["human", "ai"] },
+          "decision": { "type": "string", "enum": ["approved", "rejected", "pending"] },
+          "evidenceRef": { "type": "string" },
+          "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+        }
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "description": "Engineering review records. A review never satisfies an approval gate.",
+      "items": {
+        "type": "object",
+        "required": ["type", "role", "actorType", "decision", "date"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string" },
+          "role": { "type": "string" },
+          "actorType": { "type": "string", "enum": ["human", "ai"] },
+          "decision": { "type": "string", "enum": ["approved", "rejected", "pending"] },
+          "evidenceRef": { "type": "string" },
+          "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+        }
+      }
+    },
+    "evidenceConflicts": {
+      "type": "array",
+      "description": "EVC identifiers this specification cites. A specification may cite a conflict but may never close one. SDD-V035, SDD-V036.",
+      "items": { "type": "string", "pattern": "^EVC-[0-9]{3}$" }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0003",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0003",
+  "taskIds": ["TASK-012"],
+  "tests": [
+    { "id": "UT-008", "outcome": "PASS", "note": "Pre-existing dirty file untouched by the session is not attributed to it" },
+    { "id": "UT-009", "outcome": "PASS", "note": "Clean file modified in scope passes" },
+    { "id": "UT-010", "outcome": "PASS", "note": "Clean file modified out of scope fails" },
+    { "id": "UT-011", "outcome": "PASS", "note": "Pre-existing dirty file modified again in scope is attributed and passes" },
+    { "id": "UT-012", "outcome": "PASS", "note": "Pre-existing dirty file modified again out of scope is attributed and fails" },
+    { "id": "UT-013", "outcome": "PASS", "note": "File created during the session is attributed" },
+    { "id": "UT-014", "outcome": "PASS", "note": "Deleted file is attributed and judged" },
+    { "id": "UT-015", "outcome": "PASS", "note": "Rename attributed on both paths" },
+    { "id": "UT-016", "outcome": "PASS", "note": "Attribution stable across path separators" },
+    { "id": "UT-017", "outcome": "PASS", "note": "Three cases: missing digest, concurrent change, collapsed untracked directory" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "48 of 48 pass; grew from 36 by the twelve attribution tests" },
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "56 of 56 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" },
+    { "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0002 --session ASES-0001", "exitCode": 0, "note": "was 34 SDD-V046 errors; now 0 errors and 25 SDD-V052 review warnings" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "Every attribution case runs against a real throwaway git repository, not a stub, because attribution depends on what git actually reports.",
+    "The pre-existing interface work is no longer reported as a scope violation by any session.",
+    "One defect found and fixed inside this task: a collapsed untracked directory returned a null digest and would have been classified PRE_EXISTING, hiding changes beneath it. Directories now classify as UNATTRIBUTED.",
+    "ASES-0003 itself carries no digests because it was created before this task implemented them. Recorded as CONV-009 rather than backfilled."
+  ]
+}

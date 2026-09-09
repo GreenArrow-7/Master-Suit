@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0001",
+  "specId": "SPEC-0001",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": "agent-alpha",
+  "taskIds": ["TASK-001"],
+  "startedFromCommit": "0000000000000000000000000000000000000000",
+  "initialChangedPaths": [],
+  "allowedPaths": ["src/export/", "src/shared/scope/"],
+  "prohibitedPaths": ["src/export/legacy/"],
+  "requiredTests": ["UT-001", "ST-001"],
+  "verifiedTests": ["UT-001", "ST-001"],
+  "requiredApprovals": ["implementation"],
+  "status": "COMPLETE",
+  "result": "PASS"
+}

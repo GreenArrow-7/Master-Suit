@@ -19,6 +19,8 @@ import { useCallback, useId, useRef, useState, type ReactNode } from 'react';
  * attribute: below 760px `.lf-table tbody tr` is set to `display: block` for the
  * card layout, and that rule beats `[hidden]`.
  */
+const NO_MATCH = 'Nothing on this page matches. Clear the box to see every row again.';
+
 export default function TableSearch({
   children,
   placeholder = 'Search this list…',
@@ -56,6 +58,20 @@ export default function TableSearch({
 
   return (
     <div ref={host} style={{ display: 'grid', gap: 'var(--lf-space-2)' }}>
+      {/*
+       * One status region for the whole component, rendered unconditionally so
+       * assistive technology observes it before its content ever changes — a
+       * region inserted at the same moment as its text is announced
+       * unreliably. It carries the count and the no-match message together
+       * because two regions would race and could double-speak.
+       *
+       * Visually hidden, so the visible count and message keep their existing
+       * positions and nothing moves on screen. Both of those are `aria-hidden`
+       * below: they are presentational duplicates of this text.
+       */}
+      <span className="lf-visually-hidden" aria-live="polite">
+        {count ? `${count.shown} of ${count.total} shown${count.shown === 0 ? `. ${NO_MATCH}` : ''}` : ''}
+      </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)', flexWrap: 'wrap' }}>
         <div className="lf-field" style={{ margin: 0, flex: '1 1 240px', maxWidth: 420 }}>
           <label className="lf-label" htmlFor={id}>
@@ -70,15 +86,15 @@ export default function TableSearch({
           />
         </div>
         {count && (
-          <span aria-live="polite" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)', paddingTop: 18 }}>
+          <span aria-hidden="true" style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)', paddingTop: 18 }}>
             {count.shown} of {count.total} shown
           </span>
         )}
       </div>
       {children}
       {count?.shown === 0 && (
-        <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-          Nothing on this page matches. Clear the box to see every row again.
+        <p aria-hidden="true" style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
+          {NO_MATCH}
         </p>
       )}
     </div>

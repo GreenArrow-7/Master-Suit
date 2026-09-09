@@ -1,0 +1,67 @@
+# Spec-Driven Development artefact validation.
+#
+# A dedicated, non-production check. It reads the repository, runs the
+# validator's own tests, and validates the SDD artefacts. It cannot deploy,
+# cannot reach production or staging, needs no secret, touches no database and
+# runs no migration.
+#
+# Deliberately separate from ci.yml: that workflow gates releases, and a defect
+# in a process tool must never be able to block one.
+#
+# Introduced by SPEC-0001 change record CHG-001.
+# Rules: docs/sdd/VALIDATION_RULES.md
+# Scope and limits: docs/sdd/ENFORCEMENT_STANDARD.md
+# Rationale: docs/sdd/CI_ENFORCEMENT.md
+
+name: SDD validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only. No packages, no deployments, no id-token, no write of any kind.
+permissions:
+  contents: read
+
+concurrency:
+  group: sdd-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate SDD artefacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # No dependency install step: the validator and its tests use only the
+      # Node standard library and the built-in test runner.
+
+      - name: Validator tests
+        run: node --test tools/sdd/tests/validator.test.mjs
+
+      # Added by SPEC-0002/TASK-013 under CHG-004, authorised by decision D6
+      # (DevOps / Production Engineering). The agent suite lives in its own
+      # file, so this stays one step. Do not use the directory form of
+      # `node --test`: it fails with a module resolution error on Windows.
+      - name: Agent control-plane tests
+        run: node --test tools/sdd/tests/agent.test.mjs
+
+      - name: Validate SDD artefacts
+        run: node tools/sdd/cli.mjs validate --all --format text
+
+      # `validate --all` performs no change association, so SDD-V041
+      # (code changed without a linked specification) cannot fail this job
+      # during the brownfield transition. Promotion of that rule is governed by
+      # docs/sdd/ENFORCEMENT_STANDARD.md and is a separate, approved decision.

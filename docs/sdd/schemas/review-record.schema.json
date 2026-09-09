@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youhan.one/schemas/review-record.schema.json",
+  "title": "YOUHAN ONE independent review record",
+  "description": "One review of one execution session. Separation of duty is checked structurally: the reviewing actor must differ from the executing actor, and the reviewing session must not be the reviewed session. See docs/sdd/AGENT_ROLE_MODEL.md on what that does and does not prove.",
+  "type": "object",
+  "required": ["schemaVersion", "reviewId", "specId", "sessionId", "reviewType", "reviewerRole", "actorType", "decision"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "reviewId": {
+      "type": "string",
+      "pattern": "^REV-[0-9]{4}$",
+      "description": "Must match the file name without the .json suffix. SDD-V050."
+    },
+    "specId": { "type": "string", "pattern": "^SPEC-[0-9]{4}$" },
+    "sessionId": {
+      "type": "string",
+      "pattern": "^ASES-[0-9]{4}$",
+      "description": "The execution session under review. It must exist; SDD-V055 rejects a review of a session that does not."
+    },
+    "reviewerSessionId": {
+      "type": ["string", "null"],
+      "pattern": "^ASES-[0-9]{4}$",
+      "description": "The reviewing session, when the review itself ran as a session. Must differ from sessionId. SDD-V051."
+    },
+    "reviewType": {
+      "type": "string",
+      "enum": ["code-review", "security-review", "qa-review", "architecture-review", "convergence-review"]
+    },
+    "reviewerRole": {
+      "type": "string",
+      "enum": ["PLANNER", "IMPLEMENTER", "TESTER", "SECURITY_REVIEWER", "QA_REVIEWER", "CONVERGENCE_REVIEWER", "ARCHITECTURE_REVIEWER"]
+    },
+    "actorType": { "type": "string", "enum": ["human", "ai"] },
+    "actorId": {
+      "type": ["string", "null"],
+      "maxLength": 100,
+      "description": "Must differ from the reviewed session's actorId. SDD-V051."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["APPROVE", "REQUEST_CHANGES", "BLOCKED"],
+      "description": "An engineering review decision. It is not a human approval gate and never discharges one."
+    },
+    "satisfiesHumanGate": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this review discharges a gate that requires a human. SDD-V053 rejects true when actorType is ai. An agent must never set this."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "type": "string", "enum": ["BLOCKER", "MAJOR", "MINOR", "OBSERVATION"] },
+          "summary": { "type": "string", "maxLength": 500 },
+          "artifact": { "type": "string", "maxLength": 200 },
+          "reference": { "type": "string", "maxLength": 100 }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 500 }
+    }
+  }
+}

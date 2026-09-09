@@ -25,6 +25,22 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+/**
+ * POSIX permission bits are a POSIX property.
+ *
+ * NTFS has no mode bits and Node reports 0o666 for every file, so
+ * `statSync(f).mode & 0o777` can never equal 0o600 on Windows however correct
+ * the entrypoint script is. The assertion is therefore run where the platform
+ * can express it and skipped, with the reason stated, where it cannot — rather
+ * than deleted, loosened, or made to pretend NTFS honours chmod. CI runs Linux,
+ * so the property stays enforced on the platform this is deployed to.
+ *
+ * The portable half — the file exists and holds exactly the expected bytes — is
+ * asserted on every platform.
+ */
+const POSIX_MODES = process.platform !== 'win32';
+const itPosix = POSIX_MODES ? it : it.skip;
+
 const INFRA = resolve(__dirname, '../../infra');
 const AM = join(INFRA, 'alertmanager-entrypoint.sh');
 const PROM = join(INFRA, 'prometheus-entrypoint.sh');
@@ -131,8 +147,14 @@ describe('alertmanager-entrypoint.sh', () => {
     expect(yaml).toContain('smtp_auth_password_file:');
 
     const secret = join(run.dir, 'smtp-password');
+    // No trailing newline. Portable half of the invariant.
     expect(readFileSync(secret, 'utf8')).toBe('relay-password');
-    // No trailing newline, and readable by nobody else.
+  });
+
+  // Readable by nobody else. POSIX only — see POSIX_MODES above.
+  itPosix('writes the relay password into a file readable by nobody else', () => {
+    const run = sh(AM, PROD_ENV);
+    const secret = join(run.dir, 'smtp-password');
     expect(statSync(secret).mode & 0o777).toBe(0o600);
   });
 
@@ -201,6 +223,12 @@ describe('prometheus-entrypoint.sh', () => {
     expect(run.status).toBe(0);
     const token = join(run.dir, 'metrics-token');
     expect(readFileSync(token, 'utf8')).toBe('a-scrape-token');
+  });
+
+  // POSIX only — see POSIX_MODES above.
+  itPosix('writes the scrape token into a file readable by nobody else', () => {
+    const run = render({ METRICS_TOKEN: 'a-scrape-token', APP_ENV: 'production' });
+    const token = join(run.dir, 'metrics-token');
     expect(statSync(token).mode & 0o777).toBe(0o600);
   });
 
@@ -213,8 +241,13 @@ describe('prometheus-entrypoint.sh', () => {
 
   it('leaves the rest of the config byte-identical to the file under review', () => {
     const run = render({ METRICS_TOKEN: 't', APP_ENV: 'production' });
+    // Line endings are normalised on both sides before comparing. The source
+    // is LF in the index and CRLF in a Windows worktree, while the rendered
+    // copy is written by the entrypoint script — so a byte comparison was
+    // testing the checkout's line endings rather than the rendering.
+    const lf = (s: string) => s.split(/\r?\n/).join('\n');
     const rendered = readFileSync(join(run.dir, 'prometheus.yml'), 'utf8');
     const source = readFileSync(join(INFRA, 'prometheus.yml'), 'utf8');
-    expect(rendered).toBe(source.replace(/@APP_ENV@/g, 'production'));
+    expect(lf(rendered)).toBe(lf(source.replace(/@APP_ENV@/g, 'production')));
   });
 });

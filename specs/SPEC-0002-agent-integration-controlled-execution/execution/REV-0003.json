@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0003",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0003",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b3-independent-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Attribution is decided by content digest, not by path-set subtraction. UT-011 and UT-012 prove the case subtraction would have got wrong: a pre-existing dirty file modified again by the session still belongs to the session.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-007"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Unattributable paths raise SDD-V052 review warnings rather than passing silently. The fallback is the conservative direction.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "UT-017"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "ASES-0003 records no digests because it was created before the task that introduced them. It was not backfilled, so its own scope check reports review warnings rather than a clean result.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0003.json",
+      "reference": "CONV-009"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "taskScope reads a test range such as UT-008 to UT-017 as two identifiers rather than ten, so a task naming a range records only its endpoints as required tests.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-008"
+    }
+  ],
+  "notes": [
+    "APPROVE for the remediation as scoped: all ten required attribution cases pass, plus two more found during the work.",
+    "Reviewed under a distinct actor from the implementing session and the tester, per SDD-V051.",
+    "Two minor findings are recorded as CONV-008 and CONV-009 rather than fixed, because both need files outside the declared scope of TASK-012.",
+    "This is an AI review. It satisfies no human gate."
+  ]
+}

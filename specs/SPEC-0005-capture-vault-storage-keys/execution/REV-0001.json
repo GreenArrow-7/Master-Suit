@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0005",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": "ASES-0002",
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "rc4-appsec",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Traversal: assertSafeKey refuses any segment equal to '..' after separator normalisation, so both '../' and '..\\' forms are caught. Normalisation runs first and validation second, which is the order AD-004 requires - validating the raw value and normalising afterwards is how a backslash traversal slips past a check written for forward slashes.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "TH-003, TH-009, SEC-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Separator confusion: toLogicalKey converts backslash to forward slash unconditionally, not via path.sep, so a key means the same thing on every host. That is the defect's root cause removed rather than masked - the previous objectKey normalised with the running host's separator, which is why a Windows-written key was unreadable on POSIX.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "TH-004, FR-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Root escape: the containment check at the two filesystem boundaries is byte-identical to before and retained as a backstop. It is now unreachable through the public API - a key that passes assertSafeKey has no traversal, no leading separator and no drive prefix, so path.resolve cannot leave the root - which is defence in depth rather than dead code, and is stated as such rather than claimed as an active control.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "TH-003, TH-011, SEC-002"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Absolute, drive-relative and UNC keys: refused by explicit checks - leading '/', /^[A-Za-z]:/ which catches both 'C:\\\\x' and drive-relative 'C:x', and a leading '//' which is what a UNC prefix becomes once backslashes are normalised. Each form has its own test case asserted separately so a failure names the shape that got through.",
+      "artifact": "apps/web/tests/unit/capture-vault.spec.ts",
+      "reference": "TH-005, TH-006, TH-007, SEC-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Tenant isolation: the tenant shard remains the first segment and is composed from the tenant id unchanged. No separator or encoding trick can cross it, because any key containing a traversal or empty segment is refused before resolution rather than being repaired into a neighbouring subtree.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "TH-008, SEC-003, FR-006"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Biometric confidentiality: encryption is untouched. AES-256-GCM, the same HKDF-derived key, the same ciphertext content type. No capture is read, moved or re-encrypted by this change, and no capture content appears in any test fixture - the fixtures are synthetic bytes.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "DATA-001, NFR-004"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Legacy key conversion is read-only. toLogicalKey is applied for resolution and never written back; no code path updates capturePath, and a test asserts the stored value is unchanged after a legacy-key read. DATA-002 holds: no deployed row is mutated and no migration exists.",
+      "artifact": "apps/web/tests/unit/capture-vault.spec.ts",
+      "reference": "FR-012, DATA-002, TH-013"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "Orphan prevention is improved but not complete, and the gap is declared rather than implied. deleteCapture no longer reports a storage failure as a completed cleanup, so the caller can tell. But lib/jobs/retention.ts still deletes the punch row in its catch block, so a permanently unreachable object still ends with the row gone - now with an error logged where previously there was silence. Raised as CL-003; retention.ts is a prohibited path for every task in this specification.",
+      "artifact": "apps/web/src/lib/jobs/retention.ts",
+      "reference": "TH-001, TH-002, TH-014, CL-003"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Deletion ordering is unchanged: object first, row second, which is what keeps a failure from orphaning the object. An absent object still resolves successfully - that is the outcome the caller asked for - while a store or filesystem that refuses now propagates. unlink rethrows anything that is not ENOENT, so EACCES or EIO no longer read as 'already gone'.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "TH-001, OBS-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Auditability and disclosure: the refusal logs an event name and a fixed message, never the key. A key carries a tenant id and an employee id, so this is the SEC-005 requirement and a test pins the exact message to catch a future edit that starts interpolating the key into it.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "SEC-005, OBS-001, TH-015"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Rollback: code-only. No schema change, no migration, and rows written while the change is live hold canonical keys that the previous implementation resolves correctly on POSIX. Reverting leaves no unreadable state on the deployment platform.",
+      "artifact": "apps/web/src/services/hr/captureVault.ts",
+      "reference": "NFR-001, NFR-002"
+    }
+  ],
+  "notes": [
+    "Technical AppSec verification of the RC-4 implementation. One MINOR finding, declared and raised as CL-003; nothing BLOCKER or MAJOR.",
+    "The implementation does not differ materially from the approved threat model. The architecture built is the one gate 2 approved: a persisted logical key with a canonical forward slash, and a physical filesystem path derived only at the I/O boundary. path.join was not globally replaced - all seven compositions were classified and only pathFor, the one that composes a persisted identifier, changed.",
+    "The gate-3 security invariant is implemented: a physical-object deletion failure no longer results in the system representing retention cleanup as successful at the vault layer. The residual half of it - whether the caller should also keep the row - is CL-003 and is outside this specification's approved scope.",
+    "No security control was weakened. The containment check is byte-identical, encryption is untouched, tenant sharding is unchanged, and the one test whose assertion changed had its expectation preserved: a traversal key is still refused, now earlier and by a stricter guard. That change is annotated in the test itself.",
+    "THIS IS AN AI REVIEW. actorType is ai and satisfiesHumanGate is false. R4 requires two human code reviewers, one security-literate, and convergence acceptance by Application Security plus QA / Release Engineering. None of that is discharged by this record; it is technical evidence for those reviewers, not a substitute for them."
+  ]
+}

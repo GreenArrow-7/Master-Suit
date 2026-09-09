@@ -80,6 +80,32 @@ export interface Fixture {
   cleanup: () => Promise<void>;
 }
 
+/**
+ * The permission catalogue is global, and every suite that builds a tenant
+ * walks the same 8 modules × 6 actions.
+ *
+ * `upsert` is not atomic against a concurrent insert: two suites can both see
+ * the row missing, both attempt the create, and one loses on
+ * `(module, action)`. It never surfaced while the test database happened to
+ * hold data — an upsert against an existing row is a no-op, and a no-op cannot
+ * race — so it only appeared once `db:test:reset` produced a genuinely empty
+ * catalogue, which is exactly what a deterministic environment is for.
+ *
+ * The loser re-reads the row the winner created. Same rows, same grants; only
+ * the failure mode changes.
+ */
+async function ensurePermission(module: (typeof MODULES)[number], action: (typeof ALL_ACTIONS)[number]) {
+  const where = { module_action: { module, action } };
+  try {
+    return await prisma.permission.upsert({ where, update: {}, create: { module, action } });
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'P2002') throw error;
+    const existing = await prisma.permission.findUnique({ where });
+    if (!existing) throw error;
+    return existing;
+  }
+}
+
 const ALL_ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'EXPORT'] as const;
 const MODULES = ['leads', 'calls', 'events', 'campaigns', 'accounts', 'contacts', 'opportunities', 'tasks'] as const;
 
@@ -98,11 +124,7 @@ async function createAdminRole(tenantId: string, suffix: string) {
 
   for (const permissionModule of MODULES) {
     for (const action of ALL_ACTIONS) {
-      const permission = await prisma.permission.upsert({
-        where: { module_action: { module: permissionModule, action } },
-        update: {},
-        create: { module: permissionModule, action },
-      });
+      const permission = await ensurePermission(permissionModule, action);
       await prisma.rolePermission.create({
         data: { tenantId, roleId: role.id, permissionId: permission.id, scope: 'ORGANIZATION' },
       });

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0001",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "agent-gamma",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": []
+}
