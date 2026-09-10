@@ -4,7 +4,7 @@
   "slug": "demo-environment-deployment",
   "kind": "change",
   "risk": "R5",
-  "status": "CLARIFYING",
+  "status": "READY_FOR_PLAN",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": "clarifications.md",
@@ -68,6 +68,11 @@
       "status": "CLARIFYING",
       "date": "2026-09-09",
       "note": "Revision 3 gates 1 and 2 approved, verbatim: \"I approve SPEC-0008 revision 3 gates 1 and 2.\" Scope is revision-3-demo-tenant.md and its addendum, by reference. Revision 1 and 2 approvals are retained as historical and NOT transferred: they approved a dedicated demo VM with its own database. Moved to CLARIFYING rather than onward because CL-R3-01 was raised in the same act and is material: the packet proposes R5, and RISK_TO_PROCESS_MATRIX line 60 says an agent may never execute at R5, so the classification decides whether an agent may write the implementation at all. Recommendation is to split - implementation R4, production operations R5 - per RISK_CLASSIFICATION lines 30 to 31, which say to split the change or take the higher level. Not resolved by an agent. Gates 3, 4, 5 and 7 remain unrecorded; no implementation may begin. Test-only work against local disposable databases is R2 under any reading and proceeds."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-09",
+      "note": "CL-R3-01 resolved by the Solution Architect, verbatim: \"Split it: implementation R4, production operations R5.\" Implementation - the additive Tenant.kind migration, demoPolicyFor, the mailer, worker and integration policy checks, the provisioning module and the tests - is R4, which an agent may execute only after recorded human approval of the plan. Production operations - running the migration against production, provisioning the demo tenant there, and the release - are R5, which humans execute and an agent never does. Manifest risk stays R5 because the specification covers both units and the higher level governs the artefact; the split is expressed per task. Practical effect: under whole-R5 an agent could never have written the implementation; under the split it may, once gates 3 and 5 are recorded and not before. Nothing is unblocked today - gates 3, 4, 5 and 7 remain outstanding."
     }
   ],
   "approvals": [

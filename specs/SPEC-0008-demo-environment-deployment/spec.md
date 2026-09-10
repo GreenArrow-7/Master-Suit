@@ -6,7 +6,7 @@
 |---|---|
 | Specification ID | `SPEC-0008` |
 | Title | Dedicated Client Demo Environment Deployment |
-| Status | `CLARIFYING` |
+| Status | `READY_FOR_PLAN` |
 | Risk | `R5` |
 | Owner | DevOps / Production Engineering |
 | Created | 2026-09-08 |

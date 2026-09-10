@@ -436,3 +436,33 @@ nowhere near production. That work proceeds now.
 
 **What this does not change.** Gates 3, 4, 5 and 7 remain unrecorded. `EVC-024`
 remains open.
+
+## `CL-R3-01` — RESOLVED, 2026-09-09
+
+**Decision as given, verbatim:** "Split it: implementation R4, production
+operations R5."
+
+**Role:** Solution Architect. Transcribed by an agent, which did not make the
+decision and does not hold it.
+
+**What it settles.**
+
+| Unit | Risk | Who may execute | Gates |
+|---|---|---|---|
+| **Implementation** — additive `Tenant.kind` migration, `demoPolicyFor`, mailer / worker / integration policy checks, provisioning module, tests | **`R4`** | agent, **only after recorded human approval of the plan** | 1 ✅, 3 ❌, 5 ❌ |
+| **Production operations** — running the migration against production, provisioning the demo tenant there, the release itself | **`R5`** | **humans only; an agent never** | 1 ✅, 2 ✅, 3 ❌, 4 ❌, 5 ❌, 7 ❌ |
+
+**The practical consequence, stated plainly.** Under the packet's original whole-
+`R5` classification an agent could never have written this implementation at all.
+Under the split it may — **once gates 3 and 5 are recorded, and not before.**
+Nothing is unblocked today. The gate set for the specification as a whole is
+unchanged, because `R5` operations still sit inside it: gates 1 and 2 recorded,
+gates 3, 4, 5 and 7 outstanding.
+
+**Manifest risk stays `R5`.** The specification covers both units and the higher
+level governs the artefact; the split is expressed per task rather than by
+relabelling the whole. `tasks.md` carries the per-unit level and the gates each
+requires, which is where allowed scope already lives.
+
+**Unchanged by this decision.** No implementation begins. Test-only work against
+local disposable databases remains `R2` and proceeds. `EVC-024` remains open.
