@@ -176,7 +176,7 @@ export default function WaitingQueue({
                 <tr key={row.id} data-state={s.status}>
                   <td data-label="Lead" data-priority="primary">
                     <a href={`${base}/leads/${row.leadId}`}>{row.leadName}</a>
-                    <span className="lf-hint">
+                    <span className="lf-hint" style={{ display: 'block' }}>
                       {row.source.toLowerCase().replace(/_/g, ' ')}
                       {row.sourceDetail ? ` · ${row.sourceDetail}` : ''}
                       {row.episode > 1
@@ -188,15 +188,21 @@ export default function WaitingQueue({
                   <td data-label="Waiting">
                     {/* Text beside the colour: an overdue row must be readable
                         without relying on the reader seeing red. */}
-                    <span
-                      style={{
-                        color: row.overdue ? 'var(--lf-vermillion)' : undefined,
-                        fontWeight: row.overdue ? 600 : undefined,
-                      }}
-                    >
-                      {waited(row.waitingMs)}
-                    </span>
-                    {row.overdue && <span className="lf-hint">past review time</span>}
+                    <div>
+                      <span
+                        style={{
+                          color: row.overdue ? 'var(--lf-vermillion)' : undefined,
+                          fontWeight: row.overdue ? 600 : undefined,
+                        }}
+                      >
+                        {waited(row.waitingMs)}
+                      </span>
+                      {row.overdue && (
+                        <span className="lf-hint" style={{ display: 'block' }}>
+                          past review time
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   <td data-label="Why it is here">
@@ -227,30 +233,40 @@ export default function WaitingQueue({
                       </>
                     )}
                     {row.unsupportedPolicy.length > 0 && (
-                      <div className="lf-hint">Ignored configuration: {row.unsupportedPolicy.join('; ')}</div>
+                      <div className="lf-hint" style={{ marginTop: 4 }}>
+                        Ignored configuration: {row.unsupportedPolicy.join('; ')}
+                      </div>
                     )}
                   </td>
 
                   <td data-label="Accountable">
                     {row.routingPolicyMissing ? (
-                      <>
+                      <div>
                         <Badge value="Routing not configured" tone="brass" />
-                        <span className="lf-hint">No fallback owner or team manager is set for this rule.</span>
-                      </>
+                        <span className="lf-hint" style={{ display: 'block' }}>
+                          No fallback owner or team manager is set for this rule.
+                        </span>
+                      </div>
                     ) : (
-                      <>
+                      <div>
                         {row.responsibleUserName ?? '—'}
-                        {row.responsibleTeamName && <span className="lf-hint">{row.responsibleTeamName}</span>}
-                      </>
+                        {row.responsibleTeamName && (
+                          <span className="lf-hint" style={{ display: 'block' }}>
+                            {row.responsibleTeamName}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
 
                   <td data-label="Review by">
                     {row.reviewPolicyMissing ? (
-                      <>
+                      <div>
                         <Badge value="Not configured" tone="brass" />
-                        <span className="lf-hint">Set an escalation window on the distribution rule.</span>
-                      </>
+                        <span className="lf-hint" style={{ display: 'block' }}>
+                          Set an escalation window on the distribution rule.
+                        </span>
+                      </div>
                     ) : (
                       new Date(row.reviewDueAt!).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
                     )}
@@ -267,7 +283,7 @@ export default function WaitingQueue({
                       <div
                         style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center', flexWrap: 'wrap' }}
                       >
-                        <label className="lf-sr-only" htmlFor={`assign-${row.id}`}>
+                        <label className="lf-visually-hidden" htmlFor={`assign-${row.id}`}>
                           Assign {row.leadName} to
                         </label>
                         <select
