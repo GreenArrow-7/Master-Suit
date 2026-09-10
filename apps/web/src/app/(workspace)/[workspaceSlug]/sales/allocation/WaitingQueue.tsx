@@ -37,6 +37,8 @@ export interface QueueRow {
   reviewDueAt: string | null;
   reviewPolicyMissing: boolean;
   routingPolicyMissing: boolean;
+  /** Found by reconciliation: `openedAt` is discovery, not arrival. */
+  historyUnknown: boolean;
   overdue: boolean;
   responsibleUserName: string | null;
   responsibleTeamName: string | null;
@@ -189,24 +191,49 @@ export default function WaitingQueue({
                     {/* Text beside the colour: an overdue row must be readable
                         without relying on the reader seeing red. */}
                     <div>
-                      <span
-                        style={{
-                          color: row.overdue ? 'var(--lf-vermillion)' : undefined,
-                          fontWeight: row.overdue ? 600 : undefined,
-                        }}
-                      >
-                        {waited(row.waitingMs)}
-                      </span>
-                      {row.overdue && (
-                        <span className="lf-hint" style={{ display: 'block' }}>
-                          past review time
-                        </span>
+                      {row.historyUnknown ? (
+                        /**
+                         * No waiting time is claimed for a reconciled lead.
+                         *
+                         * `openedAt` is when reconciliation found it, not when
+                         * the customer started waiting — nothing recorded that.
+                         * Rendering the elapsed time would show "3 min" for a
+                         * lead that has been unowned for months, which is worse
+                         * than showing nothing because it looks precise.
+                         */
+                        <>
+                          <span style={{ color: 'var(--lf-ink-3)' }}>Unknown</span>
+                          <span className="lf-hint" style={{ display: 'block' }}>
+                            found {waited(row.waitingMs)} ago
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            style={{
+                              color: row.overdue ? 'var(--lf-vermillion)' : undefined,
+                              fontWeight: row.overdue ? 600 : undefined,
+                            }}
+                          >
+                            {waited(row.waitingMs)}
+                          </span>
+                          {row.overdue && (
+                            <span className="lf-hint" style={{ display: 'block' }}>
+                              past review time
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>
 
                   <td data-label="Why it is here">
                     {row.reasonText}
+                    {row.historyUnknown && (
+                      <span className="lf-hint" style={{ display: 'block' }}>
+                        Eligibility below was assessed at discovery, not at the time it went unassigned.
+                      </span>
+                    )}
                     {row.candidates.length > 0 && (
                       <>
                         {' '}

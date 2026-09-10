@@ -106,6 +106,7 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
             reviewDueAt: r.reviewDueAt?.toISOString() ?? null,
             reviewPolicyMissing: r.reviewPolicyMissing,
             routingPolicyMissing: r.routingPolicyMissing,
+            historyUnknown: r.historyUnknown,
             overdue: r.overdue,
             responsibleUserName: r.responsibleUserName,
             responsibleTeamName: r.responsibleTeamName,

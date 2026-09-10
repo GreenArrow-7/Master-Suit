@@ -35,6 +35,7 @@ export const GET = route(
         reviewDueAt: r.reviewDueAt?.toISOString() ?? null,
         reviewPolicyMissing: r.reviewPolicyMissing,
         routingPolicyMissing: r.routingPolicyMissing,
+        historyUnknown: r.historyUnknown,
         overdue: r.overdue,
         escalatedAt: r.escalatedAt?.toISOString() ?? null,
         responsible: {
