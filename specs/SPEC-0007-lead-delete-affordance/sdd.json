@@ -90,6 +90,20 @@
       "note": "PROVENANCE. Granted in session on 2026-09-09 in a message headed 'HUMAN AUTHORIZATION PACKET - REMAINING RELEASE BLOCKERS', which named BUG-008, described the render race, and authorized the smallest correct authorization-boundary fix including modifying the eleven affected pages. The same message states that any separately required AppSec human review/signoff must still be performed by an authorized AppSec reviewer, and that production deployment is NOT authorized. An AI agent transcribed this authorization and performed the implementation; it did not grant the approval and has not performed the AppSec review. docs/RISK_CLASSIFICATION.md also requires two human reviewers at R4, one security-literate; whether one qualified person may fill both slots is EVC-019, which is unresolved."
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "reviewId": "REV-0001",
+      "reviewType": "security-review",
+      "reviewerRole": "SECURITY_REVIEWER",
+      "actorType": "human",
+      "actorId": "Siraj",
+      "decision": "APPROVE",
+      "date": "2026-09-10",
+      "satisfiesHumanGate": true,
+      "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/execution/REV-0001.json",
+      "scope": "BUG-008 / SEC-OBS-014 security review against f585e482216a172ff9afa7cba06fdd0a2ba3f696 (GitHub run 34428645116).",
+      "note": "Reviewer A of two. EVC-019 resolved YES, so this discharges the first R4 reviewer slot only; Reviewer B must be a different real human and is outstanding. Decision made by Siraj, Security Architect, 10 September 2026 09:10 GST; transcribed by an AI agent which did not make or modify it and is the author of the change under review. Not the EVC-004 disposition and not a production approval."
+    }
+  ],
   "evidenceConflicts": []
 }
