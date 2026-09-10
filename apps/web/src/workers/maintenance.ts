@@ -3,6 +3,7 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
+import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -33,6 +34,17 @@ const DAILY_PATTERN = '0 3 * * *';
  */
 const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
 
+/**
+ * Every five minutes, for the unassigned-lead queue.
+ *
+ * Faster than the reminder sweep because its unit is a *review deadline a
+ * manager configured*, and a workspace that sets a fifteen-minute window would
+ * otherwise learn about the breach a quarter of an hour after it happened. The
+ * three passes are all idempotent and all no-ops on an empty queue, so the
+ * cadence costs a handful of indexed reads when nothing is waiting.
+ */
+const FIVE_MINUTE_PATTERN = '*/5 * * * *';
+
 export function startMaintenanceWorker() {
   return new Worker(
     'maintenance',
@@ -47,6 +59,22 @@ export function startMaintenanceWorker() {
       if (job.name === 'reminders') {
         const result = await runReminderSweep();
         logger.info(result, 'reminder sweep complete');
+        return result;
+      }
+      if (job.name === 'triage-sweep') {
+        /**
+         * Stale first: an entry whose lead already has an owner must not be
+         * escalated to a manager who would open it and find the work done. Then
+         * deadlines, then the notification backfill.
+         *
+         * Each pass claims by conditional UPDATE, so two overlapping runs of
+         * this job produce one alert between them rather than one each.
+         */
+        const stale = await sweepStaleTriage();
+        const deadlines = await sweepTriageDeadlines();
+        const notices = await sweepTriageNotifications();
+        const result = { ...stale, ...deadlines, ...notices };
+        logger.info(result, 'lead triage sweep complete');
         return result;
       }
       logger.warn({ jobName: job.name }, 'unknown maintenance job');
@@ -76,6 +104,11 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { pattern: QUARTER_HOURLY_PATTERN },
     { name: 'reminders' },
   );
+  await queue.upsertJobScheduler(
+    'lead-triage-five-minutely',
+    { pattern: FIVE_MINUTE_PATTERN },
+    { name: 'triage-sweep' },
+  );
   await queue.close();
-  return ['retention-daily', 'reminders-quarter-hourly'];
+  return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely'];
 }
