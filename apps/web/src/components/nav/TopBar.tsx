@@ -611,8 +611,13 @@ export default function TopBar({
                     height: 18,
                     borderRadius: 9,
                     background: 'var(--lf-vermillion)',
-                    color: '#fff',
-                    fontSize: 11,
+                    /* `--lf-vermillion` is a deep red on light and a bright
+                       salmon on dark, so a hardcoded white label measured
+                       2.79:1 in the dark themes. `--yh-on-primary` is the token
+                       that flips with it — the same pairing `.lf-btn--danger`
+                       uses. Measured: light 5.42:1, dark 6.82:1. */
+                    color: 'var(--yh-on-primary)',
+                    fontSize: 12,
                     fontWeight: 700,
                     lineHeight: '18px',
                     textAlign: 'center',

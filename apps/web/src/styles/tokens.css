@@ -65,10 +65,25 @@
   --yh-border-strong: #c5cdd8;
 
   /* ── Text ─────────────────────────────────────────────────────────────── */
+  /* The ramp is measured, not eyeballed. Ratios are against the three surfaces
+     these actually sit on — #f7f9fc canvas, #ffffff card, #f2f5f8 well — and the
+     worst of the three is the one that has to pass.
+
+       text       16.8 / 17.7 / 16.2
+       secondary   6.9 /  7.3 /  6.7   AA
+       muted       4.7 /  5.0 /  4.6   AA   <- was #8a94a6: 2.90 / 3.06 / 2.79
+       faint       3.1 /  3.3 /  3.0   AA-large only, and deliberately
+
+     `faint` is the one level that does not reach AA, and it is therefore the one
+     level that must never carry information. It is for separators, disabled
+     glyphs and placeholder shapes. Anything a reader needs — a timestamp, a
+     count, a status word — uses `muted` or darker. Raising `faint` to AA as well
+     would make it indistinguishable from `muted` and collapse a three-step ramp
+     into two, which is a real loss for no reader's benefit. */
   --yh-text: #111827;
-  --yh-text-secondary: #667085;
-  --yh-text-muted: #8a94a6;
-  --yh-text-faint: #a9b2c0;
+  --yh-text-secondary: #4d5766;
+  --yh-text-muted: #667085;
+  --yh-text-faint: #858e9c;
 
   /* ── Action ───────────────────────────────────────────────────────────────
      `--yh-on-primary` exists because the primary colour flips role between
@@ -87,7 +102,8 @@
   --yh-danger: #c4342c;
   --yh-danger-hover: #a82a23;
   --yh-danger-sub: #fbeae7;
-  --yh-info: #087bf5;
+  /* 3.86:1 as text before; AA now. The fill tint below is unchanged. */
+  --yh-info: #006be5;
   --yh-info-sub: #e4f0fe;
   --yh-neutral: #5a6980;
   --yh-neutral-sub: #eef1f6;
@@ -107,7 +123,13 @@
   --lf-wine-600: #1c48d1;
   --lf-wine-500: var(--yh-primary-hover);
   --lf-wine-300: #93b4f7;
-  --lf-wine-200: #cadefb; /* selection */
+  --lf-wine-200: #cadefb;
+
+  /* Selection has its own pair. It used to reuse --lf-wine-200 over
+     --lf-wine-900, and wine-900 is a panel background that stays dark in
+     every theme — so dark-mode selection was 1.53:1 and unreadable. */
+  --lf-select-bg: #cadefb;
+  --lf-select-ink: var(--yh-midnight); /* 14.63:1 */
   --lf-wine-100: #e6effe;
   --lf-wine-050: #f3f7ff;
 
@@ -166,10 +188,10 @@
   --lf-font-body: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
   --lf-font-mono: var(--yh-font-mono), ui-monospace, monospace;
 
-  --lf-text-2xs: 0.625rem; /* 10px — eyebrow labels */
-  --lf-text-xs: 0.6875rem; /* 11px — grid meta, badges */
-  --lf-text-sm: 0.8125rem; /* 13px — grid body, the workhorse */
-  --lf-text-base: 0.9375rem; /* 15px — forms, detail panes */
+  --lf-text-2xs: 0.6875rem; /* 11px — eyebrow labels. Was 10px. */
+  --lf-text-xs: 0.75rem; /* 12px — grid meta, badges, small buttons. Was 11px. */
+  --lf-text-sm: 0.875rem; /* 14px — grid body, the workhorse. Was 13px. */
+  --lf-text-base: 1rem; /* 16px — forms, detail panes. Was 15px. */
   /* Fluid above body size.
      A 30px page title is right on a desktop and overbearing on a 320px phone,
      but stepping it down at a breakpoint makes the layout lurch as the window
@@ -265,9 +287,15 @@
   --yh-signal-edge: var(--lf-brass-edge);
 }
 
+/* Compact is for people who want more rows on screen, not for people who want
+   smaller text than they can read. It now lands on 13px — the size the default
+   used to be — rather than 12px. The row height is what compact really buys. */
 [data-density='compact'] {
+  /* Density is row height, not type size. Compact used to drop grid text to
+     13px as well, which made the one setting for "fit more on screen" also the
+     setting for "and squint at it" — and since the tables ignored --lf-row, the
+     smaller text was the only thing it actually did. */
   --lf-row: var(--lf-row-compact);
-  --lf-text-sm: 0.75rem;
 }
 
 /* ── Dark (opt-in) ─────────────────────────────────────────────────────────
@@ -284,10 +312,17 @@
   --yh-border: #1b2c44;
   --yh-border-strong: #2a3e5c;
 
+  /* Measured against #020817 / #0a1729 / #0d1c30, same rule as light: the worst
+     surface is the one that has to pass.
+
+       text       19.0 / 17.1 / 16.3
+       secondary   8.2 /  7.4 /  7.0   AA
+       muted       5.3 /  4.7 /  4.5   AA   <- was #68768a: 4.33 / 3.89 / 3.71
+       faint       3.5 /  3.2 /  3.0   AA-large only, same rule as light */
   --yh-text: #f7f9fc;
   --yh-text-secondary: #9aa7b8;
-  --yh-text-muted: #68768a;
-  --yh-text-faint: #4c5a6e;
+  --yh-text-muted: #768498;
+  --yh-text-faint: #5a687c;
 
   /* The role flip described at --yh-on-primary: bright fill, midnight label.
      This is also what makes the primary readable *as text* on #0A1729, which a
@@ -299,6 +334,8 @@
   --lf-wine-600: #3d8bf5;
   --lf-wine-300: #2f5480;
   --lf-wine-200: #16305a;
+  --lf-select-bg: #16305a;
+  --lf-select-ink: #e8eefb; /* 11.25:1 */
   --lf-wine-100: #102340;
   --lf-wine-050: #0b1a2e;
 
