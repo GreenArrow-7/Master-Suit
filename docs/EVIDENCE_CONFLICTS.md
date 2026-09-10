@@ -1590,3 +1590,78 @@ One of:
 
 **(c) is the interim action** if no replacement host exists yet. It touches only
 the record added for the demonstration and **no production DNS record**.
+
+---
+
+### EVC-025 — `npm run verify` runs zero gates on a Windows checkout, and says so in a way that hides it
+
+**Severity: medium. The pre-push safety net is inoperable on Windows and its own
+self-check does not notice.**
+
+**Documented state.** `apps/web/scripts/verify.mjs` exists to be the one command
+a developer can trust before pushing. Its header states the failure it was
+written for — a developer remembering four of fifteen gates — and it derives the
+gate list from `.github/workflows/ci.yml` rather than a hand-kept copy,
+precisely so it cannot go stale.
+
+**Actual state, measured 2026-09-09.** `npm run verify` exits **2** without
+running a single gate, printing twenty lines of the form:
+
+```
+PLAN names "Typecheck" and ci.yml has no such step. It was renamed or removed.
+```
+
+Every one of those steps exists in `ci.yml`, unchanged.
+
+**Root cause, isolated.** `stepsOf()` splits on `'\n'` (`verify.mjs:92`), so on a
+`core.autocrlf=true` checkout every line retains a trailing `\r`. The step-name
+regex tolerates it — `/^ {6}- name:\s*(.+?)\s*$/` ends in `\s*`, and `\s` matches
+`\r` — so **26 of 26 steps are named correctly**. The command regex does not:
+
+```js
+/^ {8}run:\s*(.*)$/          // verify.mjs:127
+```
+
+In JavaScript `.` excludes line terminators and **`\r` is one of them**:
+
+```
+/./.test('\r')                                            → false
+/^ {8}run:\s*(.*)$/.test('        run: |\r')              → false
+/^ {8}run:\s*(.*)$/.test('        run: |')                → true
+```
+
+`(.*)` stops before the `\r`, and `$` without the `m` flag requires true
+end-of-string, so the match fails on **every** line. Measured against the real
+file: 24 `run:` lines present, **0 seen**, so `stepsOf()` returns
+`steps.filter(s => s.command !== null)` → **an empty array**, every PLAN entry is
+reported stale, and the script exits before running anything.
+
+**Why its own guard misses it.** `verify.mjs:139` cross-checks `steps.length`
+against the count of `- name:` lines and refuses to run if they differ — a guard
+built for exactly this class of parser bug. Both numbers are **26**, because the
+naming works and only the *command extraction* fails. The accounting check
+cannot see a step that was named and then silently dropped by the filter two
+lines later.
+
+**Effect.** On Windows the developer is told the workflow has changed under them.
+The plausible response is to edit `PLAN` to match, which would be twenty edits
+correcting nothing. Nobody gets a pre-push run, and CI is the first thing that
+sees the change — which is the situation the script was written to end.
+
+**Fix.** One character class: `.split(/\r?\n/)` at `verify.mjs:92`, matching what
+`scripts/prepare-test-db.mjs:66` already does for `.env` parsing in the same
+tree. Alternatively strip `\r` per line, or add the `m` flag. **Not applied
+here**: `apps/web/scripts/` is outside the allowed scope of every currently open
+task, and the fix belongs to whoever owns the developer tooling rather than to
+`SPEC-0008` or `SPEC-0009`. It is a one-line change and it is reported rather
+than taken.
+
+**Relationship to the other line-ending findings.** `EVC-020` is fixture needles
+in the SDD tooling suite; `EVC-023` is `format:check` over the repository. This
+is the third instance and the most consequential, because the other two produce
+*noisy* wrong answers a reader can eventually see through, while this one
+produces a *confident* wrong answer — a specific, false claim that named CI steps
+have been renamed or removed. All three have the same underlying cause: no
+`.gitattributes` declaring `* text=auto eol=lf`.
+
+Raised by an agent on 2026-09-09 after being asked to run `npm run verify`.
