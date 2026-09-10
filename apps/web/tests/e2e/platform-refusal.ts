@@ -4,29 +4,39 @@ import { request as playwrightRequest, type APIResponse } from '@playwright/test
  * The eleven platform console routes, and a marker that only appears if that
  * page's own body was generated.
  *
- * Derived from each page's **body**, and deliberately not from its
- * `metadata.title`. A title is rendered into the document head of the shell for
- * everyone, contains only the route's own name, and is not protected data — an
- * assertion against it fails on a perfectly safe response and would have been
- * "fixed" by weakening the test. Markers here must be content the page itself
- * produces, so their absence means the body was never generated, which is the
- * whole of `BUG-008` / `SEC-OBS-014`.
+ * Derived **empirically**, not by reading the source and guessing: each is a
+ * phrase present in that page's rendered body for the platform owner and absent
+ * from the refusal body for everyone else. Two earlier attempts got this wrong
+ * and both are worth remembering, because both looked like leaks and neither
+ * was:
+ *
+ *  - `metadata.title` renders into the shell's `<head>` for every caller and
+ *    carries only the route's own name.
+ *  - A single word can be a substring of a framework identifier. `'Platform'`
+ *    matched `PlatformLayout` and `PlatformSettingsPage` inside the **dev
+ *    server's** `NEXT_REDIRECT` stack trace — which is what CI runs, and which
+ *    a production build never emits. The local production-image probes were
+ *    clean and told me nothing about it.
+ *
+ * So: multi-word phrases, unique to the page rather than the shared shell,
+ * verified absent from the refusal body in both server modes. Their absence
+ * means the page body was never generated — which is the whole of `BUG-008`.
  *
  * `{workspaceId}` is substituted by the caller with a workspace the run created,
  * so the detail route is exercised against real data rather than skipped.
  */
 export const PROTECTED_PLATFORM_ROUTES: { path: string; markers: string[] }[] = [
-  { path: '/platform', markers: ['Recent platform activity', 'Privileged without MFA', 'Locked accounts'] },
-  { path: '/platform/workspaces', markers: ['Customers'] },
-  { path: '/platform/users', markers: ['Identity &amp; recovery'] },
-  { path: '/platform/audit', markers: ['Actor', 'LOGIN'] },
-  { path: '/platform/system-health', markers: ['Healthy'] },
-  { path: '/platform/settings', markers: ['Platform', 'Upload'] },
-  { path: '/platform/plans', markers: ['No limit'] },
-  { path: '/platform/subscriptions', markers: ['Commercial'] },
-  { path: '/platform/ai-usage', markers: ['On the deployment key', 'Workspaces using AI'] },
-  { path: '/platform/workspaces/new', markers: ['Customer provisioning'] },
-  { path: '/platform/workspaces/{workspaceId}', markers: ['Subscription at a glance'] },
+  { path: '/platform', markers: ['Accounts needing attention', 'Commercial operations'] },
+  { path: '/platform/workspaces', markers: ['Manage companies', 'Search workspaces'] },
+  { path: '/platform/users', markers: ['Account status', 'Enrolment required'] },
+  { path: '/platform/audit', markers: ['Service reads'] },
+  { path: '/platform/system-health', markers: ['Web application'] },
+  { path: '/platform/settings', markers: ['Antivirus scanning', 'Current value'] },
+  { path: '/platform/plans', markers: ['Included modules', 'Create plan'] },
+  { path: '/platform/subscriptions', markers: ['Period ends'] },
+  { path: '/platform/ai-usage', markers: ['Rows appear as calls', 'Recorded as its own'] },
+  { path: '/platform/workspaces/new', markers: ['Administrator email', 'Choose the commercial plan'] },
+  { path: '/platform/workspaces/{workspaceId}', markers: ['Blank means no limit', 'Company administrators and users'] },
 ];
 
 /**
