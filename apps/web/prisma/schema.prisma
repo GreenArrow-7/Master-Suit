@@ -295,6 +295,23 @@ enum LeadTriageReason {
   NO_ELIGIBLE_AGENT
   /// Everyone eligible is at a configured quota or capacity limit.
   ALL_AT_CAPACITY
+
+  /// Found by reconciliation: unassigned before the queue existed.
+  ///
+  /// Deliberately its own reason rather than a guess at one of the four above.
+  /// Nothing recorded why this lead was never placed, and inventing a cause
+  /// would put a fabricated fact in front of a manager. Entries carrying it also
+  /// set `historyUnknown`, because their `openedAt` is when reconciliation found
+  /// them and not when the customer started waiting.
+  PRE_EXISTING
+}
+
+enum OutboxStatus {
+  PENDING
+  DELIVERED
+  /// Retried to exhaustion. Left visible rather than deleted: "why was I not
+  /// told" has to be answerable.
+  ABANDONED
 }
 
 enum LeadTriageStatus {
@@ -540,6 +557,8 @@ model Tenant {
   leadStages                 LeadStage[]
   leadStageHistories         LeadStageHistory[]
   leadTriageEntries          LeadTriageEntry[]
+  idempotentRequests         IdempotentRequest[]
+  notificationOutbox         NotificationOutbox[]
   leadTags                   LeadTag[]
   listings                   Listing[]
   listingMedias              ListingMedia[]
@@ -3778,6 +3797,123 @@ model DistributionRule {
   @@index([tenantId, objectType, isActive, position])
 }
 
+/// One recorded outcome of one logical operation, so a retry returns it again.
+///
+/// The manual-assignment endpoint accepted a `requestKey` and did nothing with
+/// it: a client that sent a request, lost the response and retried got a 409
+/// saying somebody else had dealt with it — which was a lie about its own
+/// earlier attempt, and left the caller unable to tell "I succeeded" from
+/// "somebody beat me to it".
+///
+/// This is the record that makes the difference answerable. It is written in the
+/// **same transaction** as the operation it describes, so a result can never
+/// exist without its effect or an effect without its result.
+///
+/// **Expiry is safe by construction.** A key whose row has been swept away is
+/// simply unknown, and an unknown key is treated as a new request — which then
+/// meets the operation's own guards (the lead already has an owner, the episode
+/// is already resolved) and is refused there. Correctness never depends on the
+/// row still being present; the row only turns a correct refusal into an exact
+/// replay of the original answer.
+model IdempotentRequest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Which operation this key belongs to. Keys are per-operation, so the same
+  /// client-minted string used for two different actions cannot collide.
+  operation String
+
+  /// The caller's key. One logical attempt, retained across its retries.
+  requestKey String
+
+  /// A hash of the inputs that define the request. A replay carrying different
+  /// inputs is a conflict, not a hit — the alternative is returning the first
+  /// call's answer for a second call that asked something else.
+  fingerprint String
+
+  /// Who made it. A replay by a different actor is a conflict even when every
+  /// input matches: who committed to a decision is part of the decision.
+  actorUserId String
+
+  /// What this operation was about — for triage assignment, the episode id.
+  /// A replay after the lead has entered a *later* waiting episode is refused
+  /// rather than re-applied to the new one.
+  scopeRef String?
+
+  /// The response the first call returned, replayed verbatim.
+  result Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  /// When this record may be swept. Not a business retention decision: it is
+  /// how long a retry is still recognised as a retry. See the note above on why
+  /// expiry cannot make anything unsafe.
+  expiresAt DateTime
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, operation, requestKey])
+  @@index([expiresAt])
+  @@index([tenantId, scopeRef])
+}
+
+/// A notification that has been decided on but not yet written.
+///
+/// Notifications were created *after* the transaction that caused them, which is
+/// right — a notice enqueued inside a transaction that then rolls back tells
+/// somebody about work they do not have. The cost of that ordering is a window:
+/// a process that dies between the commit and the notification loses it
+/// entirely, and nothing afterwards knows it was owed.
+///
+/// A conditional timestamp (`notifiedAt`, `escalatedAt`) does not close that
+/// window. It stops two workers claiming the same notice, and it *causes* the
+/// loss when the winner dies after claiming: the stamp is set, so no later sweep
+/// will ever pick it up again.
+///
+/// So the decision is committed *with* the business change as a row here, and
+/// delivery is a separate, resumable step. For the in-app channel that step
+/// writes the `Notification` and marks this row delivered in one transaction, so
+/// "delivered but not recorded" cannot happen. External channels are
+/// at-least-once and say so.
+model NotificationOutbox {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Stable identity of the *logical* notification — one per thing that
+  /// happened, whatever the retries. Unique, so a redelivered job, an
+  /// overlapping sweep and a resumed worker converge on one row rather than
+  /// three notices.
+  eventKey String
+
+  userId     String
+  kind       String
+  title      String
+  body       String?
+  objectType String?
+  recordId   String?
+  priority   Priority @default(MEDIUM)
+
+  status    OutboxStatus @default(PENDING)
+  attempts  Int          @default(0)
+  lastError String?
+
+  /// A lease rather than a flag: a worker that dies mid-delivery stops renewing
+  /// it, the lease lapses, and the next sweep may claim it. A boolean "claimed"
+  /// would strand the row forever, which is the bug this model exists to avoid.
+  claimedBy    String?
+  claimedUntil DateTime?
+
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, eventKey])
+  @@index([status, claimedUntil])
+  @@index([tenantId, userId, status])
+}
+
 /// One episode of a lead waiting for a human to place it.
 ///
 /// `assignLead` used to `return` on three different failures — no rule, empty
@@ -3830,6 +3966,15 @@ model LeadTriageEntry {
   /// exception in its own right, and deliberately not solved by escalating to
   /// whoever happens to have broad permissions.
   routingPolicyMissing Boolean @default(false)
+
+  /// `openedAt` is when reconciliation *discovered* this lead, not when it began
+  /// waiting, and no historical failure reason exists for it.
+  ///
+  /// Every surface that shows a waiting time has to say so rather than report a
+  /// duration that reads as fact. A lead unassigned for eight months and found
+  /// this morning would otherwise show "3 min" — which is worse than showing
+  /// nothing, because it looks precise.
+  historyUnknown Boolean @default(false)
 
   status LeadTriageStatus @default(WAITING)
 
