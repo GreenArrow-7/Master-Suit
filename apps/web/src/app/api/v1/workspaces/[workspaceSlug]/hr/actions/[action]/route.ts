@@ -288,18 +288,55 @@ export const POST = route(
     module: 'employee',
     productModule: 'HRMS',
     action: 'VIEW',
+    /**
+     * The kernel's own permission check is waived here, and every action below
+     * asserts its authority explicitly instead. Nothing is unguarded.
+     *
+     * ── Why ────────────────────────────────────────────────────────────────
+     *
+     * The kernel gate was `employee:VIEW`, and it ran *before* the per-action
+     * permission was consulted. So reaching any verb required `employee:VIEW`
+     * **and** the verb's own authority — a conjunction nobody designed.
+     *
+     * It had teeth. `finance_admin` is the role the seed makes the payroll
+     * approver: it holds `payroll:APPROVE` at ORGANIZATION and does not hold
+     * `employee:VIEW`, because approving a payroll run is not a reason to read
+     * everyone's employee record. The result was that the designated approver
+     * could not approve — 403 "Your role does not allow view on employee" — and
+     * payroll maker-checker collapsed onto `org_admin`, the only role holding
+     * both halves.
+     *
+     * The fix is to drop the unrelated conjunct, not to widen anybody's grant.
+     * `finance_admin` still needs `payroll:APPROVE`; it simply no longer needs
+     * an employee-directory permission to use it.
+     *
+     * ── What still guards each branch ──────────────────────────────────────
+     *
+     *   * a verb with a permission asserts exactly that permission, below;
+     *   * a SELF verb asserts `employee:VIEW`, which is precisely the floor the
+     *     kernel used to apply — self-service behaviour is unchanged;
+     *   * `requireWorkspace(..., 'HRMS')` and the HRMS module entitlement are
+     *     unchanged and still run first.
+     *
+     * An API key reaching a `selfService` route inherits its creator's identity
+     * with no kernel check (see lib/api/handler.ts), so both branches below
+     * assert a permission rather than relying on the kernel having done it.
+     */
+    selfService: true,
     params: paramsSchema,
     body: z.record(z.string(), z.unknown()),
   },
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
 
-    // The kernel gate is only the floor for reaching HR. Each verb below asserts
-    // the authority it actually needs: `hrms:EDIT` used to cover all of them, so
-    // approving another person's leave and applying for your own were the same
-    // permission.
+    // Each verb asserts the authority it actually needs: `hrms:EDIT` used to
+    // cover all of them, so approving another person's leave and applying for
+    // your own were the same permission.
     const needed = ACTION_PERMISSION[params.action];
     if (needed !== SELF) assertPermission(ctx, needed[0], needed[1]);
+    // The floor the kernel used to apply, kept exactly, for the verbs that act
+    // on the caller's own record and have no permission of their own.
+    else assertPermission(ctx, 'employee', 'VIEW');
 
     switch (params.action) {
       case 'leave-apply': {
