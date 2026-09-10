@@ -4,7 +4,7 @@
   "slug": "demo-environment-deployment",
   "kind": "change",
   "risk": "R5",
-  "status": "READY_FOR_APPROVAL",
+  "status": "CLARIFYING",
   "artifacts": {
     "spec": "spec.md",
     "clarifications": "clarifications.md",
@@ -63,9 +63,37 @@
       "status": "READY_FOR_APPROVAL",
       "date": "2026-09-09",
       "note": "Reconciliation complete; artefact set complete again. Gate decision texts revision 3 in approval-packet.md supersede revision 2, which is retained rather than rewritten, and state plainly what revision 2 got wrong. This is the highest lifecycle state the current approvals legally support: PLANNED -> READY_FOR_APPROVAL, with gates 1, 2, 3 and 5 all UNRESOLVED and gate 5 explicitly HELD on a fourteen-item checklist of which one item is ready. Validator PASS, 0 errors. Nothing implemented, nothing provisioned, nothing deployed, no production access."
+    },
+    {
+      "status": "CLARIFYING",
+      "date": "2026-09-09",
+      "note": "Revision 3 gates 1 and 2 approved, verbatim: \"I approve SPEC-0008 revision 3 gates 1 and 2.\" Scope is revision-3-demo-tenant.md and its addendum, by reference. Revision 1 and 2 approvals are retained as historical and NOT transferred: they approved a dedicated demo VM with its own database. Moved to CLARIFYING rather than onward because CL-R3-01 was raised in the same act and is material: the packet proposes R5, and RISK_TO_PROCESS_MATRIX line 60 says an agent may never execute at R5, so the classification decides whether an agent may write the implementation at all. Recommendation is to split - implementation R4, production operations R5 - per RISK_CLASSIFICATION lines 30 to 31, which say to split the change or take the higher level. Not resolved by an agent. Gates 3, 4, 5 and 7 remain unrecorded; no implementation may begin. Test-only work against local disposable databases is R2 under any reading and proceeds."
     }
   ],
-  "approvals": [],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner and Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0008-demo-environment-deployment/revision-3-demo-tenant.md",
+      "decisionText": "I approve SPEC-0008 revision 3 gates 1 and 2",
+      "scope": "Gate 1 for REVISION 3 only: one deployed application serving customer tenants and one synthetic demo tenant; demo@youhan.in restricted to the demo workspace through server-verified membership; Sales and HRMS through existing business logic; entry at the existing application login URL with demo.youhan.in explicitly out of scope; reset disabled for the first release; no change to production environment variables, DNS, Caddy or customer integration behaviour.",
+      "note": "Decision as given, verbatim: \"I approve SPEC-0008 revision 3 gates 1 and 2.\" Nothing further was stated; the scope is specs/SPEC-0008-demo-environment-deployment/revision-3-demo-tenant.md and its 2026-09-09 addendum, approved BY REFERENCE. The approver did not restate it and must not be read as having authored it. Transcribed by an agent, which did not make the decision and does not hold it. Revision 1 and 2 approvals are NOT transferred; they approved a dedicated demo VM with its own database and do not describe this architecture."
+    },
+    {
+      "gate": "architecture",
+      "role": "Solution Architect",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0008-demo-environment-deployment/revision-3-demo-tenant.md",
+      "decisionText": "I approve SPEC-0008 revision 3 gates 1 and 2",
+      "scope": "Gate 2 for REVISION 3 only: separation by tenant row at two enforcement layers - PostgreSQL RLS with FORCE where applicable, and application authorization - plus a third layer of tenant-scoped policy governing consequential side effects, enforced at execution rather than at the route boundary; a protected server-controlled tenant classification defaulting to CUSTOMER; and the ordered disable-drain-verify-then-rollback procedure.",
+      "note": "Decision as given, verbatim: \"I approve SPEC-0008 revision 3 gates 1 and 2.\" Nothing further was stated; the scope is specs/SPEC-0008-demo-environment-deployment/revision-3-demo-tenant.md and its 2026-09-09 addendum, approved BY REFERENCE. The approver did not restate it and must not be read as having authored it. Transcribed by an agent, which did not make the decision and does not hold it."
+    }
+  ],
   "reviews": [],
   "evidenceConflicts": [
     "EVC-003",

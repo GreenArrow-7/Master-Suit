@@ -383,3 +383,56 @@ as covering it explicitly rather than as a formality.
 This addendum was produced by resolving one open question and finding the
 inventory it belonged to was drawn too narrowly. The seven-table figure in §3.5
 is correct for what it counts and was the wrong thing to count alone.
+
+---
+
+# `CL-R3-01` — the risk level in this packet is wrong, and it decides who may write the code
+
+**Status:** OPEN · **Decision owner:** Solution Architect · Raised 2026-09-09,
+immediately after gates 1 and 2 were approved.
+
+**Why this is raised now rather than acted on.** The packet header says
+`Risk: R5 proposed`. `docs/sdd/RISK_TO_PROCESS_MATRIX.md:60` says that at **R5
+an agent may never execute — humans execute.** If the packet's own
+classification stands, an agent may not write any of the implementation
+described here, and gates 3 and 5 would not change that. Resolving this by
+choosing the more convenient level would be an agent deciding its own
+authorisation, so it is put to the Solution Architect instead.
+
+**The classification appears to be wrong as a single number.** Measured against
+`docs/RISK_CLASSIFICATION.md`:
+
+| Work | R5 items it touches | R4 items it touches |
+|---|---|---|
+| Additive `Tenant.kind` migration, `demoPolicyFor`, mailer / worker / integration policy checks, provisioning module, tests | **none** — no `infra/*`, no `.github/workflows/*`, no `scripts/release.sh`, no backup script, no secret rotation, no environment variable in a deployed environment, no host/IAM/DNS/TLS/firewall, and the migration is additive rather than destructive or long-locking | permissions/roles/scopes; visibility rules; RLS-adjacent policy; session behaviour; audit; **new outbound data flows** |
+| Running the migration against production; provisioning the demo tenant there; the deployment itself | **"anything run against production"** | — |
+
+**The model already answers this.** `docs/RISK_CLASSIFICATION.md:30-31`:
+
+> A change that is R2 in code but adds an env variable to a deployed environment
+> is R5 for that part; **split the change or take the higher level.**
+
+**Recommendation: split it, and say so in the record.**
+
+- **Implementation — `R4`.** Schema, `src/`, tests. Agent may execute *only
+  after recorded human approval of the plan* — which at R4 means gates 1, 3 and
+  5. Gates 1 and 2 are now recorded; **gate 3 and gate 5 are not**, so no
+  implementation may begin yet regardless of how this clarification resolves.
+- **Production operations — `R5`.** The migration run against production, demo
+  tenant provisioning, and the release. **Humans execute; an agent never does.**
+  Gate 7 plus the operator.
+
+**Against, and it is not dismissed.** Taking the higher level for the whole
+change is the conservative reading and the sentence above permits it. The cost
+is that every line of the policy module and every test would then require a
+human to type it, which is not obviously a security gain when the same human
+reviews it either way. The argument that it *is* a gain — that a public login
+entering the customer deployment deserves human hands on every line — is real,
+and it is the Solution Architect's to weigh, not mine.
+
+**What is unaffected either way.** Test-only work against local disposable
+databases is `R2` under any reading — it changes no product code and runs
+nowhere near production. That work proceeds now.
+
+**What this does not change.** Gates 3, 4, 5 and 7 remain unrecorded. `EVC-024`
+remains open.
