@@ -1,0 +1,12 @@
+
+> master-app@0.1.0 check:observability
+> node scripts/check-observability.mjs
+
+observability drift:
+
+  ✗ docker-compose.azure.yml has no prometheus service — that deployment would run without it.
+  ✗ docker-compose.azure.yml has no alertmanager service — that deployment would run without it.
+  ✗ docker-compose.staging.yml has no prometheus service — that deployment would run without it.
+  ✗ docker-compose.staging.yml has no alertmanager service — that deployment would run without it.
+
+4 problem(s).

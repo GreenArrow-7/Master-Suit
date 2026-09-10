@@ -1,0 +1,1 @@
+[check-raw-sql-scope] 12 raw statement(s) touching 181 RLS-forced tables — all inside a tenant transaction.

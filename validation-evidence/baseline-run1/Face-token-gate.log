@@ -1,0 +1,25 @@
+during a rotation, both tokens are accepted
+  ok    the new token=<redacted>
+  ok    the retired token still passes
+  ok    a third token does not
+once the rotation is finished, the retired token is dead
+  ok    the new token=<redacted>
+  ok    the retired token is refused
+nothing else gets in
+  ok    an empty header is refused
+  ok    the token=<redacted> the Bearer prefix is refused
+  ok    a prefix of the token is refused
+  ok    the token with a suffix is refused
+  ok    a lowercase scheme is refused
+  ok    a non-ASCII header is refused, not raised
+no token=<redacted> means no gate — development only, and main.py refuses to start that way elsewhere
+  ok    anything passes
+configurations that must not start
+  ok    no token=<redacted> development
+  ok    no token in development is fine
+  ok    a previous token with no current token
+  ok    a previous token equal to the current one
+  ok    a real rotation is allowed to start
+  ok    a finished rotation is allowed to start
+
+face token gate: all checks passed.

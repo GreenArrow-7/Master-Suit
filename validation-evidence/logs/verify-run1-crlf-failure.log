@@ -1,0 +1,56 @@
+START 2026-09-10T11:05:59+04:00
+
+> master-app@0.1.0 verify
+> node scripts/verify.mjs
+
+[verify] This script and ci.yml disagree about which gates exist.
+
+  PLAN names "Redis" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Install" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Generate .env" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Export RLS connection" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Apply migrations" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Schema drift" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Tenant isolation" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Raw SQL scope" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Seed demo data" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Typecheck" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Lint" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Format check" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "README schema counts" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Observability drift" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Redis auth" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Face token gate" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Backup round trip" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Test" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Integration (server)" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Playwright version" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Install Playwright browser" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "E2E" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Build" and ci.yml has no such step. It was renamed or removed.
+
+  PLAN names "Audit" and ci.yml has no such step. It was renamed or removed.
+
+EXIT=2 END 2026-09-10T11:06:01+04:00

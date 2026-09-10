@@ -1,0 +1,1414 @@
+
+ RUN  v4.1.10 C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web
+
+stdout | tests/sales/dialer.spec.ts
+prisma:error 
+Invalid `prisma.permission.upsert()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/tests/helpers/fixtures.ts:101:50
+
+   98 
+   99 for (const permissionModule of MODULES) {
+  100   for (const action of ALL_ACTIONS) {
+→ 101     const permission = await prisma.permission.upsert(
+Unique constraint failed on the fields: (`module`, `action`)
+
+ ❯ tests/sales/dialer.spec.ts (26 tests | 26 skipped) 689ms
+     ↓ hands back the same session and the same contact
+     ↓ keeps the counters across the refresh, because they are columns
+     ↓ refuses a second campaign rather than silently switching
+     ↓ gives two agents starting at once two different people
+     ↓ gives two agents advancing at the same instant two different people
+     ↓ never leaves a contact claimed by an ended session
+     ↓ reaps a session that stopped answering and frees what it held
+     ↓ will not hand out a number rung inside the cooldown
+     ↓ does not burn an attempt on a skip
+     ↓ retires a number on the last of its configured attempts
+     ↓ completes rather than exhausts when the last attempt actually connects
+     ↓ holds a callback until the time the client asked for
+     ↓ refuses to build a queue from nothing
+     ↓ skips a lead who asked not to be contacted, a lead with no phone, and a duplicate number
+     ↓ tops the queue up on a second load rather than duplicating it
+     ↓ never reaches another workspace leads
+     ↓ stops handing out people the moment the campaign is cancelled, mid-shift
+     ↓ refuses to open a dialer on a paused campaign, and says how to resume it
+     ↓ refuses a campaign nobody has started
+     ↓ still lets the list be built before the campaign starts
+     ↓ refuses to add anybody to a campaign that is over
+     ↓ offers the dialer for a calling campaign
+     ↓ offers it for a campaign whose channel was never stated
+     ↓ does not offer it for an email or whatsapp campaign with no queue
+     ↓ offers it once a queue has actually been loaded, whatever the channel says
+     ↓ does not count another workspace queue as this one being dialled
+stdout | tests/hr/payroll.spec.ts > a run, end to end > opens and refuses a second run for the same period
+prisma:error 
+Invalid `prisma.hrPayrollRun.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/hr/payroll.ts:223:43
+
+  220 
+  221 const actor = await myEmployee(ctx);
+  222 try {
+→ 223   const run = await prisma.hrPayrollRun.create(
+Unique constraint failed on the (not available)
+
+stdout | tests/hr/overtime.spec.ts > claims > refuses a second claim for the same day rather than double-counting it
+prisma:error 
+Invalid `prisma.hrOvertimeRequest.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/hr/overtime.ts:388:52
+
+  385 });
+  386 
+  387 try {
+→ 388   const created = await prisma.hrOvertimeRequest.create(
+Unique constraint failed on the (not available)
+
+stdout | tests/hr/recruitment.spec.ts > candidates and the pipeline > refuses the same person applying twice to one role
+prisma:error 
+Invalid `prisma.hrCandidate.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/hr/recruitment.ts:291:48
+
+  288 
+  289 const actor = await myEmployee(ctx);
+  290 try {
+→ 291   const candidate = await prisma.hrCandidate.create(
+Unique constraint failed on the (not available)
+
+ ✓ tests/hr/roster.spec.ts (33 tests) 6957ms
+     ✓ places a shift and refuses the same one twice  417ms
+     ✓ reports what it skipped rather than refusing everything  368ms
+     ✓ carries the shape of one week onto another  525ms
+     ✓ moves a swap on both sides, or not at all  813ms
+     ✓ refuses a swap whose other side has since been un-rostered  853ms
+     ✓ moves a plain change onto the requested shift  649ms
+     ✓ refuses to let the requester decide their own  320ms
+ ✓ tests/hr/overtime.spec.ts (34 tests) 7193ms
+     ✓ raises one claim for a day worked past the schedule, and is safe to re-run  638ms
+     ✓ leaves a claim alone once a human has decided it  815ms
+     ✓ withdraws a pending claim when the day it came from stops qualifying  662ms
+     ✓ freezes the multiplier so a later rate change cannot restate the payout  425ms
+     ✓ refuses a second decision on a claim already decided  554ms
+     ✓ refuses to change a claim a payroll run has locked  301ms
+     ✓ counts approved claims once, weighted by the rate they were approved at  456ms
+     ✓ excludes a claim settled with time off, so it is not paid twice  326ms
+ ✓ tests/hr/payroll.spec.ts (32 tests) 9300ms
+     ✓ keeps every salary rather than overwriting the last one  565ms
+     ✓ calculates from the salary in force in the period, not today’s  419ms
+     ✓ ignores overtime that nobody approved  948ms
+     ✓ pays it once approved, at the rate it was approved at  531ms
+     ✓ picks up an adjustment entered against the period  400ms
+     ✓ does not pay the same adjustment in the following run  429ms
+     ✓ hides a draft run from the employee it concerns  402ms
+     ✓ reports employees it cannot carry instead of dropping them  922ms
+     ✓ discards a value that reached the database another way  382ms
+     ✓ still accepts the identifiers a real bank issues  355ms
+ ✓ tests/sales/commissions.spec.ts (30 tests) 14679ms
+     ✓ ignores a slab nobody has signed  313ms
+     ✓ accrues, and freezes the rule that produced the number  456ms
+     ✓ refuses to collect before the client has actually paid  453ms
+     ✓ reverses with a negative row and leaves the original untouched  632ms
+     ✓ reverses a commission that has already been paid  508ms
+     ✓ demands a reason, and refuses without the approval permission  435ms
+     ✓ ties every amount back to its booking in the reconciliation  444ms
+ ✓ tests/hr/recruitment.spec.ts (25 tests) 9367ms
+     ✓ hides the band from a coordinator who may still run the pipeline  430ms
+     ✓ refuses the same person applying twice to one role  707ms
+     ✓ records every move, so the pipeline is reconstructable  804ms
+     ✓ demands a reason when rejecting  458ms
+     ✓ refuses a stage drag straight to hired  462ms
+     ✓ accepts feedback from the panel and refuses it from anyone else  820ms
+     ✓ versions a renegotiated offer instead of editing it  982ms
+     ✓ runs approve → send → accept  707ms
+     ✓ hires by issuing an invitation that carries the candidate and the start date  464ms
+     ✓ links the employee back to the application once accepted, and onboards  357ms
+{"level":50,"time":1789024360790,"service":"leadflow","role":"web","platformUserId":"cmtv6wrvm003ehclypwc2iz0s","sessionId":"cmtv6wvft004bhclyl22zt00q","purpose":"FULL","role":"AI_SERVICE","msg":"platform session purpose does not match the identity role"}
+{"level":50,"time":1789024360865,"service":"leadflow","role":"web","platformUserId":"cmtv6wrxp003fhclyq7u4xiqx","sessionId":"cmtv6wvin004chclyugcfogz2","purpose":"AI_SERVICE","role":"OWNER","msg":"platform session purpose does not match the identity role"}
+ ✓ tests/security/service-identity-login.spec.ts (27 tests) 16005ms
+     ✓ correct password and correct MFA signs in  326ms
+     ✓ a recovery code works once and is then spent  444ms
+     ✓ an identity with no authenticator gets an enrolment grant, not a session  318ms
+     ✓ repeated wrong passwords lock the account, and the lockout is audited  804ms
+     ✓ reads only what the identity scopes allow  659ms
+     ✓ revoking a session stops it immediately  343ms
+     ✓ a password reset invalidates existing sessions  507ms
+     ✓ signing in creates no WorkspaceMembership and no workspace user  314ms
+ ✓ tests/security/platform-service-identity.spec.ts (25 tests) 15491ms
+     ✓ reads leads in a workspace it holds no membership in  419ms
+     ✓ reads a second, unrelated workspace with the same credential  516ms
+     ✓ refuses a write to a module it can read  371ms
+     ✓ a credential scoped to users:read can — the scope is what decides  757ms
+     ✓ honours a workspace allowlist  360ms
+     ✓ a revoked credential stops working immediately  338ms
+     ✓ rotation issues a working replacement and kills the old one  502ms
+     ✓ writes a protected platform audit row for every request  775ms
+stdout | tests/sales/client-profiling.spec.ts > the client profile > refuses an income band that runs backwards
+prisma:error 
+Invalid `tx.clientProfile.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/clients/profile.ts:139:44
+
+  136   return { profile: updated, created: false };
+  137 }
+  138 
+→ 139 const created = await tx.clientProfile.create(
+Database error. Code: `23514`. Message: `new row for relation "ClientProfile" violates check constraint "ClientProfile_income_range_check"`
+
+ ✓ tests/permission/field-security.spec.ts (22 tests) 4216ms
+     ✓ hides a field the role may not view  370ms
+     ✓ returns the real values to a role with no restriction  330ms
+     ✓ lets the unrestricted role past the field-security gate on the same field  382ms
+     ✓ drops an uneditable field from a create payload instead of writing it  610ms
+ ✓ tests/unit/ai-provider.spec.ts (14 tests) 409ms
+ ✓ tests/sales/visits.spec.ts (22 tests) 13397ms
+     ✓ records who decided, and writes the audit row inside the same transaction  356ms
+     ✓ writes the before and the after, with the reason, when it does change  307ms
+ ✓ tests/sales/leadership.spec.ts (17 tests) 15105ms
+     ✓ splits top and bottom without overlap once there are enough sellers  408ms
+     ✓ ranks revenue and volume differently  315ms
+     ✓ sums progress against the target and puts the worst first  307ms
+     ✓ groups by the placement frozen on the sale, not the seller’s team today  648ms
+     ✓ nets clawbacks off the commission cost  509ms
+     ✓ reports margin as unknown rather than as profit when payroll is missing  321ms
+stdout | tests/sales/engagement.spec.ts > nominations and voting > refuses the same person twice in one category
+prisma:error 
+Invalid `tx.nomination.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/engagement/nominations.ts:56:46
+
+  53 if (!nominee) throw NotFound('Nominee');
+  54 
+  55 try {
+→ 56   const nomination = await tx.nomination.create(
+Unique constraint failed on the (not available)
+
+ ✓ tests/sales/client-profiling.spec.ts (30 tests) 21249ms
+     ✓ saves one step without blanking another  439ms
+     ✓ walks the wizard forward as answers arrive  419ms
+     ✓ frees the person up again after a soft delete  348ms
+     ✓ permits only the moves the flow describes  323ms
+     ✓ will not let staff write the client’s words  507ms
+     ✓ takes the client’s own submission over the link  455ms
+     ✓ refuses a token from another tenant  549ms
+     ✓ refuses to publish what the client did not consent to  393ms
+     ✓ needs the approve permission to publish  316ms
+     ✓ needs a reason to decline, so nobody asks them again next quarter  346ms
+     ✓ rejects a rating outside one to five  301ms
+     ✓ refuses a second live code for the same client  396ms
+     ✓ issues again once the first is retired  436ms
+     ✓ credits a lead to whoever’s code they arrived with, and freezes it  505ms
+     ✓ accepts a code typed in lower case with stray spaces  522ms
+     ✓ refuses to credit the same lead twice  558ms
+     ✓ stops honouring an expired code  428ms
+     ✓ needs a reason to reject, and refuses illegal jumps  577ms
+     ✓ counts who has actually sent business  467ms
+     ✓ keeps one tenant’s referrals out of another’s scoreboard  399ms
+ ✓ tests/integration/conversation-intelligence-flow.spec.ts (9 tests) 14929ms
+     ✓ creates the call and records consent  780ms
+     ✓ analyses the call, measures talk ratio and matches the playbook  1032ms
+     ✓ re-running analysis actually re-runs, instead of stranding PROCESSING  581ms
+     ✓ drafts a follow-up the rep can edit, then sends and logs it  888ms
+     ✓ surfaces the call on the coaching dashboard with its numbers  344ms
+     ✓ runs a text roleplay and scores it without a model key=<redacted>
+ ✓ tests/sales/listings.spec.ts (14 tests) 13815ms
+     ✓ expires a lapsed mandate and its listing when somebody next reads the book  483ms
+     ✓ agrees with itself read from either end  431ms
+     ✓ never offers stock the agency has lost the right to show  1140ms
+     ✓ applies the budget strictly and the rest leniently  435ms
+ ✓ tests/sales/engagement.spec.ts (24 tests) 26290ms
+     ✓ refuses a post with nothing in it  386ms
+     ✓ will not let an ordinary member pin their own post to the top  408ms
+     ✓ puts pinned posts above newer ones  499ms
+     ✓ lets only the author rewrite their words  778ms
+     ✓ will not hide a post without saying who and why  689ms
+     ✓ hides a post from colleagues but not from its author  814ms
+     ✓ keeps one reaction per person and lets them change it  585ms
+     ✓ takes no reactions on a hidden post  358ms
+     ✓ permits only the moves a contest actually makes  468ms
+     ✓ refuses a window that ends before it starts  397ms
+     ✓ ranks live from the same numbers the leader dashboard uses  803ms
+     ✓ freezes the result when it closes, so a later cancellation cannot change who won  1077ms
+     ✓ closes cleanly when nobody scored  622ms
+     ✓ restricts a team contest to that team  794ms
+     ✓ will not let somebody nominate themselves  486ms
+     ✓ refuses the same person twice in one category  444ms
+     ✓ moves a vote rather than adding a second in the same category  636ms
+     ✓ refuses the same vote twice  435ms
+     ✓ will not let a nominee vote for themselves  813ms
+     ✓ reports a tie as a tie instead of picking one  1735ms
+     ✓ declares the winner once there is a clear one  933ms
+     ✓ needs the permission to declare a winner  521ms
+ ✓ tests/hr/performance.spec.ts (24 tests) 8112ms
+     ✓ creates one review per eligible employee when opened  507ms
+     ✓ refuses a goal set that would exceed 100% weight  361ms
+     ✓ lets only the employee write the self-assessment  528ms
+     ✓ hides the manager’s assessment from the employee until it is released  368ms
+     ✓ records calibration separately from the manager’s rating  766ms
+     ✓ releases the manager’s assessment once calibrated  355ms
+     ✓ lets only the employee acknowledge, and then closes  473ms
+     ✓ shows an employee their own plan  426ms
+ ✓ tests/sales/meta-apply-event.spec.ts (18 tests) 217ms
+ ✓ tests/security/metrics.spec.ts (26 tests) 1425ms
+     ✓ serves the exposition format to a correct token  761ms
+ ✓ tests/tenant/ai-usage-console.spec.ts (19 tests) 5313ms
+     ✓ puts the workspace’s spend on the page, both columns  2857ms
+ ❯ tests/tenant/rls.spec.ts (0 test)
+stdout | tests/integration/invitation-flow.spec.ts > sending an invitation > refuses a second open invitation for the same address
+prisma:error 
+Invalid `prisma.workspaceInvitation.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/identity/invitations.ts:89:55
+
+  86 await assertSeatAvailable(ctx);
+  87 
+  88 const token=<redacted>;
+→ 89 const invitation = await prisma.workspaceInvitation.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"pendingKey"`)
+
+ ✓ tests/integration/invitation-flow.spec.ts (14 tests) 7576ms
+     ✓ stores the token=<redacted> — a leaked row is not redeemable  502ms
+     ✓ creates the account with a password only the recipient has seen  628ms
+     ✓ creates the HR record when the invitation named an employee number  635ms
+     ✓ refuses a password that fails the workspace policy  443ms
+     ✓ spends the token — the same link cannot be redeemed twice  422ms
+     ✓ keeps an existing identity password=<redacted> than overwriting it  1480ms
+     ✓ a revoked invitation stops working  305ms
+     ✓ a revoked address can be invited again  482ms
+     ✓ resending issues a new token and retires the old one  603ms
+     ✓ counts pending invitations, not just accepted members  431ms
+ ✓ tests/security/platform-user-recovery.spec.ts (9 tests) 6096ms
+     ✓ refuses every recovery action for a non-owner  609ms
+     ✓ sets a chosen password that the login route then accepts  603ms
+     ✓ generates a temporary password, returns it once, and forces a change  398ms
+     ✓ clears a lock that was refusing sign-in before the password was read  843ms
+     ✓ deactivation stops authentication; reactivation restores it  506ms
+     ✓ suspending the only membership refuses sign-in, and activating repairs it  675ms
+ ✓ tests/unit/storage-pagination.spec.ts (6 tests) 1317ms
+ ✓ tests/tenant/credential-purge.spec.ts (23 tests) 18935ms
+     ✓ leaves no row, and therefore no ciphertext, behind  12811ms
+     ✓ touches only the workspace that asked  390ms
+     ✓ removes only the named providers when a subset is given  350ms
+     ✓ names what it removed rather than only counting it  366ms
+     ✓ refuses confirm="REMOVE-ALL-CREDENTIALS" and removes nothing  325ms
+     ✓ refuses a request with no confirmation at all  331ms
+     ✓ resolves to something in a source checkout, not "unknown"  304ms
+stdout | tests/sales/allocation.spec.ts > allocation requests > allows one open request at a time
+prisma:error 
+Invalid `tx.allocationRequest.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/distribution/requests.ts:35:50
+
+  32 
+  33 return withTx(ctx.tenantId, async (tx) => {
+  34   try {
+→ 35     const request = await tx.allocationRequest.create(
+Unique constraint failed on the (not available)
+
+ ✓ tests/sales/inventory.spec.ts (15 tests) 11756ms
+ ✓ tests/security/platform-break-glass.spec.ts (14 tests) 5317ms
+     ✓ is scoped to one workspace  1554ms
+     ✓ tells the console the same minimum the API enforces  817ms
+ ✓ tests/hr/dispatch-characterisation.spec.ts (94 tests) 25835ms
+     ✓ GET departments does not fall through or throw  397ms
+     ✓ GET leave-calendar does not fall through or throw  547ms
+     ✓ GET checklist does not fall through or throw  383ms
+     ✓ GET overtime does not fall through or throw  402ms
+     ✓ GET reviews does not fall through or throw  308ms
+     ✓ settlement admits a caller holding only employee:VIEW  325ms
+     ✓ no other FLOOR resource has quietly acquired a service gate  6459ms
+ ✓ tests/security/password-reset.spec.ts (12 tests) 5001ms
+     ✓ kills every session for both identities  562ms
+     ✓ spends the token — a replay is refused  427ms
+     ✓ a workspace-bound token=<redacted> touch the platform-only account  434ms
+ ✓ tests/sales/allocation.spec.ts (23 tests) 24353ms
+     ✓ counts against the quota as leads are handed over  555ms
+     ✓ hands out what was asked for when the pool allows  884ms
+     ✓ writes a history row for every lead it moves  644ms
+     ✓ stops at the quota and says which one stopped it  604ms
+     ✓ fills people in the order given, spilling to the next  589ms
+     ✓ never hands the same lead to two people under concurrent allocation  612ms
+     ✓ leaves another tenant’s pool alone  512ms
+     ✓ allows one open request at a time  310ms
+     ✓ lets the asker withdraw, and nobody else  308ms
+     ✓ allocates as it approves, and records how many actually moved  825ms
+     ✓ records the shortfall when the asker is at their quota  1410ms
+     ✓ needs a reason to turn one down  1071ms
+     ✓ refuses a second decision on the same request  807ms
+     ✓ shows a leader the headroom alongside the ask  319ms
+     ✓ returns a lead to the destination team’s pool rather than guessing an owner  395ms
+ ✓ tests/hr/reports.spec.ts (16 tests) 7285ms
+     ✓ agrees on every report in the registry, for two different roles  3869ms
+     ✓ runs every report the caller may reach without erroring  513ms
+     ✓ never returns another workspace’s rows  1317ms
+ ✓ tests/security/p2-regressions.spec.ts (17 tests) 17132ms
+     ✓ answers a GET on a POST-only action with 405 and Allow  425ms
+     ✓ rejects on Content-Length before parsing the body  314ms
+     ✓ answers 429 once the window is spent  4098ms
+ ❯ tests/security/assistant-guardrails.spec.ts (29 tests | 11 failed) 872ms
+     ✓ finds the tools at all 8ms
+     × searchLeads covers every model it reads 13ms
+     × getLead covers every model it reads 2ms
+     × getLeadTimeline covers every model it reads 2ms
+     × getCalls covers every model it reads 1ms
+     × getCallDetail covers every model it reads 2ms
+     × searchAccounts covers every model it reads 1ms
+     × searchContacts covers every model it reads 1ms
+     × searchOpportunities covers every model it reads 1ms
+     × getTasks covers every model it reads 1ms
+     × getFollowUps covers every model it reads 1ms
+     × getCalendar covers every model it reads 2ms
+     ✓ getMyDay covers every model it reads 1ms
+     ✓ prepareForCall covers every model it reads 0ms
+     ✓ createFollowUp covers every model it reads 0ms
+     ✓ createTask covers every model it reads 0ms
+     ✓ createAutomation covers every model it reads 0ms
+     ✓ has no stale ALLOWED entries 5ms
+     ✓ no executor carries its own can() check any more 1ms
+     ✓ every tool declares at least one requirement 1ms
+     ✓ getCalendar demands exactly what GET /api/v1/events demands 2ms
+     ✓ refuses a tool the caller lacks a permission for, and names it 3ms
+     ✓ does not let leads:VIEW open the calendar 5ms
+     ✓ refuses a caller holding nothing at all 1ms
+     ✓ lets a caller through once every requirement holds  789ms
+     ✓ redacts free text but not the contact fields the tools exist to return 1ms
+     ✓ applies the redaction on the way out of executeTool 0ms
+     ✓ tells the model that tool output is data, not instructions 1ms
+     ✓ no seeded role holds leads:VIEW without events:VIEW 20ms
+ ✓ tests/security/telephony-vendors.spec.ts (17 tests) 112ms
+ ✓ tests/security/platform-admin-crud.spec.ts (11 tests) 4934ms
+     ✓ a plan downgrade re-derives entitlements from the new plan  521ms
+     ✓ cancel ends every module entitlement now  301ms
+     ✓ soft-deletes the workspace and revokes its sessions  458ms
+     ✓ persists the upload limit and the upload path reads the override  340ms
+stdout | tests/tenant/ai-usage.spec.ts > metering > never throws, whatever it is handed
+prisma:error 
+Invalid `prisma.workspaceUsage.upsert()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/lib/ai/usage.ts:230:33
+
+  227 
+  228 try {
+  229   const metric = usageMetric(credential.source);
+→ 230   await prisma.workspaceUsage.upsert(
+Foreign key=<redacted> violated on the constraint: `WorkspaceUsage_tenantId_fkey`
+
+stdout | tests/tenant/ai-usage.spec.ts > metering > never throws, whatever it is handed
+prisma:error 
+Invalid `prisma.workspaceUsage.upsert()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/lib/ai/usage.ts:250:33
+
+  247  */
+  248 try {
+  249   const metric = modelUsageMetric(credential.source, context.model);
+→ 250   await prisma.workspaceUsage.upsert(
+Foreign key=<redacted> violated on the constraint: `WorkspaceUsage_tenantId_fkey`
+
+ ✓ tests/tenant/ai-usage.spec.ts (16 tests) 5150ms
+     ✓ attributes a call to the workspace that made it  314ms
+     ✓ accumulates across calls rather than overwriting  473ms
+     ✓ meters a workspace on its own key too — attribution is not the same as billing  366ms
+     ✓ lets a workspace burn past the ceiling on its own key and still be served  353ms
+ ✓ tests/sales/campaign-scheduler.spec.ts (5 tests) 4264ms
+     ✓ runs the whole lifecycle in one sweep  1637ms
+     ✓ still sends a campaign whose channel was never stated  398ms
+ ✓ tests/tenant/audit-retention.spec.ts (6 tests) 5836ms
+     ✓ deletes nothing, however old the rows are  1118ms
+     ✓ deletes rows past the window in every tenant, and keeps the recent ones  777ms
+     ✓ sweeps only the table whose window is set  412ms
+     ✓ applies each window independently  647ms
+     ✓ counts a dry run without removing anything  440ms
+     ✓ deletes the capture before the punch row that points at it  803ms
+ ✓ tests/hr/write-verbs.spec.ts (11 tests) 9192ms
+     ✓ can be renamed after creation  817ms
+     ✓ refuses to archive one that still has employees  736ms
+     ✓ archives an empty one, and the list stops showing it  1030ms
+     ✓ can be corrected — the common case is the wrong date  495ms
+     ✓ is really removed, not tombstoned — nothing references it  498ms
+     ✓ a work location is retired  436ms
+     ✓ can be created, listed, renamed and archived  688ms
+     ✓ an actor without ORGANIZATION scope cannot edit HR records  504ms
+     ✓ refuses a record belonging to another workspace  1481ms
+ ✓ tests/sales/payouts.spec.ts (12 tests) 20377ms
+     ✓ gathers collected commissions into one statement  730ms
+     ✓ nets a clawback taken before payment down to nothing  712ms
+     ✓ lets a run come out negative when the money was already paid  715ms
+     ✓ will not let one person build and approve the same run  550ms
+     ✓ will not release money without the approval permission  341ms
+     ✓ marks the commissions paid only when the transfer happens  681ms
+     ✓ refuses to pay a run nobody approved  340ms
+     ✓ releases the lines back to the pool when a run is cancelled  883ms
+     ✓ will not open a second run while one is outstanding  922ms
+     ✓ produces a statement whose every line traces to a booking  445ms
+ ✓ tests/permission/hr-granular.spec.ts (10 tests) 5094ms
+     ✓ an ordinary employee sees only their own record, not a directory  707ms
+     ✓ an HR administrator sees the workspace  347ms
+stdout | tests/integration/telephony-webhook-flow.spec.ts > a call progresses through its vendor callbacks > deduplicates a redelivery of the same event
+prisma:error 
+Invalid `prisma.webhookEvent.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/app/api/v1/webhooks/telephony/[key]/route.ts:111:31
+
+  108 const providerKey=<redacted>;
+  109 const externalId = event.deliveryId || createHash('sha256').update(rawBody).digest('hex').slice(0, 40);
+  110 try {
+→ 111   await prisma.webhookEvent.create(
+Unique constraint failed on the (not available)
+
+{"level":50,"time":1789024423581,"service":"leadflow","role":"web","err":{"type":"Error","message":"redis is down","stack":"Error: redis is down\n    at C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/tests/hr/notify.spec.ts:170:62\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"},"event":"overtime.decided","tenantId":"cmtv6y5sg0000w0lyk8k4ka64","msg":"hr notification failed"}
+ ✓ tests/unit/filter-field-maps.spec.ts (13 tests) 690ms
+     ✓ no caller compiles against an unregistered object  395ms
+ ✓ tests/hr/notify.spec.ts (7 tests) 5001ms
+     ✓ tells whoever holds the deciding permission, and nobody else  474ms
+     ✓ tells the requester when the decision lands  416ms
+     ✓ never lets a notification failure roll back the decision  949ms
+     ✓ follows a grant moved to another role rather than a fixed role name  741ms
+ ✓ tests/security/service-identity-browser.spec.ts (10 tests) 17361ms
+     ✓ the service session lands in its own cookie, leaving the console session alone  332ms
+     ✓ a workspace request with BOTH cookies resolves to the newer identity, not the first cookie  1480ms
+     ✓ selecting a workspace works while a console session is present  1415ms
+     ✓ accepts the username and the email address alike  365ms
+     ✓ a completed sign-in clears the throttle, so two sign-ins in a window are fine  798ms
+ ✓ tests/unit/staging-first.spec.ts (13 tests) 135ms
+ ✓ tests/integration/telephony-webhook-flow.spec.ts (9 tests) 13689ms
+     ✓ moves to RINGING, then IN_PROGRESS with an answered time  597ms
+     ✓ deduplicates a redelivery of the same event  498ms
+     ✓ discards a recording the client never consented to  372ms
+     ✓ stores a consented recording as vendor-held until the ingest job runs  410ms
+ ✓ tests/sales/social-comments.spec.ts (19 tests) 72ms
+ ❯ tests/unit/env-example-parses.spec.ts (13 tests | 5 failed) 45ms
+     × parses against the schema every process boots with 21ms
+     × parses against the schema every process boots with 3ms
+     × parses against the schema every process boots with 4ms
+     × parses against the schema every process boots with 3ms
+     × declares every variable the schema requires 3ms
+     ✓ .env.example declares nothing that no longer has a consumer 2ms
+     ✓ .env.test.example declares nothing that no longer has a consumer 1ms
+     ✓ .env.production.example declares nothing that no longer has a consumer 1ms
+     ✓ .env.staging.example declares nothing that no longer has a consumer 1ms
+     ✓ .env.example does not pin a Gemini model id that Google can retire 1ms
+     ✓ .env.test.example does not pin a Gemini model id that Google can retire 1ms
+     ✓ .env.production.example does not pin a Gemini model id that Google can retire 1ms
+     ✓ .env.staging.example does not pin a Gemini model id that Google can retire 1ms
+ ✓ tests/permission/role-guard-rails.spec.ts (5 tests) 10314ms
+     ✓ a top-tier administrator grants the top-tier role to a peer  672ms
+     ✓ a mid-tier administrator can grant neither the top role nor their own level  698ms
+     ✓ refuses revoking your own last administrative role  1716ms
+     ✓ walks the whole v21 lifecycle: history blocks delete, deactivation kills the grant  2950ms
+     ✓ clone copies the permission rows onto a fresh role  1373ms
+ ✓ tests/hr/admin-account-and-face.spec.ts (7 tests) 6171ms
+     ✓ creates the employee, the login and the attendance assignment together  564ms
+     ✓ forces a password=<redacted> at first sign-in and never stores the password in the clear  1211ms
+     ✓ refuses a duplicate employee code  952ms
+ ✓ tests/tenant/gemini-key.spec.ts (12 tests) 3983ms
+     ✓ lets a workspace pick its own model, and falls back when it has not  343ms
+ ✓ tests/unit/entity-route.spec.ts (13 tests) 178ms
+ ✓ tests/security/ai-redaction.spec.ts (17 tests) 28ms
+stdout | tests/tenant/reference.spec.ts > isolation > refuses to allocate with no tenant context rather than returning a bad reference
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42501`. Message: `new row violates row-level security policy for table "TenantReferenceCounter"`
+
+ ❯ tests/unit/observability.spec.ts (18 tests | 3 failed) 21578ms
+     ✓ refuses to start with no recipient 133ms
+     ✓ refuses to start with no relay 113ms
+     ✓ refuses a value carrying a single quote, which would break out of the scalar 97ms
+     ✓ refuses a value carrying a newline, which would inject a sibling key=<redacted>
+     ✓ refuses a TLS setting that is neither true nor false 87ms
+     ✓ renders a production config with TLS on and both receivers  1837ms
+     × never writes the relay password into the config, only into a 0600 file 2039ms
+     ✓ omits SMTP auth entirely when the relay wants none  2149ms
+     ✓ turns TLS off for staging, whose Mailpit relay offers none  1895ms
+     ✓ omits the webhook block when no webhook is configured  2363ms
+     ✓ adds the webhook to both receivers when one is configured  2699ms
+     ✓ sends pages to their own address when one is given, tickets to the default  2498ms
+     ✓ inhibits the symptoms of an application that is down  3034ms
+     ✓ refuses to start with no scrape token 174ms
+     ✓ refuses to start with no environment label 98ms
+     × writes the token to a 0600 file with no trailing newline 279ms
+     ✓ stamps the environment onto every alert this server raises  300ms
+     × leaves the rest of the config byte-identical to the file under review 199ms
+stdout | tests/tenant/reference.spec.ts > isolation > cannot advance another tenant’s counter
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42501`. Message: `new row violates row-level security policy for table "TenantReferenceCounter"`
+
+ ✓ tests/hr/location-privacy.spec.ts (8 tests) 6676ms
+     ✓ returns the fence centre to HR  537ms
+     ✓ shows a plain employee only their own, without coordinates  517ms
+     ✓ shows HR everyone, with coordinates  483ms
+     ✓ refuses a geometry change without a written reason  646ms
+     ✓ accepts the same change once a reason is given, and audits it  678ms
+     ✓ lets a rename through without ceremony — only geometry needs a reason  480ms
+     ✓ never returns the location evidence snapshot to the employee  361ms
+{"level":50,"time":1789024436454,"service":"leadflow","role":"web","err":{"type":"Error","message":"bucket unreachable","stack":"Error: bucket unreachable\n    at C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/tests/unit/capture-vault.spec.ts:35:30\n    at Mock (file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/spy/dist/index.js:332:34)\n    at Module.storeCapture (C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/hr/captureVault.ts:120:11)\n    at C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/tests/unit/capture-vault.spec.ts:112:24\n    at file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///C:/Users/admin/Music/Youhan%20One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20"},"tenantId":"t1","employeeId":"emp1","punchId":"punch1","msg":"attendance capture could not be stored"}
+ ✓ tests/security/hr-employee-escalation.spec.ts (5 tests) 6162ms
+     ✓ refuses an employee-role actor claiming company_admin  1216ms
+     ✓ refuses an employee-role actor even for an ordinary role  343ms
+     ✓ refuses an actor at rank 10 assigning a role at rank 10 — equal rank is not administerable  653ms
+     ✓ invites into an unknown role, created at the lowest rank with employee permissions  800ms
+ ✓ tests/sales/growth.spec.ts (8 tests) 7428ms
+     ✓ creates a campaign and attaches an audience  843ms
+     ✓ creates a published lead-capture form with the standard fields  940ms
+     ✓ turns an anonymous submission into a lead  875ms
+     ✓ goes dark the moment it is paused  490ms
+     ✓ creates and publishes a graph the engine accepts  766ms
+ ❯ tests/unit/capture-vault.spec.ts (12 tests | 4 failed) 721ms
+     × returns the same relative path shape the punch column already holds 349ms
+     ✓ writes under one prefix, so a sweep can find captures without walking the bucket 18ms
+     ✓ never lets the frame reach storage in the clear 27ms
+     ✓ returns null rather than throwing when storage is down 67ms
+     ✓ ignores an empty frame instead of storing one 17ms
+     ✓ round-trips the exact bytes 47ms
+     × still reads a capture written before the move, from the old directory 19ms
+     ✓ refuses to read outside the vault 20ms
+     × deletes what is past the window and keeps what is not 22ms
+     ✓ applies the window per workspace and counts each once 27ms
+     × keeps an object the listing could not date 56ms
+     ✓ sweeps the legacy directory too 49ms
+ ✓ tests/tenant/reference.spec.ts (11 tests) 3982ms
+     ✓ starts at 1 and increments, formatted  352ms
+     ✓ counts each object type separately  404ms
+ ✓ tests/tenant/guard-exemptions.spec.ts (5 tests) 278ms
+ ✓ tests/security/client-ip.spec.ts (23 tests) 35ms
+ ✓ tests/security/actor-cache.spec.ts (10 tests) 8111ms
+     ✓ returns the same permission set on a second call  379ms
+     ✓ drops a permission the moment the RolePermission row says so  604ms
+     ✓ narrows a scope the moment the row says so  314ms
+     ✓ takes everything away when the role is deactivated  344ms
+     ✓ refuses a user who has been deactivated  769ms
+     ✓ picks up a change to who this user manages  1174ms
+     ✓ leaves the cache alone for a User write that touches no permission field  416ms
+     ✓ does not let one tenant’s role edit invalidate another’s  2216ms
+ ✓ tests/tenant/social-assignment.spec.ts (7 tests) 5547ms
+     ✓ distributes a high-intent comment to the rotation  1502ms
+     ✓ keeps a manual owner when the provider redelivers the same comment  330ms
+     ✓ does not restart the clock when the enquiry changes hands  370ms
+     ✓ escalates a breached high-intent enquiry exactly once  506ms
+     ✓ stops the response clock only when someone actually answers  317ms
+ ✓ tests/security/mfa-enrolment.spec.ts (9 tests) 3818ms
+     ✓ accepts a real TOTP code and issues a full session  609ms
+ ✓ tests/sales/bookings-route.spec.ts (6 tests) 8187ms
+     ✓ starts as a draft that accrues nothing  641ms
+     ✓ confirms, then refuses to confirm twice  902ms
+     ✓ refuses to cancel while a commission is still live  965ms
+     ✓ cancels once the commissions are reversed, and records the reason  1088ms
+ ✓ tests/permission/user-delete.spec.ts (7 tests) 7177ms
+     ✓ lets an Organization Administrator remove a member, and soft-deletes rather than destroys  1159ms
+     ✓ records the removal in the audit log  675ms
+     ✓ refuses MANAGE_USERS without DELETE — the whole point of the separate grant  553ms
+     ✓ refuses an account at or above the actor’s own level  530ms
+     ✓ refuses the workspace’s primary administrator  541ms
+     ✓ refuses a user from another workspace  1323ms
+ ✓ tests/tenant/retention.spec.ts (4 tests) 3192ms
+     ✓ deletes rows in every tenant, not the zero rows RLS shows an unscoped connection  513ms
+ ✓ tests/permission/document-delete.spec.ts (3 tests) 4989ms
+     ✓ refuses a representative, who may upload but not remove  688ms
+     ✓ allows the organisation administrator, and soft-deletes rather than erases  655ms
+ ✓ tests/unit/auth-client.spec.ts (13 tests) 235ms
+ ✓ tests/security/secret-egress.spec.ts (25 tests) 9449ms
+     ✓ GET hr/departments  497ms
+     ✓ GET hr/employees  362ms
+     ✓ GET hr/work-locations  355ms
+     ✓ GET hr/leave-calendar  355ms
+     ✓ GET hr/lifecycle  490ms
+     ✓ GET hr/attendance-review  454ms
+     ✓ GET hr/location-assignments  311ms
+     ✓ GET hr/exception-requests  385ms
+ ✓ tests/hr/attendance.spec.ts (25 tests) 98ms
+ ✓ tests/permission/role-assignments.spec.ts (5 tests) 7022ms
+     ✓ with no assignment, the bare role is refused  337ms
+     ✓ an active assignment grants its role on the very next request  1036ms
+     ✓ an assignment outside its effective window grants nothing  708ms
+     ✓ the assignment's scope caps the role: an ORGANIZATION role assigned OWN_RECORD sees only own records  846ms
+     ✓ a BRANCH assignment naming another branch widens visibility to it  1400ms
+ ✓ tests/sales/opportunity-close.spec.ts (6 tests) 6420ms
+     ✓ moves it to the pipeline’s CONVERSION stage at 100%, with history and a close date  444ms
+     ✓ clears a stale loss reason when a LOST deal is corrected to WON  1521ms
+     ✓ respects an explicit stage chosen in the same request  525ms
+     ✓ moves it to the TERMINAL_NEGATIVE stage at 0%  414ms
+     ✓ still closes, keeping the stage but snapping probability  865ms
+ ✓ tests/security/platform-mfa.spec.ts (10 tests) 1396ms
+     ✓ refuses a platform owner whose session is password-only  812ms
+ ✓ tests/security/platform-support-access.spec.ts (8 tests) 5578ms
+     ✓ resolves a workspace context for platform staff who hold no membership  408ms
+     ✓ gives the OWNER full control while a grant is live, and takes it back after  922ms
+     ✓ keeps SUPPORT read-only  454ms
+     ✓ pins the support actor to the workspace it was opened for  1296ms
+ ✓ tests/security/mfa-reauth.spec.ts (8 tests) 4706ms
+     ✓ refuses a session that does not supply the password  486ms
+     ✓ issues a secret to the account owner proving the password  472ms
+stdout | tests/security/password-policy.spec.ts > history bookkeeping > never fails the password=<redacted> it accompanies
+prisma:error 
+Invalid `prisma.passwordHistory.create()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/src/services/identity/passwordHistory.ts:83:34
+
+  80 export async function recordPreviousPassword(platformUserId: string, previousHash: string | null): Promise<void> {
+  81   if (!previousHash) return;
+  82   try {
+→ 83     await prisma.passwordHistory.create(
+Foreign key=<redacted> violated on the constraint: `PasswordHistory_platformUserId_fkey`
+
+ ✓ tests/unit/css-tokens.spec.ts (4 tests) 889ms
+     ✓ finds the tokens it is meant to be checking  313ms
+ ✓ tests/security/password-policy.spec.ts (12 tests) 5056ms
+     ✓ refuses a password used one change ago  563ms
+     ✓ refuses one used several changes ago, while still inside the window  1352ms
+     ✓ accepts a password the account has never used  571ms
+ ✓ tests/permission/admin-editors.spec.ts (8 tests) 6333ms
+     ✓ can be changed — the whole point of 4.4  811ms
+     ✓ refuses someone who may read settings but not configure them  395ms
+     ✓ turns mandatory two-factor on  371ms
+     ✓ changes the password=<redacted>  435ms
+ ✓ tests/security/single-credential-store.spec.ts (13 tests) 4086ms
+     ✓ verifies and writes the identity, not the membership  618ms
+     ✓ writes the identity and forces a change on next sign-in  448ms
+ ✓ tests/unit/read-replica.spec.ts (8 tests) 642ms
+     ✓ still answers reads  534ms
+ ✓ tests/hr/punch-validation.spec.ts (10 tests) 4223ms
+     ✓ refuses a position outside every assigned fence: OUTSIDE_APPROVED_LOCATION  516ms
+     ✓ refuses a weak GPS fix before measuring the fence: LOCATION_ACCURACY_TOO_LOW  321ms
+ ✓ tests/integration/forgot-password-flow.spec.ts (7 tests) 4181ms
+     ✓ changes the password login reads, and retires the old one  854ms
+     ✓ spends the token — the same link cannot be used twice  456ms
+ ✓ tests/permission/module-entitlement.spec.ts (10 tests) 12555ms
+     ✓ an HRMS-only workspace cannot reach Sales APIs  838ms
+     ✓ a Sales-only workspace cannot reach HRMS APIs  574ms
+     ✓ a workspace with both reaches both  754ms
+     ✓ HRMS-only can list users  352ms
+     ✓ Sales-only: a member holding no permission at all can still read their own password=<redacted>  419ms
+     ✓ refuses a workspace whose status is not ACTIVE  494ms
+ ✓ tests/unit/csv.spec.ts (15 tests) 99ms
+ ✓ tests/tenant/crm-notifications.spec.ts (6 tests) 3131ms
+     ✓ tells the previous owner too, so a record does not vanish unexplained  430ms
+ ✓ tests/tenant/queue-fairness.spec.ts (6 tests) 2068ms
+     ✓ reaches a second tenant’s job without waiting for the backlog  1540ms
+ ✓ tests/unit/push-send.spec.ts (4 tests) 427ms
+ ✓ tests/security/hr-overtime-scope.spec.ts (4 tests) 6448ms
+     ✓ cannot decide a claim from outside their reporting line  995ms
+     ✓ can still decide a claim from their own report  989ms
+     ✓ does not see claims from outside their reporting line in the queue  856ms
+     ✓ decides anyone, because that scope is what HR means  912ms
+ ❯ tests/tenant/pooling.spec.ts (4 tests | 1 failed) 2639ms
+     ✓ does not survive the transaction that set it 87ms
+     ✓ gives each tenant its own rows under interleaved reads on one pool  383ms
+     ✓ lets the platform flag expire with its transaction too 35ms
+     × shows that a session-level setting outlives its transaction 107ms
+ ✓ tests/hr/settings.spec.ts (12 tests) 41ms
+ ✓ tests/unit/outbound-url.spec.ts (33 tests) 37ms
+ ✓ tests/permission/notifications-self-service.spec.ts (4 tests) 4659ms
+     ✓ are readable by a user holding no Sales permission at all  641ms
+ ✓ tests/hr/bulk-location-assign.spec.ts (4 tests) 5604ms
+     ✓ assigns three employees in one call  1050ms
+     ✓ still accepts a single employeeId  447ms
+     ✓ fails the whole batch if any employee id is unknown  362ms
+ ✓ tests/permission/page-access.spec.ts (126 tests) 2752ms
+ ✓ tests/tenant/calls.spec.ts (9 tests) 2457ms
+ ✓ tests/hr/dashboard-manager.spec.ts (3 tests) 4665ms
+ ✓ tests/security/meta-webhook-events.spec.ts (8 tests) 19ms
+ ✓ tests/security/ratelimit.spec.ts (7 tests) 2319ms
+     ✓ cannot be starved — refused attempts do not extend the window  1403ms
+ ✓ tests/permission/engagement-modules.spec.ts (3 tests) 909ms
+     ✓ carries every record action the engagement migration inserts  722ms
+ ✓ tests/sales/whatsapp-templates.spec.ts (9 tests) 135ms
+ ✓ tests/security/recovery-codes.spec.ts (5 tests) 844ms
+     ✓ accepts a code with or without its grouping hyphens, then burns it  610ms
+ ✓ tests/sales/reports.spec.ts (12 tests) 20589ms
+     ✓ answers, rather than 404ing like the links used to  1791ms
+     ✓ gives every row a value for every declared column  1373ms
+ ✓ tests/sales/meta-oauth.spec.ts (10 tests) 290ms
+ ✓ tests/sales/meta-reply-capability.spec.ts (8 tests) 17ms
+ ✓ tests/unit/ai-model-usage.spec.ts (9 tests) 21ms
+ ✓ tests/security/integration-connections.spec.ts (10 tests) 19206ms
+     ✓ refuses rather than treating a non-telephony connection as a phone line  396ms
+ ✓ tests/hr/compliance.spec.ts (4 tests) 2922ms
+ ✓ tests/unit/grid-cells.spec.ts (30 tests) 112ms
+ ✓ tests/unit/windows-bootstrap.spec.ts (8 tests) 30ms
+ ✓ tests/security/plan-ai-allowance.spec.ts (4 tests) 1399ms
+     ✓ is written when the operator sets one  434ms
+ ✓ tests/security/auth-validation.spec.ts (10 tests) 987ms
+     ✓ login: well-formed unknown account still answers 401, not 422/500 (no enumeration)  726ms
+ ✓ tests/unit/call-metrics.spec.ts (9 tests) 19ms
+{"level":50,"time":1789024486024,"service":"leadflow","role":"web","err":{"type":"Error","message":"connect ECONNREFUSED 127.0.0.1:1","stack":"Error: connect ECONNREFUSED 127.0.0.1:1\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1706:16)","errno":-4078,"code":"ECONNREFUSED","syscall":"connect","address":"127.0.0.1","port":1},"host":"127.0.0.1","port":1,"msg":"antivirus: scan failed"}
+{"level":50,"time":1789024486062,"service":"leadflow","role":"web","provider":"none-configured","msg":"antivirus: unknown provider configured"}
+ ✓ tests/hr/antivirus.spec.ts (7 tests) 328ms
+ ✓ tests/tenant/analysis-corrections.spec.ts (8 tests) 19ms
+ ✓ tests/sales/social-reply.spec.ts (9 tests) 13ms
+ ✓ tests/hr/rules.spec.ts (15 tests) 28ms
+ ✓ tests/unit/cache-invalidation.spec.ts (5 tests) 145ms
+ ✓ tests/unit/where-merge.spec.ts (10 tests) 14ms
+ ✓ tests/security/consent.spec.ts (8 tests) 83ms
+ ✓ tests/sales/social-sla.spec.ts (10 tests) 14ms
+ ✓ tests/security/secret-files.spec.ts (5 tests) 44ms
+ ✓ tests/tenant/conversation-intelligence.spec.ts (5 tests) 3268ms
+ ✓ tests/hr/dashboard-persona.spec.ts (13 tests) 20ms
+(node:17704) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ tests/security/csp.spec.ts (5 tests) 29ms
+ ❯ tests/security/guarded-prologue.spec.ts (3 tests | 1 failed) 111ms
+     × is not re-implemented outside the two routes that must 100ms
+     ✓ offers no way to ask for no rate limit 2ms
+     ✓ runs the four steps in the kernel’s order 3ms
+ ✓ tests/permission/visibility-where-merge.spec.ts (7 tests) 16320ms
+     ✓ OWN — a rep paging through the grid still sees only their own lead  594ms
+     ✓ TEAM — a manager paging through the grid does not pick up another branch  1594ms
+     ✓ a director still pages through the whole workspace  2305ms
+     ✓ TEAM — a root-level OR filter does not reach another branch  981ms
+     ✓ a filter and a cursor together keep both restrictions  690ms
+ ✓ tests/permission/conversation-intelligence.spec.ts (6 tests) 18065ms
+     ✓ refuses the playbook to a role with no calls grant  351ms
+     ✓ lets the admin create a playbook entry  437ms
+     ✓ lets the manager coach a rep’s call, and refuses self-coaching  396ms
+ ✓ tests/hr/pdf.spec.ts (6 tests) 12ms
+ ✓ tests/security/redirect.spec.ts (6 tests) 11ms
+ ✓ tests/unit/stage-temperature.spec.ts (7 tests) 15ms
+ ✓ tests/unit/grid-columns.spec.ts (8 tests) 15ms
+ ✓ tests/unit/publicLink.spec.ts (7 tests) 22ms
+ ✓ tests/hr/employment-status.spec.ts (5 tests) 17ms
+ ✓ tests/unit/live-coach.spec.ts (8 tests) 22ms
+ ✓ tests/unit/no-keyspace-sweep.spec.ts (4 tests) 312ms
+ ✓ tests/permission/scope.spec.ts (10 tests) 11322ms
+     ✓ OWN — a rep sees only their own leads  599ms
+     ✓ TEAM — a team manager sees the whole team, including descendant teams  443ms
+     ✓ BRANCH — a branch manager sees every team in the branch  563ms
+     ✓ REGION — a regional manager sees every branch in the region  347ms
+     ✓ ORGANIZATION — the director sees everything in the workspace  323ms
+     ✓ a rep cannot reassign a lead to another user without ASSIGN  317ms
+ ✓ tests/unit/live-stream-protocol.spec.ts (4 tests) 16ms
+ ✓ tests/security/meta-webhook-signature.spec.ts (5 tests) 14ms
+ ✓ tests/unit/break-glass-countdown.spec.ts (6 tests) 12ms
+ ✓ tests/security/env-secrets.spec.ts (7 tests) 13ms
+ ✓ tests/security/telephony-signature.spec.ts (4 tests) 11ms
+ ✓ tests/hr/people-crash-guards.spec.ts (4 tests) 14ms
+ ✓ tests/unit/practice-recommendation.spec.ts (5 tests) 23ms
+ ✓ tests/security/platform-identity.spec.ts (3 tests) 10ms
+ ✓ tests/sales/public-form-dedupe.spec.ts (4 tests) 28ms
+ ✓ tests/security/temporary-password.spec.ts (5 tests) 3169ms
+     ✓ always satisfies the default policy  854ms
+     ✓ satisfies the strictest policy a workspace can configure  1930ms
+ ✓ tests/unit/playbook-pick.spec.ts (4 tests) 17ms
+ ✓ tests/unit/prisma-config.spec.ts (2 tests) 1911ms
+     ✓ omits an empty SHADOW_DATABASE_URL instead of passing an empty string  1899ms
+ ✓ tests/tenant/isolation.spec.ts (10 tests) 15174ms
+     ✓ a list endpoint never returns another workspace records  358ms
+     ✓ fetching another workspace record returns 404, not 403  328ms
+     ✓ each workspace sees exactly its own row count  469ms
+ ✓ tests/security/self-service-api-key.spec.ts (3 tests) 11018ms
+ ✓ tests/unit/environment-separation.spec.ts (4 tests) 22148ms
+     ✓ refuses when NODE_ENV is production  9380ms
+     ✓ refuses when APP_ENV is production or staging, whatever NODE_ENV says  6957ms
+     ✓ refuses a database whose *name* marks it production, whatever the declarations say  2540ms
+     ✓ still demands explicit consent when every environment gate passes  3265ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sales/dialer.spec.ts [ tests/sales/dialer.spec.ts ]
+PrismaClientKnownRequestError: 
+Invalid `prisma.permission.upsert()` invocation in
+C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web/tests/helpers/fixtures.ts:101:50
+
+   98 
+   99 for (const permissionModule of MODULES) {
+  100   for (const action of ALL_ACTIONS) {
+→ 101     const permission = await prisma.permission.upsert(
+Unique constraint failed on the fields: (`module`, `action`)
+ ❯ vn.handleRequestError node_modules/@prisma/client/src/runtime/RequestHandler.ts:238:12
+ ❯ vn.handleAndLogRequestError node_modules/@prisma/client/src/runtime/RequestHandler.ts:184:11
+ ❯ vn.request node_modules/@prisma/client/src/runtime/RequestHandler.ts:153:11
+ ❯ a node_modules/@prisma/client/src/runtime/getPrismaClient.ts:1014:23
+ ❯ createAdminRole tests/helpers/fixtures.ts:101:26
+     99|   for (const permissionModule of MODULES) {
+    100|     for (const action of ALL_ACTIONS) {
+    101|       const permission = await prisma.permission.upsert({
+       |                          ^
+    102|         where: { module_action: { module: permissionModule, action } },
+    103|         update: {},
+ ❯ createTenant tests/helpers/fixtures.ts:129:16
+ ❯ seedTwoTenants tests/helpers/fixtures.ts:319:13
+ ❯ tests/sales/dialer.spec.ts:56:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/28]⎯
+
+ FAIL  tests/sales/dialer.spec.ts [ tests/sales/dialer.spec.ts ]
+TypeError: Cannot read properties of undefined (reading 'a')
+ ❯ tests/sales/dialer.spec.ts:82:28
+     80|
+     81| afterAll(async () => {
+     82|   const tenants = [fixture.a.tenantId, fixture.b.tenantId];
+       |                            ^
+     83|   await prisma.dialerSession.deleteMany({ where: { tenantId: { in: ten…
+     84|   await prisma.campaignContact.deleteMany({ where: { tenantId: { in: t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/28]⎯
+
+ FAIL  tests/tenant/rls.spec.ts [ tests/tenant/rls.spec.ts ]
+Error: RLS_DATABASE_URL and DATABASE_URL name different connections.
+  This suite exists to prove the database refuses cross-tenant access for the
+  role the application actually uses. Pointing it at a different role makes it
+  a decoration.
+    DATABASE_URL:     postgresql://<redacted>@127.0.0.1:5432/master_suite_val_unit?schema=public
+    RLS_DATABASE_URL: postgresql://<redacted>@127.0.0.1:5432/master_suite_val?schema=public&connection_limit=20
+ ❯ tests/tenant/rls.spec.ts:31:9
+     29| }
+     30| if (rlsUrl !== process.env.DATABASE_URL) {
+     31|   throw new Error(
+       |         ^
+     32|     'RLS_DATABASE_URL and DATABASE_URL name different connections.\n' +
+     33|       '  This suite exists to prove the database refuses cross-tenant …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/28]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 25 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/tenant/pooling.spec.ts > what would not be safe > shows that a session-level setting outlives its transaction
+AssertionError: expected +0 to be 7 // Object.is equality
+
+- Expected
++ Received
+
+- 7
++ 0
+
+ ❯ tests/tenant/pooling.spec.ts:135:32
+    133|       // And it reads that tenant's rows without having asked to.
+    134|       const leaked = await client.query('SELECT count(*)::int AS n FRO…
+    135|       expect(leaked.rows[0].n).toBe(tenants[0]!.rows);
+       |                                ^
+    136|     } finally {
+    137|       await client.end();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > searchLeads covers every model it reads
+AssertionError: searchLeads reads prisma.account (module "accounts") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getLead covers every model it reads
+AssertionError: getLead reads prisma.account (module "accounts") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getLeadTimeline covers every model it reads
+AssertionError: getLeadTimeline reads prisma.account (module "accounts") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getCalls covers every model it reads
+AssertionError: getCalls reads prisma.account (module "accounts") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getCallDetail covers every model it reads
+AssertionError: getCallDetail reads prisma.account (module "accounts") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > searchAccounts covers every model it reads
+AssertionError: searchAccounts reads prisma.call (module "calls") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > searchContacts covers every model it reads
+AssertionError: searchContacts reads prisma.call (module "calls") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > searchOpportunities covers every model it reads
+AssertionError: searchOpportunities reads prisma.call (module "calls") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getTasks covers every model it reads
+AssertionError: getTasks reads prisma.call (module "calls") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getFollowUps covers every model it reads
+AssertionError: getFollowUps reads prisma.call (module "calls") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/28]⎯
+
+ FAIL  tests/security/assistant-guardrails.spec.ts > every tool declares what it reads > getCalendar covers every model it reads
+AssertionError: getCalendar reads prisma.lead (module "leads") but neither requires it nor is listed in ALLOWED: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/security/assistant-guardrails.spec.ts:116:9
+    114|         reason,
+    115|         `${name} reads prisma.${model} (module "${owner}") but neither…
+    116|       ).toBeTruthy();
+       |         ^
+    117|     }
+    118|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/28]⎯
+
+ FAIL  tests/security/guarded-prologue.spec.ts > the security prologue > is not re-implemented outside the two routes that must
+AssertionError: expected [ …(2) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "integrations\\meta\\callback\\route.ts",
++   "auth\\logout\\route.ts",
++ ]
+
+ ❯ tests/security/guarded-prologue.spec.ts:46:24
+     44|     // the kernel or resolveGuardedCtx would do, and to add it to EXEM…
+     45|     // reason if neither will.
+     46|     expect(handRolled).toEqual([]);
+       |                        ^
+     47|   });
+     48|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/28]⎯
+
+ FAIL  tests/unit/capture-vault.spec.ts > storing a capture > returns the same relative path shape the punch column already holds
+AssertionError: expected 't-t1\emp-emp1\2026-08\punch-punch1.jp…' to be 't-t1/emp-emp1/2026-08/punch-punch1.jp…' // Object.is equality
+
+Expected: "t-t1/emp-emp1/2026-08/punch-punch1.jpg.enc"
+Received: "t-t1\emp-emp1\2026-08\punch-punch1.jpg.enc"
+
+ ❯ tests/unit/capture-vault.spec.ts:92:22
+     90|     const when = new Date('2026-08-15T09:00:00Z');
+     91|     const relative = await vault.storeCapture('t1', 'emp1', 'punch1', …
+     92|     expect(relative).toBe('t-t1/emp-emp1/2026-08/punch-punch1.jpg.enc'…
+       |                      ^
+     93|   });
+     94|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/28]⎯
+
+ FAIL  tests/unit/capture-vault.spec.ts > reading a capture > still reads a capture written before the move, from the old directory
+TypeError: The "path" argument must be of type string. Received undefined
+ ❯ tests/unit/capture-vault.spec.ts:132:15
+    130|     const relative = await vault.storeCapture('t1', 'emp1', 'legacy', …
+    131|     const [key, value] = [...bucket.entries()][0];
+    132|     mkdirSync(join(legacyRoot, 't-t1', 'emp-emp1', relative!.split('/'…
+       |               ^
+    133|     writeFileSync(join(legacyRoot, relative!), value.body);
+    134|     bucket.delete(key);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/28]⎯
+
+ FAIL  tests/unit/capture-vault.spec.ts > retention > deletes what is past the window and keeps what is not
+TypeError: Cannot set properties of undefined (setting 'lastModified')
+ ❯ tests/unit/capture-vault.spec.ts:148:40
+    146|     const fresh = await vault.storeCapture('t1', 'emp1', 'fresh', FRAM…
+    147|     const stale = await vault.storeCapture('t1', 'emp1', 'stale', FRAM…
+    148|     bucket.get(`attendance/${stale}`)!.lastModified = new Date(Date.no…
+       |                                        ^
+    149|
+    150|     const result = await vault.purgeExpiredCaptures();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/28]⎯
+
+ FAIL  tests/unit/capture-vault.spec.ts > retention > keeps an object the listing could not date
+TypeError: Cannot set properties of undefined (setting 'lastModified')
+ ❯ tests/unit/capture-vault.spec.ts:168:77
+    166|     // one deleted early is evidence that no longer exists.
+    167|     const relative = await vault.storeCapture('t1', 'emp1', 'undated',…
+    168|     (bucket.get(`attendance/${relative}`) as { lastModified: Date | nu…
+       |                                                                             ^
+    169|
+    170|     await vault.purgeExpiredCaptures();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/28]⎯
+
+ FAIL  tests/unit/env-example-parses.spec.ts > .env.example > parses against the schema every process boots with
+ FAIL  tests/unit/env-example-parses.spec.ts > .env.test.example > parses against the schema every process boots with
+ FAIL  tests/unit/env-example-parses.spec.ts > .env.production.example > parses against the schema every process boots with
+ FAIL  tests/unit/env-example-parses.spec.ts > .env.staging.example > parses against the schema every process boots with
+AssertionError: expected [ 'APP_URL: Required', …(7) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "APP_URL: Required",
++   "DATABASE_URL: Required",
++   "REDIS_URL: Required",
++   "S3_ENDPOINT: Required",
++   "S3_REGION: Required",
++   "S3_BUCKET: Required",
++   "S3_ACCESS_KEY_ID: Required",
++   "S3_SECRET_ACCESS_KEY=<redacted>",
++ ]
+
+ ❯ tests/unit/env-example-parses.spec.ts:68:20
+     66|       ? []
+     67|       : result.error.issues.map((issue) => `${issue.path.join('.')}: $…
+     68|     expect(issues).toEqual([]);
+       |                    ^
+     69|   });
+     70| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/28]⎯
+
+ FAIL  tests/unit/env-example-parses.spec.ts > the example files and the schema agree in both directions > declares every variable the schema requires
+AssertionError: expected [ 'APP_URL', 'DATABASE_URL', …(6) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "APP_URL",
++   "DATABASE_URL",
++   "REDIS_URL",
++   "S3_ENDPOINT",
++   "S3_REGION",
++   "S3_BUCKET",
++   "S3_ACCESS_KEY_ID",
++   "S3_SECRET_ACCESS_KEY",
++ ]
+
+ ❯ tests/unit/env-example-parses.spec.ts:81:21
+     79|       .map(([name]) => name)
+     80|       .filter((name) => !declared.has(name));
+     81|     expect(missing).toEqual([]);
+       |                     ^
+     82|   });
+     83|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/28]⎯
+
+ FAIL  tests/unit/observability.spec.ts > alertmanager-entrypoint.sh > never writes the relay password into the config, only into a 0600 file
+AssertionError: expected 438 to be 384 // Object.is equality
+
+- Expected
++ Received
+
+- 384
++ 438
+
+ ❯ tests/unit/observability.spec.ts:136:43
+    134|     expect(readFileSync(secret, 'utf8')).toBe('relay-password');
+    135|     // No trailing newline, and readable by nobody else.
+    136|     expect(statSync(secret).mode & 0o777).toBe(0o600);
+       |                                           ^
+    137|   });
+    138|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/28]⎯
+
+ FAIL  tests/unit/observability.spec.ts > prometheus-entrypoint.sh > writes the token to a 0600 file with no trailing newline
+AssertionError: expected 438 to be 384 // Object.is equality
+
+- Expected
++ Received
+
+- 384
++ 438
+
+ ❯ tests/unit/observability.spec.ts:204:42
+    202|     const token=<redacted>, 'metrics-token');
+    203|     expect(readFileSync(token, 'utf8')).toBe('a-scrape-token');
+    204|     expect(statSync(token).mode & 0o777).toBe(0o600);
+       |                                          ^
+    205|   });
+    206|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/28]⎯
+
+ FAIL  tests/unit/observability.spec.ts > prometheus-entrypoint.sh > leaves the rest of the config byte-identical to the file under review
+AssertionError: expected '# Prometheus server configuration for…' to be '# Prometheus server configuration for…' // Object.is equality
+
+- Expected
++ Received
+
+- # Prometheus server configuration for Master Suite.
++ # Prometheus server configuration for Master Suite.
+- #
++ #
+- # This file is not read directly. `prometheus-entrypoint.sh` renders it into a
++ # This file is not read directly. `prometheus-entrypoint.sh` renders it into a
+- # tmpfs at /run/prom/prometheus.yml, substituting production and writing the
++ # tmpfs at /run/prom/prometheus.yml, substituting production and writing the
+- # scrape credential beside it, then execs the server against the rendered copy.
++ # scrape credential beside it, then execs the server against the rendered copy.
+- # Prometheus does not expand environment variables in its own config, and the
++ # Prometheus does not expand environment variables in its own config, and the
+- # alternative — a second secret file the operator has to create on the VM and
++ # alternative — a second secret file the operator has to create on the VM and
+- # keep in step with .env.production — is one more thing to forget.
++ # keep in step with .env.production — is one more thing to forget.
+- #
++ #
+- # ── Why the scraper lives inside the compose network ────────────────────────
++ # ── Why the scraper lives inside the compose network ────────────────────────
+- #
++ #
+- # infra/Caddyfile answers /api/metrics with 404 from the public interface, on
++ # infra/Caddyfile answers /api/metrics with 404 from the public interface, on
+- # purpose: the endpoint exposes no customer data, but it does expose a complete
++ # purpose: the endpoint exposes no customer data, but it does expose a complete
+- # map of the product's routes and actions, its error rates and its queue names.
++ # map of the product's routes and actions, its error rates and its queue names.
+- # That is free reconnaissance. So the scrape goes to `web:3000` over the bridge
++ # That is free reconnaissance. So the scrape goes to `web:3000` over the bridge
+- # network, which is a route only something already inside the deployment has.
++ # network, which is a route only something already inside the deployment has.
+- #
++ #
+- # The token is still required on that path. `src/app/api/metrics/route.ts`
++ # The token is still required on that path. `src/app/api/metrics/route.ts`
+- # answers 404 without it — including to a caller on the compose network — so a
++ # answers 404 without it — including to a caller on the compose network — so a
+- # scraper with no credential sees a permanently-down target rather than an open
++ # scraper with no credential sees a permanently-down target rather than an open
+- # endpoint. That is the behaviour ApplicationDown fires on, which is why the
++ # endpoint. That is the behaviour ApplicationDown fires on, which is why the
+- # entrypoint refuses to start with METRICS_TOKEN unset instead of letting the
++ # entrypoint refuses to start with METRICS_TOKEN unset instead of letting the
+- # first alert of the deployment's life be its own misconfiguration.
+- 
++ # first alert of the deployment's life be its own misconfiguration.
++
+- global:
++ global:
+-   # The endpoint's collection is deliberately cheap — queue depths are four
++   # The endpoint's collection is deliberately cheap — queue depths are four
+-   # Redis calls per queue and table growth reads the planner's reltuples rather
++   # Redis calls per queue and table growth reads the planner's reltuples rather
+-   # than counting rows — so 30s costs little and keeps `increase(...[5m])` on
++   # than counting rows — so 30s costs little and keeps `increase(...[5m])` on
+-   # ten samples rather than five.
++   # ten samples rather than five.
+-   scrape_interval: 30s
++   scrape_interval: 30s
+-   scrape_timeout: 10s
++   scrape_timeout: 10s
+-   evaluation_interval: 30s
++   evaluation_interval: 30s
+-   external_labels:
++   external_labels:
+-     # Rendered by the entrypoint. Staging and production each run their own
++     # Rendered by the entrypoint. Staging and production each run their own
+-     # Prometheus; this is what keeps their alerts apart if they are ever pointed
++     # Prometheus; this is what keeps their alerts apart if they are ever pointed
+-     # at the same Alertmanager or the same inbox.
++     # at the same Alertmanager or the same inbox.
+-     environment: 'production'
+- 
++     environment: 'production'
++
+- rule_files:
++ rule_files:
+-   # Absolute, because the rendered config lives in /run/prom and a relative path
++   # Absolute, because the rendered config lives in /run/prom and a relative path
+-   # would resolve beside it rather than beside this file.
++   # would resolve beside it rather than beside this file.
+-   - /etc/prometheus/prometheus-alerts.yml
+- 
++   - /etc/prometheus/prometheus-alerts.yml
++
+- alerting:
++ alerting:
+-   alertmanagers:
++   alertmanagers:
+-     - static_configs:
++     - static_configs:
+-         - targets: ['alertmanager:9093']
+- 
++         - targets: ['alertmanager:9093']
++
+- scrape_configs:
++ scrape_configs:
+-   # `job_name` is load-bearing: prometheus-alerts.yml matches
++   # `job_name` is load-bearing: prometheus-alerts.yml matches
+-   # `up{job="master-suite"}` in ApplicationDown, and renaming this job silently
++   # `up{job="master-suite"}` in ApplicationDown, and renaming this job silently
+-   # turns that rule into one that can never fire. scripts/check-observability.mjs
++   # turns that rule into one that can never fire. scripts/check-observability.mjs
+-   # fails the build if the two drift apart.
++   # fails the build if the two drift apart.
+-   - job_name: master-suite
++   - job_name: master-suite
+-     metrics_path: /api/metrics
++     metrics_path: /api/metrics
+-     scheme: http
++     scheme: http
+-     authorization:
++     authorization:
+-       type: Bearer
++       type: Bearer
+-       credentials_file: /run/prom/metrics-token
++       credentials_file: /run/prom/metrics-token
+-     static_configs:
++     static_configs:
+-       - targets: ['web:3000']
+- 
++       - targets: ['web:3000']
++
+-   # Prometheus scraping itself, so that "is the monitoring up" has an answer
++   # Prometheus scraping itself, so that "is the monitoring up" has an answer
+-   # that does not depend on the thing being monitored.
++   # that does not depend on the thing being monitored.
+-   - job_name: prometheus
++   - job_name: prometheus
+-     static_configs:
++     static_configs:
+-       - targets: ['127.0.0.1:9090']
++       - targets: ['127.0.0.1:9090']
+
+
+ ❯ tests/unit/observability.spec.ts:218:22
+    216|     const rendered = readFileSync(join(run.dir, 'prometheus.yml'), 'ut…
+    217|     const source = readFileSync(join(INFRA, 'prometheus.yml'), 'utf8');
+    218|     expect(rendered).toBe(source.replace(/@APP_ENV@/g, 'production'));
+       |                      ^
+    219|   });
+    220| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/28]⎯
+
+
+ Test Files  8 failed | 144 passed (152)
+      Tests  25 failed | 1849 passed | 26 skipped (1900)
+   Start at  11:12:16
+   Duration  177.94s (transform 18.01s, setup 0ms, import 228.51s, tests 797.69s, environment 85ms)
+

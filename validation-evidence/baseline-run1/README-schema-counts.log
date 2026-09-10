@@ -1,0 +1,3 @@
+[schema-stats] README.md disagrees with prisma/schema.prisma.
+  schema says: 201 models, 105 enums, 435 indexes, 104 uniques
+  Run: node scripts/schema-stats.mjs --write

@@ -1,0 +1,263 @@
+# Decisions required
+
+Business decisions the blueprint cannot make for you. Each carries a **PROPOSED —
+NOT APPROVED** default so work is not blocked while it is settled, the consequence
+of accepting that default, and the work packages it gates.
+
+**Nothing in this file is company policy.** A proposal here is a starting point for
+a conversation, not a rule the product has adopted.
+
+Most of these block one package, not the plan. Only D-1 and D-8 block packages
+outright; the rest have a workable default.
+
+---
+
+## D-1 · Customer identity model
+
+**Question.** When the same person enquires twice, are they one customer with two
+enquiries, or two independent leads?
+
+**Why it matters.** `Lead` currently carries both the person and the enquiry.
+`Contact` and `Account` exist alongside it, and `Lead.convertedContactId` /
+`Lead.accountId` link them, but nothing settles which is the customer of record.
+Without a decision, "who owns this customer" has no stable answer for a returning
+enquirer, and ownership, history and reporting all fragment.
+
+**Options.**
+
+|       | Approach                                                           | Cost                                            | Consequence                                                                |
+| ----- | ------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| **A** | Promote `Contact` to customer of record; every `Lead` links to one | Moderate — backfill links, dedupe existing rows | Reuses an existing model; `Contact` currently has no enquiry-side history  |
+| **B** | New `Customer` entity above both                                   | Larger — new model, backfill, two link columns  | Clean separation of identity / enquiry / opportunity / booking, as §A asks |
+| **C** | Leave as-is; treat repeat enquiries as separate leads              | None                                            | Returning customers stay invisible as customers; §A's objective is not met |
+
+**PROPOSED — NOT APPROVED:** **Option B**, deferred until Track 1 is stable.
+_Consequence:_ the largest migration in the plan, and it should not run while the
+assignment and commitment work is still moving.
+
+**Gates:** P2-4. **Does not gate Track 0 or Track 1.**
+
+---
+
+## D-2 · Lead ownership, reassignment rights, and the unassigned queue
+
+**Questions.** Who may reassign another agent's lead? Who owns the `UNASSIGNED`
+queue — a named manager, a team, or a rota? Who receives an exiting agent's book?
+
+**PROPOSED — NOT APPROVED:**
+
+- Reassignment requires `leads:ASSIGN` at TEAM scope or above, always with a
+  reason, always recorded. _(This matches the existing permission; no change.)_
+- The `UNASSIGNED` queue is owned by the team manager of the routing rule that
+  failed to place the enquiry; where there is none, the sales director.
+- Handover on exit goes to the exiting agent's manager, who redistributes.
+
+_Consequence:_ on a flat team with no manager, everything lands on the director. If
+that is wrong for your structure, say so — it changes P1-1's queue model.
+
+**Gates:** P1-1, P2-3.
+
+---
+
+## D-3 · First-response and escalation timings
+
+**Questions.** How long may an enquiry wait for first contact? How long may a
+commitment be overdue before it escalates? Does this vary by source or by hour?
+
+**Why it matters.** `LeadStage.slaMinutes` and `Lead.slaDueAt` already exist, so the
+mechanism is there; only the numbers are missing.
+
+**PROPOSED — NOT APPROVED:**
+
+- First response: **15 minutes** for portal and paid-advertising enquiries during
+  working hours; **4 hours** otherwise.
+- Commitment escalation: overdue by **1 working day**.
+- Unassigned review deadline: **30 minutes** during working hours.
+
+_Consequence:_ aggressive first-response targets generate breach volume that the
+manager queue must be able to absorb. If the team is small, start looser and tighten
+— the numbers are configuration, not code.
+
+**Also required:** the working-hours calendar and workspace timezone these depend
+on. Company timezone exists in settings; whether the queues honour it is an open
+**VERIFY** item.
+
+**Gates:** P1-1 (deadline), P1-5 (escalation). Default lets both proceed.
+
+---
+
+## D-4 · Contact-attempt policy
+
+**Questions.** How many `NO_ANSWER` attempts before an enquiry is treated as
+uncontactable? What is the retry cadence? What happens when an agent's quota is
+exhausted but enquiries keep arriving?
+
+**PROPOSED — NOT APPROVED:**
+
+- **5** attempts across **7 days**, then a manager exception — not automatic
+  closure, because a dead lead and a badly-timed one look identical from attempt
+  counts alone.
+- Quota exhausted with enquiries arriving → they enter `UNASSIGNED` rather than
+  overflowing onto an over-quota agent.
+
+_Consequence:_ the second half means inflow above capacity becomes visible as a
+queue rather than being absorbed silently. That is the intent, but it will look like
+a new problem on day one when it is actually an existing one becoming visible.
+
+**Gates:** P0-4 (overflow behaviour), P1-4 (attempt ceiling).
+
+---
+
+## D-5 · Which leave types block assignment
+
+**Question.** Does every approved leave type make an agent ineligible, or only some?
+
+**PROPOSED — NOT APPROVED:** all approved leave with `paid` or unpaid full-day
+coverage blocks assignment for its date range; part-day leave does not.
+
+_Consequence:_ an agent on half-day leave still receives a full day's allocation. If
+that is wrong, availability needs to be fractional, which is a larger change.
+
+**Gates:** P1-2.
+
+---
+
+## D-6 · `FollowUpTask` — migrate or project
+
+**Question.** Are `FollowUpTask` rows migrated into `Task`, or does `FollowUpTask`
+remain as a read projection?
+
+**PROPOSED — NOT APPROVED:** migrate, with a dry-run count first and a reversible id
+mapping.
+
+_Consequence:_ one store, one reminder path, one definition of overdue — the point
+of P1-3. Keeping both is cheaper now and re-creates the problem later.
+
+**Gates:** P1-3.
+
+---
+
+## D-7 · The sales stage model
+
+**Question.** What are the stages, and which fields are required to leave each?
+
+**Why it matters.** `LeadStage` already supports `requiredFields`,
+`allowedNextStages` and `slaMinutes`, so this is configuration, not code.
+
+**PROPOSED — NOT APPROVED:** `New → Contacted → Qualified → Viewing → Negotiation →
+Booked → Won | Lost`, with budget, location and property type required to leave
+`Qualified`.
+
+_Consequence:_ required fields at `Qualified` improve data quality and slow agents
+down. Both effects are real; the balance is yours.
+
+**Gates:** P1-4. Default lets it proceed.
+
+---
+
+## D-8 · Collection and commission rules — **blocking**
+
+**Questions.**
+
+1. Who may certify that money arrived — the selling agent, or finance only?
+2. Does partial receipt pro-rate commission eligibility, or block it entirely?
+3. Is the trigger the buyer paying the developer, or the developer paying the
+   agency? These are different payments, from different payers, on different
+   schedules, and today one flag conflates them.
+
+**Why it is blocking.** The current system cannot express _any_ answer, because it
+records no amount and no separate authority — only `Booking.collectedAt`. This is a
+representational gap, not a configuration gap. Until (2) and (3) are answered, the
+eligibility half of P1-6 cannot be specified, let alone built.
+
+**PROPOSED — NOT APPROVED:**
+
+1. Finance authority only, with the maker-checker rule `payouts.ts:168,174` already
+   implements — the booking's creator cannot certify its collection.
+2. Pro-rate: commission eligible in proportion to the agency fee actually received.
+3. The trigger is the **agency** receiving its fee, because that is what commission
+   is paid from.
+
+_Consequence:_ (2) makes commission a running calculation rather than a switch,
+which is more honest and more work. (1) means a solo brokerage where the agent is
+also finance must grant both roles deliberately.
+
+**Explicitly not proposed:** any rule making collection change a unit's status.
+Booking confirmation, property completion and agency collection stay three separate
+events.
+
+**Gates:** P1-6 (eligibility only — the receipt record and UI can proceed).
+
+---
+
+## D-9 · Role catalogue gaps
+
+**Question.** The seeded catalogue grants `bookings:VIEW/CREATE/EDIT/DELETE` **only**
+to `super_admin` and `org_admin`. No sales role — not `sales_director`, not
+`branch_manager`, not `sales_rep` — can see a booking. Is that intended?
+
+**PROPOSED — NOT APPROVED:** it is a provisioning gap. `sales_director` and
+`branch_manager` should hold `bookings:VIEW` at their scope; `sales_rep` should hold
+`bookings:VIEW` at OWN.
+
+_Consequence:_ granting `bookings:EDIT` more widely is what makes the missing finance
+separation (D-8) live rather than theoretical. Do P0-3 and the D-8 answer first.
+
+Related: `finance_admin` lacks `employee:VIEW`, which is why it cannot approve
+payroll. P0-2 fixes the route; whether the role should also hold `employee:VIEW` is
+a separate question.
+
+**Gates:** P1-6 visibility.
+
+---
+
+## D-10 · Activity verification and monitoring policy
+
+**Question.** What counts as evidence that an agent worked a lead? How much
+monitoring is acceptable?
+
+**PROPOSED — NOT APPROVED:** business outcomes only — contact attempts with
+outcomes, viewings with feedback, commitments met. **Not** login duration, screen
+time, or raw call counts.
+
+_Consequence:_ managers lose a familiar number and gain harder-to-game ones. Site
+visits already carry geofenced punches and plausibility flags
+(`SiteVisit.locationSuspect`); those are verification of a specific claim, not
+general surveillance, and the blueprint keeps them in that narrower role.
+
+**Gates:** P1-5, P2-7.
+
+---
+
+## D-11 · Market, focus, and scale
+
+**Questions.** Which market and currency? Brokerage, developer sales, or both?
+Team structure and expected scale? Which integration channels are enabled?
+
+**Why it matters.** The code defaults to AED and a UAE-shaped HR model (WPS,
+labour cards, Emirates ID). Multi-currency reporting is deliberately one-currency
+per report with the minority excluded and named. Scale affects whether the
+`UNASSIGNED` queue is a rota or a person.
+
+**PROPOSED — NOT APPROVED:** single market, AED, brokerage-first, teams of 5–15
+under a manager, with Meta lead ads and web forms enabled and telephony/WhatsApp
+behind per-workspace configuration.
+
+_Consequence:_ if a second currency is genuinely in scope, the owner reporting
+package (P2-2) grows substantially, because one-currency-per-report stops being
+sufficient.
+
+**Gates:** nothing directly; shapes P2-2 and the HR packages.
+
+---
+
+## How to use this file
+
+1. Answer **D-8** and **D-1** first — they are the two that block work outright.
+2. Accept or amend the defaults for D-2 through D-7; each has a workable default,
+   so Track 0 and most of Track 1 can start immediately.
+3. D-9 through D-11 can follow, but D-9 should be settled before booking
+   permissions are widened.
+
+Track 0 (security and reliability) depends on **none** of these and can begin as
+soon as implementation is approved.

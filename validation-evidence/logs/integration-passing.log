@@ -1,0 +1,15 @@
+
+> master-app@0.1.0 test:server
+> vitest run --config vitest.server.mts
+
+
+ RUN  v4.1.10 C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web
+
+(node:860) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Start at  11:42:40
+   Duration  24.95s (transform 106ms, setup 0ms, import 1.04s, tests 18.21s, environment 0ms)
+

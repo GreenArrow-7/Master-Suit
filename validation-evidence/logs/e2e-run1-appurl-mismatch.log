@@ -1,0 +1,213 @@
+
+Running 43 tests using 1 worker
+
+  x   1 [chromium] › tests\e2e\acceptance.spec.ts:69:7 › Acceptance: one workspace, two modules, isolated from the next › a workspace runs both modules against one tenant, and cannot see another (11.3s)
+  ok  2 [chromium] › tests\e2e\auth-mfa.spec.ts:47:7 › Sign-in and two-factor enrolment › a wrong password is refused, and says so without naming the account (927ms)
+  ok  3 [chromium] › tests\e2e\auth-mfa.spec.ts:64:7 › Sign-in and two-factor enrolment › an account enrols in two-factor and the secret is shown once (2.3s)
+  ok  4 [chromium] › tests\e2e\auth-mfa.spec.ts:102:7 › Sign-in and two-factor enrolment › the next sign-in demands a code, refuses a wrong one and accepts a real one (1.8s)
+  ok  5 [chromium] › tests\e2e\auth-mfa.spec.ts:123:7 › Sign-in and two-factor enrolment › a recovery code signs in when the authenticator is gone, and only once (3.6s)
+  ok  6 [chromium] › tests\e2e\crm-lifecycle.spec.ts:68:7 › CRM lifecycle › a lead is created through the form and appears in the list (3.5s)
+  ok  7 [chromium] › tests\e2e\crm-lifecycle.spec.ts:94:7 › CRM lifecycle › an activity, a task and a follow-up attach to the lead (3.5s)
+  ok  8 [chromium] › tests\e2e\crm-lifecycle.spec.ts:122:7 › CRM lifecycle › the lead becomes an opportunity carrying its value into the pipeline (2.8s)
+  ok  9 [chromium] › tests\e2e\crm-lifecycle.spec.ts:143:7 › CRM lifecycle › the opportunity closes won and leaves the open pipeline (1.9s)
+  ok 10 [chromium] › tests\e2e\csp.spec.ts:43:7 › Content-Security-Policy in a browser › the sign-in page carries a policy and still runs its scripts (524ms)
+  ok 11 [chromium] › tests\e2e\csp.spec.ts:70:7 › Content-Security-Policy in a browser › hydration works: a client component responds to input (630ms)
+  ok 12 [chromium] › tests\e2e\csp.spec.ts:88:7 › Content-Security-Policy in a browser › an authenticated workspace page loads its chunks and posts a form (3.9s)
+  ok 13 [chromium] › tests\e2e\csp.spec.ts:99:7 › Content-Security-Policy in a browser › dynamic navigation between routes pulls chunks without refusal (1.7s)
+  ok 14 [chromium] › tests\e2e\entity-navigation.spec.ts:120:7 › Clicking a record opens that record › a record opens from the bell, and the shell agrees on the module (8.9s)
+  ok 15 [chromium] › tests\e2e\every-route.spec.ts:184:7 › Every route renders for an entitled viewer › the Sales module opens on every route (20.1s)
+  ok 16 [chromium] › tests\e2e\every-route.spec.ts:193:7 › Every route renders for an entitled viewer › the People module opens on every route (17.1s)
+  ok 17 [chromium] › tests\e2e\every-route.spec.ts:202:7 › Every route renders for an entitled viewer › the workspace-level screens open (9.7s)
+  ok 18 [chromium] › tests\e2e\every-route.spec.ts:211:7 › Every route renders for an entitled viewer › the platform console opens on every route (5.0s)
+  x  19 [chromium] › tests\e2e\hr-modules.spec.ts:127:7 › Each HR module opens and does its job › a fresh workspace can run its people module end to end (11.5s)
+  ok 20 [chromium] › tests\e2e\invitation.spec.ts:50:7 › Invitation acceptance › an administrator sends an invitation and it produces exactly one email (2.5s)
+  x  21 [chromium] › tests\e2e\invitation.spec.ts:74:7 › Invitation acceptance › the invitee sets a password through the link and lands in the workspace (2.6s)
+  -  22 [chromium] › tests\e2e\invitation.spec.ts:89:7 › Invitation acceptance › the new account can sign in, and the link cannot be used twice
+  ok 23 [chromium] › tests\e2e\mobile.spec.ts:55:7 › Mobile viewport › no signed-in page scrolls sideways at 375px (6.8s)
+  ok 24 [chromium] › tests\e2e\mobile.spec.ts:107:7 › Mobile viewport › the sidebar is a drawer: hidden until the button opens it (3.2s)
+  ok 25 [chromium] › tests\e2e\mobile.spec.ts:123:7 › Mobile viewport › an HR table renders as labelled blocks, not a sideways scroll (2.4s)
+  ok 26 [chromium] › tests\e2e\modules.spec.ts:55:7 › Each module opens and does its job › a fresh workspace can reach and use every sales module (18.3s)
+  ok 27 [chromium] › tests\e2e\password-reset.spec.ts:47:7 › Password reset › an unknown address gets the same answer as a known one (805ms)
+  ok 28 [chromium] › tests\e2e\password-reset.spec.ts:59:7 › Password reset › a real address receives a link (801ms)
+  x  29 [chromium] › tests\e2e\password-reset.spec.ts:73:7 › Password reset › the link sets a new password, and the old one stops working (2.7s)
+  -  30 [chromium] › tests\e2e\password-reset.spec.ts:97:7 › Password reset › the link cannot be redeemed a second time
+  ok 31 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:46:7 › Platform workspace editing › the owner renames a workspace and the change survives a reload (3.4s)
+  ok 32 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:68:7 › Platform workspace editing › the rename reaches the workspace itself (2.3s)
+  ok 33 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:75:7 › Platform workspace editing › the owner takes write access from the console, and hands it back (2.4s)
+  ok 34 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:110:7 › Platform workspace editing › a workspace administrator cannot reach the platform area (1.9s)
+  ok 35 [chromium] › tests\e2e\request-budget.spec.ts:92:7 › Request budget: the five hot navigations › each navigation is soft, duplicate-free and under budget (13.6s)
+  ok 36 [chromium] › tests\e2e\ui-states.spec.ts:56:7 › Refusal, empty and search states › a list with nothing in it explains itself instead of showing a bare header (1.7s)
+  ok 37 [chromium] › tests\e2e\ui-states.spec.ts:66:7 › Refusal, empty and search states › the top bar search reaches the list and says when nothing matched (3.6s)
+  ok 38 [chromium] › tests\e2e\ui-states.spec.ts:80:7 › Refusal, empty and search states › an empty search does not navigate (2.2s)
+  x  39 [chromium] › tests\e2e\ui-states.spec.ts:92:7 › Refusal, empty and search states › a refused page says it is a permission, not a fault (4.6s)
+  -  40 [chromium] › tests\e2e\ui-states.spec.ts:109:7 › Refusal, empty and search states › P2-1: the dashboard hides panels the viewer may not see
+  -  41 [chromium] › tests\e2e\ui-states.spec.ts:126:7 › Refusal, empty and search states › P2-1: an administrator does see them
+  -  42 [chromium] › tests\e2e\ui-states.spec.ts:135:7 › Refusal, empty and search states › 5.3-4: the sidebar omits Administration links the viewer cannot open
+  -  43 [chromium] › tests\e2e\ui-states.spec.ts:149:7 › Refusal, empty and search states › the workspace navigation survives a refusal
+[teardown] restored the platform owner's authenticator (owner@masterapp.local).
+[teardown] removed 14 workspace(s) and 14 account(s) tagged e2emtv8e15p.
+
+
+  1) [chromium] › tests\e2e\acceptance.spec.ts:69:7 › Acceptance: one workspace, two modules, isolated from the next › a workspace runs both modules against one tenant, and cannot see another › 9. the invitation is redeemed and the employee then exists 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/accept-invite?token=wb2nTTIWeaTg9wZ0bKD9A--nIIUg7iZm28WVpp8oKkc
+    Call log:
+      - navigating to "http://localhost:3000/accept-invite?token=wb2nTTIWeaTg9wZ0bKD9A--nIIUg7iZm28WVpp8oKkc", waiting until "load"
+
+
+      122 |       const mail = await lastMailTo(page.request, employeeEmail);
+      123 |       await logout(page);
+    > 124 |       await page.goto(linkFrom(mail.body, '/accept-invite'));
+          |                  ^
+      125 |       await page.getByLabel('Your name').fill(employeeName);
+      126 |       await page.getByLabel('Password', { exact: true }).fill(employeePassword);
+      127 |       await page.getByLabel('Confirm').fill(employeePassword);
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\acceptance.spec.ts:124:18
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\acceptance.spec.ts:121:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\acceptance-Acceptance-one--e4c70-nant-and-cannot-see-another-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\acceptance-Acceptance-one--e4c70-nant-and-cannot-see-another-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\acceptance-Acceptance-one--e4c70-nant-and-cannot-see-another-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\acceptance-Acceptance-one--e4c70-nant-and-cannot-see-another-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › tests\e2e\hr-modules.spec.ts:127:7 › Each HR module opens and does its job › a fresh workspace can run its people module end to end › somebody is hired, and their record exists once they accept 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/accept-invite?token=CWXafOgpqs00PB7VrB4-picvRjk-Axc5lHq8ZFb5BH0
+    Call log:
+      - navigating to "http://localhost:3000/accept-invite?token=CWXafOgpqs00PB7VrB4-picvRjk-Axc5lHq8ZFb5BH0", waiting until "load"
+
+
+      107 |     const mail = await lastMailTo(page.request, who.email);
+      108 |     await logout(page);
+    > 109 |     await page.goto(linkFrom(mail.body, '/accept-invite'));
+          |                ^
+      110 |     await page.getByLabel('Your name').fill(who.name);
+      111 |     await page.getByLabel('Password', { exact: true }).fill(who.password);
+      112 |     await page.getByLabel('Confirm').fill(who.password);
+        at redeem (C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\hr-modules.spec.ts:109:16)
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\hr-modules.spec.ts:213:7
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\hr-modules.spec.ts:138:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\hr-modules-Each-HR-module--de9e6-ts-people-module-end-to-end-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\hr-modules-Each-HR-module--de9e6-ts-people-module-end-to-end-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\hr-modules-Each-HR-module--de9e6-ts-people-module-end-to-end-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\hr-modules-Each-HR-module--de9e6-ts-people-module-end-to-end-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › tests\e2e\invitation.spec.ts:74:7 › Invitation acceptance › the invitee sets a password through the link and lands in the workspace 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/accept-invite?token=ND5DAOPKc3GAx9Ej1bmJfgrKdDkiZTfFJiX-KdkMbFE
+    Call log:
+      - navigating to "http://localhost:3000/accept-invite?token=ND5DAOPKc3GAx9Ej1bmJfgrKdDkiZTfFJiX-KdkMbFE", waiting until "load"
+
+
+      74 |   test('the invitee sets a password through the link and lands in the workspace', async ({ page }) => {
+      75 |     await logout(page);
+    > 76 |     await page.goto(inviteLink);
+         |                ^
+      77 |
+      78 |     await expect(page.getByText(workspace.displayName)).toBeVisible({ timeout: 60_000 });
+      79 |
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\invitation.spec.ts:76:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\invitation-Invitation-acce-32ae8--and-lands-in-the-workspace-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\invitation-Invitation-acce-32ae8--and-lands-in-the-workspace-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\invitation-Invitation-acce-32ae8--and-lands-in-the-workspace-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\invitation-Invitation-acce-32ae8--and-lands-in-the-workspace-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › tests\e2e\password-reset.spec.ts:73:7 › Password reset › the link sets a new password, and the old one stops working 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/reset-password?token=kCkkGF2_jrLcKaQ_U03ldoUM5yIlpuGPC_0CQLMZBEk
+    Call log:
+      - navigating to "http://localhost:3000/reset-password?token=kCkkGF2_jrLcKaQ_U03ldoUM5yIlpuGPC_0CQLMZBEk", waiting until "load"
+
+
+      72 |
+      73 |   test('the link sets a new password, and the old one stops working', async ({ page }) => {
+    > 74 |     await page.goto(resetLink);
+         |                ^
+      75 |     await page.getByLabel('New password', { exact: true }).fill(newPassword);
+      76 |     await page.getByLabel('Confirm new password').fill(newPassword);
+      77 |     await page.getByRole('button', { name: 'Change password' }).click();
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\password-reset.spec.ts:74:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\password-reset-Password-re-08b3e-d-the-old-one-stops-working-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\password-reset-Password-re-08b3e-d-the-old-one-stops-working-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\password-reset-Password-re-08b3e-d-the-old-one-stops-working-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\password-reset-Password-re-08b3e-d-the-old-one-stops-working-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › tests\e2e\ui-states.spec.ts:92:7 › Refusal, empty and search states › a refused page says it is a permission, not a fault 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/accept-invite?token=CMaDlDjwVmED0lDymEbcdEOXbwURZW7NdDi9Vtlw4rI
+    Call log:
+      - navigating to "http://localhost:3000/accept-invite?token=CMaDlDjwVmED0lDymEbcdEOXbwURZW7NdDi9Vtlw4rI", waiting until "load"
+
+
+      179 |   const mail = await lastMailTo(page.request, email);
+      180 |   await logout(page);
+    > 181 |   await page.goto(linkFrom(mail.body, '/accept-invite'));
+          |              ^
+      182 |   await page.getByLabel('Your name').fill(`Narrow Member ${run}`);
+      183 |   await page.getByLabel('Password', { exact: true }).fill(password);
+      184 |   await page.getByLabel('Confirm').fill(password);
+        at onboardNarrowMember (C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\ui-states.spec.ts:181:14)
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\ui-states.spec.ts:93:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\ui-states-Refusal-empty-an-426c4-is-a-permission-not-a-fault-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\ui-states-Refusal-empty-an-426c4-is-a-permission-not-a-fault-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\ui-states-Refusal-empty-an-426c4-is-a-permission-not-a-fault-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\ui-states-Refusal-empty-an-426c4-is-a-permission-not-a-fault-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    [chromium] › tests\e2e\acceptance.spec.ts:69:7 › Acceptance: one workspace, two modules, isolated from the next › a workspace runs both modules against one tenant, and cannot see another 
+    [chromium] › tests\e2e\hr-modules.spec.ts:127:7 › Each HR module opens and does its job › a fresh workspace can run its people module end to end 
+    [chromium] › tests\e2e\invitation.spec.ts:74:7 › Invitation acceptance › the invitee sets a password through the link and lands in the workspace 
+    [chromium] › tests\e2e\password-reset.spec.ts:73:7 › Password reset › the link sets a new password, and the old one stops working 
+    [chromium] › tests\e2e\ui-states.spec.ts:92:7 › Refusal, empty and search states › a refused page says it is a permission, not a fault 
+  6 did not run
+  32 passed (4.0m)
+EXIT=1 DURATION=242s

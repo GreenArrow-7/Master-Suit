@@ -1,0 +1,9 @@
+
+> master-app@0.1.0 check:redis-auth
+> node scripts/check-redis-auth.mjs
+
+redis auth:
+
+  ✗ no Compose file defines a redis service — the --requirepass check found nothing to assert on.
+
+1 problem(s).

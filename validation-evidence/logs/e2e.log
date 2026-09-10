@@ -1,0 +1,94 @@
+
+Running 43 tests using 1 worker
+
+  ok  1 [chromium] › tests\e2e\acceptance.spec.ts:69:7 › Acceptance: one workspace, two modules, isolated from the next › a workspace runs both modules against one tenant, and cannot see another (25.5s)
+  ok  2 [chromium] › tests\e2e\auth-mfa.spec.ts:47:7 › Sign-in and two-factor enrolment › a wrong password is refused, and says so without naming the account (835ms)
+  ok  3 [chromium] › tests\e2e\auth-mfa.spec.ts:64:7 › Sign-in and two-factor enrolment › an account enrols in two-factor and the secret is shown once (2.5s)
+  ok  4 [chromium] › tests\e2e\auth-mfa.spec.ts:102:7 › Sign-in and two-factor enrolment › the next sign-in demands a code, refuses a wrong one and accepts a real one (2.1s)
+  ok  5 [chromium] › tests\e2e\auth-mfa.spec.ts:123:7 › Sign-in and two-factor enrolment › a recovery code signs in when the authenticator is gone, and only once (3.2s)
+  ok  6 [chromium] › tests\e2e\crm-lifecycle.spec.ts:68:7 › CRM lifecycle › a lead is created through the form and appears in the list (4.2s)
+  ok  7 [chromium] › tests\e2e\crm-lifecycle.spec.ts:94:7 › CRM lifecycle › an activity, a task and a follow-up attach to the lead (3.9s)
+  ok  8 [chromium] › tests\e2e\crm-lifecycle.spec.ts:122:7 › CRM lifecycle › the lead becomes an opportunity carrying its value into the pipeline (3.3s)
+  ok  9 [chromium] › tests\e2e\crm-lifecycle.spec.ts:143:7 › CRM lifecycle › the opportunity closes won and leaves the open pipeline (2.8s)
+  ok 10 [chromium] › tests\e2e\csp.spec.ts:43:7 › Content-Security-Policy in a browser › the sign-in page carries a policy and still runs its scripts (660ms)
+  ok 11 [chromium] › tests\e2e\csp.spec.ts:70:7 › Content-Security-Policy in a browser › hydration works: a client component responds to input (804ms)
+  ok 12 [chromium] › tests\e2e\csp.spec.ts:88:7 › Content-Security-Policy in a browser › an authenticated workspace page loads its chunks and posts a form (3.7s)
+  ok 13 [chromium] › tests\e2e\csp.spec.ts:99:7 › Content-Security-Policy in a browser › dynamic navigation between routes pulls chunks without refusal (1.8s)
+  ok 14 [chromium] › tests\e2e\entity-navigation.spec.ts:120:7 › Clicking a record opens that record › a record opens from the bell, and the shell agrees on the module (9.2s)
+  ok 15 [chromium] › tests\e2e\every-route.spec.ts:184:7 › Every route renders for an entitled viewer › the Sales module opens on every route (21.9s)
+  ok 16 [chromium] › tests\e2e\every-route.spec.ts:193:7 › Every route renders for an entitled viewer › the People module opens on every route (19.6s)
+  ok 17 [chromium] › tests\e2e\every-route.spec.ts:202:7 › Every route renders for an entitled viewer › the workspace-level screens open (8.1s)
+  ok 18 [chromium] › tests\e2e\every-route.spec.ts:211:7 › Every route renders for an entitled viewer › the platform console opens on every route (4.9s)
+  ok 19 [chromium] › tests\e2e\hr-modules.spec.ts:127:7 › Each HR module opens and does its job › a fresh workspace can run its people module end to end (25.7s)
+  ok 20 [chromium] › tests\e2e\invitation.spec.ts:50:7 › Invitation acceptance › an administrator sends an invitation and it produces exactly one email (2.0s)
+  ok 21 [chromium] › tests\e2e\invitation.spec.ts:74:7 › Invitation acceptance › the invitee sets a password through the link and lands in the workspace (879ms)
+  ok 22 [chromium] › tests\e2e\invitation.spec.ts:89:7 › Invitation acceptance › the new account can sign in, and the link cannot be used twice (1.9s)
+  ok 23 [chromium] › tests\e2e\mobile.spec.ts:55:7 › Mobile viewport › no signed-in page scrolls sideways at 375px (5.8s)
+  ok 24 [chromium] › tests\e2e\mobile.spec.ts:107:7 › Mobile viewport › the sidebar is a drawer: hidden until the button opens it (2.2s)
+  ok 25 [chromium] › tests\e2e\mobile.spec.ts:123:7 › Mobile viewport › an HR table renders as labelled blocks, not a sideways scroll (1.9s)
+  x  26 [chromium] › tests\e2e\modules.spec.ts:55:7 › Each module opens and does its job › a fresh workspace can reach and use every sales module (35.4s)
+  ok 27 [chromium] › tests\e2e\password-reset.spec.ts:47:7 › Password reset › an unknown address gets the same answer as a known one (983ms)
+  ok 28 [chromium] › tests\e2e\password-reset.spec.ts:59:7 › Password reset › a real address receives a link (931ms)
+  ok 29 [chromium] › tests\e2e\password-reset.spec.ts:73:7 › Password reset › the link sets a new password, and the old one stops working (4.1s)
+  ok 30 [chromium] › tests\e2e\password-reset.spec.ts:97:7 › Password reset › the link cannot be redeemed a second time (999ms)
+  ok 31 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:46:7 › Platform workspace editing › the owner renames a workspace and the change survives a reload (2.9s)
+  ok 32 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:68:7 › Platform workspace editing › the rename reaches the workspace itself (2.5s)
+  ok 33 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:75:7 › Platform workspace editing › the owner takes write access from the console, and hands it back (2.5s)
+  ok 34 [chromium] › tests\e2e\platform-workspace-edit.spec.ts:110:7 › Platform workspace editing › a workspace administrator cannot reach the platform area (2.5s)
+  ok 35 [chromium] › tests\e2e\request-budget.spec.ts:92:7 › Request budget: the five hot navigations › each navigation is soft, duplicate-free and under budget (13.5s)
+  ok 36 [chromium] › tests\e2e\ui-states.spec.ts:56:7 › Refusal, empty and search states › a list with nothing in it explains itself instead of showing a bare header (2.0s)
+  ok 37 [chromium] › tests\e2e\ui-states.spec.ts:66:7 › Refusal, empty and search states › the top bar search reaches the list and says when nothing matched (3.1s)
+  ok 38 [chromium] › tests\e2e\ui-states.spec.ts:80:7 › Refusal, empty and search states › an empty search does not navigate (2.2s)
+  ok 39 [chromium] › tests\e2e\ui-states.spec.ts:92:7 › Refusal, empty and search states › a refused page says it is a permission, not a fault (4.1s)
+  ok 40 [chromium] › tests\e2e\ui-states.spec.ts:109:7 › Refusal, empty and search states › P2-1: the dashboard hides panels the viewer may not see (1.8s)
+  ok 41 [chromium] › tests\e2e\ui-states.spec.ts:126:7 › Refusal, empty and search states › P2-1: an administrator does see them (2.1s)
+  ok 42 [chromium] › tests\e2e\ui-states.spec.ts:135:7 › Refusal, empty and search states › 5.3-4: the sidebar omits Administration links the viewer cannot open (1.8s)
+  ok 43 [chromium] › tests\e2e\ui-states.spec.ts:149:7 › Refusal, empty and search states › the workspace navigation survives a refusal (1.8s)
+[teardown] restored the platform owner's authenticator (owner@masterapp.local).
+[teardown] removed 15 workspace(s) and 20 account(s) tagged e2emtv8kyob.
+
+
+  1) [chromium] › tests\e2e\modules.spec.ts:55:7 › Each module opens and does its job › a fresh workspace can reach and use every sales module › M11 — somebody posts to the feed and reacts to it 
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByRole('button', { name: 'celebrate' }).first()
+    Expected: "true"
+    Received: "false"
+    Timeout:  20000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 20000ms
+      - waiting for getByRole('button', { name: 'celebrate' }).first()
+        43 × locator resolved to <button type="button" aria-pressed="false" aria-label="celebrate" class="lf-btn lf-btn--secondary lf-btn--sm">🎉 0</button>
+           - unexpected value "false"
+
+
+      184 |       ]);
+      185 |       expect(reacted.status(), await reacted.text()).toBeLessThan(300);
+    > 186 |       await expect(page.getByRole('button', { name: 'celebrate' }).first()).toHaveAttribute('aria-pressed', 'true');
+          |                                                                             ^
+      187 |     });
+      188 |   });
+      189 | });
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\modules.spec.ts:186:77
+        at C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\e2e\modules.spec.ts:166:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\modules-Each-module-opens--f9c7a--and-use-every-sales-module-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\modules-Each-module-opens--f9c7a--and-use-every-sales-module-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\modules-Each-module-opens--f9c7a--and-use-every-sales-module-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\modules-Each-module-opens--f9c7a--and-use-every-sales-module-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests\e2e\modules.spec.ts:55:7 › Each module opens and does its job › a fresh workspace can reach and use every sales module 
+  42 passed (4.7m)
+EXIT=1 DURATION=287s
