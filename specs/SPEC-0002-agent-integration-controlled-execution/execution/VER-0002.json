@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0002",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0002",
+  "taskIds": ["TASK-011"],
+  "tests": [
+    { "id": "ST-002", "outcome": "PASS", "note": "No dynamic execution construct; child_process confined to the reviewed set" },
+    { "id": "ST-009", "outcome": "PASS", "note": "Every reviewed caller verified for fixed-argument execution, disabled shell, literal executable and ref validation" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "56 of 56 pass; suite grew from 54 by the two ST-009 tests" },
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "36 of 36 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" },
+    { "command": "synthetic predicate probe, 12 cases", "exitCode": 0, "note": "11 hostile patterns caught; 1 benign RegExp.exec correctly ignored" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "Both required tests ran and passed, and no command in the run returned non-zero.",
+    "The allowlist now authorises by verified property, not by file name. It ends stricter than it began.",
+    "One correction during the work: the universal exec check initially matched RegExp.prototype.exec and was narrowed to child_process exec only. Made precise, not removed.",
+    "Residual: the checks are textual rather than semantic, and git is still resolved through PATH. Both recorded in the security review."
+  ]
+}

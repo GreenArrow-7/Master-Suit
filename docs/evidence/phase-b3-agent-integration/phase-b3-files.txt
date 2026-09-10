@@ -1,0 +1,127 @@
+# Phase B3 artifact manifest — SHA-256 after all final edits
+# captured 2026-09-07T21:16:50Z at commit f16ed67
+# this manifest does not hash itself
+
+## Agent standards — docs/sdd/
+docs/sdd/AGENT_ROLE_MODEL.md                                                5781 bytes   148 lines sha256=9df1b507394024cc62cf6d5ae4e8fe117159262c8baccc33e232fb25154a890c
+docs/sdd/AGENT_SESSION_STANDARD.md                                          5329 bytes   128 lines sha256=f0237d29a079d9f5f2cf860a4c4c5e65baf45db7c547522848b99d49d70d055e
+docs/sdd/AGENT_EXECUTION_RECORD.md                                          2464 bytes    74 lines sha256=938d3fd7bc490ae97e162f8ddd39b13ebaf59c734b1f7fe0faf041607a53ef74
+docs/sdd/AGENT_ROLE_GATE_MATRIX.md                                          3555 bytes    73 lines sha256=e607433a99f9ba8538f45a7af7b07ad9ca5ab66c9ce9458b6cd419a308fd7e84
+docs/sdd/AGENT_HANDOFF_STANDARD.md                                          2809 bytes    75 lines sha256=883dd2c3da99ad0f0e893eea33d088b5b0cd178e1f7dd4d55e2d91fc17bb1e9d
+docs/sdd/AGENT_CONTEXT_STANDARD.md                                          2769 bytes    71 lines sha256=af5bb2703f1107f619a5010a8a2187e8713d89de12c4ba4467d91be7b8604686
+docs/sdd/AGENT_STOP_PROTOCOL.md                                             3147 bytes    81 lines sha256=1647ed4ecd9bdf9d865d36ffed29a784ffe2e3161dfeeab879cbec061209d720
+
+## Schemas and templates
+docs/sdd/schemas/agent-session.schema.json                                  5715 bytes   174 lines sha256=4ccc68654342f3d6dde9aaae49e67ebc73137d3ae795465ed1ed8f73b849d5f4
+docs/sdd/schemas/verification-record.schema.json                            3141 bytes    75 lines sha256=24af49444c03c2ba8c8c9eefd630df8534df5675111357223a1639abf378657c
+docs/sdd/schemas/review-record.schema.json                                  3036 bytes    70 lines sha256=6af059eb063f4a9b8a847be81849403e42c8a3b140eb11292cc5882f3a88415f
+specs/templates/AGENT_SESSION_TEMPLATE.json                                  760 bytes    23 lines sha256=3e95f00d9034639624c9079083d1405a9b034a047cf0bc2ffa62805b1ba77439
+specs/templates/VERIFICATION_RECORD_TEMPLATE.json                            793 bytes    23 lines sha256=c0f78e02870f4e0fe4734e2a5fc00e5de015fb4c81aa63d9afed444bae572dcb
+specs/templates/REVIEW_RECORD_TEMPLATE.json                                  734 bytes    21 lines sha256=1c4567cc088f46fdbca13ecd045f8e32347ea09d383b7998cafaca05325d1bd8
+
+## Control plane and tests
+tools/sdd/lib/agent.mjs                                                    27253 bytes   598 lines sha256=bbcd420208515e7166a7e2451dbefec147b24b83304f3a5fcae67b9c312220c3
+tools/sdd/cli.mjs                                                          14626 bytes   389 lines sha256=c9fff3fe032cf87d9018c9a34c7978e605008fde2cb57f22304bf80906f66925
+tools/sdd/lib/validate.mjs                                                 21610 bytes   520 lines sha256=14c921ee974e43d9601ca34535741942362008e3afeb34e45e390eb3a8805961
+tools/sdd/rules/rules.mjs                                                   6700 bytes    94 lines sha256=4780742a86c7f758683b5a3c632334a5d3f97a03482dba8228697746c57bc5e6
+tools/sdd/tests/agent.test.mjs                                             27957 bytes   654 lines sha256=1152b2f372684ce169d469e7e757ee5d4ca68472976d010a61607b770f984099
+
+## Agent fixtures
+tools/sdd/tests/fixtures/agent/docs/EVIDENCE_CONFLICTS.md                     49 bytes     5 lines sha256=abdd6983115eadde4f08be9b3c520506f54dea0e809fa65f750d91b1eb6af3ba
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/clarifications.md     232 bytes     9 lines sha256=961b28de51587e4a060c30514435ff81637c6c6a787fe43b03c7845d990f097e
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/execution/ASES-0001.json     545 bytes    18 lines sha256=a1f4f87f6f6372cf87cec04d657976266f768d6bd1fd3b4661711a6ebc848a6d
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/execution/REV-0001.json     330 bytes    14 lines sha256=062eda4270eaa9b9127eac47592657bb7bf71b8cbefa5cc975f044621ab3fc75
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/execution/VER-0001.json     453 bytes    19 lines sha256=7b55c5de1568e06aa7e81ccd720982f24c07183d32ad99e6cb456b76a1a7be97
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/plan.md         146 bytes     8 lines sha256=62ddd5b36d81abffd6ffe91397f43d544931d58e642c718feea3a195388b9e72
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/sdd.json       1390 bytes    35 lines sha256=2fef8edba723cc0fee688df524f5632c6d15127ecc24360dfdf46a0a5f6c3d8f
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/spec.md         530 bytes    24 lines sha256=cf07ab30c33f7a84698751509460bdc3246fc143e0b88f004a49a3e1fb40516b
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/tasks.md        295 bytes    10 lines sha256=e6463d4c0aed1a9597d0e76e2f9b1cb8565dce854ba033e312291e4032de7b5c
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/test-plan.md     233 bytes     7 lines sha256=724f2de31c8fa781d9400c9b382112c1226c8058589fd55fe8a404afc31eb31e
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/threat-model.md     329 bytes    18 lines sha256=8dbb8c57b3bcf335f64249dbac45ea07f8eacbd974a640d66048f57f20685f26
+tools/sdd/tests/fixtures/agent/specs/SPEC-0001-agent-example/traceability.md     300 bytes    11 lines sha256=59c8b79617ce6badb10d1d0b9acbdf3abbc0cc766728a0878280e584b66c2428
+
+## Documentation updated by B3
+AGENTS.md                                                                  14541 bytes   256 lines sha256=f0c00e8cb62a12394abae2be59699422d943eac3649b7c207b181ee01ca86c2a
+CLAUDE.md                                                                   8306 bytes   158 lines sha256=4c7d49d9bf65ba99717d88fe31eea1bf99ffe46df28c9bc0cf199f493a5e9668
+docs/sdd/VALIDATION_RULES.md                                               12265 bytes   229 lines sha256=d0e1dca1e68165693c8d125745e65d831f5c1301640a0a83776f534297c0c01f
+docs/sdd/IDENTIFIER_STANDARD.md                                             6567 bytes   148 lines sha256=e6cb5198c596684335842d56a56b9d11f341ef46f8a82b0afefe02eee7ab10c4
+docs/sdd/SDD_WORKFLOW.md                                                   11604 bytes   239 lines sha256=fdd8e2264ff1ddb7ac729aa93452e0616859d4e949cec018159b0c05bc92b5f7
+
+## Specification — SPEC-0002
+specs/SPEC-0002-agent-integration-controlled-execution/change-record.md    11753 bytes   289 lines sha256=ad4f3311f6d3aa766ce760aec5de408f658b1159deb9f789dda641e4ada5bde4
+specs/SPEC-0002-agent-integration-controlled-execution/clarifications.md    6514 bytes   167 lines sha256=d61a582e1554f465457e403505d543280f21601303b6d4611d2ac4a7867a4531
+specs/SPEC-0002-agent-integration-controlled-execution/convergence.md      42856 bytes   763 lines sha256=30b7cdef01966bc4d59e2c8285cd5fa4622819a54e37251d0e25eeef2208721a
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0001.json    3705 bytes    89 lines sha256=3c6783217085ba6d383b57a027ef0c3fc0f7482f3663c09dfd70d5fa186f5681
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0002.json    3692 bytes    93 lines sha256=f9e1229d78a83a1abd7b044ae00bd3ec3931b037643a68b0b51f5e0f86f76303
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0003.json    4194 bytes    98 lines sha256=352c835c813cb1ad07a6b062df799ac92cb0e9fc9d8375b53e8112ece646bb90
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0004.json    9896 bytes   151 lines sha256=6de10a8f4ac4f08a45978406e8050966ec5a9548449f7ffdf6b1dddf33d7bd5d
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0005.json    9355 bytes   165 lines sha256=803ba7c1d70a58c55a8b76fb7b0e80b54b4dd3a342218e75e86349449b920976
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0006.json    9918 bytes   175 lines sha256=d215a32527192271c5952e64e69703790da4d3832d562bc905aee269ced84fa4
+specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0007.json    9103 bytes   149 lines sha256=5921c2798c709479dd83a2dfe6c177f5cab7d5413b2bb25cf8b9be5a8bf34fb6
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0001.json    1847 bytes    44 lines sha256=d9b7e8ac000ad455d9e391aa4090bd8ea93f506e2a19b69d08d8124eee5f9b1f
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0002.json    2049 bytes    44 lines sha256=80eb78909b9649bcad93bfc03eddfd96486d81fbec1fc18fc9375aed29954aa3
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0003.json    2083 bytes    45 lines sha256=a111c3ed19daf4c35a4c29bd9716b57fe36f6a55f634a46e52ab4fef75d643db
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0004.json    1700 bytes    22 lines sha256=f172428a5bbd2d93b26772072b19c54c67c7fbdcd7e060498e4f5817ea3ff39b
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0005.json    1843 bytes    38 lines sha256=c9b512f4f94b56196687608f9df3e5de3fa04e733e8b56830888d4e16ad6fde2
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0006.json    1717 bytes    38 lines sha256=f97bc5069b47c276a9e2d6220e0f1d4440b197bbc86856730b45d99468b68364
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0007.json    2674 bytes    51 lines sha256=c37d29b0360cc4d550737bde81d66440883e564f209244b26401b833f9441e39
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0008.json    1318 bytes    32 lines sha256=d3f4f25582d7db86369c3ff0f8a4f69e8373d1d23c6086583d3386d3b1d86fd0
+specs/SPEC-0002-agent-integration-controlled-execution/execution/REV-0009.json    1798 bytes    22 lines sha256=d8a5bcc23d55b15a01abd765f3c285092e43a7cfdcbcb2dee42469ffdeda49d4
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0001.json    1576 bytes    27 lines sha256=2207c8ebdade08b3167767f55c69bdd8739fe2e3a9de1d8735f38739f17fff70
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0002.json    1696 bytes    28 lines sha256=2707295ba4b88cb3a40e2c3c3af3f39bd88e25edfdcc792d17578e0a6470e410
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0003.json    2616 bytes    36 lines sha256=5293b9328df3ebe74e4f4ac4e516ff9b9338a8889e8e601a8f8a52fa215d4e36
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0004.json    3003 bytes    56 lines sha256=f2c4d9cd02b915c6ef4613680660f143b64f6e85b5d714a440e0d44d31943076
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0005.json    2389 bytes    34 lines sha256=ba04b1104feafae10b528f09f1912ca5b05882477c6da7571aada66520802945
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0006.json    2768 bytes    38 lines sha256=c7bf3813028c917c76cd40f76e78216c525916ec7a07201c7cbdc95f9be44fa3
+specs/SPEC-0002-agent-integration-controlled-execution/execution/VER-0007.json    2028 bytes    29 lines sha256=523977df14754e0094f1d84ef28036c6f5805d1504563da83590693ede1a992b
+specs/SPEC-0002-agent-integration-controlled-execution/plan.md              6284 bytes   162 lines sha256=688ca30c7494275f7ceb54be148268702a7cd8818aa99589b3f72b66059d68da
+specs/SPEC-0002-agent-integration-controlled-execution/sdd.json             4298 bytes   137 lines sha256=fc7d03b410ca1f26608d71ef41e742dbe518f070187421cb3e89b64622631cbe
+specs/SPEC-0002-agent-integration-controlled-execution/spec.md             13127 bytes   286 lines sha256=2ef0d7c968108248933b9b265c4b01f81019856851f294c434c6c2fc5901c5f7
+specs/SPEC-0002-agent-integration-controlled-execution/tasks.md            17586 bytes   376 lines sha256=6863840b208e894d534ccfd6cdf9d940764107767def4f453e85869b34d3f855
+specs/SPEC-0002-agent-integration-controlled-execution/test-plan.md         9092 bytes   186 lines sha256=2f15f56bdbb9e21fac07206d700d6a3b21f28a9cba22bd3d700a2f49e3019ab0
+specs/SPEC-0002-agent-integration-controlled-execution/threat-model.md      8170 bytes   187 lines sha256=bd9fe19cc95bcedf97be4becb4ba876b56a19e173550b3ad273baa50449a786a
+specs/SPEC-0002-agent-integration-controlled-execution/traceability.md      8448 bytes   140 lines sha256=8ea072bd008ca36a912d768dc870ff0e60f0ac8b329997d869acae166a2b0cd4
+
+## Evidence package
+docs/evidence/phase-b3-agent-integration/acceptance.md                     19249 bytes   338 lines sha256=3463a3b93a93d76e2e3055ac5917a874c296d8870718830d1453c350fc6994fb
+docs/evidence/phase-b3-agent-integration/agent-role-model-audit.md          2062 bytes    46 lines sha256=502aa45b0e70cf3596bbba69c43a595d1487c3ccc155b3bb16df5b356f24bf60
+docs/evidence/phase-b3-agent-integration/agent-session-audit.md             2244 bytes    56 lines sha256=a6ac389a34ac2d5baa9b34ac2feab7286c8584b1dfd3263cf4a74a17300b1544
+docs/evidence/phase-b3-agent-integration/agent-test-results.md              5195 bytes   115 lines sha256=535eaf833c3b78f716e09c5b555e00e47aeee043104fcd6352d2b268db28ec21
+docs/evidence/phase-b3-agent-integration/allowlist-security-review.md       5904 bytes   135 lines sha256=f86e7ad4325a406177bc44e6198dc4df75c4d9dcf71eb2e3cbf78c6e8b62a0d1
+docs/evidence/phase-b3-agent-integration/architecture-review-pack.md        5939 bytes   122 lines sha256=1fc2a3363242ba15a984a39edcb786704806172563cbd52aa55a297fdc58b142
+docs/evidence/phase-b3-agent-integration/attribution-remediation.md         5630 bytes   125 lines sha256=51caea6ed7a34ecc149d1b683011cb252dd7963e05a5d84275e3341e6e36e3eb
+docs/evidence/phase-b3-agent-integration/b2-limitations-carried-forward.md    3219 bytes    82 lines sha256=8b4b80f362ac8c507cc0456035661a11ba6497faf9e4edc1e3e720ba072aade0
+docs/evidence/phase-b3-agent-integration/b3-spec-audit.md                   2714 bytes    83 lines sha256=f7509541475264a2933a6236ab476d3ab8bc6c0f384cb19fe845b882fc919d5b
+docs/evidence/phase-b3-agent-integration/bootstrap-session-audit.md         4208 bytes    99 lines sha256=5f30b8fc650f88cceb027b79cc29f9a8034cf30396b2019dc66f2c7c86be39b3
+docs/evidence/phase-b3-agent-integration/change-boundary-checks.md          2262 bytes    57 lines sha256=1b785994ba6f0d1e6e133bf4439c77d52d564b4ac031fb12f81d24d40eff3471
+docs/evidence/phase-b3-agent-integration/ci-integration-audit.md            2840 bytes    68 lines sha256=f8266c086ae6ef735f17ce432b57a10b6c5e0624d81caf496c4b27db6df2b360
+docs/evidence/phase-b3-agent-integration/conv-disposition-packets.md        6522 bytes   149 lines sha256=273ad6bcb991d9784dcdafa6963ad951d1339fcd108207d9a60c03bf89375270
+docs/evidence/phase-b3-agent-integration/convergence-status-model-audit.md    4304 bytes    94 lines sha256=a3ae3fe1edc30b7eefad0834063315b3a5425d08467498c56ab1ff5de12637b4
+docs/evidence/phase-b3-agent-integration/cross-reference-audit.md           3058 bytes    76 lines sha256=04cdc1a586a0d101978489628d78a216b9a03639b91abbda43b90d44b991a86b
+docs/evidence/phase-b3-agent-integration/current-commit.txt                   41 bytes     1 lines sha256=83579b8043aea31a5025e89ffd915dfd8d51b015eb41bca1f2948911358f743a
+docs/evidence/phase-b3-agent-integration/d9-addendum-review-packet.md       6189 bytes    95 lines sha256=7eb6f6cc84dc5016ec2e7706a32d8699ae815788be3ae204833e0d59124144f8
+docs/evidence/phase-b3-agent-integration/drift-handling-audit.md            2123 bytes    53 lines sha256=d36fccbb80124556aececc88a15fa896ec09bdffd3951842968f9b1f6c59db91
+docs/evidence/phase-b3-agent-integration/git-diff-stat.txt                  2189 bytes    35 lines sha256=b9a2609e7896ebf7a10a9f54f8e730463f9660dce40b8eeb940175cf100940ef
+docs/evidence/phase-b3-agent-integration/historical-exception-audit.md      5146 bytes   120 lines sha256=8fb1b1370779c1d342ee978741c1e73df9f0cd5923946e814f9d4f32db4f0796
+docs/evidence/phase-b3-agent-integration/human-code-review-pack.md          5302 bytes   112 lines sha256=5855401ca2c0665840fbd2944c2abf7f5308135af9394b34fda52a0c462e65cf
+docs/evidence/phase-b3-agent-integration/human-governance-decisions.md      9755 bytes   205 lines sha256=3c123b5625414df0205029851de36112689b4b21eb4fc27bbf3001ca4eb936e6
+docs/evidence/phase-b3-agent-integration/invalid-fixture-results.md         3311 bytes    56 lines sha256=d8a7d9690571e50f695fb9e0dfed5b0a370bd83bfe420d0279abd21dc0ddc28e
+docs/evidence/phase-b3-agent-integration/known-limitations.md              11844 bytes   256 lines sha256=474687a040d3149c0ecbfa0f4c2273f8ffc4a082dba4e90d27b43782cc72b5f3
+docs/evidence/phase-b3-agent-integration/performance-check.md               1835 bytes    46 lines sha256=785873bbd919b5454b11f449ddde449ce7940ace2b06fd12a78d15cb004af219
+docs/evidence/phase-b3-agent-integration/preflight-audit.md                 2506 bytes    59 lines sha256=2952d7abac5ce572eb953153a0d07e1f6f48e48b8a67c95df9957e1e3a909589
+docs/evidence/phase-b3-agent-integration/r3-approval-rule-resolution.md     8276 bytes   157 lines sha256=aadcc63bc199530908b8ded33af887b941e252ed547906b3d9b26b0ca51b05a3
+docs/evidence/phase-b3-agent-integration/remediation-regression-results.md    3649 bytes   128 lines sha256=e8390cbe6c9c05bcae5d8ac3447c2b0f6cb12b7ed042942984d1407819117bb2
+docs/evidence/phase-b3-agent-integration/repository-status.txt              2310 bytes    55 lines sha256=0d1f1d5b53409fa1d2203ef93c6b258d9ef23d6b1564e39e00ebb3f73904b3d0
+docs/evidence/phase-b3-agent-integration/scope-enforcement-audit.md         2905 bytes    67 lines sha256=d5ef8b79ee859a970e4ccc0d27e04b18571c65a6395bbe05c50efbd119c8ca39
+docs/evidence/phase-b3-agent-integration/secret-scan-result.md              4476 bytes    96 lines sha256=6f008ba29bc2193ebf6f2786a306857317340e5e9b57fda89a2bff4a7be311f9
+docs/evidence/phase-b3-agent-integration/security-re-review.md             11261 bytes   237 lines sha256=d461b31a4f20964ec0bae0b934d8c8d76ac07fa3248f8b490c719f2dc5721f6f
+docs/evidence/phase-b3-agent-integration/security-review.md                 4452 bytes    97 lines sha256=8c86768701a8a1799d5ecb609a3550756ac26f42e20a33ed6d2a9897076b8d03
+docs/evidence/phase-b3-agent-integration/separation-of-duty-audit.md        2056 bytes    51 lines sha256=735dd8029a0d39521a643c3f1fef4abf08f346c32d77ee1a3f7bdc96d9e1aa52
+docs/evidence/phase-b3-agent-integration/SUMMARY.md                         4695 bytes   105 lines sha256=4e0e648d774cccab9b6e687634a48c31d3b5ef646d05980d44286da77818b8d3
+docs/evidence/phase-b3-agent-integration/transition-policy-audit.md         2154 bytes    52 lines sha256=cae6ed774e16b033ffc971e0d39ca9b3dad703c287a8bb27f1c55ab9a8a82ea6
+docs/evidence/phase-b3-agent-integration/valid-fixture-results.md           2713 bytes    61 lines sha256=33077164a7bcc1b11d3c0a58708dc771a1b185357307012de6c5823a89ebd0c0
+docs/evidence/phase-b3-agent-integration/validation-exception-proposal.md    3530 bytes    74 lines sha256=ef8b57220aa2acab20adcc9ef4961f056c48515cfefcfe97cd95b207039207d5
+docs/evidence/phase-b3-agent-integration/validation-rule-audit.md           3047 bytes    68 lines sha256=1bf48cd64092ee988d46bc83e44eb16eb133502b5183bba48e09637b681376f4
+docs/evidence/phase-b3-agent-integration/verification-and-review-audit.md    2668 bytes    64 lines sha256=3326915bcf11fd810886bbee2069161d2dfcd48d4466ebc89847f0f792aab951
+
+totals: agent standards 7 · schemas and templates 6 · control plane and tests 5 · agent fixtures 12 · documentation updated by b3 5 · specification 33 · evidence package 40 · evidence package files including this manifest 41

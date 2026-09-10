@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0011",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0014",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b4-chg008-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "CONV-009 was fixed at the cause rather than suppressed. The session record was asymmetric - it captured a start state and no end state - so the fix adds the missing half rather than special-casing the sessions that failed. UT-058 is the guard that proves it did not over-correct: a session that genuinely crossed its own boundary still fails, both while open and after closing.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-009"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The legacy case is handled by refusing to guess. Every session that already exists lacks end-state evidence, and rather than fall back to the live tree the code attributes nothing and reports SDD-V063. UT-060 pins it. That converts three false SDD-V058 errors into one honest warning without inventing any attribution.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "SDD-V063"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Active enforcement is provably unchanged. UT-061 exercises both READY and IN_PROGRESS and asserts the live tree is still read and SDD-V058 still fires. The branch is on terminal status alone, so an open session cannot benefit from the new path.",
+      "artifact": "tools/sdd/tests/agent.test.mjs",
+      "reference": "UT-061"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The meta-artefact allowance is a closed enumeration and its exclusions carry the weight. Six intent-bearing artefacts are individually asserted to stay outside it, an explicit prohibition still outranks it, and it cannot reach another specification. It is also checked after the prohibited list, which is the correct precedence.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-010"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "SDD-V064's WARNING severity is argued rather than assumed, and the argument holds: an ERROR would force either rewriting historical DONE records or minting an exception, and an exception downgrades to INFO - less visible than a standing warning. The reasoning is recorded in the rule documentation and in the classification evidence, so a reviewer can disagree with it on the merits.",
+      "artifact": "docs/sdd/VALIDATION_RULES.md",
+      "reference": "SDD-V064"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The remediation stopped at its own boundaries four times rather than crossing them: ASES-0010 BLOCKED on a duplicate test-identifier declaration, ASES-0011 stopped at the fixture boundary, ASES-0012 stopped before the test plan, and the new rule caught the change record's own explanatory note inside a scope region - which was moved rather than the rule weakened.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0011.json",
+      "reference": "CHG-008"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "A false statement in a session record was corrected in place with the correction declared. ASES-0010's notes first claimed nothing was changed in that session; timestamps show it had implemented validate.mjs and rules.mjs. The corrected note says so explicitly instead of quietly replacing the text.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0010.json",
+      "reference": "ASES-0010"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "validate.mjs now imports agent.mjs, which pulls node:child_process into the document validator's module graph. Nothing is executed at import time and the validator remains deterministic and read-only, but the dependency direction is new: the pure document layer now depends on the control-plane layer. Reusing taskScope was the right call over duplicating the grammar; the coupling is worth knowing about.",
+      "artifact": "tools/sdd/lib/validate.mjs",
+      "reference": "SDD-V064"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "Three valid fixtures and two new fixture source files were changed to satisfy the new rule. These are synthetic test data rather than historical records, and a canonical valid fixture must validate with zero findings by design, so this is not a history rewrite - but it is the one place where artefacts were edited to make a new rule pass, and it deserves a human eye.",
+      "artifact": "tools/sdd/tests/fixtures/valid",
+      "reference": "TASK-020"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "Nothing enforces that a required-test identifier belongs to only one task. TASK-020 initially claimed UT-046 to UT-049, which TASK-018 already owned, and only a manual read caught it before the session was measured against another task's tests. SDD-V054 checks that referenced identifiers exist, not that they are uniquely claimed.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/tasks.md",
+      "reference": "ASES-0010"
+    }
+  ],
+  "notes": [
+    "APPROVE for TASK-019, TASK-020 and TASK-021 as scoped. All three defects are demonstrably fixed: the three sessions that produced false scope failures now report PASS with an honest limited-state warning, the historical malformed declarations are visible on every run, and a task can record its own execution evidence without deviating.",
+    "Reviewed under an actor distinct from every implementing session and from the tester, per SDD-V051.",
+    "This is an AI review. It satisfies no human gate. SPEC-0002 is R3, where the convergence verdict is accepted by a reviewer and one human code reviewer is required; neither has happened for this change.",
+    "The two MINOR findings most worth a human's attention are the new validate-to-agent dependency direction and the fixture edits, because both are judgement calls that a test cannot settle."
+  ]
+}

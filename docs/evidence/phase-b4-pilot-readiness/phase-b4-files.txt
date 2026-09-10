@@ -1,0 +1,19 @@
+# Phase B4.0 evidence manifest — SHA-256 after all final edits
+# captured 2026-09-07T21:37:49Z at commit f16ed67
+# this manifest does not hash itself
+
+docs/evidence/phase-b4-pilot-readiness/01-b3-handoff-verification.md   1551 bytes   51 lines sha256=e651fc7b533fba4ad9efacf1ce1652c229da02c26eb7c62e71c48475c05de9f5
+docs/evidence/phase-b4-pilot-readiness/02-ci-readiness-audit.md    3688 bytes   69 lines sha256=c179478a60fbd69f343e3263032d591620b312d972343ea54ffda48e3f66d896
+docs/evidence/phase-b4-pilot-readiness/03-runtime-unknowns.md      3817 bytes   48 lines sha256=885c32ed27b9b69f1cf6f520ab07b20d84ffee7a12b14d8f3fb3f9678b5bc052
+docs/evidence/phase-b4-pilot-readiness/04-product-surface-inventory.md   4698 bytes  109 lines sha256=e24865f9b770c894852ea950862c4c688c7816bc4659d800282949a35196f1d7
+docs/evidence/phase-b4-pilot-readiness/05-pilot-candidate-analysis.md   3953 bytes  110 lines sha256=ec5b2eb9c7d25b8ffda18c7cc9b62d6d3cb6a7576dbd37f39aeb4ee955d919e0
+docs/evidence/phase-b4-pilot-readiness/06-risk-classification.md   4203 bytes   78 lines sha256=1574b26ce3880cbdcd8d1ceabee621d978c5859cb0dd6497c41a54ea052bf09c
+docs/evidence/phase-b4-pilot-readiness/07-testability-and-rollback-analysis.md   3403 bytes   78 lines sha256=ba1174b420670a3c33baa01fc83742db8b42b4b0a1333180fff84201d06e53ac
+docs/evidence/phase-b4-pilot-readiness/08-security-screening.md    3055 bytes   66 lines sha256=79306a26c75ba6f479c203b590e01490b3e8f38766071ec5f65e8b0c2737885e
+docs/evidence/phase-b4-pilot-readiness/09-recommended-pilot.md     5754 bytes  128 lines sha256=d79959c8b68f6f8529e00da388900b32257dd3576fb0775028af79cdbc613e08
+docs/evidence/phase-b4-pilot-readiness/10-human-selection-decision.md   3005 bytes   84 lines sha256=b5b394486d8c7a53dd0885c0dde35d1321bb56978d45c02f9a4460a4158c188b
+docs/evidence/phase-b4-pilot-readiness/11-b4-entry-criteria.md     4946 bytes   85 lines sha256=e5b9e6070acd8600180ae794f0715b992ee7fba7fc1e5aff3adcb3dbfea87854
+docs/evidence/phase-b4-pilot-readiness/12-phase-b4-readiness-summary.md   4593 bytes   97 lines sha256=a539beb41f622f68572a477a5e7252ad9f6386b6d3eb0c478b0071459ec8b168
+docs/evidence/phase-b4-pilot-readiness/13-selection-reconciliation.md   8850 bytes  198 lines sha256=ae989faf89d44c87bad45479ac4250a478dbdf307c0688a35bb3ea7c0179ba3d
+
+totals: 13 evidence files, plus this manifest = 14

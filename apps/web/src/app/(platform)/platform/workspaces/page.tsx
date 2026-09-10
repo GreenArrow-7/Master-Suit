@@ -4,8 +4,10 @@ import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import OpenWorkspaceButton from '@/components/platform/OpenWorkspaceButton';
 import PlatformRowActions from '@/components/platform/PlatformRowActions';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export default async function WorkspacesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  await requirePlatformPage();
   const { q } = await searchParams;
   const query = q?.trim();
 

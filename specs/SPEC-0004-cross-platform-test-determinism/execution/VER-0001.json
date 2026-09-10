@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0008",
+  "taskIds": [
+    "TASK-001",
+    "TASK-002",
+    "TASK-003",
+    "TASK-004",
+    "TASK-005",
+    "TASK-008",
+    "TASK-009"
+  ],
+  "tests": [
+    {
+      "id": "REG-001",
+      "outcome": "PASS",
+      "note": "5 env-example-parses cases; every example file parses and declares every required variable"
+    },
+    {
+      "id": "REG-002",
+      "outcome": "PASS",
+      "note": "11 assistant-guardrails cases; each tool model list now derived from its own body"
+    },
+    {
+      "id": "REG-003",
+      "outcome": "PASS",
+      "note": "observability byte comparison, line endings normalised on both sides"
+    },
+    {
+      "id": "REG-004",
+      "outcome": "PASS",
+      "note": "guarded-prologue recognises both exempt routes; no hand-rolled prologue reported"
+    },
+    {
+      "id": "REG-005",
+      "outcome": "PASS",
+      "note": "POSIX mode assertions skipped with a stated reason on Windows, unchanged elsewhere"
+    },
+    {
+      "id": "ST-001",
+      "outcome": "PASS",
+      "note": "assertions in both security test files still fail when their condition is violated"
+    },
+    {
+      "id": "ST-002",
+      "outcome": "PASS",
+      "note": "bounded tool body; searchLeads resolves to exactly [lead]; no tool body swallows its neighbours"
+    },
+    {
+      "id": "IT-001",
+      "outcome": "PASS",
+      "note": "db:test:prepare creates and migrates; 65 migrations applied from empty"
+    },
+    {
+      "id": "IT-002",
+      "outcome": "PASS",
+      "note": "second consecutive prepare is a no-op and destroys nothing"
+    },
+    {
+      "id": "IT-003",
+      "outcome": "PASS",
+      "note": "reset is separately named and announces the drop; prepare never drops"
+    },
+    {
+      "id": "IT-004",
+      "outcome": "PASS",
+      "note": "no executable-adjacent statement claims npm run setup prepares master_saas_test"
+    },
+    {
+      "id": "IT-005",
+      "outcome": "PASS",
+      "note": "five consecutive Playwright runs, 7 passed each"
+    },
+    {
+      "id": "IT-006",
+      "outcome": "PASS",
+      "note": "full suite from a freshly reset database: 1913 passed, 4 failed, 3 skipped, zero skipped files"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npm test",
+      "exitCode": 1,
+      "note": "1913 passed, 4 failed, 3 skipped of 1920. The 4 are RC-4, blocked at R4"
+    },
+    {
+      "command": "npx playwright test tests/e2e/tablesearch-a11y.spec.ts (x5)",
+      "exitCode": 0,
+      "note": "7 passed each; 5 of 5"
+    },
+    {
+      "command": "npm run db:test:prepare",
+      "exitCode": 0,
+      "note": "run twice; idempotent"
+    },
+    {
+      "command": "npm run db:test:reset",
+      "exitCode": 0,
+      "note": "drops and rebuilds; 65 migrations applied"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "note": "clean"
+    },
+    {
+      "command": "node tools/sdd/tests/validator.test.mjs",
+      "exitCode": 0,
+      "note": "93 of 93"
+    },
+    {
+      "command": "node tools/sdd/tests/agent.test.mjs",
+      "exitCode": 0,
+      "note": "70 of 70"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "0 errors, 7 SDD-V064 warnings"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "spec0004-tester",
+  "environment": "local, Windows 11, Node v24.18.0, loopback Docker PostgreSQL, master_saas_test prepared by db:test:prepare",
+  "notes": [
+    "20 of the original 24 failures are fixed at the cause. The remaining 4 are RC-4, a product defect classified R4 and excluded from this approval; they are reported, not weakened.",
+    "The suite total rose 1916 to 1920: ST-002, REG-004 and the two split POSIX cases. No test was deleted and no assertion loosened.",
+    "Three defects were found by this work that nobody was looking for: psql rejects Prisma ?schema= as a URI parameter; Node refuses to spawn npx.cmd with shell false; and prisma.permission.upsert races on an empty catalogue. All three only appear on the platform or the empty database this specification exists to make deterministic.",
+    "One correction of my own is recorded rather than hidden: the first Playwright readiness probe gated on a route with a dynamic slug, which returns a legitimate 404 for an unknown workspace. It hung for its deadline and failed run 3 of the first five-run check. Corrected, then 5 of 5.",
+    "Residual: the two POSIX mode assertions never execute on this workstation. EVC-014 claims CI runs Linux, which is DOCUMENTED rather than measured from here."
+  ]
+}

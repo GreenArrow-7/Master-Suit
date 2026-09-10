@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0004",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0004",
+  "taskIds": [
+    "TASK-013"
+  ],
+  "tests": [
+    {
+      "id": "IT-008",
+      "outcome": "PASS",
+      "note": "The B2 suite and validate --all still pass after the workflow change"
+    }
+  ],
+  "commands": [
+    {
+      "command": "node --test tools/sdd/tests/validator.test.mjs",
+      "exitCode": 0,
+      "note": "56 of 56 pass"
+    },
+    {
+      "command": "node --test tools/sdd/tests/agent.test.mjs",
+      "exitCode": 0,
+      "note": "48 of 48 pass"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "0 errors, 0 warnings"
+    },
+    {
+      "command": "workflow constraint audit against executable content only",
+      "exitCode": 0,
+      "note": "all six D6 constraints hold; comment prose excluded from the scan"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0002 --session ASES-0004",
+      "exitCode": 1,
+      "note": "one SDD-V046 on docs/EVIDENCE_CONFLICTS.md; a concurrent D2 governance edit, not TASK-013 work. Recorded as a scope deviation, not waived"
+    }
+  ],
+  "result": "PARTIAL",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "TASK-013 delivered: the workflow now runs the B2 validator suite, the B3 agent-control suite and validate --all.",
+    "Constraints from D6 re-verified against executable content only, with comment prose excluded: every run step is a node test or the validator; no deploy, publish or release action; no migration command; no network fetch; no secrets reference; no services block; permissions contents:read; persist-credentials false; SDD-V041 not promoted.",
+    "Repository-local verification: VERIFIED. The three commands the workflow invokes were executed here and all pass.",
+    "GitHub-hosted execution: UNKNOWN — requires runtime/infrastructure verification. The repository has not been pushed and the workflow has never run on GitHub. Nothing here asserts that it will pass there.",
+    "Scope deviation recorded, not waived: docs/EVIDENCE_CONFLICTS.md changed while this session was open, from the D2 EVC-015 resolution. It is outside TASK-013 scope and the scope checker correctly reported SDD-V046. The correct sequencing would have completed the D2 governance corrections before opening ASES-0004. TASK-013 scope was not widened to absorb it.",
+    "Result corrected from PASS to PARTIAL by the ASES-0004 scope-deviation audit (2026-09-08). One command in this run returned exit 1 — the scope check reporting SDD-V046 — and recording PASS alongside it overstated the outcome. The same standard was applied to VER-0005 and VER-0006. Nothing about the deviation itself was changed or removed; only the summary field was corrected to stop contradicting the commands recorded beneath it."
+  ]
+}

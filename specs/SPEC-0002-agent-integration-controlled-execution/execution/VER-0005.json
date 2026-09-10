@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0005",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0005",
+  "taskIds": ["TASK-014"],
+  "tests": [
+    { "id": "UT-018", "outcome": "PASS", "note": "PASS reads as PASS" },
+    { "id": "UT-019", "outcome": "PASS", "note": "PASS WITH ACCEPTED LIMITATIONS is not collapsed to PASS" },
+    { "id": "UT-020", "outcome": "PASS", "note": "FAIL reads as FAIL" },
+    { "id": "UT-021", "outcome": "PASS", "note": "PASS SOMETHING ELSE rejected" },
+    { "id": "UT-022", "outcome": "PASS", "note": "PASS WITH ACCEPTED rejected" },
+    { "id": "UT-023", "outcome": "PASS", "note": "whitespace and case normalise" },
+    { "id": "UT-024", "outcome": "PASS", "note": "prose mention is not a declaration" },
+    { "id": "UT-025", "outcome": "PASS", "note": "conflicting duplicates return AMBIGUOUS; agreeing duplicates do not" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "65 of 65 pass; grew from 56 by the nine verdict tests" },
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "48 of 48 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" },
+    { "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0002 --session ASES-0005", "exitCode": 0, "note": "0 errors; 12 unattributable directory entries" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "SPEC-0002 is now machine-read as PASS WITH ACCEPTED LIMITATIONS, asserted directly by a test rather than only checked by hand.",
+    "Prefix matching removed. Matching is exact against the permitted verdicts after whitespace and case normalisation.",
+    "SDD-V033 now distinguishes an unsupported verdict from conflicting duplicate declarations. Neither message echoes artefact content, so ST-004 still holds.",
+    "Scope-check limitation observed and not worked around: tools/ is an untracked directory, so git collapses it to a single status entry and individual file changes beneath it cannot be attributed. They are reported as unattributable rather than assumed in scope. Scope enforcement is therefore weaker on an uncommitted tree than on a tracked one."
+  ]
+}

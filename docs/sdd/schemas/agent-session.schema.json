@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youhan.one/schemas/agent-session.schema.json",
+  "title": "YOUHAN ONE agent execution session",
+  "description": "Control artefact recording what one agent session was authorised to do. It is not a specification: it carries no requirements, no acceptance criteria, no approvals and no secrets. See docs/sdd/AGENT_SESSION_STANDARD.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "sessionId",
+    "specId",
+    "role",
+    "taskIds",
+    "allowedPaths",
+    "requiredTests",
+    "status",
+    "startedFromCommit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Supported session schema version. An unsupported value is SDD-V047."
+    },
+    "sessionId": {
+      "type": "string",
+      "pattern": "^ASES-[0-9]{4}$",
+      "description": "Must match the file name without the .json suffix. SDD-V047."
+    },
+    "specId": {
+      "type": "string",
+      "pattern": "^SPEC-[0-9]{4}$",
+      "description": "The owning specification. Must match the directory the record lives under. SDD-V048."
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "PLANNER",
+        "IMPLEMENTER",
+        "TESTER",
+        "SECURITY_REVIEWER",
+        "QA_REVIEWER",
+        "CONVERGENCE_REVIEWER",
+        "ARCHITECTURE_REVIEWER"
+      ],
+      "description": "One of the seven roles in docs/sdd/AGENT_ROLE_MODEL.md. SDD-V042."
+    },
+    "actorType": {
+      "type": "string",
+      "enum": [
+        "human",
+        "ai"
+      ],
+      "default": "ai",
+      "description": "Sessions are normally ai. A human session is recorded the same way."
+    },
+    "actorId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 100,
+      "description": "Opaque label distinguishing one actor from another, used for separation of duty under SDD-V051. Never a credential, never a personal identifier beyond what the team already publishes."
+    },
+    "taskIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^TASK-[0-9]{3}$"
+      },
+      "description": "Tasks this session executes. Each must exist in tasks.md. SDD-V044."
+    },
+    "startedFromCommit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "The commit the session began from, for drift detection under SDD-V052."
+    },
+    "initialChangedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "description": "Working-tree paths already changed when the session started. Paired with initialDigests so pre-existing work is never attributed to the agent. A rename contributes both of its paths."
+    },
+    "initialDigests": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 64
+      },
+      "description": "SHA-256 of each initially-changed path at session start, or null where the path did not exist or could not be read. Attribution compares these against the current content: a path that was already dirty and was then modified again by the session is still attributed to the session. A path present in initialChangedPaths with no entry here is UNATTRIBUTED and raises SDD-V052, never a silent pass."
+    },
+    "allowedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "description": "Derived from the task's declared scope. Exact paths and directory prefixes only, no globs and no regular expressions. SDD-V045, SDD-V046, SDD-V056."
+    },
+    "prohibitedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "description": "Paths this session must not modify even if they fall inside an allowed prefix. SDD-V058."
+    },
+    "requiredTests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(UT|IT|E2E|ST|PT|REG)-[0-9]{3}$"
+      },
+      "description": "Test identifiers the task names. SDD-V057 refuses COMPLETE while any of these has no recorded verification."
+    },
+    "verifiedTests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(UT|IT|E2E|ST|PT|REG)-[0-9]{3}$"
+      },
+      "description": "Required tests with a recorded verification result. Populated from VER-NNNN records, never asserted directly by the implementing agent."
+    },
+    "requiredApprovals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 60
+      },
+      "description": "Human approval kinds this session's risk level demands. Presence here is a reminder, not a grant. SDD-V020."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "IN_PROGRESS",
+        "COMPLETE",
+        "PARTIAL",
+        "BLOCKED",
+        "FAILED"
+      ],
+      "description": "COMPLETE means the assigned execution scope was carried out. It does not mean verified and does not mean accepted."
+    },
+    "result": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "PASS",
+        "FAIL",
+        "PARTIAL",
+        "BLOCKED",
+        null
+      ],
+      "description": "Terminal outcome, null while the session is open."
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "description": "Unexpected findings, scope deviations and new unknowns. Never command output and never a credential. SEC-006."
+    }
+  }
+}

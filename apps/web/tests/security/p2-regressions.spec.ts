@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { consume, limits } from '@/lib/security/ratelimit';
+import { limits } from '@/lib/security/ratelimit';
 import { redis } from '@/lib/redis';
 import { MethodNotAllowed, MethodNotAllowedError } from '@/lib/errors';
 import { POST as uploadDocument } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/documents/upload/route';
@@ -143,10 +143,32 @@ describe('P2-5: the telephony webhook is rate limited before it touches the data
   it('answers 429 once the window is spent', async () => {
     const limit = limits.webhook(integrationKey);
 
-    // The budget is spent through the limiter itself rather than by sending 600
-    // requests: the point under test is that the route consumes the bucket
-    // before it touches the database, not how large the bucket is.
-    for (let i = 0; i < limit.max; i++) await consume(limit);
+    /**
+     * The budget is spent by writing the counter, not by calling `consume()`
+     * 600 times. The point under test is that the route consumes the bucket
+     * before it touches the database, not how large the bucket is.
+     *
+     * ── Why not the loop it replaced (SPEC-0006, BUG-004) ────────────────────
+     *
+     * 600 sequential round-trips take real time, and the limiter uses a fixed
+     * window: `rl:<key>:<floor(now / windowMs)>`. If the loop straddled a
+     * minute boundary the counter started again in a fresh window, the request
+     * below found budget, the limiter correctly allowed it, and the route fell
+     * through to signature checking — which answers 401. It failed that way
+     * once in four full-suite runs and never in isolation, because the loop is
+     * slowest exactly when the machine is busiest.
+     *
+     * Both the current window and the next one are set, so the precondition
+     * holds however the clock falls between here and the request. `consume()`
+     * refuses on `count > max`, so `max` is the exhausted value: the route's
+     * own increment is the one that crosses the line, which is the behaviour
+     * being asserted.
+     */
+    const windowMs = limit.windowSeconds * 1000;
+    const current = Math.floor(Date.now() / windowMs);
+    for (const window of [current, current + 1]) {
+      await redis.set(`rl:${limit.key}:${window}`, String(limit.max), 'PX', windowMs * 2);
+    }
 
     const response = await telephonyWebhook(
       new Request('http://localhost/api/v1/webhooks/telephony', {

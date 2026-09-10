@@ -1,0 +1,58 @@
+# Phase B1 artifact manifest — SHA-256 after all final edits
+# captured 2026-09-07T15:50:29Z at commit f16ed67
+# includes the 2026-09-07 consistency correction pass
+# this manifest does not hash itself; it is the 17th evidence artifact
+
+## Created by Phase B1 — docs/sdd/ (14)
+docs/sdd/ARTIFACT_AUTHORITY.md                                6467 bytes   125 lines sha256=0aaa45971a0b99d87e4bea229361d476fa2376dbc012a080414d80745e7a7e55
+docs/sdd/BUG_WORKFLOW.md                                      4216 bytes   106 lines sha256=5388c7aa851607cba733c082554c069c5ff7fc26ceb3ae2903dbff2a2ff4bdf2
+docs/sdd/CHANGE_CONTROL.md                                    4461 bytes    94 lines sha256=5d40a2b23547773feb0ff313751b31b168e595dbedf1a4712709ff04db19e427
+docs/sdd/CHANGE_WORKFLOW.md                                   5372 bytes   131 lines sha256=995cb50a2656e9078ca01bc2c41f6ab185a2ebf4c8f3aa519cacc305e592101d
+docs/sdd/CLARIFICATION_STANDARD.md                            5069 bytes   120 lines sha256=5d7d006f2dc979b6d47bb1a7e552e4ae091fec36c1003bb9c1ae2de24743eba1
+docs/sdd/EMERGENCY_CHANGE_WORKFLOW.md                         4613 bytes   120 lines sha256=29cbfc645a4f361c2be6253ac32732b47a75e36edf4f0b4aed6460a85a685199
+docs/sdd/HUMAN_APPROVAL_GATES.md                              5027 bytes   105 lines sha256=998d767489a8d49f468f425a66fb4c107b6dfaf418973578c39a62ff9d6e868d
+docs/sdd/IDENTIFIER_STANDARD.md                               5473 bytes   123 lines sha256=04fb76cb4b198ca392e986cd3a042e54b993205f53cb547c6a9d64c0d1d18ea5
+docs/sdd/PLAN_STANDARD.md                                     5026 bytes   109 lines sha256=daf125ffe4929481c3b663ec66c3402cbdb94e2158a39e682c99cc2fcb8a9779
+docs/sdd/REQUIREMENT_STANDARD.md                              5348 bytes   120 lines sha256=99c32b82721f72756aa26f43b94054dc8ac4e91d5674aca24bb098d8bfccaae7
+docs/sdd/RISK_TO_PROCESS_MATRIX.md                            7383 bytes   125 lines sha256=c4c6694488b8b404e6091073bbfe46360dd0d98167fe77a3eb0e86612853e232
+docs/sdd/SDD_WORKFLOW.md                                      8869 bytes   180 lines sha256=bf8f525c919abb9290176200ceacca61408189465120124c4c289c51016b2318
+docs/sdd/SPEC_LIFECYCLE.md                                    6129 bytes   148 lines sha256=7de404b039c6a8f415d1ca898539f90a807478118dce8ab6b5345f1ae5ef2588
+docs/sdd/TRACEABILITY_STANDARD.md                             3505 bytes    84 lines sha256=888bd64d0b8219ffe51d55783c3ab721eedaa24c30dd2af244577fcaa03577d8
+
+## Created by Phase B1 — specs/ (12)
+specs/README.md                                               4986 bytes   105 lines sha256=37f3568b2362948ed66c3ba35369e17de0eb0ab4d90dd19cb13ebf51f152ca3e
+specs/templates/BUG_TEMPLATE.md                               3357 bytes    97 lines sha256=da1e3880a14f1168800ee6faa393ed9104374b3a6d2ef1bbd9d7b086ea4fc045
+specs/templates/CHANGE_RECORD_TEMPLATE.md                     2922 bytes    80 lines sha256=f3f4e3b0ac333906385d8223a55222d88f46818dc2db89b75de6058b2f88b17a
+specs/templates/CLARIFICATION_TEMPLATE.md                     2229 bytes    70 lines sha256=d34d1d7cd702d0f512379fce4f62b7651ce1fb469e649607aedc11a141140a95
+specs/templates/CONVERGENCE_TEMPLATE.md                       3325 bytes    86 lines sha256=7b7641f65f8d08f3f4bd10ec96016e7a83a9d401c3a61982d7449006cd61da03
+specs/templates/EMERGENCY_CHANGE_TEMPLATE.md                  3655 bytes   116 lines sha256=ffb7b80ef91b9b47f659c8fa9b33c4f8e54b77a50666eaafb4b0187471bd6aa3
+specs/templates/PLAN_TEMPLATE.md                              3319 bytes   131 lines sha256=c78da35bc34d0b48d293bee38f4e7a5245a48c59d175017eba9816669eb37012
+specs/templates/SPEC_TEMPLATE.md                              5552 bytes   180 lines sha256=d4e18a947d8eb6b6bde26a8ea1315a1d2c6c66c24c19c1a04a4999f3dc174260
+specs/templates/TASKS_TEMPLATE.md                             2438 bytes    74 lines sha256=81a78833cb2d7672a9542c18a4c99d03beee0d8f49660659bfe14a46ebc1fd7b
+specs/templates/TEST_PLAN_TEMPLATE.md                         3541 bytes   118 lines sha256=49b62b380a65d911d4633985224d7cac9d7d32d437cb12586b237d32a30dc241
+specs/templates/THREAT_MODEL_TEMPLATE.md                      2735 bytes    81 lines sha256=a59e1768d4f19905d437e13bc59b6499e0101c79f52c4c10867604e816d87719
+specs/templates/TRACEABILITY_TEMPLATE.md                      2063 bytes    60 lines sha256=df89f5b02da00e39dd398a2c69d5c4fd864df0dbac9ef51a11192571566441f0
+
+## Modified by Phase B1 (2) — Phase A documents, per B1 steps 21-22
+AGENTS.md                                                    11780 bytes   212 lines sha256=b17e64fcdc524f33398107336e1eef1ca6924ca65fecbf3d7a9b57a71be37f0d
+CLAUDE.md                                                     5821 bytes   110 lines sha256=f73409c214cdf0ee00ccbaedd5ad96177a130a2d19472661e7230893a3e107af
+
+## Phase B1 verification evidence (16 hashed + this manifest = 17)
+docs/evidence/phase-b1-sdd-foundation/SUMMARY.md              4758 bytes   107 lines sha256=900b0d41b43c94bb41ddd0867e8f866cfc9377374012c90256cdc37f834e7d94
+docs/evidence/phase-b1-sdd-foundation/current-commit.txt       489 bytes    13 lines sha256=04895a75aff0a7d836859f17d08c2f0f852feb0d1b3ea13da2d6f5a4132d6879
+docs/evidence/phase-b1-sdd-foundation/repository-status.txt    2445 bytes    61 lines sha256=615803b77f9465235b9f7e23ce475b535115f7572c5cb94d9635fba5b16290e9
+docs/evidence/phase-b1-sdd-foundation/git-diff-stat.txt       2386 bytes    39 lines sha256=0185b67b220fa7134afff051eb2cf5bc3d2ec8d7e50f567b3e7a3ff52f58bef6
+docs/evidence/phase-b1-sdd-foundation/application-change-check.md    2499 bytes    53 lines sha256=0c4b28b06c8a28bcae03d998e770137673c1bd2fde701553cbea4ea49f3ced52
+docs/evidence/phase-b1-sdd-foundation/dependency-change-check.md    1321 bytes    33 lines sha256=c99e65ea197b6d5379580564dc34685a4f4d1a1a2c3c4b63c5a1193c3b0fd047
+docs/evidence/phase-b1-sdd-foundation/migration-change-check.md    2165 bytes    53 lines sha256=e1900b898f45132dd5d2e12e889cc33eeb661c0c7791583d2e30ef6e024d6e5d
+docs/evidence/phase-b1-sdd-foundation/infrastructure-change-check.md    3168 bytes    73 lines sha256=16d57db19e60453989aca4243544c7c12ba1d4b441ca9addae1cbc8a28daef93
+docs/evidence/phase-b1-sdd-foundation/sdd-consistency-audit.md    9060 bytes   127 lines sha256=feeaef2429269f3f362bac7b3f8864e282d4f5e042ba622ced4f729f25897182
+docs/evidence/phase-b1-sdd-foundation/template-completeness-audit.md    5062 bytes    56 lines sha256=40bf7f37f1a7cd82de91eb466787e5e80ce6beda0409ac76149dead687a40bb7
+docs/evidence/phase-b1-sdd-foundation/authority-audit.md      3812 bytes    76 lines sha256=bffe8364c3d46ba6a857460ee4533bd8567ea29c2b4503615c39ecbbe98ee8f1
+docs/evidence/phase-b1-sdd-foundation/risk-matrix-audit.md    6178 bytes   114 lines sha256=60a97d8f6e6f7078ec0ba8fb56daa9540029d575514c6bb920d167313d37d2ee
+docs/evidence/phase-b1-sdd-foundation/cross-reference-audit.md    4254 bytes    97 lines sha256=670bcee656244c557938b82e9e8d5f62c8a8bf078dee425e75584361e25e6d88
+docs/evidence/phase-b1-sdd-foundation/secret-scan-result.md    4301 bytes    97 lines sha256=e12ac9fa14740074fc5bc89a04795e2aea92c9925719e9e20cf437788d2b177f
+docs/evidence/phase-b1-sdd-foundation/known-limitations.md    5846 bytes   123 lines sha256=4b9a2fc27ef916c68132d61e7a25549877409808a10bc15c79a1c71cd54ef2d3
+docs/evidence/phase-b1-sdd-foundation/acceptance.md           6699 bytes   130 lines sha256=07cab6974e9de5e9deda718efc359a3f5f931f6ddda9593e46c5cdafc77aa28c
+
+totals: created 26 · modified 2 · evidence 17 · scan scope 45

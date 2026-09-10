@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0002",
+  "specId": "SPEC-0002",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-allowlist",
+  "taskIds": [
+    "TASK-011"
+  ],
+  "startedFromCommit": "f16ed677516fb07f31832a5d725e13efb477c34d",
+  "initialChangedPaths": [
+    ".github/workflows/sdd-validate.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "apps/web/src/app/(auth)/login/LoginForm.tsx",
+    "apps/web/src/app/(auth)/login/page.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/ai/",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/dashboard/page.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/layout.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/LeadGrid.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/LeadImport.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/[id]/LeadDetail.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/[id]/page.tsx",
+    "apps/web/src/app/(workspace)/[workspaceSlug]/sales/leads/page.tsx",
+    "apps/web/src/app/globals.css",
+    "apps/web/src/app/icon.svg",
+    "apps/web/src/app/layout.tsx",
+    "apps/web/src/app/manifest.ts",
+    "apps/web/src/components/assistant/AssistantWidget.tsx",
+    "apps/web/src/components/auth/AuthShell.tsx",
+    "apps/web/src/components/brand/YouhanMark.tsx",
+    "apps/web/src/components/nav/CommandPalette.tsx",
+    "apps/web/src/components/nav/TopBar.tsx",
+    "apps/web/src/components/platform/SupportModeBanner.tsx",
+    "apps/web/src/components/ui/AiInsight.tsx",
+    "apps/web/src/components/ui/Badge.tsx",
+    "apps/web/src/components/ui/EmptyState.tsx",
+    "apps/web/src/components/ui/MetricCard.tsx",
+    "apps/web/src/components/ui/PageHeader.tsx",
+    "apps/web/src/components/ui/StageRail.tsx",
+    "apps/web/src/components/workspace/ColumnEditor.tsx",
+    "apps/web/src/components/workspace/ConfigurableGrid.tsx",
+    "apps/web/src/components/workspace/ListHeader.tsx",
+    "apps/web/src/components/workspace/MobileTabBar.tsx",
+    "apps/web/src/components/workspace/Pager.tsx",
+    "apps/web/src/components/workspace/WorkspaceSidebar.tsx",
+    "apps/web/src/components/workspace/WorkspaceTopBar.tsx",
+    "apps/web/src/lib/nav/modKey.ts",
+    "apps/web/src/lib/nav/workspaceNav.ts",
+    "apps/web/src/styles/tokens.css",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "docs/PHASE_A_GAP_ANALYSIS.md",
+    "docs/RISK_CLASSIFICATION.md",
+    "docs/SYSTEM_INVENTORY.md",
+    "docs/architecture/",
+    "docs/evidence/phase-a-foundation/",
+    "docs/evidence/phase-b1-sdd-foundation/",
+    "docs/evidence/phase-b2-sdd-verification-enforcement/",
+    "docs/evidence/phase-b3-agent-integration/",
+    "docs/operations/",
+    "docs/sdd/",
+    "docs/security/",
+    "docs/standards/",
+    "sdd.config.json",
+    "specs/",
+    "tools/"
+  ],
+  "allowedPaths": [
+    "tools/sdd/tests/validator.test.mjs"
+  ],
+  "prohibitedPaths": [
+    "tools/sdd/lib/agent.mjs",
+    "tools/sdd/lib/diff.mjs"
+  ],
+  "requiredTests": [
+    "ST-009",
+    "ST-002"
+  ],
+  "requiredApprovals": [],
+  "status": "COMPLETE",
+  "result": "PASS",
+  "verifiedTests": [
+    "ST-009",
+    "ST-002"
+  ],
+  "notes": [
+    "Remediates CONV-006 under CHG-001. Does not reopen TASK-010 and does not edit ASES-0001.",
+    "Unexpected findings: the first version of the universal exec check matched RegExp.prototype.exec in five files; narrowed to child_process exec only.",
+    "Scope deviations: none. The prohibited caller files were not touched, by design: this session could not make a caller pass by editing the caller.",
+    "New unknowns: whether a semantic (parser-based) check would catch formattings the textual check misses."
+  ]
+}

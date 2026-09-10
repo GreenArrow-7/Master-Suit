@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youhan.one/schemas/verification-record.schema.json",
+  "title": "YOUHAN ONE verification record",
+  "description": "What was actually run, and what it returned. Stores command names, exit codes and test identifiers only. It must never store full command output: a log copied into a repository artefact will eventually copy a credential (SPEC-0002/SEC-006).",
+  "type": "object",
+  "required": ["schemaVersion", "verificationId", "specId", "taskIds", "tests", "commands", "result", "actorRole", "actorType"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "verificationId": {
+      "type": "string",
+      "pattern": "^VER-[0-9]{4}$",
+      "description": "Must match the file name without the .json suffix. SDD-V049."
+    },
+    "specId": { "type": "string", "pattern": "^SPEC-[0-9]{4}$" },
+    "sessionId": {
+      "type": ["string", "null"],
+      "pattern": "^ASES-[0-9]{4}$",
+      "description": "The execution session whose work this verifies, when there is one."
+    },
+    "taskIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^TASK-[0-9]{3}$" }
+    },
+    "tests": {
+      "type": "array",
+      "description": "Test identifiers with their outcome. Every identifier must appear in the specification's test plan; SDD-V054 rejects one that does not.",
+      "items": {
+        "type": "object",
+        "required": ["id", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^(UT|IT|E2E|ST|PT|REG)-[0-9]{3}$" },
+          "outcome": { "type": "string", "enum": ["PASS", "FAIL", "SKIPPED", "NOT_RUN"] },
+          "note": { "type": "string", "maxLength": 300 }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "description": "Commands executed, by name and exit code. No captured stdout or stderr.",
+      "items": {
+        "type": "object",
+        "required": ["command", "exitCode"],
+        "additionalProperties": false,
+        "properties": {
+          "command": { "type": "string", "maxLength": 300 },
+          "exitCode": { "type": "integer" },
+          "note": { "type": "string", "maxLength": 300 }
+        }
+      }
+    },
+    "result": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "description": "PASS only when every required test in scope ran and passed. A skipped test is not a pass."
+    },
+    "actorRole": {
+      "type": "string",
+      "enum": ["PLANNER", "IMPLEMENTER", "TESTER", "SECURITY_REVIEWER", "QA_REVIEWER", "CONVERGENCE_REVIEWER", "ARCHITECTURE_REVIEWER"]
+    },
+    "actorType": { "type": "string", "enum": ["human", "ai"] },
+    "actorId": { "type": ["string", "null"], "maxLength": 100 },
+    "environment": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Where the run happened, in words. Never a hostname carrying a secret, never a connection string."
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 500 }
+    }
+  }
+}

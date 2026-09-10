@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0010",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0008",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b4-conv008-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "The root cause was identified precisely rather than patched at the symptom. collect() harvested every backticked token with no grammar, and had no channel to report what it could not parse. The fix adds the grammar CL-002 already specified and a problems channel, rather than special-casing the one token that was observed.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "CONV-008"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The dangerous direction is the one that got the strongest test. UT-047 covers a prohibited path lost to prose, which under-restricts a session and lets the scope check pass what it exists to catch. That is the failure mode that could produce a wrong verdict, and it is now both excluded and reported.",
+      "artifact": "tools/sdd/tests/agent.test.mjs",
+      "reference": "UT-047"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The fix found a second, pre-existing instance nobody had looked for: SPEC-0001/TASK-012 cited CHG-001 in its allowed scope and the parser was returning it as an allowed path. UT-050 and UT-055 pin that. The remediation is therefore broader than the pilot case that triggered it.",
+      "artifact": "specs/SPEC-0001-sdd-verification-enforcement/tasks.md",
+      "reference": "UT-050"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Scope discipline held under pressure and is visible in the artefact. The proposed repository-wide WARNING rule was dropped because emitting it required tools/sdd/lib/validate.mjs, a declared prohibited path. The change record was amended before implementation to say so, and the consequence - existing malformed declarations stay invisible to validate --all - is stated rather than hidden.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/change-record.md",
+      "reference": "CHG-007"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The session deviated from its own declared scope: test-plan.md and change-record.md were edited during it and neither is in TASK-018 allowed list. The deviation is disclosed in ASES-0008 and VER-0008 and the task was not retroactively widened, which is the correct handling - but it points at a real gap, since every task must update its own traceability artefacts and no task can currently do so within scope.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0008.json",
+      "reference": "TASK-018"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "scopeProseResidue strips a fixed connective list - and, or, none, the. A declaration using different connectives, for example 'plus' or 'as well as', would be reported as prose even though it is a clean list. That is a false positive in the safe direction: it blocks a session rather than admitting a wrong boundary, and the author fixes it by writing a plain list. Worth knowing rather than worth changing now.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "SDD-V062"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "classifyScopeToken accepts any token containing a slash as a path without checking it resolves anywhere sensible. That is deliberate - unsafeScopeReason already handles containment, traversal and symlinks - but it means a typo such as apps/wbe/ still parses as a valid path and is only caught later, or not at all if it is a prohibited entry.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "SDD-V056"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "No rule was weakened to make anything pass. SDD-V056 keeps its severity and meaning, no existing task was rewritten to satisfy the new parser, and the historical ASES-0002 record still contains the bad token so the evidence that the defect existed survives.",
+      "artifact": "tools/sdd/rules/rules.mjs",
+      "reference": "CHG-007"
+    }
+  ],
+  "notes": [
+    "APPROVE for TASK-018 as scoped. The defect is demonstrably fixed, the original case is reproduced synthetically and fails against the pre-fix parser, and 58 of 58 B3 tests, 89 of 89 B2 tests and validate --all are clean.",
+    "Reviewed under an actor distinct from the implementing session and the tester, per SDD-V051.",
+    "This is an AI review. It satisfies no human gate. SPEC-0002 is R3, where the convergence verdict is accepted by a reviewer and one human code reviewer is required; neither has happened for this change.",
+    "The MINOR finding about the session scope deviation is the one most worth a human eye, because the gap it exposes - a task cannot update its own traceability within its declared scope - will recur on every future task until the scope model accounts for it."
+  ]
+}

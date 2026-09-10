@@ -146,7 +146,18 @@ if [ -f "${SRC}/database.dump.gpg" ]; then
 fi
 
 # ── 2. Integrity ────────────────────────────────────────────────────────────
-EXPECTED_SHA="$(grep -E '  ?\./?database\.dump$' "${SRC}/manifest.txt" | awk '{print $1}' | head -1)"
+# `(\./)?`, not `\./?`. The second makes only the slash optional and leaves the
+# dot mandatory, so it matches `./database.dump` and never plain
+# `database.dump` — and plain is what `backup.sh` writes for the unencrypted
+# artefact (`sha256sum database.dump`), while the `.gpg` lines it appends later
+# carry `./`. The capture therefore came back empty on every backup ever taken,
+# and because `set -e` fails an assignment whose command substitution exits
+# non-zero, restore verification aborted here every single time — before
+# restoring anything. That is why it has never once succeeded.
+#
+# `|| true` as well, so a manifest genuinely missing the line degrades to the
+# "no sha recorded" branch below instead of killing the run.
+EXPECTED_SHA="$(grep -E '  ?(\./)?database\.dump$' "${SRC}/manifest.txt" | awk '{print $1}' | head -1 || true)"
 if [ -n "${EXPECTED_SHA}" ]; then
   ACTUAL_SHA="$(sha256sum "${DUMP}" | awk '{print $1}')"
   [ "${EXPECTED_SHA}" = "${ACTUAL_SHA}" ] && ok "dump checksum matches the manifest" \

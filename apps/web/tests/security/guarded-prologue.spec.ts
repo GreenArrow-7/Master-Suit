@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { globSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -31,7 +31,18 @@ const API = join(__dirname, '..', '..', 'src', 'app', 'api', 'v1');
  */
 const EXEMPT = new Set(['auth/logout/route.ts', 'integrations/meta/callback/route.ts']);
 
-const routeFiles = globSync('**/route.ts', { cwd: API });
+/**
+ * Repository-relative paths always compare as `/`.
+ *
+ * `globSync` returns the platform separator, so on Windows this listed
+ * `integrations\meta\callback\route.ts` while `EXEMPT` is keyed with `/`. The
+ * set never matched, and the two routes that are *allowed* to resolve a session
+ * by hand were reported as hand-rolled prologues — a false positive on a
+ * security check, which is the worst kind.
+ */
+const normalise = (file: string) => file.split(sep).join('/');
+
+const routeFiles = globSync('**/route.ts', { cwd: API }).map(normalise);
 
 describe('the security prologue', () => {
   it('is not re-implemented outside the two routes that must', () => {
@@ -44,6 +55,15 @@ describe('the security prologue', () => {
     // the kernel or resolveGuardedCtx would do, and to add it to EXEMPT with a
     // reason if neither will.
     expect(handRolled).toEqual([]);
+  });
+
+  // REG-004 (SPEC-0004). Both separator forms must reduce to one repository
+  // path, so an exemption cannot be defeated by the platform the suite runs on.
+  it('compares repository paths independently of the platform separator', () => {
+    expect(normalise('foo/bar')).toBe('foo/bar');
+    expect(normalise(['foo', 'bar'].join(sep))).toBe('foo/bar');
+    for (const file of routeFiles) expect(file).not.toContain('\\');
+    for (const exempt of EXEMPT) expect(routeFiles).toContain(exempt);
   });
 
   it('offers no way to ask for no rate limit', () => {

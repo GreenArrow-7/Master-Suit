@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0002",
+  "specId": "SPEC-0005",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "human",
+  "actorId": "GreenArrow-7",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Reviewed the final two-file diff: apps/web/src/services/hr/captureVault.ts (+82/-10) and apps/web/tests/unit/capture-vault.spec.ts (+108/-1). Accepted on the recorded evidence: RC-4 root cause, logical-key canonicalisation, filesystem boundary handling, legacy compatibility, deletion behaviour, path traversal controls, targeted 28 of 28, three full-suite runs with zero failures, schema unchanged, migration none.",
+      "artifact": "docs/evidence/phase-b4-pilot2-readiness/25-rc4-human-review-packet.md",
+      "reference": "CONV-001"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The historical TASK-002 scope deviation was disclosed in the packet and accepted as declared and attributed. ASES-0001 remains PARTIAL and its notes are unchanged; nothing was rewritten to make it look tidier.",
+      "artifact": "specs/SPEC-0005-capture-vault-storage-keys/execution/ASES-0001.json",
+      "reference": "CONV-004"
+    }
+  ],
+  "notes": [
+    "This is the first of the two human code reviews R4 requires. It discharges half of CONV-001; REV-0003 is the security-literate second.",
+    "PROVENANCE. The decision was made by a human, GreenArrow-7, and given explicitly in session on 2026-09-08 as a Qualified Human Code Reviewer APPROVE on SPEC-0005. The JSON file was written by an AI agent transcribing that decision. The agent did not make the decision and does not hold the reviewer role.",
+    "What the decision rests on: docs/evidence/phase-b4-pilot2-readiness/25-rc4-human-review-packet.md, which carries the whole diff, the five questions worth reviewer time, the confirmed-unchanged table and both open findings. The agent did not witness a line-by-line reading and does not assert one.",
+    "Scope: the code review only. NOT convergence acceptance, which is gate 6 and recorded separately, and NOT the CONV-003 residual-risk disposition, which is Application Security's."
+  ]
+}

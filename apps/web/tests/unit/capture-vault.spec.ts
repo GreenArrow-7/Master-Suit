@@ -29,6 +29,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /** A stand-in bucket: key -> { body, lastModified }. */
 const bucket = new Map<string, { body: Buffer; lastModified: Date }>();
 let putShouldFail = false;
+/** SPEC-0005: the store refusing is not the same outcome as the object being gone. */
+let deleteShouldFail = false;
 
 vi.mock('@/lib/storage', () => ({
   putObject: vi.fn(async (key: string, body: Buffer) => {
@@ -55,6 +57,7 @@ vi.mock('@/lib/storage', () => ({
       .map(([key, value]) => ({ key, lastModified: value.lastModified, size: value.body.length })),
   ),
   deleteObjects: vi.fn(async (keys: string[]) => {
+    if (deleteShouldFail) throw new Error('bucket unreachable');
     let removed = 0;
     for (const key of keys) if (bucket.delete(key)) removed += 1;
     return removed;
@@ -75,6 +78,7 @@ let legacyRoot: string;
 beforeEach(async () => {
   bucket.clear();
   putShouldFail = false;
+  deleteShouldFail = false;
   legacyRoot = mkdtempSync(join(tmpdir(), 'captures-'));
   process.env.ATTENDANCE_CAPTURE_DIR = legacyRoot;
   vi.resetModules();
@@ -137,7 +141,110 @@ describe('reading a capture', () => {
   });
 
   it('refuses to read outside the vault', async () => {
-    await expect(vault.loadCapture('../../etc/passwd')).rejects.toThrow(/Refusing to read outside/);
+    // The expectation — a traversal key is refused — is unchanged. Only *where*
+    // it is refused moved: SPEC-0005 requires a malformed key to be rejected
+    // before it is ever resolved to a filesystem path, so this no longer
+    // reaches the containment check. Both are refusals to act outside the
+    // vault, and either satisfies the property this case exists for.
+    await expect(vault.loadCapture('../../etc/passwd')).rejects.toThrow(
+      /Refusing to (read outside|act on a malformed)/,
+    );
+  });
+
+  // ST-001 (SPEC-0005). Every hostile shape, asserted separately rather than in
+  // a loop, so a failure names the form that got through.
+  describe('refuses a key that is not a plain relative location', () => {
+    const HOSTILE: [string, string][] = [
+      ['parent segment', 't-x/../../etc/passwd'],
+      ['backslash parent', 't-x\\..\\..\\windows\\win.ini'],
+      ['POSIX absolute', '/etc/passwd'],
+      ['Windows absolute', 'C:\\Windows\\win.ini'],
+      ['drive-relative', 'C:passwd'],
+      ['UNC', '\\\\server\\share\\x'],
+      ['current-directory segment', 't-x/./emp-y/f.jpg.enc'],
+      ['empty segment', 't-x//emp-y/f.jpg.enc'],
+      ['empty key', ''],
+    ];
+
+    for (const [name, key] of HOSTILE) {
+      it(`refuses a ${name}`, async () => {
+        await expect(vault.loadCapture(key)).rejects.toThrow(/Refusing to/);
+        await expect(vault.deleteCapture(key)).rejects.toThrow(/Refusing to/);
+      });
+    }
+
+    // ST-004 (SPEC-0005, TH-009, AD-004). Normalisation must not decode, and it
+    // must happen once. A percent-encoded traversal stays a literal segment —
+    // `..%2f` is not `..` — so it can never become a traversal on the way
+    // through. The danger this pins is a future edit adding a decode step:
+    // decode-then-validate is safe, validate-then-decode is a traversal.
+    it('does not decode a percent-encoded traversal into one', async () => {
+      for (const key of ['t-x/..%2f..%2fetc/passwd', 't-x/%2e%2e%2fetc/passwd', 't-x/%252e%252e%252fetc/passwd']) {
+        // Either outcome is safe: refused, or treated as a literal segment that
+        // resolves inside the vault. What must never happen is escaping it.
+        await expect(vault.loadCapture(key)).rejects.toThrow(/Refusing to|NoSuchKey|ENOENT|no such file/i);
+      }
+    });
+
+    it('names no key material in the refusal', async () => {
+      // SEC-005: a key carries a tenant id and an employee id.
+      await expect(vault.loadCapture('t-secret/../../etc/passwd')).rejects.toThrow(
+        /^Refusing to act on a malformed attendance capture key\.$/,
+      );
+    });
+  });
+
+  // FR-011 / AC-003. A row written by a Windows host must stay readable, and
+  // the row itself must not be rewritten by reading it.
+  it('still reads a capture whose stored key holds backslashes', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'legacy-sep', FRAME);
+    const legacy = relative!.split('/').join('\\');
+    expect(legacy).toContain('\\');
+    expect(await vault.loadCapture(legacy)).toEqual(FRAME);
+    // Unchanged: normalisation is for resolution only (FR-012).
+    expect(legacy).toBe(relative!.split('/').join('\\'));
+  });
+});
+
+/**
+ * The deletion contract (SPEC-0005, TASK-004).
+ *
+ * The harm this specification exists for is not "a capture that cannot be
+ * read". It is a retention sweep that deletes the punch row believing the
+ * encrypted frame went with it, when nothing was deleted at all.
+ */
+describe('deleting a capture', () => {
+  it('CASE 1 — canonical key, object present: the object is removed', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'gone', FRAME);
+    expect(bucket.has(`attendance/${relative}`)).toBe(true);
+    await vault.deleteCapture(relative!);
+    expect(bucket.has(`attendance/${relative}`)).toBe(false);
+  });
+
+  it('CASE 2 — the store refuses: the failure reaches the caller', async () => {
+    // The invariant Application Security approved: a physical-object deletion
+    // failure must not be presented as a completed cleanup. Before this change
+    // the rejection was caught and discarded, and the caller could not tell a
+    // failed delete from a successful one.
+    const relative = await vault.storeCapture('t1', 'emp1', 'unreachable', FRAME);
+    deleteShouldFail = true;
+    await expect(vault.deleteCapture(relative!)).rejects.toThrow(/bucket unreachable/);
+    deleteShouldFail = false;
+    // Still there, which is the point: nothing was cleaned up.
+    expect(bucket.has(`attendance/${relative}`)).toBe(true);
+  });
+
+  it('CASE 3 — legacy backslash key: the right object is removed', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'legacy-del', FRAME);
+    const legacy = relative!.split('/').join('\\');
+    await vault.deleteCapture(legacy);
+    expect(bucket.has(`attendance/${relative}`)).toBe(false);
+  });
+
+  it('CASE 4 — object already absent: that is the outcome asked for, not an error', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'twice', FRAME);
+    await vault.deleteCapture(relative!);
+    await expect(vault.deleteCapture(relative!)).resolves.toBeUndefined();
   });
 });
 

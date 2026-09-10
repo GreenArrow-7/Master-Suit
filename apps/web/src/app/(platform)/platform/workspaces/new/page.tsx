@@ -1,8 +1,10 @@
 import { prisma } from '@/lib/db';
 import NewWorkspaceForm from './NewWorkspaceForm';
 import PageHeader from '@/components/ui/PageHeader';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export default async function NewWorkspacePage() {
+  await requirePlatformPage();
   const plans = await prisma.subscriptionPlan.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
   return (
     <div className="lf-page-stack" style={{ maxWidth: 980 }}>

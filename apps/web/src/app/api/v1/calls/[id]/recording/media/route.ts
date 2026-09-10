@@ -30,10 +30,23 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
   async ({ ctx, params }) => {
-    const [recording, consent] = await Promise.all([
+    const [call, recording, consent] = await Promise.all([
+      // The parent call's own state, which this route did not consult.
+      //
+      // Every sibling — transcript, analysis, recording metadata — filters
+      // `deletedAt: null`; this one queried `Recording` by `callId` alone. It is
+      // the only path to the audio bytes, so a deleted call's recording stayed
+      // streamable to anyone holding `calls:VIEW`, and deletion was cosmetic
+      // exactly where it mattered most. Harmless while nothing could delete a
+      // call; not harmless now that something can.
+      prisma.call.findFirst({
+        where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+        select: { id: true },
+      }),
       prisma.recording.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
       prisma.recordingConsent.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
     ]);
+    if (!call) throw NotFound('Call');
     if (!recording) throw NotFound('Recording');
     if (!consent?.consentGiven || consent.withdrawnAt) {
       throw Forbidden('This recording is not available: consent was declined or withdrawn.');

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0007",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0007",
+  "taskIds": ["TASK-016"],
+  "tests": [
+    { "id": "UT-025", "outcome": "PASS", "note": "A real convergence document round-trips its verdict exactly; every permitted verdict proven not to collapse" }
+  ],
+  "commands": [
+    { "command": "node --test tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "89 of 89 pass" },
+    { "command": "node --test tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "48 of 48 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" },
+    { "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0002 --session ASES-0007", "exitCode": 0, "note": "0 errors; 12 unattributable collapsed directory entries" }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b3-remediation-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "Original assertion: SPEC-0002 reads back as the literal string PASS WITH ACCEPTED LIMITATIONS.",
+    "Why it became stale: the convergence re-run legitimately moved the verdict to FAIL. The test was pinned to the document rather than to the parser, so it failed for a reason unrelated to the code under test.",
+    "New invariant: the declaration is read out of the metadata row independently, and the parser must return exactly that. Every permitted verdict is additionally round-tripped.",
+    "Why it remains meaningful: it still fails the moment prefix matching returns, because PASS WITH ACCEPTED LIMITATIONS would collapse to PASS and stop matching the declaration. It no longer fails when the verdict simply changes.",
+    "No assertion was weakened to obtain green. The test now checks strictly more than before: the document round-trip plus all three verdicts.",
+    "The parser was a prohibited path for this task, so the fix could not be made by editing the code under test."
+  ]
+}

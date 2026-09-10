@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0002",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0009",
+  "taskIds": ["TASK-008"],
+  "tests": [
+    {
+      "id": "IT-005",
+      "outcome": "FAIL",
+      "note": "Second independent five-run confirmation on the same code: 4 of 5. Runs 1, 2, 3 and 5 each 7 passed; run 4 failed in beforeAll at helpers.ts:445 with 'password settle failed: 404'. TASK-008's Definition of Done requires five consecutive runs, so this run does not meet it."
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx playwright test tests/e2e/tablesearch-a11y.spec.ts (x5, second confirmation)",
+      "exitCode": 1,
+      "note": "run exit codes 0,0,0,1,0"
+    },
+    {
+      "command": "curl -sI http://localhost:3000/api/v1/auth/login (cold dev server, first request)",
+      "exitCode": 0,
+      "note": "405, so the gated route's non-404 readiness condition is sound"
+    },
+    {
+      "command": "curl -sI http://localhost:3000/api/v1/workspaces/readiness-probe/identity/self/password-change (cold dev server, first request)",
+      "exitCode": 0,
+      "note": "401 application/problem+json, not 404"
+    }
+  ],
+  "result": "FAIL",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "spec0004-tester",
+  "environment": "local, Windows 11, Node v24.18.0, next dev with Turbopack, loopback Docker PostgreSQL and Redis",
+  "notes": [
+    "Across both five-run confirmations of the same unchanged code the total is 9 of 10 runs passing. VER-0001 recorded the first (5 of 5); this records the second (4 of 5). The first is not withdrawn and the second is not discarded.",
+    "Root cause of the residual failure, measured rather than inferred: warmApiRoutes gates on /api/v1/auth/login by polling until the status is not 404, but issues the dynamic-segment route in WARM_ONLY_ROUTES once and discards its status. A discarded 404 is precisely the uncompiled-route signal the gate exists to wait out, so the suite can still begin before that route's module has compiled. Run 4's failing response body was the application's HTML not-found page, not the API kernel's problem+json envelope, which is what an unmatched route returns.",
+    "Corrects a statement in VER-0001. VER-0001 records that the dynamic-slug route 'returns a legitimate 404 for an unknown workspace'. Measured on a cold dev server, an unauthenticated GET on that path returns 401 application/problem+json: route() throws Unauthorized at step 3, before parameter validation and before requireWorkspace runs, so the workspace slug is never resolved. The route can therefore be gated on the same not-404 condition as the login route. The corrective change made under VER-0001 was still the right one; the reason recorded for it was wrong.",
+    "The remedy is a one-line scope change in tests/e2e/helpers.ts: gate every warmed route on the not-404 condition instead of gating one and discarding the other. It is not applied here. SPEC-0004 is VERIFYING, the control plane refuses an IMPLEMENTER session in that state (SDD-V043), and forcing the status backwards to obtain one would be routing around the gate. Raised as CONV-004 for human disposition instead.",
+    "No retry, sleep or raised timeout was added, and no assertion was weakened, to reach this result."
+  ]
+}

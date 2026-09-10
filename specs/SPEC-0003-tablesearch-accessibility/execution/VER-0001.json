@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0003",
+  "sessionId": "ASES-0002",
+  "taskIds": ["TASK-001", "TASK-003", "TASK-004"],
+  "tests": [
+    { "id": "E2E-001", "outcome": "PASS", "note": "Focus taken by the searchbox; Tab moves out and Shift+Tab returns, so no trap" },
+    { "id": "E2E-002", "outcome": "PASS", "note": "Role searchbox and accessible name 'Search the directory' resolved from native markup, exact match" },
+    { "id": "E2E-003", "outcome": "PASS", "note": "Non-matching rows hidden; status region reported '0 of N shown'" },
+    { "id": "E2E-005", "outcome": "PASS", "note": "Region present and empty before any query, then carried the no-match message. The two defects this pilot exists to fix" },
+    { "id": "E2E-006", "outcome": "PASS", "note": "WorkspaceTable instance found by the default accessible name 'Search' on /platform/audit" },
+    { "id": "REG-001", "outcome": "PASS", "note": "Clearing the query restored exactly the original visible row count and emptied the region" },
+    { "id": "REG-002", "outcome": "PASS", "note": "Label, input and table still render; the visible count stays absent until a query exists" },
+    { "id": "E2E-004", "outcome": "WITHDRAWN", "note": "CL-001 option (c) put Escape out of scope; withdrawn with FR-003, FR-004, AC-004 and TASK-002" }
+  ],
+  "commands": [
+    { "command": "npm run typecheck", "exitCode": 0, "note": "tsc --noEmit, whole app, clean" },
+    { "command": "npm run lint", "exitCode": 0, "note": "0 errors, 122 warnings, all pre-existing no-explicit-any in services; none in either changed file" },
+    { "command": "npx eslint tests/e2e/tablesearch-a11y.spec.ts", "exitCode": 0, "note": "new spec file clean" },
+    { "command": "npx prettier --check src/components/workspace/TableSearch.tsx", "exitCode": 1, "note": "CRLF only; byte-identical to prettier output after stripping CR. Untouched WorkspaceTable.tsx fails identically" },
+    { "command": "npm run docker:up", "exitCode": 0, "note": "postgres, redis, minio, mailpit; every port bound to 127.0.0.1" },
+    { "command": "npx prisma migrate status", "exitCode": 0, "note": "65 migrations, schema already up to date; nothing created or applied" },
+    { "command": "ALLOW_DEMO_SEED=yes npm run db:seed", "exitCode": 0, "note": "Database had 0 users. Seed guard used as documented, not edited" },
+    { "command": "npx playwright test tests/e2e/tablesearch-a11y.spec.ts", "exitCode": 0, "note": "7 passed in 1.9m, chromium, workers 1" },
+    { "command": "node tools/sdd/tests/validator.test.mjs", "exitCode": 0, "note": "89 of 89 pass" },
+    { "command": "node tools/sdd/tests/agent.test.mjs", "exitCode": 0, "note": "48 of 48 pass" },
+    { "command": "node tools/sdd/cli.mjs validate --all", "exitCode": 0, "note": "0 errors, 0 warnings" }
+  ],
+  "result": "PARTIAL",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b4-pilot-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0, loopback Docker services, Chromium via Playwright 1.51",
+  "notes": [
+    "Every required test ran in a real browser and passed. This is not an UNKNOWN result: the E2E environment was established from the repository's own documented local workflow and the suite executed end to end.",
+    "PARTIAL rather than PASS for exactly one reason: prettier --check exits 1 on the changed component. The content is identical to prettier's output apart from CRLF line endings, core.autocrlf is true, and the untouched WorkspaceTable.tsx fails the same check. Known Windows line-ending class. prettier --write was deliberately not run, because it would rewrite line endings in files this work does not own.",
+    "No production or staging system was contacted. DATABASE_URL, REDIS_URL and S3_ENDPOINT were confirmed to resolve to 127.0.0.1 by hostname only; no secret value was read, printed or referenced.",
+    "Unexpected finding: the live region updates on every keystroke and appends a full sentence at zero matches, which is louder than the previous behaviour that never announced the message at all. Raised for the reviewer rather than accepted silently. FR-005 forbids introducing a debounce, so it cannot be resolved inside this specification.",
+    "No real screen reader was exercised and none is claimed. The evidence is the browser accessibility tree as Playwright reads it.",
+    "Residual: E2E-006 depends on /platform/audit holding at least eight rows, because WorkspaceTable renders no search box below that threshold. It passed here; the precondition is not guaranteed by the suite itself."
+  ]
+}

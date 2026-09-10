@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0002",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0002",
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "ai",
+  "actorId": "b3-independent-reviewer",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "The allowlist now authorises by six verified properties rather than by file name, and detects stale entries. It ends stricter than it began, which is what TASK-011 required.",
+      "artifact": "tools/sdd/tests/validator.test.mjs",
+      "reference": "CONV-006"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Scope discipline held. ASES-0002 declared the callers as prohibited paths, so the session reviewing them could not edit them to make them pass.",
+      "artifact": "specs/SPEC-0002-agent-integration-controlled-execution/execution/ASES-0002.json",
+      "reference": "TASK-011"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "The checks are textual rather than semantic; an unusual formatting of a hostile call could evade them. Twelve synthetic probes confirm they are not vacuous, which bounds the concern without removing it.",
+      "artifact": "docs/evidence/phase-b3-agent-integration/allowlist-security-review.md",
+      "reference": "CONV-006"
+    },
+    {
+      "severity": "MINOR",
+      "summary": "git is still resolved through PATH and inherits GIT_ environment variables. Pre-existing baseline shared with diff.mjs; not introduced by B3 and not closed.",
+      "artifact": "tools/sdd/lib/agent.mjs",
+      "reference": "SEC-003"
+    }
+  ],
+  "notes": [
+    "APPROVE for the remediation as scoped: ST-002 passes, the allowlist is stricter, and no security check was removed or narrowed.",
+    "Reviewed under a distinct actor from both the implementing session and the tester, per SDD-V051.",
+    "This is an AI review. It satisfies no human gate. Application Security has not reviewed this phase."
+  ]
+}

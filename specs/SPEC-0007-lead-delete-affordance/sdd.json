@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0007",
+  "slug": "lead-delete-affordance",
+  "kind": "bugfix",
+  "risk": "R2",
+  "status": "IMPLEMENTING",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": null,
+    "plan": "plan.md",
+    "threatModel": null,
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": "convergence.md",
+    "changeRecord": "change-record.md"
+  },
+  "statusHistory": [
+    {
+      "status": "DRAFT",
+      "date": "2026-09-09",
+      "note": "Raised from a production report of two symptoms: an administrator cannot delete leads, and workspace creation fails. Registered as BUG-006 and BUG-007. The two were deliberately not assumed to share a cause."
+    },
+    {
+      "status": "READY_FOR_PLAN",
+      "date": "2026-09-09",
+      "note": "BUG-006 reproduced on the exact deployed image (master-suite/web:c879c6c7f7e8): the leads list offers Assign, Change stage, Add task and no delete at all. Every layer below the screen verified working - permission granted at ORGANIZATION scope, route implemented, service soft-deletes, RLS policies and role grants identical to production, cross-tenant delete refused. BUG-007 did not reproduce: the wizard and the API both answer 201 on the same image, and PlatformAuditEvent shows the wizard has worked in production."
+    },
+    {
+      "status": "PLANNED",
+      "date": "2026-09-09",
+      "note": "R2 path. Six files, no migration, no dependency, no environment change, nothing under lib/auth or lib/security. BUG-007 gets diagnosability, not a speculative fix - it has no reproduced cause."
+    },
+    {
+      "status": "READY_FOR_APPROVAL",
+      "date": "2026-09-09",
+      "note": "Artefact set complete for R2: spec, plan, test plan, tasks, traceability, and the two bug records."
+    },
+    {
+      "status": "APPROVED_FOR_IMPLEMENTATION",
+      "date": "2026-09-09",
+      "note": "Gate 1, author-level, which is what R2 requires. See the approvals entry for the provenance."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Implemented. The compiler found the second LeadGrid caller (sales/smart-views/page.tsx) because the new prop is required rather than optional - an administrator working from a saved view had the same missing control."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "Pushed as 21705d7, PR #47 into dev/yourhan-next. GitHub SDD validation: success. CI: every gate passes except Audit, which fails on three advisories published between 2026-09-08 and 2026-09-09 (next critical, nodemailer high, sharp high). This change touches no dependency - git diff 63daf3d..21705d7 over package.json and package-lock.json is empty - and re-running the release candidate's own CI on 2026-09-09 reproduced the identical single failure at 63daf3d with E2E green, so the RC is no longer CI-green either. E2E did not run on this PR because ci.yml gates it on base_ref == main; it runs on the RC PR."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "Second pass against the four product requirements. Lead document upload investigated end to end and found already implemented and secure - BUG-010, no defect, coverage added. Task deletion implemented - BUG-009: tasks:DELETE was granted in production, Task.deletedAt existed, every list already filtered it, and the endpoint answered 405. Platform console denial UX fixed for a signed-in non-owner. A bounded 40-check functionality matrix on the production image found exactly two failures, both now closed. One new R4 defect found and deliberately NOT fixed: BUG-008, the console's refusal returns the control-plane page in the redirect body; it reproduces on the unmodified production image, and moving authorization into eleven pages needs the R4 gate."
+    },
+    {
+      "status": "VERIFYING",
+      "date": "2026-09-09",
+      "note": "Full gate green on rc/incident-2026-09-09 at 90ee47a (PR #49, base main so E2E runs): all 34 CI steps pass including E2E, Build and Audit. Playwright 54 passed, 1 skipped, 0 failed. REG-001 - an administrator deletes a lead from the list - executed and passed at 6.3s. All three workspace-persona assertions passed, and the pre-existing 'a workspace administrator cannot reach the platform area' still passes, so the denial-UX change weakened nothing. REG-002 skips its storage half because CI has no object storage; registered for the R5 owner. Audit is green for the first time since 2026-09-08 via PR #48. BUG-008 remains open at the R4 gate and is deliberately not in this change. | BUG-008 implemented under an explicit release-owner R4 authorization given in session. requirePlatformPage() is the first statement of all eleven platform pages, above every query; the layout keeps its own gate. Measured five pages by three unauthorized personas: before, every refusal carried control-plane content in the 307 body, /platform/users at 92 KB; after, none, while the owner still gets 200 and full content on all ten pages. REG-003 asserts the refusal body with maxRedirects: 0. requirePlatformOwner unchanged. Application Security review is OUTSTANDING and was explicitly reserved to a human by the same authorization."
+    },
+    {
+      "status": "IMPLEMENTING",
+      "date": "2026-09-09",
+      "note": "BUG-011 added under a release-owner feature request: an administrator could not delete a call. R3 - a new /api/v1 route; calls:DELETE already existed and was already enforced by two other routes, Call.deletedAt already existed, every read path already filtered it, and EntityDelete is the established component. Soft delete only; recordings, transcripts, analyses, consent and audits are left to lib/jobs/retention.ts, which owns recording lifetime by retainUntil. A second gap was found and closed while tracing: calls/[id]/recording/media did not filter the parent call's deletedAt, so a deleted call's audio would still have streamed. Verified before/after across admin, sales_rep, read_only and cross-tenant, in the API and in a browser."
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "specification",
+      "role": "Product Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/spec.md",
+      "scope": "R2 bugfix: a bulk delete affordance on the leads grid over the existing DELETE endpoint, plus rejection logging and an error message on the workspace provisioning path.",
+      "note": "PROVENANCE, stated so it can be weighed rather than assumed. R2's gate 1 is author-level per docs/sdd/RISK_TO_PROCESS_MATRIX.md, but SDD-V022 requires a human on the specification gate at every level, and that refusal is correct. This entry therefore rests on a human instruction given in session on 2026-09-09: 'For R0-R3: continue autonomously according to governance', in a message that named both symptoms as P0 and listed the fix classes that were and were not acceptable. It is a standing class authorization, not a decision taken against this specification document, and an AI agent transcribed it - the same provenance as SPEC-0006. The R2 classification is argued explicitly in spec.md so a reviewer can reject it cheaply; if the R4 reading is taken instead, CHG-001 reverts on its own."
+    },
+    {
+      "gate": "implementation",
+      "role": "Release/Project Owner",
+      "actorType": "human",
+      "decision": "approved",
+      "date": "2026-09-09",
+      "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/bug-008.md",
+      "scope": "R4 authorization-boundary remediation of BUG-008 / SEC-OBS-014: move platform authorization enforcement to the page boundary across the eleven platform pages, add regression and security tests, run full regression and CI.",
+      "note": "PROVENANCE. Granted in session on 2026-09-09 in a message headed 'HUMAN AUTHORIZATION PACKET - REMAINING RELEASE BLOCKERS', which named BUG-008, described the render race, and authorized the smallest correct authorization-boundary fix including modifying the eleven affected pages. The same message states that any separately required AppSec human review/signoff must still be performed by an authorized AppSec reviewer, and that production deployment is NOT authorized. An AI agent transcribed this authorization and performed the implementation; it did not grant the approval and has not performed the AppSec review. docs/RISK_CLASSIFICATION.md also requires two human reviewers at R4, one security-literate; whether one qualified person may fill both slots is EVC-019, which is unresolved."
+    }
+  ],
+  "reviews": [],
+  "evidenceConflicts": []
+}

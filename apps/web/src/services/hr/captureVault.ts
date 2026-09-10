@@ -80,13 +80,64 @@ function key(): Buffer {
  */
 function pathFor(tenantId: string, employeeId: string, punchId: string, when: Date) {
   const month = `${when.getUTCFullYear()}-${String(when.getUTCMonth() + 1).padStart(2, '0')}`;
-  return path.join(`t-${tenantId}`, `emp-${employeeId}`, month, `punch-${punchId}${SUFFIX}`);
+  // `/`, not path.join. This value is a *logical storage key* — it is written to
+  // HrAttendancePunch.capturePath and read back on whatever host happens to run
+  // the retention sweep. path.join would emit `\` on Windows, and a key composed
+  // on one platform must mean the same thing on every other. SPEC-0005, FR-001.
+  return [`t-${tenantId}`, `emp-${employeeId}`, month, `punch-${punchId}${SUFFIX}`].join('/');
 }
 
 /** Ciphertext, not an image. Labelling it image/jpeg would be a lie a browser acts on. */
 const CONTENT_TYPE = 'application/octet-stream';
 
-const objectKey = (relative: string) => PREFIX + relative.split(path.sep).join('/');
+/**
+ * A stored key, as a logical key — separators normalised, nothing else.
+ *
+ * ── Why this exists (SPEC-0005, FR-011/FR-012) ──────────────────────────────
+ *
+ * `pathFor` now composes with `/`, but rows written before this change by a
+ * Windows-hosted process hold `t-x\emp-y\…`. Those captures must stay readable
+ * and — far more importantly — stay *deletable*, or a formatting defect becomes
+ * a retention-obligation failure.
+ *
+ * It converts separators and does nothing else. It does not resolve `..`, does
+ * not collapse `//`, does not decode percent-escapes and does not touch the
+ * database: the row keeps whatever it always held. Repairing a malformed key
+ * would guess at which file was meant, and on biometric data a wrong guess
+ * deletes somebody else's evidence.
+ */
+const toLogicalKey = (stored: string) => stored.split('\\').join('/');
+
+/**
+ * Refuses a key that is not a plain relative location inside the vault.
+ *
+ * Normalise first, then validate — never the reverse. Validating the raw value
+ * and normalising afterwards is how `..\` slips through a check written for
+ * `../` (SPEC-0005, TH-009, AD-004). Every caller here follows that order.
+ *
+ * Refusing rather than repairing is deliberate: FR-005 and AD-005.
+ */
+function assertSafeKey(key: string): string {
+  const bad =
+    key.length === 0 ||
+    key.startsWith('/') || // POSIX absolute
+    /^[A-Za-z]:/.test(key) || // Windows drive, absolute or drive-relative
+    key.startsWith('//') || // UNC, once backslashes are normalised
+    key.split('/').some((segment) => segment === '' || segment === '.' || segment === '..');
+
+  if (bad) {
+    // The reason, never the key: a key carries a tenant id and an employee id.
+    // SPEC-0005, SEC-005 and OBS-001.
+    logger.warn({ event: 'capture.key.refused' }, 'attendance capture: refusing a malformed storage key');
+    throw new Error('Refusing to act on a malformed attendance capture key.');
+  }
+  return key;
+}
+
+/** The one place a logical key becomes a filesystem path. Never the reverse. */
+const filesystemPathFor = (key: string) => path.resolve(root(), ...key.split('/'));
+
+const objectKey = (relative: string) => PREFIX + assertSafeKey(toLogicalKey(relative));
 
 /**
  * Encrypt and store one frame. Returns the relative path, or null.
@@ -144,7 +195,10 @@ export async function loadCapture(relative: string): Promise<Buffer> {
   try {
     return decrypt(await getObject(objectKey(relative)));
   } catch (error) {
-    const full = path.resolve(root(), relative);
+    // Logical key -> filesystem path, at the boundary and only here. The
+    // containment check below is unchanged and remains the backstop: `relative`
+    // comes from a database column, and a column is not a promise.
+    const full = filesystemPathFor(assertSafeKey(toLogicalKey(relative)));
     if (full !== root() && !full.startsWith(root() + path.sep)) {
       throw new Error('Refusing to read outside the attendance capture vault.');
     }
@@ -177,22 +231,40 @@ export async function loadCapture(relative: string): Promise<Buffer> {
  *
  * Never throws for an absent object: a capture that is already gone is the
  * outcome this was asked for.
+ *
+ * ── It does throw when the store could not answer (SPEC-0005, TASK-004) ─────
+ *
+ * "Already gone" and "the bucket refused the request" are not the same outcome,
+ * and this used to swallow both. A caller that deletes the punch row on the
+ * strength of a silent return leaves an encrypted biometric image in the bucket
+ * with nothing pointing at it, and reports the sweep as successful — the harm
+ * this specification exists for.
+ *
+ * A storage failure now propagates. What the *caller* should then do about the
+ * row is a separate decision and is not taken here: lib/jobs/retention.ts is a
+ * prohibited path for this task, and the question is raised as CL-003.
  */
 export async function deleteCapture(relative: string): Promise<void> {
-  await deleteObjects([objectKey(relative)]).catch((error) => {
-    logger.warn({ err: error, relative }, 'attendance capture: object could not be deleted');
-    return 0;
-  });
+  // Refuse before touching either vault, so a malformed key cannot reach a
+  // delete at all. Normalise, then validate — that order is the control.
+  const key = assertSafeKey(toLogicalKey(relative));
 
-  const full = path.resolve(root(), relative);
+  // No `.catch` that returns 0. An absent object is not an error to S3; a
+  // failure to reach the store is, and it must not read as "already gone".
+  await deleteObjects([PREFIX + key]);
+
+  const full = filesystemPathFor(key);
   // The same guard loadCapture keeps: `relative` comes from a database column,
   // and a column is not a promise. An unlink is the one place where being wrong
   // about that is unrecoverable.
   if (full !== root() && !full.startsWith(root() + path.sep)) {
     throw new Error('Refusing to delete outside the attendance capture vault.');
   }
-  await unlink(full).catch(() => {
-    /* not on disk, which is the normal case after migration */
+  await unlink(full).catch((error: NodeJS.ErrnoException) => {
+    // ENOENT is the normal case after migration — the capture lives in the
+    // bucket, not on this disk. Anything else (EACCES, EIO, EBUSY) is the
+    // filesystem refusing, and that is not "already gone" either.
+    if (error?.code !== 'ENOENT') throw error;
   });
 }
 

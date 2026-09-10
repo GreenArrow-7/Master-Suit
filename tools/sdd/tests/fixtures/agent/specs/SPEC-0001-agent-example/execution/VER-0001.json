@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0001",
+  "specId": "SPEC-0001",
+  "sessionId": "ASES-0001",
+  "taskIds": ["TASK-001"],
+  "tests": [
+    { "id": "UT-001", "outcome": "PASS" },
+    { "id": "ST-001", "outcome": "PASS" }
+  ],
+  "commands": [
+    { "command": "sample unit test command", "exitCode": 0 }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "agent-beta",
+  "environment": "synthetic fixture"
+}

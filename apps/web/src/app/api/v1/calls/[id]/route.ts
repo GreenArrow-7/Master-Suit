@@ -92,3 +92,45 @@ export const PATCH = route(
     return updated;
   },
 );
+
+/**
+ * Soft delete, because `Call.deletedAt` already exists and every read path
+ * already filters on it — the list page, the list API, and the transcript,
+ * analysis and recording sub-routes all pass `deletedAt: null`. Removing a call
+ * therefore takes it out of the product without destroying the record of a
+ * conversation that happened.
+ *
+ * ── What this deliberately does not touch ───────────────────────────────────
+ *
+ * The recording, its stored object, the transcript, the AI analysis, the
+ * consent record and the call audits all stay exactly where they are.
+ *
+ * Recording lifetime is owned by the retention sweep (`lib/jobs/retention.ts`),
+ * which deletes by `retainUntil`, removes the object *before* the row so the
+ * audio is never abandoned in the bucket, and leaves provider-hosted media
+ * alone. Deleting the object here would take that decision away from the policy
+ * that owns it and destroy consent and audit evidence that the product keeps on
+ * purpose. A call being removed from a workspace is not a retention event.
+ *
+ * `Recording.call` is `onDelete: Cascade`, which matters only for a hard delete
+ * — nothing cascades on a timestamp.
+ */
+export const DELETE = route(
+  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params }) => {
+    // Tenant-scoped and already-deleted-aware: a second delete is a 404 rather
+    // than a silent success on a row that is already gone. Out-of-tenant lands
+    // here too, and answers the same 404 — a 403 would confirm the call exists.
+    const call = await prisma.call.findFirst({
+      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!call) throw NotFound('Call');
+
+    await prisma.call.update({
+      where: { id: params.id, tenantId: ctx.tenantId },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
+  },
+);

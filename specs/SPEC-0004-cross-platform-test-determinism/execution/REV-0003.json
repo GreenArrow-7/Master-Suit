@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0003",
+  "specId": "SPEC-0004",
+  "sessionId": "ASES-0011",
+  "reviewerSessionId": "ASES-0013",
+  "reviewType": "code-review",
+  "reviewerRole": "QA_REVIEWER",
+  "actorType": "ai",
+  "actorId": "spec0004-final-diff-review",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": false,
+  "findings": [
+    {
+      "id": "CR-001",
+      "severity": "MINOR",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "The deadline message asserts a cause it has not established: 'the dev server never finished compiling this route'. A 5xx is also treated as not-ready, so a route failing for a genuine product reason would time out under a message blaming compilation. The last status is printed, so a reader can tell, but the sentence over-claims.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-002",
+      "severity": "MINOR",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "One deadline is shared across four sequential probes and computed once. If the first probe consumes most of the 180s the later ones inherit a truncated budget and can report a timeout they would otherwise have survived. Not observed - the whole first test took about 1.1 minutes including all four probes - but latent on a slower machine.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-003",
+      "severity": "MINOR",
+      "file": "apps/web/tests/unit/observability.spec.ts",
+      "summary": "The case named 'leaves the rest of the config byte-identical to the file under review' no longer compares bytes; it compares LF-normalised text. The change is correct - a byte comparison was testing the checkout's line endings rather than the rendering - but the name now overstates what it asserts.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-004",
+      "severity": "MINOR",
+      "file": "apps/web/tests/unit/observability.spec.ts",
+      "summary": "Splitting the POSIX half into its own case re-runs the entrypoint script, so the mode assertion inspects a different temporary run than the content assertion. Equivalent in practice - same script, same environment - but it is duplicated work and a reader may assume both assertions describe one run.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-005",
+      "severity": "MINOR",
+      "file": "apps/web/tests/helpers/fixtures.ts",
+      "summary": "ensurePermission is declared at line 97, above the ALL_ACTIONS and MODULES constants at 109-110 whose types it references. Type-only references are hoisted so tsc is satisfied, but the file reads backwards at that point.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-006",
+      "severity": "MINOR",
+      "file": "apps/web/tests/security/assistant-guardrails.spec.ts",
+      "summary": "ST-002 bounds a tool body as a fraction of total file length (source.length/4 and /2). That catches the actual regression, which over-read by roughly fourteen times, but the thresholds are heuristic and drift as the file grows. The semantic bound - modelsRead('searchLeads') equals exactly ['lead'] - is the assertion doing the real work.",
+      "status": "OPEN"
+    },
+    {
+      "id": "CR-007",
+      "severity": "INFO",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "Checked and clear: the four probe routes declare no rateLimit spec, and an unauthenticated request has no ctx, so the handler's rate-limit branch is skipped entirely. The probe consumes no login or per-user budget on any run.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "CR-008",
+      "severity": "INFO",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "Checked and clear: apiReady memoises the promise, so a rejection is cached and every later caller fails the same way. For a readiness gate that is the correct behaviour - if the API never became ready, failing fast is right - and the promise is returned and awaited immediately, so no unhandled rejection is possible.",
+      "status": "ACCEPTED"
+    },
+    {
+      "id": "CR-009",
+      "severity": "MINOR",
+      "file": "apps/web/tests/e2e/helpers.ts",
+      "summary": "The rewrite converted this file's line endings from CRLF to LF in the working tree. core.autocrlf=true normalises to LF in the index, so the committed content is identical either way and there is no functional consequence; but it is an undeclared side effect, and it is why this file now passes npm run format:check while most of the repository does not.",
+      "status": "OPEN"
+    }
+  ],
+  "notes": [
+    "Scope: the final SPEC-0004 diff - 10 files across TESTS, SCRIPTS, PLAYWRIGHT/HARNESS, DOCUMENTATION, plus the governance artefacts.",
+    "Technical assessment: APPROVE. Every change satisfies the requirement it cites, the fixes are at the cause rather than the symptom, no assertion was weakened, and coverage increased in three places (ST-002, REG-004 and the recovered permission test). Nine findings, none of them a correctness, security or production defect.",
+    "Explicitly verified unchanged by this specification: apps/web/src application code (scope-check attributes 1 path to ASES-0010, 2 to ASES-0011, 0 non-meta to ASES-0012, none under src/); Prisma schema and migrations (git status on apps/web/prisma is empty); authentication and authorization behaviour (no product file touched; apps/web/src/ was a prohibited path for the harness task); tenant isolation (no RLS policy, tenant guard or query scope touched); dependency versions (19 + 18 unchanged); lockfile (git status empty); production and staging infrastructure (no infra file touched, no deployed system contacted).",
+    "THIS RECORD DOES NOT DISCHARGE THE R2 HUMAN CODE REVIEW. actorType is ai and satisfiesHumanGate is false, and both are accurate. Two independent reasons it cannot be a human gate discharge: an AI review does not satisfy the role under EVC-017 and docs/sdd/HUMAN_APPROVAL_GATES.md, and I am the author of this diff, so this is a self-review and carries none of the independence the gate exists to provide. CONV-001 remains OPEN.",
+    "REV-0001 and REV-0002 are not overwritten or superseded; this record is additional to both.",
+    "Recorded from ASES-0013, a QA_REVIEWER session opened for this review, after SDD-V051 correctly refused an earlier attempt in which the reviewing session was also the session that produced the artefacts. Session separation is not author independence: the same agent authored the diff and wrote this review, which is why the note above says this discharges nothing."
+  ]
+}

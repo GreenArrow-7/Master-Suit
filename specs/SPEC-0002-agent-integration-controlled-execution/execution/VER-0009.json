@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0009",
+  "specId": "SPEC-0002",
+  "sessionId": "ASES-0014",
+  "taskIds": [
+    "TASK-019",
+    "TASK-020",
+    "TASK-021"
+  ],
+  "tests": [
+    {
+      "id": "UT-056",
+      "outcome": "PASS",
+      "note": "A closed session reports the same result it had when it ran"
+    },
+    {
+      "id": "UT-057",
+      "outcome": "PASS",
+      "note": "The CONV-009 case: a later session edit to a path the first prohibited is not blamed on the first"
+    },
+    {
+      "id": "UT-058",
+      "outcome": "PASS",
+      "note": "A prohibited edit made during the session still fails, before and after closing - the fix hides nothing"
+    },
+    {
+      "id": "UT-059",
+      "outcome": "PASS",
+      "note": "A genuinely unattributable change stays visible"
+    },
+    {
+      "id": "UT-060",
+      "outcome": "PASS",
+      "note": "A session closed with no end-state evidence reports a limited state and attributes nothing"
+    },
+    {
+      "id": "UT-061",
+      "outcome": "PASS",
+      "note": "READY and IN_PROGRESS sessions still judged against the live tree"
+    },
+    {
+      "id": "UT-062",
+      "outcome": "PASS",
+      "note": "Pre-existing work stays PRE_EXISTING across closing"
+    },
+    {
+      "id": "UT-063",
+      "outcome": "PASS",
+      "note": "End-state evidence is written once and not silently refreshed"
+    },
+    {
+      "id": "UT-068",
+      "outcome": "PASS",
+      "note": "A non-path identifier is reported repository-wide"
+    },
+    {
+      "id": "UT-069",
+      "outcome": "PASS",
+      "note": "A glob is reported repository-wide"
+    },
+    {
+      "id": "UT-070",
+      "outcome": "PASS",
+      "note": "Prose in an allowed or a prohibited declaration is reported"
+    },
+    {
+      "id": "UT-071",
+      "outcome": "PASS",
+      "note": "A clean declaration emits nothing and the rule never fails a run alone"
+    },
+    {
+      "id": "UT-064",
+      "outcome": "PASS",
+      "note": "A task may record its own execution evidence"
+    },
+    {
+      "id": "UT-065",
+      "outcome": "PASS",
+      "note": "Six intent-bearing artefacts stay outside the allowance"
+    },
+    {
+      "id": "UT-066",
+      "outcome": "PASS",
+      "note": "The allowance never reaches another specification"
+    },
+    {
+      "id": "UT-067",
+      "outcome": "PASS",
+      "note": "An explicit prohibition outranks the allowance; the enumeration is closed"
+    }
+  ],
+  "commands": [
+    {
+      "command": "node tools/sdd/tests/agent.test.mjs",
+      "exitCode": 0,
+      "note": "70 of 70 pass; grown from 58 by UT-056 to UT-067"
+    },
+    {
+      "command": "node tools/sdd/tests/validator.test.mjs",
+      "exitCode": 0,
+      "note": "93 of 93 pass; grown from 89 by UT-068 to UT-071"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 SDD-V064 warnings which are the historical declarations"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0003 --session ASES-0001",
+      "exitCode": 0,
+      "note": "the CONV-009 false failure is gone; reported as a limited state instead"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": "b4-chg008-tester",
+  "environment": "local developer workstation, Windows 11, Node v24.18.0",
+  "notes": [
+    "All three CHG-008 defects are remediated and demonstrably so. The three sessions that produced false scope failures - SPEC-0003/ASES-0001, ASES-0003 and SPEC-0002/ASES-0008 - now report PASS with an SDD-V063 limited-state warning instead of an invented SDD-V058 violation.",
+    "The remediation was not clean and the record says so. TASK-020 took four sessions: ASES-0010 BLOCKED on a duplicate test-identifier declaration, ASES-0011 stopped at the fixture boundary, ASES-0012 stopped before the test plan, ASES-0013 completed it. Each stop was a real control firing rather than a detour.",
+    "One record was corrected rather than replaced: ASES-0010 notes first claimed nothing was changed in that session, which was false - it had implemented validate.mjs and rules.mjs. The correction is stated in the record.",
+    "SDD-V064 is WARNING, not ERROR, and the reasoning is recorded: an ERROR would force rewriting historical DONE task records or minting an exception, and an exception downgrades a finding to INFO, which is less visible than a standing warning.",
+    "Residual: sessions closed before TASK-019 carry no end-state evidence and can never be re-evaluated. SDD-V063 reports that rather than guessing."
+  ]
+}
