@@ -251,6 +251,36 @@ sufficient.
 
 ---
 
+## D-12 · Brand palette — keep blue/cyan, or move to teal/gold?
+
+**Question.** The restructuring brief proposes a teal (`#176B63`) primary with a
+gold (`#B49A76`) accent. The application already has a documented brand system in
+`apps/web/src/styles/tokens.css`: brand blue (`#2455E6`) primary, cyan
+(`#00D9F5`) reserved for AI surfaces and the nav indicator, midnight sidebar.
+
+**What was measured.** Both palettes meet WCAG AA on every text pair that carries
+text. The current palette fails on one token, `--yh-text-muted` at 2.90:1, which
+is a defect to repair either way. The proposed palette fails only on the
+decorative accent used as text, which the brief already says is decorative. See
+`DESIGN-SYSTEM-ASSESSMENT.md` for the full table.
+
+**Why it is a decision and not a task.** The token file states a colour budget and
+attaches meaning to cyan ("AI"), and names youhan.in as the parent brand. Changing
+hue families discards both. That is a brand call, not an engineering one.
+
+**PROPOSED — NOT APPROVED:** keep the existing blue/cyan brand; adopt every
+_comfort_ requirement from the brief (type sizes, contrast repair, focus, reduced
+motion, density) inside it.
+
+_Consequence:_ the product stays visually consistent with youhan.in and the AI
+surfaces keep their signal. If teal/gold is genuinely wanted it stays cheap to do
+later — the `--lf-*` alias layer means it is an edit to one `--yh-*` block rather
+than to ~400 call sites — so deferring costs nothing.
+
+**Gates:** nothing. The comfort work proceeds either way.
+
+---
+
 ## How to use this file
 
 1. Answer **D-8** and **D-1** first — they are the two that block work outright.
