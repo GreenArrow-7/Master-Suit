@@ -401,7 +401,7 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
  * an SLA nobody approved. They stay in the queue flagged as needing
  * configuration.
  */
-export async function sweepTriageDeadlines(now = new Date()): Promise<{ escalated: number }> {
+export async function sweepTriageDeadlines(now = new Date(), tenantId?: string): Promise<{ escalated: number }> {
   /**
    * Raw, because this read deliberately spans tenants and the tenant guard has
    * no way to express that on a Prisma call — the same reason the retention and
@@ -415,6 +415,7 @@ export async function sweepTriageDeadlines(now = new Date()): Promise<{ escalate
       SELECT "id", "tenantId", "leadId", "responsibleUserId", "reason"::text AS "reason", "detail"
         FROM "LeadTriageEntry"
        WHERE "status" = 'WAITING' AND "escalatedAt" IS NULL
+         AND (${tenantId ?? null}::text IS NULL OR "tenantId" = ${tenantId ?? null})
          AND "reviewPolicyMissing" = false AND "reviewDueAt" <= ${now}
        ORDER BY "reviewDueAt" ASC
        LIMIT 500
@@ -473,7 +474,7 @@ export async function sweepTriageDeadlines(now = new Date()): Promise<{ escalate
  *
  * Idempotent: a second run finds nothing to do.
  */
-export async function sweepStaleTriage(now = new Date()): Promise<{ resolved: number }> {
+export async function sweepStaleTriage(now = new Date(), tenantId?: string): Promise<{ resolved: number }> {
   const stale = await withPlatformTx(
     (tx) =>
       tx.$queryRaw<{ id: string; tenantId: string; leadId: string; gone: boolean }[]>`
@@ -481,6 +482,7 @@ export async function sweepStaleTriage(now = new Date()): Promise<{ resolved: nu
         FROM "LeadTriageEntry" e
         JOIN "Lead" l ON l."id" = e."leadId" AND l."tenantId" = e."tenantId"
        WHERE e."status" = 'WAITING'
+         AND (${tenantId ?? null}::text IS NULL OR e."tenantId" = ${tenantId ?? null})
          AND (l."ownerId" IS NOT NULL OR l."deletedAt" IS NOT NULL)
        LIMIT 500
     `,
@@ -519,13 +521,14 @@ export async function sweepStaleTriage(now = new Date()): Promise<{ resolved: nu
  * neither (this sweep retries) or both (the outbox delivers). `notifiedAt` still
  * means "a notice has been decided on"; delivery is the outbox's business.
  */
-export async function sweepTriageNotifications(now = new Date()): Promise<{ notified: number }> {
+export async function sweepTriageNotifications(now = new Date(), tenantId?: string): Promise<{ notified: number }> {
   const pending = await withPlatformTx(
     (tx) =>
       tx.$queryRaw<DueEntry[]>`
       SELECT "id", "tenantId", "leadId", "responsibleUserId", "reason"::text AS "reason", "detail"
         FROM "LeadTriageEntry"
        WHERE "status" = 'WAITING' AND "notifiedAt" IS NULL AND "responsibleUserId" IS NOT NULL
+         AND (${tenantId ?? null}::text IS NULL OR "tenantId" = ${tenantId ?? null})
        ORDER BY "openedAt" ASC
        LIMIT 500
     `,

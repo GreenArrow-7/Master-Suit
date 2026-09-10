@@ -532,16 +532,16 @@ describe('deadlines, escalation and re-entry', () => {
     const before = await prisma.notification.count({
       where: { tenantId: fixture.a.tenantId, kind: 'LEAD_TRIAGE_OVERDUE', recordId: leadId },
     });
-    await sweepTriageDeadlines();
-    await sweepTriageDeadlines();
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
     /**
      * Deciding and delivering are two steps now: the sweep commits the decision
      * with the claim so a crash between them cannot lose it, and delivery turns
      * decisions into notifications. The assertion is unchanged in substance —
      * three sweeps still produce exactly one alert.
      */
-    await deliverOutbox();
+    await deliverOutbox('t', new Date(), 200, fixture.a.tenantId);
 
     const after = await prisma.notification.count({
       where: { tenantId: fixture.a.tenantId, kind: 'LEAD_TRIAGE_OVERDUE', recordId: leadId },
@@ -555,7 +555,7 @@ describe('deadlines, escalation and re-entry', () => {
     const leadId = await makeLead();
     await assignLead(fixture.a.tenantId, leadId, new Date(Date.now() - 24 * 3_600_000));
 
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
 
     const entry = await openEntry(leadId);
     expect(entry?.escalatedAt).toBeNull();
@@ -570,11 +570,11 @@ describe('deadlines, escalation and re-entry', () => {
     await assignLead(fixture.a.tenantId, leadId, opened);
 
     // 29 minutes 59 seconds: not yet.
-    await sweepTriageDeadlines(new Date('2026-06-01T10:29:59.000Z'));
+    await sweepTriageDeadlines(new Date('2026-06-01T10:29:59.000Z'), fixture.a.tenantId);
     expect((await openEntry(leadId))?.escalatedAt).toBeNull();
 
     // Exactly 30: due, and `lte` means due counts as reached.
-    await sweepTriageDeadlines(new Date('2026-06-01T10:30:00.000Z'));
+    await sweepTriageDeadlines(new Date('2026-06-01T10:30:00.000Z'), fixture.a.tenantId);
     expect((await openEntry(leadId))?.escalatedAt).not.toBeNull();
   });
 
@@ -583,7 +583,7 @@ describe('deadlines, escalation and re-entry', () => {
     await setRule({ pool: [], escalateAfterMins: 1 });
     const leadId = await makeLead();
     await assignLead(fixture.a.tenantId, leadId, new Date(Date.now() - 3_600_000));
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
     const escalated = await openEntry(leadId);
     expect(escalated?.escalatedAt).not.toBeNull();
 
@@ -594,7 +594,7 @@ describe('deadlines, escalation and re-entry', () => {
     });
     expect(closed.status).toBe('ASSIGNED');
     // A later sweep must not re-raise it.
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), fixture.a.tenantId);
     expect(await openEntry(leadId)).toBeNull();
   });
 
@@ -635,7 +635,7 @@ describe('deadlines, escalation and re-entry', () => {
       where: { tenantId: fixture.a.tenantId, id: leadId },
       data: { ownerId: other, assignedAt: new Date() },
     });
-    const result = await sweepStaleTriage();
+    const result = await sweepStaleTriage(new Date(), fixture.a.tenantId);
 
     expect(result.resolved).toBeGreaterThanOrEqual(1);
     expect(await openEntry(leadId)).toBeNull();
@@ -646,9 +646,9 @@ describe('deadlines, escalation and re-entry', () => {
     const leadId = await makeLead();
     await assignLead(fixture.a.tenantId, leadId);
 
-    await sweepTriageNotifications();
-    await sweepTriageNotifications();
-    await deliverOutbox();
+    await sweepTriageNotifications(new Date(), fixture.a.tenantId);
+    await sweepTriageNotifications(new Date(), fixture.a.tenantId);
+    await deliverOutbox('t', new Date(), 200, fixture.a.tenantId);
 
     const notices = await prisma.notification.count({
       where: { tenantId: fixture.a.tenantId, kind: 'LEAD_TRIAGE_WAITING', recordId: leadId },

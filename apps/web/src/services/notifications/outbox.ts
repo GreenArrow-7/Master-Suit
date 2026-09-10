@@ -140,6 +140,15 @@ export async function deliverOutbox(
   worker = `w-${process.pid}`,
   now = new Date(),
   batch = 200,
+  /**
+   * Restrict to one workspace.
+   *
+   * The worker passes nothing and sweeps every tenant, which is the point of an
+   * outbox. An operator draining one workspace, and a test that must not claim
+   * another suite's rows out of a shared database, pass one — the alternative in
+   * a test is a cross-file race that looks like a product defect and is not.
+   */
+  tenantId?: string,
 ): Promise<{ delivered: number; abandoned: number; failed: number }> {
   const claimed = await withPlatformTx(
     (tx) =>
@@ -152,6 +161,7 @@ export async function deliverOutbox(
        WHERE o."id" IN (
          SELECT i."id" FROM "NotificationOutbox" i
           WHERE i."status" = 'PENDING'
+            AND (${tenantId ?? null}::text IS NULL OR i."tenantId" = ${tenantId ?? null})
             AND (i."claimedUntil" IS NULL OR i."claimedUntil" < ${now})
           ORDER BY i."createdAt"
           LIMIT ${batch}

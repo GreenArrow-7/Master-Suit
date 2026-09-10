@@ -224,7 +224,7 @@ describe('existing unassigned leads', () => {
 
     await prisma.lead.update({ where: { tenantId: T(), id: leadId }, data: { ownerId: managerUserId } });
     const { sweepStaleTriage } = await import('@/services/distribution/triageQueue');
-    await sweepStaleTriage();
+    await sweepStaleTriage(new Date(), T());
 
     expect(await openEntry(leadId)).toBeNull();
   });
@@ -393,7 +393,7 @@ describe('notification crash recovery', () => {
     ).toBeGreaterThanOrEqual(1);
 
     // A later process picks it up. Nothing was lost.
-    await deliverOutbox('recovered-worker');
+    await deliverOutbox('recovered-worker', new Date(), 200, T());
     expect(await prisma.notification.count({ where: { tenantId: T(), userId: taker, kind: 'LEAD_ASSIGNED' } })).toBe(1);
   });
 
@@ -403,11 +403,11 @@ describe('notification crash recovery', () => {
     await assignLead(T(), leadId, new Date(Date.now() - 3_600_000));
 
     // Claim + decision commit together; the worker dies before delivery.
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), T());
     expect((await openEntry(leadId))!.escalatedAt).not.toBeNull();
     expect(await prisma.notification.count({ where: { tenantId: T(), kind: 'LEAD_TRIAGE_OVERDUE' } })).toBe(0);
 
-    await deliverOutbox('recovered-worker');
+    await deliverOutbox('recovered-worker', new Date(), 200, T());
     expect(
       await prisma.notification.count({ where: { tenantId: T(), kind: 'LEAD_TRIAGE_OVERDUE', recordId: leadId } }),
     ).toBe(1);
@@ -417,9 +417,13 @@ describe('notification crash recovery', () => {
     await setRule([]);
     const leadId = await makeLead();
     await assignLead(T(), leadId);
-    await sweepTriageNotifications();
+    await sweepTriageNotifications(new Date(), T());
 
-    await Promise.all([deliverOutbox('worker-a'), deliverOutbox('worker-b'), deliverOutbox('worker-c')]);
+    await Promise.all([
+      deliverOutbox('worker-a', new Date(), 200, T()),
+      deliverOutbox('worker-b', new Date(), 200, T()),
+      deliverOutbox('worker-c', new Date(), 200, T()),
+    ]);
 
     expect(
       await prisma.notification.count({ where: { tenantId: T(), kind: 'LEAD_TRIAGE_WAITING', recordId: leadId } }),
@@ -430,9 +434,9 @@ describe('notification crash recovery', () => {
     await setRule([]);
     const leadId = await makeLead();
     await assignLead(T(), leadId);
-    await sweepTriageNotifications();
+    await sweepTriageNotifications(new Date(), T());
 
-    await deliverOutbox('worker-a');
+    await deliverOutbox('worker-a', new Date(), 200, T());
     const row = await prisma.notificationOutbox.findFirstOrThrow({
       where: { tenantId: T(), recordId: leadId, kind: 'LEAD_TRIAGE_WAITING' },
     });
@@ -440,7 +444,7 @@ describe('notification crash recovery', () => {
     expect(row.deliveredAt).not.toBeNull();
 
     // Re-running claims nothing: the row is no longer PENDING.
-    await deliverOutbox('worker-b');
+    await deliverOutbox('worker-b', new Date(), 200, T());
     expect(
       await prisma.notification.count({ where: { tenantId: T(), kind: 'LEAD_TRIAGE_WAITING', recordId: leadId } }),
     ).toBe(1);
@@ -450,12 +454,12 @@ describe('notification crash recovery', () => {
     await setRule([], 1);
     const leadId = await makeLead();
     await assignLead(T(), leadId, new Date(Date.now() - 3_600_000));
-    await sweepTriageDeadlines();
+    await sweepTriageDeadlines(new Date(), T());
     const entry = await prisma.leadTriageEntry.findFirstOrThrow({ where: { tenantId: T(), leadId } });
     const taker = await makeAgent('Withdraw taker');
 
     await assignFromTriage({ ctx: manager, entryId: entry.id, toUserId: taker });
-    await deliverOutbox('worker-a');
+    await deliverOutbox('worker-a', new Date(), 200, T());
 
     // The manager is not paged about a lead that now has an owner.
     expect(
@@ -469,8 +473,8 @@ describe('notification crash recovery', () => {
     await setRule([], 1);
     const leadId = await makeLead();
     await assignLead(T(), leadId, new Date(Date.now() - 3_600_000));
-    await sweepTriageDeadlines();
-    await deliverOutbox('worker-a');
+    await sweepTriageDeadlines(new Date(), T());
+    await deliverOutbox('worker-a', new Date(), 200, T());
     expect(
       await prisma.notification.count({ where: { tenantId: T(), kind: 'LEAD_TRIAGE_OVERDUE', recordId: leadId } }),
     ).toBe(1);
