@@ -63,3 +63,9 @@ apps/web/CLAUDE.md
 # `apps/web/scripts/make-local-tls.sh`; see docs/TEST-ISOLATION.md. Private keys
 # never belong in the repository.
 apps/web/infra/tls-local/
+
+# Playwright traces record every request and response header of a real signed-in
+# session, which means the session cookie and any reset or invitation token that
+# happened to be in flight. Useful locally, never in a shared artifact.
+validation-evidence/e2e-artifacts/
+**/trace.zip
