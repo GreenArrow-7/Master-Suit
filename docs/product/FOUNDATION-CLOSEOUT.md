@@ -3,14 +3,14 @@
 Closes the eight items raised against the Foundation package. Nothing here is
 merged or deployed, and P1-1 has not been started — see §11.
 
-|                             |                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Repository                  | `GreenArrow-7/Master-Suit`                                                     |
-| Baseline                    | `f16ed677516fb07f31832a5d725e13efb477c34d`                                     |
-| Closeout HEAD               | `701be3e27964b0db159cfad0ba6d205c3e637921`                                     |
-| Branch                      | `claude/master-suite-baseline-validation-7c75ce` (isolated worktree, unpushed) |
-| Deployment runtime verified | Linux (`node:24-bookworm`), against the compose stack                          |
-| Release path verified       | `output: 'standalone'`, `NODE_ENV=production`, behind TLS                      |
+|                             |                                                               |
+| --------------------------- | ------------------------------------------------------------- |
+| Repository                  | `GreenArrow-7/Master-Suit`                                    |
+| Baseline                    | `f16ed677516fb07f31832a5d725e13efb477c34d`                    |
+| Closeout HEAD               | `701be3e27964b0db159cfad0ba6d205c3e637921`                    |
+| Branch                      | `claude/restructure-foundation` (isolated worktree, unpushed) |
+| Deployment runtime verified | Linux (`node:24-bookworm`), against the compose stack         |
+| Release path verified       | `output: 'standalone'`, `NODE_ENV=production`, behind TLS     |
 
 ---
 
