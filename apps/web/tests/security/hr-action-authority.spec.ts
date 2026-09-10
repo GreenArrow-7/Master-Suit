@@ -14,9 +14,9 @@
  * So the designated approver could not approve, and payroll maker-checker
  * collapsed onto `org_admin` — the only role holding both halves.
  *
- * The tests below pin both directions: the approver can approve, and nobody
- * gained anything else. A fix that widened `finance_admin`'s grants, or removed
- * the per-action assertion, fails here.
+ * The tests below pin both directions across **every permission category the
+ * action map uses**, not only payroll: a fix that widened anyone's grant, or
+ * removed the per-action assertion, fails here.
  */
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -71,7 +71,7 @@ async function actor(label: string, grants: [string, PermissionAction][], scope:
   employees[label] = employee.id;
 }
 
-const act = (label: string, action: string, body: Record<string, unknown>) =>
+const act = (label: string, action: string, body: Record<string, unknown> = {}) =>
   post(hrAction, `/api/v1/workspaces/${slug}/hr/actions/${action}`, body, cookies[label], {
     workspaceSlug: slug,
     action,
@@ -91,9 +91,7 @@ beforeAll(async () => {
     ['payroll', 'EDIT'],
   ]);
   await actor('approver', [['payroll', 'APPROVE']]);
-  // Holds employee:VIEW and nothing payroll-related.
   await actor('bystander', [['employee', 'VIEW']]);
-  // An ordinary employee: own record only, no payroll authority at all.
   await actor(
     'staff',
     [
@@ -102,6 +100,17 @@ beforeAll(async () => {
     ],
     'OWN',
   );
+  await actor('salesOnly', [['leads', 'VIEW']]);
+
+  // One holder per category the action map uses, so each can be probed in both
+  // directions without borrowing another category's authority.
+  await actor('leaveApprover', [['leave', 'APPROVE']]);
+  await actor('attendanceApprover', [['attendance', 'APPROVE']]);
+  await actor('overtimeApprover', [['overtime', 'APPROVE']]);
+  await actor('shiftsEditor', [['shifts', 'EDIT']]);
+  await actor('recruiter', [['recruitment', 'EDIT']]);
+  await actor('performanceLead', [['performance', 'APPROVE']]);
+  await actor('employeeEditor', [['employee', 'EDIT']]);
 
   await prisma.hrLeaveType.create({
     data: { tenantId, name: 'Annual', code: `ANN-${suffix}`, annualAllowance: 30, paid: true },
@@ -129,8 +138,7 @@ describe('payroll: preparation and approval are different authorities', () => {
   });
 
   it('the preparer cannot approve their own run', async () => {
-    const decided = await act('officer', 'payroll-run-decide', { runId, approve: true });
-    expect(decided.status).toBe(403);
+    expect((await act('officer', 'payroll-run-decide', { runId, approve: true })).status).toBe(403);
   });
 
   it('the approver approves it — holding payroll:APPROVE and no employee:VIEW', async () => {
@@ -139,12 +147,50 @@ describe('payroll: preparation and approval are different authorities', () => {
   });
 });
 
-describe('nothing else was widened', () => {
-  it('employee:VIEW alone does not approve payroll', async () => {
-    const decided = await act('bystander', 'payroll-run-decide', { runId, approve: true });
-    expect(decided.status).toBe(403);
+/**
+ * Every permission category the action map uses, probed both ways.
+ *
+ * The positive direction asserts *authorisation*, not success: most of these
+ * verbs then fail on business rules because the fixture has no requisition, no
+ * roster and no review cycle. A 403 is the only status that would mean the gate
+ * refused, so that is what is asserted against.
+ */
+describe('every permission category', () => {
+  const cases: { holder: string; action: string; body?: Record<string, unknown>; category: string }[] = [
+    { holder: 'leaveApprover', action: 'leave-approve', body: { requestId: 'x' }, category: 'leave:APPROVE' },
+    {
+      holder: 'attendanceApprover',
+      action: 'exception-decide',
+      body: { requestId: 'x', approve: true },
+      category: 'attendance:APPROVE',
+    },
+    {
+      holder: 'overtimeApprover',
+      action: 'overtime-decide',
+      body: { requestId: 'x', approve: true },
+      category: 'overtime:APPROVE',
+    },
+    { holder: 'shiftsEditor', action: 'roster-assign', body: { employeeId: 'x' }, category: 'shifts:EDIT' },
+    { holder: 'recruiter', action: 'candidate-add', body: { requisitionId: 'x' }, category: 'recruitment:EDIT' },
+    { holder: 'performanceLead', action: 'cycle-create', body: { name: 'x' }, category: 'performance:APPROVE' },
+    { holder: 'employeeEditor', action: 'settings-update', body: {}, category: 'employee:EDIT' },
+  ];
+
+  it.each(cases)('$category — the holder is authorised for $action', async ({ holder, action, body }) => {
+    const res = await act(holder, action, body);
+    expect(res.status, `${holder}/${action}: ${JSON.stringify(res.body)}`).not.toBe(403);
   });
 
+  it.each(cases)('$category — a sales-only account is refused $action', async ({ action, body }) => {
+    expect((await act('salesOnly', action, body)).status).toBe(403);
+  });
+
+  it.each(cases)('$category — employee:VIEW alone is refused $action', async ({ action, body }) => {
+    expect((await act('bystander', action, body)).status).toBe(403);
+  });
+});
+
+describe('nothing else was widened', () => {
   it('the approver cannot create a run — APPROVE is not CREATE', async () => {
     const created = await act('approver', 'payroll-run-create', {
       periodStart: '2026-09-01',
@@ -153,24 +199,24 @@ describe('nothing else was widened', () => {
     expect(created.status).toBe(403);
   });
 
-  it('the approver cannot reach an unrelated verb', async () => {
-    const settings = await act('approver', 'settings-update', { workWeek: [1, 2, 3, 4, 5] });
-    expect(settings.status).toBe(403);
+  it('the preparer cannot reach an unrelated category', async () => {
+    expect((await act('officer', 'settings-update', { workWeek: [1, 2, 3, 4, 5] })).status).toBe(403);
+  });
+
+  it('a payroll holder cannot approve leave', async () => {
+    expect((await act('approver', 'leave-approve', { requestId: 'x' })).status).toBe(403);
   });
 });
 
 describe('self-service keeps the floor the kernel used to apply', () => {
   /**
-   * Asserted as "authorised", not as "succeeded", and deliberately.
-   *
-   * This fixture's employee has no manager, so `applyForLeave` refuses with 409
-   * "No approver is set up for this employee" — correct application behaviour
-   * that has nothing to do with permissions. What this test exists to pin is
-   * that the *authorisation* still lets a self-service verb through, which a 409
-   * proves and a 403 would disprove. Asserting 200 here would be asserting the
-   * fixture, not the control.
+   * Asserted as "authorised", not "succeeded". This fixture's employee has no
+   * manager, so `applyForLeave` refuses with 409 "No approver is set up" —
+   * correct application behaviour with nothing to do with permissions. A 409
+   * proves the gate let it through; a 403 would disprove it. Asserting 200 here
+   * would be asserting the fixture.
    */
-  it('an ordinary employee is still authorised to apply for their own leave', async () => {
+  it('an ordinary employee is authorised to apply for their own leave', async () => {
     const type = await prisma.hrLeaveType.findFirstOrThrow({ where: { tenantId } });
     const applied = await act('staff', 'leave-apply', {
       leaveTypeId: type.id,
@@ -183,14 +229,87 @@ describe('self-service keeps the floor the kernel used to apply', () => {
   });
 
   it('a caller with no HR grant at all is refused a self-service verb', async () => {
-    await actor('outsider', [['leads', 'VIEW']]);
     const type = await prisma.hrLeaveType.findFirstOrThrow({ where: { tenantId } });
-    const applied = await act('outsider', 'leave-apply', {
+    const applied = await act('salesOnly', 'leave-apply', {
       leaveTypeId: type.id,
       startDate: '2026-11-10',
       endDate: '2026-11-11',
       reason: 'should not be authorised',
     });
     expect(applied.status).toBe(403);
+  });
+
+  it('self-service acts on the caller, not on somebody else', async () => {
+    const type = await prisma.hrLeaveType.findFirstOrThrow({ where: { tenantId } });
+    // `staff` holds employee:VIEW at OWN and names another person's employee id.
+    const applied = await act('staff', 'leave-apply', {
+      employeeId: employees.approver,
+      leaveTypeId: type.id,
+      startDate: '2026-12-01',
+      endDate: '2026-12-02',
+      reason: 'on behalf of someone else',
+    });
+    expect(applied.status, JSON.stringify(applied.body)).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe('the surrounding controls are intact', () => {
+  it('an unmapped action is refused before any handler runs', async () => {
+    const res = await act('approver', 'not-a-real-action', {});
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).not.toBe(500);
+  });
+
+  it('an unauthenticated caller is refused', async () => {
+    const res = await post(
+      hrAction,
+      `/api/v1/workspaces/${slug}/hr/actions/payroll-run-decide`,
+      { runId, approve: true },
+      undefined,
+      { workspaceSlug: slug, action: 'payroll-run-decide' },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('a caller from another workspace cannot act on this one', async () => {
+    const otherSlug = `${slug}-other`;
+    const other = await prisma.tenant.create({
+      data: { slug: otherSlug, legalName: 'Other LLC', displayName: 'Other', status: 'ACTIVE' },
+    });
+    try {
+      const res = await post(
+        hrAction,
+        `/api/v1/workspaces/${otherSlug}/hr/actions/payroll-run-decide`,
+        { runId, approve: true },
+        cookies.approver,
+        { workspaceSlug: otherSlug, action: 'payroll-run-decide' },
+      );
+      expect(res.status).toBeGreaterThanOrEqual(400);
+    } finally {
+      await prisma.tenant.delete({ where: { id: other.id } }).catch(() => {});
+    }
+  });
+
+  it('the HRMS entitlement is still required', async () => {
+    await prisma.moduleEntitlement.updateMany({
+      where: { tenantId, module: 'HRMS' },
+      data: { state: 'SUSPENDED' },
+    });
+    try {
+      const res = await act('approver', 'payroll-run-decide', { runId, approve: true });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+    } finally {
+      await prisma.moduleEntitlement.updateMany({
+        where: { tenantId, module: 'HRMS' },
+        data: { state: 'ACTIVE' },
+      });
+    }
+  });
+
+  it('an approval writes an audit trail', async () => {
+    const before = await prisma.auditLog.count({ where: { tenantId } });
+    await act('officer', 'payroll-run-create', { periodStart: '2026-10-01', periodEnd: '2026-10-31' });
+    const after = await prisma.auditLog.count({ where: { tenantId } });
+    expect(after).toBeGreaterThan(before);
   });
 });
