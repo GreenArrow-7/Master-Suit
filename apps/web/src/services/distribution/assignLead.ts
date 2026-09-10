@@ -1,7 +1,14 @@
 import type { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { assessEligibility, lockAndVerify, policyFromRule, unsupportedPolicy, type Eligibility } from './eligibility';
+import {
+  assessEligibility,
+  lockAndVerify,
+  policyFromRule,
+  redactForSales,
+  unsupportedPolicy,
+  type Eligibility,
+} from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
 /**
@@ -95,10 +102,27 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
   const order: string[] = [];
   for (let step = 1; step <= pool.length; step += 1) order.push(pool[(lastIndex + step) % pool.length]!);
 
+  /**
+   * Redacted before it is written, not before it is rendered.
+   *
+   * This lands in a JSON column on the triage entry that any Sales viewer with
+   * queue access can read. An HR-sourced blocker — approved leave, employment
+   * status — carries specifics that belong to the HR module, and storing them
+   * here would put HR records inside a Sales table with no permission check
+   * standing between them and a reader. A redaction applied only at render time
+   * is one somebody eventually forgets.
+   *
+   * The worker has no actor whose grants could be checked, so it writes the safe
+   * form unconditionally. An HR-authorised viewer already sees the real reason
+   * in the HR module, which is where it lives.
+   */
   const detail: TriageDetail = {
     ruleName: rule.name,
     unsupported,
-    candidates: order.map((userId) => ({ userId, blockers: by.get(userId)?.blockers ?? [] })),
+    candidates: order.map((userId) => ({
+      userId,
+      blockers: redactForSales(by.get(userId)?.blockers ?? [], false),
+    })),
   };
 
   const candidates = order.filter((userId) => by.get(userId)?.eligible);
@@ -124,7 +148,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
     const placed = await tryAssign(tenantId, lead.id, userId, rule, policy, now);
     if (placed.outcome !== 'retry') return placed.result;
     detail.candidates = detail.candidates?.map((c) =>
-      c.userId === userId ? { userId, blockers: placed.blockers } : c,
+      c.userId === userId ? { userId, blockers: redactForSales(placed.blockers, false) } : c,
     );
   }
 

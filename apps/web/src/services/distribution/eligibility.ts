@@ -69,13 +69,66 @@ export type IneligibilityCode =
   | 'NOT_IN_TEAM'
   | 'MARKED_UNAVAILABLE'
   | 'ON_APPROVED_LEAVE'
+  /** What an HR-sourced blocker becomes for a Sales viewer. See `redactForSales`. */
+  | 'UNAVAILABLE'
   | 'QUOTA_REACHED'
   | 'AT_CAPACITY';
 
 export interface Ineligibility {
   code: IneligibilityCode;
-  /** Short, already safe to show a manager. Never carries personal data. */
+  /** Short, and safe for whoever it was redacted for. See `redactForSales`. */
   detail: string;
+  /**
+   * True when this blocker was softened on the way out: the real reason is HR
+   * data and the reader is not authorised for it.
+   */
+  redacted?: boolean;
+}
+
+/**
+ * Blockers whose specifics are HR records, not Sales operations.
+ *
+ * A sales manager needs to know somebody cannot take a lead. They do not need
+ * that person's leave dates, and they certainly do not need an employment
+ * status that may say `TERMINATED` or `ON_NOTICE`. Those are HR facts that
+ * happen to be *reachable* from an allocation decision, and reachable is not the
+ * same as disclosable.
+ *
+ * The un-redacted detail is never persisted into the triage entry either — it
+ * would sit in a JSON column that anybody with queue access can read, and a
+ * redaction applied only at render time is one somebody eventually forgets.
+ */
+const HR_SOURCED: ReadonlySet<IneligibilityCode> = new Set([
+  'ON_APPROVED_LEAVE',
+  'EMPLOYMENT_ENDED',
+  'MARKED_UNAVAILABLE',
+]);
+
+/**
+ * What a Sales viewer is allowed to be told.
+ *
+ * `mayReadHr` is the caller's answer to "does this person hold an HR
+ * permission" — resolved from the actor's own grants, never assumed. Without
+ * it, an HR-sourced blocker collapses to the one word that is both true and
+ * safe: unavailable.
+ */
+export function redactForSales(blockers: Ineligibility[], mayReadHr: boolean): Ineligibility[] {
+  if (mayReadHr) return blockers;
+  const out: Ineligibility[] = [];
+  let softened = false;
+  for (const b of blockers) {
+    if (!HR_SOURCED.has(b.code)) {
+      out.push(b);
+      continue;
+    }
+    // One "unavailable" however many HR reasons there were: three of them is
+    // itself a disclosure about how much is going on with somebody.
+    if (!softened) {
+      softened = true;
+      out.push({ code: 'UNAVAILABLE', detail: 'unavailable', redacted: true });
+    }
+  }
+  return out;
 }
 
 export interface Eligibility {
