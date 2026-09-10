@@ -132,7 +132,8 @@ Affected documentation: `docs/operations/DEPLOYMENT.md`,
 
 ### EVC-004 — RLS rollout document contradicts migrations and gates
 
-Status: PARTIALLY RESOLVED · Severity: C4 · Release impact: TO BE DETERMINED
+Status: **RESOLVED — ACCEPTED by Application Security 2026-09-10** · Severity: C4
+· Release impact: **not blocking**
 Domain: Security / Database · Affected component: tenant isolation
 
 Evidence A — Level E4 — `docs/RLS-ROLLOUT.md` (20 lines, 2026-08-05): role
@@ -169,6 +170,47 @@ Resolution owner: Security Engineering / Database Engineering
 Related: `docs/security/SECURITY_MODEL.md`, `docs/architecture/DATABASE.md`
 
 ---
+
+## Disposition — Application Security
+
+> **ACCEPT.**
+
+| Field | Value |
+|---|---|
+| Decision | `ACCEPT` |
+| Name | **Siraj** |
+| Role | Security Architect |
+| Actor type | `human` |
+| Timestamp | 10 September 2026, 10:51 AM GST |
+| Packet reviewed | `docs/evidence/incident-2026-09-09/evc-004-appsec-packet.md` |
+
+**Rationale, verbatim and not paraphrased or strengthened:** *"I have reviewed
+the EVC-004 evidence packet and the supporting validation details. Based on the
+evidence provided, the security requirements have been sufficiently addressed,
+and I have not identified any outstanding concerns that would prevent
+acceptance at this stage."*
+
+**PROVENANCE.** Siraj supplied this decision directly through the conversation
+on 10 September 2026. An AI agent transcribed it and did **not** make,
+strengthen or reinterpret it, and did not independently authenticate the
+reviewer's identity. Siraj is also Reviewer A on `BUG-008` (`REV-0001`); this is
+recorded as a **separate** decision, as the release owner required.
+
+**The packet's stated limitations survive this acceptance and are not
+extinguished by it:**
+
+- Catalogue posture proves the enforcement **configuration** exists. It does not
+  prove every policy predicate is **semantically correct** — a policy that is
+  present and wrong counts among the 181.
+- Production holds **one tenant**, so cross-tenant behaviour cannot be observed
+  there at all. Every isolation result comes from the disposable stack, which
+  was first verified schema-identical to production.
+- No predicate-by-predicate review, no penetration testing and no bypass attempt
+  were performed.
+
+**Scope.** This disposes of `EVC-004` only. It is **not** production deployment
+approval, and it does not bear on `SEC-OBS-014` / `BUG-008`, which is an
+application-layer finding rather than an RLS one.
 
 ### EVC-005 — Backup capability: readiness checklist vs backup documentation and scripts
 
@@ -517,6 +559,74 @@ Affected documentation: `docs/RISK_CLASSIFICATION.md`,
 `docs/sdd/RISK_TO_PROCESS_MATRIX.md`, `docs/security/SECURITY_MODEL.md`
 
 ---
+
+### EVC-019 — May one qualified human fill both R4 reviewer slots?
+
+Status: **RESOLVED 2026-09-09** · Severity: C2 · Release impact: was **BLOCKING
+for any R4 change reaching merge**
+Domain: Engineering process · Affected component: human code review at R4
+
+Raised 2026-09-09 by the release owner while authorizing the `BUG-008`
+remediation, which is `R4` and therefore lands on this rule immediately.
+
+**The bounded question, and it is the only question here:**
+
+> For an `R4` change requiring "2 reviewers, one security-literate", must those
+> two reviewer slots be occupied by **two distinct human persons**?
+
+Evidence A — Level E4 — `docs/RISK_CLASSIFICATION.md`, row "Human code review",
+`R4` cell: **"2 reviewers (one security-literate)"**.
+
+Evidence B — Level E4 — `docs/sdd/RISK_TO_PROCESS_MATRIX.md`, same row, `R4`
+cell: **"2 reviewers, one security-literate"**. `R5` reads "2 reviewers plus the
+operator who will run it", which distinguishes a *third* participant by function
+and so implies the first two are also participants rather than roles — but it
+says so only by implication.
+
+Evidence C — Level E4 — neither document defines "reviewer" as a person, a
+role, or a distinct account. Nothing anywhere states that one individual holding
+both competencies may or may not satisfy both slots.
+
+**Why it cannot be inferred.** Read as *roles*, one suitably qualified engineer
+signs twice and the rule is satisfied. Read as *people*, it is a
+four-eyes control and one signature can never satisfy it. The two readings give
+opposite answers on the same change, and the difference is the entire value of
+the control — so picking one silently would be deciding the governance question
+rather than applying it.
+
+Material impact: `BUG-008` is `R4`, implemented, and cannot reach merge until
+this is answered. Any future `R4` change meets the same wall.
+
+Confidence: High that the ambiguity exists; the register takes no position on
+which reading is correct.
+
+## Decision
+
+> **YES — two distinct human reviewers are required.**
+
+| Field | Value |
+|---|---|
+| Decision | `YES` — the two `R4` reviewer slots must be occupied by two distinct human persons |
+| Actor type | `human` |
+| Role | SDD standard owner / governance owner |
+| Date | 2026-09-09 |
+| Provenance | Given in session on 2026-09-09, in direct answer to this entry's bounded question, by the operator who confirmed they hold the governance-owner role. Transcribed by an AI agent, which did not choose the answer and was not offered the option to. |
+
+**Reading now settled:** `R4`'s "2 reviewers, one security-literate" is a
+four-eyes control. One signature can never satisfy it, however qualified the
+signer. An AI review may not occupy either slot.
+
+**Consequence for `BUG-008`**, which is `R4` and implemented:
+
+| Requirement | Status |
+|---|---|
+| Reviewer 1 — human, security-literate | **outstanding** |
+| Reviewer 2 — human, distinct person | **outstanding** |
+| Application Security review (gate 3) | **outstanding**, and separate from both |
+
+`docs/RISK_CLASSIFICATION.md` and `docs/sdd/RISK_TO_PROCESS_MATRIX.md` are
+correct as written; this entry records which of their two readings governs, and
+neither document needs editing.
 
 ## Resolved Conflicts
 

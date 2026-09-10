@@ -6,6 +6,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallActions from './CallActions';
 import AuditDelete from './AuditDelete';
+import EntityDelete from '@/components/sales/EntityDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
 import WhatsAppFollowUp from './WhatsAppFollowUp';
@@ -118,6 +119,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
   // Wildcard-granted to administrator roles only; QA reviews, admins erase.
   const canDeleteAudits = can(ctx, 'calls', 'DELETE');
+  // The same authority removes the call itself; `AuditDelete` already reads it.
+  const canDeleteCall = canDeleteAudits;
 
   return (
     <>
@@ -158,6 +161,12 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           <Badge tone={call.outcome ? OUTCOME_TONE[call.outcome] : 'slate'}>
             {call.outcome?.toLowerCase().replace(/_/g, ' ') ?? call.status.toLowerCase()}
           </Badge>
+          {/* Same place, same component and same permission shape every other
+              detail page uses for this — accounts, contacts and opportunities
+              all put `EntityDelete` here. It arms before it fires, so there is
+              no raw confirm(), and the endpoint asserts `calls:DELETE` again
+              regardless of what this renders. */}
+          {canDeleteCall && <EntityDelete endpoint={`/api/v1/calls/${call.id}`} backHref="/calls" label="call" />}
         </div>
       </div>
 

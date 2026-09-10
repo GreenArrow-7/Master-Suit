@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0007",
+  "sessionId": null,
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "human",
+  "actorId": "Siraj",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "The reviewer raised no findings and made no conditions. Their words: \"I do not have any further changes or concerns at this stage.\" The five residual risks put to them in the packet - per-page enforcement being a test rather than a type-level guarantee, marker durability against copy changes, data.ts being importable, two earlier marker sets having been wrong, and the dev-server stack-trace observation - were therefore neither accepted as conditions nor rejected; they were reviewed and left as recorded risks.",
+      "artifact": "specs/SPEC-0007-lead-delete-affordance/bug-008.md",
+      "reference": "SEC-OBS-014"
+    }
+  ],
+  "notes": [
+    "REVIEWER A of two. EVC-019 is resolved YES - R4 requires two distinct human persons - so this record discharges the first reviewer slot only. Reviewer B remains outstanding and must be a different real human. An AI review may occupy neither slot.",
+    "This is the security review of BUG-008 / SEC-OBS-014 against release candidate f585e482216a172ff9afa7cba06fdd0a2ba3f696, GitHub run 34428645116: verify, validate, E2E, build and audit all pass; Playwright 57 passed, 1 skipped, 0 failed; B2 93/93; B3 70/70; validate --all 0 errors.",
+    "RATIONALE, verbatim and not paraphrased or strengthened: \"I have reviewed the information provided and, based on the current requirements and available details, I am satisfied that it is ready to proceed. I do not have any further changes or concerns at this stage.\"",
+    "PROVENANCE, stated plainly so a later auditor can weigh it. The decision was made by a human, Siraj, Security Architect, and given in session on 10 September 2026 at 9:10 AM GST. This JSON file was written by an AI agent transcribing that decision. The agent did not make, modify, strengthen or reinterpret the decision, does not hold the reviewer role, and is the author of the change under review - which is why it could not occupy this slot. If this project requires the record file itself to be authored by the reviewer rather than transcribed, this record should be re-created by them.",
+    "SCOPE. This discharges the BUG-008 security review only. It is NOT the EVC-004 RLS disposition, which is a separate decision and remains open, and it is not a production deployment approval."
+  ]
+}

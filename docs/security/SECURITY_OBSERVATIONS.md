@@ -133,6 +133,49 @@ Required validation · Confidence · Status.
   loopback-bound dev services; Redis auth enforced; `dev/outbox` gated;
   40 security spec files. E1/E2/E3.
 
+**SEC-OBS-014** · Refused `/platform` requests return the control-plane page in the redirect body · E1/E3 · `apps/web/src/app/(platform)/platform/layout.tsx`
+- Relevance: the console's only gate is its layout, and ten of its eleven
+  pages assert nothing of their own. In the App Router a layout cannot stop
+  the page beneath it rendering, so the refusal sets the status and location
+  while the page's output is still serialised into that same response —
+  workspace names, the platform owner's address, platform-wide counts and the
+  platform security ledger, to an unauthenticated caller.
+- Evidence: reproduced against `master-suite/web:c879c6c7f7e8`, the deployed
+  image, in a disposable stack; a single unauthenticated `GET /platform`
+  returns `307` with a ~31 KB body containing them. Reproduces with no cookie,
+  with a company administrator's session and with an ordinary user's session.
+  Not introduced by the `BUG-007` denial-UX change — the unmodified image
+  behaves identically. `redirect()` and `forbidden()` both have this property.
+- Counter-evidence: **8 of 8 unauthenticated probes against production
+  returned a constant 23,735-byte shell containing none of it** — the page
+  loses the render race there.
+- Exploitability: Latent. Timing-dependent rather than mitigated; data volume,
+  cache warmth and load all move it, and timing is not a control.
+- Status: **REMEDIATED, pending AppSec signoff.** `lib/platform-page.ts`
+  exports `requirePlatformPage()` and it is the first statement of all eleven
+  platform pages, above every query, so a refused caller builds nothing and
+  there is no payload to serialise. The layout keeps its own gate. Measured
+  before and after on the deployed image and on the fix, five pages × three
+  unauthorized personas: every marker present before (`/platform/users` carried
+  92 KB — the platform user directory), none after; the owner still receives
+  `200` and full content on all ten console pages. `REG-003` asserts the body
+  of the refusal with `maxRedirects: 0`. `requirePlatformOwner` is unchanged —
+  who may enter is exactly what it was. Release-owner `R4` gate granted in
+  session 2026-09-09; **Application Security review outstanding.**
+
+**SEC-OBS-015** · Lead document upload carries no MIME allowlist · E1 · `apps/web/src/app/api/v1/documents/route.ts`
+- Relevance: any content type may be uploaded against a lead; the stored
+  display name also keeps the raw client filename.
+- Evidence: verified on the deployed image — the storage key is sanitised
+  (`../../../../etc/passwd` becomes `.._.._.._.._etc_passwd`), the same
+  sanitiser runs again in `Content-Disposition`, downloads are served
+  `attachment` with `X-Content-Type-Options: nosniff`, size is capped, and
+  ClamAV refuses an EICAR payload without storing it.
+- Exploitability: Not exploitable based on current evidence — `attachment`
+  plus `nosniff` is what carries it, so both are load-bearing and should not
+  be removed without replacing them with an allowlist.
+- Status: recorded, no change made.
+
 ## Evidence Sources
 
 E1: `apps/web/src/proxy.ts`, `src/app/api/**`, `src/lib/logger.ts`,

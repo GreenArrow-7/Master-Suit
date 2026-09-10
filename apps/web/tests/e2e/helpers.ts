@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { totp } from '@/lib/auth/mfa';
 import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
@@ -231,6 +231,36 @@ export function platformOwner() {
  * under test in every spec that calls this, and a helper that bypassed it would
  * hide a broken sign-in behind twenty passing assertions.
  */
+/**
+ * Put text into a controlled input and prove it stuck.
+ *
+ * ── Why this is not a retry-around-a-bug ────────────────────────────────────
+ *
+ * `LoginForm` holds every field in `useState` and posts
+ * `JSON.stringify({ email, password })` — **React state, never the DOM**. So a
+ * `fill()` that lands before hydration writes the DOM value, React hydrates,
+ * resets the input to its own `''`, and the subsequent click posts two empty
+ * strings. The server answers `422` with two field errors and the page sits on
+ * `/login`, which is exactly how this failed in CI: the credentials were right
+ * and never left the browser.
+ *
+ * The gate is therefore the precondition — text is actually in the field the
+ * form will read — and not the assertion. Nothing about the sign-in attempt is
+ * retried: the submit below still happens once, and a genuinely broken login
+ * still fails. This only refuses to *press submit on an empty form* and call
+ * that a product failure.
+ *
+ * No sleeps, and no blanket timeout increase: it settles as soon as React owns
+ * the input, which is normally the first attempt.
+ */
+async function fillWhenHydrated(_page: Page, locator: Locator, value: string, field: string) {
+  await expect(async () => {
+    await locator.fill(value);
+    // A short poll: if hydration is about to wipe it, it wipes it now.
+    await expect(locator).toHaveValue(value, { timeout: 500 });
+  }, `${field} would not hold its value — the form never became interactive`).toPass({ timeout: 30_000 });
+}
+
 export async function login(page: Page, email: string, password: string) {
   // The API routes this flow posts to must be compiled before the first click.
   await warmApiRoutes(page.request);
@@ -240,8 +270,8 @@ export async function login(page: Page, email: string, password: string) {
   // here removes the ordering coupling entirely.
   await resetLoginThrottle();
   await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(password);
+  await fillWhenHydrated(page, page.getByLabel('Email'), email, 'Email');
+  await fillWhenHydrated(page, page.getByLabel('Password', { exact: true }), password, 'Password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   try {
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
@@ -319,8 +349,8 @@ export async function loginPlatformOwner(page: Page) {
   const secret = await ensureOwnerAuthenticator(email);
 
   await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(password);
+  await fillWhenHydrated(page, page.getByLabel('Email'), email, 'Email');
+  await fillWhenHydrated(page, page.getByLabel('Password', { exact: true }), password, 'Password');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   const code = page.getByLabel('Authentication code');

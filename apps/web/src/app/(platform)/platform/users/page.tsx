@@ -4,6 +4,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import { listPlatformUsers, platformUserDetail, type MfaState } from '@/services/platform/identity';
 import UserDrawer, { type PlatformUserView } from './UserDrawer';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Platform users' };
@@ -51,6 +52,7 @@ type Query = {
  * `?user=`, so the search that found them survives the repair.
  */
 export default async function PlatformUsersPage({ searchParams }: { searchParams: Promise<Query> }) {
+  await requirePlatformPage();
   const query = await searchParams;
 
   const [rows, workspaces, roleKeys] = await Promise.all([

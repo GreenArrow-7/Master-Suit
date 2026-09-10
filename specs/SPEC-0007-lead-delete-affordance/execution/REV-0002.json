@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0002",
+  "specId": "SPEC-0007",
+  "sessionId": null,
+  "reviewerSessionId": null,
+  "reviewType": "security-review",
+  "reviewerRole": "SECURITY_REVIEWER",
+  "actorType": "human",
+  "actorId": "Arvind",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "The reviewer raised no findings and set no conditions. This approval is NOT to be read as acceptance of every residual risk recorded in the packet - per-page enforcement being a test rather than a type-level guarantee, marker durability against copy changes, data.ts being importable, two earlier marker sets having been wrong, and the dev-server stack-trace observation. Those remain recorded risks, neither accepted as conditions nor rejected.",
+      "artifact": "specs/SPEC-0007-lead-delete-affordance/bug-008.md",
+      "reference": "SEC-OBS-014"
+    }
+  ],
+  "notes": [
+    "REVIEWER B of two, and the second distinct human required by EVC-019 (resolved YES: R4 requires two distinct human persons). Reviewer A is Siraj, REV-0001. With this record both R4 human reviewer slots are discharged. An AI review may occupy neither, and the agent that authored the change could not have occupied either.",
+    "Review target: release candidate f585e482216a172ff9afa7cba06fdd0a2ba3f696, GitHub run 34428645116 - verify, validate, E2E, build and audit all pass; Playwright 57 passed, 1 skipped, 0 failed; B2 93/93; B3 70/70; validate --all 0 errors.",
+    "RATIONALE, verbatim and not paraphrased or strengthened: \"I have reviewed the identified issue and the supporting evidence. Based on the current implementation and the validation performed, I am satisfied that the security concern has been adequately addressed and there are no remaining issues that would prevent approval at this stage.\"",
+    "PROVENANCE, stated plainly so a later auditor can weigh it. The user supplied this as Arvind's human decision, given on 10 September 2026 at 9:50 AM GST. An AI agent transcribed it and did NOT make, modify, strengthen or reinterpret the decision. The agent did NOT independently authenticate Arvind's identity, and did not verify by any means of its own that Arvind is a different person from Siraj - that distinctness is asserted by the user, and EVC-019's two-distinct-humans requirement rests on that assertion rather than on anything the agent checked. Both reviewers are recorded with the role Security Architect. If this project requires reviewer identity to be authenticated, or the record file to be authored by the reviewer rather than transcribed, this record should be re-created under that process.",
+    "SCOPE. This discharges the second BUG-008 human security review slot only. It is NOT the EVC-004 RLS disposition, which is a separate decision and remains open; it is NOT acceptance of the residual risks above; and it is NOT production deployment authorization. Staging gates remain unsatisfied."
+  ]
+}
