@@ -234,3 +234,97 @@ with evidence.
 **`EVC-024` is not closed by this proposal.** The infrastructure finding stands
 on its own, and the `demo.youhan.in` A record still points at a host the
 repository associates with production.
+
+---
+
+# Corrections, 2026-09-09
+
+Directed by the human requester. Three statements above claim more than their
+evidence carries; the sections stand and these supersede the wording named.
+
+## C1 — the demo account, §2
+
+**Withdrawn:** *"`demo@youhan.in` is one `PlatformUser` with exactly one
+membership; it collides with no customer."*
+
+**Replaced by:** the identity model **supports** the proposed account —
+`PlatformUser.email` is globally unique, `User` is unique per tenant
+(`@@unique([tenantId, email])`), and `WorkspaceMembership` is
+`@@unique([tenantId, platformUserId])`, so one address can hold exactly one
+membership per tenant. **Whether `demo@youhan.in` or the slug
+`youhan-one-demo` already exist in the production database is
+[UNKNOWN] and requires runtime verification.** The original sentence asserted
+absence of a conflict from a schema shape, which cannot establish it. A
+pre-existing `PlatformUser` with that address, or a customer tenant holding that
+slug, would both be conflicts, and provisioning must detect and refuse them
+rather than assume them away.
+
+## C2 — what RLS establishes, §1
+
+**Withdrawn:** *"Isolation here is enforced by PostgreSQL, not by application
+code"* and *"a demo tenant's rows are separated from customer rows by the
+database."*
+
+**Replaced by:** row-level security is a **database enforcement layer operating
+alongside application authorization**, not a substitute for it and not a proof
+of complete isolation. What the repository establishes is that migrations
+*install* `ENABLE` and `FORCE ROW LEVEL SECURITY` and a `tenant_isolation`
+policy, and that `check-rls.mjs` asserts this against the catalog **of whatever
+database it is pointed at**. That is a strong control and it is not a guarantee,
+because:
+
+- the **effective runtime state of the production database is [UNKNOWN]** — the
+  repository shows what migrations create, not what is deployed;
+- seven tables are outside RLS entirely (§3.5), so for those the only boundary
+  is application authorization;
+- RLS constrains rows reachable **once `app.tenant_id` is set**; which tenant is
+  set is an application decision, so a flaw in membership resolution is not
+  caught by the policy;
+- `app.platform_admin` is a deliberate in-database bypass
+  (`apps/web/src/lib/db.ts:658`), correct for the control plane and, by
+  construction, a path where the policy does not apply.
+
+Complete isolation is a property of the two layers together plus their runtime
+configuration, and must be demonstrated by test against a restricted role, not
+inferred from declarations.
+
+## C3 — the mailer finding, §3.1
+
+**Withdrawn:** *"a demo user exercising password reset, an invitation, or any
+notification would send real email."* That named three flows without tracing any
+of them.
+
+**Replaced by, with the path now traced.** `sendMail` has exactly four call
+sites:
+
+| Call site | Reachable by a demo tenant user? | Recipient |
+|---|---|---|
+| `apps/web/src/app/api/v1/auth/forgot-password/route.ts:86` | account flow, not tenant-scoped | the requesting address |
+| `apps/web/src/services/identity/invitations.ts:395` | account flow | the invited address |
+| `apps/web/src/app/api/v1/calls/[id]/follow-up-email/route.ts:151` | **yes** — a permission-checked Sales action on tenant data | a contact or lead **of that tenant** |
+| `apps/web/src/workers/notifications.ts:108` | **yes** — worker, no request context | `user.email` of users in `job.data.tenantId` |
+
+**The accurate finding is a real-provider execution risk, not customer contact.**
+Two paths are demo-reachable, and in both the recipient comes from the demo
+tenant's own data, which is synthetic and on reserved domains
+(`SPEC-0007`/`DATA-005`, `CL-007`). So the exposure is not "a demo user emails a
+real person"; it is that with `EMAIL_PROVIDER=smtp` the application would **make
+a real SMTP connection and attempt delivery** on behalf of demo activity —
+carrying whatever bounce, rate, reputation and log consequences that provider
+applies — and that no tenant-scoped control currently prevents it.
+
+**Still [UNKNOWN]:** production's `EMAIL_PROVIDER` value, and whether any
+non-mail outbound path (`apps/web/src/lib/integrations/`) is reachable from
+demo-tenant activity. `IntegrationConnection` rows are per-tenant, so a demo
+tenant with none connected has nothing to authenticate with — a data property,
+not a control.
+
+## C4 — SPEC-0009 gate 6
+
+**No correction required; verified rather than assumed.** The stored record in
+`specs/SPEC-0009-runtime-dependency-security-remediation/sdd.json` carries
+`role: Application Security`, `actorType: human`, `decision: approved`,
+`decisionText: "I approve SPEC-0009 gate 6 as Application Security"` — the
+requester's exact words — with `evidenceRef` pointing at `convergence.md` and
+`commit` `17d7d0e0adcd7ab57b2f1c192deda35624978840`. It is recorded against an
+explicit acceptance and nothing was inferred into it.
