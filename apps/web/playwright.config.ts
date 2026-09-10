@@ -81,6 +81,20 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.APP_URL ?? 'http://localhost:3000',
+    /**
+     * Only when the suite is deliberately pointed at an HTTPS target.
+     *
+     * The production build sets `secure: true` on the session cookie, so a
+     * browser will not return it over plain HTTP and every authenticated step
+     * 401s. Validating the real production serving path therefore needs TLS in
+     * front — Caddy in a deployment, a local terminator otherwise — and a local
+     * terminator uses a self-signed certificate.
+     *
+     * Scoped to an https APP_URL so the ordinary `npm run test:e2e` against a
+     * dev server on http is unaffected, and so this cannot quietly hide a
+     * certificate problem on a real host.
+     */
+    ignoreHTTPSErrors: (process.env.APP_URL ?? '').startsWith('https://'),
     navigationTimeout: 60_000,
     actionTimeout: 20_000,
     trace: 'retain-on-failure',
@@ -100,6 +114,13 @@ export default defineConfig({
     // there is never one, and silently reusing a stale process would test the
     // wrong build.
     reuseExistingServer: !process.env.CI,
+    /**
+     * The readiness probe needs the same allowance `use` has, and it is a
+     * separate option — without it the probe fails the certificate, Playwright
+     * concludes no server is there, spawns `npm run dev` on port 3000, and then
+     * times out waiting for the URL it was actually given.
+     */
+    ignoreHTTPSErrors: (process.env.APP_URL ?? '').startsWith('https://'),
     timeout: 180_000,
     stdout: 'pipe',
     stderr: 'pipe',
