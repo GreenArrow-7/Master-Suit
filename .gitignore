@@ -49,3 +49,11 @@ cloudflared.exe
 .env.bak*
 .env.*.bak
 *.env.bak
+
+# next 16.3 writes these on every build ("Generated AGENTS.md and CLAUDE.md for
+# AI agents"). They are build output that restates the installed Next version's
+# own guidance, so committing them would put a generated copy of node_modules
+# documentation under review and re-conflict on every upgrade. Disable with
+# `agentRules: false` in next.config.ts if they are unwanted entirely.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
