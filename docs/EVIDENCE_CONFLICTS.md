@@ -132,7 +132,8 @@ Affected documentation: `docs/operations/DEPLOYMENT.md`,
 
 ### EVC-004 — RLS rollout document contradicts migrations and gates
 
-Status: PARTIALLY RESOLVED · Severity: C4 · Release impact: TO BE DETERMINED
+Status: **RESOLVED — ACCEPTED by Application Security 2026-09-10** · Severity: C4
+· Release impact: **not blocking**
 Domain: Security / Database · Affected component: tenant isolation
 
 Evidence A — Level E4 — `docs/RLS-ROLLOUT.md` (20 lines, 2026-08-05): role
@@ -169,6 +170,47 @@ Resolution owner: Security Engineering / Database Engineering
 Related: `docs/security/SECURITY_MODEL.md`, `docs/architecture/DATABASE.md`
 
 ---
+
+## Disposition — Application Security
+
+> **ACCEPT.**
+
+| Field | Value |
+|---|---|
+| Decision | `ACCEPT` |
+| Name | **Siraj** |
+| Role | Security Architect |
+| Actor type | `human` |
+| Timestamp | 10 September 2026, 10:51 AM GST |
+| Packet reviewed | `docs/evidence/incident-2026-09-09/evc-004-appsec-packet.md` |
+
+**Rationale, verbatim and not paraphrased or strengthened:** *"I have reviewed
+the EVC-004 evidence packet and the supporting validation details. Based on the
+evidence provided, the security requirements have been sufficiently addressed,
+and I have not identified any outstanding concerns that would prevent
+acceptance at this stage."*
+
+**PROVENANCE.** Siraj supplied this decision directly through the conversation
+on 10 September 2026. An AI agent transcribed it and did **not** make,
+strengthen or reinterpret it, and did not independently authenticate the
+reviewer's identity. Siraj is also Reviewer A on `BUG-008` (`REV-0001`); this is
+recorded as a **separate** decision, as the release owner required.
+
+**The packet's stated limitations survive this acceptance and are not
+extinguished by it:**
+
+- Catalogue posture proves the enforcement **configuration** exists. It does not
+  prove every policy predicate is **semantically correct** — a policy that is
+  present and wrong counts among the 181.
+- Production holds **one tenant**, so cross-tenant behaviour cannot be observed
+  there at all. Every isolation result comes from the disposable stack, which
+  was first verified schema-identical to production.
+- No predicate-by-predicate review, no penetration testing and no bypass attempt
+  were performed.
+
+**Scope.** This disposes of `EVC-004` only. It is **not** production deployment
+approval, and it does not bear on `SEC-OBS-014` / `BUG-008`, which is an
+application-layer finding rather than an RLS one.
 
 ### EVC-005 — Backup capability: readiness checklist vs backup documentation and scripts
 

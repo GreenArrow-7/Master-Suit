@@ -98,10 +98,23 @@ DATABASE_URL=<application role> node apps/web/scripts/check-rls.mjs
 
 | Field | Value |
 |---|---|
-| Disposition | `ACCEPT` / `REQUEST_MORE_EVIDENCE` / `FAIL` — **not yet recorded** |
-| Reviewer role | |
-| Date | |
-| If `REQUEST_MORE_EVIDENCE`, what is wanted | |
-| If `FAIL`, the blocking finding | |
+| Disposition | **`ACCEPT`** |
+| Name | **Siraj** |
+| Reviewer role | Security Architect (`actorType: human`) |
+| Date | 10 September 2026, 10:51 AM GST |
 
-No agent may complete this table. `EVC-004` stays open until a human does.
+**Rationale, verbatim:** *"I have reviewed the EVC-004 evidence packet and the
+supporting validation details. Based on the evidence provided, the security
+requirements have been sufficiently addressed, and I have not identified any
+outstanding concerns that would prevent acceptance at this stage."*
+
+Supplied by Siraj directly in conversation and transcribed by an AI agent, which
+did not make, strengthen or reinterpret it and did not independently
+authenticate the reviewer's identity.
+
+**The limitations in "What this evidence does not cover" above are unchanged by
+this acceptance.** Acceptance means the risk was weighed and taken, not that
+catalogue posture became proof of predicate correctness.
+
+Recorded against `EVC-004` in `docs/EVIDENCE_CONFLICTS.md`. Applies to `EVC-004`
+only; it is not production deployment approval.
