@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0004",
+  "specId": "SPEC-0007",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": null,
+  "taskIds": [
+    "TASK-008"
+  ],
+  "startedFromCommit": "f16ed677516fb07f31832a5d725e13efb477c34d",
+  "initialChangedPaths": [
+    ".github/workflows/sdd-validate.yml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "apps/web/prisma/seed/hr.ts",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/scripts/prepare-test-db.mjs",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts",
+    "apps/web/tests/e2e/tablesearch-a11y.spec.ts",
+    "apps/web/tests/hr/demo-dataset.spec.ts",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts",
+    "apps/web/tests/hr/demo-reset.spec.ts",
+    "apps/web/tests/security/demo-personas.spec.ts",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "docs/RISK_CLASSIFICATION.md",
+    "docs/evidence/phase-a-foundation/",
+    "docs/evidence/phase-b1-sdd-foundation/",
+    "docs/evidence/phase-b2-sdd-verification-enforcement/",
+    "docs/evidence/phase-b3-agent-integration/",
+    "docs/evidence/phase-b4-pilot-readiness/",
+    "docs/evidence/phase-b4-pilot/",
+    "docs/evidence/phase-b4-pilot2-readiness/",
+    "docs/sdd/",
+    "sdd.config.json",
+    "specs/",
+    "tools/"
+  ],
+  "initialDigests": {
+    ".github/workflows/sdd-validate.yml": "eb311821d96f3525b0acaf276e7534dff1053c4278ecfdd33a649305ec465248",
+    "AGENTS.md": "f0c00e8cb62a12394abae2be59699422d943eac3649b7c207b181ee01ca86c2a",
+    "CLAUDE.md": "4c7d49d9bf65ba99717d88fe31eea1bf99ffe46df28c9bc0cf199f493a5e9668",
+    "apps/web/prisma/seed/hr.ts": "fd2a0a7ed46b7ffde191fae0ccd175f5d11e4277b787955b7d8ffb52e3c04884",
+    "apps/web/prisma/seed/index.ts": "db13793361b8b173c4e2399c47cc27c805c174e31dc1f5aace6de59e24c0d118",
+    "apps/web/scripts/prepare-test-db.mjs": "8160b0ba65612f49905dc558a680bc1e8c7c8ffb6a8500568664184e80ad12fd",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts": "ec62e984f939c90a730eb4d07e17ef32bc1043374693277fc4a4ea7d51408e5d",
+    "apps/web/tests/e2e/tablesearch-a11y.spec.ts": "9681f1c22fbb063af3758e3cab3ecbc7afd7724582ae32b96fdd30f2a48d28fc",
+    "apps/web/tests/hr/demo-dataset.spec.ts": "2e454bc520f0e57d39d661c0431169da33ce29ffa5cc9eb6c3650c473e7f6ccf",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts": "ba5a565551a38cc990f131f5e46c1f7e49a2302172b2a63f2f272a3f7bd52c69",
+    "apps/web/tests/hr/demo-reset.spec.ts": "64189d6cf6a2f23cc7e871b015977480ac7a42fbd6c8ca48e4c9361133a2fd43",
+    "apps/web/tests/security/demo-personas.spec.ts": "1e2c610e0c5d81a0d48d6a6ffcb9bf2e86fbfecc82a7daeda72364be5cd1dd9e",
+    "docs/EVIDENCE_CONFLICTS.md": "998a2e471303b5ae71bd1457ce98a8e15eba27b56e275859a3b93ed170760cfe",
+    "docs/RISK_CLASSIFICATION.md": "ea3bfdc939c089e0a526983be2e97c00fb8863c90f9aedb83a36f048afeba070",
+    "docs/evidence/phase-a-foundation/": "<directory>",
+    "docs/evidence/phase-b1-sdd-foundation/": "<directory>",
+    "docs/evidence/phase-b2-sdd-verification-enforcement/": "<directory>",
+    "docs/evidence/phase-b3-agent-integration/": "<directory>",
+    "docs/evidence/phase-b4-pilot-readiness/": "<directory>",
+    "docs/evidence/phase-b4-pilot/": "<directory>",
+    "docs/evidence/phase-b4-pilot2-readiness/": "<directory>",
+    "docs/sdd/": "<directory>",
+    "sdd.config.json": "e831da3e6f1e47db8dc0319d407163e5870633b7ed34000590d6983538e857f6",
+    "specs/": "<directory>",
+    "tools/": "<directory>"
+  },
+  "allowedPaths": [
+    "docs/DEMO.md"
+  ],
+  "prohibitedPaths": [
+    "docs/sdd/",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "docs/RISK_CLASSIFICATION.md",
+    "docs/ENVIRONMENTS.md"
+  ],
+  "requiredTests": [
+    "UT-011"
+  ],
+  "requiredApprovals": [],
+  "status": "COMPLETE",
+  "result": "Demonstration runbook written and checked. UT-011 passing: the runbook names all three personas, the seed and reset commands, the exclusions, and carries no credential.",
+  "verifiedTests": [
+    "UT-011"
+  ],
+  "finalChangedPaths": [
+    "docs/DEMO.md",
+    "apps/web/tests/hr/demo-docs.spec.ts"
+  ],
+  "notes": [
+    "SDD-V057 refused a session for TASK-008 because the task declared no required test. That was correct: a documentation task whose completion is a matter of opinion cannot be verified. UT-011 was added to the test plan and the task scope widened to hold it.",
+    "The runbook records the exclusions a demonstrator will be asked about — payroll, biometrics, real data, outbound providers — rather than leaving them to be discovered in front of a client."
+  ]
+}

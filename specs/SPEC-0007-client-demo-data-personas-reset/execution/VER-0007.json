@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0007",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0007",
+  "taskIds": [
+    "TASK-011"
+  ],
+  "tests": [
+    {
+      "id": "UT-013",
+      "outcome": "PASS",
+      "note": "exactly one address off a reserved domain across all tenants, and it is demo@youhan.in; no generated contact, lead, account address or account website is. Failed red on its first run and exposed CONV-010."
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --reporter=default",
+      "exitCode": 0,
+      "note": "157 files, 1988 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npx playwright test demo-walkthrough (localhost:3100 production build)",
+      "exitCode": 0,
+      "note": "6 passed"
+    },
+    {
+      "command": "npx playwright test demo-walkthrough (through the public HTTPS tunnel)",
+      "exitCode": 0,
+      "note": "6 passed in 51.8s, E2E-006 as demo@youhan.in"
+    },
+    {
+      "command": "node <scratch>/tunnel-proof.mjs (authenticated HTTP smoke test through the tunnel)",
+      "exitCode": 0,
+      "note": "16/16 checks"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "ALLOW_DEMO_SEED=yes npx tsx prisma/seed/index.ts --reset",
+      "exitCode": 0,
+      "note": "42 users, 41 profiles"
+    },
+    {
+      "command": "npm run db:test:reset",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 warnings, none here"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0007 --session ASES-0007 --base a04c7e3",
+      "exitCode": 0,
+      "note": "PASS, 2 SDD-V052 warnings"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo and master_saas_test on loopback PostgreSQL, served through a temporary HTTPS tunnel. No staging or production access of any kind.",
+  "notes": [
+    "CHG-004 approved by the Product Owner on 2026-09-09. DATA-005 amended to exempt exactly one named address; UT-013 written to keep the exemption from widening.",
+    "UT-013 failed on its first run and found a pre-existing DATA-005 violation the approval instruction explicitly forbids: 25 generated contact addresses, the account book's mainEmail and website, and the second workspace administrator were all on live-looking domains built from company names plus .ae. CL-007 had been recorded as resolved by moving everything to a reserved domain; it had only ever been applied to the ten persona logins. Recorded as CONV-010 and repaired.",
+    "Second defect found: --reset drops only the primary demo tenant, so the second workspace survives a reset. Renaming its administrator therefore created a duplicate that collided on EmployeeProfile.employeeNumber. Recorded as CONV-011, worked around locally by deleting the stale tenant; not fixed, because extending the reset is a requirement question about FR-011 and FR-012.",
+    "The temporary preview tunnel is an operational measure, not part of this specification. SPEC-0008 remains READY_FOR_APPROVAL and owns the permanent demo environment; nothing here was deployed, pushed or merged."
+  ]
+}

@@ -4,7 +4,7 @@
  * Usage:
  *   npx tsx scripts/seed-role-defaults.ts                 # dry run, the default
  *   npx tsx scripts/seed-role-defaults.ts --apply
- *   npx tsx scripts/seed-role-defaults.ts --apply --workspace manath-homes
+ *   npx tsx scripts/seed-role-defaults.ts --apply --workspace youhan-one-demo
  *   npx tsx scripts/seed-role-defaults.ts --apply --role employee
  *
  * ── Why only empty roles ───────────────────────────────────────────────────

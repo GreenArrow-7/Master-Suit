@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "verificationId": "VER-0008",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0008",
+  "taskIds": [
+    "TASK-012"
+  ],
+  "tests": [
+    {
+      "id": "UT-015",
+      "outcome": "PASS",
+      "note": "a refused seed exits non-zero AND reports its reason; a seed that cannot start is reported as a spawn failure, not as a refusal"
+    }
+  ],
+  "commands": [
+    {
+      "command": "npx vitest run --reporter=default",
+      "exitCode": 0,
+      "note": "157 files, 1992 passed, 2 skipped, 0 failed"
+    },
+    {
+      "command": "npx playwright test demo-walkthrough (through the public tunnel)",
+      "exitCode": 0,
+      "note": "6 passed"
+    },
+    {
+      "command": "seed --reset / top-up / --reset / top-up",
+      "exitCode": 0,
+      "note": "all four exit 0; no duplicate tenant, user, membership, employeeNumber or email"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "note": ""
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0,
+      "note": "0 errors, 131 warnings, all pre-existing"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs validate --all",
+      "exitCode": 0,
+      "note": "PASS, 0 errors, 7 warnings"
+    },
+    {
+      "command": "node --test tools/sdd/tests/validator.test.mjs",
+      "exitCode": 1,
+      "note": "91/93 - the two EVC-020 Windows CRLF failures in tools/, untouched by this work"
+    },
+    {
+      "command": "node --test tools/sdd/tests/agent.test.mjs",
+      "exitCode": 1,
+      "note": "69/70 - the one EVC-020 Windows CRLF failure, same cause"
+    },
+    {
+      "command": "node tools/sdd/cli.mjs agent scope-check --spec SPEC-0007 --session ASES-0008 --base a04c7e3",
+      "exitCode": 0,
+      "note": "PASS, 2 SDD-V052 warnings"
+    }
+  ],
+  "result": "PASS",
+  "actorRole": "TESTER",
+  "actorType": "ai",
+  "actorId": null,
+  "environment": "local developer workstation; disposable master_saas_demo and master_saas_test on loopback PostgreSQL, reached through a temporary HTTPS tunnel. No staging or production access.",
+  "notes": [
+    "CONV-008 fixed at both invokers. prepare-test-db.mjs now prints the seed's output with credential-bearing lines redacted and distinguishes a non-zero exit from a failure to spawn. The vitest harness had a second, worse hole: spawnSync sets status to null when the process never runs, and the four refusal cases assert only that the code is not 0 - so a seed that never ran satisfied them. runSeed now reports ran and failure separately and those cases assert the seed actually executed.",
+    "CONV-009 fixed by implementing the behaviour the config already documented: with APP_URL set, no webServer is spawned at all, so the gate and the command can no longer disagree about a port. CI sets no APP_URL and still starts and gates its own server. Verified in both modes.",
+    "CONV-011 fixed by extracting the proven teardown into removeSeededTenant() and applying it to every workspace the seed creates. The coverage test's anchors moved with the refactor and were updated rather than weakened; it now also asserts that the reset names both workspaces.",
+    "CHG-005 rebranded the client-facing workspace to YOUHAN ONE Demo, slug youhan-one-demo. Verified across nine client screens in a real browser through the live tunnel: zero old-brand occurrences.",
+    "The demo password was rotated twice in this session, each time because the previous value had been disclosed in conversation. The prior value is confirmed denied with HTTP 401."
+  ]
+}

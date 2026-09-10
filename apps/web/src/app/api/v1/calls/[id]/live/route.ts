@@ -110,9 +110,12 @@ export const GET = route(
 
     // The lead context is loaded once per session and carried on every coach
     // tick — the AI never operates without CRM context when context exists.
-    const [context, agent] = await Promise.all([
+    const [context, agent, workspace] = await Promise.all([
       call.leadId ? leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null,
       prisma.user.findFirst({ where: { tenantId: ctx.tenantId, id: call.callerId }, select: { fullName: true } }),
+      // The agent introduces themselves as *this* workspace's company; the
+      // script used to name one tenant outright, in code every tenant runs.
+      prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { displayName: true } }),
     ]);
     const lead = context?.lead ?? null;
     const contextBlock = context ? contextPromptBlock(context) : undefined;
@@ -139,7 +142,11 @@ export const GET = route(
       data: { status: 'IN_PROGRESS', startedAt, answeredAt: startedAt, providerName: 'demo-simulation' },
     });
 
-    const script = demoScript(agent?.fullName ?? 'The agent', lead?.fullName ?? 'the client');
+    const script = demoScript(
+      agent?.fullName ?? 'The agent',
+      lead?.fullName ?? 'the client',
+      workspace?.displayName ?? 'our team',
+    );
     const tenantId = ctx.tenantId;
     const callId = call.id;
 

@@ -24,10 +24,10 @@ export type MetaMode = 'LIVE' | 'SIMULATED' | 'NOT_CONFIGURED';
  * live assets, so the thing being demonstrated is the real product.
  */
 export const DEMO_ASSETS = {
-  businessName: 'Manath Homes Demo Business',
-  pageName: 'Manath Homes',
+  businessName: 'YOUHAN ONE Demo Business',
+  pageName: 'YOUHAN ONE Demo',
   pageId: 'demo-page-1',
-  instagramHandle: '@manathhomes',
+  instagramHandle: '@youhanonedemo',
   instagramId: 'demo-ig-1',
   forms: [
     { id: 'demo-form-dubai', name: 'Dubai Property Enquiry', status: 'ACTIVE' },

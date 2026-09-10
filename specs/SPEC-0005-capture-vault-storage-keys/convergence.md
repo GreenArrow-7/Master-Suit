@@ -61,12 +61,29 @@ review and carries `satisfiesHumanGate: false`.
 `REV-0003` examined `CONV-003` explicitly, as the security-literate slot
 requires.
 
-**One thing a later auditor should see rather than discover.** Both reviews
-carry the same `actorId`. R4 asks for two reviewers, one security-literate;
-whether one person may hold both slots is a question for the standard, and it
-is recorded here plainly instead of being smoothed over.
+**Both reviews carry the same `actorId`, and whether that satisfies the gate is
+now formally ambiguous.** Registered as `EVC-019` after a bounded check of the
+standard:
 
-**Status:** `RESOLVED` · **Owner:** —
+| Source | Says |
+|---|---|
+| `docs/sdd/RISK_TO_PROCESS_MATRIX.md` R4 | "2 reviewers, one security-literate" — a count, no distinctness statement |
+| `docs/sdd/HUMAN_APPROVAL_GATES.md` | one human may hold **code review and convergence acceptance** — two *different gates*, not two slots of one gate |
+| `docs/sdd/AGENT_ROLE_MODEL.md` | *"Two sessions of one model are not two reviewers"* — the principle cuts against it, but is written about **AI models** |
+| `SDD-V051` | enforces reviewer ≠ **implementer** only; silent on reviewer ≠ reviewer |
+
+**A correction, recorded rather than quietly dropped.** An earlier report in
+this workstream concluded `NOT REQUIRED`, citing the second row. That was an
+over-read — that sentence is about two different gates. The earlier answer is
+withdrawn.
+
+**Effect:** `CONV-001` is `RESOLVED` on the evidence that two human code
+reviews were performed and recorded. Whether one human may hold both slots is
+`EVC-019`, is **not** a bar to non-production CI or staging, and **is** carried
+into the production release gate.
+
+**Status:** `RESOLVED`, with `EVC-019` open against it · **Owner:** — (`EVC-019`
+owner: the SDD standard's owner)
 
 ### CONV-002
 

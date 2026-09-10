@@ -26,7 +26,7 @@ for (const file of [`${root}/.env`]) {
   }
 }
 
-const slug = process.argv[2] ?? 'manath-homes';
+const slug = process.argv[2] ?? 'youhan-one-demo';
 const db = new pg.Client({ connectionString: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL });
 await db.connect();
 

@@ -14,6 +14,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { ROLES } from './roles';
 import { seedCrm, seedDemoSpotlight } from './crm';
+import { seedHr } from './hr';
 import { hash } from '@node-rs/argon2';
 
 /**
@@ -87,9 +88,27 @@ const RESET = process.argv.includes('--reset');
  * one publicly-known password across every demo account. DEMO_PASSWORD in the
  * environment pins it for demo installs that need a stable credential.
  */
+const DEMO_PASSWORD_SUPPLIED = Boolean(process.env.DEMO_PASSWORD);
 const DEMO_PASSWORD =
   process.env.DEMO_PASSWORD ||
   `${randomBytes(9).toString('base64url')}-${randomBytes(3).toString('hex').toUpperCase()}`;
+
+/**
+ * Whether it is safe to print a generated password to this stdout.
+ *
+ * SPEC-0007/CONV-003. The closing summary used to print it unconditionally. On
+ * a developer's terminal that is the point — it is the only time the value is
+ * ever shown. Anywhere the output is captured it is a leak that outlives every
+ * rotation: a GitHub Actions log, a deployment log, a provisioning transcript,
+ * a piped `tee`.
+ *
+ * Two independent conditions, because either alone is wrong. `CI` catches the
+ * runner that announces itself; `isTTY` catches everything that redirects or
+ * pipes, which is what a bootstrap script does and what a CI runner that does
+ * not set `CI` still looks like. A *supplied* password is never printed at all:
+ * whoever set it already has it, and re-emitting it only creates another copy.
+ */
+const CAN_PRINT_SECRET = !DEMO_PASSWORD_SUPPLIED && !process.env.CI && process.stdout.isTTY === true;
 
 /** Host only — a connection string carries the password. */
 function safeHost(url: string | undefined): string {
@@ -102,13 +121,67 @@ function safeHost(url: string | undefined): string {
   }
 }
 
+/**
+ * The demonstration personas, by address.
+ *
+ * SPEC-0007/CL-007: these used to sit on manathhomes.ae, which is not a
+ * reserved documentation domain, and DATA-005 requires one. They are now on
+ * example.com (RFC 2606), alongside the rest of the seeded accounts.
+ *
+ * The list exists because two pieces of logic used to select these accounts by
+ * **domain suffix**, and after the move that suffix also matches every other
+ * seeded account. Re-pointing those filters at this explicit list keeps them
+ * selecting exactly what they selected before — in particular it stops the
+ * un-suspend repair below from reviving the deliberately suspended rep.
+ */
+/**
+ * SPEC-0007/FR-017 · CHG-004 — the one address a client is ever given.
+ *
+ * Authoritative business decision, 2026-09-09: the client-facing demonstration
+ * login is `demo@youhan.in`. It is deliberately the only address in this seed
+ * that does not sit on a reserved domain, and `CHG-004` records the amendment
+ * to `DATA-005` that permits it — an organisation-controlled mailbox rather
+ * than an uncontrolled one, which is the risk `DATA-005` exists to prevent.
+ *
+ * Every *generated* address — employees, contacts, leads, the internal test
+ * personas — stays on `example.com` under `CL-007`. This constant is not a
+ * domain rule; it is one named credential.
+ */
+export const DEMO_CLIENT_LOGIN = 'demo@youhan.in';
+
+export const DEMO_PERSONA_EMAILS = [
+  DEMO_CLIENT_LOGIN,
+  'demo.presenter@example.com',
+  'demo@example.com',
+  'admin@example.com',
+  'sales.manager@example.com',
+  'sales.rep@example.com',
+  'sdr@example.com',
+  'account.manager@example.com',
+  'qa.manager@example.com',
+  'executive@example.com',
+  'hr.manager@example.com',
+] as const;
+
 /** The primary demo workspace. One place, so the whole seed follows it. */
 const DEMO_WORKSPACE = {
-  slug: 'manath-homes',
-  legalName: 'Manath Homes LLC',
-  displayName: 'Manath Homes',
-  primaryDomain: 'manathhomes.ae',
-  employeePrefix: 'MH',
+  /**
+   * The official YOUHAN ONE product demonstration, not a customer's company.
+   *
+   * It used to be "Manath Homes", which read to a prospect as though they were
+   * being shown another client's workspace rather than the product. The slug
+   * moved with the name deliberately: it appears in every URL the client sees
+   * (`/<slug>/sales/leads`), so leaving it behind would have kept the old brand
+   * in the address bar while the page header said something else.
+   *
+   * `primaryDomain` is a reserved domain under `DATA-005`: only the single
+   * client-facing login is exempt, and a workspace domain is not that.
+   */
+  slug: 'youhan-one-demo',
+  legalName: 'YOUHAN ONE Demo',
+  displayName: 'YOUHAN ONE Demo',
+  primaryDomain: 'youhan-one-demo.example.com',
+  employeePrefix: 'YOD',
 };
 
 /** A second workspace, so cross-workspace isolation is visible in the UI. */
@@ -116,7 +189,7 @@ const SECOND_WORKSPACE = {
   slug: 'leadersfort',
   legalName: 'Leadersfort LLC',
   displayName: 'Leadersfort',
-  adminEmail: 'admin@leadersfort.com',
+  adminEmail: 'admin@leadersfort.example.com',
   planCode: 'hrms',
   modules: ['HRMS'] as const,
 };
@@ -393,62 +466,87 @@ function weighted<T extends string>(weights: Record<string, number> | [T, number
 async function main() {
   console.log(`Seeding demo workspace (SEED_KEY=${SEED_KEY})…\n`);
 
+  /**
+   * CONV-011. A reset rebuilds every workspace the seed creates, not just the
+   * first one.
+   *
+   * It used to remove only the primary demo tenant, so the secondary
+   * isolation workspace survived every reset and could never be rebuilt from a
+   * changed definition. That was invisible until something about it actually
+   * changed — and then it appeared twice: once when its administrator moved to
+   * a reserved domain, and again when the primary workspace was renamed and
+   * the old tenant was left orphaned beside the new one. Both times the
+   * symptom was a unique-constraint failure on a top-up seed, which names the
+   * constraint and not the cause.
+   *
+   * The teardown below is the one that was already proven for the demo tenant;
+   * it is applied to each seeded workspace rather than duplicated.
+   */
+  async function removeSeededTenant(slug: string, label: string) {
+    const existing = await db.tenant.findUnique({ where: { slug } });
+    if (!existing) return;
+    console.log(`  Removing the existing ${label} tenant…`);
+    const tenantId = existing.id;
+    const t = { tenantId };
+    // Child-first: tenantId is a plain column on most tables, so the Tenant
+    // cascade does not reach them. Order matters where FKs do exist.
+    await db.callAudit.deleteMany({ where: t });
+    await db.aIAnalysis.deleteMany({ where: t });
+    await db.transcript.deleteMany({ where: t });
+    await db.recordingConsent.deleteMany({ where: t });
+    await db.recording.deleteMany({ where: t });
+    await db.call.deleteMany({ where: t });
+    await db.followUpTask.deleteMany({ where: t });
+    await db.targetProgress.deleteMany({ where: t });
+    await db.employeeTarget.deleteMany({ where: t });
+    await db.notification.deleteMany({ where: t });
+    await db.eventInvitee.deleteMany({ where: t });
+    await db.event.deleteMany({ where: t });
+    await db.campaignTalkingPoint.deleteMany({ where: t });
+    await db.campaignScript.deleteMany({ where: t });
+    await db.campaignQualification.deleteMany({ where: t });
+    await db.campaignMember.deleteMany({ where: t });
+    await db.formSubmission.deleteMany({ where: t });
+    await db.formField.deleteMany({ where: t });
+    await db.form.deleteMany({ where: t });
+    await db.landingPageVersion.deleteMany({ where: t });
+    await db.landingPage.deleteMany({ where: t });
+    await db.opportunityProduct.deleteMany({ where: t });
+    await db.auditLog.deleteMany({ where: t });
+    await db.leadScoreHistory.deleteMany({ where: t });
+    await db.leadAssignmentHistory.deleteMany({ where: t });
+    await db.leadStageHistory.deleteMany({ where: t });
+    await db.leadCustomFieldValue.deleteMany({ where: t });
+    await db.task.deleteMany({ where: t });
+    await db.activity.deleteMany({ where: t });
+    await db.communication.deleteMany({ where: t });
+    await db.document.deleteMany({ where: t });
+    await db.opportunity.deleteMany({ where: t });
+    await db.lossReason.deleteMany({ where: t });
+    await db.pipelineStage.deleteMany({ where: t });
+    await db.pipeline.deleteMany({ where: t });
+    await db.lead.deleteMany({ where: t });
+    await db.campaign.deleteMany({ where: t }); // after leads/opportunities, which reference it
+    await db.contact.deleteMany({ where: t });
+    await db.account.deleteMany({ where: t });
+    await db.duplicateRule.deleteMany({ where: t });
+    await db.leadCustomFieldDefinition.deleteMany({ where: t });
+    await db.leadStage.deleteMany({ where: t });
+    await db.activityType.deleteMany({ where: t });
+    await db.taskType.deleteMany({ where: t });
+    await db.product.deleteMany({ where: t });
+    await db.userTeam.deleteMany({ where: t });
+    await db.rolePermission.deleteMany({ where: t });
+    await db.tenant.delete({ where: { id: tenantId } }); // cascades users, teams, branches, regions, roles
+    console.log(`  Removed ${label}.`);
+  }
+
   if (RESET) {
-    const existing = await db.tenant.findUnique({ where: { slug: DEMO_WORKSPACE.slug } });
-    if (existing) {
-      console.log('  Removing the existing demo tenant…');
-      const t = { tenantId: existing.id };
-      // Child-first: tenantId is a plain column on most tables, so the Tenant
-      // cascade does not reach them. Order matters where FKs do exist.
-      await db.callAudit.deleteMany({ where: t });
-      await db.aIAnalysis.deleteMany({ where: t });
-      await db.transcript.deleteMany({ where: t });
-      await db.recordingConsent.deleteMany({ where: t });
-      await db.recording.deleteMany({ where: t });
-      await db.call.deleteMany({ where: t });
-      await db.followUpTask.deleteMany({ where: t });
-      await db.targetProgress.deleteMany({ where: t });
-      await db.employeeTarget.deleteMany({ where: t });
-      await db.notification.deleteMany({ where: t });
-      await db.eventInvitee.deleteMany({ where: t });
-      await db.event.deleteMany({ where: t });
-      await db.campaignTalkingPoint.deleteMany({ where: t });
-      await db.campaignScript.deleteMany({ where: t });
-      await db.campaignQualification.deleteMany({ where: t });
-      await db.campaignMember.deleteMany({ where: t });
-      await db.formSubmission.deleteMany({ where: t });
-      await db.formField.deleteMany({ where: t });
-      await db.form.deleteMany({ where: t });
-      await db.landingPageVersion.deleteMany({ where: t });
-      await db.landingPage.deleteMany({ where: t });
-      await db.opportunityProduct.deleteMany({ where: t });
-      await db.auditLog.deleteMany({ where: t });
-      await db.leadScoreHistory.deleteMany({ where: t });
-      await db.leadAssignmentHistory.deleteMany({ where: t });
-      await db.leadStageHistory.deleteMany({ where: t });
-      await db.leadCustomFieldValue.deleteMany({ where: t });
-      await db.task.deleteMany({ where: t });
-      await db.activity.deleteMany({ where: t });
-      await db.communication.deleteMany({ where: t });
-      await db.document.deleteMany({ where: t });
-      await db.opportunity.deleteMany({ where: t });
-      await db.lossReason.deleteMany({ where: t });
-      await db.pipelineStage.deleteMany({ where: t });
-      await db.pipeline.deleteMany({ where: t });
-      await db.lead.deleteMany({ where: t });
-      await db.campaign.deleteMany({ where: t }); // after leads/opportunities, which reference it
-      await db.contact.deleteMany({ where: t });
-      await db.account.deleteMany({ where: t });
-      await db.duplicateRule.deleteMany({ where: t });
-      await db.leadCustomFieldDefinition.deleteMany({ where: t });
-      await db.leadStage.deleteMany({ where: t });
-      await db.activityType.deleteMany({ where: t });
-      await db.taskType.deleteMany({ where: t });
-      await db.product.deleteMany({ where: t });
-      await db.userTeam.deleteMany({ where: t });
-      await db.rolePermission.deleteMany({ where: t });
-      await db.tenant.delete({ where: { id: existing.id } }); // cascades users, teams, branches, regions, roles
-      console.log('  Removed.');
+    for (const [slug, label] of [
+      [DEMO_WORKSPACE.slug, 'demo'],
+      [SECOND_WORKSPACE.slug, 'secondary isolation'],
+    ] as const) {
+      await removeSeededTenant(slug, label);
     }
   }
 
@@ -770,24 +868,46 @@ async function main() {
     ['Hamdan', 'Pereira', 'service_agent', 'BB', 'DXB'],
     ['Reem', 'Silva', 'analyst', null, null],
     ['Auditor', 'Account', 'read_only', null, null],
-    // Last on purpose: picks up the next employee code (MH-032) without
+    // Last on purpose: picks up the next employee code without
     // renumbering anyone, and demos always sign in with a memorable address.
-    ['Demo', 'Presenter', 'org_admin', null, null, 'demo@manathhomes.com'],
+    ['Demo', 'Presenter', 'org_admin', null, null, 'demo.presenter@example.com'],
     // The .ae addresses are the ones people type from memory in front of a
     // customer — both work, both are ordinary workspace admins (no MFA).
-    ['Manath', 'Demo', 'org_admin', null, null, 'demo@manathhomes.ae'],
-    ['Manath', 'Admin', 'org_admin', null, null, 'admin@manathhomes.ae'],
+    ['Demo', 'Account', 'org_admin', null, null, 'demo@example.com'],
+    ['Workspace', 'Admin', 'org_admin', null, null, 'admin@example.com'],
     // The role-demonstration cast: each login lands in the same workspace with
     // genuinely different scopes, so "this is what a manager sees" is real.
     // Omar, Sara and Rayan share the BB branch, which makes Omar their manager.
-    ['Omar', 'Hassan', 'team_manager', 'BB', 'DXB', 'sales.manager@manathhomes.ae'],
-    ['Sara', 'Khan', 'sales_rep', 'BB', 'DXB', 'sales.rep@manathhomes.ae'],
-    ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@manathhomes.ae'],
-    ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@manathhomes.ae'],
+    ['Omar', 'Hassan', 'team_manager', 'BB', 'DXB', 'sales.manager@example.com'],
+    ['Sara', 'Khan', 'sales_rep', 'BB', 'DXB', 'sales.rep@example.com'],
+    ['Rayan', 'Malik', 'sales_rep', 'BB', 'DXB', 'sdr@example.com'],
+    ['Nadia', 'Ahmed', 'sales_rep', 'DT', 'DXB', 'account.manager@example.com'],
     // call_qa, not analyst: the QA persona's dashboard is built from call
     // quality, and the role's grants are what decide that.
-    ['Daniel', 'Joseph', 'call_qa', null, null, 'qa.manager@manathhomes.ae'],
-    ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@manathhomes.ae'],
+    ['Daniel', 'Joseph', 'call_qa', null, null, 'qa.manager@example.com'],
+    ['Khalid', 'Mansour', 'executive_read_only', null, null, 'executive@example.com'],
+    // SPEC-0007/FR-010. The role catalogue has always carried hr_admin, but no
+    // seeded user held it: the demonstration cast was built for the Sales
+    // module and the People module never got a login of its own. Without this
+    // there is no way to demonstrate HR at all — the org_admin sees everything,
+    // which shows the screens but proves nothing about role scope.
+    ['Noura', 'Al Balushi', 'hr_admin', null, null, 'hr.manager@example.com'],
+    // SPEC-0007/FR-017 · CHG-004. THE client-facing login, and LAST on purpose.
+    //
+    // `employeeCode` is `<prefix>-<n>` where n counts every row in this list, and
+    // upsert's `update` branch deliberately leaves an existing code alone. So a
+    // new persona inserted anywhere but the end renumbers everyone after it,
+    // and the next top-up seed hands the newcomer a code another employee is
+    // already holding — `EmployeeProfile.employeeNumber` is unique per tenant,
+    // so the seed dies on P2002 rather than on anything that names the cause.
+    // Appending costs nothing and renumbers nobody. Learned the hard way.
+    //
+    // `org_admin` is the safest role that still reaches both modules: its
+    // widest grant is ORGANIZATION, which is the whole *tenant* and no further,
+    // and the platformRole stays at the schema default of USER, so the platform
+    // control plane refuses it. `super_admin` carries the same grants at a lower
+    // rank and was not used; nothing about this account is cross-tenant.
+    ['Youhan', 'Demo', 'org_admin', null, null, DEMO_CLIENT_LOGIN],
   ];
 
   const users: {
@@ -911,10 +1031,34 @@ async function main() {
   }
   if (suspendedRep) {
     await db.user.update({ where: { id: suspendedRep.id }, data: { status: 'SUSPENDED' } });
+    // …and the employee profile with it. This update runs *after* the users
+    // loop, which already wrote the profile as ACTIVE, so without this the
+    // suspended rep is a suspended login attached to an active employee. The
+    // seed then looked self-inconsistent in a way that only showed up on the
+    // *second* run: a top-up re-enters the loop, reads the now-SUSPENDED user
+    // and flips the profile to INACTIVE, so a fresh seed reported 41 active
+    // employees and a re-seed reported 40 — the same database, two answers.
+    //
+    // Found by SPEC-0007's per-employee HR coverage: generating attendance for
+    // "every active employee" is only deterministic if that set is.
+    const suspendedMembership = await db.workspaceMembership.findFirst({
+      where: { tenantId, salesUserId: suspendedRep.id },
+      select: { id: true },
+    });
+    if (suspendedMembership) {
+      await db.employeeProfile.updateMany({
+        where: { membershipId: suspendedMembership.id },
+        data: { employmentStatus: 'INACTIVE' },
+      });
+    }
   }
   // Any demo login the old positional pick suspended comes back.
   await db.user.updateMany({
-    where: { tenantId, email: { endsWith: '@manathhomes.ae' }, status: 'SUSPENDED' },
+    // Keyed on the persona list, not on a domain suffix. After CL-007 moved the
+    // personas to example.com an `endsWith: '@example.com'` filter would also
+    // match every other seeded account — including the rep suspended a few
+    // statements above, which this would silently revive.
+    where: { tenantId, email: { in: [...DEMO_PERSONA_EMAILS] }, status: 'SUSPENDED' },
     data: { status: 'ACTIVE' },
   });
   console.log(`  ${users.length} users`);
@@ -1184,10 +1328,26 @@ async function main() {
   // 8. CRM chain — accounts → opportunities → calls → coaching ──────────────
   // Runs even when the lead guard above skipped, so a top-up over an existing
   // database still gains the chain; crm.ts re-reads leads and guards itself.
-  await seedCrm(db, { tenantId, users, rnd, pick, int, chance, businessDate });
+  await seedCrm(db, { tenantId, users, rnd, pick, int, chance, businessDate, demoPersonaEmails: DEMO_PERSONA_EMAILS });
   // Outside seedCrm's accounts-guard: a top-up run that adds a new demo login
   // must still equip it with owned records.
-  await seedDemoSpotlight(db, { tenantId, users, rnd, pick, int, chance, businessDate });
+  await seedDemoSpotlight(db, {
+    tenantId,
+    users,
+    rnd,
+    pick,
+    int,
+    chance,
+    businessDate,
+    demoPersonaEmails: DEMO_PERSONA_EMAILS,
+  });
+
+  // The People module, which had configuration and employee profiles but no
+  // attendance, leave, shifts or holidays — so every HR screen past the
+  // directory rendered empty. SPEC-0007. Runs after the users loop because it
+  // profiles the employees that loop creates, and after seedCrm only so that
+  // its console output lands with the rest of the workspace summary.
+  await seedHr(db, { tenantId, rnd, pick, int, chance });
 
   // ── second workspace ──────────────────────────────────────────────────────
   // Leadersfort exists so cross-workspace isolation is demonstrable in the UI,
@@ -1324,7 +1484,16 @@ async function main() {
   // ── credentials ───────────────────────────────────────────────────────────
   console.log('\n─────────────────────────────────────────────');
   console.log(` Workspace:  ${DEMO_WORKSPACE.slug}`);
-  console.log(` Password:   ${DEMO_PASSWORD}   (all demo accounts)`);
+  if (CAN_PRINT_SECRET) {
+    console.log(` Password:   ${DEMO_PASSWORD}   (all demo accounts)`);
+  } else if (DEMO_PASSWORD_SUPPLIED) {
+    console.log(' Password:   (supplied via DEMO_PASSWORD — not reprinted)');
+  } else {
+    // Generated, but this stdout is not a developer's terminal. Saying the
+    // value here is what CONV-003 forbids; saying how to obtain one is not.
+    console.log(' Password:   (generated, withheld — stdout is not an interactive terminal)');
+    console.log('             Set DEMO_PASSWORD from your secret store before seeding to pin one.');
+  }
   console.log(` Platform:   ${ownerEmail}`);
   console.log('─────────────────────────────────────────────');
   for (const key of [
@@ -1342,9 +1511,13 @@ async function main() {
     const addr = key === 'read_only' ? 'auditor@example.com' : email(spec[0], spec[1], 0);
     console.log(` ${key.padEnd(16)} ${addr}`);
   }
-  console.log(` ${'demo'.padEnd(16)} demo@manathhomes.com`);
-  console.log(` ${'demo (.ae)'.padEnd(16)} demo@manathhomes.ae`);
-  console.log(` ${'admin (.ae)'.padEnd(16)} admin@manathhomes.ae`);
+  console.log('─────────────────────────────────────────────');
+  console.log(` ${'CLIENT LOGIN'.padEnd(16)} ${DEMO_CLIENT_LOGIN}`);
+  console.log('   ^ the only address a client is given. The rest are internal.');
+  console.log('─────────────────────────────────────────────');
+  console.log(` ${'demo'.padEnd(16)} demo.presenter@example.com`);
+  console.log(` ${'demo (alt)'.padEnd(16)} demo@example.com`);
+  console.log(` ${'admin (alt)'.padEnd(16)} admin@example.com`);
   console.log(` ${SECOND_WORKSPACE.slug.padEnd(16)} ${SECOND_WORKSPACE.adminEmail}`);
   console.log('─────────────────────────────────────────────\n');
 }

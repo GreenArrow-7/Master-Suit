@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "REV-0001",
+  "specId": "SPEC-0007",
+  "sessionId": "ASES-0001",
+  "reviewerSessionId": null,
+  "reviewType": "code-review",
+  "reviewerRole": "Senior Developer / Qualified Human Reviewer",
+  "actorType": "human",
+  "actorId": "human-requester",
+  "decision": "APPROVE",
+  "satisfiesHumanGate": true,
+  "findings": [
+    {
+      "severity": "OBSERVATION",
+      "summary": "Twenty-four pre-existing baseline failures remain, reproduced identically at f16ed67 and outside this specification’s scope.",
+      "artifact": "review-packet.md",
+      "reference": "section G"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "Two pre-existing seed defects were fixed inside this change rather than split out: the suspended-user/profile incoherence and the non-idempotent account book. Both were exposed by SPEC-0007 requirements and both touch crm.ts/index.ts beyond the HR dataset.",
+      "artifact": "review-packet.md",
+      "reference": "section C, items 4 and 5"
+    },
+    {
+      "severity": "OBSERVATION",
+      "summary": "The seed still prints a generated password to the operator terminal. Correct locally; SPEC-0008 must ensure it never reaches a CI or deploy log.",
+      "artifact": "review-packet.md",
+      "reference": "Known limitations"
+    }
+  ],
+  "notes": [
+    "Decision supplied explicitly in session by the human requester and transcribed by an agent. The agent did not make it and does not hold it.",
+    "actorType is human and actorId differs from the reviewed session’s AI actor, so SDD-V051 separation holds and SDD-V053 permits satisfiesHumanGate.",
+    "This is the gate 6 code review only. It is NOT convergence acceptance, which is a separate gate and remains unrecorded."
+  ]
+}

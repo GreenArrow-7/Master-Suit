@@ -13,9 +13,9 @@ import { chromium } from 'playwright';
 import { writeFileSync, existsSync, statSync } from 'node:fs';
 
 const BASE = process.argv[2] ?? 'http://localhost:3100';
-const EMAIL = process.env.AUDIT_EMAIL ?? 'admin@manathhomes.ae';
+const EMAIL = process.env.AUDIT_EMAIL ?? 'admin@example.com';
 const PASSWORD = process.env.AUDIT_PASSWORD ?? process.env.DEMO_PASSWORD ?? 'ManathDemo-2026';
-const SLUG = process.env.AUDIT_SLUG ?? 'manath-homes';
+const SLUG = process.env.AUDIT_SLUG ?? 'youhan-one-demo';
 
 const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 1024, 1280, 1440];
 

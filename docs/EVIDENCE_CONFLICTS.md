@@ -518,6 +518,68 @@ Affected documentation: `docs/RISK_CLASSIFICATION.md`,
 
 ---
 
+### EVC-019 — Whether one human may fill both R4 code-review slots
+
+Status: OPEN · Severity: C2 · Release impact: NON-BLOCKING for non-production
+CI and staging, **BLOCKING for production release of any R4 change reviewed by
+a single human**
+Domain: Engineering process · Affected component: human code review, R4
+
+Evidence A — Level E4 — `docs/sdd/RISK_TO_PROCESS_MATRIX.md`, "Human code
+review" row, R4 column: **"2 reviewers, one security-literate"**. It gives a
+count and a qualification. It does not say whether the two must be distinct
+people.
+
+Evidence B — Level E4 — `docs/sdd/HUMAN_APPROVAL_GATES.md`:
+"**One human may perform both the code review and the convergence acceptance**
+where the risk matrix permits, but the two decisions are recorded separately."
+
+This permits one human across **two different gates**. It does not address one
+human filling **two slots of the same gate**, and reading it as though it did
+is the over-read this conflict exists to stop.
+
+Evidence C — Level E4 — `docs/sdd/AGENT_ROLE_MODEL.md`, "What separate sessions
+do and do not buy": *"Two sessions of one model are not two reviewers."*
+
+The principle cuts against one actor holding both slots — the point being that
+duplicating an actor does not duplicate independence. But it is written about
+**AI models**, not humans, and is not stated as a rule about human reviewers.
+
+Evidence D — Level E1/E2 — `SDD-V051` enforces only that the reviewing actor
+differs from the **executing** actor, and that the reviewing session is not the
+executed session. It is silent on reviewer-versus-reviewer.
+
+Material impact: Process, and specifically release integrity. `SPEC-0005` is an
+R4 change whose two required code reviews — `REV-0002` and `REV-0003` — carry
+the same `actorId`, `GreenArrow-7`. If the standard requires distinct humans,
+one further genuine reviewer is needed before production release. If it does
+not, the current records already satisfy the gate.
+
+Current conclusion: **AMBIGUOUS.** No document explicitly permits it and none
+explicitly forbids it. The nearest permission is about different gates; the
+nearest prohibition is about AI sessions.
+
+Confidence: High that the ambiguity is real. This is a policy question, not an
+evidence question.
+
+**A correction that belongs in this record.** On 2026-09-08 an agent reported
+this as `NOT REQUIRED`, citing Evidence B. That was an over-read: Evidence B is
+about code review and convergence acceptance, two distinct gates, not two slots
+of one gate. The earlier answer is withdrawn here rather than left standing.
+
+**The one question that closes it:**
+
+> At R4, may a single human satisfy both required code-review slots — including
+> the security-literate one — or must the two reviewers be distinct people?
+
+**Interim position, so nothing is blocked that need not be:** the ambiguity does
+not affect non-production CI, staging deployment or staging verification, and
+`SPEC-0005`'s implementation is unaffected either way. It is carried into the
+production release gate, where it must be answered.
+
+**Decision owner:** the owner of the SDD standard.
+
+
 ## Resolved Conflicts
 
 Resolved entries keep their original disagreement intact and gain a
@@ -898,3 +960,708 @@ requirement itself is unchanged.
 **First application.** `SPEC-0005` (RC-4 capture-vault), whose gate 5 now has
 an identified holder. **That identifies who must decide; it is not a decision,
 and `SPEC-0005` remains `READY_FOR_APPROVAL` with zero approvals recorded.**
+
+### EVC-020 — SPEC-0004 records the SDD tooling's own tests as fully green, and on Windows they are not
+
+Status: OPEN · Severity: C2 · Release impact: NON-BLOCKING for CI, which runs
+Linux; **BLOCKING for any claim that the tooling suites are platform-neutral**
+Domain: Engineering process · Affected component: `tools/sdd/tests/`,
+`SPEC-0004` convergence evidence
+
+Evidence A — Level E1 — `specs/SPEC-0004-cross-platform-test-determinism/convergence.md`
+records, as convergence evidence:
+
+| B2 | `node tools/sdd/tests/validator.test.mjs` | 93 / 93 |
+| B3 | `node tools/sdd/tests/agent.test.mjs` | 70 / 70 |
+
+Evidence B — Level E1 — Measured at `a04c7e3` on Windows 11, with
+`tools/` byte-identical to the commit (`git status --porcelain tools/` empty):
+
+| B2 | `node --test tools/sdd/tests/validator.test.mjs` | **91 / 93** |
+| B3 | `node --test tools/sdd/tests/agent.test.mjs` | **69 / 70** |
+
+Failing: `SDD-V027 requirement with no test coverage`,
+`SDD-V029 acceptance criterion without a verification mapping`,
+`UT-114 SDD-V045 a task declaring no scope cannot be implemented`.
+
+Evidence C — Level E1 — Root cause, proven rather than inferred. Each failing
+case corrupts a known-good fixture with a string replace, then asserts the
+validator notices. The needles are LF-terminated and the fixtures are CRLF, so
+the replace matches nothing, the fixture stays valid, and the rule never fires.
+Measured directly against
+`tools/sdd/tests/fixtures/valid/specs/SPEC-0002-normal-example/test-plan.md`:
+
+- fixture contains CRLF: **true**
+- LF-terminated needle present: **false**
+- CRLF-terminated needle present: **true**
+
+These tests therefore do not fail on Windows because the validator is wrong.
+They fail because they cannot construct the invalid input they exist to detect
+— which is the worse of the two, since on any platform where the replace
+silently no-ops the case would pass *while testing nothing*.
+
+## Why this is a conflict and not simply a bug
+
+`SPEC-0004` is the specification for cross-platform test determinism. Its stated
+root cause RC-1 is CRLF handling, and the defect here is RC-1 exactly. Its scope
+covered four vitest suites under `apps/web/tests/`; `tools/sdd/tests/` was not
+in it. So the specification that exists to eliminate this class recorded a green
+result for two suites still carrying it.
+
+The reasonable reading is that B2 and B3 were measured on Linux, where CRLF
+fixtures are not produced by checkout and the needles match. That does not make
+the record wrong so much as unqualified: it states a count without the platform
+it was taken on, and `SPEC-0004` is precisely the context in which the platform
+is the whole point.
+
+## What is not being claimed
+
+- Not that `SPEC-0004` failed. Its own four suites are green on both platforms;
+  that was verified here as part of an unrelated integration.
+- Not that CI is affected. CI runs Linux; these three pass there.
+- Not that anyone reported a false result. The likeliest explanation is a
+  Linux measurement recorded without its platform.
+
+## Resolution options
+
+- **A — Fix the three tests** to be line-ending agnostic, the way `SPEC-0004`
+  fixed its four. Smallest change, removes the class from the tooling too.
+- **B — Amend the convergence record** to state the platform each count was
+  taken on, and add the Windows counts beside them.
+- **C — Both.** A is the fix; B is the honesty about what the record meant.
+
+Raised by an agent during `SPEC-0007`/`TASK-010`, from a measurement taken for
+an unrelated reason. Not fixed here: `tools/` is outside that task's scope, and
+`SPEC-0004` is converged and owned elsewhere. Recorded rather than repaired,
+and rather than left unmentioned because it was inconvenient to the run that
+found it.
+
+
+### EVC-021 — `SPEC-0007` is allocated to two different specifications
+
+Status: OPEN · Severity: C3 · Release impact: **BLOCKING for any merge that
+brings both branches together**
+Domain: Engineering process · Affected component: `specs/`, identifier
+allocation
+
+Evidence A — Level E1 — This worktree contains
+`specs/SPEC-0007-client-demo-data-personas-reset/`, `sdd.json` declaring
+`specId: SPEC-0007`, risk `R3`, first status entry dated 2026-09-08.
+
+Evidence B — Level E1 — `origin/fix/p0-lead-delete-affordance` contains
+`specs/SPEC-0007-lead-delete-affordance/`, `sdd.json` declaring
+`specId: SPEC-0007`, risk `R2`, status `VERIFYING`, first status entry dated
+2026-09-09. That branch is PR #47, the P0 incident fix.
+
+Two different specifications, two different risk levels, one identifier.
+
+## Why it matters
+
+`docs/sdd/IDENTIFIER_STANDARD.md` exists so that a reference to `SPEC-0007`
+means one thing. Today it means two, and which one depends on the branch the
+reader is on. Every artefact that cites `SPEC-0007` — traceability rows, session
+records, verification records, commit messages — is ambiguous across the merge.
+
+The collision is latent while the branches are apart and becomes a real
+conflict the moment both reach the same branch: two directories, both valid,
+both claiming the identifier, and a validator that checks each in isolation and
+finds nothing wrong with either.
+
+## How it happened
+
+Both were allocated by computing "the next free number" against a corpus that
+did not yet contain the other. The demo work was allocated on 2026-09-08 while
+unpushed; the P0 work was allocated on 2026-09-09 against a remote that could
+not see it. Neither actor did anything careless — the procedure itself has no
+locking, and an unpushed allocation is invisible.
+
+That is the finding worth keeping: recomputing the next free identifier against
+your own checkout is not sufficient, and nothing currently makes that visible.
+
+## Resolution options
+
+- **A — Renumber the unpushed one.** The demo specification has never been
+  pushed; the P0 one has, and is in an open pull request under review. Renumbering
+  the unpushed side breaks fewer external references. It is a directory rename plus
+  every internal citation, and this specification's artefacts are extensive.
+- **B — Renumber the P0 one.** Smaller artefact set, but it is under active
+  review and renumbering mid-review invalidates what reviewers have already read.
+- **C — Allocate both a new number and retire 0007.** Unambiguous, and the most
+  work.
+
+**Recommendation: A**, on the ground that the unpublished side should yield to
+the published one. It is not an agent's decision: it changes an identifier that
+human approvals have already been recorded against.
+
+## Prevention
+
+Allocation should be checked against every remote branch, not only the local
+corpus — which is how this was found. Whether that becomes a validator rule is a
+separate question and is not proposed here.
+
+Raised by an agent on 2026-09-09 while recomputing the next free identifier for
+`SPEC-0009`. Not repaired: renumbering a specification that carries recorded
+human approvals is not an agent's call.
+
+---
+
+### EVC-022 — `UNOWNED-001` was classified unowned; PR #48 already owns and has fixed it
+
+**Documented state.** The unowned-defect register classified the three
+production dependency advisories that turned the CI `Audit` gate red as
+`UNOWNED-001`, and `SPEC-0009` was created to govern their remediation. Its
+`spec.md` opens by calling the failure "an external event that the project
+inherited" and treats the remediation as work still to be done.
+
+**Actual state.** `origin/fix/dependency-advisories-2026-09` exists, and pull
+request `#48` — *"security(deps): clear the three advisories that turned the
+Audit gate red"*, opened 2026-09-09T12:19Z against `dev/yourhan-next` — already
+carries the fix. Its CI run `34350379563` concluded `success`, `Audit`
+included. It has since been merged into `rc/incident-2026-09-09` (commit
+`956754a`), whose run `34366512152` passes the **entire** gate, `E2E` and
+`Audit` both green.
+
+The remediation on that branch is the same graph `SPEC-0009` independently
+derived: `next` `16.2.12` → `16.3.4`, `nodemailer` → `9.1.1`, `sharp` →
+`0.35.4`, one line of `apps/web/package.json`, everything else lockfile.
+
+**Why the classification was wrong.** The branch was absent from this
+checkout's remote-tracking refs when the register was compiled; it appeared as
+`* [new branch]` on the fetch that began `TASK-001`. The register was built
+from a stale view, and nothing in the procedure required re-fetching
+immediately before classifying. That is the same root cause as `EVC-021`,
+reached from the other direction: `EVC-021` is an allocation made invisible by
+not being pushed, this is an allocation made invisible by not being fetched.
+
+**Consequence.** `SPEC-0009`'s premise does not hold. Its remediation body
+duplicates delivered, CI-proven work and must not be implemented as written.
+
+**What does not duplicate.** One decision in `SPEC-0009` has no counterpart on
+`#48`: `CL-003`, the `overrides.sharp` floor. `#48` leaves it at `^0.35.0`.
+Measured in an isolated tree, an `overrides` entry outranks the parent
+package's own declared range — with `next@16.3.4` (which itself declares
+`sharp: ^0.35.4`) and `overrides.sharp` forced to `0.35.3`, npm resolved
+`node_modules/next/node_modules/sharp` to the vulnerable `0.35.3` and the audit
+reported 2 HIGH. The same tree at `^0.35.4` reports `found 0 vulnerabilities`.
+So while the override stands at `^0.35.0`, it is the override — not `next`'s
+own constraint — that decides the floor, and the floor the manifest guarantees
+is `0.35.0`, not `0.35.4`. Today's resolution is correct by luck of "highest
+matching", not by declaration.
+
+**Not resolved here.** Whether `SPEC-0009` is withdrawn, superseded by `#48`,
+or narrowed to the `CL-003` line alone is a specification-lifecycle decision at
+`R4`. No approvals have been recorded against `SPEC-0009`, so change control
+has not begun and either path is open.
+
+Raised by an agent on 2026-09-09, on the first read of `TASK-001`. Not
+resolved: an agent that has just been shown its own ownership classification
+was wrong is not the right actor to decide what happens to the specification
+built on it.
+
+## EVC-021, addendum — 2026-09-09: the governance model has no mechanism for this
+
+Directed to resolve the collision, I read `docs/sdd/IDENTIFIER_STANDARD.md`
+first, as instructed, to find the approved renumber or collision mechanism.
+**There is none, and the operation the resolution options assume is
+prohibited.**
+
+The standard is marked `NORMATIVE — engineering process requirement`, and says:
+
+- "`SPEC-NNNN` — four digits, zero-padded, allocated sequentially from
+  `SPEC-0001`. **The number never changes**, including when a specification is
+  superseded."
+- "The slug may be corrected for a typo; **the number may not change**."
+- Rule 1: "**Never renumber.** Approved identifiers are permanent."
+- Rule 2: "**Never reuse.** A deleted or withdrawn identifier stays reserved
+  forever."
+
+Rule 1 is not conditional on which side is more embedded, and both sides
+qualify as approved:
+
+| | Slug | Risk | Status | Recorded human approvals |
+|---|---|---|---|---|
+| A | `client-demo-data-personas-reset` | R3 | `IMPLEMENTING` | **3** — gate 1 Product Owner (2026-09-08), gate 6 reviewer (2026-09-08), gate 6 Qualified Human Reviewer (2026-09-09) |
+| B | `lead-delete-affordance` | R2 | `VERIFYING` | **1** — gate 1 Product Owner (2026-09-09) |
+
+So options A, B and C recorded above are all renumberings, and Rule 1 forbids
+each of them. The earlier recommendation of option A was made before this
+document had been read against the question, and it is withdrawn: it proposed
+an operation the standard prohibits.
+
+**The gap is real, not a misreading.** The standard assumes identifier
+allocation is serialised — one allocator, one sequence, gaps preserved. It has
+a rule for withdrawal, a rule for supersession and a rule for typos in the
+slug. It has no rule for the same number being allocated twice concurrently on
+two branches, because under its own assumptions that cannot happen. What made
+it happen is that allocation is checked against a local checkout, and an
+allocation that has not been pushed is invisible to the next allocator.
+
+**Next free identifier, recomputed at the moment of writing** (2026-09-09,
+across every remote branch and this worktree): remote branches carry
+`SPEC-0001` to `SPEC-0007`; this worktree additionally carries `SPEC-0008` and
+`SPEC-0009`. The next free number is therefore **`SPEC-0010`**.
+
+## What a human has to decide
+
+Every path out of this changes a `NORMATIVE` document or breaks it, so none is
+an agent's to take.
+
+1. **Amend `docs/sdd/IDENTIFIER_STANDARD.md`** to add a concurrent-allocation
+   rule — for example, that where one number has been allocated twice, the
+   allocation with the later first-approval date is renumbered to the next free
+   identifier, the vacated pairing is recorded here, and the old number stays
+   reserved against the moved specification under Rule 2. On the dates above
+   that renumbers **B** (first approved 2026-09-09) to `SPEC-0010`, not A —
+   which is the opposite of "renumber the unpublished one", and it is what a
+   date-based rule actually yields.
+2. **Amend the standard to prefer the published allocation**, which renumbers
+   **A** to `SPEC-0010`. This matches the operational-embedding preference, and
+   it moves the specification carrying three approvals rather than one.
+3. **Accept the collision** and require every reference to be slug-qualified
+   (`SPEC-0007-lead-delete-affordance`) rather than number-qualified. Cheapest
+   today; it makes `SPEC-NNNN` no longer a unique key, which is the property
+   the standard exists to provide.
+
+Both branches can be merged before this is settled — the two directories have
+different slugs, so git will not conflict and the validator checks `specId`
+against the directory name, not against uniqueness across the corpus. The
+collision is a governance defect, not a merge defect. It does not block
+release sequencing; it blocks being able to say `SPEC-0007` and be understood.
+
+Raised by an agent on 2026-09-09. Not resolved: resolving it requires either
+amending a `NORMATIVE` standard or knowingly violating it, and an agent may do
+neither.
+
+---
+
+### EVC-023 — `npm run format:check` cannot pass on a Windows checkout
+
+**Documented state.** `.github/workflows/ci.yml` runs `npm run format:check` as
+gate 3 and it passes on every green run. `CLAUDE.md` lists it among the checks
+to run before claiming completion, without qualification.
+
+**Actual state.** On this Windows checkout it reports **908 files** with style
+issues — very nearly the whole repository, including files no one has touched.
+
+**Cause, isolated.** Not formatting. Line endings. `git config core.autocrlf`
+is `true` and the repository has **no `.gitattributes`**, so the working tree is
+checked out CRLF; Prettier's `endOfLine` defaults to `lf` and `.prettierrc.json`
+does not override it.
+
+Demonstrated on one file, holding everything else constant — same content, same
+`--config .prettierrc.json`, both copies outside the project so neither picks up
+a different configuration:
+
+| Copy | Result |
+|---|---|
+| `apps/web/vitest.config.mts` as checked out (CRLF) | flagged |
+| the same bytes with `\r\n` → `\n` | `All matched files use Prettier code style!` |
+
+**Why it matters, and why it is not an emergency.** CI checks out LF on Linux
+and the gate passes there, so nothing is broken in the pipeline. What is broken
+is the local instruction: a developer on Windows who runs the documented
+pre-completion check gets 908 failures, none of them real, and the only way to
+tell that from a genuine regression is to know this. That is the same shape as
+`EVC-020` — a check whose result depends on the platform it runs on — but
+wider: `EVC-020` covers three fixture-driven cases in the SDD tooling suite,
+this covers the whole formatting gate.
+
+**Deliberately not repaired.** The obvious "fix" is `npm run format` — and it
+would rewrite 908 files, producing a diff that touches almost every source file
+in the repository for no behavioural reason and is unreviewable. The real fix is
+a `.gitattributes` declaring `* text=auto eol=lf`, followed by a re-checkout,
+which is a repository-wide change with its own review and is outside the scope
+of any specification currently open.
+
+**Consequence for evidence.** Until this is resolved, a `format:check` result
+from a Windows checkout is not evidence about the gate. Any convergence record
+citing it must either run it on Linux or cite this entry. Recorded here rather
+than reported per-specification, because it is a property of the repository, not
+of any one change.
+
+Raised by an agent on 2026-09-09 while running the full check set for
+`SPEC-0007`.
+
+## EVC-021, addendum 2 — 2026-09-09: no role owns the standard that would have to change
+
+Directed to design a concurrent-allocation collision rule and to obtain the
+governance approval required before amending a `NORMATIVE` document, I looked
+for who that approval belongs to. **The governance model does not say.**
+
+- `docs/sdd/IDENTIFIER_STANDARD.md` is marked `NORMATIVE — engineering process
+  requirement` and names no owner. Its "Authority / References" section lists
+  documents it defers to, not a role that may change it.
+- `docs/sdd/HUMAN_APPROVAL_GATES.md` defines six functional roles — Product
+  Owner, Solution Architect, Application Security, QA / Release Engineering,
+  DevOps / Production Engineering, Human Release Authority — each scoped to
+  **product** decisions. None is given authority over the engineering process
+  standards themselves.
+- `docs/sdd/ARTIFACT_AUTHORITY.md` places `AGENTS.md` at the top of the
+  authority chain and binds every level below it, but describes no procedure
+  for amending either `AGENTS.md` or the `docs/sdd/*` standards that implement
+  it.
+- `docs/sdd/CHANGE_CONTROL.md` governs changes to approved **specifications**,
+  not to the standards those specifications are written against.
+
+So the seven gates cover changing the product and none covers changing the
+rules. The closest fit by subject matter is the **Solution Architect**, whose
+listed ownership is "approach, patterns, architecture and data model" — an
+identifier scheme is a pattern — but that is an inference, not a rule, and this
+register exists so that inferences are not quietly promoted to facts.
+
+**This is a second finding, distinct from the collision itself.** `EVC-021`
+records that two branches allocated `SPEC-0007` and that the standard forbids
+the only obvious remedies. This addendum records that even a human who wants to
+fix the standard has no defined route to do so. The first is a gap in a rule;
+this is a gap in the meta-rule, and it will block the next process defect too,
+whatever that turns out to be.
+
+**Recommended shape of the amendment, ready to apply once someone may approve
+it.** The normal rule stands — approved identifiers never change. One exception,
+narrowly drawn: where two branches allocate the same identifier before either
+can see the other's allocation, the allocation whose **first valid human
+approval is earlier** retains the number, and the later one moves to the next
+free identifier. Deterministic, independent of publication order, branch
+visibility or which agent noticed first.
+
+On the timestamps as they stand — `client-demo-data-personas-reset` first
+approved 2026-09-08, `lead-delete-affordance` first approved 2026-09-09 — that
+rule retains `SPEC-0007` for the demonstration specification and moves the
+lead-delete one. **That is the opposite of the "renumber the unpublished side"
+preference stated earlier**, and it moves a specification belonging to an
+actively-worked pull request. Both consequences are stated here rather than
+discovered during execution.
+
+The next free identifier, recomputed across every remote branch and this
+worktree on 2026-09-09, is **`SPEC-0010`**. It must be recomputed again at the
+moment of application; two identifiers have been allocated in this repository
+in the last day.
+
+Nothing is renumbered. No standard is edited. Raised by an agent on 2026-09-09.
+
+## EVC-023, addendum — 2026-09-09: the noise was not merely noise; it hid five real failures
+
+The entry above concluded that a Windows `format:check` result "is not evidence
+about that gate", and recommended citing this entry instead of running it. That
+conclusion was correct and **insufficient**, and the branch it was written on
+proved it within the hour.
+
+`npm run format:check` on Linux CI (run `34385174549`, step 16) failed against
+`71c7456` with **five genuinely misformatted files**, every one of them
+introduced by this workstream in `c4c0631`:
+
+- `apps/web/prisma/seed/crm.ts`
+- `apps/web/prisma/seed/hr.ts`
+- `apps/web/prisma/seed/index.ts`
+- `apps/web/src/app/api/v1/calls/[id]/live/route.ts`
+- `apps/web/tests/hr/demo-dataset.spec.ts`
+
+The defects are real — a doc comment indented one level out from the constant it
+documents, a chained ternary Prettier wraps differently, and similar — and none
+of them is a line ending. The committed content is LF, because
+`core.autocrlf=true` normalises on commit; CI checked out exactly what a Linux
+developer would have and disagreed with it.
+
+**The failure this entry did not anticipate.** Locally those five sit inside a
+list of **908**. A real failure and 903 false ones are the same colour, so the
+advice "treat the local result as uninformative" quietly became "do not look at
+the gate at all", and five defects rode through six full-suite runs, an eslint
+pass, a validator pass, a human gate 6 acceptance and a push. A gate that cannot
+be read is not a gate that is merely unavailable; it is one that reports
+*success and failure identically*, which is worse than being absent, because an
+absent gate is noticed.
+
+**What was actually usable, and was not used.** Prettier accepts paths. Running
+`npx prettier --check` against **only the files a change touches** is unaffected
+by the repository-wide CRLF problem for any file the change has already written
+through Prettier, and for the rest it is a short enough list to read. That is
+what this entry should have recommended and did not. Applied afterwards to all
+23 `apps/web` files this branch touches: 5 needed reformatting, 18 were already
+clean, and the re-check passes.
+
+**Correction to the standing guidance.** A Windows `format:check` over the whole
+repository remains uninformative. A Windows `prettier --check <changed files>`
+is **not** uninformative and must be run before any push. The underlying repair
+is still a `.gitattributes` declaring `* text=auto eol=lf`, which is still
+outside the scope of any open specification.
+
+**Consequence for the gate 6 acceptance of 2026-09-09.** It was recorded against
+evidence that named `format:check` as unavailable rather than as unverified-and
+-failing. The specification's behaviour is unaffected — the diff is whitespace,
+the suite result is unchanged — but the acceptance was taken over a red CI gate
+that nobody could see. Recorded here rather than quietly fixed, because the
+reviewer is entitled to know the evidence set was incomplete when they signed
+it.
+
+---
+
+### EVC-024 — `demo.youhan.in` now resolves to the customer production host
+
+**Severity: high. This blocks `SPEC-0008` deployment entirely and is not a
+documentation defect.**
+
+**Documented state.** `SPEC-0008` gate 2 approved *"Hosting: a separate VM"* and
+explicitly **declined** co-locating the demonstration with another environment,
+on the evidence that the other environment holds real customer data. The
+provisioning checklist's `B1` asks for an approved, dedicated demo host.
+
+**Actual state, measured 2026-09-09 21:22 UTC.** A DNS A record now points
+`demo.youhan.in` at `89.167.94.197`. That address is not a new host. It is
+**named literally, in this repository, in the production deployment
+configuration**:
+
+```
+apps/web/infra/Caddyfile.intranet:38    89.167.94.197 {
+apps/web/infra/Caddyfile.intranet:14        default_sni 89.167.94.197
+```
+
+`Caddyfile.intranet` is mounted only by `apps/web/infra/docker-compose.small-host.yml`,
+and that overlay is applied by exactly one branch of `apps/web/scripts/release.sh`:
+
+```
+release.sh:63  host_overlay() { if [ -f "${INFRA}/docker-compose.small-host.yml" ]; ...
+release.sh:77  production) ... docker-compose.azure.yml$(host_overlay)
+```
+
+`host_overlay` appears nowhere else. The `staging` branch at line 71 deliberately
+does not take it, and says so at lines 74-76. So the overlay naming this IP is
+production's, and only production's.
+
+**Runtime observations, `89.167.94.197`, 2026-09-09 21:22 UTC** — GET only, no
+authentication attempted, nothing mutated:
+
+| Probe | Result |
+|---|---|
+| `http://89.167.94.197/` | `308` to `https://89.167.94.197/`, `Server: Caddy` |
+| `https://89.167.94.197/api/health` | `200` `{"status":"ok","checks":{"database":"up","redis":"up"}}` |
+| `https://89.167.94.197/` | `307` to `/login`; `X-Powered-By: Next.js`; HSTS `max-age=63072000; includeSubDomains; preload` |
+| login page | carries `YOUHAN ONE` branding |
+| TLS without SNI | `CN=Caddy Local Authority - ECC Intermediate`, 12-hour validity — matches `tls internal` at `Caddyfile.intranet:39` |
+| TLS with SNI `demo.youhan.in` | **handshake fails** — no certificate, no site block |
+| `https://demo.youhan.in/` from the public internet | fails at TLS; nothing is served |
+
+**What is and is not currently exposed.** The public cannot reach the
+application through `demo.youhan.in`: port 80 answers with a redirect to a
+hostname whose TLS handshake fails. **No customer data is being served over the
+new name today.** What is true today is narrower and still serious — production's
+reverse proxy is answering for a hostname intended for a public demonstration,
+and `Caddyfile.intranet:34` contains a `{$APP_DOMAIN}` site block. If
+`APP_DOMAIN` in that host's `.env.production` were ever set to
+`demo.youhan.in`, Caddy would obtain a Let's Encrypt certificate over HTTP-01 —
+DNS already points at it — and begin serving **the production application** at
+the demonstration hostname. That is one environment variable away.
+
+**Why deploying the demo here would be worse than the co-location gate 2
+refused.** Gate 2 declined *staging*, which holds a restored snapshot. This is
+the live system:
+
+1. Synthetic demonstration data and real customer data on one host.
+2. `release.sh` on that host resolves `host_overlay()` for production. A demo
+   environment added to the same script and the same host puts a destructive
+   `--reset` seed one argument away from production's compose stack.
+3. `SPEC-0007`'s reset destroys and rebuilds every seeded workspace. Its guards
+   read `NODE_ENV`, `APP_ENV` and the database name — none of which distinguishes
+   two stacks on one machine as reliably as two machines do.
+4. A public demonstration login would be added to the attack surface of the host
+   serving customers.
+
+**Not repaired, and not repairable by an agent.** Whether `89.167.94.197` is
+still production, has been repurposed, or is a rebuild is a fact only its
+operator holds. The repository says production; that is the only evidence
+available from here, and the burden is on establishing otherwise rather than on
+assuming it.
+
+**Required decision.** Either a dedicated host is provided for the demo and the
+A record is repointed at it, or a human with operational knowledge states what
+`89.167.94.197` is now and, if the co-location is genuinely intended, that is a
+change to `SPEC-0008`'s approved architecture requiring gate 2 to be reopened —
+not something to be absorbed during deployment.
+
+Raised by an agent on 2026-09-09 while verifying DNS before deployment. No
+change was made to the host, no credential was used, and no endpoint beyond
+`/api/health*` and the unauthenticated login page was requested.
+
+## EVC-023, addendum 2 — 2026-09-09: the corrected rule was still wrong
+
+Addendum 1 replaced "a Windows `format:check` is uninformative" with "run
+`prettier --check` against only the files a change touches". That is better and
+it is still not reliable, and the next change proved it within the hour.
+
+`SPEC-0009`'s implementation edits one string in `apps/web/package.json`.
+`npx prettier --check package.json` **failed**. It is not a defect:
+
+| Artefact | Line endings | Prettier |
+|---|---|---|
+| `apps/web/package.json` in the working tree | CRLF (3 617 bytes) | **fails** |
+| the same bytes with `\r\n` → `\n` | LF (3 520 bytes) | clean |
+| `git show HEAD:apps/web/package.json` | LF | clean |
+
+`core.autocrlf=true` checks files out as CRLF, so *any* working-tree file that
+has not been rewritten by Prettier itself fails `--check` regardless of its
+content. Addendum 1's rule happened to work only because the procedure used
+there was `prettier --write` followed by `--check`: `--write` normalises to LF
+as a side effect, so the re-check passed and the files `--write` actually
+modified were the genuinely misformatted five. The diagnosis was right; the rule
+extracted from it was not.
+
+**The rule, third attempt.** Check what git will commit, not what is on disk.
+Either normalise first, or read the file out of the index:
+
+```bash
+git show :apps/web/package.json > /tmp/p.json && npx prettier --check /tmp/p.json
+```
+
+`prettier --write <changed files>` followed by `--check` remains a valid
+procedure — it answers "is the content wrong" by fixing it — but it is a
+mutation, not an inspection, and it cannot be used to *verify* a change without
+also changing it.
+
+**Why this keeps happening.** Every rule written here so far has tried to work
+around `core.autocrlf=true` on a repository with no `.gitattributes`, and each
+one has held until a file arrived through a path the rule did not anticipate.
+The underlying repair — `* text=auto eol=lf` in `.gitattributes` and a
+re-checkout — remains outside the scope of any open specification, and this is
+the second finding it has produced. Recorded so that the next person to write a
+workaround can see there have been two.
+
+## EVC-024, correction — 2026-09-09: what the evidence actually supports
+
+Corrected on the instruction of the human requester. The entry above states two
+things more strongly than its evidence carries, and the difference matters
+because a reader deciding whether customer data is at risk would be misled by
+the stronger reading.
+
+**What the evidence supports, restated exactly:**
+
+1. **Repository configuration associates `89.167.94.197` with production.**
+   `apps/web/infra/Caddyfile.intranet` names the address literally, that file is
+   mounted only by `apps/web/infra/docker-compose.small-host.yml`, and
+   `apps/web/scripts/release.sh` applies that overlay only in its `production`
+   branch. This is an association recorded in the repository. It is not a
+   runtime confirmation of the host's present role.
+2. **Public probes confirm a running YOUHAN ONE application** at that address,
+   reporting `database: up` and `redis: up`.
+3. **The host's current customer-production status requires confirmation** from
+   the infrastructure owner or from authorized authenticated inspection. The
+   repository is evidence of intent at the time it was written; a host can be
+   repurposed without the repository saying so.
+
+**What the entry above overclaims, withdrawn:**
+
+- *"No customer data is being served over the new name today."* **Withdrawn.**
+  What was actually observed is narrower: HTTPS requests to
+  `https://demo.youhan.in/` failed at the TLS handshake, from one client, at one
+  moment, from one network vantage point, on 2026-09-09 at 21:22 UTC. That is
+  evidence about those requests. It is not evidence that no path exists, that no
+  other client or resolver sees something different, that the state has not
+  changed since, or that nothing is reachable by another route. A failed probe
+  proves a probe failed.
+- *"The public cannot reach the application through `demo.youhan.in`."*
+  **Withdrawn** for the same reason, and replaced by: the requests made were
+  refused at TLS.
+
+**What does not change.** The blocking conclusion stands and does not depend on
+the withdrawn sentences. A demonstration environment must not be deployed onto a
+host that the repository associates with production until that host's role is
+confirmed, and the `{$APP_DOMAIN}` block at `Caddyfile.intranet:34` remains one
+environment variable from issuing a public certificate for a hostname that now
+resolves to that address. If anything, weakening the exposure claim strengthens
+the case for treating this as blocking: less is known than the original wording
+implied.
+
+**Standing instruction while unconfirmed.** `89.167.94.197` is treated as
+production. No change to its `APP_DOMAIN`, Caddy configuration, firewall,
+containers, volumes, databases or deployment state; no demo seed, reset or
+migration run against it. Nothing has been changed on it, and no credential has
+been used against it.
+
+## Condition required to close EVC-024
+
+One of:
+
+- **(a)** A dedicated demo host is provided, `demo.youhan.in` is repointed at
+  it, and this entry closes as superseded by the deployment on that host; or
+- **(b)** The infrastructure owner confirms `89.167.94.197` is **not** customer
+  production and states what it is, in which case co-location is still a
+  departure from the architecture gate 2 approved and requires gate 2 to be
+  reopened rather than absorbed; or
+- **(c)** The A record for `demo.youhan.in` is removed, returning the hostname
+  to `NXDOMAIN` and dissolving the association, pending (a).
+
+**(c) is the interim action** if no replacement host exists yet. It touches only
+the record added for the demonstration and **no production DNS record**.
+
+---
+
+### EVC-025 — `npm run verify` runs zero gates on a Windows checkout, and says so in a way that hides it
+
+**Severity: medium. The pre-push safety net is inoperable on Windows and its own
+self-check does not notice.**
+
+**Documented state.** `apps/web/scripts/verify.mjs` exists to be the one command
+a developer can trust before pushing. Its header states the failure it was
+written for — a developer remembering four of fifteen gates — and it derives the
+gate list from `.github/workflows/ci.yml` rather than a hand-kept copy,
+precisely so it cannot go stale.
+
+**Actual state, measured 2026-09-09.** `npm run verify` exits **2** without
+running a single gate, printing twenty lines of the form:
+
+```
+PLAN names "Typecheck" and ci.yml has no such step. It was renamed or removed.
+```
+
+Every one of those steps exists in `ci.yml`, unchanged.
+
+**Root cause, isolated.** `stepsOf()` splits on `'\n'` (`verify.mjs:92`), so on a
+`core.autocrlf=true` checkout every line retains a trailing `\r`. The step-name
+regex tolerates it — `/^ {6}- name:\s*(.+?)\s*$/` ends in `\s*`, and `\s` matches
+`\r` — so **26 of 26 steps are named correctly**. The command regex does not:
+
+```js
+/^ {8}run:\s*(.*)$/          // verify.mjs:127
+```
+
+In JavaScript `.` excludes line terminators and **`\r` is one of them**:
+
+```
+/./.test('\r')                                            → false
+/^ {8}run:\s*(.*)$/.test('        run: |\r')              → false
+/^ {8}run:\s*(.*)$/.test('        run: |')                → true
+```
+
+`(.*)` stops before the `\r`, and `$` without the `m` flag requires true
+end-of-string, so the match fails on **every** line. Measured against the real
+file: 24 `run:` lines present, **0 seen**, so `stepsOf()` returns
+`steps.filter(s => s.command !== null)` → **an empty array**, every PLAN entry is
+reported stale, and the script exits before running anything.
+
+**Why its own guard misses it.** `verify.mjs:139` cross-checks `steps.length`
+against the count of `- name:` lines and refuses to run if they differ — a guard
+built for exactly this class of parser bug. Both numbers are **26**, because the
+naming works and only the *command extraction* fails. The accounting check
+cannot see a step that was named and then silently dropped by the filter two
+lines later.
+
+**Effect.** On Windows the developer is told the workflow has changed under them.
+The plausible response is to edit `PLAN` to match, which would be twenty edits
+correcting nothing. Nobody gets a pre-push run, and CI is the first thing that
+sees the change — which is the situation the script was written to end.
+
+**Fix.** One character class: `.split(/\r?\n/)` at `verify.mjs:92`, matching what
+`scripts/prepare-test-db.mjs:66` already does for `.env` parsing in the same
+tree. Alternatively strip `\r` per line, or add the `m` flag. **Not applied
+here**: `apps/web/scripts/` is outside the allowed scope of every currently open
+task, and the fix belongs to whoever owns the developer tooling rather than to
+`SPEC-0008` or `SPEC-0009`. It is a one-line change and it is reported rather
+than taken.
+
+**Relationship to the other line-ending findings.** `EVC-020` is fixture needles
+in the SDD tooling suite; `EVC-023` is `format:check` over the repository. This
+is the third instance and the most consequential, because the other two produce
+*noisy* wrong answers a reader can eventually see through, while this one
+produces a *confident* wrong answer — a specific, false claim that named CI steps
+have been renamed or removed. All three have the same underlying cause: no
+`.gitattributes` declaring `* text=auto eol=lf`.
+
+Raised by an agent on 2026-09-09 after being asked to run `npm run verify`.

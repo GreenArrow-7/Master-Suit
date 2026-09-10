@@ -12,12 +12,25 @@ export const metadata = { title: 'My role & access' };
  * server enforces. Raw permission keys stay in the admin area.
  */
 
+/**
+ * Tenant-neutral on purpose.
+ *
+ * These strings named one customer's company outright — "all of Manath Homes",
+ * "Run the Manath Homes workspace end to end" — in a page every workspace
+ * renders, so every other tenant read someone else's brand as their own. Found
+ * while rebranding the demonstration workspace, which is how a hardcoded name
+ * in shared copy usually surfaces.
+ *
+ * Fixed generically rather than by substituting a different company, because
+ * that would be the same defect with a new name. If this copy ever needs the
+ * organisation's actual name, read it from the workspace rather than typing it.
+ */
 const SCOPE_LABEL: Record<string, string> = {
   OWN: 'records assigned to you',
   TEAM: 'your team’s records',
   BRANCH: 'your branch’s records',
   REGION: 'your region’s records',
-  ORGANIZATION: 'all of Manath Homes',
+  ORGANIZATION: 'every record in your organisation',
 };
 
 const MODULE_LABEL: Record<string, string> = {
@@ -49,7 +62,7 @@ const ROLE_COPY: Record<string, { title: string; responsibilities: string[] }> =
   org_admin: {
     title: 'Organization Administrator',
     responsibilities: [
-      'Run the Manath Homes workspace end to end',
+      'Run the workspace end to end',
       'Manage users, roles and teams',
       'Oversee the full pipeline, targets and SLA health',
       'Review calls, call audits and team performance',

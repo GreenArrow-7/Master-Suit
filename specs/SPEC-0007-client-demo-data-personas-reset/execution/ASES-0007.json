@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ASES-0007",
+  "specId": "SPEC-0007",
+  "role": "IMPLEMENTER",
+  "actorType": "ai",
+  "actorId": null,
+  "taskIds": [
+    "TASK-011"
+  ],
+  "startedFromCommit": "a04c7e3762f0e8e959aa31294ae4139907c7066e",
+  "initialChangedPaths": [
+    "apps/web/prisma/seed/crm.ts",
+    "apps/web/prisma/seed/hr.ts",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/scripts/demo-smoke.mjs",
+    "apps/web/scripts/ensure-workspace-admin.mjs",
+    "apps/web/scripts/mobile-audit.mjs",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts",
+    "apps/web/tests/hr/demo-dataset.spec.ts",
+    "apps/web/tests/hr/demo-docs.spec.ts",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts",
+    "apps/web/tests/hr/demo-reset.spec.ts",
+    "apps/web/tests/security/demo-personas.spec.ts",
+    "docs/DEMO.md",
+    "docs/EVIDENCE_CONFLICTS.md",
+    "specs/SPEC-0007-client-demo-data-personas-reset/",
+    "specs/SPEC-0008-demo-environment-deployment/"
+  ],
+  "initialDigests": {
+    "apps/web/prisma/seed/crm.ts": "8ecd3af19fbb7d399d443605e49b670f980900c94b9b87eb51f2e1b632c6db95",
+    "apps/web/prisma/seed/hr.ts": "fd2a0a7ed46b7ffde191fae0ccd175f5d11e4277b787955b7d8ffb52e3c04884",
+    "apps/web/prisma/seed/index.ts": "b208dae2e845c7dbad0bbbe30fc7d8e2e918bfbe3e5b38e5810a8fdf1248e23d",
+    "apps/web/scripts/demo-smoke.mjs": "014a6f25cabe879f6f4691f3d28240a190e61ca5faa42c84e256625453fef0c8",
+    "apps/web/scripts/ensure-workspace-admin.mjs": "69098a2ee8d52994f619f701c0ca43f501a16eec0ea0128e0e2cbd75b5fc5eaa",
+    "apps/web/scripts/mobile-audit.mjs": "d3dd95b50229261b73a121a48ca4dd0c8e8e209c4761dd10b979887fe77a124d",
+    "apps/web/tests/e2e/demo-walkthrough.spec.ts": "3f71735aafab4352b4ea689fd68f5b7a8ed54aa026433e6922d7bce62ac28066",
+    "apps/web/tests/hr/demo-dataset.spec.ts": "d4d7806bfcefed69b8b30f4ed818a285483c1e0342121e3a7bbde68f9adf0d35",
+    "apps/web/tests/hr/demo-docs.spec.ts": "5be8b8ff7562b250f9369747bdc1c04eacec13575d718a60a76b76d4da61d9fc",
+    "apps/web/tests/hr/demo-reset-coverage.spec.ts": "ba5a565551a38cc990f131f5e46c1f7e49a2302172b2a63f2f272a3f7bd52c69",
+    "apps/web/tests/hr/demo-reset.spec.ts": "5281ff6cfbed2c27635fdbdefd45de2f73570b293db4570ff89291ece43022fc",
+    "apps/web/tests/security/demo-personas.spec.ts": "ffeb4b75ef7f5f0d3e1eb9a0eaf1fa74284d47c93ccf5ac458b0345fc1628360",
+    "docs/DEMO.md": "67bf0e6d1f0a865faa6815b8f71a88e6a363548a7aac1eb8b62c090af04d1984",
+    "docs/EVIDENCE_CONFLICTS.md": "e124ccc5f7ef77deecb0cd4475eea111d978d827799def3c3057a8144d75c019",
+    "specs/SPEC-0007-client-demo-data-personas-reset/": "<directory>",
+    "specs/SPEC-0008-demo-environment-deployment/": "<directory>"
+  },
+  "allowedPaths": [
+    "specs/SPEC-0007-client-demo-data-personas-reset/",
+    "apps/web/prisma/seed/crm.ts",
+    "apps/web/prisma/seed/index.ts",
+    "apps/web/tests/hr/demo-dataset.spec.ts",
+    "docs/DEMO.md"
+  ],
+  "prohibitedPaths": [
+    "apps/web/src/",
+    "prisma/schema.prisma",
+    "prisma/migrations/",
+    ".github/workflows/",
+    "apps/web/infra/"
+  ],
+  "requiredTests": [
+    "UT-013"
+  ],
+  "requiredApprovals": [],
+  "status": "COMPLETE",
+  "result": {
+    "summary": "TASK-011 executed: DATA-005 amended under the approved CHG-004, UT-013 written to bound the exemption, and the reserved-domain requirement made true of the data for the first time.",
+    "verificationRef": "VER-0007",
+    "unexpectedFindings": [
+      "CL-007 was recorded as resolved by moving every demonstration address to a reserved domain. It had been applied only to the ten persona logins; 25 contacts, the account book's addresses and websites, and the second workspace administrator were still on company-name-derived .ae domains. CONV-010.",
+      "--reset drops only the primary demo tenant, so the second workspace cannot be rebuilt from a changed definition. CONV-011.",
+      "Microsoft dev tunnels show an anti-phishing interstitial to real browsers whose text tells the visitor not to disclose personal information — unsuitable for a login demonstration, and invisible to curl, which is why it was nearly missed."
+    ],
+    "scopeDeviations": [
+      "The seed and dataset-test edits were made before this session was opened, as with ASES-0006; the conflict surfaced during the work. Recorded rather than presented as clean; scope-check reports the resulting SDD-V052 warnings."
+    ],
+    "newUnknowns": [
+      "Whether --reset should be extended to the second workspace, which is a question about FR-011 and FR-012 rather than a code tidy.",
+      "Whether the account book's display names should also change now that their domains no longer match them."
+    ]
+  },
+  "verifiedTests": [
+    "UT-013"
+  ],
+  "verificationRef": "VER-0007"
+}
