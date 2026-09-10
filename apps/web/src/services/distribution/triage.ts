@@ -28,7 +28,13 @@ import { prisma, type TxClient } from '@/lib/db';
 type TransactionClient = TxClient;
 import type { Ineligibility } from './eligibility';
 
-export type TriageReason = 'NO_RULE' | 'EMPTY_POOL' | 'NO_ELIGIBLE_AGENT' | 'ALL_AT_CAPACITY';
+export type TriageReason =
+  | 'NO_RULE'
+  | 'EMPTY_POOL'
+  | 'NO_ELIGIBLE_AGENT'
+  | 'ALL_AT_CAPACITY'
+  /** Found by reconciliation. Its history is unknown; see `historyUnknown`. */
+  | 'PRE_EXISTING';
 
 /** What the queue shows under "why automatic assignment failed". */
 export interface TriageDetail {
@@ -38,6 +44,14 @@ export interface TriageDetail {
   unsupported?: string[];
   /** The rule's name at the time, so the queue reads without a join. */
   ruleName?: string;
+  /**
+   * When the eligibility picture in `candidates` was taken.
+   *
+   * Only set by backlog reconciliation, where the assessment is a present-tense
+   * fact about a lead whose past is unknown — so the queue can say "assessed
+   * today" rather than implying the refusals are why it was never assigned.
+   */
+  assessedAt?: string;
 }
 
 export interface OpenTriageInput {
@@ -54,6 +68,11 @@ export interface OpenTriageInput {
   } | null;
   /** The lead's own team, used when the rule names no fallback. */
   leadTeamId?: string | null;
+  /**
+   * `openedAt` is discovery, not arrival, and no historical reason exists.
+   * Set by backlog reconciliation and by nothing else.
+   */
+  historyUnknown?: boolean;
   now?: Date;
 }
 
@@ -171,7 +190,7 @@ export async function openTriageEntry(tx: TransactionClient, input: OpenTriageIn
     INSERT INTO "LeadTriageEntry" (
       "id", "tenantId", "leadId", "episode", "reason", "detail", "ruleId",
       "responsibleTeamId", "responsibleUserId", "reviewDueAt",
-      "reviewPolicyMissing", "routingPolicyMissing", "status", "openedAt",
+      "reviewPolicyMissing", "routingPolicyMissing", "historyUnknown", "status", "openedAt",
       "createdAt", "updatedAt"
     )
     SELECT
@@ -188,6 +207,7 @@ export async function openTriageEntry(tx: TransactionClient, input: OpenTriageIn
       ${reviewDueAt},
       ${reviewPolicyMissing},
       ${who.routingPolicyMissing},
+      ${input.historyUnknown ?? false},
       'WAITING'::"LeadTriageStatus",
       ${now}, ${now}, ${now}
     ON CONFLICT DO NOTHING
@@ -254,6 +274,8 @@ export function explainReason(reason: TriageReason, detail: TriageDetail | null)
       const n = detail?.candidates?.length ?? 0;
       return n > 0 ? `All ${n} candidate${n === 1 ? '' : 's'} at quota or capacity` : 'Everyone is at their limit';
     }
+    case 'PRE_EXISTING':
+      return 'Unassigned before the queue existed — original reason not recorded';
     case 'NO_ELIGIBLE_AGENT':
     default: {
       const n = detail?.candidates?.length ?? 0;

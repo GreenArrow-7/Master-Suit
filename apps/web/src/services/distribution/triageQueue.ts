@@ -17,6 +17,21 @@ import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { lockAndVerify, DEFAULT_POLICY, policyFromRule } from './eligibility';
 import { explainReason, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
+import { enqueueNotice, withdrawNotice } from '@/services/notifications/outbox';
+import { findReplay, recordOutcome, type IdempotencyRequest } from '@/services/idempotency';
+
+/**
+ * Stable identities for the three notices this file decides on.
+ *
+ * Derived from the thing that happened, never from the clock: the same event
+ * reconsidered by a retry, an overlapping sweep or a resumed worker produces the
+ * same key, and the outbox's unique index collapses them to one notice.
+ */
+export const noticeKeys = {
+  triageOpened: (entryId: string) => `triage.opened:${entryId}`,
+  triageOverdue: (entryId: string) => `triage.overdue:${entryId}`,
+  leadAssigned: (entryId: string, userId: string) => `triage.assigned:${entryId}:${userId}`,
+};
 
 export interface TriageRow {
   id: string;
@@ -34,6 +49,8 @@ export interface TriageRow {
   reviewDueAt: Date | null;
   reviewPolicyMissing: boolean;
   routingPolicyMissing: boolean;
+  /** `openedAt` is discovery, not arrival: no waiting time may be claimed. */
+  historyUnknown: boolean;
   overdue: boolean;
   escalatedAt: Date | null;
   responsibleUserId: string | null;
@@ -76,6 +93,7 @@ export async function listTriageQueue(
       reviewDueAt: true,
       reviewPolicyMissing: true,
       routingPolicyMissing: true,
+      historyUnknown: true,
       escalatedAt: true,
       responsibleUserId: true,
       responsibleTeamId: true,
@@ -119,6 +137,10 @@ export async function listTriageQueue(
       reviewDueAt: r.reviewDueAt,
       reviewPolicyMissing: r.reviewPolicyMissing,
       routingPolicyMissing: r.routingPolicyMissing,
+      historyUnknown: r.historyUnknown,
+      // A reconciled entry has no arrival time, so it cannot be overdue against
+      // one. Its review deadline still runs from discovery, which is a real
+      // deadline for the *review*, and that is what this reflects.
       overdue: r.reviewDueAt !== null && r.reviewDueAt <= now,
       escalatedAt: r.escalatedAt,
       responsibleUserId: r.responsibleUserId,
@@ -193,6 +215,35 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
   });
   if (!visible) throw Forbidden('That lead is outside your assignment scope.');
 
+  /**
+   * The idempotency lookup sits **after** authorization and after the scope
+   * check, deliberately. A replayed key is not a bypass: an actor who may not
+   * assign this lead is refused with the same 403 whether the key is new or
+   * known, and the recorded actor is part of the fingerprint so a replay by
+   * somebody else is a conflict rather than a free result.
+   *
+   * `scopeRef` is the episode. A key minted against one waiting episode cannot
+   * act on a later one — a lead that was assigned, returned to the pool and is
+   * waiting again is a different decision, whatever the inputs say.
+   */
+  const idem: IdempotencyRequest | null = input.requestKey
+    ? {
+        tenantId: ctx.tenantId,
+        operation: 'lead_triage.assign',
+        requestKey: input.requestKey,
+        actorUserId: ctx.actor.id,
+        input: { entryId: entry.id, toUserId: input.toUserId },
+        scopeRef: entry.id,
+      }
+    : null;
+
+  if (idem) {
+    const replay = await findReplay<ManualAssignResult>(idem);
+    // The original answer, returned again — not a 409 claiming somebody else
+    // did it, which is what a lost response used to produce.
+    if (replay) return { ...replay.result, alreadyResolved: true };
+  }
+
   if (entry.status !== 'WAITING') {
     // Somebody else got there first. A concurrent-update answer, not an error
     // page: the UI reloads the row and says who took it.
@@ -266,40 +317,64 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
       tx,
     );
 
+    /**
+     * The decision to notify commits with the assignment.
+     *
+     * It used to be a `prisma.notification.create` *after* the transaction —
+     * correct in ordering, and lost entirely if the process died in between,
+     * with nothing afterwards knowing it was owed. The outbox row is part of the
+     * same commit, so a crash leaves either no assignment and no notice, or an
+     * assignment and a pending notice a sweep will deliver.
+     */
+    const lead = await tx.lead.findFirst({
+      where: { tenantId: ctx.tenantId, id: entry.leadId },
+      select: { fullName: true },
+    });
+    await enqueueNotice(tx, ctx.tenantId, {
+      eventKey: noticeKeys.leadAssigned(entry.id, input.toUserId),
+      userId: input.toUserId,
+      kind: 'LEAD_ASSIGNED',
+      title: `New lead: ${lead?.fullName ?? 'unnamed'}`,
+      body: 'Assigned to you from the waiting queue.',
+      objectType: 'lead',
+      recordId: entry.leadId,
+      priority: 'HIGH',
+    });
+
+    /**
+     * An escalation that has been *decided* but not yet delivered is withdrawn:
+     * paging a manager about a lead that now has an owner teaches them to ignore
+     * the alert. One already delivered stands — it is a thing that happened.
+     */
+    if (closed.wasEscalated) {
+      await withdrawNotice(tx, ctx.tenantId, noticeKeys.triageOverdue(entry.id));
+    }
+    // Likewise the opening notice, if nobody has been told yet.
+    await withdrawNotice(tx, ctx.tenantId, noticeKeys.triageOpened(entry.id));
+
+    /**
+     * The result is recorded in the same transaction as the assignment, so a
+     * process that dies before the response reaches the client leaves a record
+     * the retry will find. A crash *before* this commits leaves neither, and the
+     * retry legitimately runs the operation again.
+     */
+    if (idem) {
+      await recordOutcome<ManualAssignResult>(tx, idem, {
+        entryId: entry.id,
+        leadId: entry.leadId,
+        toUserId: input.toUserId,
+        alreadyResolved: false,
+      });
+    }
+
     return { escalationAnswered: closed.wasEscalated };
   });
 
-  // After the commit, never inside it: a notification enqueued from inside a
-  // transaction that then rolls back tells somebody about work they do not have.
-  await notifyAssigned(ctx.tenantId, entry.leadId, input.toUserId);
   if (result.escalationAnswered) {
     logger.info({ tenantId: ctx.tenantId, entryId: entry.id }, 'triage escalation answered by assignment');
   }
 
   return { entryId: entry.id, leadId: entry.leadId, toUserId: input.toUserId, alreadyResolved: false };
-}
-
-async function notifyAssigned(tenantId: string, leadId: string, userId: string) {
-  try {
-    const lead = await prisma.lead.findFirst({ where: { tenantId, id: leadId }, select: { fullName: true } });
-    await prisma.notification.create({
-      data: {
-        tenantId,
-        userId,
-        kind: 'LEAD_ASSIGNED',
-        title: `New lead: ${lead?.fullName ?? 'unnamed'}`,
-        body: 'Assigned to you from the waiting queue.',
-        objectType: 'lead',
-        recordId: leadId,
-        priority: 'HIGH',
-        channels: ['in_app'],
-      },
-    });
-  } catch (err) {
-    // The assignment is committed and correct; the agent will still see the lead
-    // in their own list. A failed notification must not undo it.
-    logger.warn({ err, tenantId, leadId, userId }, 'lead assigned but the notification could not be written');
-  }
 }
 
 /**
@@ -309,11 +384,17 @@ async function notifyAssigned(tenantId: string, leadId: string, userId: string) 
  * retention and reminder sweeps do, then writes per tenant so every write is
  * inside its own tenant's RLS context.
  *
- * **One logical alert per episode.** `escalatedAt` is stamped by a conditional
- * UPDATE, and only the rows that UPDATE actually changed are notified. Two
- * overlapping sweeps therefore produce one alert between them, not one each —
- * the stamp is taken by whichever transaction commits first and the other
- * matches zero rows.
+ * **One logical alert per episode, and it cannot be lost.** The `escalatedAt`
+ * stamp and the outbox row are written in the *same* transaction. The stamp
+ * alone was not enough: it stops two workers claiming the same entry, and it
+ * *causes* the loss when the winner dies after claiming — the stamp is
+ * committed, so no later sweep ever picks the entry up again and nothing knows a
+ * notice was owed. Committing the decision with the claim means a crash leaves
+ * either neither or both.
+ *
+ * Two overlapping sweeps still produce one alert between them: the conditional
+ * UPDATE is what makes the claim exclusive, and the outbox's unique `eventKey`
+ * catches anything that slips past it.
  *
  * Entries with no configured review window are **not** escalated and **not**
  * hidden. There is no deadline to be past, and inventing one would be inventing
@@ -343,16 +424,31 @@ export async function sweepTriageDeadlines(now = new Date()): Promise<{ escalate
 
   let escalated = 0;
   for (const entry of due) {
-    const claimed = await withTx(entry.tenantId, (tx) =>
-      tx.leadTriageEntry.updateMany({
-        // Re-read the state: between the sweep's SELECT and this UPDATE the lead
-        // may have been assigned, which resolves the entry and makes the alert
-        // wrong rather than merely late.
+    const claimed = await withTx(entry.tenantId, async (tx) => {
+      // Re-read the state: between the sweep's SELECT and this UPDATE the lead
+      // may have been assigned, which resolves the entry and makes the alert
+      // wrong rather than merely late.
+      const stamped = await tx.leadTriageEntry.updateMany({
         where: { tenantId: entry.tenantId, id: entry.id, status: 'WAITING', escalatedAt: null },
         data: { escalatedAt: now },
-      }),
-    );
-    if (claimed.count === 0) continue;
+      });
+      if (stamped.count === 0) return 0;
+
+      if (entry.responsibleUserId) {
+        await enqueueNotice(tx, entry.tenantId, {
+          eventKey: noticeKeys.triageOverdue(entry.id),
+          userId: entry.responsibleUserId,
+          kind: 'LEAD_TRIAGE_OVERDUE',
+          title: 'A lead has been waiting past its review time',
+          body: explainReason(entry.reason as TriageReason, (entry.detail ?? {}) as TriageDetail),
+          objectType: 'lead',
+          recordId: entry.leadId,
+          priority: 'HIGH',
+        });
+      }
+      return stamped.count;
+    });
+    if (claimed === 0) continue;
     escalated += 1;
 
     if (!entry.responsibleUserId) {
@@ -361,27 +457,6 @@ export async function sweepTriageDeadlines(now = new Date()): Promise<{ escalate
       // Escalating to an arbitrary administrator would widen access to paper
       // over a configuration gap.
       logger.warn({ tenantId: entry.tenantId, entryId: entry.id }, 'triage entry overdue with nobody accountable');
-      continue;
-    }
-
-    try {
-      await withTx(entry.tenantId, (tx) =>
-        tx.notification.create({
-          data: {
-            tenantId: entry.tenantId,
-            userId: entry.responsibleUserId!,
-            kind: 'LEAD_TRIAGE_OVERDUE',
-            title: 'A lead has been waiting past its review time',
-            body: explainReason(entry.reason as TriageReason, (entry.detail ?? {}) as TriageDetail),
-            objectType: 'lead',
-            recordId: entry.leadId,
-            priority: 'HIGH',
-            channels: ['in_app'],
-          },
-        }),
-      );
-    } catch (err) {
-      logger.warn({ err, tenantId: entry.tenantId, entryId: entry.id }, 'triage escalation notification failed');
     }
   }
   return { escalated };
@@ -432,13 +507,17 @@ export async function sweepStaleTriage(now = new Date()): Promise<{ resolved: nu
 }
 
 /**
- * Re-send the opening notification for entries whose enqueue never happened.
+ * Decide the opening notice for entries that do not have one yet.
  *
- * The opening notification is deliberately sent *after* the triage transaction
- * commits — enqueueing inside it would tell a manager about a queue entry that
- * then rolled back. The cost of that ordering is a window where the entry exists
- * and the notification does not, so `notifiedAt` records which entries have been
- * announced and this closes the gap rather than leaving it to chance.
+ * **Rewritten.** This used to stamp `notifiedAt` with a conditional UPDATE and
+ * then create the notification, handing the stamp back in a catch block if that
+ * failed. The hand-back only runs when the process survives, which is exactly
+ * the case it was defending against: a worker that died between the stamp and
+ * the write left `notifiedAt` set and the notice owed to nobody, permanently.
+ *
+ * Now the stamp and the outbox row are one transaction. A crash leaves either
+ * neither (this sweep retries) or both (the outbox delivers). `notifiedAt` still
+ * means "a notice has been decided on"; delivery is the outbox's business.
  */
 export async function sweepTriageNotifications(now = new Date()): Promise<{ notified: number }> {
   const pending = await withPlatformTx(
@@ -454,41 +533,25 @@ export async function sweepTriageNotifications(now = new Date()): Promise<{ noti
 
   let notified = 0;
   for (const entry of pending) {
-    const claimed = await withTx(entry.tenantId, (tx) =>
-      tx.leadTriageEntry.updateMany({
+    const claimed = await withTx(entry.tenantId, async (tx) => {
+      const stamped = await tx.leadTriageEntry.updateMany({
         where: { tenantId: entry.tenantId, id: entry.id, status: 'WAITING', notifiedAt: null },
         data: { notifiedAt: now },
-      }),
-    );
-    if (claimed.count === 0) continue;
-
-    try {
-      await withTx(entry.tenantId, (tx) =>
-        tx.notification.create({
-          data: {
-            tenantId: entry.tenantId,
-            userId: entry.responsibleUserId!,
-            kind: 'LEAD_TRIAGE_WAITING',
-            title: 'A lead could not be assigned automatically',
-            body: explainReason(entry.reason as TriageReason, (entry.detail ?? {}) as TriageDetail),
-            objectType: 'lead',
-            recordId: entry.leadId,
-            priority: 'MEDIUM',
-            channels: ['in_app'],
-          },
-        }),
-      );
-      notified += 1;
-    } catch (err) {
-      // Give it back so the next sweep retries rather than losing the notice.
-      await withTx(entry.tenantId, (tx) =>
-        tx.leadTriageEntry.updateMany({
-          where: { tenantId: entry.tenantId, id: entry.id },
-          data: { notifiedAt: null },
-        }),
-      ).catch(() => undefined);
-      logger.warn({ err, tenantId: entry.tenantId, entryId: entry.id }, 'triage opening notification failed');
-    }
+      });
+      if (stamped.count === 0) return 0;
+      await enqueueNotice(tx, entry.tenantId, {
+        eventKey: noticeKeys.triageOpened(entry.id),
+        userId: entry.responsibleUserId!,
+        kind: 'LEAD_TRIAGE_WAITING',
+        title: 'A lead could not be assigned automatically',
+        body: explainReason(entry.reason as TriageReason, (entry.detail ?? {}) as TriageDetail),
+        objectType: 'lead',
+        recordId: entry.leadId,
+        priority: 'MEDIUM',
+      });
+      return stamped.count;
+    });
+    notified += claimed;
   }
   return { notified };
 }
