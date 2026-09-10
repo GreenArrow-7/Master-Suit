@@ -103,6 +103,19 @@
       "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/execution/REV-0001.json",
       "scope": "BUG-008 / SEC-OBS-014 security review against f585e482216a172ff9afa7cba06fdd0a2ba3f696 (GitHub run 34428645116).",
       "note": "Reviewer A of two. EVC-019 resolved YES, so this discharges the first R4 reviewer slot only; Reviewer B must be a different real human and is outstanding. Decision made by Siraj, Security Architect, 10 September 2026 09:10 GST; transcribed by an AI agent which did not make or modify it and is the author of the change under review. Not the EVC-004 disposition and not a production approval."
+    },
+    {
+      "reviewId": "REV-0002",
+      "reviewType": "security-review",
+      "reviewerRole": "SECURITY_REVIEWER",
+      "actorType": "human",
+      "actorId": "Arvind",
+      "decision": "APPROVE",
+      "date": "2026-09-10",
+      "satisfiesHumanGate": true,
+      "evidenceRef": "specs/SPEC-0007-lead-delete-affordance/execution/REV-0002.json",
+      "scope": "BUG-008 / SEC-OBS-014 second human security review against f585e482216a172ff9afa7cba06fdd0a2ba3f696 (GitHub run 34428645116).",
+      "note": "Reviewer B of two, satisfying EVC-019's second distinct human. Decision supplied by the user as Arvind's, 10 September 2026 09:50 GST; transcribed by an AI agent which did not make or modify it and did NOT independently authenticate Arvind's identity or verify distinctness from Siraj - that rests on the user's assertion. Not acceptance of the recorded residual risks, not the EVC-004 disposition, not a production approval."
     }
   ],
   "evidenceConflicts": []
