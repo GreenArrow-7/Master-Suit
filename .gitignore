@@ -57,3 +57,9 @@ cloudflared.exe
 # `agentRules: false` in next.config.ts if they are unwanted entirely.
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
+
+# Locally generated test certificates and keys for the STARTTLS-capable Mailpit
+# capture server and the local HTTPS terminator. Regenerate with
+# `apps/web/scripts/make-local-tls.sh`; see docs/TEST-ISOLATION.md. Private keys
+# never belong in the repository.
+apps/web/infra/tls-local/

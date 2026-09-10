@@ -266,11 +266,83 @@ async function ensureOwnerAuthenticator(email: string): Promise<string> {
   return secret;
 }
 
-/** Reads the mock mailer's outbox. See src/app/api/v1/dev/outbox/route.ts. */
-export async function lastMailTo(request: APIRequestContext, to: string) {
+export interface CapturedMail {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+/**
+ * The message this run sent to `to`, from whichever capture the run is using.
+ *
+ * Two sources, chosen explicitly rather than guessed:
+ *
+ *   E2E_MAILPIT_URL set   a real SMTP capture server. The application ran with
+ *                         EMAIL_PROVIDER=smtp and genuinely delivered over
+ *                         STARTTLS, so this is an SMTP integration path.
+ *   unset                 the mock provider's in-memory outbox, which is the
+ *                         fast path and the only one available when the
+ *                         application is not sending real mail.
+ *
+ * The application's development outbox is *not* enabled in production mode —
+ * `api/v1/dev/outbox` refuses unless EMAIL_PROVIDER is `mock`, and that refusal
+ * is left exactly as it is. Under a production-mode run this function does not
+ * ask it anything.
+ */
+export async function lastMailTo(request: APIRequestContext, to: string): Promise<CapturedMail> {
+  const mailpit = process.env.E2E_MAILPIT_URL;
+  if (mailpit) return await lastMailFromMailpit(mailpit, to);
+
   const res = await request.get(`/api/v1/dev/outbox?to=${encodeURIComponent(to)}`);
   expect(res.status(), `no email captured for ${to}`).toBe(200);
-  return (await res.json()) as { to: string; subject: string; body: string };
+  return (await res.json()) as CapturedMail;
+}
+
+/**
+ * Mailpit's API, matched on the exact recipient.
+ *
+ * Every address the suite sends to carries `RUN_TAG` and a per-test suffix, so
+ * one recipient identifies one message from one run — there is no need to guess
+ * from subjects or timestamps, and a stale message from an earlier run cannot
+ * be picked up because its recipient differs.
+ *
+ * Polled rather than read once: SMTP delivery is a second network hop that
+ * completes just after the HTTP response the test was waiting on, so a single
+ * immediate read is a race that fails perhaps one run in five.
+ */
+async function lastMailFromMailpit(baseUrl: string, to: string): Promise<CapturedMail> {
+  const deadline = Date.now() + 15_000;
+  let seen = 0;
+
+  while (Date.now() < deadline) {
+    const search = await fetch(`${baseUrl}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}&limit=5`);
+    if (search.ok) {
+      const found = (await search.json()) as { messages?: { ID: string }[] };
+      seen = found.messages?.length ?? 0;
+      const newest = found.messages?.[0];
+      if (newest) {
+        const detail = await fetch(`${baseUrl}/api/v1/message/${newest.ID}`);
+        if (detail.ok) {
+          const message = (await detail.json()) as {
+            To?: { Address: string }[];
+            Subject?: string;
+            Text?: string;
+            HTML?: string;
+          };
+          return {
+            to: message.To?.[0]?.Address ?? to,
+            subject: message.Subject ?? '',
+            // Text first: the mailer sends `text`, and the link regex is written
+            // against a plain body rather than markup.
+            body: message.Text || message.HTML || '',
+          };
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  throw new Error(`no email captured for ${to} in Mailpit within 15s (search returned ${seen} message(s))`);
 }
 
 /** Pulls the single-use link out of an email body. */
