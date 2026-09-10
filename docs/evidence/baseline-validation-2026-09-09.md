@@ -67,10 +67,25 @@ All from `apps/web` at `253acf1`.
 
 ### 3.0 vitest detail
 
-159 files, **2015 passed, 2 skipped, 0 failed**, 187s. The two skips are
-pre-existing and are the same two CI reports on green runs. The totals are 23
-tests above the 1992 recorded earlier this session, which is exactly the two
-boundary suites added under SPEC-0008 (10 + 13).
+159 files, **2015 passed, 2 skipped, 0 failed**, 187s. The totals are 23 tests
+above the 1992 recorded earlier this session, which is exactly the two boundary
+suites added under SPEC-0008 (10 + 13).
+
+**The two skips, identified rather than assumed.** An earlier draft of this
+report said they were "the same two CI reports on green runs" — that was an
+unverified guess and it is withdrawn. Parsed from the run JSON, both are in
+:
+
+- *alertmanager-entrypoint.sh writes the relay password into a file readable by
+  nobody else*
+- *prometheus-entrypoint.sh writes the scrape token into a file readable by
+  nobody else*
+
+Both use the  helper and are skipped because this host is Windows —
+ marks them POSIX-only, since the assertion is a file
+mode. **Both are security tests about credential file permissions.** They run on
+Linux CI and did not run here, so the local baseline is weaker than CI on exactly
+that axis. Nothing else was skipped.
 
 ### 3.1 `npm run verify` — harness failure, diagnosed
 
