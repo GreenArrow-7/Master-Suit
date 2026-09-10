@@ -280,6 +280,33 @@ enum JobStatus {
   CANCELLED
 }
 
+/// Why automatic assignment could not place a lead.
+///
+/// Each value is a different administrative fix, which is the whole point of
+/// separating them: NO_RULE and EMPTY_POOL are configuration, NO_ELIGIBLE_AGENT
+/// is usually staffing or leave, and ALL_AT_CAPACITY is a quota that is doing
+/// its job. A single "unassigned" flag would leave a manager guessing which.
+enum LeadTriageReason {
+  /// No active distribution rule for leads in this workspace.
+  NO_RULE
+  /// A rule exists but names nobody.
+  EMPTY_POOL
+  /// Candidates exist; none of them may currently receive a lead.
+  NO_ELIGIBLE_AGENT
+  /// Everyone eligible is at a configured quota or capacity limit.
+  ALL_AT_CAPACITY
+}
+
+enum LeadTriageStatus {
+  /// Waiting for a human decision. At most one per lead, by partial unique index.
+  WAITING
+  /// Somebody was given the lead. Terminal.
+  ASSIGNED
+  /// Closed without an assignment — the lead was deleted, merged, or the
+  /// episode was superseded. Terminal.
+  CANCELLED
+}
+
 enum DistributionMethod {
   ROUND_ROBIN
   WEIGHTED_ROUND_ROBIN
@@ -512,6 +539,7 @@ model Tenant {
   leadScoreHistories         LeadScoreHistory[]
   leadStages                 LeadStage[]
   leadStageHistories         LeadStageHistory[]
+  leadTriageEntries          LeadTriageEntry[]
   leadTags                   LeadTag[]
   listings                   Listing[]
   listingMedias              ListingMedia[]
@@ -1089,7 +1117,7 @@ model PlatformUser {
   passwordHistory       PasswordHistory[]
   passwordResetTokens   PasswordResetToken[]
   sessions              PlatformSession[]
-  platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
+  platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
   serviceCredentials    PlatformServiceCredential[]
@@ -2813,20 +2841,20 @@ model UserTeam {
 }
 
 model PasswordResetToken {
-  id        String    @id @default(cuid())
+  id             String    @id @default(cuid())
   /// The credential lives on PlatformUser, so this is what a reset acts on.
   /// tenantId/userId are set when the account has a workspace, which is where
   /// the password policy and the audit entry come from; a platform-only
   /// account (the owner before any workspace exists) has neither.
   platformUserId String?
-  tenantId  String?
-  userId    String?
-  tokenHash String    @unique
-  ipAddress String?
-  userAgent String?
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  tenantId       String?
+  userId         String?
+  tokenHash      String    @unique
+  ipAddress      String?
+  userAgent      String?
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
 
   platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
@@ -3024,6 +3052,7 @@ model Lead {
   customValues   LeadCustomFieldValue[]
   stageHistory   LeadStageHistory[]
   assignments    LeadAssignmentHistory[]
+  triageEntries  LeadTriageEntry[]
   scoreHistory   LeadScoreHistory[]
   activities     Activity[]
   tasks          Task[]
@@ -3747,6 +3776,94 @@ model DistributionRule {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, objectType, isActive, position])
+}
+
+/// One episode of a lead waiting for a human to place it.
+///
+/// `assignLead` used to `return` on three different failures — no rule, empty
+/// pool, lead already taken — and record nothing. The lead kept `ownerId = null`
+/// and joined the pool, indistinguishable from one nobody had got to yet, with
+/// no deadline, nobody accountable and no statement of what went wrong. This is
+/// that missing record.
+///
+/// **An episode, not a flag.** A lead can enter the queue, be assigned, be
+/// routed back to a team pool and enter again — and "how long did it wait the
+/// second time" must be answerable separately from the first. A boolean on Lead
+/// would overwrite the first episode's history with the second's.
+///
+/// **Assignment state, not sales stage.** Nothing here touches `Lead.stageId`.
+/// A lead can be in the triage queue while sitting in any open stage, and moving
+/// stage neither opens nor closes an episode.
+model LeadTriageEntry {
+  id       String @id @default(cuid())
+  tenantId String
+  leadId   String
+
+  /// 1 for the first time this lead waited, 2 for the next. Unique per lead, so
+  /// a re-entry is a distinguishable new episode rather than a reopened row.
+  episode Int
+
+  reason LeadTriageReason
+
+  /// Per-candidate refusal detail behind `reason`: which agents were considered
+  /// and why each was passed over. A manager who cannot see "3 on leave, 1 at
+  /// daily quota" has to guess, and guessing is how the queue gets ignored.
+  detail Json @default("{}")
+
+  /// The rule that was consulted, where there was one.
+  ruleId String?
+
+  /// Who is accountable for clearing this. Resolved from the rule's fallback,
+  /// then the lead's team manager — never widened to "any administrator".
+  responsibleTeamId String?
+  responsibleUserId String?
+
+  /// When a human is expected to have dealt with it. Null with
+  /// `reviewPolicyMissing` means no review window is configured — the entry
+  /// stays visible and says so, rather than inheriting an invented number.
+  reviewDueAt DateTime?
+
+  /// No `escalateAfterMins` on the governing rule. Surfaced, never defaulted.
+  reviewPolicyMissing Boolean @default(false)
+
+  /// Routing configuration names nobody accountable. An administrative
+  /// exception in its own right, and deliberately not solved by escalating to
+  /// whoever happens to have broad permissions.
+  routingPolicyMissing Boolean @default(false)
+
+  status LeadTriageStatus @default(WAITING)
+
+  openedAt DateTime @default(now())
+
+  /// Stamped when the deadline escalation has been raised, so repeated sweeps
+  /// produce one logical alert. Independent of whether delivery succeeded.
+  escalatedAt DateTime?
+
+  /// Stamped when the opening notification has been enqueued. Null on a WAITING
+  /// entry means the enqueue never happened — a recovery sweep picks it up
+  /// rather than the manager silently never hearing.
+  notifiedAt DateTime?
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  /// How it ended, in words a manager wrote or the system chose.
+  resolution   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, leadId, episode])
+  /// The queue, oldest first.
+  @@index([tenantId, status, openedAt])
+  /// The deadline sweep.
+  @@index([tenantId, status, reviewDueAt])
+  /// "What is waiting on me" / "on my team".
+  @@index([tenantId, responsibleUserId, status])
+  @@index([tenantId, responsibleTeamId, status])
+  @@index([leadId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5066,14 +5183,14 @@ model Notification {
 /// every read here is already inside one workspace. See `GLOBAL_MODELS` in
 /// src/lib/db.ts, where the guard exemption this needs is argued.
 model DeviceToken {
-  id       String @id @default(cuid())
-  userId   String
-  token    String @unique
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
   /// 'ios' or 'android'. It decides which of the two push transports sends —
   /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
   /// that silently never rings. Written only by /api/v1/devices, behind a
   /// closed zod enum.
-  platform String
+  platform   String
   /// Stamped on every re-registration, which the app does at each launch. A
   /// token that has not been seen for months belongs to an app that was deleted
   /// without telling anyone; the transports prune those on rejection.
