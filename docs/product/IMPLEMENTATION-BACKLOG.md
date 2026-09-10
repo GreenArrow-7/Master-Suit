@@ -291,7 +291,17 @@ the same moment.
 
 **Retain.** `Task` (type, category, recurrence, `escalatedAt`, team, reminder
 fields) as the authoritative store — it is already what `crm/reminders.ts` sweeps.
-Retain the reminder idempotency design (`crm/reminders.ts:16-23`).
+
+**Amended — do NOT retain the reminder idempotency design.** This item previously
+said to keep `crm/reminders.ts:16-23`. That design is an existence check in one
+transaction followed by an insert in another, and it is not idempotent: the two
+are not atomic, `NOT EXISTS` takes no lock under `READ COMMITTED`, and
+`Notification` carries no unique constraint to fall back on. It also keys on the
+_lead_, so two open tasks on one lead collapse to a single reminder and one of
+them is never sent. Replace it with the unique index and `ON CONFLICT` claim
+specified in
+[`NEXT-ACTION-AND-REMINDER-CONTRACTS.md`](NEXT-ACTION-AND-REMINDER-CONTRACTS.md)
+§3.3.
 
 **Files.** `src/app/api/v1/follow-ups/*`, `src/services/crm/reminders.ts`,
 `src/app/(workspace)/[workspaceSlug]/sales/page.tsx`, `sales/follow-ups`,
@@ -300,8 +310,15 @@ Retain the reminder idempotency design (`crm/reminders.ts:16-23`).
 
 **Migration.** Migrate `FollowUpTask` rows into `Task`, preserving ids by mapping
 table. **This is the largest data move in the backlog** and should be its own
-reviewable step with a dry-run count and a reversible mapping. `Lead.nextFollowUpAt`
-becomes derived, maintained from `Task`, not written independently.
+reviewable step with a dry-run count and a reversible mapping. Every open
+obligation is preserved: rows are never collapsed because they share a lead and a
+kind. `Lead.nextFollowUpAt` becomes derived (contracts §2.6 — earliest open
+`dueAt` across every owner and kind), maintained from `Task`, not written
+independently.
+
+**Split out.** Deriving `nextFollowUpAt` does not need the migration and should
+precede it. The column has no writer today, and six Sales surfaces already read
+it.
 
 **Policy.** D-6 (whether `FollowUpTask` is migrated or kept as a projection).
 
@@ -311,8 +328,15 @@ becomes derived, maintained from `Task`, not written independently.
   reminder.
 - Agent overdue count equals manager overdue count for the same lead set.
 - Rescheduling twice leaves two history entries and one open item.
-- The same commitment created twice yields one item.
-- Overlapping reminder-worker runs send one notification, not two.
+- **Amended:** a _machine_ request replayed with the same `sourceKey` yields one
+  item; a _person_ adding a second follow-up yields two. The previous wording —
+  "the same commitment created twice yields one item" — assumed the withdrawn
+  one-per-lead-and-kind rule and would have silently discarded a legitimate
+  second obligation. Contracts §2.2.
+- Two open obligations on one lead produce **two** reminders, not one.
+- Overlapping reminder-worker runs send one notification, not two, under
+  concurrent execution — asserted against actual concurrency, not against a
+  sequential re-run.
 
 **Rollout.** Dual-read first (queue reads both stores), then migrate, then
 single-read. Rollback is possible until the single-read step.

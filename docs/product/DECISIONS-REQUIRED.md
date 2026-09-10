@@ -133,6 +133,12 @@ mapping.
 _Consequence:_ one store, one reminder path, one definition of overdue — the point
 of P1-3. Keeping both is cheaper now and re-creates the problem later.
 
+**Amended.** The earlier draft of this decision assumed the migration would
+enforce _"one open obligation per lead per kind"_. That rule is **withdrawn** —
+see [`NEXT-ACTION-AND-REMINDER-CONTRACTS.md`](NEXT-ACTION-AND-REMINDER-CONTRACTS.md)
+§2.1. A migration must preserve every open obligation and carry `sourceKey`
+across; it must not collapse rows that share a lead and a kind.
+
 **Gates:** P1-3.
 
 ---
@@ -281,6 +287,65 @@ than to ~400 call sites — so deferring costs nothing.
 
 ---
 
+## D-13 · Whose obligations set a lead's `nextFollowUpAt`?
+
+**Question.** `Lead.nextFollowUpAt` is specified in
+[`NEXT-ACTION-AND-REMINDER-CONTRACTS.md`](NEXT-ACTION-AND-REMINDER-CONTRACTS.md)
+§2.6 as the earliest due obligation on that lead **across every owner**. The
+alternative is the earliest among the lead owner's own obligations.
+
+**PROPOSED — NOT APPROVED:** owner-independent.
+
+_Consequence:_ the Overdue queue means "this lead is waiting on us" rather than
+"the owner is behind". Both are legitimate reports and they are not the same
+report — a lead with a rep's callback due Thursday and a manager's review due
+Tuesday reads as Tuesday under the proposal, and as Thursday under the
+alternative. Per-person queues remain available: that is the task list, filtered
+by owner.
+
+**Note.** The column currently has **no writer anywhere in application code**.
+Six Sales surfaces read it — the Overdue filter, the sortable grid column, the
+lead-detail flag, the sales overdue count, the built-in Overdue smart view and
+the leadership exception queue — and only seed and tests write it. Whichever way
+this is answered, all six are reading a stale column today.
+
+**Gates:** the `nextFollowUpAt` derivation task; indirectly P1-3.
+
+---
+
+## D-14 · Does a lead with nothing open leave every follow-up surface?
+
+**Question.** Under the contract, completing the last open obligation sets
+`nextFollowUpAt` to `NULL` and the lead disappears from every Overdue surface.
+Is that correct, or should a lead stay visible until somebody explicitly closes
+it out?
+
+**PROPOSED — NOT APPROVED:** yes, it leaves.
+
+_Consequence:_ "overdue" means "something is owed and late", which is what the
+word says. If a lead should remain visible after its last task closes, that is a
+state on the _lead_ — a disposition — and not a lingering timestamp. Encoding it
+as a never-cleared `nextFollowUpAt` would make the column mean two things.
+
+**Gates:** the `nextFollowUpAt` derivation task.
+
+---
+
+## D-15 · How long are delivered reminders retained?
+
+**Question.** A delivered reminder is the evidence that a person was told. Does
+it follow the notification retention window or the audit one?
+
+**PROPOSED — NOT APPROVED:** the audit window.
+
+_Consequence:_ "was the rep reminded before the SLA breach?" stays answerable
+for as long as the breach itself does. Under the notification window the
+evidence expires before the thing it is evidence for.
+
+**Gates:** P1-4 (reminder reliability).
+
+---
+
 ## How to use this file
 
 1. Answer **D-8** and **D-1** first — they are the two that block work outright.
@@ -288,6 +353,9 @@ than to ~400 call sites — so deferring costs nothing.
    so Track 0 and most of Track 1 can start immediately.
 3. D-9 through D-11 can follow, but D-9 should be settled before booking
    permissions are widened.
+4. D-13 through D-15 gate the next-action and reminder work. D-13 is the only
+   one of the three that changes what a report means; the other two have
+   defaults that are safe to run with.
 
 Track 0 (security and reliability) depends on **none** of these and can begin as
 soon as implementation is approved.
