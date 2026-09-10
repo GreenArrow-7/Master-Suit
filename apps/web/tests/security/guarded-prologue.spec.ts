@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { globSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -31,7 +31,14 @@ const API = join(__dirname, '..', '..', 'src', 'app', 'api', 'v1');
  */
 const EXEMPT = new Set(['auth/logout/route.ts', 'integrations/meta/callback/route.ts']);
 
-const routeFiles = globSync('**/route.ts', { cwd: API });
+/**
+ * Normalised to '/', because `globSync` returns the host's separator and EXEMPT
+ * is written with '/'. On Windows neither exemption matched, so this security
+ * check reported both legitimate routes as hand-rolled prologues on every run —
+ * a permanently-red invariant test is one people learn to scroll past, which is
+ * the failure mode that lets a real hand-rolled prologue through.
+ */
+const routeFiles = globSync('**/route.ts', { cwd: API }).map((file) => file.split(sep).join('/'));
 
 describe('the security prologue', () => {
   it('is not re-implemented outside the two routes that must', () => {
