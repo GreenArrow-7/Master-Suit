@@ -294,14 +294,16 @@ than to ~400 call sites — so deferring costs nothing.
 §2.6 as the earliest due obligation on that lead **across every owner**. The
 alternative is the earliest among the lead owner's own obligations.
 
-**PROPOSED — NOT APPROVED:** owner-independent.
+**PROPOSED — NOT APPROVED:** owner-independent **for the stored column**, with
+"your next action" computed per viewer at read time and never stored.
 
 _Consequence:_ the Overdue queue means "this lead is waiting on us" rather than
 "the owner is behind". Both are legitimate reports and they are not the same
 report — a lead with a rep's callback due Thursday and a manager's review due
-Tuesday reads as Tuesday under the proposal, and as Thursday under the
-alternative. Per-person queues remain available: that is the task list, filtered
-by owner.
+Tuesday reads as Tuesday lead-wide and Thursday for the rep. **Rendering one
+number in both places tells the rep they are late for something that is not
+theirs**, which is what the amended contract now forbids. The six existing read
+sites split accordingly.
 
 **Note.** The column currently has **no writer anywhere in application code**.
 Six Sales surfaces read it — the Overdue filter, the sortable grid column, the
@@ -346,6 +348,45 @@ evidence expires before the thing it is evidence for.
 
 ---
 
+## D-16 · How long is a request key honoured?
+
+**Question.** A create carries a `requestKey` so retries are safe
+([contracts](NEXT-ACTION-AND-REMINDER-CONTRACTS.md) §2.2). A replay of that key
+a year later is almost certainly a new intention rather than a retry. How long
+is a key honoured, and what happens past the window?
+
+**PROPOSED — NOT APPROVED:** 24 hours. Past it, the key is unknown and the
+create proceeds as new.
+
+_Consequence:_ retries, offline replays and double-submits are all comfortably
+inside a day, and a stale key cannot suppress a genuine commitment months later.
+The risk of the alternative — honouring forever — is that a client which reuses
+keys across sessions silently stops creating obligations, and that failure is
+invisible: the API returns success every time.
+
+**Gates:** the `requestKey` task (contracts §4, New — D).
+
+---
+
+## D-17 · Which channels count as having reminded somebody?
+
+**Question.** The contract treats in-app as the channel of record, because it is
+the only one with no provider between the system and the person
+([contracts](NEXT-ACTION-AND-REMINDER-CONTRACTS.md) §3.5). Is an email that was
+accepted by the relay but never opened sufficient notice for SLA purposes?
+
+**PROPOSED — NOT APPROVED:** in-app is the channel of record; email and push are
+best-effort and are never the basis for "they were told".
+
+_Consequence:_ SLA measurement rests on the one channel that commits in the same
+database as the reminder. Treating an accepted email as notice would make the
+SLA depend on a provider acknowledgement that does not mean a person saw
+anything — and it cannot be promised as exactly-once in any case.
+
+**Gates:** P1-4; any SLA report that says "reminded".
+
+---
+
 ## How to use this file
 
 1. Answer **D-8** and **D-1** first — they are the two that block work outright.
@@ -353,9 +394,9 @@ evidence expires before the thing it is evidence for.
    so Track 0 and most of Track 1 can start immediately.
 3. D-9 through D-11 can follow, but D-9 should be settled before booking
    permissions are widened.
-4. D-13 through D-15 gate the next-action and reminder work. D-13 is the only
-   one of the three that changes what a report means; the other two have
-   defaults that are safe to run with.
+4. D-13 through D-17 gate the next-action and reminder work. D-13 and D-17 are
+   the two that change what a report means; the rest have defaults that are
+   safe to run with.
 
 Track 0 (security and reliability) depends on **none** of these and can begin as
 soon as implementation is approved.

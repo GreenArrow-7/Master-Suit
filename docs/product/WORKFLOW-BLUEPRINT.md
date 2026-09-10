@@ -235,8 +235,20 @@ _Change:_ **CONNECT, not ADD.** Choose one authoritative commitment store —
 `Task` is the stronger candidate: it already has type, category, recurrence,
 `escalatedAt`, team and reminder fields, and it is what `crm/reminders.ts` already
 sweeps. `FollowUpTask` becomes a projection or is migrated into `Task`;
-`Lead.nextFollowUpAt` becomes a **derived** convenience column maintained from the
-authoritative store, not an independent input. **No fifth store is created.**
+`Lead.nextFollowUpAt` becomes a **derived** convenience column, not an
+independent input. **No fifth store is created.**
+
+> **Corrected, and this is a sequencing constraint.** The derived column reads
+> the **union** of `Task` and `FollowUpTask` until a reconciliation report shows
+> zero unmapped open `FollowUpTask` rows. Deriving from `Task` alone while the
+> other store still holds open work would set `NULL` on those leads and
+> _silently remove real work_ from every Overdue surface — worse than the
+> current state, where the column is merely stale. Contracts §2.6.
+>
+> The column is also **lead-wide**: earliest open obligation across every owner.
+> "What do _I_ do next on this lead" is a different value, computed per viewer at
+> read time and never stored. Rendering the lead-wide number in an agent's own
+> list tells them they are late for somebody else's commitment.
 
 **10. Acceptance scenarios.**
 
@@ -244,7 +256,13 @@ authoritative store, not an independent input. **No fifth store is created.**
   reminder. (Today it does the first and not the second.)
 - Agent and manager see the same lead as overdue at the same moment.
 - Rescheduling twice leaves two history entries and one open item.
-- Creating the same commitment twice produces one queue item.
+- **Corrected:** a request replayed with the same `requestKey` produces one queue
+  item, whoever sent it — a double-submitted form is a retry, not a second
+  commitment. A _new_ key produces a new item, including when a person
+  deliberately adds a second follow-up. A replay carrying materially different
+  input is an explicit **conflict**, and authorization runs before the
+  idempotency lookup. Contracts §2.2.
+- One source event intended to create three tasks creates three, not one.
 
 ---
 
@@ -341,20 +359,40 @@ escalation window (**PROPOSED — NOT APPROVED**, D-3).
 
 **7. Exceptions.** Customer waiting period (a deliberate pause, not neglect, and
 must be distinguishable); overdue; agent absent → coverage; notification failure →
-`Notification.emailError` already exists; repeated delivery → already prevented by
-the existence check in `crm/reminders.ts:16-23`.
+`Notification.emailError` already exists.
 
-**8. Audit.** Reschedule history retained.
+> **Corrected.** This section previously said repeated delivery was "already
+> prevented by the existence check in `crm/reminders.ts:16-23`". It is not. That
+> check runs in a different transaction from the insert, takes no lock under
+> `READ COMMITTED`, and has no unique constraint behind it; it also keys on the
+> _lead_, so two open tasks on one lead collapse into a single reminder and one
+> is never sent. See
+> [`NEXT-ACTION-AND-REMINDER-CONTRACTS.md`](NEXT-ACTION-AND-REMINDER-CONTRACTS.md)
+> §3.2.
 
-**9. Today → change.** _Today:_ good idempotency design; reminders miss
-`FollowUpTask`; SLA is a single delayed job that is not re-swept; no escalation on
-absence. _Change:_ **REPAIR** reminder coverage; **ADD** a periodic sweep and
-absence-aware escalation.
+**8. Audit.** Reschedule history retained, including the schedule revision that
+each reminder was raised against (contracts §3.3).
 
-**10. Acceptance.** A follow-up due at 15:00 reminds once, not three times, even
-across overlapping worker runs. A follow-up whose owner is on leave escalates to
-their manager rather than going overdue silently. A deliberate "customer will
-revert in 3 weeks" does not appear as neglect.
+**9. Today → change.** _Today:_ the idempotency design **does not hold** (see
+above); reminders miss `FollowUpTask`; SLA is a single delayed job that is not
+re-swept; no escalation on absence. _Change:_ **REPAIR** reminder uniqueness
+(unique index + `ON CONFLICT` claim keyed on a monotonic `scheduleRevision`,
+recipient and channel); **REPAIR** reminder coverage; **ADD** a periodic sweep,
+absence-aware escalation, and a re-read at delivery.
+
+**10. Acceptance.**
+
+- A follow-up due at 15:00 reminds once, not three times, across **concurrent**
+  worker runs — asserted under real concurrency, not a sequential re-run.
+- **Two** open follow-ups on one lead produce **two** reminders.
+- A follow-up moved 09:00 → 14:00 → 09:00 still reminds at the final 09:00.
+- A follow-up completed between claim and delivery is **not** delivered, and the
+  drop is recorded with its reason.
+- A follow-up whose owner is on leave escalates to their manager rather than
+  going overdue silently.
+- A deliberate "customer will revert in 3 weeks" does not appear as neglect.
+- Nothing in this workflow claims exactly-once _delivery_: the guarantee is
+  exactly-once claiming and at-least-once delivery attempts (contracts §3.5).
 
 ---
 

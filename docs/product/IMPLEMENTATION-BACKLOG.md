@@ -318,7 +318,21 @@ independently.
 
 **Split out.** Deriving `nextFollowUpAt` does not need the migration and should
 precede it. The column has no writer today, and six Sales surfaces already read
-it.
+it. Three prerequisite steps, in order, from contracts §2.6:
+
+1. **A reconciliation report** — for every open `FollowUpTask`, whether an
+   equivalent open `Task` exists. Read-only. Must run clean before step 2.
+2. **Derive from the union of both stores**, with a `Lead` row lock taken before
+   the recompute. A single aggregate `UPDATE` is _not_ sufficient on its own:
+   under `READ COMMITTED` the subquery snapshots and takes no lock, so two
+   concurrent obligation writes on one lead can interleave and store a value
+   that was stale when computed.
+3. **Narrow to `Task`** only once step 1 reports zero unmapped open rows.
+
+**Lock ordering for this subsystem:** `Lead` first, then obligation rows;
+several leads in ascending `id` order. The assignment path takes `User` then
+`Lead`, so an obligation write must never take a `User` lock while holding a
+`Lead` lock.
 
 **Policy.** D-6 (whether `FollowUpTask` is migrated or kept as a projection).
 
@@ -328,12 +342,26 @@ it.
   reminder.
 - Agent overdue count equals manager overdue count for the same lead set.
 - Rescheduling twice leaves two history entries and one open item.
-- **Amended:** a _machine_ request replayed with the same `sourceKey` yields one
-  item; a _person_ adding a second follow-up yields two. The previous wording —
-  "the same commitment created twice yields one item" — assumed the withdrawn
-  one-per-lead-and-kind rule and would have silently discarded a legitimate
-  second obligation. Contracts §2.2.
+  - **Amended twice.** The first wording — "the same commitment created twice
+    yields one item" — assumed the withdrawn one-per-lead-and-kind rule. The
+    second wording said a person's create never dedupes, which was also wrong:
+    a double-submitted form is a _retry_. Correct: **a request replayed with the
+    same `requestKey` yields one item, whoever sent it; a new key yields a new
+    item.** A replay carrying materially different input is a **conflict**, not
+    a silent success, and authorization runs before the idempotency lookup.
+    Contracts §2.2.
 - Two open obligations on one lead produce **two** reminders, not one.
+- One source event that is meant to create three tasks creates three, not one —
+  the dedupe key names the action inside the event, not the event.
+- An obligation moved 09:00 → 14:00 → 09:00 still reminds at the final 09:00.
+  Keying reminder identity on the due time loses that third one; the key is a
+  monotonic `scheduleRevision`. Contracts §3.3.
+- A reminder claimed and then overtaken — completed, cancelled, reassigned or
+  rescheduled before delivery — is **dropped with a reason**, not delivered.
+  Contracts §3.4.
+- Deriving `Lead.nextFollowUpAt` reads **both** stores until the reconciliation
+  report shows zero unmapped open `FollowUpTask` rows. Deriving from `Task`
+  alone erases real work from every Overdue surface. Contracts §2.6.
 - Overlapping reminder-worker runs send one notification, not two, under
   concurrent execution — asserted against actual concurrency, not against a
   sequential re-run.
