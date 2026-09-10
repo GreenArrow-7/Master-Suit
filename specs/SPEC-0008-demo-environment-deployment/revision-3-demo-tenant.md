@@ -312,3 +312,74 @@ applies and each with an explicit negative test, a tenant-scoped policy stopping
 consequential effects at the point they execute, and an ordered disable-then-
 rollback procedure that cannot leave a live demo running on code that does not
 restrict it.
+
+---
+
+# Addendum, 2026-09-09 — §3.2's open question resolved, and §3.5 was incomplete
+
+## The `notifications.ts:61` question — not a defect
+
+**[CODE]** `DeviceToken` carries **no `tenantId`** at all
+(`prisma/schema.prisma`: `userId String`, `user User @relation(… onDelete:
+Cascade)`, `@@index([userId])`), and it is declared in `GLOBAL_MODELS`
+(`apps/web/src/lib/db.ts:34-76`).
+
+So `prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })` is a
+deliberate global cleanup of dead push tokens, routed through `runPinned` by the
+guard's `GLOBAL_MODELS` branch (`db.ts:421`) rather than tripping it. **The
+concern is withdrawn.**
+
+## But §3.5's inventory was incomplete, and the correction matters
+
+§3.5 said "seven tables sit outside RLS". That is the count of **bootstrap
+exclusions** — tables that *do* carry `tenantId` and are deliberately exempted
+from the sweep. It is not the count of tables without row-level tenant
+separation. There is a second, larger class:
+
+**[CODE]** `GLOBAL_MODELS` — 17 entries: `Tenant`, `Permission`,
+`SubscriptionPlan`, `WebhookEvent`, `PlatformUser`, `WorkspaceMembership`,
+`PlatformSession`, `PlatformAuditEvent`, `AuthenticationFactor`,
+`PasswordHistory`, `PlanModule`, `PlanLimit`, `SubscriptionModule`,
+`PlatformSetting`, `PlatformAccessGrant`, `PlatformServiceCredential`,
+`DeviceToken`.
+
+These are global **by design** — most carry no `tenantId`, so the RLS sweep never
+selected them and no policy could apply. They are the control plane and the
+identity layer.
+
+**Why this changes the picture for a demo tenant.** Three of them are the
+security-relevant ones a public demo login would sit next to:
+
+| Model | Why it matters with an untrusted demo user | Boundary |
+|---|---|---|
+| `PlatformUser` | every identity in the deployment, including customer staff | application authorization only |
+| `PlatformSession` | live sessions across all tenants | application authorization only |
+| `AuthenticationFactor` / `PasswordHistory` | credential material | application authorization only |
+| `PlatformServiceCredential` | service credentials | `requirePlatformOwner` |
+| `PlatformAccessGrant` | break-glass write grants | `requirePlatformOwner` |
+
+**[INFER]** For these, RLS is not a second layer and never was — it is
+structurally inapplicable. The whole boundary is `requirePlatformOwner` and the
+route-level authorization. That is a defensible design for a control plane
+reached only by staff; it is a **different risk calculation** when one of the
+deployment's logins is handed to prospects.
+
+**Consequence for the packet.** §7's test table gains three cases, and they are
+not optional:
+
+| Test | Proves | Layer |
+|---|---|---|
+| `ST-D14` demo session cannot read or enumerate `PlatformUser` beyond its own identity | identity layer boundary | application authorization |
+| `ST-D15` demo session cannot read or terminate any `PlatformSession` but its own | session layer boundary | application authorization |
+| `ST-D16` demo session is refused `PlatformServiceCredential` and `PlatformAccessGrant` entirely | control-plane boundary | `requirePlatformOwner` |
+
+**Consequence for gate 3.** Application Security is being asked to accept that
+the identity and control-plane layer — 17 models with no row-level database
+enforcement available to them — is adequately protected by application
+authorization alone, with a public login in the same deployment. That is the
+central security question of this revision, and §9's gate 3 row should be read
+as covering it explicitly rather than as a formality.
+
+This addendum was produced by resolving one open question and finding the
+inventory it belonged to was drawn too narrowly. The seven-table figure in §3.5
+is correct for what it counts and was the wrong thing to count alone.
