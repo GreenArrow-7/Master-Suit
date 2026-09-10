@@ -31,17 +31,17 @@ re-taken at implementation time**, because §6 turns on it.
 
 ### 2.1 `Task` — writers
 
-| Site | Operation |
-| --- | --- |
-| `src/app/api/v1/tasks/route.ts` | create |
-| `src/app/api/v1/tasks/[id]/route.ts` | update — status, `dueAt`, owner, completion |
-| `src/services/automation/actions.ts` (`create_task`) | create, from a rule |
+| Site                                                 | Operation                                   |
+| ---------------------------------------------------- | ------------------------------------------- |
+| `src/app/api/v1/tasks/route.ts`                      | create                                      |
+| `src/app/api/v1/tasks/[id]/route.ts`                 | update — status, `dueAt`, owner, completion |
+| `src/services/automation/actions.ts` (`create_task`) | create, from a rule                         |
 
 ### 2.2 `FollowUpTask` — writers
 
-| Site | Operation |
-| --- | --- |
-| `src/app/api/v1/follow-ups/route.ts` | create |
+| Site                                      | Operation                                  |
+| ----------------------------------------- | ------------------------------------------ |
+| `src/app/api/v1/follow-ups/route.ts`      | create                                     |
 | `src/app/api/v1/follow-ups/[id]/route.ts` | update — including the `RESCHEDULED` stamp |
 
 Five writers in application code. **Neither model has a soft-delete path in a
@@ -53,7 +53,7 @@ worth confirming before relying on it.
 `TaskStatus` = `OPEN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `RESCHEDULED`,
 shared by both models.
 
-> **Open is `OPEN`, `IN_PROGRESS` *and* `RESCHEDULED`.**
+> **Open is `OPEN`, `IN_PROGRESS` _and_ `RESCHEDULED`.**
 
 This is a correction to
 [`NEXT-ACTION-AND-REMINDER-CONTRACTS.md`](NEXT-ACTION-AND-REMINDER-CONTRACTS.md)
@@ -71,10 +71,10 @@ of status.
 
 ## 3. Two views, and the boundary between them
 
-| Question | Value | Where it lives | Who may see it |
-| --- | --- | --- | --- |
-| When is this lead next owed something, **by anyone**? | earliest open `dueAt` across every owner | the stored column | anyone whose lead visibility includes the lead |
-| What do **I** do next on this lead? | earliest open `dueAt` **owned by the viewer** | computed per request, never stored | the viewer, for their own obligations |
+| Question                                              | Value                                         | Where it lives                     | Who may see it                                 |
+| ----------------------------------------------------- | --------------------------------------------- | ---------------------------------- | ---------------------------------------------- |
+| When is this lead next owed something, **by anyone**? | earliest open `dueAt` across every owner      | the stored column                  | anyone whose lead visibility includes the lead |
+| What do **I** do next on this lead?                   | earliest open `dueAt` **owned by the viewer** | computed per request, never stored | the viewer, for their own obligations          |
 
 A lead with a rep's callback due Thursday and a manager's review due Tuesday is
 "waiting on us since Tuesday" on an exception queue and "your callback is
@@ -84,14 +84,14 @@ defect the split removes.
 
 ### 3.1 The six read sites, classified
 
-| # | Site | View |
-| --- | --- | --- |
-| 1 | `sales/leads/page.tsx:23` — the Overdue filter | lead-wide |
-| 2 | `sales/leads/LeadGrid.tsx:389` — the Follow-up column | **per-viewer** |
-| 3 | `sales/leads/[id]/LeadDetail.tsx:179` — the overdue flag | **per-viewer** |
-| 4 | `sales/page.tsx:388` — the overdue count | lead-wide |
-| 5 | `sales/smart-views/page.tsx:51` — the Overdue smart view | lead-wide |
-| 6 | `services/leadership/rollups.ts:356` — the chasing queue | lead-wide |
+| #   | Site                                                     | View           |
+| --- | -------------------------------------------------------- | -------------- |
+| 1   | `sales/leads/page.tsx:23` — the Overdue filter           | lead-wide      |
+| 2   | `sales/leads/LeadGrid.tsx:389` — the Follow-up column    | **per-viewer** |
+| 3   | `sales/leads/[id]/LeadDetail.tsx:179` — the overdue flag | **per-viewer** |
+| 4   | `sales/page.tsx:388` — the overdue count                 | lead-wide      |
+| 5   | `sales/smart-views/page.tsx:51` — the Overdue smart view | lead-wide      |
+| 6   | `services/leadership/rollups.ts:356` — the chasing queue | lead-wide      |
 
 ### 3.2 Authorisation
 
@@ -112,11 +112,11 @@ every site reading it already applies lead visibility.
 
 Three states, and every surface must be able to show all three:
 
-| State | Lead-wide | Per-viewer | How it should read |
-| --- | --- | --- | --- |
-| Something owed, in future | `dueAt` > now | same | the date, neutral |
-| Something owed, late | `dueAt` ≤ now | same | the date, marked overdue |
-| **Nothing owed** | `NULL` | absent | "no next action" — **never** an overdue style, never an em dash that reads as an error |
+| State                     | Lead-wide     | Per-viewer | How it should read                                                                     |
+| ------------------------- | ------------- | ---------- | -------------------------------------------------------------------------------------- |
+| Something owed, in future | `dueAt` > now | same       | the date, neutral                                                                      |
+| Something owed, late      | `dueAt` ≤ now | same       | the date, marked overdue                                                               |
+| **Nothing owed**          | `NULL`        | absent     | "no next action" — **never** an overdue style, never an em dash that reads as an error |
 
 Collapsing the third into the second is what a `NOT NULL` column with a sentinel
 date would do. Collapsing it into "fine" hides a lead nobody has scheduled
@@ -133,7 +133,7 @@ anything for, which is the neglect case the chasing queue exists to catch —
 > `FollowUpTask`.**
 
 Deriving from `Task` alone would set `NULL` on every lead whose only open
-obligation is a `FollowUpTask` — *silently removing real work* from all six
+obligation is a `FollowUpTask` — _silently removing real work_ from all six
 surfaces. That is worse than the present staleness, which at least errs toward
 showing something.
 
@@ -142,7 +142,7 @@ unmapped.** Narrowing today would erase every one.
 
 ### 4.1 A one-time zero is not a gate
 
-A reconciliation report showing zero unmapped rows means only that no *current*
+A reconciliation report showing zero unmapped rows means only that no _current_
 row is unmapped. The two writers in §2.2 are still live: a report can read zero
 at 09:00 and be wrong at 09:01.
 
@@ -174,14 +174,14 @@ another transaction.
 > **Every mutation that can change a lead's set of open obligations takes a row
 > lock on the `Lead` first, and recomputes in the same transaction as the write.**
 
-| Mutation | Lock | Recompute | Note |
-| --- | --- | --- | --- |
-| create | `Lead` FOR UPDATE | yes | may be earlier than the current value |
-| update `dueAt` (reschedule) | `Lead` FOR UPDATE | yes | either direction |
-| update `status` → closed | `Lead` FOR UPDATE | yes | may move later, or to `NULL` |
-| update `status` → reopened | `Lead` FOR UPDATE | yes | |
-| soft-delete | `Lead` FOR UPDATE | yes | the deleted row must be excluded by the same transaction's read |
-| move between leads | `Lead` FOR UPDATE on **both** | both | ascending id order |
+| Mutation                    | Lock                          | Recompute | Note                                                            |
+| --------------------------- | ----------------------------- | --------- | --------------------------------------------------------------- |
+| create                      | `Lead` FOR UPDATE             | yes       | may be earlier than the current value                           |
+| update `dueAt` (reschedule) | `Lead` FOR UPDATE             | yes       | either direction                                                |
+| update `status` → closed    | `Lead` FOR UPDATE             | yes       | may move later, or to `NULL`                                    |
+| update `status` → reopened  | `Lead` FOR UPDATE             | yes       |                                                                 |
+| soft-delete                 | `Lead` FOR UPDATE             | yes       | the deleted row must be excluded by the same transaction's read |
+| move between leads          | `Lead` FOR UPDATE on **both** | both      | ascending id order                                              |
 
 **Ordering, stated once for the whole system:**
 
@@ -223,7 +223,7 @@ change to obligation lifecycle semantics.
 
 ## 7. Open decisions this package needs
 
-- **D-13** — lead-wide versus personal, now specified in §3 as *both*, kept
+- **D-13** — lead-wide versus personal, now specified in §3 as _both_, kept
   apart. Confirmation that the split is wanted rather than one number.
 - **D-14** — whether a lead with nothing open leaves every follow-up surface.
   §3.3 says it becomes "unscheduled", visible and distinct from overdue.
