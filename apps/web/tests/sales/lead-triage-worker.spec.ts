@@ -4,7 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/lib/db';
 import { assignLead } from '@/services/distribution/assignLead';
-import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
+import { handleDistributionJob } from '@/workers/distribution';
+import { handleMaintenanceJob } from '@/workers/maintenance';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 
 /**
@@ -16,9 +17,12 @@ import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
  * delivers twice — and every one of those is a way the queue could silently stop
  * working in production while every service test stayed green.
  *
- * So these run an actual BullMQ worker against an actual queue, with the same
- * handler bodies `src/workers/distribution.ts` and `src/workers/maintenance.ts`
- * dispatch to. Named queues of their own, so a developer's running worker cannot
+ * So these run an actual BullMQ worker against an actual queue, driving the
+ * **registered** handlers — `handleDistributionJob` and `handleMaintenanceJob`,
+ * the same functions `startDistributionWorker` and `startMaintenanceWorker`
+ * hand to BullMQ. An earlier version of this file re-implemented those bodies
+ * beside the real ones, which would have stayed green while the original was
+ * broken. Named queues of their own, so a developer's running worker cannot
  * steal the jobs and a failing test cannot leave work in a shared one.
  */
 
@@ -78,17 +82,7 @@ describe('the distribution worker', () => {
   it('queues an unassignable lead when the job is delivered through BullMQ', async () => {
     const queue = new Queue(DISTRIBUTION_QUEUE, { connection: redis });
     // The same dispatch `src/workers/distribution.ts` performs.
-    const worker = new Worker(
-      DISTRIBUTION_QUEUE,
-      async (job) => {
-        if (job.name === 'assign-lead') {
-          const { tenantId, leadId } = job.data as { tenantId: string; leadId: string };
-          return assignLead(tenantId, leadId);
-        }
-        return undefined;
-      },
-      { connection: redis },
-    );
+    const worker = new Worker(DISTRIBUTION_QUEUE, handleDistributionJob, { connection: redis });
     opened.push({ queue, worker });
 
     const leadId = await makeLead();
@@ -150,19 +144,7 @@ describe('the maintenance worker', () => {
   it('runs the three triage sweeps and reports what each did', async () => {
     const queue = new Queue(MAINTENANCE_QUEUE, { connection: redis });
     // The same dispatch `src/workers/maintenance.ts` performs, in the same order.
-    const worker = new Worker(
-      MAINTENANCE_QUEUE,
-      async (job) => {
-        if (job.name === 'triage-sweep') {
-          const stale = await sweepStaleTriage();
-          const deadlines = await sweepTriageDeadlines();
-          const notices = await sweepTriageNotifications();
-          return { ...stale, ...deadlines, ...notices };
-        }
-        return undefined;
-      },
-      { connection: redis },
-    );
+    const worker = new Worker(MAINTENANCE_QUEUE, handleMaintenanceJob, { connection: redis });
     opened.push({ queue, worker });
 
     // A lead that went overdue an hour ago, with a manager accountable for it.

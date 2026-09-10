@@ -10,6 +10,7 @@ import {
   sweepTriageDeadlines,
   sweepTriageNotifications,
 } from '@/services/distribution/triageQueue';
+import { deliverOutbox } from '@/services/notifications/outbox';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { Ctx, Scope } from '@/lib/security/rbac';
@@ -534,6 +535,13 @@ describe('deadlines, escalation and re-entry', () => {
     await sweepTriageDeadlines();
     await sweepTriageDeadlines();
     await sweepTriageDeadlines();
+    /**
+     * Deciding and delivering are two steps now: the sweep commits the decision
+     * with the claim so a crash between them cannot lose it, and delivery turns
+     * decisions into notifications. The assertion is unchanged in substance —
+     * three sweeps still produce exactly one alert.
+     */
+    await deliverOutbox();
 
     const after = await prisma.notification.count({
       where: { tenantId: fixture.a.tenantId, kind: 'LEAD_TRIAGE_OVERDUE', recordId: leadId },
@@ -640,6 +648,7 @@ describe('deadlines, escalation and re-entry', () => {
 
     await sweepTriageNotifications();
     await sweepTriageNotifications();
+    await deliverOutbox();
 
     const notices = await prisma.notification.count({
       where: { tenantId: fixture.a.tenantId, kind: 'LEAD_TRIAGE_WAITING', recordId: leadId },
