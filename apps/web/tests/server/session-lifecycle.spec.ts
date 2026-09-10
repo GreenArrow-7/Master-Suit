@@ -4,19 +4,23 @@ import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '@/lib/auth/password';
+import { assertDisposableEnvironment } from './environment';
 
 /**
  * Session rotation, replay and logout, against a running server.
  *
  * Like `unified-saas.spec.ts` this drives a real server, so it reads the
  * database that server is connected to rather than the isolated test one.
+ * `assertDisposableEnvironment` is what makes "the database the server uses"
+ * safe to say: it refuses unless the target is named explicitly, marked
+ * disposable, and the same database the server reads. There is deliberately no
+ * default connection string here — the one that used to be here pointed at the
+ * developer's own database.
  */
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+const targets = assertDisposableEnvironment();
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({
-    connectionString:
-      process.env.E2E_DATABASE_URL ?? 'postgresql://leadflow:leadflow@localhost:5432/leadflow?schema=public',
-  }),
+  adapter: new PrismaPg({ connectionString: targets.databaseUrl }),
 });
 
 const suffix = Date.now().toString(36);
@@ -81,7 +85,7 @@ const tokenOf = (cookie: string) => decodeURIComponent(cookie.split('=').slice(1
  * the suite last ran.
  */
 async function clearLoginLimits() {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
+  const redis = new Redis(targets.redisUrl);
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

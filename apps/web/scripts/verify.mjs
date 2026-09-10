@@ -71,6 +71,12 @@ const PLAN = {
   'Face token gate': { run: true },
   'Backup round trip': { run: true },
   Test: { run: true },
+  // Needs E2E_DATABASE_URL and E2E_REDIS_URL, named explicitly and pointing at
+  // the same disposable database the server reads. tests/server/environment.ts
+  // refuses to run without them rather than falling back to a default, because
+  // the default it used to have was the developer's own database. This gate
+  // therefore fails with a readable message, not a mystery 401, when the
+  // variables are absent. See docs/TEST-ISOLATION.md.
   'Integration (server)': { run: true, slow: true },
   'Playwright version': { skip: 'Reads a version into a CI output variable. Not a gate.' },
   'Install Playwright browser': { skip: 'Installs and caches Chromium on the runner.' },
