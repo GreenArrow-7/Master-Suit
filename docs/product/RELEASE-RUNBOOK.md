@@ -15,10 +15,10 @@ by the author of this document.
 
 | | |
 | --- | --- |
-| Release SHA | `a032de1a8a7ad2be753dda84ee1fcfa46e86b481` |
+| Release SHA | `c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2` |
 | Branch | `claude/restructure-foundation` |
-| Web image | `master-suite/web:a032de1` |
-| Worker image | `master-suite/worker:a032de1` |
+| Web image | `master-suite/web:c09cb43` — digest `sha256:45d6a416e5b8cc14cd598b17c49edaafbdec4c496cd0146be15cb017cc0b75b5` |
+| Worker image | `master-suite/worker:c09cb43` — digest `sha256:b8168ab848f2da481842a6cf094e010b5877199492562cf791372882110b5f95` |
 | Migrations added | 4 — see §3 |
 | Previous deployed version | **Confirm before starting.** `scripts/release.sh status` on the VM reports what is running and what can be rolled back to. This runbook assumes the deployed version is at or after `main` (`f16ed67`); if it is older, stop and re-inventory — there will be more than four migrations to apply. |
 
@@ -29,7 +29,8 @@ Both images carry the commit as `BUILD_COMMIT` and surface it as
 docker exec <web-container> sh -lc 'echo $BUILD_COMMIT'
 ```
 
-It must print the SHA above. `unknown` means the image was built without
+It must print the SHA above — verified in this environment, where the running
+container reported exactly that value. `unknown` means the image was built without
 `--build-arg GIT_SHA` and its provenance cannot be established — do not deploy it.
 
 ---
