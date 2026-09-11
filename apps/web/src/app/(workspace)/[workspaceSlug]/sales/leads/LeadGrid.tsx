@@ -17,7 +17,16 @@ export interface LeadRow {
   grade?: string | null;
   priority: string;
   slaState: string;
+  /** The viewer's own next obligation on this lead — never the lead-wide one. */
   nextFollowUpAt?: string | Date | null;
+  /**
+   * Something is open on this lead, but nothing the viewer may see.
+   *
+   * Carries no date and no name: it is the difference between "nobody has
+   * scheduled anything" and "this is somebody else's to do", which a single
+   * blank cell cannot express.
+   */
+  othersPending?: boolean;
   updatedAt: string | Date;
   ownerId?: string | null;
   stage: { key: string; name: string; color: string };
@@ -55,6 +64,22 @@ export default function LeadGrid({
 
   const sorted = useMemo(() => {
     const copy = [...rows];
+    if (sort.key === 'nextFollowUpAt') {
+      // "Nothing owed" is not an early date. Floating it to the top of an
+      // ascending sort is how a lead nobody scheduled anything for gets
+      // mistaken for the most urgent one, so it sinks in both directions and
+      // ties break on id so the order is stable between renders.
+      copy.sort((a, b) => {
+        const av = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : null;
+        const bv = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : null;
+        if (av === null && bv === null) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        if (av !== bv) return sort.dir === 'asc' ? av - bv : bv - av;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      return copy;
+    }
     copy.sort((a, b) => {
       const av = a[sort.key] ?? '',
         bv = b[sort.key] ?? '';
@@ -387,7 +412,7 @@ function cell(key: string, row: LeadRow) {
     case 'owner':
       return row.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>;
     case 'nextFollowUpAt':
-      return <span style={{ color: overdueColor(row.nextFollowUpAt) }}>{formatDate(row.nextFollowUpAt)}</span>;
+      return <FollowUpCell value={row.nextFollowUpAt} othersPending={row.othersPending} />;
     case 'email':
       return <span style={{ color: 'var(--lf-ink-2)' }}>{row.email ?? '—'}</span>;
     case 'phone':
@@ -406,7 +431,30 @@ function formatDate(value?: string | Date | null) {
   return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
-function overdueColor(value?: string | Date | null) {
-  if (!value) return 'var(--lf-ink-3)';
-  return new Date(value) < new Date() ? 'var(--lf-vermillion)' : 'var(--lf-ink-2)';
+/**
+ * Four states, three of them not a date.
+ *
+ * An em dash for "nothing owed" reads as missing data, and the same grey as
+ * every other empty cell hides the one case the chasing queue exists to catch.
+ * "Overdue" gets the only colour, because it is the only one that is a problem;
+ * the rest are ordinary facts and are written out in words rather than punctuation.
+ *
+ * The label is also the accessible name — no title-attribute-only meaning, which
+ * a screen reader announces inconsistently and a touch device never shows at all.
+ */
+function FollowUpCell({ value, othersPending }: { value?: string | Date | null; othersPending?: boolean }) {
+  if (!value) {
+    return othersPending ? (
+      <span style={{ color: 'var(--lf-ink-3)' }}>Not yours</span>
+    ) : (
+      <span style={{ color: 'var(--lf-ink-3)' }}>No next action</span>
+    );
+  }
+  const overdue = new Date(value) < new Date();
+  return (
+    <span style={{ color: overdue ? 'var(--lf-vermillion)' : 'var(--lf-ink-2)' }}>
+      {formatDate(value)}
+      {overdue && <span className="lf-visually-hidden"> (overdue)</span>}
+    </span>
+  );
 }

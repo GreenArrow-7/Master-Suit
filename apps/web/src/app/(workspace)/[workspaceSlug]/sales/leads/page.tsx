@@ -13,18 +13,51 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import LeadImport from './LeadImport';
 import Pager from '@/components/workspace/Pager';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import {
+  obligationAccess,
+  obligationWhere,
+  scopedNextFollowUp,
+  type ObligationAccess,
+} from '@/services/leads/nextFollowUp';
 
 export const metadata = { title: 'Leads' };
 
 const PAGE_SIZE = 50;
 
+/**
+ * Filters that depend only on the lead row.
+ *
+ * The follow-up filters are not here: they are questions about obligations, and
+ * the answer depends on which obligations the viewer may see. They are built
+ * below from the same predicate that produces the dates in the grid, so the
+ * chip, the rows and the dates cannot disagree.
+ */
 const FILTERS: Record<string, (now: Date, actorId: string) => Record<string, unknown>> = {
   unassigned: () => ({ ownerId: null }),
-  overdue: (now) => ({ nextFollowUpAt: { lt: now } }),
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
   mine: (_now, actorId) => ({ ownerId: actorId }),
 };
+
+/**
+ * The follow-up chips, and the view each one asks about.
+ *
+ * `overdue` asks about everything the viewer's role reaches; `overdue_mine`
+ * asks only about their own obligations. For a rep the two are the same set —
+ * their reach *is* themselves — so the second chip is offered only to someone
+ * whose reach is wider, which is the whole reason it exists.
+ */
+const FOLLOW_UP_FILTERS = {
+  overdue: { state: 'overdue', view: 'scope' },
+  overdue_mine: { state: 'overdue', view: 'personal' },
+  no_next_action: { state: 'unscheduled', view: 'scope' },
+} as const;
+
+type FollowUpFilterKey = keyof typeof FOLLOW_UP_FILTERS;
+
+function isFollowUpFilter(key: string | undefined): key is FollowUpFilterKey {
+  return !!key && key in FOLLOW_UP_FILTERS;
+}
 
 export default async function LeadsPage({
   searchParams,
@@ -36,7 +69,35 @@ export default async function LeadsPage({
   const page = Math.max(1, Number(params.page) || 1);
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-  const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date(), ctx.actor.id) : {};
+  const now = new Date();
+
+  /**
+   * Which obligations this viewer may see, for the view the chosen chip asks
+   * about. The same `access` drives the row filter and the dates rendered into
+   * the grid, so a row can never appear under "Overdue" showing a date that is
+   * not.
+   */
+  const followUp = isFollowUpFilter(params.filter) ? FOLLOW_UP_FILTERS[params.filter] : null;
+  const view = followUp?.view ?? 'scope';
+  const access: ObligationAccess = await obligationAccess(ctx, view);
+
+  /**
+   * Does this viewer's reach extend past their own obligations?
+   *
+   * A rep's team view and personal view return the same rows, so offering both
+   * chips would be two names for one list. Derived from the resolved owner sets
+   * rather than from the role name, so a bespoke role gets the right answer.
+   */
+  const reach = await obligationAccess(ctx, 'scope');
+  const onlySelf = (set: (typeof reach)['task']) =>
+    set.kind === 'none' || (set.kind === 'ids' && set.ids.length === 1 && set.ids[0] === ctx.actor.id);
+  const personalIsEveryone = onlySelf(reach.task) && onlySelf(reach.followUp);
+
+  const extra: Record<string, unknown> = followUp
+    ? (obligationWhere(access, followUp.state, now) as Record<string, unknown>)
+    : params.filter && FILTERS[params.filter]
+      ? FILTERS[params.filter]!(now, ctx.actor.id)
+      : {};
   const search = params.q
     ? {
         OR: [
@@ -104,7 +165,26 @@ export default async function LeadsPage({
 
   // Masking happens here, in the serialiser, so it covers the grid, exports and
   // every other egress path identically.
-  const data = pageRows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
+  /**
+   * The dates the grid renders, derived per viewer — never the stored column.
+   *
+   * The stored column is the unrestricted aggregate over every owner. It is
+   * still read above, but only ever as a boolean here: `stored && !mine` says
+   * *that* somebody is working this lead without saying who or when, which is
+   * what separates "no action assigned to you" from "no action scheduled for
+   * this lead". The date itself never leaves the derivation.
+   */
+  const due = await scopedNextFollowUp(
+    ctx.tenantId,
+    pageRows.map((r) => r.id),
+    access,
+  );
+  const withFollowUp = pageRows.map((r) => {
+    const mine = due.get(r.id) ?? null;
+    return { ...r, nextFollowUpAt: mine, othersPending: mine === null && r.nextFollowUpAt !== null };
+  });
+
+  const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
   return (
     <>
@@ -170,7 +250,12 @@ export default async function LeadsPage({
             ['All', ''],
             ['Mine', 'mine'],
             ['Unassigned', 'unassigned'],
-            ['Overdue', 'overdue'],
+            // Labelled, because for a manager these are two different questions
+            // and an unlabelled "Overdue" would silently answer whichever one
+            // the implementation happened to pick.
+            [personalIsEveryone ? 'Overdue' : 'Overdue · team', 'overdue'],
+            ...(personalIsEveryone ? [] : [['Overdue · mine', 'overdue_mine']]),
+            ['No next action', 'no_next_action'],
             ['SLA breached', 'breached'],
             ['High score', 'high_score'],
           ].map(([label, key]) => {

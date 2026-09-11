@@ -3075,6 +3075,7 @@ model Lead {
   scoreHistory   LeadScoreHistory[]
   activities     Activity[]
   tasks          Task[]
+  followUpTasks  FollowUpTask[]
   opportunities  Opportunity[]
   documents      Document[]
   communications Communication[]
@@ -3755,6 +3756,7 @@ model Task {
   @@index([tenantId, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, status, dueAt])
+  @@index([tenantId, leadId, status, dueAt])
   @@index([accountId])
   @@index([opportunityId])
   @@index([parentTaskId])
@@ -5748,11 +5750,14 @@ model FollowUpTask {
   createdById String?
   deletedAt   DateTime?
 
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, ownerId, status, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, callId])
+  // The derivation reads open obligations per lead; this is the index it uses.
+  @@index([tenantId, leadId, status, dueAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
