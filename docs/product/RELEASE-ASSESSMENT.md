@@ -17,27 +17,25 @@ environment; **nothing has been merged, deployed, or run against production.**
 | | |
 | --- | --- |
 | Branch | `claude/restructure-foundation` |
-| Tested SHA | `508ae02` and the documentation commits after it |
-| Web image | `master-suite/web:a032de1` — built from `a032de1a8a7ad2be753dda84ee1fcfa46e86b481` |
-| Worker image | `master-suite/worker:a032de1` |
+| Tested SHA | `c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2` |
+| Web image | `master-suite/web:c09cb43` — built from the tested SHA, verified in-container |
+| Worker image | `master-suite/worker:a032de1` — built from `a032de1`; the worker stage is unaffected by the two commits after it (a Dockerfile `COPY` in the **production** stage, and Sales page code the worker does not load) |
 | Previously deployed | assumed at or after `main` (`f16ed67`) — **the operator must confirm with `scripts/release.sh status`** |
 
 ### 1.1 Difference between HEAD and the tested SHA
 
-`508ae02` is the last commit containing code. Everything after it on this branch
-is documentation — this file, the runbook, and the checkpoint. Verified with
-`git diff --name-only 508ae02 HEAD`; no code file appears. No test was repeated
-for a documentation-only difference.
+`c09cb43` is the last commit containing code, and the web image was built from
+it — `BUILD_COMMIT` inside the running container reads
+`c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2`. Everything after it on this branch
+is documentation: this file, the runbook and the handover guide. Verify with
+`git diff --name-only c09cb43 HEAD`; no code file appears, so no test was
+repeated for it.
 
-**The images were built from `a032de1`,** the commit before the release tooling
-(`508ae02`) was added. `a032de1 → 508ae02` adds four operator scripts
-(`rc-preflight`, `rc-rehearse-migration`, `rc-mail-check`, `rc-worker-check`)
-and splits the foreign-key migration into two files. **The migration split is a
-behaviour change and the images predate it**, so either rebuild the images at
-`508ae02` before deploying, or accept that `prisma migrate deploy` is run from
-the repository rather than the image — which is what the runbook specifies. The
-runbook's migration step uses the repository, so the split is applied either
-way; this is recorded so nobody assumes image and migrations came from the same
+**The worker image is still tagged `a032de1`.** The two commits between
+`a032de1` and `c09cb43` are a `COPY` added to the Dockerfile's **production**
+stage and Sales page code; neither is reachable from the worker entry point.
+Rebuilding it at `c09cb43` before deploying is cheap and removes the question —
+recommended, and recorded here so nobody assumes the two images came from one
 commit.
 
 ---
@@ -64,6 +62,7 @@ database, not through a browser. **Not exercised**: no evidence from this round.
 | Agent vs team scope | **Verified** at route level; service-verified for the follow-up split | — | — | **Included** |
 | Every Sales route renders | **Verified** | — | — | **Included** |
 | Mobile daily workflow | **Verified** — no sideways scroll at 375px; HR tables stack; follow-up state now visible on phones | — | — | **Included** |
+| Install to home screen / offline (PWA) | **Verified after a fix** — `sw.js`, `offline.html` and both icons 404'd in **every image ever built** because the Dockerfile never copied `public/`. Found by reading a browser-console 404 against the release artifact. | — | — | **Included** |
 
 ### 2.2 HRMS
 
@@ -167,8 +166,36 @@ claims should be read with that omission in mind. Both are run here.
 ### 3.2 Results
 
 Run on Linux (`node:24`), the deployment operating system, against isolated
-services. Results are recorded in the delivery summary accompanying this
-document; a gate that failed is named there rather than folded into a total.
+services, on the tested SHA.
+
+| # | Gate | Result |
+| --- | --- | --- |
+| 1 | Schema drift | **PASS** |
+| 2 | Tenant isolation (RLS, 184 forced tables) | **PASS** |
+| 3 | Raw SQL scope | **PASS** |
+| 4 | Typecheck | **PASS** |
+| 5 | Lint | **PASS** |
+| 6 | Format check | **PASS** |
+| 7 | README schema counts | **PASS** |
+| 8 | Observability drift | **PASS** |
+| 9 | Redis auth | **PASS** |
+| 10 | Face token gate | **PASS** |
+| 11 | Backup round trip | **PASS** |
+| 12 | Unit suite | **PASS — 2,136 / 2,136, 160 / 160 files, 0 skipped** |
+| 13 | Integration (server) | **PASS — 6 / 6.** Run on **Windows**, not Linux: the suite deletes Redis keys by pattern and its isolation guard requires a loopback Redis, which a container reaching the host cannot present. The guard was satisfied, not overridden. |
+| 14 | E2E (browser) | **40 passed / 5 failed / 0 skipped** — §3.3 |
+| 15 | Build | **PASS** |
+| 16 | Audit | **PASS — 0 vulnerabilities** |
+
+Two gate failures were found and fixed rather than excused:
+
+- **Lint** failed on an unused variable in the preflight script I had added.
+  Caught because the gate was run as CI runs it (`npm run lint`) rather than as
+  a spot check.
+- **Integration (server)** first refused because the database I named
+  `master_suite_linux` is not on the disposable allow-list (`_test`, `_val`,
+  `_ci`, `_e2e`, `_scratch`, `_tmp`). A database named `master_suite_ci` was
+  created instead. `E2E_ALLOW_UNMARKED_DATABASE=yes` exists and was **not** used.
 
 ### 3.3 Browser suite — what ran, what did not, and why
 
