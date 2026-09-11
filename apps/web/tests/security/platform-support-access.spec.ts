@@ -221,6 +221,62 @@ describe('platform support access', () => {
     for (const moduleKey of ['leads', 'calls', 'tasks', 'activities', 'visits']) {
       expect(scopeFor(ctx, moduleKey, 'VIEW')).toBe('ORGANIZATION');
     }
+    // And nothing outside the allowlist, which is the property the HR exclusion
+    // used to be the only visible half of.
+    for (const moduleKey of ['accounts', 'contacts', 'opportunities', 'commissions', 'documents']) {
+      expect(scopeFor(ctx, moduleKey, 'VIEW')).toBe('NONE');
+    }
+  });
+
+  /**
+   * The question a denylist cannot answer: what about a module nobody has
+   * written yet?
+   *
+   * `buildSupportActor` used to read every row in the permission catalogue and
+   * skip six HR ones. Every other module was granted — including every module
+   * added after the exclusion list was written. This seeds a permission that did
+   * not exist when the allowlist was authored, which is exactly the shape of a
+   * feature landing next quarter, and asserts it is not readable.
+   *
+   * If this fails, the allowlist has become a denylist again.
+   */
+  it('does not grant a module invented after the allowlist was written', async () => {
+    const future = `future_module_${suffix}`;
+    await prisma.permission.create({ data: { module: future, action: 'VIEW' } });
+    try {
+      const cookie = await createPlatformSessionToken(supportId, tenantId);
+      const ctx = await resolveCtx(asRequest(cookie), 'req-future');
+      expect(scopeFor(ctx, future, 'VIEW')).toBe('NONE');
+      // And the identity still works, so this is not a vacuous pass from the
+      // whole map being empty.
+      expect(scopeFor(ctx, 'leads', 'VIEW')).toBe('ORGANIZATION');
+    } finally {
+      await prisma.permission.deleteMany({ where: { module: future } });
+    }
+  });
+
+  it('grants exactly the named monitoring modules and no others', async () => {
+    const cookie = await createPlatformSessionToken(supportId, tenantId);
+    const ctx = await resolveCtx(asRequest(cookie), 'req-allowlist');
+    const granted = [...ctx.actor.permissions.keys()].sort();
+    // The whole map, asserted as a set rather than spot-checked. A module that
+    // creeps in has to be added here deliberately.
+    expect(granted).toEqual([
+      'activities:VIEW',
+      'calls:VIEW',
+      'leads:VIEW',
+      'tasks:VIEW',
+      'tickets:VIEW',
+      'visits:VIEW',
+    ]);
+  });
+
+  it('withholds VIEW_REPORTS as well — reading records is not reading roll-ups', async () => {
+    const cookie = await createPlatformSessionToken(supportId, tenantId);
+    const ctx = await resolveCtx(asRequest(cookie), 'req-reports');
+    expect(scopeFor(ctx, 'leads', 'VIEW_REPORTS')).toBe('NONE');
+    expect(scopeFor(ctx, 'reports', 'VIEW')).toBe('NONE');
+    expect(scopeFor(ctx, 'dashboards', 'VIEW')).toBe('NONE');
   });
 
   it('withholds payroll from an un-elevated OWNER too — being the owner is not a reason', async () => {

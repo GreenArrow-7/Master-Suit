@@ -31,38 +31,47 @@ export const platformUserIdOf = (actorId: string): string | null =>
   actorId.startsWith(PLATFORM_ACTOR_PREFIX) ? actorId.slice(PLATFORM_ACTOR_PREFIX.length) : null;
 
 /**
- * Modules a platform identity never reaches ambiently.
+ * The modules a monitoring identity may read, named one at a time.
  *
- * Employment records are the one category of a customer's data that platform
- * staff have no ordinary reason to see: a support question about a lead, a call
- * or a site visit is answered from the Sales modules, and none of the monitoring
- * journey touches People. Payroll is the sharpest of them — `mayReadPayroll` in
- * services/hr/payroll.ts is satisfied by `payroll:VIEW` at ORGANIZATION, which is
- * precisely what the loop below was handing out.
+ * ── Why a list of what is allowed, not a list of what is not ────────────────
  *
- * Named rather than derived. A prefix test (`hr_*`) would miss `payroll`,
- * `employee`, `overtime`, `performance` and `recruitment`, which is most of the
- * list, and a "module the People screens use" lookup would be a second source of
- * truth that drifts. `attendance` and `leave` are deliberately absent: they carry
- * only APPROVE, and the loop grants VIEW and VIEW_REPORTS, so they were never
- * reachable this way — listing them would imply a protection that is not what
- * keeps them out.
+ * This was `NEVER_AMBIENT_MODULES`: the loop below read every row in the
+ * permission catalogue and skipped six HR ones. That is a denylist, and it is
+ * wrong in a way the passing tests could not show — it granted every *other*
+ * module, including every module that does not exist yet. A `commissions` or
+ * `payouts` or `contests` table added next quarter would be readable by every
+ * platform identity on the day its permission rows were seeded, with nobody
+ * deciding that and no test failing.
  *
- * Two doors remain open, and both are deliberate. A break-glass grant is the
- * audited, time-boxed, reason-carrying way an OWNER repairs a customer's data,
- * and it must be able to reach payroll or it cannot fix a payroll fault. An
- * explicit `payroll:read` on a service credential is an owner's deliberate act,
- * minted per credential and audited per request. What is closed is the third
- * door: reaching it by simply being platform staff.
+ * The set below is the whole of what a monitoring identity can reach. Adding a
+ * module is a deliberate edit here, in review, which is the cost the requirement
+ * asks for. `tests/security/platform-support-access.spec.ts` seeds a brand-new
+ * permission module and asserts it is NOT granted, so the denylist cannot come
+ * back by accident.
+ *
+ * ── What is on it, and why ──────────────────────────────────────────────────
+ *
+ * Exactly the operational surface the console is specified to expose: leads and
+ * their follow-ups (the follow-up routes declare `leads`), call metadata,
+ * activity, tasks, site visits, and service tickets — which with breached-SLA
+ * leads are the "operational exceptions". Nothing else: not accounts, not
+ * contacts, not opportunities, not reports, and above all not employment
+ * records. A support question that genuinely needs one of those is a reason to
+ * add it here on purpose.
+ *
+ * `VIEW_REPORTS` is deliberately absent from the action list below as well, so
+ * this grants reading records and not the roll-ups built from them.
  */
-const NEVER_AMBIENT_MODULES = new Set([
-  'employee',
-  'hr_documents',
-  'overtime',
-  'payroll',
-  'performance',
-  'recruitment',
-]);
+const MONITORING_MODULES = new Set(['leads', 'calls', 'activities', 'tasks', 'visits', 'tickets']);
+
+/**
+ * And the actions, which is the other half of "read-only".
+ *
+ * One action, not a range. `VIEW_REPORTS` used to ride along with `VIEW`; it is
+ * a different capability (aggregate views across a workspace) and nothing in the
+ * monitoring journey needs it.
+ */
+const MONITORING_ACTIONS = ['VIEW'] as const;
 
 /**
  * The actor platform staff get inside a customer workspace.
@@ -85,8 +94,8 @@ const NEVER_AMBIENT_MODULES = new Set([
  *     until the grant expires. See lib/auth/platform-access.ts: a stated reason,
  *     a clock, and a row in the customer's audit trail.
  *   * **SUPPORT** and **SECURITY_AUDITOR** stay read-only and cannot elevate:
- *     VIEW and VIEW_REPORTS outside the HR modules below, nothing else, and no
- *     VIEW_SENSITIVE_FIELDS.
+ *     `VIEW` on the modules named in `MONITORING_MODULES` below, nothing else,
+ *     and no `VIEW_SENSITIVE_FIELDS`.
  *
  * This comment used to claim that "salary and identity documents stay behind the
  * company's own permission checks". They did not. `VIEW_SENSITIVE_FIELDS` is
@@ -124,6 +133,15 @@ export async function buildSupportActor(
   // branch for AI_SERVICE. Giving it write capability later means editing this
   // line, in review, which is the intended cost.
   const fullControl = platformRole === 'OWNER' && (await activeGrant(platformUserId, tenantId)) !== null;
+  /**
+   * Three different questions, and only the first is a denylist-shaped one.
+   *
+   *   * break-glass (`fullControl`) — every permission there is, because a data
+   *     repair cannot be scoped in advance. Audited, time-boxed, reason-carrying.
+   *   * a service credential (`serviceScopes`) — already a positive allowlist:
+   *     the scopes were minted one at a time and validated at mint time.
+   *   * ambient monitoring — the allowlist above, and nothing else.
+   */
   const grantable = await prisma.permission.findMany({
     ...(fullControl ? {} : { where: { action: { in: ['VIEW', 'VIEW_REPORTS'] } } }),
     select: { module: true, action: true },
@@ -131,15 +149,17 @@ export async function buildSupportActor(
 
   const permissions = new Map<string, Scope>();
   for (const permission of grantable) {
+    if (!fullControl && !serviceScopes) {
+      // Ambient monitoring. Both halves are positive: the module must be named
+      // on the allowlist and the action must be one this journey needs.
+      if (!MONITORING_MODULES.has(permission.module)) continue;
+      if (!(MONITORING_ACTIONS as readonly string[]).includes(permission.action)) continue;
+    }
     // An absent list is "no narrowing" for staff; an empty one is "nothing
     // granted" for a credential, which is why the two cases are distinguished
     // rather than both treated as falsy. A credential minted with a forgotten
     // scopes argument must read nothing, not everything.
     if (serviceScopes && !serviceScopes.includes(`${permission.module}:read`)) continue;
-    // Ambient means "granted for being platform staff". A break-glass grant is
-    // not ambient, and neither is a scope an owner minted onto a credential —
-    // both have already been asked for by name, so both pass. See the set above.
-    if (NEVER_AMBIENT_MODULES.has(permission.module) && !fullControl && !serviceScopes) continue;
     permissions.set(`${permission.module}:${permission.action}`, 'ORGANIZATION');
   }
 
