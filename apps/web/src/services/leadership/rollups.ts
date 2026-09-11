@@ -328,12 +328,7 @@ export async function interactionFeed(tenantId: string, userIds: string[], range
   });
 }
 
-import {
-  obligationWhere,
-  scopedNextFollowUp,
-  stateOf,
-  type ObligationAccess,
-} from '@/services/leads/nextFollowUp';
+import { obligationWhere, scopedNextFollowUp, stateOf, type ObligationAccess } from '@/services/leads/nextFollowUp';
 
 export interface ChasingRow {
   leadId: string;

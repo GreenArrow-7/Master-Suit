@@ -64,7 +64,9 @@ export const GET = route(
       case 'feed':
         return { range, data: await interactionFeed(ctx.tenantId, userIds, range, q.limit) };
       case 'chasing':
-        return { data: await chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), q.limit) };
+        return {
+          data: await chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), q.limit),
+        };
       case 'pl':
         return profitAndLoss(ctx.tenantId, userIds, range.from, range.to, q.grouping);
       default: {

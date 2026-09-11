@@ -820,7 +820,13 @@ describe('concurrency, on separate connections', () => {
       withTx(T(), async (tx) => {
         await lockLeads(tx, T(), [leadId]);
         await tx.followUpTask.create({
-          data: { tenantId: T(), leadId, ownerId: h.repA1.id, title: 'Concurrent', dueAt: new Date('2026-09-01T09:00:00Z') },
+          data: {
+            tenantId: T(),
+            leadId,
+            ownerId: h.repA1.id,
+            title: 'Concurrent',
+            dueAt: new Date('2026-09-01T09:00:00Z'),
+          },
         });
         await recomputeNextFollowUp(tx, T(), leadId);
       }),

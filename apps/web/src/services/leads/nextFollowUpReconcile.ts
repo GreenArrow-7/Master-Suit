@@ -228,8 +228,9 @@ export async function repairDrift(
  * deliberate operator action against a named workspace.
  */
 export async function sweepDriftCanary(now = new Date()): Promise<{ tenants: number; disagreeing: number }> {
-  const tenants = await withPlatformTx((tx: TransactionClient) =>
-    tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
+  const tenants = await withPlatformTx(
+    (tx: TransactionClient) =>
+      tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
   );
 
   let disagreeing = 0;
@@ -260,4 +261,3 @@ export async function driftCount(tenantId: string): Promise<number> {
   const r = await reportDrift(tenantId);
   return r.missing + r.stale + r.unexpected;
 }
-

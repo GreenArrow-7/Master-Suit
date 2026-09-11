@@ -26,66 +26,66 @@ export const PATCH = route(
   { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) =>
     withTx(ctx.tenantId, async (tx) => {
-    const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
-    if (!followUp) throw NotFound('Follow-up');
+      const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
+      if (!followUp) throw NotFound('Follow-up');
 
-    // A rep may only work their own queue; TEAM reach and above may touch others'.
-    const scope = scopeFor(ctx, 'leads', 'EDIT');
-    if (followUp.ownerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) {
-      throw NotFound('Follow-up');
-    }
-
-    if (body.ownerId && body.ownerId !== followUp.ownerId) {
-      if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM && body.ownerId !== ctx.actor.id) {
-        throw Invalid([{ field: 'ownerId', code: 'forbidden', message: 'You cannot reassign this follow-up.' }]);
+      // A rep may only work their own queue; TEAM reach and above may touch others'.
+      const scope = scopeFor(ctx, 'leads', 'EDIT');
+      if (followUp.ownerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) {
+        throw NotFound('Follow-up');
       }
-      const target = await tx.user.findFirst({
-        where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE', deletedAt: null },
-        select: { id: true },
+
+      if (body.ownerId && body.ownerId !== followUp.ownerId) {
+        if (SCOPE_RANK[scope] < SCOPE_RANK.TEAM && body.ownerId !== ctx.actor.id) {
+          throw Invalid([{ field: 'ownerId', code: 'forbidden', message: 'You cannot reassign this follow-up.' }]);
+        }
+        const target = await tx.user.findFirst({
+          where: { tenantId: ctx.tenantId, id: body.ownerId, status: 'ACTIVE', deletedAt: null },
+          select: { id: true },
+        });
+        if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
+      }
+
+      // A new due date on an open item is a reschedule; completing stamps the time.
+      const data: Record<string, unknown> = { ...body };
+      if (body.dueAt && !body.status && ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'].includes(followUp.status)) {
+        data.status = 'RESCHEDULED';
+      }
+      const completingNow = body.status === 'COMPLETED' && !followUp.completedAt;
+      if (completingNow) data.completedAt = new Date();
+      if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
+
+      if (body.leadId) {
+        const target = await tx.lead.findFirst({
+          where: { tenantId: ctx.tenantId, id: body.leadId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!target) throw Invalid([{ field: 'leadId', code: 'not_found', message: 'That lead was not found.' }]);
+      }
+
+      // Both leads, ascending, before the write — see the task route for why, and
+      // why a concurrent move is refused rather than locked out of order.
+      const movingTo = body.leadId === undefined ? followUp.leadId : body.leadId;
+      const locked = await lockLeads(tx, ctx.tenantId, [followUp.leadId, movingTo]);
+
+      const current = await tx.followUpTask.findFirst({
+        where: { tenantId: ctx.tenantId, id: params.id },
+        select: { leadId: true },
       });
-      if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
-    }
+      if (!current) throw NotFound('Follow-up');
+      if ((current.leadId ?? null) !== (followUp.leadId ?? null)) {
+        throw Conflict('That follow-up was moved to another lead while you were editing it. Reload and try again.');
+      }
 
-    // A new due date on an open item is a reschedule; completing stamps the time.
-    const data: Record<string, unknown> = { ...body };
-    if (body.dueAt && !body.status && ['OPEN', 'IN_PROGRESS', 'RESCHEDULED'].includes(followUp.status)) {
-      data.status = 'RESCHEDULED';
-    }
-    const completingNow = body.status === 'COMPLETED' && !followUp.completedAt;
-    if (completingNow) data.completedAt = new Date();
-    if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
+      const updated = await tx.followUpTask.update({ where: { tenantId: ctx.tenantId, id: params.id }, data });
 
-    if (body.leadId) {
-      const target = await tx.lead.findFirst({
-        where: { tenantId: ctx.tenantId, id: body.leadId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!target) throw Invalid([{ field: 'leadId', code: 'not_found', message: 'That lead was not found.' }]);
-    }
+      for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
 
-    // Both leads, ascending, before the write — see the task route for why, and
-    // why a concurrent move is refused rather than locked out of order.
-    const movingTo = body.leadId === undefined ? followUp.leadId : body.leadId;
-    const locked = await lockLeads(tx, ctx.tenantId, [followUp.leadId, movingTo]);
+      // Counted on the transition only — completingNow is false for a repeat
+      // PATCH of an already-completed task, so it cannot double count. Credited
+      // to the task's owner: theirs is the target this work fulfils.
+      if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
 
-    const current = await tx.followUpTask.findFirst({
-      where: { tenantId: ctx.tenantId, id: params.id },
-      select: { leadId: true },
-    });
-    if (!current) throw NotFound('Follow-up');
-    if ((current.leadId ?? null) !== (followUp.leadId ?? null)) {
-      throw Conflict('That follow-up was moved to another lead while you were editing it. Reload and try again.');
-    }
-
-    const updated = await tx.followUpTask.update({ where: { tenantId: ctx.tenantId, id: params.id }, data });
-
-    for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
-
-    // Counted on the transition only — completingNow is false for a repeat
-    // PATCH of an already-completed task, so it cannot double count. Credited
-    // to the task's owner: theirs is the target this work fulfils.
-    if (completingNow) await recordTargetProgress(ctx, updated.ownerId, 'FOLLOWUPS_COMPLETED');
-
-    return updated;
-  }),
+      return updated;
+    }),
 );
