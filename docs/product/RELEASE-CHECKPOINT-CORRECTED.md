@@ -72,6 +72,15 @@ Source revision for source-level gates: **`308a74cab78272dc31666ae737d638d2e83ee
 **16 of 16 pass — and this time gate 14's own exit code is the evidence, not my
 summary of it.**
 
+> **One aborted run, recorded so the logs are not misread.** An earlier attempt
+> at gates 12 and 15 on this revision reported *91 files failed, 1,252 skipped*.
+> That was not a regression: I deleted `apps/web/.env.test.local` — the
+> container's database configuration, read through a bind mount — while the run
+> was in progress, so the suite lost its connection mid-flight. Re-run without
+> interference: **2,137 passed, 0 failed, 0 skipped**, build PASS
+> (`gates-unit-build-308a74c.log`). The aborted output is left in
+> `gates-linux.log` rather than deleted; this note is why it is there.
+
 ### 1.4 Two gates that are not run on Linux, and why
 
 Neither is a weakened check; both are environment facts, recorded rather than
