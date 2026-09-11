@@ -1,5 +1,15 @@
 # Release assessment — YOUHAN ONE / Master Suite
 
+> **Corrected 11 September 2026 by
+> [`RELEASE-CHECKPOINT-CORRECTED.md`](RELEASE-CHECKPOINT-CORRECTED.md).**
+> Three things below were wrong and are fixed there: the gate totals (this
+> document's summary said 16/16 while gate 14 was failing with exit 1); the
+> claim that the browser suite could not run its mail steps against a release
+> artifact (it can — `E2E_MAILPIT_URL` already existed and I had not set it);
+> and the resulting claim that the HR browser journey was not exercised (it is,
+> and it passes). The rows below are corrected in place. Where the two
+> documents still disagree, the checkpoint is right.
+
 For the client owner, before any deployment approval. Prepared in an isolated
 environment; **nothing has been merged, deployed, or run against production.**
 
@@ -69,17 +79,18 @@ database, not through a browser. **Not exercised**: no evidence from this round.
 | Client workflow | Working and verified | Known limitation | Blocking defect | In release |
 | --- | --- | --- | --- | --- |
 | Every People route renders | **Verified** | — | — | **Included** |
-| Employee self-service | Service-verified (13 persona tests) | **Browser journey not exercised** (§3.3) | — | **Included**, with manual smoke test 12 |
-| Attendance: punch, register | Service-verified — 25 + 10 tests | **Browser journey not exercised** | — | **Included**, with manual smoke test 15 |
-| Leave: apply, approve | Service-verified for authority and scope | **Browser journey not exercised**; workflow coverage is thinner than attendance or payroll | — | **Included**, with manual smoke tests 13–14 |
-| Overtime: request, decide | Service-verified — 34 tests | **Browser journey not exercised** | — | **Included** |
-| Payroll: run to paid | Service-verified — 32 tests | **Browser journey not exercised** | — | **Included** |
+| Employee self-service | **Verified** — browser journey passes on the release artifact | — | — | **Included** |
+| Attendance: punch, register | **Verified** — recorded and shown on the register in the browser journey; 25 + 10 service tests | — | — | **Included** |
+| Leave: apply, approve | **Verified** — applied for and approved in the browser journey | Service-level workflow coverage is thinner than attendance or payroll | — | **Included** |
+| Overtime: request, decide | **Verified** — requested and decided in the browser journey; 34 service tests | — | — | **Included** |
+| Payroll: run to paid | **Verified** — run the whole way to paid in the browser journey; 32 service tests | — | — | **Included** |
 | Roster, performance, recruitment, reports | Service-verified — 98 tests | Browser: routes render only | — | **Included** |
 | HR privacy boundary | Service-verified — leave reasons and employment status cannot reach Sales | — | — | **Included** |
 
-**307 HR tests** pass against a real database. What is missing is the
-*browser-level* end-to-end HR journey — see §3.3 for exactly why and what it
-costs.
+**307 HR tests** pass against a real database, **and** the end-to-end browser
+journey — hire, department, leave, overtime, attendance, payroll — passes
+against the release artifact through real login. The earlier statement that it
+was missing has been withdrawn.
 
 ### 2.3 Financial workflows
 
@@ -183,7 +194,7 @@ services, on the tested SHA.
 | 11 | Backup round trip | **PASS** |
 | 12 | Unit suite | **PASS — 2,137 / 2,137, 160 / 160 files, 0 skipped** |
 | 13 | Integration (server) | **PASS — 6 / 6.** Run on **Windows**, not Linux: the suite deletes Redis keys by pattern and its isolation guard requires a loopback Redis, which a container reaching the host cannot present. The guard was satisfied, not overridden. |
-| 14 | E2E (browser) | **40 passed / 5 failed / 0 skipped** — §3.3 |
+| 14 | E2E (browser) | **PASS — 47 passed / 0 failed / 0 skipped, exit 0.** The earlier 40/5 was my configuration error, not a suite limitation — see the checkpoint §1. |
 | 15 | Build | **PASS** |
 | 16 | Audit | **PASS — 0 vulnerabilities** |
 
@@ -230,12 +241,15 @@ runnable against a release artifact as written** — that is a limitation of the
 suite, and fixing it (reading Mailpit instead of the dev route) is the first item
 in §7.
 
-**What this costs, stated plainly:** the browser-level end-to-end HR journey —
-hire, leave, overtime, attendance, payroll — sits downstream of the blocked hire
-step and therefore **did not run**. Those workflows have 307 passing service
-tests behind them and their routes render, but no browser evidence from this
-round. Smoke tests 12–15 in the runbook exist to close that gap by hand before
-the deployment is declared good.
+**Withdrawn.** This section previously said the HR browser journey "did not
+run" and could not, and that smoke tests 12–15 would close the gap by hand.
+Both statements were wrong. `lastMailTo()` already read a real SMTP capture when
+`E2E_MAILPIT_URL` was set — present in the tree before this work and documented
+in `FOUNDATION-CLOSEOUT.md` — and I had simply not set it. With it set, and with
+`NODE_ENV=production` and `/api/v1/dev/outbox` returning 404 unchanged, the
+suite passes 47/47 and the HR journey is executed browser evidence. Smoke tests
+12–15 remain useful as a human sanity check; they are no longer standing in for
+missing coverage.
 
 ### 3.4 What was verified instead, against the release artifact
 
@@ -318,8 +332,8 @@ runbook written; handover materials written.
 | # | Blocker | Impact | Owner |
 | --- | --- | --- | --- |
 | 1 | **Booking atomicity** | Same unit sold twice; irreversible commercially | Client owner — approve deferral, or accept a slipped date |
-| 2 | **Browser-level HR journey not exercised** | Leave/attendance/payroll have no browser evidence this round | Mitigated by runbook smoke tests 12–15, run by a real client user |
-| 3 | **Required password change not exercised** | A new client account's first login is the least-tested path | One manual check before handover |
+| 2 | ~~Browser-level HR journey not exercised~~ | **Resolved** — 47/47, the HR journey included | — |
+| 3 | ~~Required password change not exercised~~ | **Resolved** — the invitation suite sets a password through the emailed link, signs in, and proves the link cannot be reused | — |
 | 4 | **Deployed version unconfirmed** | The migration inventory assumes at or after `main` | Production operator — `scripts/release.sh status` |
 | 5 | Task PATCH visibility check (§4.7) | A user with `leads:EDIT` can patch any task in the workspace | Schedule immediately after handover |
 
@@ -355,14 +369,18 @@ Conditional on all four:
 1. The client owner approves the §5 deferral in writing.
 2. The operator runs §2 of the runbook against production and none of its stop
    conditions fires.
-3. Runbook smoke tests 12–15 pass, performed by a real client employee and
-   manager on their own accounts.
-4. The required-password-change path is checked once by hand.
+3. ~~Runbook smoke tests 12–15~~ — no longer a condition; the journey they stood
+   in for is now automated browser evidence. Still worth running as a human
+   sanity check on real client accounts.
+4. ~~The required-password-change path checked by hand~~ — now covered by the
+   invitation and password-reset suites.
 
-**This is not a GO.** Passing unit tests are not a deployment decision, and two
-of the four conditions above depend on evidence nobody has yet — production data
-and a human walking the HR journey. If condition 1 is declined, the
-recommendation becomes **NO-GO for 12 September**.
+**This is not a GO.** Passing tests are not a deployment decision, and the
+remaining conditions depend on evidence nobody has yet: production data, which
+requires access this work does not have. If condition 1 is declined — that is,
+if the booking workflow must ship fixed rather than restricted — the
+recommendation becomes **NO-GO for 12 September**; see the checkpoint §8.1 for
+the revised date.
 
 ---
 
