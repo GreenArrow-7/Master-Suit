@@ -772,14 +772,38 @@ model TenantReferenceCounter {
 /// with no record of why and no expiry. Opening a workspace to read a customer's
 /// data and opening it to change that data are different acts, and only one of
 /// them should be ambient.
+/// What a grant authorises. One table, because they share everything that
+/// matters — a named person, a named workspace, a stated reason, a clock,
+/// revocation, and a row in the customer's audit trail — and differ only in what
+/// they permit once they exist.
+///
+/// READ is the authority to *enter* a customer workspace at all. Before it, any
+/// platform OWNER could open any workspace on the platform: entry was audited,
+/// which is not the same as authorised. SUPPORT identities hold nothing else,
+/// which is what makes the monitoring console read-only by construction.
+///
+/// WRITE is break-glass, and is unchanged: OWNER only, and the only thing that
+/// puts a write permission in `buildSupportActor`'s map.
+enum PlatformGrantKind {
+  READ
+  WRITE
+}
+
 model PlatformAccessGrant {
-  id             String    @id @default(cuid())
+  id             String            @id @default(cuid())
   tenantId       String
   platformUserId String
+  /// Defaults to READ so that a row written by anything that predates this
+  /// column is read as the weaker of the two, never as write access.
+  kind           PlatformGrantKind @default(READ)
+  /// Whether this grant also covers call recordings, transcripts and stored
+  /// documents. Off unless asked for: seeing the call list is not the same
+  /// permission as hearing the call. See lib/auth/sensitive-access.ts.
+  sensitive      Boolean           @default(false)
   /// Free text, required and minimum-length checked. A grant with no stated
   /// reason is the thing this exists to stop.
   reason         String
-  grantedAt      DateTime  @default(now())
+  grantedAt      DateTime          @default(now())
   /// Capped at the ceiling in lib/auth/platform-access.ts. Access ends here
   /// whether or not anybody remembers to close it.
   expiresAt      DateTime
@@ -791,8 +815,61 @@ model PlatformAccessGrant {
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([platformUserId, tenantId, expiresAt])
+  @@index([platformUserId, tenantId, expiresAt, kind])
   @@index([tenantId, grantedAt])
+}
+
+/// Coverage of every workspace at once, for a named person and a bounded time.
+///
+/// ── Why this is not a PlatformAccessGrant with a null tenantId ──────────────
+///
+/// That was the obvious shape and it is the wrong one. PlatformAccessGrant is
+/// under row-level security as of 20260826120000, and that migration's own
+/// reasoning is the argument against reusing it here: the policy exists so that
+/// a query arriving with some tenant's context cannot "read who has been inside
+/// which customer and why, or insert a grant naming a workspace it had no
+/// business in". A nullable tenant would need `OR "tenantId" IS NULL` in both
+/// halves of that policy, and in the WITH CHECK half that is a privilege
+/// escalation: any tenant context could then insert a grant covering every
+/// workspace on the platform.
+///
+/// So coverage is a different object, in a table that carries no tenantId to
+/// filter on — the same shape and the same reason as PlatformServiceCredential,
+/// which is the machine-side answer to the identical question. Being outside RLS
+/// is structural here rather than an exemption: there is no tenant column a
+/// policy could name.
+///
+/// ── What it is not ─────────────────────────────────────────────────────────
+///
+/// Not a role, not a flag on the account, and not an allowlist where empty means
+/// everything. It is a row somebody created, with their name on it, a reason, an
+/// expiry and a revocation path — so "who can currently see every customer" is a
+/// query rather than an inference.
+model PlatformCoverageGrant {
+  id             String   @id @default(cuid())
+  platformUserId String
+  /// Same minimum as a workspace grant. Covering every customer at once needs at
+  /// least as much justification as covering one.
+  reason         String
+  grantedAt      DateTime @default(now())
+  /// Required, and capped. Standing coverage that nobody has to re-ask for is
+  /// the thing "explicit" is meant to exclude.
+  expiresAt      DateTime
+  /// As on PlatformAccessGrant: recordings, transcripts and documents are a
+  /// separate ask, and covering every workspace does not change that.
+  sensitive      Boolean  @default(false)
+
+  revokedAt     DateTime?
+  revokedReason String?
+  /// Who opened it. Never the same person as `platformUserId` in normal use —
+  /// see the self-grant refusal in lib/auth/platform-access.ts.
+  grantedById   String?
+  /// The request that opened it, so the PlatformAuditEvent pair join up.
+  requestId     String?
+
+  platformUser PlatformUser @relation("PlatformCoverageSubject", fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, revokedAt, expiresAt])
 }
 
 model BillingEvent {
@@ -1139,6 +1216,7 @@ model PlatformUser {
   platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
+  coverageGrants        PlatformCoverageGrant[]     @relation("PlatformCoverageSubject")
   serviceCredentials    PlatformServiceCredential[]
 
   @@index([status, platformRole])

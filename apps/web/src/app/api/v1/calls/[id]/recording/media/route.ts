@@ -3,6 +3,7 @@ import { ulid } from 'ulid';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -30,6 +31,9 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
   async ({ ctx, params }) => {
+    // Recordings are a separate authorisation from the call list they are
+    // reached through. See lib/auth/sensitive-access.ts.
+    await assertSensitiveAccess(ctx, 'call recordings');
     const [recording, consent] = await Promise.all([
       prisma.recording.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
       prisma.recordingConsent.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),

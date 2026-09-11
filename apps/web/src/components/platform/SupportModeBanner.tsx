@@ -53,8 +53,8 @@ export default function SupportModeBanner({
       <span>
         {readOnly ? (
           <>
-            <strong>Platform support view</strong> — viewing {workspaceName} as platform staff. Read-only; sensitive HR
-            fields stay hidden.
+            <strong>Platform support view</strong> — viewing {workspaceName} as platform staff. Read-only; HR and
+            payroll are excluded, and every screen you open is recorded in this workspace&rsquo;s audit log.
           </>
         ) : (
           <>

@@ -62,6 +62,8 @@ export interface NavInput {
   permitted: string[];
   /** A platform service identity: no personal queues, no "my" anything. */
   serviceMode?: boolean;
+  /** Platform staff: hides the People group, which they hold no record in. */
+  platformStaff?: boolean;
 }
 
 /** True when the viewer holds every permission the item names. */
@@ -69,9 +71,27 @@ export const itemAllowed = (item: NavItem, permitted: string[]) =>
   !item.permission ||
   (Array.isArray(item.permission) ? item.permission : [item.permission]).every((p) => permitted.includes(p));
 
-export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = false }: NavInput): NavGroup[] {
+export function buildWorkspaceNav({
+  slug,
+  modules,
+  permitted,
+  serviceMode = false,
+  platformStaff = false,
+}: NavInput): NavGroup[] {
   const sales = modules.includes('SALES');
-  const people = modules.includes('HRMS');
+  /**
+   * People is hidden from platform staff outright, not merely emptied.
+   *
+   * Its items are permission-filtered and `buildSupportActor` no longer grants
+   * any HR module, so Employees, Payroll, Attendance and the rest already drop
+   * out. What survived were the self-service screens — "my leave", "my check-in"
+   * — which carry no permission because every employee may see their own. A
+   * member of platform staff has no employee record in the customer's workspace,
+   * so those screens are meaningless to them, and a People section in the
+   * sidebar of a console whose whole premise is that HR is excluded says the
+   * opposite of what is true.
+   */
+  const people = modules.includes('HRMS') && !platformStaff;
   const s = (path: string) => `/${slug}/sales${path}`;
   const p = (path: string) => `/${slug}/people${path}`;
   const a = (path: string) => `/${slug}/admin${path}`;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { logger } from '@/lib/logger';
 import { NotFound, Forbidden, Invalid } from '@/lib/errors';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
@@ -132,6 +133,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'DOCUMENT_ACCESSED' },
   async ({ ctx, params }) => {
+    await assertSensitiveAccess(ctx, 'call transcripts');
     const transcript = await prisma.transcript.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

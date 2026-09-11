@@ -12,7 +12,14 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { openGrant, revokeGrants } from '@/lib/auth/platform-access';
+import {
+  authorizedTenantIds,
+  mayEnterWorkspace,
+  openCoverage,
+  openGrant,
+  revokeCoverage,
+  revokeGrants,
+} from '@/lib/auth/platform-access';
 import { resolveCtx } from '@/lib/auth/session';
 import { can, scopeFor } from '@/lib/security/rbac';
 import { isSupportRole } from '@/lib/auth/support-actor';
@@ -93,6 +100,24 @@ beforeAll(async () => {
     },
   });
   supportId = support.id;
+
+  /**
+   * Entering a workspace now needs authorisation, not just a platform role.
+   *
+   * Every case below that reaches a workspace needs one of these, and that is
+   * the change: `resolveCtx` asks `mayEnterWorkspace` on every request, so a
+   * platform identity with no READ grant and no coverage is refused before any
+   * of the permission questions these tests ask are even reached. The cases
+   * that assert the refusal itself open no grant.
+   */
+  for (const platformUserId of [ownerId, supportId]) {
+    await openGrant({
+      platformUserId,
+      tenantId,
+      kind: 'READ',
+      reason: 'Standing monitoring authorisation for this suite',
+    });
+  }
 });
 
 afterAll(async () => {
@@ -145,7 +170,9 @@ describe('platform support access', () => {
 
     // Same session, same cookie: the grant is checked per request, so handing it
     // back does not wait for a sign-in.
-    await revokeGrants(ownerId, tenantId);
+    // WRITE only: handing back the break-glass must not also revoke the READ
+    // grant that authorises being in the workspace at all.
+    await revokeGrants(ownerId, tenantId, 'WRITE');
     const after = await resolveCtx(asRequest(cookie), 'req-owner-after');
     expect(can(after, 'leads', 'EDIT')).toBe(false);
     expect(can(after, 'leads', 'VIEW')).toBe(true);
@@ -218,7 +245,7 @@ describe('platform support access', () => {
     const elevated = await resolveCtx(asRequest(cookie), 'req-owner-hr-elevated');
     expect(mayReadPayroll(elevated)).toBe(true);
 
-    await revokeGrants(ownerId, tenantId);
+    await revokeGrants(ownerId, tenantId, 'WRITE');
     const after = await resolveCtx(asRequest(cookie), 'req-owner-hr-after');
     expect(mayReadPayroll(after)).toBe(false);
   });
@@ -297,12 +324,129 @@ describe('platform support access', () => {
       data: { slug: `other-${suffix}`, legalName: 'Other LLC', displayName: 'Other Co' },
     });
     try {
+      await openGrant({
+        platformUserId: ownerId,
+        tenantId: other.id,
+        kind: 'READ',
+        reason: 'Monitoring the second workspace in this case',
+      });
       const cookie = await createPlatformSessionToken(ownerId, other.id);
       const ctx = await resolveCtx(asRequest(cookie), 'req-other');
       expect(ctx.tenantId).toBe(other.id);
       expect(ctx.tenantId).not.toBe(tenantId);
     } finally {
       await prisma.tenant.delete({ where: { id: other.id } }).catch(() => {});
+    }
+  });
+});
+
+/**
+ * Being platform staff is not being authorised for a customer.
+ *
+ * Until a READ grant existed, it was: the `enter` route checked that the caller
+ * was a platform OWNER and that the workspace existed, and pointed the session
+ * at it. Entry was audited, which is not the same as allowed — nothing anywhere
+ * expressed which customers a given member of staff was supposed to see.
+ */
+describe('authorised workspaces, not every workspace', () => {
+  let unauthorised = '';
+
+  beforeAll(async () => {
+    const tenant = await prisma.tenant.create({
+      data: { slug: `ungranted-${suffix}`, legalName: 'Ungranted LLC', displayName: 'Ungranted Co' },
+    });
+    unauthorised = tenant.id;
+    await prisma.moduleEntitlement.create({ data: { tenantId: unauthorised, module: 'SALES', state: 'ACTIVE' } });
+  });
+
+  afterAll(async () => {
+    await prisma.tenant.delete({ where: { id: unauthorised } }).catch(() => {});
+  });
+
+  it('refuses a workspace nobody granted, to staff who can reach another one', async () => {
+    const cookie = await createPlatformSessionToken(supportId, unauthorised);
+    await expect(resolveCtx(asRequest(cookie), 'req-ungranted')).rejects.toThrow(/not authorised/i);
+  });
+
+  it('refuses the platform owner just the same — the role is not the authorisation', async () => {
+    const cookie = await createPlatformSessionToken(ownerId, unauthorised);
+    await expect(resolveCtx(asRequest(cookie), 'req-owner-ungranted')).rejects.toThrow(/not authorised/i);
+  });
+
+  it('lists only the workspaces granted, and coverage means all of them', async () => {
+    const granted = await authorizedTenantIds(supportId);
+    expect(granted).not.toBeNull();
+    expect(granted).toContain(tenantId);
+    expect(granted).not.toContain(unauthorised);
+
+    await openCoverage({
+      platformUserId: supportId,
+      grantedById: ownerId,
+      reason: 'On-call rotation covering every customer this week',
+    });
+    try {
+      // null is the answer "all of them" — see authorizedTenantIds.
+      expect(await authorizedTenantIds(supportId)).toBeNull();
+      const cookie = await createPlatformSessionToken(supportId, unauthorised);
+      const ctx = await resolveCtx(asRequest(cookie), 'req-coverage');
+      expect(ctx.tenantId).toBe(unauthorised);
+      // Coverage widens where, never what: still read-only, still no payroll.
+      expect(can(ctx, 'leads', 'EDIT')).toBe(false);
+      expect(mayReadPayroll(ctx)).toBe(false);
+    } finally {
+      await revokeCoverage(supportId, 'end of case');
+    }
+  });
+
+  it('stops working on the very next request when the grant is revoked', async () => {
+    const cookie = await createPlatformSessionToken(supportId, tenantId);
+    // Same cookie throughout: the point is that revocation does not wait for a
+    // sign-out. An authorisation checked only at the door survives its own
+    // revocation for as long as the session lives, which is not a revocation.
+    expect((await resolveCtx(asRequest(cookie), 'req-before')).tenantId).toBe(tenantId);
+
+    await revokeGrants(supportId, tenantId, 'READ');
+    await expect(resolveCtx(asRequest(cookie), 'req-after')).rejects.toThrow(/not authorised/i);
+
+    // Put it back for whatever runs next.
+    await openGrant({ platformUserId: supportId, tenantId, kind: 'READ', reason: 'Restoring the suite fixture' });
+  });
+
+  it('refuses coverage granted to oneself', async () => {
+    await expect(
+      openCoverage({
+        platformUserId: ownerId,
+        grantedById: ownerId,
+        reason: 'Awarding myself sight of every customer',
+      }),
+    ).rejects.toThrow(/granted by somebody else/i);
+  });
+
+  it('expires on its own, with nothing having to sweep it', async () => {
+    const tenant = await prisma.tenant.create({
+      data: { slug: `expiring-${suffix}`, legalName: 'Expiring LLC', displayName: 'Expiring Co' },
+    });
+    try {
+      const grant = await openGrant({
+        platformUserId: supportId,
+        tenantId: tenant.id,
+        kind: 'READ',
+        reason: 'A grant that is about to lapse',
+      });
+      expect(await mayEnterWorkspace(supportId, tenant.id)).toBe(true);
+
+      // `updateMany` naming the tenant, not `update` by id alone.
+      // PlatformAccessGrant is under row-level security, and lib/db.ts pins
+      // `app.tenant_id` from the `where` clause — a lookup by primary key names
+      // no tenant, so the statement runs with no policy value and matches
+      // nothing. The same reasoning as the comment on `authorizedTenantIds`.
+      await prisma.platformAccessGrant.updateMany({
+        where: { id: grant.id, tenantId: tenant.id },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      expect(await mayEnterWorkspace(supportId, tenant.id)).toBe(false);
+    } finally {
+      await prisma.tenant.delete({ where: { id: tenant.id } }).catch(() => {});
     }
   });
 });

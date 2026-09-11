@@ -64,6 +64,13 @@ export const GLOBAL_MODELS = new Set([
   // tenants a platform service identity may read at all. It carries no tenantId
   // to filter on, and the lookup happens before any tenant is known.
   'PlatformServiceCredential',
+  // Coverage of every workspace at once, for one named member of platform staff.
+  // Exempt for the same structural reason as the row above and not as a
+  // concession: the table has no tenantId, because a grant that names one
+  // workspace is a PlatformAccessGrant and this is the object for the case where
+  // no single workspace can be named. Every query against it pins a
+  // platformUserId, which is what bounds it.
+  'PlatformCoverageGrant',
   // A push registration belongs to a handset, not to a workspace. The device
   // mints one token and returns it to whoever signs in next, so the row has to
   // be globally unique on that token — a tenant-scoped copy per workspace is

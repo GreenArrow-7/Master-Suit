@@ -20,6 +20,7 @@ export default function WorkspaceSidebar({
   workspaces,
   user,
   serviceMode = false,
+  platformStaff = false,
 }: {
   slug: string;
   name: string;
@@ -28,6 +29,7 @@ export default function WorkspaceSidebar({
   permitted: string[];
   /** A platform service identity is viewing; the personal groups are dropped. */
   serviceMode?: boolean;
+  platformStaff?: boolean;
   workspaces: { slug: string; name: string }[];
   user: { name: string; role: string };
 }) {
@@ -101,8 +103,8 @@ export default function WorkspaceSidebar({
   }, [mobileOpen]);
 
   const groups = useMemo<NavGroup[]>(
-    () => buildWorkspaceNav({ slug, modules, permitted, serviceMode }),
-    [slug, modules, permitted, serviceMode],
+    () => buildWorkspaceNav({ slug, modules, permitted, serviceMode, platformStaff }),
+    [slug, modules, permitted, serviceMode, platformStaff],
   );
 
   return (

@@ -28,7 +28,13 @@ interface Result {
 
 const MAX_PAGES = 9;
 
-export default function CommandPalette({ slug, modules, permitted, serviceMode = false }: NavInput) {
+export default function CommandPalette({
+  slug,
+  modules,
+  permitted,
+  serviceMode = false,
+  platformStaff = false,
+}: NavInput) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -38,7 +44,7 @@ export default function CommandPalette({ slug, modules, permitted, serviceMode =
 
   const pages = useMemo(
     () =>
-      buildWorkspaceNav({ slug, modules, permitted, serviceMode }).flatMap((group) =>
+      buildWorkspaceNav({ slug, modules, permitted, serviceMode, platformStaff }).flatMap((group) =>
         group.items.map((item) => ({
           key: item.href,
           group: group.label.replace('More · ', ''),
@@ -47,7 +53,7 @@ export default function CommandPalette({ slug, modules, permitted, serviceMode =
           haystack: `${item.label} ${item.keywords ?? ''} ${group.label}`.toLowerCase(),
         })),
       ),
-    [slug, modules, permitted, serviceMode],
+    [slug, modules, permitted, serviceMode, platformStaff],
   );
   const targets = useMemo(() => searchTargets({ slug, modules, permitted }), [slug, modules, permitted]);
 

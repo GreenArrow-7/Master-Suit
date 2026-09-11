@@ -105,6 +105,7 @@ export default async function WorkspaceLayout({
         workspaces={shell.availableWorkspaces}
         user={shell.user}
         serviceMode={shell.serviceMode}
+        platformStaff={shell.platformStaff}
       />
       <div className="lf-content-column">
         {shell.supportMode && (
@@ -132,6 +133,7 @@ export default async function WorkspaceLayout({
         modules={shell.modules}
         permitted={shell.permitted}
         serviceMode={shell.serviceMode}
+        platformStaff={shell.platformStaff}
       />
       <NativePush />
     </div>
@@ -183,6 +185,9 @@ async function loadShell(workspaceSlug: string) {
       supportMode,
       supportReadOnly,
       serviceMode,
+      // Any platform identity, support or service: neither holds an employee
+      // record here, so neither gets a People section.
+      platformStaff: supportMode || serviceMode,
       slug: workspace.slug,
       displayName: workspace.displayName,
       /**

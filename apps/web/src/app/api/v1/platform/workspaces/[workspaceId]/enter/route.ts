@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
-import { requirePlatformOwner } from '@/lib/auth/platform';
+import { requirePlatformSupport } from '@/lib/auth/platform';
+import { mayEnterWorkspace } from '@/lib/auth/platform-access';
 
 /**
  * Opens a customer workspace for platform staff.
@@ -19,7 +20,7 @@ import { requirePlatformOwner } from '@/lib/auth/platform';
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
   const requestId = ulid();
   try {
-    const ctx = await requirePlatformOwner(req, requestId);
+    const ctx = await requirePlatformSupport(req, requestId);
     const { workspaceId } = await params;
 
     const workspace = await prisma.tenant.findFirst({
@@ -27,6 +28,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
       select: { id: true, slug: true, status: true, displayName: true },
     });
     if (!workspace) throw NotFound('Workspace');
+
+    /**
+     * The authorisation this route did not used to have.
+     *
+     * Being a platform OWNER was the whole of the check, so any workspace on the
+     * platform could be opened by anyone holding the console — audited, which is
+     * not the same as allowed. A READ grant names the person and the workspace;
+     * coverage names the person and says "all of them", with a reason and an
+     * expiry either way.
+     *
+     * 404, not 403. A workspace this person is not authorised for should not be
+     * distinguishable from one that does not exist — otherwise the endpoint
+     * enumerates the platform's customer list to any member of staff.
+     */
+    if (!(await mayEnterWorkspace(ctx.platformUserId, workspace.id))) throw NotFound('Workspace');
 
     await withPlatformTx(async (tx) => {
       await tx.platformSession.update({
@@ -69,7 +85,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
 export async function DELETE(req: Request) {
   const requestId = ulid();
   try {
-    const ctx = await requirePlatformOwner(req, requestId);
+    const ctx = await requirePlatformSupport(req, requestId);
     await prisma.platformSession.update({
       where: { id: ctx.sessionId },
       data: { activeTenantId: null, lastSeenAt: new Date() },

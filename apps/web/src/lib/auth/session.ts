@@ -7,6 +7,7 @@ import { getNumericSetting } from '../platform-settings';
 import { Forbidden, Unauthorized } from '../errors';
 import { SCOPE_RANK, type Actor, type Ctx, type Scope } from '../security/rbac';
 import { buildSupportActor, isSupportRole } from './support-actor';
+import { mayEnterWorkspace } from './platform-access';
 import { isPrivilegedPlatformRole, isPlatformServiceRole } from './platform-policy';
 import { isInAny, parseCidrList, parseIp, type Cidr } from '../security/cidr';
 import { logger } from '../logger';
@@ -446,7 +447,7 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
   const actor = membership?.salesUserId
     ? await buildActor(membership.salesUserId, platformCtx.activeTenantId)
     : isSupportRole(platformCtx.platformRole)
-      ? await buildSupportActor(platformCtx.activeTenantId, platformCtx.platformUserId, platformCtx.platformRole)
+      ? await supportSessionActor(platformCtx)
       : isPlatformServiceRole(platformCtx.platformRole)
         ? await serviceSessionActor(platformCtx)
         : null;
@@ -466,6 +467,39 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
         }
       : {}),
   };
+}
+
+/**
+ * The workspace actor for a member of platform staff, and the check that they
+ * are still allowed to be here.
+ *
+ * ── Authorised, not merely audited ──────────────────────────────────────────
+ *
+ * Entering a customer workspace used to require nothing but being a platform
+ * OWNER. The `enter` route looked the workspace up, pointed the session at it,
+ * and wrote a WORKSPACE_OPENED row — so every entry was recorded and none was
+ * authorised, and "which customers is this person supposed to be able to see"
+ * had no answer anywhere in the system. A `READ` grant, or live coverage of
+ * every workspace, is now that answer.
+ *
+ * ── Why it is checked here and not only at the door ─────────────────────────
+ *
+ * `resolveCtx` runs on every request, and this runs with it. Checking only in
+ * the `enter` route would make the authorisation a property of how the session
+ * was created rather than of the session itself: revoking a grant would leave
+ * whoever held it inside the workspace until they happened to sign out, which is
+ * the one thing revocation is for. It is the same reasoning, and the same cost,
+ * as the per-request `activeGrant` lookup inside `buildSupportActor`.
+ *
+ * Refused with Forbidden rather than by returning null, so the caller is told
+ * their session is fine and this workspace is not, rather than being bounced to
+ * a sign-in page that will not help.
+ */
+async function supportSessionActor(platformCtx: PlatformCtx): Promise<Actor> {
+  if (!(await mayEnterWorkspace(platformCtx.platformUserId, platformCtx.activeTenantId!))) {
+    throw Forbidden('You are not authorised for that workspace.');
+  }
+  return buildSupportActor(platformCtx.activeTenantId!, platformCtx.platformUserId, platformCtx.platformRole);
 }
 
 /**
