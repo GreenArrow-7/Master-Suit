@@ -180,22 +180,45 @@ restricts dynamic model access to LEAD, OPPORTUNITY, ACCOUNT and CONTACT.
 So the double-sale path is reachable **only by a workspace administrator making
 direct API calls**. That is a real risk and it is not an agent-facing one.
 
-### 3.3 The sellable entity, and an ambiguity worth naming
+### 3.3 The sellable entity — corrected
 
-`Booking.listingId → Listing.unitInventoryId → UnitInventory`, and
+**I had this wrong.** I described the link as
+`Booking.listingId → Listing.unitInventoryId`. `Booking` carries
+**`unitInventoryId` directly** (`prisma/schema.prisma`), and the create schema
+accepts both it and `listingId`, each optional. The direct column is the one
+that matters, and it is the one the repository's own backlog already names.
+
 `UnitInventory.status` is the `UnitStatus` that `moveUnit` locks and transitions
 (`AVAILABLE → HELD | BOOKED | BLOCKED`, `BOOKED → SOLD | AVAILABLE`, nothing
 returns from `SOLD`).
 
-Both `Booking.listingId` and `Listing.unitInventoryId` are **nullable**. So a
-booking need not reference a unit at all. **Whether a confirmed booking must
-have a unit is a business rule the application does not currently state**, and
-option A cannot be specified without an answer:
+**What the existing evidence says about intent** — checked rather than inferred
+from nullability:
 
-> **Question for the client owner:** may a booking be confirmed without a unit —
-> an off-plan reservation, a block deal — or is a unit mandatory at
-> confirmation? The invariant differs, and guessing would either block legitimate
-> bookings or leave the hole open.
+| Source | What it shows |
+| --- | --- |
+| `docs/product/IMPLEMENTATION-BACKLOG.md` | Already specifies the fix: *"Partial unique index on `Booking(unitInventoryId)` where `status = 'CONFIRMED' AND deletedAt IS NULL`"*, plus the files, the backfill risk and six acceptance tests. The invariant is keyed on the **unit**. |
+| `docs/product/WORKFLOW-BLUEPRINT.md` §H | *"Confirmation must, in one transaction: verify the unit is reservable by this agent, move it, and write the booking."* Presupposes a unit. |
+| `docs/product/CURRENT-CODE-MAP.md` | Records the defect as **reproduced**, not merely inspected: *"two concurrent confirms both returned 200 **[R]**"*, and *"**no** unique index on `unitInventoryId`"*. |
+| Representative fixture (isolated database) | 1 booking: `unitInventoryId` set, `listingId` null, `CONFIRMED`. **0 confirmed bookings without a unit.** |
+
+So every artefact that expresses intent assumes a unit, and the seeded data
+matches. **None of them states whether a booking *without* a unit may be
+confirmed** — off-plan, a block deal, a plot sale. Nullability alone does not
+establish that it is supported, and one fixture row does not establish that it
+is forbidden.
+
+> ### The business question this checkpoint needs answered
+>
+> **Must every confirmed booking identify one specific inventory unit, or must
+> confirmation also support bookings without a unit? If the latter, which
+> booking types?**
+>
+> Option A's invariant differs by the answer: a unique index alone is enough if
+> a unit is mandatory; if not, the index must be partial on
+> `unitInventoryId IS NOT NULL` and the unitless path needs its own rule — and
+> what stops *that* being double-sold is then an open question rather than a
+> detail. I am not inventing either policy.
 
 ### 3.4 Option A — fix and verify
 
@@ -214,13 +237,16 @@ option A cannot be specified without an answer:
 
    ```sql
    CREATE UNIQUE INDEX "Booking_one_confirmed_per_unit"
-     ON "Booking" ("tenantId", "listingId")
-     WHERE "status" = 'CONFIRMED' AND "deletedAt" IS NULL;
+     ON "Booking" ("tenantId", "unitInventoryId")
+     WHERE "status" = 'CONFIRMED' AND "deletedAt" IS NULL
+       AND "unitInventoryId" IS NOT NULL;
    ```
 
-   (Keyed on `listingId` because that is what `Booking` carries. If §3.3 is
-   answered "a unit is mandatory", key it on the resolved unit instead and make
-   the column `NOT NULL` at confirmation.)
+   Keyed on `unitInventoryId`, matching the backlog. The
+   `unitInventoryId IS NOT NULL` clause is **only correct if unitless
+   confirmation is permitted** — if it is not, drop that clause and make the
+   column required at confirmation instead. That is the business question in
+   §3.3, and the index cannot be written until it is answered.
 5. **Lock order, added to the two already documented** (`User → Lead` for
    assignment; `Lead → obligations` for follow-ups): **`UnitInventory → Booking`**.
 
@@ -279,14 +305,59 @@ commission and payout reads over historical bookings keep working — they are
 governed by their own modules. Confirm before applying that no included workflow
 calls a booking endpoint on a user's behalf.
 
-**How denial is tested.** A permission spec asserting that a user holding
-`leads:*` and `tasks:*` but not `bookings:*` receives **403 on every one of the
-four entry points above**, and that a `super_admin` does too once the grant is
-removed. Modelled on the existing `tests/permission/*` suites. That is roughly
-half a day including the rollout SQL and its rehearsal.
+**Denial-test matrix.** Every cell must be asserted; a restriction tested only
+against an ordinary user proves nothing, because the roles that hold the grant
+are the privileged ones.
+
+| Entry point | Method | Guard | `company_admin` | `org_admin` | `super_admin` | Unprivileged (`leads:*` only) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/api/v1/bookings` | `GET` | `bookings:VIEW` | 403 | 403 | 403 | 403 |
+| `/api/v1/bookings` | `POST` (create) | `bookings:CREATE` | 403 | 403 | 403 | 403 |
+| `/api/v1/bookings` | `POST` `action: CONFIRM` | `bookings:EDIT` | 403 | 403 | 403 | 403 |
+| `/api/v1/bookings` | `POST` `action: COLLECT` | `bookings:EDIT` | 403 | 403 | 403 | 403 |
+| `/api/v1/bookings` | `POST` `action: CANCEL` | `bookings:EDIT` | 403 | 403 | 403 | 403 |
+
+Plus three negative controls, so the restriction is proved to be *narrow*:
+
+| Must still work after the restriction | Why |
+| --- | --- |
+| Commission reads over historical bookings | Governed by its own module; removing `bookings` must not break finance reporting |
+| Payout maker-checker | Same |
+| P&L by team | Reads bookings directly, not through the API |
+
+**Not applied.** This is a business-scope exclusion and needs the owner's
+decision. Effort once approved: roughly half a day, including the rollout SQL,
+its rehearsal on an isolated database, and the matrix above.
 
 **This is a business-scope exclusion and is not applied.** It needs the owner's
 decision.
+
+### 3.5b P&L — I over-claimed, and here is the correction
+
+I reported **"P&L accuracy — FIXED"**. That is wrong. One of four things is
+fixed; three defects are live in current code, and this is a financial report
+the client will read.
+
+| | State | Evidence |
+| --- | --- | --- |
+| Booking revenue grouped by the placement **frozen on the booking** | **Fixed** | `pl.ts` selects `booking.teamId / regionId / branchId`, written at confirmation. A transfer no longer moves booking revenue. |
+| **Draft bookings counted as revenue** | **OPEN** | `pl.ts:76` filters `status: { not: 'CANCELLED' }`, which **includes `DRAFT`**. A draft is not a sale. |
+| **Payroll cost includes unapproved runs** | **OPEN** | `pl.ts:227` selects payslips by period only — **no run-status filter**. A draft payroll run counts as cost. |
+| **Payroll cost attributed to the employee's *current* team** | **OPEN** | `pl.ts:236` reads `salesUser.branchId / regionId / teams` live. A transfer restates historical payroll cost — exactly the failure the booking side was fixed to avoid. |
+
+`docs/product/CURRENT-CODE-MAP.md` already listed all three as **open** with
+these line references. I read the booking-side fix, saw the careful header
+comment about frozen placement, and generalised from it. **Checking the other
+half would have taken two minutes.**
+
+**Consequence for the release:** margin and cost figures in the P&L are not
+trustworthy for any workspace where bookings sit in `DRAFT` or employees have
+changed team within the reporting period. The revenue-by-team split is sound;
+the cost side and the draft-inclusion are not.
+
+**This is not fixed here.** It is a financial-correctness change needing its own
+verification, and it is out of scope for a release-candidate package. It is
+added to the blocker list at §7.
 
 ### 3.6 Collections — what is and is not recorded
 
@@ -359,6 +430,7 @@ nevertheless re-run on `308a74c` rather than assumed — §1.3 reports that run.
 | Web/worker startup order | **Verified** | Both images run. Worker registers 9 queues and 5 schedulers including the report-only drift canary. |
 | Provider checks | **Verified for SMTP and antivirus; asserted for WhatsApp** | Production refuses `mock`; SMTP proven end to end over STARTTLS. `WHATSAPP_PROVIDER=meta` is configured **without credentials**, so a real send fails loudly — it was never exercised. |
 | Notification recovery | **Verified** | A `PENDING` outbox row — the state a crash leaves — delivered by the scheduled worker unprompted, exactly one notification. |
+| Monitoring | **Partially verified** | The worker arms 5 schedulers including the report-only drift canary, and `check-observability` passes (12 alert rules, 9 consumed queues watched). **Not verified:** no Prometheus/Alertmanager instance was run, so no alert has ever fired end to end. **Pending operator execution.** |
 | Outstanding production-operator checks | **Pending, by design** | Preflight §2 of the runbook: deployed version, table sizes, orphan and cross-workspace counts, automation rules writing `nextFollowUpAt`, saved views on the withdrawn filter. **None can be answered without production access.** |
 | Individual account preparation | **Written, not executed** | Handover guide §1. **Not verified:** no client accounts have been created. |
 | Support ownership, first-day monitoring | **Written, not executed** | Handover guide §6–§8. |
@@ -399,6 +471,9 @@ no icon.
 | 5 | **Backup pipeline not rehearsed end to end** | Direct restore proven; the product's ship/restore scripts need the production topology | Production operator | ~1 hour |
 | 6 | Task PATCH lacks `assertRecordVisible` | A user with `leads:EDIT` can patch any task in the workspace by id | Schedule post-handover | ~half a day |
 | 7 | Collections record no amount (§3.6) | Any report treating `collectedAt` as money is wrong | Client owner | Deferred with booking |
+| 8 | **P&L counts DRAFT bookings as revenue** (§3.5b) | Revenue overstated wherever drafts exist | Client owner + engineering | ~half a day incl. tests |
+| 9 | **P&L includes unapproved payroll runs as cost** (§3.5b) | Margin wrong wherever a run is not yet approved | as above | included above |
+| 10 | **P&L attributes payroll to the employee's current team** (§3.5b) | A transfer restates a closed period's cost | as above | ~half a day |
 
 ---
 
@@ -406,7 +481,12 @@ no icon.
 
 > **CONDITIONAL GO** for the Sales CRM and the HRMS workflows in
 > `RELEASE-ASSESSMENT.md` §2.1–§2.2, **with booking confirmation and agency fee
-> collection excluded and their permissions restricted per §3.5.**
+> collection excluded and their permissions restricted per §3.5**, and **with the
+> P&L report's cost side and draft-inclusion flagged to the client as
+> untrustworthy until §3.5b is fixed.**
+>
+> **Neither exclusion is applied.** The owner has not selected an option and has
+> not approved excluding anything; §3.5 is a prepared plan, not a change.
 
 Conditional on:
 

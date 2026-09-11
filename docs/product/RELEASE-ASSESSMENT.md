@@ -98,7 +98,7 @@ was missing has been withdrawn.
 | --- | --- | --- |
 | Commission calculation and slabs | Service-verified; slab frozen at sale | **Included** |
 | Commission clawback on cancellation | Service-verified — a cancellation is refused while live commissions exceed reversals | **Included** |
-| P&L by team / region / branch | Service-verified — see §2.4 | **Included** |
+| P&L by team / region / branch | **Partially correct** — revenue split sound; cost side and draft-inclusion are not (§2.4) | **Included, with the limitation told to the client** |
 | **Booking: confirm** | **BLOCKING DEFECT — see §2.4** | **Proposed for deferral** |
 | **Agency fee collection** | **Incomplete — see §2.4** | **Proposed for deferral** |
 | Payouts (maker-checker) | Service-verified | **Included** |
@@ -125,12 +125,21 @@ Consequence in plain terms: **the same unit can be sold twice**, and the system
 will not notice. There is also no booking UI at all, so today this is reachable
 only through the API.
 
-**P&L accuracy — FIXED.** `services/leadership/pl.ts` groups by the placement
-frozen onto the booking at confirmation rather than the agent's current team, so
-a transfer no longer moves last quarter's revenue. Reversals are netted off
-commission cost. **Margin is `null` whenever a component is unknown rather than
-falling back to a guess**, and the gaps are named in the report instead of being
-rolled into a total. Covered by a test that fails if the grouping regresses.
+**P&L accuracy — PARTIALLY FIXED. This paragraph previously said "FIXED" and
+that was an over-claim; see `RELEASE-CHECKPOINT-CORRECTED.md` §3.5b.**
+
+Fixed: booking revenue is grouped by the placement **frozen onto the booking**
+at confirmation, so a transfer no longer moves last quarter's revenue. Reversals
+are netted off commission cost, margin is `null` whenever a component is unknown
+rather than falling back to a guess, and the gaps are named rather than rolled
+into a total.
+
+**Still open, all three verified in current code:** `pl.ts:76` counts **DRAFT**
+bookings as revenue (`status: { not: 'CANCELLED' }`); `pl.ts:227` selects
+payslips with **no run-status filter**, so an unapproved payroll run counts as
+cost; and `pl.ts:236` attributes payroll cost to the employee's **current** team,
+so a transfer restates a closed period — the very failure the booking side was
+fixed to avoid. `CURRENT-CODE-MAP.md` already listed these as open.
 
 **Collection and commission — PARTIALLY.** The commission side is sound: slabs
 are frozen at the sale and cancellation is refused while live commissions exceed
