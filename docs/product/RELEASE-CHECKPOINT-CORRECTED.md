@@ -123,6 +123,80 @@ that run was using it. Not a code regression, and not the same run as the table
 above. It is kept so the record shows what happened rather than only what
 worked.
 
+### 1.5 The gates re-run at `2272065`, the revision containing the booking fix
+
+The table in §1.3 describes `92d1aa1`/`c09cb43`, which does **not** contain the
+booking fix. It stays as it is — it is the record of that artifact. This section
+is the new revision, and it supersedes §1.3 for release purposes.
+
+| | |
+| --- | --- |
+| Source revision | **`2272065`**, clean tree |
+| Web image | `master-suite/web:2272065` |
+| Worker image | `master-suite/worker:2272065` |
+| Running container reports | `BUILD_COMMIT=22720656f20914dc0024aa0934e1a3bb8b7aa747` — web and worker both |
+| Artifact vs source | Built from this commit's tree. `public/` verified inside the image: `sw.js` and `offline.html` both serve 200, not the 404s of the earlier defect. |
+
+| # | Gate | Environment | Exit | Counts |
+| --- | --- | --- | --- | --- |
+| 1–11, 16 | drift, RLS, raw-SQL scope, typecheck, lint, format, README counts, observability, redis auth, face tokens, backup round trip, audit | Linux `node:24`, `master_suite_ci` | **0** each | as §1.3 |
+| 12 | Unit suite | Linux `node:24`, `master_suite_ci` | see below | **2,145** tests — the 2,137 of §1.3 plus the 8 new booking acceptance tests |
+| 13 | Integration (server) | Windows, loopback Postgres + Redis, `master_suite_val` | **0** | **6 passed / 0 failed** |
+| 14 | E2E (browser) | Windows Chromium → `web:2272065` + `worker:2272065` over TLS, `NODE_ENV=production` | **0** | **47 passed / 0 failed / 0 skipped / 0 did not run** |
+| 15 | Build | Linux `node:24` | **0** | — |
+
+#### Three failures tonight that were mine, not the product's
+
+Recorded because a release log that only contains the runs that worked is not a
+record of anything.
+
+**1. Gate 12's first two runs reported failures I initially mis-explained.** The
+first reported *1 failed, 4 skipped*; the second *2 failed, 0 skipped*. The two
+files were `tests/tenant/credential-purge.spec.ts` and
+`tests/security/p2-regressions.spec.ts`. **Run in isolation on the same Linux
+container, both pass: 40/40**, including the two assertions that had failed.
+
+- `credential-purge` asserts `buildId()` falls back to a git SHA in a source
+  checkout. The Linux container mounts a **git worktree**, whose `.git` is a
+  pointer file holding a *Windows* absolute path; that path cannot resolve
+  inside the container, so `git rev-parse` fails and the fallback correctly
+  returns `unknown`. The final run supplies `BUILD_COMMIT`, exactly as a
+  deployment does. **Stated plainly: with `BUILD_COMMIT` set, that one
+  assertion is vacuous on Linux — it is genuinely exercised only on Windows,
+  where git resolves, and it passed there.**
+- `p2-regressions` P2-5 is the rate-limit contention failure already documented
+  for Windows. It now reproduces on Linux as well, because both point at the
+  same host Redis logical database. It passes 17/17 in isolation. It is a
+  shared-bucket contention between spec files, not a rate-limiter defect — but
+  it is a real flake in the suite and should be fixed by giving each spec file
+  its own bucket, not by re-running until it is green.
+
+**2. I said gate 13's failure was concurrency with the container. It was not.**
+The Linux container's `npm install` writes into the bind-mounted `node_modules`,
+so `@rolldown/binding-win32-*` was replaced by `binding-linux-x64-gnu` and
+`-musl`. Every Windows vitest run then died with
+`UNRESOLVED_ENTRY: Cannot resolve entry module`, which looks nothing like a
+platform-binary problem. `npm install` on Windows restored 10 packages and
+removed 17, and the gate loaded. **Running the Linux gates against a bind mount
+breaks the Windows toolchain every time, and the fix has to be re-run before any
+Windows gate.**
+
+**3. Gate 14's first run: 5 failed, 8 did not run — because I rebuilt the
+containers wrong.** I recreated `rc-web` and `rc-worker` from a captured
+environment but did not reproduce their **volume mounts**, so
+`NODE_EXTRA_CA_CERTS=/certs/ca.pem` pointed at a path that did not exist. Every
+invitation and password-reset path then failed with
+`unable to verify the first certificate` — a 500 to the caller. Mounting
+`infra/tls-local` at `/certs:ro` fixed it and the suite ran 47/47.
+
+> **This one is worth carrying into the runbook, because it is a production
+> failure mode, not a test artifact.** If the deployment sets
+> `NODE_EXTRA_CA_CERTS` and the file is not present in the container, the
+> application starts, passes its health check, serves pages — and silently
+> cannot send a single email. Nothing warns at boot. The browser suite caught
+> it because it actually reads a mailbox; a smoke test that only checks pages
+> load would not have.
+
 ### 1.4 Two gates that are not run on Linux, and why
 
 Neither is a weakened check; both are environment facts, recorded rather than

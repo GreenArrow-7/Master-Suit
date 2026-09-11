@@ -214,6 +214,30 @@ rows it does not modify.
 
 ## 6. TLS, proxy, provider and storage checks
 
+### 6.0 If `NODE_EXTRA_CA_CERTS` is set, prove the file is there
+
+```bash
+docker compose -p master-suite -f infra/docker-compose.prod.yml exec web   sh -c 'echo "$NODE_EXTRA_CA_CERTS"; ls -l "$NODE_EXTRA_CA_CERTS"'
+```
+
+**Do this before the smoke tests, not after.** If the variable names a file the
+container does not have, the application starts normally, answers
+`/api/health`, serves every page — and cannot send a single email. Every
+invitation and password reset fails with `unable to verify the first
+certificate`, which reaches the user as a plain 500 with nothing about
+certificates in it. Nothing warns at boot, and no page-loading smoke test finds
+it.
+
+This is not hypothetical: it is how the browser suite failed 5 specs during
+release verification, with the application otherwise healthy (checkpoint §1.5).
+
+The same applies to the worker, which sends mail of its own:
+
+```bash
+docker compose -p master-suite -f infra/docker-compose.prod.yml exec worker   sh -c 'ls -l "$NODE_EXTRA_CA_CERTS"'
+```
+
+
 ```bash
 # TLS terminates in front, and the chain is complete (not just "responds").
 curl -sS -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' https://<APP_URL>/login
@@ -240,8 +264,8 @@ credentials are correct: a wrong SMTP password fails at send time, not at boot.
 Health, first:
 
 ```bash
-curl -fsS https://<APP_URL>/api/health/live   # process is up
-curl -fsS https://<APP_URL>/api/health/ready  # database and Redis reachable
+curl -fsS https://<APP_URL>/api/health/live   # process is up (touches nothing)
+curl -fsS https://<APP_URL>/api/health       # database and Redis reachable
 ```
 
 Then these, by hand, as a **real client account** — not the demo account:
@@ -278,7 +302,7 @@ Stop immediately, and do not proceed to the next step, if:
 - The preflight reports unfinished migrations, cross-workspace references, or an
   automation rule that writes `nextFollowUpAt`.
 - `FollowUpTask` row count **falls** across the migration.
-- `/api/health/ready` does not return success within 2 minutes of start.
+- `/api/health` does not return success within 2 minutes of start.
 - `BUILD_COMMIT` in the running container is not the release SHA, or is `unknown`.
 - Sign-in fails for a real client account.
 - Any audit row records `ip` as the proxy address (the proxy CIDRs are wrong;

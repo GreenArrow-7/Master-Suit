@@ -3,6 +3,20 @@ set -uo pipefail
 cd /w/apps/web
 echo "REVISION=$(cat /w/.git/HEAD 2>/dev/null | head -c 60)"
 echo "=== node $(node -v) on $(uname -sr) ==="
+# node_modules must be the container's own, never the bind-mounted host copy.
+# One tree cannot hold two platforms' native binaries: a Linux run replaces
+# @rolldown/binding-win32-* and @esbuild/win32-x64 with their linux builds, the
+# next Windows run swaps them back, and whichever ran second leaves the other
+# broken in a way that reads as "cannot resolve entry module" or a bare esbuild
+# TransformError. Run this container with an anonymous volume over
+# /w/apps/web/node_modules and the two stop fighting.
+if [ -d node_modules/@esbuild/win32-x64 ] || ls -d node_modules/@rolldown/binding-win32-* >/dev/null 2>&1; then
+  echo 'REFUSED: node_modules is the Windows host copy, reached through the bind mount.'
+  echo 'Installing over it would swap its native binaries for Linux ones and break'
+  echo 'every Windows gate afterwards. Re-run with an anonymous volume:'
+  echo '  docker run ... -v "$(pwd -W):/w" -v /w/apps/web/node_modules ...'
+  exit 2
+fi
 npm install --no-audit --no-fund >/dev/null 2>&1
 npx prisma generate >/dev/null 2>&1
 # Connection strings come from the environment when the caller supplies them

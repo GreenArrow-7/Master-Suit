@@ -335,10 +335,15 @@ a manual check before handover.
 Nothing has been removed. These are **proposals**, and the release can include
 them if the owner decides the risk is acceptable.
 
-| Proposal | Why | If the owner declines |
+| Proposal | Status | Why |
 | --- | --- | --- |
-| **Defer booking confirmation and agency fee collection** | Two concurrent confirmations can both succeed and the same unit can be sold twice; collection records no amount or evidence. There is no booking UI, so no client user loses a screen they currently have. | The defect must be fixed before handover: a row lock plus `moveUnit` in one transaction and a partial unique index. That is not achievable before 12 September with the verification it would need. |
-| **Restrict `bookings:*` permissions** so the API cannot be reached while deferred | The API is live even without a UI. | Leave it open and accept the double-sell risk. |
+| ~~Defer booking confirmation~~ | **Withdrawn 12 Sep 2026** | The owner answered the policy question instead, and the defect was fixed. Deferring a workflow to avoid fixing it was always the worse of the two, and it is no longer the cheaper one either — see §6.4 on how badly I estimated the fix. |
+| ~~Restrict `bookings:*` permissions~~ | **Withdrawn, never applied** | It existed to contain the double-sale while the workflow was deferred. No permission was ever revoked. The denial matrix that would have proved the restriction holds is kept in `RELEASE-CHECKPOINT-CORRECTED.md` §3.5, because it is the fallback if the rebuilt artifact does not clear verification before the go/no-go. |
+| **Defer agency fee collection** | **Still proposed, still needs approval** | `collectedAt` records no amount, no evidence and no second pair of eyes. Unlike booking, this cannot be fixed by a decision alone: **D-8** asks who may certify collection and whether an amount must be recorded, and both answers change the schema or the permission map. |
+
+**If the owner declines the collection deferral:** the release date slips. That
+is a straight statement of cost, not a lever — D-8 has been open since the
+validation report, and answering it starts a schema change, not a patch.
 
 ---
 
@@ -346,7 +351,9 @@ them if the owner decides the risk is acceptable.
 
 ### 6.1 Completed
 
-Release defects closed and tested; 16 gates run on the deployment OS; the
+**Booking atomicity fixed** — the defect that had been the single blocking one
+— after the client answered the policy question on 12 September. Release defects
+closed and tested; 16 gates run on the deployment OS; the
 browser suite run against the real release artifact over verified TLS with real
 login; mail, worker and notification recovery verified directly; migration
 rehearsed against manufactured damage; read-only production preflight written;
@@ -356,56 +363,85 @@ runbook written; handover materials written.
 
 | # | Blocker | Impact | Owner |
 | --- | --- | --- | --- |
-| 1 | **Booking atomicity** | Same unit sold twice; irreversible commercially | Client owner — approve deferral, or accept a slipped date |
-| 2 | ~~Browser-level HR journey not exercised~~ | **Resolved** — 47/47, the HR journey included | — |
-| 3 | ~~Required password change not exercised~~ | **Resolved** — the invitation suite sets a password through the emailed link, signs in, and proves the link cannot be reused | — |
-| 4 | **Deployed version unconfirmed** | The migration inventory assumes at or after `main` | Production operator — `scripts/release.sh status` |
+| 1 | ~~Booking atomicity~~ | **Resolved 12 Sep 2026.** The policy question was answered and the defect fixed, locked, constrained and tested (§2.4) | — |
+| 2 | **Agency fee collection** — no amount, no evidence, no separation of duties | A "collected" tick that cannot say how much arrived, and the seller can tick it | Client owner — **D-8**, still unanswered |
+| 3 | **Deployed version unconfirmed** | The migration inventory assumes at or after `main` | Production operator — `scripts/release.sh status` |
+| 4 | **Production preflight not run** | Table sizes, orphan counts, automation rules and the booking/unit audit are all unknown against real data | Production operator — runbook §2 and §2.1 |
 | 5 | Task PATCH visibility check (§4.7) | A user with `leads:EDIT` can patch any task in the workspace | Schedule immediately after handover |
+| 6 | No booking UI, therefore no browser coverage of the fix | The workflow is reachable only through the API | Product — the page is a build, not a fix |
 
 ### 6.3 Dependent on production access or a business decision
 
-- Confirming the currently deployed version, table sizes, orphan counts and
-  automation rules — **all require running the preflight against production**,
-  which this work has no access to. The script is written and the expected
-  outputs are documented.
-- Deferring booking/collection — **a business decision**, not a technical one.
+- Confirming the currently deployed version, table sizes, orphan counts,
+  automation rules and **whether any existing data blocks the two new booking
+  constraints** — all require running the preflight and the booking audit
+  against production, which this work has no access to. Both scripts are
+  written and their expected outputs are documented.
+- **Deferring collection** — a business decision (D-8), not a technical one.
 - Whether partial-day leave should block a whole day — a policy question.
 
-### 6.4 Realistic completion estimate
+### 6.4 Realistic completion estimate, and where my earlier one was wrong
 
-With booking/collection deferred, the remaining work is the manual smoke tests
-and the operator's preflight: **about 3 hours of operator and client time**,
-comfortably inside the window to 09:00 on 12 September.
+**My earlier estimate said booking atomicity was "two to three days" and that
+the 12 September handover "would not be met" if the deferral were declined.
+That was wrong, and wrong in the direction that matters: it overstated the cost
+of doing the right thing.** The implementation was a few hours once the policy
+question was answered, because the pieces were already in the repository — a
+row-locked `moveUnit`, a backlog entry naming the exact index, and six
+acceptance tests already specified. What I had actually been blocked on was one
+sentence from the client, not two days of work.
 
-**If the owner declines the deferral,** booking atomicity needs a locked
-confirmation, an inventory move in the same transaction, a partial unique index,
-concurrency tests and a browser check. That is **two to three days**, and the
-12 September handover would not be met. **Flagging that now rather than at 09:00
-tomorrow.**
+The correction matters beyond this defect: an estimate that makes a fix look
+unaffordable is an argument for deferral dressed up as arithmetic.
 
-### 6.5 Recommendation
+**What genuinely remains, in hours:**
 
-> **CONDITIONAL GO**, for an explicitly limited scope: **the Sales CRM and the
-> HRMS workflows listed in §2.1 and §2.2, with booking confirmation and agency
-> fee collection deferred and their permissions restricted.**
+| Work | Owner | Estimate |
+| --- | --- | --- |
+| Re-run gates 12–16 at the new revision; rebuild both images from it; re-run the browser suite against them | This work — **in progress** | 2–3 hours |
+| Production preflight + booking audit (runbook §2, §2.1) | Operator, against production | 30 minutes |
+| Manual smoke tests on real client accounts | Operator + client | 1 hour |
+| D-8 answered, or collection deferral approved in writing | Client owner | Their call |
 
-Conditional on all four:
+### 6.5 Recommendation, and the deadline risk
 
-1. The client owner approves the §5 deferral in writing.
-2. The operator runs §2 of the runbook against production and none of its stop
-   conditions fires.
-3. ~~Runbook smoke tests 12–15~~ — no longer a condition; the journey they stood
-   in for is now automated browser evidence. Still worth running as a human
-   sanity check on real client accounts.
-4. ~~The required-password-change path checked by hand~~ — now covered by the
-   invitation and password-reset suites.
+> **Still not a GO — and the reason has changed.** It is no longer "there is a
+> defect that sells the same flat twice". It is that a GO needs evidence from a
+> production system this work cannot reach.
 
-**This is not a GO.** Passing tests are not a deployment decision, and the
-remaining conditions depend on evidence nobody has yet: production data, which
-requires access this work does not have. If condition 1 is declined — that is,
-if the booking workflow must ship fixed rather than restricted — the
-recommendation becomes **NO-GO for 12 September**; see the checkpoint §8.1 for
-the revised date.
+**Deadline risk, flagged rather than smoothed over:**
+
+1. **The 09:00 go/no-go cannot be met from this side.** Conditions 2 and 3 below
+   depend on the operator running the preflight against production. Nothing I do
+   before 09:00 changes that. If nobody runs it, the honest answer at 09:00 is
+   **NO-GO for lack of evidence**, not "GO because the tests pass".
+2. **The booking fix is hours old.** Its unit and service evidence is strong and
+   its negative control is real, but the release *artifact* containing it is
+   being rebuilt now, and the browser suite has not yet run against that build.
+   Until it has, the last fully-verified artifact is `c09cb43`, which does
+   **not** contain the fix. **Shipping a fix whose artifact was never exercised
+   is not better than shipping the defect.**
+3. **Collection is still undecided.** D-8 has been open throughout and is not
+   affected by the 12 September answer. Either the owner approves deferring
+   collection in writing, or the date slips for a reason that has nothing to do
+   with booking.
+4. **There is no booking UI**, so the fixed workflow has no browser coverage and
+   cannot have any. That is a gap in the evidence, not a defect in the fix, and
+   it should be stated to the client rather than papered over with the API-level
+   result.
+
+**Conditional on all of:**
+
+1. **Collection** deferred with the owner's written approval, or D-8 answered
+   and the work scheduled honestly.
+2. The operator runs runbook §2 **and §2.1** against production and no stop
+   condition fires.
+3. Gates 12–16 pass at the new revision and the browser suite passes against the
+   rebuilt images — **in progress, not yet evidence.**
+4. Manual smoke tests on real client accounts, as a human sanity check.
+
+**Passing tests are still not a deployment decision.** Production remains
+**NOT APPROVED**, and nothing in this section changes that.
 
 ---
 
@@ -414,7 +450,8 @@ the revised date.
 1. Fix the browser suite's mail steps to read the capture service instead of the
    production-disabled dev route, so the five specs can run against a release
    artifact.
-2. Booking atomicity and the collection event (§2.4), if deferred.
+2. ~~Booking atomicity~~ — done. **The collection event** (§2.4) remains, and
+   needs D-8 answered first.
 3. The Task PATCH visibility check (§4.7).
 4. `update_field` allow-list widened to the remaining worker-maintained columns
    (§4.4).

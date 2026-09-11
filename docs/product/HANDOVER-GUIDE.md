@@ -146,7 +146,7 @@ Run at **start of day, midday and end of day** on day one. Ten minutes each.
 
 | # | Check | Where | Healthy looks like |
 | --- | --- | --- | --- |
-| 1 | Application answering | `GET /api/health/ready` | success |
+| 1 | Application answering | `GET /api/health` | `{"status":"ok","checks":{"database":"up","redis":"up"}}` |
 | 2 | Running version | container `BUILD_COMMIT` | the release SHA, not `unknown` |
 | 3 | Workers alive | worker container logs | `workers started`, 9 queues |
 | 4 | Nothing stuck in the queues | BullMQ / logs | no growing backlog |
