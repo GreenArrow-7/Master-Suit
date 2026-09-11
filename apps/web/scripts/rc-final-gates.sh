@@ -45,7 +45,13 @@ gate "10 face token"        python3 ../face/test_tokens.py
 gate "11 backup roundtrip"  bash scripts/test-backup-roundtrip.sh
 gate "16 audit"             npm audit --omit=dev --audit-level=high
 printf '\n12 unit suite\n'
-npx vitest run --reporter=default >/tmp/v.log 2>&1; UNIT_RC=$?
+# Kept outside the container, deliberately. A gate that reports "1 failed" and
+# discards which one costs a forty-minute re-run to answer the first question
+# anybody asks.
+EV=/w/validation-evidence/release-candidate
+mkdir -p "$EV" 2>/dev/null
+npx vitest run --reporter=default >"$EV/gate12-unit-detail.log" 2>&1; UNIT_RC=$?
+cp "$EV/gate12-unit-detail.log" /tmp/v.log
 sed 's/\x1b\[[0-9;]*m//g' /tmp/v.log | grep -E 'Test Files|Tests ' | tail -2
 printf '12 unit suite               exit=%s %s\n' "$UNIT_RC" "$([ $UNIT_RC -eq 0 ] && echo PASS || echo FAIL)"
 [ $UNIT_RC -ne 0 ] && fail=1

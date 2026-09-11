@@ -145,7 +145,7 @@ is the new revision, and it supersedes §1.3 for release purposes.
 | 14 | E2E (browser) | Windows Chromium → `web:2272065` + `worker:2272065` over TLS, `NODE_ENV=production` | **0** | **47 passed / 0 failed / 0 skipped / 0 did not run** |
 | 15 | Build | Linux `node:24` | **0** | — |
 
-#### Three failures tonight that were mine, not the product's
+#### Four failures tonight that were mine, not the product's
 
 Recorded because a release log that only contains the runs that worked is not a
 record of anything.
@@ -196,6 +196,21 @@ invitation and password-reset path then failed with
 > cannot send a single email. Nothing warns at boot. The browser suite caught
 > it because it actually reads a mailbox; a smoke test that only checks pages
 > load would not have.
+
+**4. I corrupted a running gate run by committing an edit to the script it was
+executing.** `bash` reads a script incrementally by byte offset, so inserting
+lines near the top of a file that is mid-execution makes it resume at the wrong
+place — the run died with
+`syntax error near unexpected token '('` at a line that is syntactically fine.
+The lesson is the same one as deleting `.env.test.local` mid-run and is now a
+rule rather than a resolution: **the gate runner is copied outside the worktree
+before the container starts**, and the container executes the copy, so editing
+the repository cannot reach a run in flight.
+
+Four self-inflicted failures in one night, three of which first presented as
+something else. The reason they are all written down is that every one of them
+could have been reported as a product failure by someone in a hurry, and two of
+them nearly were.
 
 ### 1.4 Two gates that are not run on Linux, and why
 

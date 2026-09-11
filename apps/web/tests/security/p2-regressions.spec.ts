@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
+import { getUploadMaxMb } from '@/lib/platform-settings';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { redis } from '@/lib/redis';
 import { MethodNotAllowed, MethodNotAllowedError } from '@/lib/errors';
@@ -72,8 +73,26 @@ describe('P2-8: write-only actions answer 405, not 500', () => {
 
 // ── P2-4 · uploads were buffered before the size check ───────────────────────
 describe('P2-4: an oversized upload is refused before it is read', () => {
+  /**
+   * The limit the route will actually use, not the environment variable.
+   *
+   * `getUploadMaxMb()` prefers the `PlatformSetting` row over `env`, and
+   * `platform-admin-crud.spec.ts` writes that row — key `uploadMaxMb`, value
+   * `10` — while testing the operator console. `PlatformSetting` carries no
+   * tenantId (it is in `GLOBAL_MODELS`), so there is no isolation between the
+   * two files: run them in parallel and this one asserted `/25 MB/` against a
+   * refusal that correctly said `10 MB`. Reading the effective value here asks
+   * the same question the route does.
+   *
+   * ponytail: the residual window — the row changing between this read and the
+   * route's — is microseconds rather than the length of another spec file, but
+   * it is not zero. The real fix is for a globally mutable operator setting not
+   * to be shared by spec files running in parallel; that is a suite change, not
+   * a release one.
+   */
   it('rejects on Content-Length before parsing the body', async () => {
-    const maxBytes = env.UPLOAD_MAX_MB * 1024 * 1024;
+    const uploadMaxMb = await getUploadMaxMb();
+    const maxBytes = uploadMaxMb * 1024 * 1024;
 
     /**
      * The body is deliberately not valid multipart.
@@ -100,12 +119,12 @@ describe('P2-4: an oversized upload is refused before it is read', () => {
     });
 
     expect(response.status).toBe(413);
-    expect((await response.json()).detail).toMatch(new RegExp(`${env.UPLOAD_MAX_MB} MB`));
+    expect((await response.json()).detail).toMatch(new RegExp(`${uploadMaxMb} MB`));
   });
 
   it('still refuses a file whose declared size is honest but too large', async () => {
     // The second guard: `file.size`, known without reading the bytes.
-    const maxBytes = env.UPLOAD_MAX_MB * 1024 * 1024;
+    const maxBytes = (await getUploadMaxMb()) * 1024 * 1024;
     const form = new FormData();
     form.set('file', new File([new Uint8Array(maxBytes + 1024)], 'big.pdf', { type: 'application/pdf' }));
     form.set('employeeId', 'irrelevant');
