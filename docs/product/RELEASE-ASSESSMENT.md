@@ -181,7 +181,7 @@ services, on the tested SHA.
 | 9 | Redis auth | **PASS** |
 | 10 | Face token gate | **PASS** |
 | 11 | Backup round trip | **PASS** |
-| 12 | Unit suite | **PASS — 2,136 / 2,136, 160 / 160 files, 0 skipped** |
+| 12 | Unit suite | **PASS — 2,137 / 2,137, 160 / 160 files, 0 skipped** |
 | 13 | Integration (server) | **PASS — 6 / 6.** Run on **Windows**, not Linux: the suite deletes Redis keys by pattern and its isolation guard requires a loopback Redis, which a container reaching the host cannot present. The guard was satisfied, not overridden. |
 | 14 | E2E (browser) | **40 passed / 5 failed / 0 skipped** — §3.3 |
 | 15 | Build | **PASS** |
@@ -207,9 +207,14 @@ real credentials, not an injected session.
 
 | | |
 | --- | --- |
-| **Passed** | **40** |
+| **Passed** | **40** — 30 in the full run, plus the 10 that the aborted run left unexecuted, run separately |
 | **Failed** | **5** |
 | **Skipped** | **0** |
+| **Unexecuted** | **0** |
+
+Run twice: once on `a032de1` and again on the final image `c09cb43`. Identical
+result both times, same five specs, same cause — so the failure is reproducible
+and is not a flake.
 
 **All five failures have one cause, and it is not an application defect.** They
 read captured mail from `/api/v1/dev/outbox`. That route refuses in production
