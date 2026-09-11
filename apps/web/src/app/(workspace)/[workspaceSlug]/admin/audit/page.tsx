@@ -35,6 +35,16 @@ const DOMAINS: Record<string, { label: string; objectTypes: string[] }> = {
    * often" is one click rather than a scroll through everything else.
    */
   service: { label: 'Platform service', objectTypes: [] },
+  /**
+   * What our own staff looked at, as distinct from what our machines did.
+   *
+   * Without this the SUPPORT_READ rows fell into the Sign-in tab, because that
+   * tab is "platform events that are not SERVICE_READ" — so a customer asking
+   * "has anyone from the vendor been in our data, and what did they open" got
+   * their own staff's logins mixed in and no way to separate them. The rows
+   * were always written; they were not findable.
+   */
+  staff: { label: 'Platform staff', objectTypes: [] },
   access: { label: 'Accounts and roles', objectTypes: ['user', 'role', 'membership_role', 'hr_policy'] },
   leave: { label: 'Leave', objectTypes: ['hr_leave_request', 'hr_leave_balance'] },
   attendance: {
@@ -68,6 +78,9 @@ export default async function Page({
   // Both of these read PlatformAuditEvent; they differ in which half of it.
   const showAuth = !selected || domain === 'auth';
   const showService = !selected || domain === 'service';
+  const showStaff = !selected || domain === 'staff';
+  /** The platform events that are neither an automated read nor a staff read. */
+  const AUTH_EXCLUDES = ['SERVICE_READ', 'SUPPORT_READ'];
 
   const [records, platformEvents] = await Promise.all([
     prisma.auditLog.findMany({
@@ -87,17 +100,19 @@ export default async function Page({
         occurredAt: true,
       },
     }),
-    showAuth || showService
+    showAuth || showService || showStaff
       ? prisma.platformAuditEvent.findMany({
           where: {
             tenantId: ctx.tenantId,
-            // Unfiltered shows both. Picking a tab narrows to one half rather
-            // than dropping the other silently.
-            ...(showAuth && showService
+            // Unfiltered shows all three. Picking a tab narrows to one rather
+            // than dropping the others silently.
+            ...(showAuth && showService && showStaff
               ? {}
               : showService
                 ? { event: 'SERVICE_READ' }
-                : { event: { not: 'SERVICE_READ' } }),
+                : showStaff
+                  ? { event: 'SUPPORT_READ' }
+                  : { event: { notIn: AUTH_EXCLUDES } }),
           },
           orderBy: { occurredAt: 'desc' },
           take: 60,
@@ -166,12 +181,19 @@ export default async function Page({
        * not the thing deciding whether it exists.
        */
       const isService = row.event === 'SERVICE_READ';
+      // Named as a role, not as a person: which member of the vendor's staff it
+      // was is platform-internal, and the customer's claim is on the fact and
+      // the scope of the access. The platform console's own audit page carries
+      // the individual, and the row's actorUserId is the join between them.
+      const isStaff = row.event === 'SUPPORT_READ';
       return {
         id: row.id,
         at: row.occurredAt,
         actor: isService
           ? 'Automated platform service'
-          : row.actorUserId
+          : isStaff
+            ? 'Platform support staff'
+            : row.actorUserId
             ? (names.get(row.actorUserId) ?? 'Removed user')
             : 'System',
         action: isService
