@@ -5,6 +5,7 @@ import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
 import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
+import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -92,6 +93,19 @@ export async function handleMaintenanceJob(job: { name: string }): Promise<unkno
     logger.info(result, 'lead triage sweep complete');
     return result;
   }
+  if (job.name === 'follow-up-drift') {
+    /**
+     * Report-only, by design and without an override.
+     *
+     * Every writer recomputes under the lead's lock, so a non-zero count here
+     * means a path exists that does not — and auto-correcting would hide the
+     * one signal that says so. Repair is an operator action against a named
+     * workspace, not something a cron does at 03:20.
+     */
+    const result = await sweepDriftCanary();
+    logger.info(result, 'next-follow-up drift canary complete');
+    return result;
+  }
   logger.warn({ jobName: job.name }, 'unknown maintenance job');
 }
 
@@ -125,6 +139,8 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { pattern: FIVE_MINUTE_PATTERN },
     { name: 'triage-sweep' },
   );
+  // 03:20, after retention has settled: the canary reads what the night left.
+  await queue.upsertJobScheduler('follow-up-drift-daily', { pattern: '20 3 * * *' }, { name: 'follow-up-drift' });
   await queue.close();
-  return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely'];
+  return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely', 'follow-up-drift-daily'];
 }
