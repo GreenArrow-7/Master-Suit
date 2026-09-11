@@ -58,7 +58,6 @@ const pending = [
   '20260911150000_follow_up_lead_relation',
   '20260911150500_follow_up_lead_relation_validate',
 ];
-const have = new Set(applied.map((r) => r.migration_name));
 const { rows: allApplied } = await c.query(
   `SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`,
 );

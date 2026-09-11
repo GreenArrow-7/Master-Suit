@@ -92,9 +92,16 @@ export function stateOf(dueAt: Date | null | undefined, now: Date): FollowUpStat
  * the reach, so it never claims more absence than the viewer can actually see:
  * only a viewer who can see every obligation is told that nothing is scheduled.
  */
-export function emptyFollowUpLabel(access: ObligationAccess, view: 'personal' | 'scope'): string {
+export function emptyFollowUpLabel(access: ObligationAccess, view: 'personal' | 'scope', viewerId?: string): string {
   if (access.unrestricted) return 'No action scheduled';
   if (view === 'personal') return 'No action assigned to you';
+  // A rep's "team" is themselves — `scope` and `personal` resolve to the same
+  // owner set — so telling them nothing is assigned to their team is both
+  // confusing and slightly wrong. The wording follows the resolved reach, not
+  // the name of the view.
+  const onlySelf = (set: OwnerSet) =>
+    set.kind === 'none' || (set.kind === 'ids' && set.ids.length === 1 && set.ids[0] === viewerId);
+  if (viewerId && onlySelf(access.task) && onlySelf(access.followUp)) return 'No action assigned to you';
   return 'No action assigned to your team';
 }
 

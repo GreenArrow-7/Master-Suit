@@ -116,7 +116,13 @@ describe('an empty follow-up cell describes the viewer, not the lead', () => {
   });
 
   it('a limited team view says the same about the team', () => {
-    expect(emptyFollowUpLabel(access(false), 'scope')).toBe('No action assigned to your team');
+    expect(emptyFollowUpLabel(access(false), 'scope', 'someone-else')).toBe('No action assigned to your team');
+  });
+
+  it("a rep's team view says 'you', because their team is themselves", () => {
+    // `scope` and `personal` resolve to the same owner set for a rep, so
+    // "nothing assigned to your team" would be both confusing and wrong.
+    expect(emptyFollowUpLabel(access(false), 'scope', 'u1')).toBe('No action assigned to you');
   });
 
   it('only a viewer who sees every obligation is told nothing is scheduled', () => {
@@ -130,7 +136,8 @@ describe('an empty follow-up cell describes the viewer, not the lead', () => {
     // work on each lead on screen. No label may imply that again.
     const all = [
       emptyFollowUpLabel(access(false), 'personal'),
-      emptyFollowUpLabel(access(false), 'scope'),
+      emptyFollowUpLabel(access(false), 'scope', 'someone-else'),
+      emptyFollowUpLabel(access(false), 'scope', 'u1'),
       emptyFollowUpLabel(access(true), 'scope'),
     ];
     for (const label of all) {

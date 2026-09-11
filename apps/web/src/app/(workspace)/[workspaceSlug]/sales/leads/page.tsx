@@ -300,7 +300,7 @@ export default async function LeadsPage({
           taskTypes={taskTypes}
           canAssign={can(ctx, 'leads', 'ASSIGN')}
           canEdit={can(ctx, 'leads', 'EDIT')}
-          emptyLabel={emptyFollowUpLabel(access, view)}
+          emptyLabel={emptyFollowUpLabel(access, view, ctx.actor.id)}
         />
       )}
 

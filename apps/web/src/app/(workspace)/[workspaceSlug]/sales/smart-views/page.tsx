@@ -289,7 +289,7 @@ export default async function SmartViewsPage({
             taskTypes={taskTypes}
             canAssign={can(ctx, 'leads', 'ASSIGN')}
             canEdit={can(ctx, 'leads', 'EDIT')}
-            emptyLabel={emptyFollowUpLabel(access, 'scope')}
+            emptyLabel={emptyFollowUpLabel(access, 'scope', ctx.actor.id)}
           />
         )}
       </div>
