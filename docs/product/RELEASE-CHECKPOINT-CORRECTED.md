@@ -8,6 +8,39 @@ Nothing merged, deployed, or run against production.
 
 ---
 
+## 0. Background tasks at review time
+
+Five were running, not four. All five were the same thing: a shell polling loop
+I had left waiting on a string that could never appear.
+
+| Task | Purpose | Type / identifier | Revision | Environment | Can modify files? | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ba1qphsx2` | Wait for `GATE_FAIL=` in `/tmp/gates3.log` | `local_bash` | n/a — reads a log | Windows shell | **No** — `until grep …; do sleep 90; done` | Stopped |
+| `bet9ffwhf` | Same, 120 s interval | `local_bash` | n/a | Windows shell | **No** | Stopped |
+| `bxp21s9jn` | Same, reporting build lines | `local_bash` | n/a | Windows shell | **No** | Stopped |
+| `bcf3auc5x` | Same | `local_bash` | n/a | Windows shell | **No** | Stopped |
+| `bv8u48hw8` | Same | `local_bash` | n/a | Windows shell | **No** | Stopped |
+
+**Why they could never finish.** The gate run they were watching died partway:
+`npx vitest run … | tee | tail` under `set -o pipefail` propagated the unit
+suite's non-zero exit and killed the script before it printed `GATE_FAIL=`. So
+gate 15 never ran in that pass either — which is exactly why the totals could
+not be inferred from it.
+
+**Before stopping them** I confirmed each one's command (read-only polling, no
+writes), that no output would be lost (all five had produced zero bytes), and
+that nothing depended on them. The evidence they were watching —
+`gates3.log` — is preserved in `validation-evidence/release-candidate/`. No
+shared database, container, environment file or credential was touched.
+
+**The real lesson is the earlier one.** These loops were harmless. The genuinely
+damaging thing I did was delete `apps/web/.env.test.local` — the running
+container's database configuration, through a bind mount — *while a gate run was
+using it*, which produced a 91-file failure that looked like a code regression
+and was not. Both are recorded rather than tidied away.
+
+---
+
 ## 1. The gate reconciliation, and what I got wrong
 
 ### 1.1 The contradiction
@@ -41,45 +74,54 @@ the same artifact, with `NODE_ENV=production` unchanged and
 `/api/v1/dev/outbox` still returning **404**, from 30 passed / 5 failed to
 **43 passed / 0 failed**.
 
-### 1.3 The gate table
+### 1.3 The gate table — all sixteen, re-run at HEAD
 
-Artifact under test: **`master-suite/web`, digest
-`sha256:45d6a416e5b8cc14cd598b17c49edaafbdec4c496cd0146be15cb017cc0b75b5`**,
-built from `c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2`, running
-`node server.js` under `NODE_ENV=production` behind a TLS terminator.
+Every gate below was executed in one consolidated pass at the current revision,
+each with its own exit code captured. **No total is inferred from another
+gate.** The runner deliberately does not use `set -e`, so a failure reports and
+the remaining gates still run — the earlier script aborted on the first failure,
+which is how gate 15 came to be missing from a run I then summarised.
 
-Source revision for source-level gates: **`308a74cab78272dc31666ae737d638d2e83ee642`**.
+| | |
+| --- | --- |
+| Source revision | **`92d1aa15`** (`apps/web` identical to `d5eef50` apart from the gate-runner script, which was present during the run) |
+| Working tree | clean |
+| Web image | `master-suite/web:c09cb43`, digest `sha256:45d6a416e5b8cc14cd598b17c49edaafbdec4c496cd0146be15cb017cc0b75b5` |
+| Worker image | `master-suite/worker:c09cb43`, digest `sha256:b8168ab848f2da481842a6cf094e010b5877199492562cf791372882110b5f95` |
+| Running container reports | `BUILD_COMMIT=c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2` |
+| Artifact vs source | `c09cb43 → 92d1aa1` is documentation plus one Playwright spec. The `production` image stage copies only `.next/standalone`, `.next/static`, `public` and `prisma`; a spec cannot enter the runtime image. |
 
-| # | Gate | Exact command | Environment | Exit | Counts | Evidence |
+| # | Gate | Command | Environment | Exit | Counts | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Schema drift | `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code` | Linux `node:24`, `master_suite_ci` | 0 | — | `validation-evidence/release-candidate/gates-linux.log` |
-| 2 | Tenant isolation | `node scripts/check-rls.mjs` | as above | 0 | 184 tables forced + policied, 7 bootstrap exempt | as above |
-| 3 | Raw SQL scope | `node scripts/check-raw-sql-scope.mjs` | as above | 0 | 35 raw statements, all in a tenant transaction | as above |
-| 4 | Typecheck | `npx tsc --noEmit` | as above | 0 | — | as above |
-| 5 | Lint | `npm run lint` | as above | 0 | 0 errors, 131 warnings | as above |
-| 6 | Format check | `npm run format:check` | as above | 0 | — | as above |
-| 7 | README schema counts | `node scripts/schema-stats.mjs --check` | as above | 0 | 204 models, 108 enums, 446 indexes | as above |
-| 8 | Observability drift | `npm run check:observability` | as above | 0 | 12 alert rules, 9 queues watched | as above |
-| 9 | Redis auth | `npm run check:redis-auth` | as above | 0 | 8 compose files require a password | as above |
-| 10 | Face token gate | `python3 ../face/test_tokens.py` | as above | 0 | all checks passed | as above |
-| 11 | Backup round trip | `scripts/test-backup-roundtrip.sh` | as above | 0 | 11 checks passed | `validation-evidence/release-candidate/backup-restore.log` |
-| 12 | Unit suite | `npx vitest run` | as above | 0 | **2,137 passed / 0 failed / 0 skipped**, 160 files | `gates-linux.log` |
-| 13 | Integration (server) | `npm run test:server` | **Windows**, loopback Postgres + Redis | 0 | **6 passed / 0 failed** | see §1.4 |
-| 14 | **E2E (browser)** | `npx playwright test` | **Windows Chromium → the release image over TLS** | **0** | **47 passed / 0 failed / 0 skipped / 0 unexecuted** | `validation-evidence/release-candidate/e2e-gate14-47-passed.log` |
-| 15 | Build | `npm run build` | Linux `node:24` | 0 | — | `gates-linux.log` |
-| 16 | Audit | `npm audit --omit=dev --audit-level=high` | as above | 0 | 0 vulnerabilities | `gates-linux.log` |
+| 1 | Schema drift | `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code` | Linux `node:24`, `master_suite_ci` | **0** | no difference | `gates-linux-head.log` |
+| 2 | Tenant isolation | `node scripts/check-rls.mjs` | as above | **0** | 184 tables forced + policied | `gates-linux-head.log` |
+| 3 | Raw SQL scope | `node scripts/check-raw-sql-scope.mjs` | as above | **0** | 35 statements, all tenant-scoped | `gates-linux-head.log` |
+| 4 | Typecheck | `npx tsc --noEmit` | as above | **0** | — | `gates-linux-head.log` |
+| 5 | Lint | `npm run lint` | as above | **0** | 0 errors | `gates-linux-head.log` |
+| 6 | Format check | `npm run format:check` | as above | **0** | — | `gates-linux-head.log` |
+| 7 | README schema counts | `node scripts/schema-stats.mjs --check` | as above | **0** | 204 models / 108 enums / 446 indexes | `gates-linux-head.log` |
+| 8 | Observability drift | `npm run check:observability` | as above | **0** | 12 rules, 9 queues | `gates-linux-head.log` |
+| 9 | Redis auth | `npm run check:redis-auth` | as above | **0** | 8 compose files | `gates-linux-head.log` |
+| 10 | Face token gate | `python3 ../face/test_tokens.py` | as above | **0** | all checks | `gates-linux-head.log` |
+| 11 | Backup round trip | `bash scripts/test-backup-roundtrip.sh` | as above | **0** | 11 checks | `backup-restore.log` |
+| 12 | Unit suite | `npx vitest run` | as above | **0** | **2,137 passed / 0 failed / 0 skipped**, 160 files | `gates-linux-head.log` |
+| 13 | Integration (server) | `npm run test:server` | **Windows**, loopback Postgres + Redis, `master_suite_val` | **0** | **6 passed / 0 failed** | `gate13-integration-head.log` |
+| 14 | E2E (browser) | `npx playwright test` | **Windows Chromium → `web:c09cb43` + `worker:c09cb43` over TLS**, `NODE_ENV=production`, dev outbox 404 | **0** | **47 passed / 0 failed / 0 skipped / 0 unexecuted** | `gate14-e2e-head.log` |
+| 15 | Build | `npx next build` | Linux `node:24` | **0** | — | `gates-linux-head.log` |
+| 16 | Audit | `npm audit --omit=dev --audit-level=high` | as above | **0** | 0 vulnerabilities | `gates-linux-head.log` |
 
-**16 of 16 pass — and this time gate 14's own exit code is the evidence, not my
-summary of it.**
+**16 of 16, sixteen recorded exit codes.** `LINUX_GATES_FAIL=0` covers 1–12, 15,
+16; gates 13 and 14 carry their own exit codes above.
 
-> **One aborted run, recorded so the logs are not misread.** An earlier attempt
-> at gates 12 and 15 on this revision reported *91 files failed, 1,252 skipped*.
-> That was not a regression: I deleted `apps/web/.env.test.local` — the
-> container's database configuration, read through a bind mount — while the run
-> was in progress, so the suite lost its connection mid-flight. Re-run without
-> interference: **2,137 passed, 0 failed, 0 skipped**, build PASS
-> (`gates-unit-build-308a74c.log`). The aborted output is left in
-> `gates-linux.log` rather than deleted; this note is why it is there.
+#### The aborted run, kept separate
+
+`gates-linux.log` is a **different, earlier, failed** run and is retained
+deliberately rather than deleted. It reports *91 files failed, 1,252 skipped* at
+gate 12 and then stops. Cause: I deleted `apps/web/.env.test.local` — the
+container's database configuration, visible to it through a bind mount — while
+that run was using it. Not a code regression, and not the same run as the table
+above. It is kept so the record shows what happened rather than only what
+worked.
 
 ### 1.4 Two gates that are not run on Linux, and why
 
@@ -452,6 +494,32 @@ Not accepted on the strength of four highlighted fixes; mapped individually.
 
 **Also required and delivered:** the 13-versus-14 reconciliation (§1) and all
 repository gates plus browser regression (§1.3).
+
+### 6.1 What the headline numbers tested
+
+| Number | Gate | Tested against | Scope of the claim |
+| --- | --- | --- | --- |
+| **2,137 / 2,137, 0 skipped** | 12, unit suite | Source `92d1aa1`, Linux `node:24`, `master_suite_ci` | Services and components against a real database. **Not** a browser, **not** the release image. |
+| **47 / 47, 0 skipped, 0 unexecuted** | 14, browser | `web:c09cb43` + `worker:c09cb43` over TLS, real login, `NODE_ENV=production`, dev outbox 404 | Journeys a person can walk. Test code from `92d1aa1`; artifact from `c09cb43`; the delta is documentation plus the spec itself. |
+| **6 / 6** | 13, integration | Source `92d1aa1`, Windows, loopback services | Server-mounted API behaviour. |
+
+### 6.2 What these journeys are, and what they are not
+
+The 47 cover: sign-in, MFA enrolment and recovery codes; invitation issue,
+redemption and single use; password reset end to end; refusal and empty states;
+the CRM lifecycle through lead → activity → task → follow-up → opportunity →
+won; the full People module through hire, department, leave, overtime,
+attendance and payroll; every Sales and People route rendering; CSP and
+hydration; notification-bell drilldown; request budgets; platform workspace
+administration; mobile viewport behaviour; and the four new follow-up tests.
+
+**They are not the roadmap.** Everything in packages 2–10 remains unstarted and
+unverified: task-store consolidation, task reminders, the agent daily
+workspace, the manager exception workflow, HRMS operational connections,
+customer identity and deduplication, the booking/inventory/financial package,
+and the full acceptance matrix. Package 1's six requirements are complete; the
+other nine packages are not begun, and nothing here should be read as coverage
+of them.
 
 **Found and fixed while doing it,** outside the six: `public/` was never copied
 into any release image, so `sw.js`, `offline.html` and both PWA icons 404'd in
