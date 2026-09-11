@@ -2,16 +2,19 @@
 /**
  * Serves the production build locally, without pretending to be production.
  *
- * `next start` sets NODE_ENV=production when nothing else has, and
- * lib/startup-check.ts then refuses to boot because the provider keys are
- * `mock` — correctly, since a mock provider accepts what the real one would
- * reject. That guard is the point and must not be weakened.
+ * The build is `output: 'standalone'` (next.config.ts), so it is served the way
+ * infra/Dockerfile serves it: `node server.js`, out of the bundle. `next start`
+ * did the job here until Next 16.3.4 began saying — correctly — that the two do
+ * not go together; it had been working by accident, one release from stopping.
  *
- * The escape it names is running the build with NODE_ENV=development, which is
- * exactly what this does: the compiled artefact is served as-is, so the timings
- * are the production ones, but nothing claims to be a deployment. Setting the
- * variable inline is not portable — cmd.exe does not take `VAR=value cmd` — so
- * it happens here instead, once, where it can carry an explanation.
+ * Serving the artefact is not deploying it, and lib/startup-check.ts refuses to
+ * boot under NODE_ENV=production while the provider keys are `mock` — correctly,
+ * since a mock provider accepts what the real one would reject. That guard is
+ * the point and must not be weakened. The escape it names is running the build
+ * with NODE_ENV=development, which is what happens below; the standalone server
+ * sets production for itself, so the variable is put back rather than passed in.
+ * Setting it inline is not portable either — cmd.exe does not take
+ * `VAR=value cmd` — so it happens here, once, where it can carry an explanation.
  *
  * The port is the dev server's, deliberately. Both read `.next`, so a build
  * overwrites what `next dev` is serving and the two cannot run at once anyway —
@@ -27,16 +30,25 @@
  *   npm run start:local -- -p 4000
  */
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 
 const DIST = '.next-prod';
 const STAMP = `${DIST}/BUILD_ID`;
+const STANDALONE = `${DIST}/standalone`;
 const NEXT = 'node_modules/next/dist/bin/next';
 
 const args = process.argv.slice(2);
 const forceBuild = args.includes('--build');
-const passthrough = args.filter((arg) => arg !== '--build');
-if (!passthrough.includes('-p') && !passthrough.includes('--port')) passthrough.push('-p', '3000');
+const portFlag = args.findIndex((arg) => arg === '-p' || arg === '--port');
+const port = portFlag === -1 ? '3000' : args[portFlag + 1];
+// The port reaches the standalone server as $PORT, which it parses with a `||
+// 3000` fallback — so a missing or malformed one silently serves the port you
+// did not ask for. `next start` rejected it; keep rejecting it.
+if (!/^\d+$/.test(port ?? '')) {
+  console.error(`${args[portFlag]} needs a port number.`);
+  process.exit(1);
+}
 
 /**
  * Only the server gets NODE_ENV=development. The build must not.
@@ -46,21 +58,22 @@ if (!passthrough.includes('-p') && !passthrough.includes('--port')) passthrough.
  * `Cannot read properties of null (reading 'useContext')` on /_not-found. The
  * escape the startup check names is for running the artefact, not producing it.
  *
- * Both commands read next.config.ts, so both need NEXT_DIST_DIR or the server
- * looks for a build that is not there.
+ * The build reads next.config.ts and so needs NEXT_DIST_DIR to land anywhere but
+ * `.next`. The server does not: `next build` inlines the resolved config into
+ * the bundle it generates, `.next-prod` and all.
  */
-const run = (argv, extraEnv) =>
+const run = (label, argv, extraEnv) =>
   new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [NEXT, ...argv], {
+    const child = spawn(process.execPath, argv, {
       stdio: 'inherit',
       env: { ...process.env, NEXT_DIST_DIR: DIST, ...extraEnv },
     });
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`next ${argv[0]} exited with ${code}`))));
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${label} exited with ${code}`))));
   });
 
 if (forceBuild || !existsSync(STAMP)) {
   console.log(`Building into ${DIST}. This takes a few minutes; it is skipped next time.\n`);
-  await run(['build']).catch((error) => {
+  await run('next build', [NEXT, 'build']).catch((error) => {
     // A failed build still leaves BUILD_ID behind, and the check above would
     // then read it as a finished one and serve the wreckage.
     rmSync(STAMP, { force: true });
@@ -71,10 +84,52 @@ if (forceBuild || !existsSync(STAMP)) {
   console.log(`Serving the existing ${DIST} build. Pass --build after changing source.\n`);
 }
 
-console.log(`Serving with NODE_ENV=development on port ${passthrough[passthrough.indexOf('-p') + 1]}.`);
+// The bundle is deliberately incomplete: `next build` leaves `<dist>/static` and
+// `public/` for whoever deploys it to place, which is what the two COPY lines in
+// infra/Dockerfile do. Without them the pages render and every script, stylesheet
+// and icon they ask for is a 404. Copied on every start rather than only after a
+// build, so a tree left by an earlier revision of this script heals itself.
+cpSync(`${DIST}/static`, `${STANDALONE}/${DIST}/static`, { recursive: true });
+cpSync('public', `${STANDALONE}/public`, { recursive: true });
+
+// The bundle carries a copy of .env, taken when it was built — so without this
+// line, editing .env and restarting would go on serving the values the build
+// happened to see. Loading the live file here puts it in the environment the
+// server inherits, and @next/env never overwrites a variable that is already
+// set, so it wins. After the build and not before: .env sets NODE_ENV, which is
+// the one thing the build must not be handed (see above).
+if (existsSync('.env')) process.loadEnvFile('.env');
+
+console.log(`Serving ${STANDALONE} with NODE_ENV=development on port ${port}.`);
 console.log('Real deployments must set real provider credentials; see lib/startup-check.ts.\n');
 
-await run(['start', ...passthrough], { NODE_ENV: 'development' }).catch((error) => {
+/**
+ * `server.js` sets NODE_ENV=production and chdirs into the bundle before it
+ * listens. A deployment wants both; this preview wants neither — production
+ * trips the startup check above ("Refusing to start in production with mock
+ * providers configured", and the process exits), and the new cwd moves every
+ * relative path the application resolves, ATTENDANCE_CAPTURE_DIR among them,
+ * inside a directory that the next `--build` deletes.
+ *
+ * Undoing them on the line after `require` is enough: that still runs before
+ * `startServer` reaches its first await, so nothing the application loads — the
+ * instrumentation hook and its startup check included — ever sees either value.
+ */
+const undoDeploymentDefaults = [
+  'const cwd = process.cwd();',
+  'require(process.argv[1]);',
+  "process.env.NODE_ENV = 'development';",
+  'process.chdir(cwd);',
+].join('');
+
+await run('the server', ['-e', undoDeploymentDefaults, resolvePath(STANDALONE, 'server.js')], {
+  PORT: port,
+  // Pinned rather than inherited: `next start` ignored $HOSTNAME and always
+  // bound 0.0.0.0, while the standalone server binds whatever it finds there —
+  // infra/Dockerfile has to pin the same variable for the same reason. An
+  // environment that exports one would otherwise move the preview off localhost.
+  HOSTNAME: '0.0.0.0',
+}).catch((error) => {
   console.error(error.message);
   process.exit(1);
 });
