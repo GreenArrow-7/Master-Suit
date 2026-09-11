@@ -71,13 +71,45 @@ export const itemAllowed = (item: NavItem, permitted: string[]) =>
   !item.permission ||
   (Array.isArray(item.permission) ? item.permission : [item.permission]).every((p) => permitted.includes(p));
 
-export function buildWorkspaceNav({
+export function buildWorkspaceNav({ permitted, ...input }: NavInput): NavGroup[] {
+  return allNavGroups(input)
+    .map((group) => ({ ...group, items: group.items.filter((item) => itemAllowed(item, permitted)) }))
+    .filter((group) => group.items.length > 0);
+}
+
+/**
+ * Every permission any nav item gates on, read off the nav itself.
+ *
+ * `(workspace)/[workspaceSlug]/layout.tsx` kept its own hand-written list of
+ * these and filtered it with `can()` to produce `permitted`. Two lists of the
+ * same thing drift, and this pair had: thirteen modules the nav gates on were
+ * missing from the layout's copy — `visits`, `projects`, `listings`,
+ * `requirements`, `clientprofiles`, `commissions`, `commissionslabs`,
+ * `contests`, `posts`, `referrals`, `testimonials`, `allocation` and `payroll`.
+ *
+ * A missing key is not a missing link, it is a *permanently* missing link:
+ * `permitted` could never contain it, so `itemAllowed` filtered the item out for
+ * every user in every workspace no matter what their role granted. Site visits
+ * had no sidebar entry for anybody, while the page itself answered 200 to anyone
+ * who typed the URL — so the permission was real and only the way to reach it
+ * was gone.
+ *
+ * Derived rather than listed, so a nav item added tomorrow brings its permission
+ * with it and there is no second place to remember.
+ */
+export function navPermissionKeys(): string[] {
+  const permissions = allNavGroups({ modules: ['SALES', 'HRMS'], slug: '_' })
+    .flatMap((group) => group.items)
+    .flatMap((item) => (item.permission ? (Array.isArray(item.permission) ? item.permission : [item.permission]) : []));
+  return [...new Set(permissions)].sort();
+}
+
+function allNavGroups({
   slug,
   modules,
-  permitted,
   serviceMode = false,
   platformStaff = false,
-}: NavInput): NavGroup[] {
+}: Omit<NavInput, 'permitted'>): NavGroup[] {
   const sales = modules.includes('SALES');
   /**
    * People is hidden from platform staff outright, not merely emptied.
@@ -372,9 +404,7 @@ export function buildWorkspaceNav({
     ],
   });
 
-  return groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => itemAllowed(item, permitted)) }))
-    .filter((group) => group.items.length > 0);
+  return groups;
 }
 
 /** Module-relative href → "/{slug}/sales/leads?q=x". The lists that read `?q=`. */

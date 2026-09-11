@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
+import { navPermissionKeys } from '@/lib/nav/workspaceNav';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
@@ -15,40 +16,6 @@ import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
 
 export const dynamic = 'force-dynamic';
-
-/** Every permission module the workspace navigation can gate an item on. */
-const PERMISSION_KEYS = [
-  'leads',
-  'opportunities',
-  'accounts',
-  'contacts',
-  'activities',
-  'tasks',
-  'documents',
-  'tickets',
-  'products',
-  'fieldsales',
-  'campaigns',
-  'calls',
-  'events',
-  'forms',
-  'landingpages',
-  'communications',
-  'automation',
-  'reports',
-  'dashboards',
-  'smartviews',
-  'users',
-  'roles',
-  'settings',
-  'integrations',
-  'auditlogs',
-  // HR, split by authority (P1-8).
-  'employee',
-  'leave',
-  'attendance',
-  'hr_documents',
-];
 
 export default async function WorkspaceLayout({
   children,
@@ -226,7 +193,7 @@ async function loadShell(workspaceSlug: string) {
           : [{ slug: workspace.slug, name: workspace.displayName }],
       // The sidebar is a client component and cannot evaluate permissions
       // itself, so the VIEW grants are resolved here and handed over as a list.
-      permitted: PERMISSION_KEYS.filter((key) => can(ctx, key, 'VIEW')),
+      permitted: navPermissionKeys().filter((key) => can(ctx, key, 'VIEW')),
       // Same trick for the + Create menu: entries whose module the role cannot
       // CREATE never render (a read-only executive gets no menu at all).
       creatable: ['leads', 'opportunities', 'accounts', 'contacts', 'calls', 'events'].filter((key) =>
