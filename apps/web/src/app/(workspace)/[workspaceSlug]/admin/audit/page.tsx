@@ -194,8 +194,8 @@ export default async function Page({
           : isStaff
             ? 'Platform support staff'
             : row.actorUserId
-            ? (names.get(row.actorUserId) ?? 'Removed user')
-            : 'System',
+              ? (names.get(row.actorUserId) ?? 'Removed user')
+              : 'System',
         action: isService
           ? `read · ${(row.metadata as { action?: string } | null)?.action?.toLowerCase() ?? 'view'}`
           : reason

@@ -104,7 +104,6 @@ describe('a protected read cannot outlive its audit row', () => {
     expect(body).not.toContain(SECRET_LEAD_NAME);
     expect(body).not.toContain(SECRET_LEAD_PHONE);
   });
-
 });
 
 describe('what the audit row is allowed to contain', () => {
