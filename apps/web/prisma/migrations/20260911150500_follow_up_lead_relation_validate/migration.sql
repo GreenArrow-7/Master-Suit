@@ -1,0 +1,14 @@
+-- Validate the foreign key added NOT VALID by 20260911150000.
+--
+-- Separate file, therefore separate transaction. VALIDATE CONSTRAINT takes
+-- SHARE UPDATE EXCLUSIVE on "FollowUpTask" and ROW SHARE on "Lead": it scans
+-- the referencing rows without blocking INSERT, UPDATE or DELETE on either
+-- table. Concurrent writes see the constraint enforced from the moment the
+-- previous migration committed, so nothing can slip past while this runs.
+--
+-- If this fails, the cause is a row whose "leadId" does not resolve, and the
+-- previous migration already detached those. A failure here therefore means a
+-- row arrived between the two migrations pointing at a lead that was deleted in
+-- the same window — recoverable by re-running the detach and this validation.
+-- Nothing is deleted or silently repaired either way.
+ALTER TABLE "FollowUpTask" VALIDATE CONSTRAINT "FollowUpTask_leadId_fkey";

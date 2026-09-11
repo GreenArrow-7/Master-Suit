@@ -24,9 +24,25 @@ BEGIN
   END IF;
 END $$;
 
+-- NOT VALID, and validated by the next migration.
+--
+-- A plain ADD CONSTRAINT ... FOREIGN KEY scans every row of "FollowUpTask" while
+-- holding SHARE ROW EXCLUSIVE on *both* tables. That blocks INSERT, UPDATE and
+-- DELETE on "Lead" — the busiest table in the product — for as long as the scan
+-- takes. On the validation database that is milliseconds; on a customer's it is
+-- a write outage of unknown length, which is not a thing to discover during a
+-- handover.
+--
+-- NOT VALID takes the same lock but does no scan, so it is brief and bounded.
+-- The scan then happens in 20260911150500, in its own transaction, under
+-- SHARE UPDATE EXCLUSIVE — which does not block writes. They are two files
+-- because `prisma migrate deploy` wraps each file in one transaction, and locks
+-- taken in a transaction are held until it commits: putting both statements
+-- here would hold the first lock across the second's scan and buy nothing.
 ALTER TABLE "FollowUpTask"
   ADD CONSTRAINT "FollowUpTask_leadId_fkey"
-  FOREIGN KEY ("leadId") REFERENCES "Lead"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("leadId") REFERENCES "Lead"("id") ON DELETE CASCADE ON UPDATE CASCADE
+  NOT VALID;
 
 -- The derivation's per-lead union scan, on both stores.
 CREATE INDEX IF NOT EXISTS "FollowUpTask_tenantId_leadId_status_dueAt_idx"
