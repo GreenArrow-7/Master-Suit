@@ -5,6 +5,7 @@ import { ulid } from 'ulid';
 import { resolveCtx } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { assertPermission, type Action, type Ctx } from '@/lib/security/rbac';
+import { recordPlatformAccess } from '@/lib/auth/service-identity';
 import { assertModuleEntitlement, type ProductModule } from '@/lib/security/entitlements';
 
 export interface WorkspacePageOptions {
@@ -73,7 +74,7 @@ export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductM
 export async function resolveWorkspacePage(workspaceSlug: string, options: WorkspacePageOptions) {
   const ctx = await requestCtx();
   const workspace = await requestWorkspace(ctx, workspaceSlug, options.module);
-  assertPageAccess(ctx, options);
+  await assertPageAccess(ctx, options);
   return { ctx, workspace };
 }
 
@@ -93,7 +94,7 @@ export async function resolveWorkspacePage(workspaceSlug: string, options: Works
 export async function requirePageAccess(options: WorkspacePageOptions) {
   const ctx = await requestCtx();
   if (options.module) await assertModuleEntitlement(ctx.tenantId, options.module);
-  assertPageAccess(ctx, options);
+  await assertPageAccess(ctx, options);
   return ctx;
 }
 
@@ -135,11 +136,71 @@ export async function pageLoad<T>(load: Promise<T>): Promise<T> {
   }
 }
 
-function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
-  if (options.permission === SELF_SERVICE) return;
+/**
+ * The gate, and — for platform staff only — the audit row for having passed it.
+ *
+ * ── Why the audit hook is here and not in the API kernel ────────────────────
+ *
+ * The kernel audits every request a platform identity makes, but a workspace
+ * *screen* never reaches it: `sales/leads/page.tsx` and its 113 siblings are
+ * server components that call this helper and then query Prisma directly. So
+ * the one path platform staff actually use to look at a customer's data — open
+ * the console, enter the workspace, click through Leads, Calls, Follow-ups —
+ * produced exactly one `WORKSPACE_OPENED` row at the door and nothing after it.
+ *
+ * This function is the only choke point both gate helpers share, which is why
+ * the hook sits here rather than in either of them. A page that renders without
+ * passing through here renders without a permission check either, and
+ * `tests/security/page-access` is the suite that holds that line.
+ *
+ * `recordPlatformAccess` is the same writer the kernel uses, so staff page views
+ * and staff API calls land in one stream under one event name rather than
+ * becoming two things an incident has to join up. It self-guards on the actor
+ * id: for one of the customer's own employees this costs a string comparison and
+ * writes nothing.
+ *
+ * The write is awaited and may throw, exactly as on the API path. A screen that
+ * renders a customer's records when the record of that read could not be written
+ * is the outcome the whole design exists to prevent, and a page is not a weaker
+ * case than an endpoint.
+ */
+async function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
+  if (options.permission !== SELF_SERVICE) {
+    try {
+      assertPermission(ctx, options.permission[0], options.permission[1]);
+    } catch {
+      forbidden();
+    }
+  }
+
+  await recordPlatformAccess(ctx, {
+    // SELF_SERVICE screens carry no module/action pair to report. They are the
+    // viewer's own profile and notifications, so `self` is the honest label —
+    // and they are still recorded, because "which screens did they open" must
+    // not have holes in it.
+    module: options.permission === SELF_SERVICE ? 'self' : options.permission[0],
+    action: options.permission === SELF_SERVICE ? 'VIEW' : options.permission[1],
+    method: 'GET',
+    path: await pagePath(),
+    status: 200,
+  });
+}
+
+/**
+ * The URL of the screen being rendered, as well as a server component can know it.
+ *
+ * There is no first-class way to read it: `headers()` is what a server component
+ * has, and Next populates `next-url` on a client-side navigation and leaves it
+ * absent on a full document load, where `referer` is no help either. So this is
+ * best-effort by construction, and the audit row does not depend on it — the
+ * module and action above are derived from the page's own declared permission
+ * and are always correct.
+ */
+async function pagePath(): Promise<string> {
   try {
-    assertPermission(ctx, options.permission[0], options.permission[1]);
+    const header = await headers();
+    return header.get('next-url') ?? header.get('x-invoke-path') ?? 'page';
   } catch {
-    forbidden();
+    return 'page';
   }
 }

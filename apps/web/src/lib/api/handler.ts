@@ -6,7 +6,7 @@ import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
-import { requirePlatformServiceActor, recordServiceAccess } from '../auth/service-identity';
+import { requirePlatformServiceActor, recordPlatformAccess } from '../auth/service-identity';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
@@ -170,16 +170,22 @@ export function route<
       }
 
       /**
-       * Every request from a platform service identity, not only the routes
-       * that declare an `auditEvent`.
+       * Every request from a platform identity — machine or human — and not only
+       * the routes that declare an `auditEvent`.
+       *
+       * The `if (ctx?.service)` that used to stand here is why a *person* with
+       * platform staff authority could read a customer's whole workspace behind
+       * a single WORKSPACE_OPENED row while an automated credential had every
+       * request recorded. `recordPlatformAccess` decides for itself from the
+       * actor id, so the caller cannot be the thing that forgets.
        *
        * Awaited and unguarded on purpose: if this write fails the request fails
        * with it. The alternative is serving a customer's records to a
-       * cross-tenant machine reader and having no record that it happened, which
-       * is the one outcome the identity is not allowed to produce.
+       * cross-tenant reader and having no record that it happened, which is the
+       * one outcome neither identity is allowed to produce.
        */
-      if (ctx?.service) {
-        await recordServiceAccess(ctx, {
+      if (ctx) {
+        await recordPlatformAccess(ctx, {
           module: spec.module,
           action: spec.action,
           method: req.method,
@@ -237,14 +243,14 @@ export function route<
        * customer data, so a failed audit write must not turn a 403 into a 500
        * and lose the real cause.
        */
-      if (ctx?.service) {
-        await recordServiceAccess(ctx, {
+      if (ctx) {
+        await recordPlatformAccess(ctx, {
           module: spec.module,
           action: spec.action,
           method: req.method,
           path: new URL(req.url).pathname,
           status: response.status,
-        }).catch((auditErr) => logger.error({ err: auditErr, requestId }, 'service audit write failed'));
+        }).catch((auditErr) => logger.error({ err: auditErr, requestId }, 'platform audit write failed'));
       }
       // Counted here rather than inside toResponse: this is the one place that
       // sees both the outcome and how long reaching it took, and a slow 500 is a

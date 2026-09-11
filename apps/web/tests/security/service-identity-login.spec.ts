@@ -508,8 +508,21 @@ describe('platform-level, and audited', () => {
     const names = new Set(events.map((row) => row.event));
     expect(names.has('LOGIN')).toBe(true);
     expect(names.has('LOGIN_FAILED')).toBe(true);
-    // Platform authentication is not an act inside a customer's workspace.
-    expect(events.every((row) => row.tenantId === null)).toBe(true);
+
+    /**
+     * Platform authentication is not an act inside a customer's workspace.
+     *
+     * Narrowed from "every row this identity has ever written", which asserted
+     * more than it meant and held only while the identity's *reads* went
+     * unrecorded. An interactive service session carries no `ctx.service`, so
+     * the kernel's `if (ctx?.service)` did not recognise it and wrote nothing;
+     * closing that made this identity produce workspace-scoped SERVICE_READ
+     * rows, which is the intended behaviour and not a violation of the sentence
+     * above. The assertion now says what the sentence says.
+     */
+    const authEvents = events.filter((row) => ['LOGIN', 'LOGIN_FAILED', 'LOGOUT'].includes(row.event));
+    expect(authEvents.length).toBeGreaterThan(0);
+    expect(authEvents.every((row) => row.tenantId === null)).toBe(true);
   });
 
   it('never writes a password, secret, recovery code or token into the audit trail', async () => {

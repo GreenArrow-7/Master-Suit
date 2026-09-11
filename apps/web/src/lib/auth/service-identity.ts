@@ -3,7 +3,7 @@ import { prisma } from '../db';
 import { Forbidden, Invalid, NotFound, Unauthorized } from '../errors';
 import { hashPassword, verifyPassword } from './password';
 import { clientIp } from './session';
-import { buildSupportActor } from './support-actor';
+import { buildSupportActor, platformUserIdOf } from './support-actor';
 import { isPlatformServiceRole } from './platform-policy';
 import { consume, limits } from '../security/ratelimit';
 import { redis } from '../redis';
@@ -26,7 +26,7 @@ import type { Ctx } from '../security/rbac';
  *
  * It is **not** invisible in the platform audit log, and nothing here tries to
  * make it so. Every request it makes writes a `PlatformAuditEvent` — see
- * `recordServiceAccess`, called unconditionally by the API kernel rather than
+ * `recordPlatformAccess`, called unconditionally by the API kernel rather than
  * per-route, because "every route remembered to audit" is not a property either.
  *
  * ── Why a credential and not a password ─────────────────────────────────────
@@ -315,30 +315,68 @@ async function noteWorkspaceSpread(credentialId: string, tenantId: string) {
 }
 
 /**
- * The audit row for one service request.
+ * The audit row for one request made by a platform identity — machine or human.
  *
- * Called by the API kernel for every request this identity makes — not by the
+ * Called by the API kernel for every request such an identity makes — not by the
  * routes, and not only for routes that declare an `auditEvent`. A cross-tenant
  * reader whose reads are audited only where somebody remembered to ask is a
  * reader with an incomplete trail, and the gap would be invisible until an
  * incident asked what it had seen.
+ *
+ * ── Why it stopped being service-only ───────────────────────────────────────
+ *
+ * It was `recordServiceAccess`, and the asymmetry it left was the largest audit
+ * gap in the product. An `AI_SERVICE` credential had every request recorded;
+ * a *person* holding platform staff authority had one `WORKSPACE_OPENED` row at
+ * the door and nothing afterwards. The machine was held to the stricter standard
+ * than the human, which is exactly backwards — a credential cannot decide to go
+ * looking at a customer's data out of curiosity.
+ *
+ * Both callers are recognised from `ctx.actor.id`, which carries the platform
+ * prefix for both, so a future third kind of platform caller is audited by
+ * default rather than by being remembered here.
  *
  * Failure to write is deliberately fatal to the request. The alternative —
  * logging the failure and serving the data anyway — is a read of a customer's
  * records with no record of it, which is the one outcome this whole design
  * exists to prevent.
  */
-export async function recordServiceAccess(
+export async function recordPlatformAccess(
   ctx: Ctx,
   detail: { module: string; action: string; method: string; path: string; objectId?: string; status: number },
 ) {
-  if (!ctx.service) return;
-  await noteWorkspaceSpread(ctx.service.credentialId, ctx.tenantId);
+  // Self-guarding rather than guarded at the call site: the kernel calls this on
+  // every request, and "the caller forgot the `if`" must not be the difference
+  // between an audited read and an unaudited one.
+  const platformUserId = ctx.service?.platformUserId ?? platformUserIdOf(ctx.actor.id);
+  if (!platformUserId) return;
+
+  // Machine-only, and left that way. The spread monitor answers "is one
+  // credential sweeping an unusual number of workspaces", which is a question
+  // about an automated job; a person opening workspaces one at a time through a
+  // console does not produce the shape it looks for.
+  if (ctx.service) await noteWorkspaceSpread(ctx.service.credentialId, ctx.tenantId);
+
   await prisma.platformAuditEvent.create({
     data: {
       tenantId: ctx.tenantId,
-      actorUserId: ctx.service.platformUserId,
-      event: 'SERVICE_READ',
+      actorUserId: platformUserId,
+      /**
+       * Two streams, one table. The customer's audit screen already filters on
+       * SERVICE_READ to separate automated reads from everything else, so a
+       * distinct name is what keeps staff activity separable from machine
+       * activity without either becoming invisible.
+       *
+       * Decided from the actor's role key, not from `ctx.service`. A machine
+       * identity reaches a workspace two ways — a credential, which sets
+       * `ctx.service`, and the interactive session `api/v1/auth/service-login`
+       * mints, which does not — and the second was the other half of this audit
+       * gap: its reads were recorded nowhere at all, because the kernel's old
+       * `if (ctx?.service)` did not recognise it as a service caller. Keying on
+       * the role key puts both under SERVICE_READ, where a customer looking at
+       * their "Platform service" tab expects automated reads to appear.
+       */
+      event: ctx.actor.roleKey === 'platform_service' ? 'SERVICE_READ' : 'SUPPORT_READ',
       objectType: detail.module,
       objectId: detail.objectId,
       requestId: ctx.requestId,
@@ -349,10 +387,15 @@ export async function recordServiceAccess(
         method: detail.method,
         path: detail.path,
         status: detail.status,
-        credentialId: ctx.service.credentialId,
-        // Prefixed to keep it readable as what it is: a claim by the caller, not
-        // something this system verified. See Ctx.service.declaredInitiator.
-        declaredInitiator: ctx.service.declaredInitiator,
+        ...(ctx.service
+          ? {
+              credentialId: ctx.service.credentialId,
+              // Prefixed to keep it readable as what it is: a claim by the
+              // caller, not something this system verified. See
+              // Ctx.service.declaredInitiator.
+              declaredInitiator: ctx.service.declaredInitiator,
+            }
+          : { roleKey: ctx.actor.roleKey }),
       },
     },
   });
