@@ -161,6 +161,32 @@ down. Both effects are real; the balance is yours.
 
 ---
 
+## D-19 · Must a confirmed booking name a unit? — **ANSWERED 12 September 2026**
+
+**Question.** Must every confirmed booking identify one specific inventory unit,
+or must confirmation also support bookings without a unit — off-plan, a block
+deal, a plot sale? If the latter, which booking types?
+
+**ANSWER (client owner, 12 September 2026), verbatim:**
+
+> "Every confirmed booking must identify one specific inventory unit."
+
+**What was done with it.** Implemented the same day on
+`claude/restructure-foundation`: confirmation refuses a booking with no unit,
+takes the unit's row lock and moves it in the confirming transaction, and the
+database carries both `Booking_confirmed_requires_unit` and
+`Booking_one_confirmed_per_unit`. See `IMPLEMENTATION-BACKLOG.md` P0-3 and
+`RELEASE-CHECKPOINT-CORRECTED.md` §3.3a and §3.4b.
+
+**Scope of the answer.** It binds **confirmation**, not drafting — a draft may
+still name only a project or a listing, which is what a draft is for. And it
+says nothing about collection: **D-8 remains open and blocking** for the
+collection half.
+
+**Gates:** P0-3 (closed by this answer).
+
+---
+
 ## D-8 · Collection and commission rules — **blocking**
 
 **Questions.**

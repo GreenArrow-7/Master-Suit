@@ -15,6 +15,7 @@ import { POST as createBooking, PATCH as patchBooking } from '@/app/api/v1/booki
 import { accrueCommission, clawback } from '@/services/money/commissions';
 import { createSessionToken } from '../helpers/session';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { fixtureUnit } from '../helpers/inventory';
 import { patch, post } from '../helpers/request';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -128,16 +129,29 @@ afterAll(async () => {
   await prisma.platformUser.deleteMany({ where: { normalizedEmail: `seller-${suffix}@bk.test` } }).catch(() => {});
 });
 
-async function draft(saleValue = 1_000_000) {
+/**
+ * A draft against its own fresh, available unit.
+ *
+ * Confirmation now names one specific flat, so every fixture here needs one of
+ * its own — two drafts sharing a unit is the double-sale, not a shortcut.
+ */
+async function draft(saleValue = 1_000_000, unitId?: string) {
+  const unitInventoryId = unitId ?? (await fixtureUnit(tenantId, projectId, 'AVAILABLE')).id;
   const res = await post(
     createBooking,
     '/api/v1/bookings',
-    { leadId, projectId, saleValue, bookingDate: new Date().toISOString() },
+    { leadId, projectId, unitInventoryId, saleValue, bookingDate: new Date().toISOString() },
     cookie,
   );
   expect(res.status).toBe(200);
   return res.body.id as string;
 }
+
+const confirm = (bookingId: string) =>
+  patch(patchBooking, '/api/v1/bookings', { action: 'CONFIRM', bookingId }, cookie);
+
+const unitStatus = async (id: string) =>
+  (await prisma.unitInventory.findFirstOrThrow({ where: { id, tenantId } })).status;
 
 describe('the booking state machine', () => {
   it('starts as a draft that accrues nothing', async () => {
@@ -209,5 +223,151 @@ describe('the booking state machine', () => {
       cookie,
     );
     expect(res.status).toBe(422);
+  });
+});
+
+/**
+ * Confirmation and inventory, as one act.
+ *
+ * The finding these cover: confirmation never touched inventory, so two
+ * concurrent confirmations against one flat both returned 200 and the unit
+ * still read AVAILABLE afterwards — inventory the next agent is shown and can
+ * sell again. The client's policy, given 2026-09-12, is that every confirmed
+ * booking identifies one specific unit; these are that policy and the control
+ * that enforces it.
+ */
+describe('a confirmed sale and the flat it is a sale of', () => {
+  it('refuses to confirm a booking that names no unit', async () => {
+    // Reachable: a draft may be written against a project alone.
+    const res = await post(
+      createBooking,
+      '/api/v1/bookings',
+      { leadId, projectId, saleValue: 1_000_000, bookingDate: new Date().toISOString() },
+      cookie,
+    );
+    expect(res.status).toBe(200);
+
+    const confirmed = await confirm(res.body.id as string);
+    expect(confirmed.status).toBe(422);
+    expect(JSON.stringify(confirmed.body)).toMatch(/unit/i);
+
+    const after = await prisma.booking.findFirstOrThrow({ where: { id: res.body.id, tenantId } });
+    expect(after.status).toBe('DRAFT');
+  });
+
+  it('takes the unit in the same transaction that confirms the booking', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const id = await draft(1_000_000, unit.id);
+
+    expect((await confirm(id)).status).toBe(200);
+    expect(await unitStatus(unit.id)).toBe('BOOKED');
+  });
+
+  it('leaves both the booking and the unit untouched when the move is refused', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'SOLD');
+    const id = await draft(1_000_000, unit.id);
+
+    const res = await confirm(id);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+
+    // Atomicity, both ways: the sale did not happen and the flat did not move.
+    expect((await prisma.booking.findFirstOrThrow({ where: { id, tenantId } })).status).toBe('DRAFT');
+    expect(await unitStatus(unit.id)).toBe('SOLD');
+  });
+
+  it('refuses to sell a flat out from under another agent\u2019s live hold', async () => {
+    const unit = await prisma.unitInventory.create({
+      data: {
+        tenantId,
+        projectId,
+        unitNumber: `HELD-${randomBytes(4).toString('hex')}`,
+        status: 'HELD',
+        heldById: 'somebody-else',
+        heldUntil: new Date(Date.now() + 86_400_000),
+      },
+    });
+    const id = await draft(1_000_000, unit.id);
+
+    expect((await confirm(id)).status).toBeGreaterThanOrEqual(400);
+    expect(await unitStatus(unit.id)).toBe('HELD');
+  });
+
+  it('lets exactly one of two concurrent confirmations win', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const first = await draft(1_000_000, unit.id);
+    const second = await draft(1_000_000, unit.id);
+
+    // Two route handlers, two transactions, two connections. The loser waits on
+    // the unit's row lock and is refused once it reads BOOKED.
+    const [a, b] = await Promise.all([confirm(first), confirm(second)]);
+
+    expect([a, b].filter((r) => r.status === 200)).toHaveLength(1);
+    const loser = [a, b].find((r) => r.status !== 200)!;
+    expect(loser.status).toBeGreaterThanOrEqual(400);
+    // A refusal with a reason, not a 500.
+    expect(loser.status).toBeLessThan(500);
+
+    expect(await prisma.booking.count({ where: { tenantId, unitInventoryId: unit.id, status: 'CONFIRMED' } })).toBe(1);
+  });
+
+  it('puts the flat back on the market when the sale is cancelled', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const id = await draft(1_000_000, unit.id);
+    expect((await confirm(id)).status).toBe(200);
+    expect(await unitStatus(unit.id)).toBe('BOOKED');
+
+    const res = await patch(
+      patchBooking,
+      '/api/v1/bookings',
+      { action: 'CANCEL', bookingId: id, reason: 'Client withdrew' },
+      cookie,
+    );
+    expect(res.status).toBe(200);
+    expect(await unitStatus(unit.id)).toBe('AVAILABLE');
+
+    // And the unit can be sold again, which is the point of releasing it.
+    const next = await draft(1_000_000, unit.id);
+    expect((await confirm(next)).status).toBe(200);
+  });
+
+  it('refuses a second confirmed booking even when the application is bypassed', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const id = await draft(1_000_000, unit.id);
+    expect((await confirm(id)).status).toBe(200);
+
+    // Straight at the table, with no route, no service and no lock — the shape
+    // of a script, a console session, or the next route that forgets.
+    await expect(
+      prisma.booking.create({
+        data: {
+          tenantId,
+          reference: `BK-BYPASS-${randomBytes(4).toString('hex')}`,
+          leadId,
+          projectId,
+          unitInventoryId: unit.id,
+          ownerId: userId,
+          status: 'CONFIRMED',
+          saleValue: D(1_000_000),
+          bookingDate: new Date(),
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('refuses a confirmed booking with no unit even when the application is bypassed', async () => {
+    await expect(
+      prisma.booking.create({
+        data: {
+          tenantId,
+          reference: `BK-NOUNIT-${randomBytes(4).toString('hex')}`,
+          leadId,
+          projectId,
+          ownerId: userId,
+          status: 'CONFIRMED',
+          saleValue: D(1_000_000),
+          bookingDate: new Date(),
+        },
+      }),
+    ).rejects.toThrow();
   });
 });

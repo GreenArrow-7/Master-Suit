@@ -38,7 +38,7 @@ inspection.
 | Concern                                       | Status   | Evidence                                                                                                                                                                                                     |
 | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | HR report visibility ignores granted scope    | **open** | `src/services/hr/reports.ts:805` still authorises with `can()`; `src/lib/security/rbac.ts:121-123` `can` = `scope !== 'NONE'` **[S]**; an OWN-scope employee exported 9 payslips for 9 employees **[R]**     |
-| Booking confirmation does not touch inventory | **open** | `src/app/api/v1/bookings/route.ts` references the unit only as `unitInventoryId` (`:66`, `:96`) and `unit` in the select (`:33`) — never `status` **[S]**; two concurrent confirms both returned 200 **[R]** |
+| Booking confirmation does not touch inventory | **closed 12 Sep 2026** (branch only, not merged) | Was: the route referenced the unit only as `unitInventoryId` and never as `status` **[S]**; two concurrent confirms both returned 200 **[R]**. Now: CONFIRM calls `moveUnitIn` inside its own transaction, `Booking_one_confirmed_per_unit` and `Booking_confirmed_requires_unit` are in the database, and the same concurrent pair yields one 200 and one refusal **[R]**. `finding-bc-booking.diag.ts` B1–B4 pass. |
 | Collection represented only by a timestamp    | **open** | `Booking.collectedAt` (`prisma/schema.prisma:6742`) is the whole representation; no Payment/Receipt/Invoice model exists **[S]**                                                                             |
 | Allocation eligibility and concurrency        | **open** | `status: 'ACTIVE'` appears at `assignLead.ts:71`, inside `nextDistributionOwner()` (starts `:51`), **not** in `assignLead()` (`:11-36`) **[S]**; 4 leads delivered against a quota of 2 **[R]**              |
 | Financial reporting (P&L)                     | **open** | `pl.ts:76` `status: { not: 'CANCELLED' }`; `pl.ts:227` no run-status filter; `pl.ts:236` current-team read **[S]**                                                                                           |
@@ -247,14 +247,15 @@ CHECKED_IN → COMPLETED` plus `REJECTED`, `CANCELLED`, `NO_SHOW` (`:6518-6528`)
 | Nav        | **absent** — no bookings entry in `lib/nav/workspaceNav.ts` **[S]**                                                                   |
 | Page       | **absent** — `sales/` has 40 directories, none is `bookings`; `/sales/bookings` returns **404** for a workspace administrator **[R]** |
 | API        | present — `api/v1/bookings` GET/POST/PATCH                                                                                            |
-| Service    | inventory service exists but is **not called** by the booking flow                                                                    |
+| Service    | `services/inventory/unitStatus.ts` — now called by the booking flow through `moveUnitIn(tx, …)`, in the confirming transaction        |
 | Model      | `Booking` (`:6700`), `Commission` (`:6845`), `Payout` (`:6905`)                                                                       |
-| Constraint | **no** unique index on `unitInventoryId`; 0 non-internal triggers **[R]**                                                             |
+| Constraint | `Booking_one_confirmed_per_unit` (partial unique on `unitInventoryId` where confirmed and live) and `Booking_confirmed_requires_unit` (CHECK, validated) as of `20260912020000`; 0 non-internal triggers **[R]** |
 | Test       | `tests/sales/bookings-route.spec.ts`; **no** E2E — `tests/e2e/every-route.spec.ts:53` omits bookings **[S]**                          |
 
 - **ADD** — the booking UI (workflow F of the validation report).
-- **REPAIR** — atomic inventory protection; concurrent confirmation; booking over
-  a `SOLD` unit or another agent's hold.
+- **REPAIR** — ~~atomic inventory protection; concurrent confirmation; booking over
+  a `SOLD` unit or another agent's hold.~~ **Done 12 Sep 2026** (branch only).
+  Still open: the booking **page** is absent, and there is no E2E for it.
 - **RETAIN** — `services/money/payouts.ts:168,174` is the reference pattern for
   separation of duties: permission **plus** a maker-checker rule refusing the
   creator. Booking collection should follow it, not reinvent it.

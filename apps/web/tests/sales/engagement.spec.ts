@@ -7,6 +7,7 @@ import { closeCategory, nominate, results, vote } from '@/services/engagement/no
 import { randomBytes } from 'node:crypto';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { fixtureUnit } from '../helpers/inventory';
 import type { Ctx, Scope } from '@/lib/security/rbac';
 
 /**
@@ -215,6 +216,7 @@ describe('contests', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId,
         status: 'CONFIRMED',
         saleValue: D(saleValue),

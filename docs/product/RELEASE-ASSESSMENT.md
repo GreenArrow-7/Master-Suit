@@ -99,31 +99,39 @@ was missing has been withdrawn.
 | Commission calculation and slabs | Service-verified; slab frozen at sale | **Included** |
 | Commission clawback on cancellation | Service-verified — a cancellation is refused while live commissions exceed reversals | **Included** |
 | P&L by team / region / branch | **Partially correct** — revenue split sound; cost side and draft-inclusion are not (§2.4) | **Included, with the limitation told to the client** |
-| **Booking: confirm** | **BLOCKING DEFECT — see §2.4** | **Proposed for deferral** |
-| **Agency fee collection** | **Incomplete — see §2.4** | **Proposed for deferral** |
+| **Booking: confirm** | **Defect fixed and verified 12 Sep 2026 — see §2.4.** Release verification at the new revision is the remaining step | **Included, pending the re-run of gates 12–16** |
+| **Agency fee collection** | **Still incomplete — see §2.4.** No amount, no evidence, no separation of duties | **Proposed for deferral — two open business questions, neither answered** |
 | Payouts (maker-checker) | Service-verified | **Included** |
 
 ### 2.4 The three previously documented concerns, revisited
 
-**Booking atomicity — STILL OPEN. This is the one blocking defect in the
-release.**
+**Booking atomicity — FIXED 12 September 2026, on the branch. Not merged, not
+deployed.**
 
-Confirmed by reading `src/app/api/v1/bookings/route.ts` today, not by repeating
-the earlier note:
+It was the one blocking defect, and it was blocked on a business question rather
+than on the code: the invariant to enforce depended on whether a confirmed
+booking may exist without a unit. The client owner answered on 12 September —
+*"Every confirmed booking must identify one specific inventory unit"* — and the
+fix follows directly from that.
 
-- Confirmation reads the booking with `findFirst` and then updates it. **There is
-  no row lock.** Under `READ COMMITTED` two concurrent confirmations can both
-  observe `status = 'DRAFT'` and both succeed.
-- **The confirmation never touches inventory.** `moveUnit` — which exists and is
-  row-locked — is not called. Confirming a booking does not reserve or move the
-  unit.
-- **There is no database constraint.** The only unique index on `Booking` is
-  `(tenantId, reference)`. Nothing prevents two `CONFIRMED` bookings against one
-  listing.
+What was wrong, and what each part now is:
 
-Consequence in plain terms: **the same unit can be sold twice**, and the system
-will not notice. There is also no booking UI at all, so today this is reachable
-only through the API.
+| Was | Is |
+| --- | --- |
+| Confirmation read the booking with `findFirst` and updated it. **No row lock.** Under `READ COMMITTED` two concurrent confirmations both saw `DRAFT` and both succeeded. | The unit is locked first (`FOR UPDATE`), then the booking row is re-read under its own lock and revalidated. The loser of a race gets a refusal with a reason. |
+| **Confirmation never touched inventory.** `moveUnit` existed, was row-locked, and was not called. | `moveUnitIn(tx, …)` runs inside the confirming transaction. The unit moves and the booking is written together, or neither happens. |
+| **No database constraint.** The only unique index on `Booking` was `(tenantId, reference)`. | `Booking_one_confirmed_per_unit` (partial unique) and `Booking_confirmed_requires_unit` (CHECK, validated). |
+
+Verified by the six acceptance tests the backlog specified plus two for the new
+policy, all inside gate 12 rather than a diagnostic; by a negative control that
+removes the lock and fails 6 of the 14; and by `finding-bc-booking.diag.ts`,
+where **B1–B4 now pass**. Detail and the evidence paths are in
+`RELEASE-CHECKPOINT-CORRECTED.md` §3.4b.
+
+**What this does not mean.** There is still no booking UI, so the workflow is
+reachable only through the API, and it has no browser coverage. And the fix is
+on a branch: until gates 12–16 are re-run at the new revision and the release
+images rebuilt from it, the tested artifact is the one *without* this change.
 
 **P&L accuracy — PARTIALLY FIXED. This paragraph previously said "FIXED" and
 that was an over-claim; see `RELEASE-CHECKPOINT-CORRECTED.md` §3.5b.**
@@ -141,13 +149,21 @@ cost; and `pl.ts:236` attributes payroll cost to the employee's **current** team
 so a transfer restates a closed period — the very failure the booking side was
 fixed to avoid. `CURRENT-CODE-MAP.md` already listed these as open.
 
-**Collection and commission — PARTIALLY.** The commission side is sound: slabs
-are frozen at the sale and cancellation is refused while live commissions exceed
-reversals. **The collection side is not.** `action: 'COLLECT'` records only
+**Collection and commission — PARTIALLY, and the collection half is unchanged by
+the 12 September answer.** That answer settled the booking–unit link and nothing
+else. The commission side is sound: slabs are frozen at the sale and cancellation
+is refused while live commissions exceed reversals. **The collection side is
+not.** `action: 'COLLECT'` records only
 `collectedAt` — no amount, no evidence, no second pair of eyes — and needs only
 `bookings:EDIT`. The maker-checker pattern already implemented in `payouts.ts`
 is not applied to it. Collecting an agency fee correctly does **not** change the
 unit's status, which is right.
+
+`C1` and `C2` in `finding-bc-booking.diag.ts` still fail, deliberately. Closing
+them needs two decisions nobody has made — whether the person who confirms a
+sale may also certify the money arrived, and whether the system must record how
+much arrived. Both change the schema or the permission map, so neither is a fix
+to slot in before a handover.
 
 ---
 

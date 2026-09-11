@@ -93,11 +93,30 @@ lead, employee or customer data — so it is safe to paste.
 | `Lead`/`Task`/`FollowUpTask` row counts | Sets the lock windows in §3. Judge them there. |
 | `saved views mentioning it` > 0 | Not blocking. Those views show an explicit notice instead of filtering; tell the affected users (§7 of the assessment). |
 
+### 2.1 Booking/unit audit — also read-only, also before anything changes
+
+```bash
+MIGRATION_DATABASE_URL=<owner url> node scripts/rc-booking-audit.mjs
+```
+
+Two of the migrations below add constraints that existing data can block, and
+this is the only way to find out before `migrate deploy` does. It exits non-zero
+if either is blocked.
+
+| Line | What to do |
+| --- | --- |
+| `Units carrying more than one live confirmed booking` — any rows | **Stop.** That is a double-sale already in the data, and `CREATE UNIQUE INDEX` will fail on it. Each pair is a business decision — which sale stands — and it is the client's, not the operator's. The script prints booking references so they can be found. |
+| `Live confirmed bookings naming no unit` — any rows | **Stop.** Migration 6 will fail. Each row must be given its unit or moved back to `DRAFT`, by the client. |
+| `confirmed sales whose unit still reads available/held/blocked` > 0 | **Not blocking, and expected.** Historical drift from before confirmation touched inventory. Note the number; from this release forward it can only be created by hand. |
+
+Capture the output into the ticket. It prints booking references and ids — no
+client name, phone number or email — so it is safe to paste.
+
 ---
 
 ## 3. Migration
 
-Four migrations, in this order. `prisma migrate deploy` applies them
+Six migrations, in this order. `prisma migrate deploy` applies them
 automatically — the breakdown is here so the operator knows what each one locks.
 
 | # | Migration | What it does | Lock |
@@ -106,6 +125,8 @@ automatically — the breakdown is here so the operator knows what each one lock
 | 2 | `20260911100000_triage_idempotency_and_outbox` | New tables `IdempotentRequest`, `NotificationOutbox`; 1 column on the new `LeadTriageEntry` | As above |
 | 3 | `20260911150000_follow_up_lead_relation` | Detaches orphans; adds the FK **`NOT VALID`**; 2 indexes on `Task` and `FollowUpTask` | The `NOT VALID` add is brief. **The two `CREATE INDEX` statements take a `SHARE` lock on `Task` and `FollowUpTask` for the build — writes to those two tables wait, reads do not.** |
 | 4 | `20260911150500_follow_up_lead_relation_validate` | `VALIDATE CONSTRAINT` | `SHARE UPDATE EXCLUSIVE` — **does not block writes** |
+| 5 | `20260912020000_booking_unit_exclusivity` | `Booking_confirmed_requires_unit` (CHECK, `NOT VALID`) and `Booking_one_confirmed_per_unit` (partial unique index) | The `NOT VALID` add is brief. **`CREATE UNIQUE INDEX` takes a `SHARE` lock on `Booking` for the build — writes to `Booking` wait, reads do not.** The index covers only live confirmed rows, so the build is proportional to confirmed sales, not to every booking ever written. |
+| 6 | `20260912020500_booking_unit_exclusivity_validate` | `VALIDATE CONSTRAINT` on the CHECK | `SHARE UPDATE EXCLUSIVE` — **does not block writes** |
 
 The foreign key is split across migrations 3 and 4 deliberately. A plain
 `ADD CONSTRAINT ... FOREIGN KEY` scans every row while holding
@@ -114,6 +135,11 @@ to `Lead` — the busiest table in the product — for the length of the scan.
 `NOT VALID` skips the scan; migration 4 does the scan without blocking writes.
 They are two files because Prisma wraps each file in one transaction and locks
 are held until it commits.
+
+Migrations 5 and 6 are split for the same reason as 3 and 4, and migration 6 is
+the one §2.1 exists to protect: it **fails** if any live confirmed booking has
+no unit. That is deliberate — such a row is a sale nobody can point at a flat,
+and deciding what it should become is not a migration's call.
 
 **The remaining lock to judge is the two indexes.** They are not `CONCURRENTLY`,
 because `CREATE INDEX CONCURRENTLY` cannot run inside a transaction and Prisma

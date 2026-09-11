@@ -19,7 +19,7 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url));
  * assertion here is the evidence for a finding, not a broken test.
  */
 export default defineConfig(({ mode }) => {
-  Object.assign(process.env, loadEnv(mode, rootDir, ''));
+  for (const [k, v] of Object.entries(loadEnv(mode, rootDir, ''))) process.env[k] ??= v;
   return {
     resolve: { alias: { '@': path.resolve(rootDir, 'src') } },
     test: {

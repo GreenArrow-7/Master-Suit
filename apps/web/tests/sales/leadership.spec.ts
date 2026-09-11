@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { activityCompliance, chasingQueue, conversion, funnel, performerBoard } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { fixtureUnit } from '../helpers/inventory';
 import type { ObligationAccess } from '@/services/leads/nextFollowUp';
 
 /** The chasing queue is a manager surface; these tests drive it unrestricted. */
@@ -101,6 +102,7 @@ async function sale(opts: {
       reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
       leadId: fixture.a.leadIds[0],
       projectId,
+      unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
       ownerId: opts.ownerId,
       teamId: opts.teamId,
       status: 'CONFIRMED',
@@ -391,6 +393,7 @@ describe('the P&L', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId: fixture.a.userId,
         teamId: teamA,
         status: 'CONFIRMED',

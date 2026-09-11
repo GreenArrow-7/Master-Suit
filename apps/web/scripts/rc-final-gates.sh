@@ -5,8 +5,16 @@ echo "REVISION=$(cat /w/.git/HEAD 2>/dev/null | head -c 60)"
 echo "=== node $(node -v) on $(uname -sr) ==="
 npm install --no-audit --no-fund >/dev/null 2>&1
 npx prisma generate >/dev/null 2>&1
-export MIGRATION_DATABASE_URL="$(grep -m1 '^MIGRATION_DATABASE_URL=' .env.test.local | cut -d= -f2-)"
-export DATABASE_URL="$(grep -m1 '^DATABASE_URL=' .env.test.local | cut -d= -f2-)"
+# Connection strings come from the environment when the caller supplies them
+# (`docker run -e ...`), falling back to whichever env file is present. They are
+# never echoed: this log goes into the release evidence.
+envfile=""
+for f in .env.test.local .env.test; do [ -f "$f" ] && { envfile="$f"; break; }; done
+: "${MIGRATION_DATABASE_URL:=$([ -n "$envfile" ] && grep -m1 '^MIGRATION_DATABASE_URL=' "$envfile" | cut -d= -f2-)}"
+: "${DATABASE_URL:=$([ -n "$envfile" ] && grep -m1 '^DATABASE_URL=' "$envfile" | cut -d= -f2-)}"
+export MIGRATION_DATABASE_URL DATABASE_URL
+[ -n "$DATABASE_URL" ] || { echo 'No DATABASE_URL: pass it with -e, or provide .env.test'; exit 2; }
+echo "database=$(node -e 'const u=new URL(process.env.DATABASE_URL);console.log(u.host+u.pathname)')"
 npx prisma migrate deploy >/dev/null 2>&1
 fail=0
 gate() { local n="$1"; shift; "$@" >/tmp/g.log 2>&1; local rc=$?; printf '%-26s exit=%s %s\n' "$n" "$rc" "$([ $rc -eq 0 ] && echo PASS || echo FAIL)"; [ $rc -ne 0 ] && { tail -8 /tmp/g.log; fail=1; }; return 0; }

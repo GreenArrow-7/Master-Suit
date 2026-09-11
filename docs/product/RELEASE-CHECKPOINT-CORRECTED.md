@@ -262,6 +262,31 @@ is forbidden.
 > what stops *that* being double-sold is then an open question rather than a
 > detail. I am not inventing either policy.
 
+### 3.3a The client's answer, and what it settles
+
+**Answered 12 September 2026 by the client owner, verbatim:**
+
+> "Every confirmed booking must identify one specific inventory unit."
+
+That is a policy decision, not an inference from nullability, and it settles
+three things that were open:
+
+| Was open | Now settled |
+| --- | --- |
+| Whether the unique index needs `unitInventoryId IS NOT NULL` handling for a legitimate unitless path | There is no legitimate unitless confirmed booking. The predicate is the one the backlog already specified. |
+| Whether confirmation may proceed without a unit | It may not. Refused at the route, and again in the database. |
+| Whether Option B (restrict the workflow) is needed | Not for booking. The defect is fixable rather than avoidable, so it is fixed. |
+
+**What it does NOT settle.** A *draft* may still be vague about what is being
+sold — that is what a draft is for, and the create route continues to accept a
+project or a listing alone. The policy binds confirmation, which is the moment
+the sale becomes real enough to accrue commission against.
+
+**And it does not settle collections.** The question answered was about the
+booking–unit link. Who may certify that money arrived, and whether the system
+records *how much* arrived rather than only *that* something did, is a separate
+decision and remains open — see §3.6 and §3.4b below.
+
 ### 3.4 Option A — fix and verify
 
 **Design.**
@@ -316,7 +341,85 @@ resolved first. Concurrency tests across separate connections, the rollback case
 and the cancellation path are a day. **Two to three days, and it cannot be
 compressed by testing less.** The 12 September handover is not met on this path.
 
+### 3.4b Option A — implemented and verified
+
+Implemented on this branch. **Not merged, not deployed.**
+
+**What changed**
+
+| File | Change |
+| --- | --- |
+| `apps/web/src/services/inventory/unitStatus.ts` | `moveUnitIn(tx, …)` extracted from `moveUnit` so the unit transition can run inside a caller's transaction. The "name the buyer" guard stays on the outer `moveUnit`, which is the human path; a booking already records who bought, and that buyer may be a contact or an account rather than a lead. Holder guard extended from `HELD → AVAILABLE` to `HELD → BOOKED`, for a hold that is still live. |
+| `apps/web/src/app/api/v1/bookings/route.ts` | CONFIRM refuses a booking that names no unit, then takes the unit and writes the booking in one transaction. CANCEL of a confirmed booking releases the unit. All three actions re-read the booking row under `FOR UPDATE` and revalidate before writing. |
+| `prisma/migrations/20260912020000_booking_unit_exclusivity/` | `Booking_confirmed_requires_unit` (CHECK, `NOT VALID`) and `Booking_one_confirmed_per_unit` (partial unique index). Predicates match each other exactly, both excluding soft-deleted rows. |
+| `prisma/migrations/20260912020500_booking_unit_exclusivity_validate/` | `VALIDATE CONSTRAINT`, in its own file. Same reason as the follow-up FK: Prisma wraps a migration in one transaction, so validating in the same file would hold `ACCESS EXCLUSIVE` on `Booking` for the whole scan. |
+| `apps/web/scripts/rc-booking-audit.mjs` | Read-only pre-migration audit. Reports duplicate confirmed bookings per unit and live confirmed bookings with no unit. It repairs nothing — which unit a unitless confirmed sale belongs to is the client's call. |
+| `apps/web/tests/helpers/inventory.ts` + 5 specs | Fixtures that wrote `status: 'CONFIRMED'` straight to the table now attach a unit, because the database now requires one of every writer. |
+
+**Lock order.** `UnitInventory → Booking`, in that order, on every path that
+touches both. The booking is read unlocked first — it has to be, since it is
+what names the unit — so every write re-reads it under its own lock and refuses
+if the status moved underneath. A CONFIRM racing a CANCEL now gets a refusal
+telling it to reload, not a silent last-write-wins.
+
+**Acceptance tests — all six from the backlog, plus two.** In
+`tests/sales/bookings-route.spec.ts`, which is inside gate 15, not a diagnostic:
+
+| Backlog acceptance test | Result |
+| --- | --- |
+| Two concurrent confirmations on one unit → exactly one 200, one refused with a reason | PASS — and the loser's status is asserted `< 500`, so a crash cannot pass as a refusal |
+| Confirming moves the unit in the same transaction; failure leaves both unchanged | PASS — both directions asserted |
+| Confirming against a `SOLD` unit → refused | PASS |
+| Confirming over another agent's live hold → refused | PASS |
+| Cancelling a confirmed booking releases the unit | PASS — and the unit is then re-sold in the same test, which is the point of releasing it |
+| The database rejects a second confirmed booking even if the application is bypassed | PASS — direct `prisma.booking.create`, no route, no service, no lock |
+| *(added)* Confirming a booking that names no unit → refused | PASS — the policy above |
+| *(added)* The database rejects a confirmed booking with no unit when bypassed | PASS |
+
+**Negative control.** The tests were re-run with the unit transition removed
+from the CONFIRM branch and nothing else changed
+(`validation-evidence/release-candidate/booking-negative-control.log`):
+**6 of the 14 failed.** The two database-layer tests still passed, correctly —
+they test the constraints, not the lock. What the control shows is worth
+stating plainly, because it is the argument for having both layers:
+
+> Without the application lock, the database still refused the second
+> confirmation — `duplicate key value violates unique constraint
+> "Booking_one_confirmed_per_unit"` — but the caller received a **500**.
+> The data was safe; the agent saw a crash. With the lock, the same race is a
+> clean refusal and the unit moves atomically.
+
+**Diagnostic evidence flipped.** `tests/diagnostic/finding-bc-booking.diag.ts`,
+the file the backlog names as the evidence for this finding:
+**B1–B4 now pass; C1 and C2 still fail.** That split is exactly right — B is
+booking atomicity, which the client's answer settled and this change fixes; C is
+collection authority and the missing collected *amount*, which no one has
+decided yet. Recorded in
+`validation-evidence/release-candidate/booking-diagnostic-after.log`.
+
+**Audit against the validation database.** `rc-booking-audit.mjs` reported
+1 live booking, 1 confirmed, 1 with a unit, **0 duplicates, 0 unitless** — clear
+to deploy — and also reported the historical drift the finding described: that
+one confirmed sale's unit still read available, because confirmation had never
+touched inventory. Both migrations then applied cleanly and
+`prisma migrate diff` reports no drift.
+
+**Known gap, not fixed.** `Booking.unit` is `onDelete: SetNull`, and
+`UnitInventory` has no `deletedAt`. Hard-deleting a unit would therefore null
+out a confirmed booking's `unitInventoryId` and slip past both constraints.
+Changing the referential action would also change what happens when a project
+is deleted, which is a wider blast radius than this change should carry three
+days from handover. Recorded here rather than done quietly.
+
 ### 3.5 Option B — limited release, with the workflow restricted
+
+> **Superseded for booking, and NOT applied.** The client's answer (§3.3a) made
+> the invariant unambiguous, so the defect was fixed rather than avoided. Option
+> B is kept below unchanged, for two reasons: it is the fallback if the fix does
+> not clear verification before the go/no-go, and its denial matrix is the
+> evidence that the restriction — if it is ever needed, for collections or
+> anything else — would actually hold. **No permission has been revoked and no
+> SQL below has been run.**
 
 **Exact restriction.** Remove the `bookings` module permissions from the three
 role keys that hold them, in every workspace:
@@ -416,6 +519,21 @@ Stated exactly, because a timestamp is not money:
 > **`collectedAt` must not be read as "the agency fee was received."** It records
 > that somebody with `bookings:EDIT` pressed a button. Any report that treats it
 > as evidence of an amount collected is overstating what the data holds.
+
+**Still open after the 12 September answer.** The client settled the
+booking–unit link; nothing in that answer touches collection. `C1` and `C2` in
+`finding-bc-booking.diag.ts` still fail, deliberately, and they are the two
+questions that need deciding before collection can be called releasable:
+
+> **C1 — Separation of duties.** May the agent who confirms a sale also certify
+> that the client's money arrived, or must that be a finance role?
+>
+> **C2 — Amount.** Must the system record *how much* was collected (and against
+> which receipt), or is a timestamp sufficient for this release?
+
+I am not answering either one. They change the schema and the permission map,
+so they are not a fix to slot in before a handover; they are the next package's
+scope once decided.
 
 No collection policy — partial receipts, currency, who may confirm receipt — is
 invented here. Those are business decisions.

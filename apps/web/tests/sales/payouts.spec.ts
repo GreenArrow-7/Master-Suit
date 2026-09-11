@@ -5,6 +5,7 @@ import { accrueCommission, clawback, transitionCommission } from '@/services/mon
 import { buildPayout, canTransition, decidePayout, statement } from '@/services/money/payouts';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { fixtureUnit } from '../helpers/inventory';
 import type { Ctx, Scope } from '@/lib/security/rbac';
 
 /**
@@ -101,6 +102,7 @@ async function collected(saleValue: number) {
       reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
       leadId: fixture.a.leadIds[0],
       projectId,
+      unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
       ownerId: AGENT,
       status: 'CONFIRMED',
       saleValue: D(saleValue),
@@ -143,6 +145,7 @@ describe('the payout run', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId: AGENT,
         status: 'CONFIRMED',
         saleValue: D(1_000_000),

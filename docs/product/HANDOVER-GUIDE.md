@@ -100,9 +100,26 @@ Two things to know:
 
 ## 5. Known limitations to tell people about on day one
 
+**Booking a unit changed.** Confirming a sale now takes the flat in the same
+moment: the unit moves to **Booked** and nobody else can confirm against it.
+Three consequences people will notice on day one:
+
+- **A sale cannot be confirmed until it names the unit.** A draft can still be
+  vague — that is what a draft is for — but confirmation asks which flat. This
+  is the client's own rule; it is not the system being fussy.
+- **"This unit is held by someone else"** on confirm means exactly that: another
+  agent has a live hold. Ask them to release it. It is not a glitch, and
+  confirming anyway is the double-sale this release exists to stop.
+- **Cancelling a confirmed sale puts the flat back on the market**, and it can
+  be sold again immediately. If the unit has since been moved by hand, the
+  cancellation is refused and names the unit's actual state — escalate that
+  rather than forcing it, because inventory and the ledger disagreeing is
+  exactly what should be looked at by a person.
+
 | Thing | What people will see | What to say |
 | --- | --- | --- |
-| Booking and agency fee collection | Not part of this release | Use the existing process; it is scheduled next |
+| Recording **how much** agency fee was collected | A "collected" tick with a date, and no amount anywhere | The tick means somebody pressed the button, **not** that a known sum arrived. Do not report off it. Recording amounts is a decided-and-scheduled change, not a bug to work around |
+| The person who confirms a sale can also tick it collected | No second pair of eyes on collection | Agree locally who does it until the system enforces it |
 | A saved view built on "next follow-up date" | An explicit notice, and an unfiltered list | Use the **Overdue** or **No next action** view, or rebuild the saved view |
 | Sorting by Follow-up | Sorts the page you are on, not all results | Filter first, then sort |
 | Reminders | Do not fire for follow-ups, only tasks, and only when `OPEN` | Do not rely on reminders yet |

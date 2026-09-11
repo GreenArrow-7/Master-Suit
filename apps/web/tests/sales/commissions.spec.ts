@@ -11,6 +11,7 @@ import {
 } from '@/services/money/commissions';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { fixtureUnit } from '../helpers/inventory';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -256,6 +257,7 @@ describe('the commission lifecycle', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId: agent.actor.id,
         status: 'CONFIRMED',
         saleValue: D(3_500_000),
@@ -412,6 +414,7 @@ describe('clawback', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId: agent.actor.id,
         status: 'CONFIRMED',
         saleValue: D(1_000_000),

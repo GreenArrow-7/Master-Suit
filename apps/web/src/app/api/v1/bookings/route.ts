@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
+import { moveUnitIn } from '@/services/inventory/unitStatus';
 import { nextReference } from '@/services/shared/reference';
 
 const listQuery = z
@@ -148,15 +149,91 @@ export const PATCH = route(
     withTx(ctx.tenantId, async (tx) => {
       const booking = await tx.booking.findFirst({
         where: { id: body.bookingId, tenantId: ctx.tenantId, deletedAt: null },
-        select: { id: true, status: true, collectedAt: true, ownerId: true, tenantId: true },
+        select: {
+          id: true,
+          status: true,
+          collectedAt: true,
+          ownerId: true,
+          tenantId: true,
+          leadId: true,
+          projectId: true,
+          unitInventoryId: true,
+        },
       });
       if (!booking) throw NotFound('Booking');
       await assertRecordVisible(ctx, 'bookings', booking, tx, 'EDIT');
 
       const bad = (message: string) => Invalid([{ field: 'action', code: 'illegal_transition', message }]);
 
+      /**
+       * The booking row, locked, and its status read again.
+       *
+       * The read above is unlocked — it has to be, because it is what tells us
+       * which unit to lock, and the unit is locked first everywhere. So by the
+       * time we are ready to write, another request may have moved this
+       * booking. Re-reading under the lock is the whole point of taking it:
+       * without this, a CONFIRM and a CANCEL that arrive together both pass
+       * their status check and the later write silently wins.
+       */
+      const lockBooking = async () => {
+        const [locked] = await tx.$queryRaw<{ status: string }[]>`
+          SELECT "status"::text AS status
+          FROM "Booking"
+          WHERE "id" = ${booking.id} AND "tenantId" = ${ctx.tenantId} AND "deletedAt" IS NULL
+          FOR UPDATE
+        `;
+        if (!locked) throw NotFound('Booking');
+        if (locked.status !== booking.status) {
+          throw Conflict('This booking changed while you were working on it. Reload it and try again.');
+        }
+      };
+
       if (body.action === 'CONFIRM') {
         if (booking.status !== 'DRAFT') throw bad(`A ${booking.status.toLowerCase()} booking cannot be confirmed.`);
+
+        /**
+         * Client policy, 2026-09-12: every confirmed booking identifies one
+         * specific inventory unit. A draft may still be vague about what is
+         * being sold — that is what a draft is for — but confirmation is the
+         * moment the sale becomes real enough to accrue commission against,
+         * and a sale nobody can point at a flat cannot be checked against
+         * anything. The database says the same thing in
+         * `Booking_confirmed_requires_unit`.
+         */
+        if (!booking.unitInventoryId || !booking.projectId) {
+          throw Invalid([
+            {
+              field: 'unitInventoryId',
+              code: 'required',
+              message:
+                'Name the unit being sold before confirming. A confirmed sale has to point at one specific unit.',
+            },
+          ]);
+        }
+
+        /**
+         * Take the unit before the booking, in that order, always.
+         *
+         * This is the double-sale control. The second of two concurrent
+         * confirmations waits on this row lock, and when it gets in the unit
+         * already reads BOOKED, which the transition table refuses. Doing it
+         * inside the caller's transaction is what makes the pair atomic:
+         * throwing anywhere after this rolls the unit back with the booking,
+         * so a failed confirmation never leaves inventory marked sold.
+         *
+         * The buyer may be a contact or an account rather than a lead, so the
+         * unit's own leadId pointer is filled in only when there is one. The
+         * Booking is the record of who bought; that pointer is a convenience.
+         */
+        await moveUnitIn(tx, {
+          tenantId: ctx.tenantId,
+          actorId: ctx.actor.id,
+          projectId: booking.projectId,
+          unitId: booking.unitInventoryId,
+          to: 'BOOKED',
+          leadId: booking.leadId ?? undefined,
+        });
+        await lockBooking();
 
         // Where the agent sits *now*, copied onto the sale. Read back through
         // their current team instead and a transfer moves last quarter's
@@ -183,6 +260,7 @@ export const PATCH = route(
       if (body.action === 'COLLECT') {
         if (booking.status !== 'CONFIRMED') throw bad('Only a confirmed booking can be marked collected.');
         if (booking.collectedAt) throw Conflict('This booking is already marked collected.');
+        await lockBooking();
         return tx.booking.update({
           where: { id: booking.id, tenantId: ctx.tenantId },
           data: { collectedAt: body.collectedAt ?? new Date(), updatedById: ctx.actor.id },
@@ -200,6 +278,28 @@ export const PATCH = route(
       if (live > reversed) {
         throw Conflict('Claw the commissions back before cancelling, so nothing is owed against a sale that is gone.');
       }
+
+      /**
+       * A cancelled sale puts the flat back on the market.
+       *
+       * Same lock order as confirmation, and deliberately not forgiving: if the
+       * unit has since moved somewhere other than BOOKED — sold on, blocked,
+       * released by hand — the transition table refuses and the cancellation
+       * fails with the unit's actual state. Inventory and the ledger disagreeing
+       * is the thing this whole package exists to make loud, so it is not
+       * something to paper over by cancelling anyway and leaving the flat
+       * marked sold.
+       */
+      if (booking.status === 'CONFIRMED' && booking.unitInventoryId && booking.projectId) {
+        await moveUnitIn(tx, {
+          tenantId: ctx.tenantId,
+          actorId: ctx.actor.id,
+          projectId: booking.projectId,
+          unitId: booking.unitInventoryId,
+          to: 'AVAILABLE',
+        });
+      }
+      await lockBooking();
 
       return tx.booking.update({
         where: { id: booking.id, tenantId: ctx.tenantId },

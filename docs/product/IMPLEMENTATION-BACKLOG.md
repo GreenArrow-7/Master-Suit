@@ -88,6 +88,15 @@ require an unrelated permission regardless.
 
 ### P0-3 · Atomic booking confirmation
 
+> **Status: implemented on `claude/restructure-foundation`, 12 September 2026.
+> Not merged, not deployed.** All six acceptance tests below pass, plus two more
+> for the policy the client settled that day: *every confirmed booking must
+> identify one specific inventory unit.* Evidence and the negative control are in
+> `docs/product/RELEASE-CHECKPOINT-CORRECTED.md` §3.4b. The migration is split
+> into `20260912020000_booking_unit_exclusivity` and its `…_validate` follow-up,
+> and `scripts/rc-booking-audit.mjs` is the pre-deploy audit the backfill risk
+> below asks for.
+
 **Problem.** Confirmation never touches inventory. Two concurrent confirmations
 against one unit both returned 200. No protection at API, service, or database.
 
