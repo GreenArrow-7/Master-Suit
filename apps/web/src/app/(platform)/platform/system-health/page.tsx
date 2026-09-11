@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { redis } from '@/lib/redis';
 import { env } from '@/lib/env';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,7 @@ async function timed(fn: () => Promise<string>): Promise<{ detail: string; ok: b
 }
 
 export default async function Page() {
+  await requirePlatformPage();
   const [db, cache] = await Promise.all([
     timed(async () => `${await prisma.tenant.count({ where: { deletedAt: null } })} workspaces`),
     timed(async () => {

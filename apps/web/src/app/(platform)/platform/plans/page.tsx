@@ -2,8 +2,10 @@ import { prisma } from '@/lib/db';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import { AI_TOKEN_LIMIT_KEY } from '@/lib/ai/usage';
 import PlanForm from './PlanForm';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export default async function Page() {
+  await requirePlatformPage();
   const plans = await prisma.subscriptionPlan.findMany({
     include: { planModules: true, planLimits: true, _count: { select: { subscriptions: true } } },
     orderBy: { name: 'asc' },
