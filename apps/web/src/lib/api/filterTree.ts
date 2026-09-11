@@ -80,7 +80,14 @@ export const FIELD_MAP: Record<
     createdAt: { path: 'createdAt', type: 'date' },
     updatedAt: { path: 'updatedAt', type: 'date' },
     lastActivityAt: { path: 'lastActivityAt', type: 'date', nullable: true },
-    nextFollowUpAt: { path: 'nextFollowUpAt', type: 'date', nullable: true },
+    // `nextFollowUpAt` is deliberately absent.
+    //
+    // It is a derived cache aggregating every owner's obligations, so a filter
+    // on it answers questions about other people's schedules — and a filter is
+    // a fine oracle: build `nextFollowUpAt < X`, read the count, repeat, and a
+    // colleague's due date falls out in a dozen requests without ever rendering
+    // it. The overdue and no-next-action views are built from the viewer's own
+    // obligations instead; see services/leads/nextFollowUp.ts.
     convertedAt: { path: 'convertedAt', type: 'date', nullable: true },
     firstContactedAt: { path: 'firstContactedAt', type: 'date', nullable: true },
   },

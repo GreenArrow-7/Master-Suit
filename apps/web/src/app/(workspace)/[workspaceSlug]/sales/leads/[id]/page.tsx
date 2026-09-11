@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -75,6 +76,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   ]);
   if (!lead) notFound();
 
+  const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], await obligationAccess(ctx, 'personal'));
+
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
 
   // Serialize dates to ISO strings for the client component
@@ -97,7 +100,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     grade: lead.grade,
     notes: lead.notes,
     tags: lead.tags,
-    nextFollowUpAt: lead.nextFollowUpAt?.toISOString() ?? null,
+    // The viewer's own next obligation, not the lead-wide aggregate. The stored
+    // value is used only as a boolean, to tell "nothing is scheduled" apart
+    // from "somebody else is handling it" — see LeadDetail.
+    nextFollowUpAt: (scopedDue.get(lead.id) ?? null)?.toISOString() ?? null,
+    othersPending: !scopedDue.has(lead.id) && lead.nextFollowUpAt !== null,
     lastActivityAt: lead.lastActivityAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(),
     stage: { key: lead.stage.key, name: lead.stage.name },

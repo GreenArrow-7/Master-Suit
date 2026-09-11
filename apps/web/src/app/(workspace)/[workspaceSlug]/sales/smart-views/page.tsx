@@ -1,5 +1,6 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { compileFilterTree, type FilterNode } from '@/lib/api/filterTree';
 import { mergeWhere } from '@/lib/api/where';
@@ -18,7 +19,14 @@ interface SystemView {
   key: string;
   name: string;
   icon: string;
-  filter: FilterNode;
+  /**
+   * Absent for views whose predicate depends on the viewer.
+   *
+   * A `FilterNode` is a comparison on a Lead column, and the obligation views
+   * cannot be expressed as one: what counts as overdue depends on which
+   * obligations the person looking is allowed to see.
+   */
+  filter?: FilterNode;
 }
 
 const SYSTEM_VIEWS: SystemView[] = [
@@ -44,12 +52,12 @@ const SYSTEM_VIEWS: SystemView[] = [
     icon: '◇',
     filter: { field: 'createdAt', cmp: 'relative', value: 'this_month' },
   },
-  {
-    key: 'overdue',
-    name: 'Overdue Follow-up',
-    icon: '!',
-    filter: { field: 'nextFollowUpAt', cmp: 'relative', value: 'overdue' },
-  },
+  // No `filter` here: "overdue" is a question about obligations, and which of
+  // them count depends on who is asking. Built below from the same predicate
+  // the leads list uses rather than from a comparison on the stored column,
+  // which would answer for every owner regardless of the viewer's reach.
+  { key: 'overdue', name: 'Overdue Follow-up', icon: '!' },
+  { key: 'no-next-action', name: 'No Next Action', icon: '○' },
   { key: 'breached', name: 'SLA Breached', icon: '!', filter: { field: 'slaState', cmp: 'eq', value: 'BREACHED' } },
   { key: 'at-risk', name: 'SLA At Risk', icon: '△', filter: { field: 'slaState', cmp: 'eq', value: 'AT_RISK' } },
   { key: 'hot', name: 'Hot Leads', icon: '★', filter: { field: 'score', cmp: 'gte', value: 70 } },
@@ -90,7 +98,7 @@ export default async function SmartViewsPage({
   const activeSaved = params.id ? savedViews.find((v) => v.id === params.id) : null;
 
   let filterWhere: Record<string, unknown> = {};
-  if (activeSystem) {
+  if (activeSystem?.filter) {
     filterWhere = compileFilterTree('LEAD', activeSystem.filter, ctx);
   } else if (activeSaved?.filterTree && typeof activeSaved.filterTree === 'object') {
     try {
@@ -98,6 +106,19 @@ export default async function SmartViewsPage({
     } catch {
       /* bad filter — show all */
     }
+  }
+
+  // The two obligation views, scoped to the viewer. `access` also drives the
+  // dates rendered into the grid below, so the rows and their dates agree.
+  const access = await obligationAccess(ctx, 'scope');
+  if (activeSystemKey === 'overdue') {
+    filterWhere = obligationWhere(access, 'overdue', new Date()) as Record<string, unknown>;
+  } else if (activeSystemKey === 'no-next-action') {
+    filterWhere = {
+      // Only live leads: a won or lost lead with nothing scheduled is finished,
+      // not neglected, and listing it buries the ones that are.
+      AND: [obligationWhere(access, 'unscheduled', new Date()), { stage: { is: { category: 'OPEN' } } }],
+    } as Record<string, unknown>;
   }
 
   // "No Activity (30d)" needs inversion: leads whose lastActivityAt is older than 30 days OR null
@@ -164,7 +185,20 @@ export default async function SmartViewsPage({
   ]);
   const columns = resolveColumns('LEAD', storedColumnsFor(setting?.gridColumns, 'LEAD'));
 
-  const data = rows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
+  // The grid shows the viewer's own obligations, never the stored aggregate —
+  // same derivation as the leads list, so the same lead reads the same way on
+  // both screens.
+  const due = await scopedNextFollowUp(
+    ctx.tenantId,
+    rows.map((r) => r.id),
+    access,
+  );
+  const data = rows
+    .map((r) => {
+      const mine = due.get(r.id) ?? null;
+      return { ...r, nextFollowUpAt: mine, othersPending: mine === null && r.nextFollowUpAt !== null };
+    })
+    .map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
   const activeName = activeSystem?.name ?? activeSaved?.name ?? 'All Leads';
 

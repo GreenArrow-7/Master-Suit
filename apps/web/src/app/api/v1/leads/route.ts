@@ -11,6 +11,7 @@ import {
   assertFilterableFields,
 } from '@/lib/security/fieldSecurity';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 
 /**
@@ -82,9 +83,18 @@ export const GET = route(
     });
 
     const page = toPage(rows as any, query.limit);
+    // The API is an egress path like the grid and the CSV: the payload carries
+    // the caller's own derivation, not the stored aggregate over every owner.
+    const due = await scopedNextFollowUp(
+      ctx.tenantId,
+      (page.data as { id: string }[]).map((r) => r.id),
+      await obligationAccess(ctx, 'scope'),
+    );
     return {
       ...page,
-      data: page.data.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS)),
+      data: (page.data as { id: string }[]).map((r) =>
+        applyFieldSecurity(ctx, 'LEAD', rules, { ...r, nextFollowUpAt: due.get(r.id) ?? null }, LEAD_SENSITIVE_FIELDS),
+      ),
     };
   },
 );

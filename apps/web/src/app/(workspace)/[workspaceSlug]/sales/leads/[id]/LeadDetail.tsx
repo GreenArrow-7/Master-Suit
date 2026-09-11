@@ -77,7 +77,10 @@ interface LeadData {
   grade: string | null;
   notes: string | null;
   tags: string[];
+  /** The viewer's own next obligation on this lead. */
   nextFollowUpAt: string | null;
+  /** Something is open here, but nothing the viewer owns. */
+  othersPending?: boolean;
   lastActivityAt: string | null;
   createdAt: string;
   stage: { key: string; name: string };
@@ -409,9 +412,13 @@ export default function LeadDetail({
                 </dd>
               </div>
               <div>
-                <dt>{followUpOverdue ? 'Follow-up overdue' : 'Next follow-up'}</dt>
+                <dt>{followUpOverdue ? 'Your follow-up is overdue' : 'Your next follow-up'}</dt>
                 <dd style={followUpOverdue ? { color: 'var(--lf-vermillion)' } : undefined}>
-                  {lead.nextFollowUpAt ? fmtDate(lead.nextFollowUpAt) : '—'}
+                  {lead.nextFollowUpAt
+                    ? fmtDate(lead.nextFollowUpAt)
+                    : lead.othersPending
+                      ? 'Assigned to someone else'
+                      : 'No next action scheduled'}
                 </dd>
               </div>
               <div>

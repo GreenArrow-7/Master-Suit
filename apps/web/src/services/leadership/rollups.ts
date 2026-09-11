@@ -328,6 +328,13 @@ export async function interactionFeed(tenantId: string, userIds: string[], range
   });
 }
 
+import {
+  obligationWhere,
+  scopedNextFollowUp,
+  stateOf,
+  type ObligationAccess,
+} from '@/services/leads/nextFollowUp';
+
 export interface ChasingRow {
   leadId: string;
   fullName: string;
@@ -339,45 +346,99 @@ export interface ChasingRow {
 }
 
 /**
+ * How many candidates to consider before trimming to `limit`.
+ *
+ * The stored column is a *lower* bound on what any given viewer may see — it
+ * aggregates every owner, the scoped value only some — so ordering by it and
+ * truncating in SQL can drop a lead that belongs in the viewer's top N. The
+ * scoped dates are therefore computed for a wider candidate set and the trim
+ * happens after.
+ *
+ * ponytail: oversample and trim; move the ordering into the obligation tables
+ * if a workspace ever has more than this many chaseable leads at once.
+ */
+const CHASING_CANDIDATES = 500;
+
+/**
  * The leads nobody has gone back to.
  *
  * Deliberately built from the follow-up date rather than from a task list: a
  * lead with no task at all is the one most likely to be forgotten, and a queue
  * that only shows overdue *tasks* cannot see it. Sorted oldest first, because
  * the point of the queue is that somebody works down it.
+ *
+ * Two conditions, kept apart, because they are different problems: something is
+ * owed and late, or nothing is owed at all on a lead the SLA already considers
+ * in trouble. The second is the neglect case — it has no date, and pairing it
+ * with an `slaState` is the only thing that distinguishes "forgotten" from
+ * "nothing due yet".
+ *
+ * Closed leads are excluded from both. A lead nobody will follow up because it
+ * is won or lost is not neglected, and listing it here buries the ones that are.
  */
-export async function chasingQueue(tenantId: string, userIds: string[], now = new Date(), limit = 100) {
+export async function chasingQueue(
+  tenantId: string,
+  userIds: string[],
+  access: ObligationAccess,
+  now = new Date(),
+  limit = 100,
+) {
   const rows = await prisma.lead.findMany({
     where: {
       tenantId,
       deletedAt: null,
       ...ownerFilter(userIds),
       stage: { is: { category: 'OPEN' } },
-      OR: [{ nextFollowUpAt: { lt: now } }, { nextFollowUpAt: null, slaState: { in: ['BREACHED', 'AT_RISK'] } }],
+      OR: [
+        obligationWhere(access, 'overdue', now),
+        { AND: [obligationWhere(access, 'unscheduled', now), { slaState: { in: ['BREACHED', 'AT_RISK'] } }] },
+      ],
     },
     select: {
       id: true,
       fullName: true,
       ownerId: true,
-      nextFollowUpAt: true,
       lastActivityAt: true,
       slaState: true,
     },
-    orderBy: [{ nextFollowUpAt: 'asc' }, { lastActivityAt: 'asc' }],
-    take: limit,
+    orderBy: [{ lastActivityAt: 'asc' }, { id: 'asc' }],
+    take: CHASING_CANDIDATES,
   });
 
+  const due = await scopedNextFollowUp(
+    tenantId,
+    rows.map((r) => r.id),
+    access,
+  );
+
   const DAY = 86_400_000;
-  return rows.map((r): ChasingRow => {
-    const since = r.nextFollowUpAt ?? r.lastActivityAt;
-    return {
-      leadId: r.id,
-      fullName: r.fullName,
-      ownerId: r.ownerId,
-      nextFollowUpAt: r.nextFollowUpAt,
-      lastActivityAt: r.lastActivityAt,
-      slaState: r.slaState,
-      overdueDays: since ? Math.max(0, Math.floor((now.getTime() - since.getTime()) / DAY)) : 0,
-    };
-  });
+  return rows
+    .map((r): ChasingRow => {
+      const nextFollowUpAt = due.get(r.id) ?? null;
+      // Overdue is measured from the date that is late; a lead with nothing
+      // scheduled is measured from when anyone last touched it, which is the
+      // only clock it has.
+      const since = nextFollowUpAt ?? r.lastActivityAt;
+      return {
+        leadId: r.id,
+        fullName: r.fullName,
+        ownerId: r.ownerId,
+        nextFollowUpAt,
+        lastActivityAt: r.lastActivityAt,
+        slaState: r.slaState,
+        overdueDays: since ? Math.max(0, Math.floor((now.getTime() - since.getTime()) / DAY)) : 0,
+      };
+    })
+    .sort((a, b) => {
+      // Dated rows first, oldest first; undated ones after, by last activity.
+      // Ties break on lead id so the queue is the same list twice running.
+      const ad = stateOf(a.nextFollowUpAt, now) === 'unscheduled';
+      const bd = stateOf(b.nextFollowUpAt, now) === 'unscheduled';
+      if (ad !== bd) return ad ? 1 : -1;
+      const av = (a.nextFollowUpAt ?? a.lastActivityAt)?.getTime() ?? Infinity;
+      const bv = (b.nextFollowUpAt ?? b.lastActivityAt)?.getTime() ?? Infinity;
+      if (av !== bv) return av - bv;
+      return a.leadId < b.leadId ? -1 : a.leadId > b.leadId ? 1 : 0;
+    })
+    .slice(0, limit);
 }

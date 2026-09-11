@@ -1,5 +1,6 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
 import { SCOPE_RANK, scopeFor } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
@@ -381,11 +382,14 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
 async function ManagerHome({ ctx }: { ctx: any }) {
   const now = new Date();
   const where = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
+  const access = await obligationAccess(ctx, 'scope');
 
   const [total, unassigned, overdue, breached, teamTargets, byStage, recent] = await Promise.all([
     prisma.lead.count({ where }),
     prisma.lead.count({ where: { ...where, ownerId: null } }),
-    prisma.lead.count({ where: { ...where, nextFollowUpAt: { lt: now } } }),
+    // Same predicate the Overdue chip on /leads uses, at the same reach, so the
+    // number on the dashboard and the list it links to are the same number.
+    prisma.lead.count({ where: { ...where, ...obligationWhere(access, 'overdue', now) } }),
     prisma.lead.count({ where: { ...where, slaState: 'BREACHED' } }),
     prisma.employeeTarget.findMany({
       where: { tenantId: ctx.tenantId, periodStart: { lte: now }, periodEnd: { gte: now } },

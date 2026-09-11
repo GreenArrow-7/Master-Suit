@@ -4,6 +4,17 @@ import { prisma } from '@/lib/db';
 import { activityCompliance, chasingQueue, conversion, funnel, performerBoard } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import type { ObligationAccess } from '@/services/leads/nextFollowUp';
+
+/** The chasing queue is a manager surface; these tests drive it unrestricted. */
+const ALL_OBLIGATIONS: ObligationAccess = { task: { kind: 'all' }, followUp: { kind: 'all' }, unrestricted: true };
+
+/** An open follow-up on a lead, which is what the queue now derives from. */
+async function owe(tenantId: string, leadId: string, ownerId: string, dueAt: Date) {
+  return prisma.followUpTask.create({
+    data: { tenantId, leadId, ownerId, title: 'Chase', dueAt, status: 'OPEN' },
+  });
+}
 
 /**
  * M10 — the leader's numbers.
@@ -251,38 +262,38 @@ describe('the chasing queue', () => {
   it('finds a lead whose follow-up has passed, oldest first', async () => {
     const T = fixture.a.tenantId;
     const now = new Date('2026-08-20T00:00:00Z');
-    await prisma.lead.update({
-      where: { id: fixture.a.leadIds[0], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-05T00:00:00Z'), stageId: stageOpenId },
+    // Real obligations, not a hand-set column. Setting `nextFollowUpAt`
+    // directly is what this test used to do, and it passed against a column
+    // nothing maintained — so it proved the assertion, not the feature.
+    await prisma.lead.updateMany({
+      where: { tenantId: T, id: { in: [fixture.a.leadIds[0], fixture.a.leadIds[1]] } },
+      data: { stageId: stageOpenId },
     });
-    await prisma.lead.update({
-      where: { id: fixture.a.leadIds[1], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-18T00:00:00Z'), stageId: stageOpenId },
-    });
+    const first = await owe(T, fixture.a.leadIds[0], fixture.a.userId, new Date('2026-08-05T00:00:00Z'));
+    const second = await owe(T, fixture.a.leadIds[1], fixture.a.userId, new Date('2026-08-18T00:00:00Z'));
 
-    const queue = await chasingQueue(T, [], now);
+    const queue = await chasingQueue(T, [], ALL_OBLIGATIONS, now);
     expect(queue.length).toBeGreaterThanOrEqual(2);
     // The point of a queue is that somebody works down it.
     expect(queue[0].overdueDays).toBeGreaterThanOrEqual(queue[1].overdueDays);
     expect(queue[0].leadId).toBe(fixture.a.leadIds[0]);
     expect(queue[0].overdueDays).toBe(15);
 
-    await prisma.lead.updateMany({
-      where: { tenantId: T, id: { in: [fixture.a.leadIds[0], fixture.a.leadIds[1]] } },
-      data: { nextFollowUpAt: null },
-    });
+    await prisma.followUpTask.deleteMany({ where: { tenantId: T, id: { in: [first.id, second.id] } } });
   });
 
   it('leaves a won lead alone', async () => {
     const T = fixture.a.tenantId;
     await prisma.lead.update({
       where: { id: fixture.a.leadIds[0], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-01T00:00:00Z'), stageId: stageWonId },
+      data: { stageId: stageWonId },
     });
+    const owed = await owe(T, fixture.a.leadIds[0], fixture.a.userId, new Date('2026-08-01T00:00:00Z'));
 
-    const queue = await chasingQueue(T, [], new Date('2026-08-20T00:00:00Z'));
+    const queue = await chasingQueue(T, [], ALL_OBLIGATIONS, new Date('2026-08-20T00:00:00Z'));
     expect(queue.map((r) => r.leadId)).not.toContain(fixture.a.leadIds[0]);
 
+    await prisma.followUpTask.delete({ where: { tenantId: T, id: owed.id } });
     await prisma.lead.update({
       where: { id: fixture.a.leadIds[0], tenantId: T },
       data: { nextFollowUpAt: null, stageId: stageOpenId },
