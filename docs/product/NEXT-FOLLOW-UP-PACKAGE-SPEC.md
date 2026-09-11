@@ -1,5 +1,20 @@
 # Next package — deriving `Lead.nextFollowUpAt`
 
+> **Superseded 2026-09-11 by
+> [`NEXT-FOLLOW-UP-CHECKPOINT.md`](NEXT-FOLLOW-UP-CHECKPOINT.md), which is
+> implemented and verified.** Kept for the record. Three things in it turned out
+> to be wrong and are corrected there rather than here:
+>
+> 1. **§3.2 is wrong.** "The lead-wide column carries no new disclosure" is
+>    false against this application's own seeded roles — Marketing Manager holds
+>    every lead and no `tasks` grant at all.
+> 2. **"The six read sites" undercounts.** There are ten, including the CSV
+>    export and `filterTree`, which exposed the column as a user-buildable
+>    filter.
+> 3. **"Five writers" was right, but only by luck** — it was asserted rather
+>    than established. The re-taken inventory confirms it, and also finds
+>    `update_field`, which writes the derived column directly.
+
 Specification. Nothing here is implemented in the P1-1 completion package, and
 no next-follow-up write ships in it.
 

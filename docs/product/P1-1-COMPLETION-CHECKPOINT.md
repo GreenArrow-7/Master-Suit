@@ -113,14 +113,56 @@ worse than showing nothing, because it looks precise.
    `imported + skipped = considered`.
 4. **Look at the queue** for that workspace. Confirm reconciled rows read
    "Unknown", not a duration.
-5. **Re-run the same command.** It must report `considered=0`. If it does not,
-   stop: the partial unique index is not doing its job and nothing further should
-   run.
+5. **Re-run the same command.** On a quiet workspace it reports `considered=0`.
+
+   > **Corrected 2026-09-11.** This step used to say `considered=0` was
+   > mandatory and that anything else meant the partial unique index had
+   > failed. That is wrong, and following it would stop a correct rollout. A
+   > workspace taking new leads produces *newly eligible* ones between the two
+   > runs, so `considered > 0` on a rerun is the expected result of a busy hour,
+   > not evidence of a broken index.
+   >
+   > What actually indicates a broken index is `imported > 0` **for a lead that
+   > already holds an open episode** — so the check is `already_queued`
+   > accounting for every lead the first run imported, and
+   > `imported + skipped = considered` still balancing. If a lead appears twice
+   > in `LeadTriageEntry` with `status = 'WAITING'`, stop; that is the index
+   > failing, and it is a different symptom from a non-zero `considered`.
+
 6. **Remaining workspaces**, in batches, re-running `count` between them.
-7. **Rollback**, if wanted: the import only creates `WAITING` episodes with
-   `reason = 'PRE_EXISTING'`. They can be closed with a single scoped
-   `UPDATE … SET status = 'CANCELLED'` on that reason; no lead row is touched by
-   the import, so there is nothing else to undo.
+7. **Recovery**, if wanted: target the batch, not the reason.
+
+   > **Corrected 2026-09-11.** This step used to cancel every `PRE_EXISTING`
+   > episode in the workspace with one `UPDATE` on the reason. That is
+   > indiscriminate: `PRE_EXISTING` is also the reason carried by any earlier
+   > import, so a rollback of this morning's batch would silently close
+   > episodes from last month's — including ones a manager is part-way through.
+   >
+   > Every entry written by a single import run carries the same
+   > `detail->>'assessedAt'`, set once per run. That is the batch key, and
+   > recovery uses it:
+   >
+   > ```sql
+   > UPDATE "LeadTriageEntry"
+   >    SET "status" = 'CANCELLED', "resolvedAt" = NOW(), "resolution" = 'IMPORT_ROLLED_BACK'
+   >  WHERE "tenantId" = $1
+   >    AND "reason" = 'PRE_EXISTING'
+   >    AND "status" = 'WAITING'
+   >    AND "detail"->>'assessedAt' = $2;   -- the assessedAt of the run being undone
+   > ```
+   >
+   > **Pending notifications must be handled in the same transaction.** Opening
+   > an episode enqueues `triage.opened:<entryId>` in `NotificationOutbox`;
+   > cancelling the episode without withdrawing the notice leaves the queue
+   > telling people to work leads that are no longer queued. `withdrawNotice`
+   > removes `PENDING` rows only — deliberately, because a notice already
+   > `DELIVERED` is a thing that happened and deleting it would make the record
+   > lie. So the honest description of a rollback is: pending notices are
+   > withdrawn, delivered ones are not, and anyone already notified may open a
+   > lead that is no longer in the queue and find nothing waiting. That is
+   > recoverable and visible; a silently truncated notification history is not.
+   >
+   > No lead row is touched by the import, so there is nothing else to undo.
 
 Note for step 6: `skipped` is expected to be non-zero on a busy workspace — a
 lead assigned between the scan and the write is skipped and counted under

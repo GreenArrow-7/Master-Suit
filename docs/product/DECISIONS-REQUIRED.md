@@ -400,3 +400,38 @@ anything — and it cannot be promised as exactly-once in any case.
 
 Track 0 (security and reliability) depends on **none** of these and can begin as
 soon as implementation is approved.
+
+---
+
+## D-18 · May someone see *that* a lead has work on it without seeing *whose* or *when*?
+
+**Raised by** the next-follow-up derivation, 2026-09-11. **Answer needed before
+the derivation is enabled for a workspace with divergent role scopes.**
+
+The product direction asked for "no action assigned to you" and "no action
+scheduled for this lead" to read differently — and they now do, as **"Not
+yours"** and **"No next action"**.
+
+Telling them apart requires knowing whether *anything* is open on the lead,
+which is a fact about obligations the viewer may not be able to see. The
+implementation discloses the **existence** of work and nothing else: no date, no
+owner, no title, no count. It reads the stored aggregate as a boolean and the
+date never leaves the derivation.
+
+**The line I drew, and it is a judgement rather than a deduction:** existence of
+work is a lead-level fact and travels with lead visibility; timing and identity
+are obligation-level and do not.
+
+What that means in practice for the two roles in §3.1 of the checkpoint: a
+Marketing Manager, who holds every lead and no `tasks` grant, sees which leads
+somebody is working without learning who or when. If that is too much, the
+alternative is to render both cases as "No next action" — strictly less
+disclosive, and it gives up the distinction the direction asked for.
+
+- **Keep the distinction** (implemented) — "Not yours" where work exists.
+- **Collapse it** — one "No next action" for both, at the cost of a lead nobody
+  is working looking identical to one somebody else is.
+
+This is a one-line change either way; it is flagged because it is a disclosure
+decision, not a technical one.
+
