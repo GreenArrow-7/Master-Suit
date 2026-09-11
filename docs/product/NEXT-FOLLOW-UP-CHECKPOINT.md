@@ -10,6 +10,8 @@ production data touched. No task-store consolidation, no AI features.
 | | |
 | --- | --- |
 | Starting HEAD | `b5ab575a9832e1f80b4fa4e7606f7fb0b1bbc2d9` |
+| **Final SHA** | `9d61108f214ef3bce2a223cd086d14c7f25935c0` |
+| **Tested revision** | `9d61108` — the full Linux run below is against this commit, working tree clean |
 | The checkpoint's `1a48d458` | `1a48d45 → b5ab575` is **one file, +335 lines, zero code files** — the P1-1 completion checkpoint committing itself. Documentation only, so no test was repeated for it. |
 | Reference material | `claude/nextfollowup-wip` @ `190bc23` — 14 files, +1,167/−37. Read, not merged and not cherry-picked. Nothing from it ships here; the implementation below was written against the inventory re-taken in §2. |
 
