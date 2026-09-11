@@ -166,6 +166,21 @@ export function referencedFields(node: FilterNode): string[] {
   return [node.field];
 }
 
+/**
+ * Fields that were filterable and are not any more.
+ *
+ * Named so a saved view built against one fails with an explanation rather than
+ * a shrug. See `WITHDRAWN_NEXT_FOLLOW_UP` for the compatibility path the Smart
+ * Views screen takes with the same information.
+ */
+export const WITHDRAWN_FIELDS: Record<string, string> = {
+  'LEAD.nextFollowUpAt':
+    'Filtering on the next follow-up date was withdrawn: the stored value aggregates every ' +
+    'owner’s obligations, so a filter on it answered questions about other people’s ' +
+    'schedules. Use the Overdue or No Next Action views, which are built from the obligations ' +
+    'you are allowed to see.',
+};
+
 export function compileFilterTree(object: string, node: FilterNode, ctx: Ctx): Record<string, unknown> {
   const map = FIELD_MAP[object];
   if (!map) throw new AppError(400, 'unknown-object', `No filter map registered for ${object}.`);
@@ -176,7 +191,14 @@ export function compileFilterTree(object: string, node: FilterNode, ctx: Ctx): R
   }
 
   const spec = map[node.field];
-  if (!spec) throw new AppError(400, 'unknown-field', `Cannot filter on "${node.field}".`);
+  if (!spec) {
+    // A field that used to be filterable gets its own message, because "cannot
+    // filter on X" reads like a typo when the truth is that it was withdrawn
+    // and there is somewhere else to go.
+    const withdrawn = WITHDRAWN_FIELDS[`${object}.${node.field}`];
+    if (withdrawn) throw new AppError(400, 'withdrawn-field', withdrawn);
+    throw new AppError(400, 'unknown-field', `Cannot filter on "${node.field}".`);
+  }
 
   if (node.cmp === 'is_null' || node.cmp === 'is_not_null') {
     // A scalar list is never null — it is empty. `{ tags: null }` is not a

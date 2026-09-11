@@ -14,6 +14,7 @@ import LeadImport from './LeadImport';
 import Pager from '@/components/workspace/Pager';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 import {
+  emptyFollowUpLabel,
   obligationAccess,
   obligationWhere,
   scopedNextFollowUp,
@@ -168,21 +169,19 @@ export default async function LeadsPage({
   /**
    * The dates the grid renders, derived per viewer — never the stored column.
    *
-   * The stored column is the unrestricted aggregate over every owner. It is
-   * still read above, but only ever as a boolean here: `stored && !mine` says
-   * *that* somebody is working this lead without saying who or when, which is
-   * what separates "no action assigned to you" from "no action scheduled for
-   * this lead". The date itself never leaves the derivation.
+   * The stored value selected above is replaced outright rather than consulted.
+   * An earlier revision kept it as a boolean to tell "nobody scheduled
+   * anything" from "somebody else is handling this"; that answered, for every
+   * lead on screen, whether a colleague had work on it, from a cache the viewer
+   * is not entitled to read. The empty cell now says something about the
+   * viewer instead — see `emptyFollowUpLabel`.
    */
   const due = await scopedNextFollowUp(
     ctx.tenantId,
     pageRows.map((r) => r.id),
     access,
   );
-  const withFollowUp = pageRows.map((r) => {
-    const mine = due.get(r.id) ?? null;
-    return { ...r, nextFollowUpAt: mine, othersPending: mine === null && r.nextFollowUpAt !== null };
-  });
+  const withFollowUp = pageRows.map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }));
 
   const data = withFollowUp.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
@@ -301,6 +300,7 @@ export default async function LeadsPage({
           taskTypes={taskTypes}
           canAssign={can(ctx, 'leads', 'ASSIGN')}
           canEdit={can(ctx, 'leads', 'EDIT')}
+          emptyLabel={emptyFollowUpLabel(access, view)}
         />
       )}
 

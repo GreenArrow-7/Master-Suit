@@ -78,6 +78,26 @@ export function stateOf(dueAt: Date | null | undefined, now: Date): FollowUpStat
   return dueAt.getTime() < now.getTime() ? 'overdue' : 'scheduled';
 }
 
+/**
+ * What to render when the viewer has no visible obligation on a lead.
+ *
+ * **It must not say whether work exists.** An earlier revision distinguished
+ * "nobody has scheduled anything" from "somebody else is handling this" by
+ * reading the unrestricted stored column as a boolean. That is a disclosure:
+ * it answers, for every lead on screen, whether a colleague has work on it —
+ * derived from a cache the viewer is not entitled to read. It is gone.
+ *
+ * What is left is an accurate statement about the viewer's own position, which
+ * is true whether or not anyone else is working the lead. The wording follows
+ * the reach, so it never claims more absence than the viewer can actually see:
+ * only a viewer who can see every obligation is told that nothing is scheduled.
+ */
+export function emptyFollowUpLabel(access: ObligationAccess, view: 'personal' | 'scope'): string {
+  if (access.unrestricted) return 'No action scheduled';
+  if (view === 'personal') return 'No action assigned to you';
+  return 'No action assigned to your team';
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Write path
 // ───────────────────────────────────────────────────────────────────────────

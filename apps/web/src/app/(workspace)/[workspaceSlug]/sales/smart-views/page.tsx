@@ -1,8 +1,13 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import {
+  emptyFollowUpLabel,
+  obligationAccess,
+  obligationWhere,
+  scopedNextFollowUp,
+} from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
-import { compileFilterTree, type FilterNode } from '@/lib/api/filterTree';
+import { compileFilterTree, referencedFields, type FilterNode } from '@/lib/api/filterTree';
 import { mergeWhere } from '@/lib/api/where';
 import { can } from '@/lib/security/rbac';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
@@ -14,6 +19,19 @@ import ViewSidebar from './ViewSidebar';
 import ListHeader from '@/components/workspace/ListHeader';
 
 export const metadata = { title: 'Smart Views' };
+
+/**
+ * Is every leaf of this tree the old "overdue follow-up" comparison?
+ *
+ * That is the shape the removed system view shipped with, so every saved view
+ * cloned from it looks like this. Its meaning is unchanged by the withdrawal —
+ * "overdue" is still a question with an answer — so it is honoured, scoped to
+ * the viewer rather than to every owner as it used to be.
+ */
+function isLegacyOverdueTree(node: FilterNode): boolean {
+  if ('op' in node) return node.children.length > 0 && node.children.every(isLegacyOverdueTree);
+  return node.field === 'nextFollowUpAt' && node.cmp === 'relative' && node.value === 'overdue';
+}
 
 interface SystemView {
   key: string;
@@ -97,27 +115,52 @@ export default async function SmartViewsPage({
   const activeSystem = activeSystemKey ? SYSTEM_VIEWS.find((v) => v.key === activeSystemKey) : null;
   const activeSaved = params.id ? savedViews.find((v) => v.id === params.id) : null;
 
+  // The two obligation views, scoped to the viewer. `access` also drives the
+  // dates rendered into the grid below, so the rows and their dates agree.
+  const access = await obligationAccess(ctx, 'scope');
+  const now = new Date();
+
+  /**
+   * A saved view built on the withdrawn `nextFollowUpAt` filter.
+   *
+   * `null` means the view does not mention it. Otherwise it is either
+   * translated — the shape the old system view used is exactly "overdue", and
+   * that meaning survives the withdrawal — or it is something this cannot
+   * safely reinterpret, and the screen says so.
+   *
+   * The behaviour being replaced was a bare `catch` that showed every lead. A
+   * filter that silently stops filtering is the worst of the three options: the
+   * list looks like an answer to the question the view's name asks, and is not.
+   */
+  let compatibility: 'translated' | 'unsupported' | null = null;
+
   let filterWhere: Record<string, unknown> = {};
   if (activeSystem?.filter) {
     filterWhere = compileFilterTree('LEAD', activeSystem.filter, ctx);
   } else if (activeSaved?.filterTree && typeof activeSaved.filterTree === 'object') {
-    try {
-      filterWhere = compileFilterTree('LEAD', activeSaved.filterTree as FilterNode, ctx);
-    } catch {
-      /* bad filter — show all */
+    const tree = activeSaved.filterTree as FilterNode;
+    if (referencedFields(tree).includes('nextFollowUpAt')) {
+      if (isLegacyOverdueTree(tree)) {
+        filterWhere = obligationWhere(access, 'overdue', now) as Record<string, unknown>;
+        compatibility = 'translated';
+      } else {
+        compatibility = 'unsupported';
+      }
+    } else {
+      try {
+        filterWhere = compileFilterTree('LEAD', tree, ctx);
+      } catch {
+        /* bad filter — show all */
+      }
     }
   }
-
-  // The two obligation views, scoped to the viewer. `access` also drives the
-  // dates rendered into the grid below, so the rows and their dates agree.
-  const access = await obligationAccess(ctx, 'scope');
   if (activeSystemKey === 'overdue') {
-    filterWhere = obligationWhere(access, 'overdue', new Date()) as Record<string, unknown>;
+    filterWhere = obligationWhere(access, 'overdue', now) as Record<string, unknown>;
   } else if (activeSystemKey === 'no-next-action') {
     filterWhere = {
       // Only live leads: a won or lost lead with nothing scheduled is finished,
       // not neglected, and listing it buries the ones that are.
-      AND: [obligationWhere(access, 'unscheduled', new Date()), { stage: { is: { category: 'OPEN' } } }],
+      AND: [obligationWhere(access, 'unscheduled', now), { stage: { is: { category: 'OPEN' } } }],
     } as Record<string, unknown>;
   }
 
@@ -194,10 +237,7 @@ export default async function SmartViewsPage({
     access,
   );
   const data = rows
-    .map((r) => {
-      const mine = due.get(r.id) ?? null;
-      return { ...r, nextFollowUpAt: mine, othersPending: mine === null && r.nextFollowUpAt !== null };
-    })
+    .map((r) => ({ ...r, nextFollowUpAt: due.get(r.id) ?? null }))
     .map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
 
   const activeName = activeSystem?.name ?? activeSaved?.name ?? 'All Leads';
@@ -217,6 +257,21 @@ export default async function SmartViewsPage({
           description={counts === 50 ? '50+ leads' : `${counts} lead${counts === 1 ? '' : 's'}`}
         />
 
+        {compatibility === 'translated' && (
+          <div className="lf-alert" style={{ marginBottom: 'var(--lf-space-3)' }} role="status">
+            This saved view filtered on the next follow-up date. It now shows leads with an <strong>overdue</strong>{' '}
+            task or follow-up <strong>that you are allowed to see</strong>, which is what it was asking for.
+          </div>
+        )}
+        {compatibility === 'unsupported' && (
+          <div className="lf-alert" style={{ marginBottom: 'var(--lf-space-3)' }} role="alert">
+            <strong>This view is not filtering.</strong> It was built on the next follow-up date, which was withdrawn as
+            a filter because the stored value covers every owner&rsquo;s obligations rather than yours. Every lead you
+            can see is listed below. Use the <strong>Overdue Follow-up</strong> or <strong>No Next Action</strong> view,
+            or rebuild this one without that condition.
+          </div>
+        )}
+
         {data.length === 0 ? (
           <div className="lf-card">
             <EmptyState
@@ -234,6 +289,7 @@ export default async function SmartViewsPage({
             taskTypes={taskTypes}
             canAssign={can(ctx, 'leads', 'ASSIGN')}
             canEdit={can(ctx, 'leads', 'EDIT')}
+            emptyLabel={emptyFollowUpLabel(access, 'scope')}
           />
         )}
       </div>

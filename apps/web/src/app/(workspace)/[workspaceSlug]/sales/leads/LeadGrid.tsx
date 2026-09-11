@@ -19,14 +19,6 @@ export interface LeadRow {
   slaState: string;
   /** The viewer's own next obligation on this lead — never the lead-wide one. */
   nextFollowUpAt?: string | Date | null;
-  /**
-   * Something is open on this lead, but nothing the viewer may see.
-   *
-   * Carries no date and no name: it is the difference between "nobody has
-   * scheduled anything" and "this is somebody else's to do", which a single
-   * blank cell cannot express.
-   */
-  othersPending?: boolean;
   updatedAt: string | Date;
   ownerId?: string | null;
   stage: { key: string; name: string; color: string };
@@ -46,6 +38,7 @@ export default function LeadGrid({
   taskTypes,
   canAssign,
   canEdit,
+  emptyLabel,
 }: {
   rows: LeadRow[];
   columns: ColumnDef[];
@@ -54,6 +47,8 @@ export default function LeadGrid({
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
   canEdit: boolean;
+  /** What an empty follow-up cell says for this viewer. */
+  emptyLabel: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -354,7 +349,7 @@ export default function LeadGrid({
                     data-priority={column.primary ? 'primary' : undefined}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
-                    {cell(column.key, row)}
+                    {cell(column.key, row, emptyLabel)}
                   </td>
                 ))}
               </tr>
@@ -366,7 +361,7 @@ export default function LeadGrid({
   );
 }
 
-function cell(key: string, row: LeadRow) {
+function cell(key: string, row: LeadRow, emptyLabel: string) {
   switch (key) {
     case 'reference':
       return (
@@ -412,7 +407,7 @@ function cell(key: string, row: LeadRow) {
     case 'owner':
       return row.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>;
     case 'nextFollowUpAt':
-      return <FollowUpCell value={row.nextFollowUpAt} othersPending={row.othersPending} />;
+      return <FollowUpCell value={row.nextFollowUpAt} emptyLabel={emptyLabel} />;
     case 'email':
       return <span style={{ color: 'var(--lf-ink-2)' }}>{row.email ?? '—'}</span>;
     case 'phone':
@@ -432,24 +427,22 @@ function formatDate(value?: string | Date | null) {
 }
 
 /**
- * Four states, three of them not a date.
+ * Three states, two of them not a date.
  *
  * An em dash for "nothing owed" reads as missing data, and the same grey as
  * every other empty cell hides the one case the chasing queue exists to catch.
  * "Overdue" gets the only colour, because it is the only one that is a problem;
  * the rest are ordinary facts and are written out in words rather than punctuation.
  *
+ * `emptyLabel` is a statement about the viewer, not about the lead — see
+ * `emptyFollowUpLabel`. It deliberately does not reveal whether somebody else
+ * has work here.
+ *
  * The label is also the accessible name — no title-attribute-only meaning, which
  * a screen reader announces inconsistently and a touch device never shows at all.
  */
-function FollowUpCell({ value, othersPending }: { value?: string | Date | null; othersPending?: boolean }) {
-  if (!value) {
-    return othersPending ? (
-      <span style={{ color: 'var(--lf-ink-3)' }}>Not yours</span>
-    ) : (
-      <span style={{ color: 'var(--lf-ink-3)' }}>No next action</span>
-    );
-  }
+function FollowUpCell({ value, emptyLabel }: { value?: string | Date | null; emptyLabel: string }) {
+  if (!value) return <span style={{ color: 'var(--lf-ink-3)' }}>{emptyLabel}</span>;
   const overdue = new Date(value) < new Date();
   return (
     <span style={{ color: overdue ? 'var(--lf-vermillion)' : 'var(--lf-ink-2)' }}>

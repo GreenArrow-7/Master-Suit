@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { assertWritableField } from './writableFields';
 
 /**
  * The handful of object types the automation engine can act on today. Extend as
@@ -25,6 +26,14 @@ export async function loadRecord(tenantId: string, objectType: AutomationObjectT
   return delegate(objectType).findFirst({ where: { tenantId, id: recordId } });
 }
 
+/**
+ * The generic write boundary for automation.
+ *
+ * `field` arrives from rule configuration and is interpolated into `data`, so
+ * this is the one place in the application where an arbitrary column name
+ * reaches a `Lead` update. Everything else validates against a `.strict()`
+ * schema. See `writableFields.ts` for what is refused and why.
+ */
 export async function updateRecordField(
   tenantId: string,
   objectType: AutomationObjectType,
@@ -32,6 +41,7 @@ export async function updateRecordField(
   field: string,
   value: unknown,
 ) {
+  assertWritableField(objectType, field);
   await delegate(objectType).updateMany({ where: { tenantId, id: recordId }, data: { [field]: value } });
 }
 
