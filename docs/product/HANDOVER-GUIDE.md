@@ -118,8 +118,8 @@ Three consequences people will notice on day one:
 
 | Thing | What people will see | What to say |
 | --- | --- | --- |
-| Recording **how much** agency fee was collected | A "collected" tick with a date, and no amount anywhere | The tick means somebody pressed the button, **not** that a known sum arrived. Do not report off it. Recording amounts is a decided-and-scheduled change, not a bug to work around |
-| The person who confirms a sale can also tick it collected | No second pair of eyes on collection | Agree locally who does it until the system enforces it |
+| Agency-fee receipts | **API only — there is no screen yet.** A finance user records a receipt (amount, currency, payment date, reference, evidence) and a *different* finance user verifies it, through `/api/v1/collections/receipts`. Selling agents cannot record receipts. Commission cannot be collected or paid out until verified receipts fully cover the agreed agency fee | Finance needs an API client or the screen to be built (scheduled). A receipt certifies **agency-fee money received by the agency** — not the purchase price, not developer receipts, not escrow |
+| The old "collected" date on a booking | Still shown on old bookings | It is a historical button press, **not** verified money. It no longer unlocks anything. Finance re-records those as receipts |
 | A saved view built on "next follow-up date" | An explicit notice, and an unfiltered list | Use the **Overdue** or **No next action** view, or rebuild the saved view |
 | Sorting by Follow-up | Sorts the page you are on, not all results | Filter first, then sort |
 | Reminders | Do not fire for follow-ups, only tasks, and only when `OPEN` | Do not rely on reminders yet |

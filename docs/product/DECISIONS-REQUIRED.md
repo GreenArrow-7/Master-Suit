@@ -187,7 +187,17 @@ collection half.
 
 ---
 
-## D-8 · Collection and commission rules — **blocking**
+## D-8 · Collection and commission rules — **ANSWERED 12 September 2026, implemented on the branch**
+
+**Owner's decisions (verbatim summary):** D-8.1 a designated finance role with `collections:CREATE` records receipts; agents cannot. D-8.2 verification needs `collections:APPROVE` and a different person; no administrator bypass; two individual accounts, never shared; the payout approval control is preserved. D-8.3 a receipt requires a positive amount, currency, actual payment date, payment reference, and an evidence document or a traceable provider/bank transaction reference; recorded, paid and verified times are separate; legacy `collectedAt` is not a receipt and is not migrated. D-8.4 partial receipts and auditable reversals; **100 % eligibility**, not proportional — net verified receipts must fully cover the agreed agency fee; pending/rejected/reversed money does not count; overpayment adds nothing; no currency mixing; unset fee is not eligible; a reversal below the fee re-evaluates unpaid commission, blocks unpaid payout execution, and opens a recovery exception for paid commission; eligibility is re-checked at payout approval and execution. D-8.5 a receipt certifies agency-fee money received by the agency only.
+
+Implementation: `COLLECTIONS-CHECKPOINT-2026-09-12.md`. The original questions and proposal are kept below for the record.
+
+### D-20 · May finance record or amend the agreed agency fee on a confirmed booking? — **open, surfaced by D-8**
+
+`Booking.agencyFee` is the obligation receipts are measured against. It can only be set at `POST /api/v1/bookings`; there is no route to record it later or correct it. A confirmed booking created without one can never become eligible (correct under D-8.4), and a wrong one cannot be fixed. Amending it changes the commission base for `PERCENT_OF_AGENCY_FEE` slabs, so it is a change to the commission agreement, not bookkeeping. **Question:** which role may set or amend it after confirmation, is a second person required, and does a change re-run accrual or leave existing commission untouched? Not implemented pending the answer.
+
+### D-8 (original, for the record)
 
 **Questions.**
 
