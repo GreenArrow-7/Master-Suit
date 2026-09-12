@@ -6,6 +6,7 @@ import { buildPayout, canTransition, decidePayout, statement } from '@/services/
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { fixtureUnit } from '../helpers/inventory';
+import { coverAgencyFee } from '../helpers/receipts';
 import type { Ctx, Scope } from '@/lib/security/rbac';
 
 /**
@@ -72,6 +73,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await prisma.collectionRecoveryCase.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+  await prisma.agencyFeeReceipt.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.commission.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.payout.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.booking.deleteMany({ where: { tenantId: fixture.a.tenantId } });
@@ -84,6 +87,8 @@ beforeEach(async () => {
  */
 afterAll(async () => {
   for (const tenantId of [fixture.a.tenantId, fixture.b.tenantId]) {
+    await prisma.collectionRecoveryCase.deleteMany({ where: { tenantId } });
+    await prisma.agencyFeeReceipt.deleteMany({ where: { tenantId } });
     await prisma.commission.deleteMany({ where: { tenantId } });
     await prisma.payout.deleteMany({ where: { tenantId } });
     await prisma.booking.deleteMany({ where: { tenantId } });
@@ -106,9 +111,18 @@ async function collected(saleValue: number) {
       ownerId: AGENT,
       status: 'CONFIRMED',
       saleValue: D(saleValue),
+      // The agreed agency fee is what receipts are measured against.
+      agencyFee: D(saleValue).mul('0.03'),
       bookingDate: new Date(),
-      collectedAt: new Date(),
     },
+  });
+  // Money in, recorded by one person and verified by another; the booking is
+  // then fully covered and commission may be collected.
+  await coverAgencyFee({
+    tenantId: fixture.a.tenantId,
+    bookingId: booking.id,
+    recordedById: 'finance-recorder',
+    verifiedById: 'finance-verifier',
   });
   const { commissions } = await accrueCommission({ ctx: clerk, bookingId: booking.id });
   const id = commissions[0].id;

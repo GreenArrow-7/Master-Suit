@@ -19,6 +19,7 @@ import { Prisma } from '@prisma/client';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
+import { assertCovered, lockBooking } from '@/services/money/collections';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { applySlab, splitAmount, type Band, type SlabBasis, type SlabMode } from './slabs';
 
@@ -224,7 +225,7 @@ export async function transitionCommission(input: TransitionInput) {
   return withTx(ctx.tenantId, async (tx) => {
     const commission = await tx.commission.findFirst({
       where: { id: input.commissionId, tenantId: ctx.tenantId },
-      include: { booking: { select: { collectedAt: true, status: true } } },
+      include: { booking: { select: { status: true } } },
     });
     if (!commission) throw NotFound('Commission');
 
@@ -245,16 +246,13 @@ export async function transitionCommission(input: TransitionInput) {
     }
 
     // The gate that matters. Commission is collected when the client's money is
-    // in — not when somebody decides it will be. Without this the ledger shows
-    // cash the business does not have.
-    if (input.to === 'COLLECTED' && !commission.booking.collectedAt) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'not_collected',
-          message: 'The booking has no collection date. Record when the client paid before collecting commission.',
-        },
-      ]);
+    // in — not when somebody decides it will be, and not when a timestamp says
+    // so. D-8.4: net verified receipts must fully cover the agreed agency fee.
+    // The booking row is locked first so a reversal being verified at the same
+    // moment cannot slip between this check and the write.
+    if (input.to === 'COLLECTED') {
+      await lockBooking(tx, ctx.tenantId, commission.bookingId);
+      await assertCovered(tx, ctx.tenantId, commission.bookingId, 'Cannot collect commission');
     }
 
     // PAID is set by the payout run, which is the thing that actually moves

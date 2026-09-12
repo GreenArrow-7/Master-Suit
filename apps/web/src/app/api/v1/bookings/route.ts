@@ -119,18 +119,18 @@ const patchBody = z.discriminatedUnion('action', [
   z
     .object({ action: z.literal('CONFIRM'), bookingId: z.string().cuid(), agreementDate: z.coerce.date().optional() })
     .strict(),
-  z
-    .object({ action: z.literal('COLLECT'), bookingId: z.string().cuid(), collectedAt: z.coerce.date().optional() })
-    .strict(),
   z.object({ action: z.literal('CANCEL'), bookingId: z.string().cuid(), reason: z.string().min(4).max(1000) }).strict(),
 ]);
 
 /**
  * Moving a sale along.
  *
- * Three facts, each of which unlocks the next thing the ledger may do:
- * confirming makes the sale real enough to accrue against, collecting records
- * that the client's money arrived, and cancelling closes it.
+ * Two facts: confirming makes the sale real enough to accrue against, and
+ * cancelling closes it. "Collected" used to be a third — one timestamp, set by
+ * whoever could edit the booking — and is not any more: money received is a
+ * verified receipt under /api/v1/collections, recorded by finance and checked
+ * by a second person. `collectedAt` on this row is legacy data, shown but not
+ * written.
  *
  * Cancelling refuses while live commissions hang off the booking. Silently
  * orphaning them would leave amounts owed against a sale that no longer exists;
@@ -253,17 +253,6 @@ export const PATCH = route(
             regionId: owner?.regionId ?? null,
             updatedById: ctx.actor.id,
           },
-          select: LIST_SELECT,
-        });
-      }
-
-      if (body.action === 'COLLECT') {
-        if (booking.status !== 'CONFIRMED') throw bad('Only a confirmed booking can be marked collected.');
-        if (booking.collectedAt) throw Conflict('This booking is already marked collected.');
-        await lockBooking();
-        return tx.booking.update({
-          where: { id: booking.id, tenantId: ctx.tenantId },
-          data: { collectedAt: body.collectedAt ?? new Date(), updatedById: ctx.actor.id },
           select: LIST_SELECT,
         });
       }

@@ -622,6 +622,8 @@ model Tenant {
   webhookEvents              WebhookEvent[]
   referenceCounters          TenantReferenceCounter[]
   platformAccessGrants       PlatformAccessGrant[]
+  agencyFeeReceipts          AgencyFeeReceipt[]
+  collectionRecoveryCases    CollectionRecoveryCase[]
 
   @@index([status])
 }
@@ -5065,13 +5067,14 @@ model Document {
   updatedById       String?
   deletedAt         DateTime?
 
-  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
-  account     Account?     @relation(fields: [accountId], references: [id])
-  ticket      Ticket?      @relation(fields: [ticketId], references: [id])
-  task        Task?        @relation(fields: [taskId], references: [id])
-  activity    Activity?    @relation(fields: [activityId], references: [id])
-  product     Product?     @relation(fields: [productId], references: [id])
+  lead        Lead?              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity Opportunity?       @relation(fields: [opportunityId], references: [id])
+  account     Account?           @relation(fields: [accountId], references: [id])
+  ticket      Ticket?            @relation(fields: [ticketId], references: [id])
+  task        Task?              @relation(fields: [taskId], references: [id])
+  activity    Activity?          @relation(fields: [activityId], references: [id])
+  feeReceipts AgencyFeeReceipt[]
+  product     Product?           @relation(fields: [productId], references: [id])
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -6956,6 +6959,26 @@ enum CommissionStatus {
   CLAWED_BACK
 }
 
+/// A receipt certifies agency-fee money received by the agency. It does not
+/// certify the purchase price, developer receipts or escrow funds (D-8.5).
+enum ReceiptKind {
+  RECEIPT
+  /// Reverses part or all of a VERIFIED receipt. Its own row, independently
+  /// verified; the original is never edited.
+  REVERSAL
+}
+
+enum ReceiptStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RecoveryCaseStatus {
+  OPEN
+  RESOLVED
+}
+
 enum PayoutStatus {
   DRAFT
   APPROVED
@@ -7020,10 +7043,12 @@ model Booking {
   /// ever hard-deleted, and by the time a booking exists one usually is.
   deletedAt   DateTime?
 
-  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  unit        UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
-  listing     Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  project     Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  unit        UnitInventory?           @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  listing     Listing?                 @relation(fields: [listingId], references: [id], onDelete: SetNull)
   commissions Commission[]
+  receipts    AgencyFeeReceipt[]
+  recoveries  CollectionRecoveryCase[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -7109,6 +7134,98 @@ model CommissionSlabBand {
 }
 
 /// What one person earned on one booking.
+/// Money the agency actually received against a booking's agency fee.
+///
+/// Recorded by one person, verified by a different one, never edited: a
+/// mistake is a REVERSAL row plus a new receipt, each with its own reason and
+/// its own verifier. `Booking.agencyFee` is the obligation these rows are
+/// measured against; `Booking.collectedAt` is a legacy timestamp that is *not*
+/// a receipt and is never promoted into one.
+model AgencyFeeReceipt {
+  id        String        @id @default(cuid())
+  tenantId  String
+  bookingId String
+  reference String
+  kind      ReceiptKind   @default(RECEIPT)
+  status    ReceiptStatus @default(PENDING)
+
+  /// Always positive. A reversal's sign is its `kind`, not its amount.
+  amount                 Decimal  @db.Decimal(18, 2)
+  currency               String
+  /// When the money moved — not when somebody typed it in.
+  paidAt                 DateTime
+  /// The payer's or bank's reference. On its own it is not evidence.
+  paymentReference       String
+  /// One of these two is the evidence: a traceable provider/bank transaction
+  /// id, or an uploaded document.
+  providerTransactionRef String?
+  evidenceDocumentId     String?
+
+  /// Why a reversal exists, or why a receipt was rejected.
+  reason     String?
+  reversesId String?
+
+  recordedById String
+  recordedAt   DateTime  @default(now())
+  verifiedById String?
+  verifiedAt   DateTime?
+  rejectedById String?
+  rejectedAt   DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  reverses   AgencyFeeReceipt?        @relation("ReceiptReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversals  AgencyFeeReceipt[]       @relation("ReceiptReversal")
+  evidence   Document?                @relation(fields: [evidenceDocumentId], references: [id], onDelete: SetNull)
+  recoveries CollectionRecoveryCase[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, bookingId, status])
+  @@index([reversesId])
+  @@index([evidenceDocumentId])
+}
+
+/// A verified reversal took coverage below the agency fee after the commission
+/// was already paid. Nothing is rewritten and nobody is debited: this is the
+/// case finance reviews, with the numbers it needs.
+model CollectionRecoveryCase {
+  id           String             @id @default(cuid())
+  tenantId     String
+  bookingId    String
+  commissionId String
+  payoutId     String?
+  receiptId    String
+  status       RecoveryCaseStatus @default(OPEN)
+  /// agencyFee minus net verified receipts at the moment the reversal was verified.
+  shortfall    Decimal            @db.Decimal(18, 2)
+  currency     String
+  reason       String
+
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  booking    Booking          @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  commission Commission       @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  receipt    AgencyFeeReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, commissionId])
+  @@index([bookingId])
+  @@index([receiptId])
+}
+
 model Commission {
   id        String @id @default(cuid())
   tenantId  String
@@ -7155,9 +7272,10 @@ model Commission {
   createdById String?
   updatedById String?
 
-  booking Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  slab    CommissionSlab? @relation(fields: [slabId], references: [id], onDelete: SetNull)
-  payout  Payout?         @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  slab       CommissionSlab?          @relation(fields: [slabId], references: [id], onDelete: SetNull)
+  payout     Payout?                  @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  recoveries CollectionRecoveryCase[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

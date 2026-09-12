@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, type PermissionAction, type VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { POST as createBooking, PATCH as patchBooking } from '@/app/api/v1/bookings/route';
+import { POST as recordReceipt } from '@/app/api/v1/collections/receipts/route';
 import { createSessionToken } from '../helpers/session';
 import { patch, post } from '../helpers/request';
 
@@ -177,20 +178,31 @@ describe('Finding B — booking confirmation and unit availability', () => {
 });
 
 describe('Finding C — collection authority and evidence', () => {
+  /**
+   * Resolved 12 September 2026 (D-8.1–D-8.3). Collection is no longer a
+   * timestamp on the booking that bookings:EDIT could set; it is a receipt
+   * under /api/v1/collections, recorded by a finance role and verified by a
+   * second person. These two now pass; their assertions also live in the
+   * mandatory suite, tests/sales/collections.spec.ts.
+   */
+  const receipt = (bookingId: string) => ({
+    bookingId,
+    amount: '30000.00',
+    currency: 'AED',
+    paidAt: new Date().toISOString(),
+    paymentReference: `BANK-${suffix}`,
+    providerTransactionRef: `txn_${suffix}`,
+  });
+
   it('C1: booking EDIT alone is not enough to record collection', async () => {
     const u = await unit('C1');
     const bookingId = await draftBookingFor(u.id);
     await patch(patchBooking, '/api/v1/bookings', { action: 'CONFIRM', bookingId }, sellerCookie);
 
-    const res = await patch(
-      patchBooking,
-      '/api/v1/bookings',
-      { action: 'COLLECT', bookingId, collectedAt: new Date().toISOString() },
-      sellerCookie,
-    );
+    const res = await post(recordReceipt, '/api/v1/collections/receipts', receipt(bookingId), sellerCookie);
 
     // Recording that money arrived is a finance fact. The seller who booked the
-    // sale should not also be the one who certifies it was paid.
+    // sale is not the one who certifies it was paid.
     expect(res.status).toBe(403);
   });
 
@@ -198,14 +210,20 @@ describe('Finding C — collection authority and evidence', () => {
     const u = await unit('C2');
     const bookingId = await draftBookingFor(u.id);
     await patch(patchBooking, '/api/v1/bookings', { action: 'CONFIRM', bookingId }, sellerCookie);
-    await patch(patchBooking, '/api/v1/bookings', { action: 'COLLECT', bookingId }, sellerCookie);
 
-    const booking = await prisma.booking.findFirstOrThrow({ where: { id: bookingId, tenantId } });
-    expect(booking.collectedAt).not.toBeNull();
+    const finance = await makeUser('finance', [
+      ['collections', 'VIEW'],
+      ['collections', 'CREATE'],
+    ]);
+    const res = await post(recordReceipt, '/api/v1/collections/receipts', receipt(bookingId), finance.cookie);
+    expect(res.status).toBe(200);
 
-    // A timestamp cannot say whether 5% or 100% of the agency fee arrived, and
-    // commission eligibility hangs off it. Somewhere there must be an amount.
-    const keys = Object.keys(booking);
-    expect(keys.some((k) => /collectedAmount|amountCollected|receipt|paymentRef/i.test(k))).toBe(true);
+    // An amount, a currency, a payment date and evidence — not a timestamp.
+    const row = await prisma.agencyFeeReceipt.findFirstOrThrow({ where: { id: res.body.receipt.id, tenantId } });
+    expect(row.amount.toString()).toBe('30000');
+    expect(row.currency).toBe('AED');
+    expect(row.paymentReference).toBe(`BANK-${suffix}`);
+    expect(row.providerTransactionRef).toBe(`txn_${suffix}`);
+    expect(row.status).toBe('PENDING');
   });
 });

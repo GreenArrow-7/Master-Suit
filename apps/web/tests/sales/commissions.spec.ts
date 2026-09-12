@@ -12,6 +12,7 @@ import {
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { fixtureUnit } from '../helpers/inventory';
+import { coverAgencyFee } from '../helpers/receipts';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -73,6 +74,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await prisma.collectionRecoveryCase.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+  await prisma.agencyFeeReceipt.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.commission.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.booking.deleteMany({ where: { tenantId: fixture.a.tenantId } });
   await prisma.commissionSlabBand.deleteMany({ where: { tenantId: fixture.a.tenantId } });
@@ -86,6 +89,8 @@ beforeEach(async () => {
  */
 afterAll(async () => {
   for (const tenantId of [fixture.a.tenantId, fixture.b.tenantId]) {
+    await prisma.collectionRecoveryCase.deleteMany({ where: { tenantId } });
+    await prisma.agencyFeeReceipt.deleteMany({ where: { tenantId } });
     await prisma.commission.deleteMany({ where: { tenantId } });
     await prisma.booking.deleteMany({ where: { tenantId } });
     await prisma.project.deleteMany({ where: { tenantId } });
@@ -261,6 +266,7 @@ describe('the commission lifecycle', () => {
         ownerId: agent.actor.id,
         status: 'CONFIRMED',
         saleValue: D(3_500_000),
+        agencyFee: D(105_000),
         bookingDate: new Date(),
         ...over,
       },
@@ -361,12 +367,23 @@ describe('the commission lifecycle', () => {
     // Without this gate the ledger shows cash the business does not have.
     await expect(transitionCommission({ ctx: finance, commissionId: id, to: 'COLLECTED' })).rejects.toMatchObject({
       status: 422,
-      errors: [expect.objectContaining({ code: 'not_collected' })],
+      errors: [expect.objectContaining({ code: 'not_covered:short' })],
     });
 
+    // A timestamp on the booking is not money. Only verified receipts that
+    // cover the agreed agency fee are.
     await prisma.booking.update({
       where: { id: b.id, tenantId: fixture.a.tenantId },
       data: { collectedAt: new Date() },
+    });
+    await expect(transitionCommission({ ctx: finance, commissionId: id, to: 'COLLECTED' })).rejects.toMatchObject({
+      status: 422,
+    });
+    await coverAgencyFee({
+      tenantId: fixture.a.tenantId,
+      bookingId: b.id,
+      recordedById: 'finance-recorder',
+      verifiedById: 'finance-verifier',
     });
     const collected = await transitionCommission({ ctx: finance, commissionId: id, to: 'COLLECTED' });
     expect(collected.commission.status).toBe('COLLECTED');
