@@ -30,6 +30,7 @@ import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { GET as readAnalysis } from '@/app/api/v1/calls/[id]/analysis/route';
 import { GET as readCallAudits } from '@/app/api/v1/calls/[id]/audit/route';
 import { GET as readTranscript } from '@/app/api/v1/calls/[id]/transcript/route';
+import { GET as downloadDocument } from '@/app/api/v1/documents/[id]/download/route';
 import { authorizedTenantIds } from '@/lib/auth/platform-access';
 import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { resolveCtx } from '@/lib/auth/session';
@@ -417,13 +418,13 @@ describe('8 — sensitive data needs its own grant', () => {
     await expect(assertSensitiveAccess(ctx, 'call recordings')).rejects.toThrow(/granted separately/i);
   });
 
-  it('refuses AI analyses, call audits and transcripts on the route, before any lookup', async () => {
+  it('refuses AI analyses, call audits, transcripts and document downloads on the route, before any lookup', async () => {
     // What the model made of a conversation is the conversation. The id does
     // not exist, so a 403 here proves the gate ran ahead of the query — a route
     // that looked first would have answered 404.
     const cookie = await createPlatformSessionToken(supportId, granted.id);
     const params = Promise.resolve({ id: 'clzzzzzzzzzzzzzzzzzzzzzz' });
-    for (const read of [readAnalysis, readCallAudits, readTranscript]) {
+    for (const read of [readAnalysis, readCallAudits, readTranscript, downloadDocument]) {
       const res = await read(new Request('http://localhost/api/v1/calls/x', { headers: { cookie } }), { params });
       expect(res.status).toBe(403);
       expect(await res.text()).toMatch(/granted separately/i);
