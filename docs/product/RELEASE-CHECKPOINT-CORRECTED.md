@@ -123,27 +123,54 @@ that run was using it. Not a code regression, and not the same run as the table
 above. It is kept so the record shows what happened rather than only what
 worked.
 
-### 1.5 The gates re-run at `2272065`, the revision containing the booking fix
+### 1.5 The gates re-run at `f59bf47`, the revision containing the booking fix
 
 The table in §1.3 describes `92d1aa1`/`c09cb43`, which does **not** contain the
 booking fix. It stays as it is — it is the record of that artifact. This section
-is the new revision, and it supersedes §1.3 for release purposes.
+supersedes it for release purposes.
 
 | | |
 | --- | --- |
-| Source revision | **`2272065`**, clean tree |
-| Web image | `master-suite/web:2272065` |
-| Worker image | `master-suite/worker:2272065` |
-| Running container reports | `BUILD_COMMIT=22720656f20914dc0024aa0934e1a3bb8b7aa747` — web and worker both |
-| Artifact vs source | Built from this commit's tree. `public/` verified inside the image: `sw.js` and `offline.html` both serve 200, not the 404s of the earlier defect. |
+| Source revision | **`f59bf47`**, clean tree |
+| Web image | `master-suite/web:f59bf47`, digest `sha256:82e7dda6a5c1556bde365e794fa4502beea13f4e839d1eb6e6ba5e2950d4a317` |
+| Worker image | `master-suite/worker:f59bf47`, digest `sha256:7a8f613dea9786eb01707e212393d49b9481fe260285704c5dbcd497adad3451` |
+| Running containers report | `BUILD_COMMIT=f59bf47ba0779985c903ad2b58eb747d5c0cf618` — web and worker both; `NODE_ENV=production`; `/api/v1/dev/outbox` 404 |
+| Artifact vs source | **The same commit.** Both images were rebuilt from `f59bf47` specifically so this row has nothing to explain. `public/` verified inside the image: `sw.js` and `offline.html` serve 200, not the 404s of the earlier defect. |
 
-| # | Gate | Environment | Exit | Counts |
-| --- | --- | --- | --- | --- |
-| 1–11, 16 | drift, RLS, raw-SQL scope, typecheck, lint, format, README counts, observability, redis auth, face tokens, backup round trip, audit | Linux `node:24`, `master_suite_ci` | **0** each | as §1.3 |
-| 12 | Unit suite | Linux `node:24`, `master_suite_ci` | see below | **2,145** tests — the 2,137 of §1.3 plus the 8 new booking acceptance tests |
-| 13 | Integration (server) | Windows, loopback Postgres + Redis, `master_suite_val` | **0** | **6 passed / 0 failed** |
-| 14 | E2E (browser) | Windows Chromium → `web:2272065` + `worker:2272065` over TLS, `NODE_ENV=production` | **0** | **47 passed / 0 failed / 0 skipped / 0 did not run** |
-| 15 | Build | Linux `node:24` | **0** | — |
+| # | Gate | Command | Environment | Exit | Counts |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Schema drift | `prisma migrate diff … --exit-code` | Linux `node:24`, `master_suite_ci` | **0** | no difference |
+| 2 | Tenant isolation | `node scripts/check-rls.mjs` | as above | **0** | 184 tables forced + policied |
+| 3 | Raw SQL scope | `node scripts/check-raw-sql-scope.mjs` | as above | **0** | 36 statements, all tenant-scoped |
+| 4 | Typecheck | `npx tsc --noEmit` | as above | **0** | — |
+| 5 | Lint | `npm run lint` | as above | **0** | 0 errors |
+| 6 | Format check | `npm run format:check` | as above | **0** | — |
+| 7 | README schema counts | `node scripts/schema-stats.mjs --check` | as above | **0** | — |
+| 8 | Observability drift | `npm run check:observability` | as above | **0** | 12 rules, 9 queues |
+| 9 | Redis auth | `npm run check:redis-auth` | as above | **0** | 8 compose files |
+| 10 | Face token gate | `python3 ../face/test_tokens.py` | as above | **0** | all checks |
+| 11 | Backup round trip | `bash scripts/test-backup-roundtrip.sh` | as above | **0** | 11 checks |
+| 12 | Unit suite | `npx vitest run` | as above | **0** | **2,145 passed / 0 failed / 0 skipped**, 160 files |
+| 13 | Integration (server) | `npm run test:server` | Windows, loopback Postgres + Redis, `master_suite_val` | **0** | **6 passed / 0 failed** |
+| 14 | E2E (browser) | `npx playwright test` | Windows Chromium → `web:f59bf47` + `worker:f59bf47` over TLS, `NODE_ENV=production`, dev outbox 404 | **0** | **47 passed / 0 failed / 0 skipped / 0 unexecuted** |
+| 15 | Build | `npx next build` | Linux `node:24` | **0** | — |
+| 16 | Audit | `npm audit --omit=dev --audit-level=high` | as above | **0** | 0 vulnerabilities |
+
+**16 of 16, sixteen recorded exit codes.** `LINUX_GATES_FAIL=0` covers 1–12, 15
+and 16; gates 13 and 14 carry their own. **2,145** is **2,137** plus the eight
+booking acceptance tests.
+
+Evidence: `gates-linux-f59bf47.log`, `gate12-unit-detail.log`,
+`gate13-integration-f59bf47.log`, `gate14-e2e-f59bf47.log`,
+`booking-negative-control.log`, `booking-diagnostic-after.log`,
+`booking-constraints.txt`, `booking-audit.log`.
+
+#### Getting to that took five runs, and four of the failures were mine
+
+The first four attempts reported failures. **None was a product defect**, and
+the record of them matters more than the clean run does — every one of them
+could have been reported as a regression by someone in a hurry, and two nearly
+were.
 
 #### Four failures tonight that were mine, not the product's
 
@@ -207,10 +234,32 @@ rule rather than a resolution: **the gate runner is copied outside the worktree
 before the container starts**, and the container executes the copy, so editing
 the repository cannot reach a run in flight.
 
-Four self-inflicted failures in one night, three of which first presented as
-something else. The reason they are all written down is that every one of them
-could have been reported as a product failure by someone in a hurry, and two of
-them nearly were.
+**5. And one that was not mine: a genuine defect in the test suite.** The last
+failing run reported *1 failed, 2,144 passed*, and a **different** test had
+failed on each of the three runs before it. Every one passed in isolation.
+
+The cause is real and worth naming rather than calling flakiness:
+`tests/security/platform-admin-crud.spec.ts` writes the `PlatformSetting` row
+`uploadMaxMb = '10'` while exercising the operator console. `PlatformSetting`
+carries **no `tenantId`** — it is in `GLOBAL_MODELS` — so there is no isolation
+at all between it and any spec running in parallel. `p2-regressions.spec.ts`
+asserted its upload refusal against `env.UPLOAD_MAX_MB` (25), while the route it
+called reads `getUploadMaxMb()`, which prefers that row. The test was asserting
+against a value the route never consults.
+
+Fixed by reading the effective limit, which is strictly more correct. The
+security property is untouched: a non-multipart body must still come back 413,
+which only the Content-Length guard can produce. The residual window — the row
+changing between the test's read and the route's — is microseconds rather than
+the length of another spec file, and is noted in the test. **The real fix is for
+a globally mutable operator setting not to be shared by parallel spec files.**
+That is a suite change, not a release one, and it belongs on the list.
+
+The same shape explains the rate-limit failure: a shared Redis bucket with no
+per-file key. Both are pre-existing, and neither was caused by the booking work.
+
+Four self-inflicted failures and one real suite defect in one night, four of
+which first presented as something else.
 
 ### 1.4 Two gates that are not run on Linux, and why
 
