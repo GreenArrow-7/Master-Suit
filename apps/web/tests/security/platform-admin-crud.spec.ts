@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { createPlatformSessionToken } from '../helpers/session';
 import { patch, del } from '../helpers/request';
+import { lockShared, UPLOAD_LIMIT_LOCK, type Release } from '../helpers/serialize';
 import { DELETE as deleteWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/route';
 import {
   PATCH as patchSubscription,
@@ -33,7 +34,15 @@ let tenantId = '';
 let subscriptionId = '';
 let hrmsPlanCode = '';
 
+/**
+ * This file writes `PlatformSetting.uploadMaxMb`, which is global. Held for the
+ * whole file so `p2-regressions.spec.ts`, which reads the effective limit,
+ * cannot observe a value this file is in the middle of changing.
+ */
+let releaseUploadLimit: Release;
+
 beforeAll(async () => {
+  releaseUploadLimit = await lockShared(UPLOAD_LIMIT_LOCK);
   const owner = await prisma.platformUser.create({
     data: {
       email: `crud.owner.${suffix}@platform.test`,
@@ -125,6 +134,9 @@ afterAll(async () => {
   await prisma.subscriptionPlan.deleteMany({ where: { code: { contains: suffix } } }).catch(() => {});
   await prisma.platformUser.deleteMany({ where: { normalizedEmail: { contains: suffix } } }).catch(() => {});
   await prisma.platformSetting.deleteMany({ where: { key: 'uploadMaxMb' } }).catch(() => {});
+  // Released only after the row is back to its default, so the next reader
+  // never sees this file's value.
+  await releaseUploadLimit();
 });
 
 describe('authorization boundary', () => {

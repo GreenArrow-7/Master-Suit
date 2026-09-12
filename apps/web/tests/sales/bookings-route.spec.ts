@@ -371,3 +371,58 @@ describe('a confirmed sale and the flat it is a sale of', () => {
     ).rejects.toThrow();
   });
 });
+
+/**
+ * The two races the row lock exists for, on one booking rather than one unit.
+ *
+ * The unit-level race above is the double-sale. These are the same booking
+ * pressed twice, and a confirmation crossing a cancellation — the case the
+ * unlocked first read cannot see, and which `lockBooking()` re-reads for.
+ */
+describe('one booking, two hands on it at once', () => {
+  const cancel = (bookingId: string) =>
+    patch(patchBooking, '/api/v1/bookings', { action: 'CANCEL', bookingId, reason: 'Client withdrew' }, cookie);
+
+  const bookingStatus = async (id: string) =>
+    (await prisma.booking.findFirstOrThrow({ where: { id, tenantId } })).status;
+
+  it('lets exactly one of two concurrent confirmations of the same booking through', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const id = await draft(1_000_000, unit.id);
+
+    const [a, b] = await Promise.all([confirm(id), confirm(id)]);
+    expect([a, b].filter((r) => r.status === 200)).toHaveLength(1);
+    const loser = [a, b].find((r) => r.status !== 200)!;
+    // A refusal with a reason — 409 from the re-read, or 422 from the transition
+    // table — never a 500 from the unique index catching what the lock missed.
+    expect(loser.status).toBeGreaterThanOrEqual(400);
+    expect(loser.status).toBeLessThan(500);
+
+    expect(await bookingStatus(id)).toBe('CONFIRMED');
+    expect(await unitStatus(unit.id)).toBe('BOOKED');
+  });
+
+  it('ends in one consistent state when a confirmation races a cancellation', async () => {
+    const unit = await fixtureUnit(tenantId, projectId, 'AVAILABLE');
+    const id = await draft(1_000_000, unit.id);
+
+    const [confirmed, cancelled] = await Promise.all([confirm(id), cancel(id)]);
+
+    // Either order is legitimate — confirm-then-cancel is a real sequence and
+    // both may succeed; cancel-then-confirm refuses the confirm. What must never
+    // happen is a 500, or a ledger that disagrees with inventory.
+    for (const r of [confirmed, cancelled]) expect(r.status, JSON.stringify(r.body)).toBeLessThan(500);
+    expect([confirmed, cancelled].some((r) => r.status === 200)).toBe(true);
+
+    const booking = await bookingStatus(id);
+    const stock = await unitStatus(unit.id);
+    expect(['CONFIRMED', 'CANCELLED']).toContain(booking);
+    // The invariant, both ways: a confirmed sale holds its flat; a cancelled or
+    // never-confirmed one has let it go. A confirm that lost the race after it
+    // had already moved the unit must have rolled that move back.
+    expect(stock).toBe(booking === 'CONFIRMED' ? 'BOOKED' : 'AVAILABLE');
+    expect(await prisma.booking.count({ where: { tenantId, unitInventoryId: unit.id, status: 'CONFIRMED' } })).toBe(
+      booking === 'CONFIRMED' ? 1 : 0,
+    );
+  });
+});

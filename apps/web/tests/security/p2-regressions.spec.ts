@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { getUploadMaxMb } from '@/lib/platform-settings';
+import { lockShared, UPLOAD_LIMIT_LOCK, type Release } from '../helpers/serialize';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { redis } from '@/lib/redis';
 import { MethodNotAllowed, MethodNotAllowedError } from '@/lib/errors';
@@ -84,12 +85,19 @@ describe('P2-4: an oversized upload is refused before it is read', () => {
    * refusal that correctly said `10 MB`. Reading the effective value here asks
    * the same question the route does.
    *
-   * ponytail: the residual window — the row changing between this read and the
-   * route's — is microseconds rather than the length of another spec file, but
-   * it is not zero. The real fix is for a globally mutable operator setting not
-   * to be shared by spec files running in parallel; that is a suite change, not
-   * a release one.
+   * Reading the effective value narrows the window; it does not close it.
+   * The advisory lock does: while this block holds it, the other file cannot
+   * be between its write and its cleanup, so the value read here is the value
+   * the route reads. Both files take the same lock, in `tests/helpers/serialize.ts`.
    */
+  let releaseUploadLimit: Release;
+  beforeAll(async () => {
+    releaseUploadLimit = await lockShared(UPLOAD_LIMIT_LOCK);
+  });
+  afterAll(async () => {
+    await releaseUploadLimit();
+  });
+
   it('rejects on Content-Length before parsing the body', async () => {
     const uploadMaxMb = await getUploadMaxMb();
     const maxBytes = uploadMaxMb * 1024 * 1024;
