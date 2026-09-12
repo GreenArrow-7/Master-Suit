@@ -91,7 +91,12 @@ fi
 # status check red for a reason that is not "we have no backup".
 LATEST_MARKER="$(find "${ROOT}" -maxdepth 2 -name '.verified-at' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1)"
 if [ -n "${LATEST_MARKER}" ]; then
-  MARKER_AGE="$(( ( $(date -u +%s) - ${LATEST_MARKER%% *} ) / 86400 ))"
+  # `%T@` prints a float (`1788971107.8108650830`) and shell arithmetic cannot
+  # parse one, so this aborted the moment a `.verified-at` marker first existed
+  # — which, until restore verification was repaired, it never had. The bug was
+  # invisible precisely because the thing it depends on had never succeeded.
+  MARKER_EPOCH="${LATEST_MARKER%% *}"
+  MARKER_AGE="$(( ( $(date -u +%s) - ${MARKER_EPOCH%%.*} ) / 86400 ))"
   MARKER_PATH="${LATEST_MARKER#* }"
   # Which copy, not just when. "Verified 3 days ago" means two different things
   # depending on whether the bytes had left this machine, and the weaker of the
