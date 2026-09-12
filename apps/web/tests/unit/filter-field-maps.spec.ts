@@ -127,8 +127,18 @@ describe('FIELD_MAP agrees with the schema', () => {
   });
 });
 
-/** Every `compileFilterTree('X', …)` in the app, with X. */
+/**
+ * Every `compileFilterTree('X', …)` in the app, with X.
+ *
+ * Walked once per file, not once per test. The walk reads every source file
+ * under `src/` synchronously, and on a bind-mounted checkout — the Linux gate
+ * container over a Windows worktree — that is 6 s alone and past 30 s when the
+ * host is busy, which is how two tests that share one scan timed out together
+ * under the default budget. One scan, and a budget that names the cost.
+ */
+let scanned: Map<string, string[]> | undefined;
 function compiledObjects(): Map<string, string[]> {
+  if (scanned) return scanned;
   const found = new Map<string, string[]>();
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -146,11 +156,15 @@ function compiledObjects(): Map<string, string[]> {
     }
   };
   walk(path.join(root, 'src'));
+  scanned = found;
   return found;
 }
 
+/** A filesystem walk, not logic: give it the time a slow mount needs. */
+const SCAN_TIMEOUT = 120_000;
+
 describe('every object a route compiles has a map', () => {
-  it('no caller compiles against an unregistered object', () => {
+  it('no caller compiles against an unregistered object', { timeout: SCAN_TIMEOUT }, () => {
     // This is the assessment finding itself, as a test: `leads` was the only
     // route whose `filter` parameter could ever succeed. The other three parsed
     // the tree, validated it against field security, and then threw
@@ -161,7 +175,7 @@ describe('every object a route compiles has a map', () => {
     expect(unregistered).toEqual([]);
   });
 
-  it('finds the callers it claims to scan', () => {
+  it('finds the callers it claims to scan', { timeout: SCAN_TIMEOUT }, () => {
     // Guards the scanner: a regex that silently matched nothing would make the
     // test above pass forever, which is exactly how this gap survived.
     const objects = compiledObjects();

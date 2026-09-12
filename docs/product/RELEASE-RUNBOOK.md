@@ -337,8 +337,31 @@ was checked, not assumed:
   After rollback the column stops being maintained and slowly goes stale again,
   which is the behaviour that version already had.
 
-**So no schema change prevents restarting the older application.** Application
-rollback needs no database recovery, and is the first thing to try.
+**With one exception, no schema change prevents restarting the older
+application.** The exception arrived with the booking migrations (5 and 6):
+
+- `Booking_confirmed_requires_unit` refuses a `CONFIRMED` row with no unit. The
+  previous application never wrote `unitInventoryId` at confirmation and never
+  required it, so after a rollback **`PATCH /api/v1/bookings` with
+  `action: 'CONFIRM'` on a draft that names no unit fails with a 500** — the
+  old code does not know the constraint exists. Confirming a draft that *does*
+  name a unit still works. Nothing else in the old version writes rows these
+  constraints see.
+- `Booking_one_confirmed_per_unit` can also refuse the old code: two
+  confirmations of one unit, which the old version allowed, now end with the
+  second as a 500 rather than a double-sale. That is the constraint doing its
+  job, but the old code will report it as an error rather than a refusal.
+
+So an application rollback across migration 6 is safe for everything except
+booking confirmation, where it degrades to "refused with a 500" for the two
+cases above. If that is not acceptable for the rollback window, the choice is
+to keep the new version's booking route or to drop the CHECK
+(`ALTER TABLE "Booking" DROP CONSTRAINT "Booking_confirmed_requires_unit"`) —
+which is a decision to permit unitless confirmed sales again, and is the
+client's, not the operator's.
+
+Application rollback still needs no database recovery, and is the first thing
+to try.
 
 ### 9.2 Database recovery — only for data loss
 
