@@ -178,6 +178,32 @@ describe('platform support access', () => {
     expect(can(after, 'leads', 'VIEW')).toBe(true);
   });
 
+  it('labels every read made under break-glass as such, and a routine read as monitoring', async () => {
+    // Elevation is a mode the audit trail can see, not a side effect a reviewer
+    // has to reconstruct from grant timestamps.
+    const cookie = await createPlatformSessionToken(ownerId, tenantId);
+    const latestMode = async () => {
+      const row = await prisma.platformAuditEvent.findFirst({
+        where: { tenantId, actorUserId: ownerId, event: 'SUPPORT_READ' },
+        orderBy: { occurredAt: 'desc' },
+      });
+      return (row?.metadata as { mode?: string } | null)?.mode;
+    };
+    const read = () =>
+      listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), { params: Promise.resolve({}) });
+
+    await read();
+    expect(await latestMode()).toBe('monitoring');
+
+    await openGrant({ platformUserId: ownerId, tenantId, reason: 'Correcting a customer record at their request' });
+    await read();
+    expect(await latestMode()).toBe('break-glass');
+
+    await revokeGrants(ownerId, tenantId, 'WRITE');
+    await read();
+    expect(await latestMode()).toBe('monitoring');
+  });
+
   it('keeps SUPPORT read-only', async () => {
     const cookie = await createPlatformSessionToken(supportId, tenantId);
     const ctx = await resolveCtx(asRequest(cookie), 'req-support');

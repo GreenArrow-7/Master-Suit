@@ -126,7 +126,8 @@ describe('what the audit row is allowed to contain', () => {
     expect(serialised).not.toContain(SECRET_LEAD_PHONE);
 
     const meta = rows[0]!.metadata as Record<string, unknown>;
-    expect(Object.keys(meta).sort()).toEqual(['action', 'method', 'path', 'roleKey', 'status']);
+    expect(Object.keys(meta).sort()).toEqual(['action', 'method', 'mode', 'path', 'roleKey', 'status']);
+    expect(meta.mode).toBe('monitoring');
   });
 
   it('attributes the row to server-side identity, never to anything the caller sent', async () => {

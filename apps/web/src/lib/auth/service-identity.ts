@@ -395,7 +395,7 @@ export async function recordPlatformAccess(
               // Ctx.service.declaredInitiator.
               declaredInitiator: ctx.service.declaredInitiator,
             }
-          : { roleKey: ctx.actor.roleKey }),
+          : { roleKey: ctx.actor.roleKey, mode: ctx.actor.platformMode }),
       },
     },
   });

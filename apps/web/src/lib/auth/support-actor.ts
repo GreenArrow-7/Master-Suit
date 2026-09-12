@@ -203,5 +203,6 @@ export async function buildSupportActor(
     teamIds: [],
     managedUserIds: [],
     permissions,
+    platformMode: platformRole === 'AI_SERVICE' ? 'service' : fullControl ? 'break-glass' : 'monitoring',
   };
 }
