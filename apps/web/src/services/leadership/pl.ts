@@ -73,7 +73,9 @@ export async function profitAndLoss(
       tenantId,
       deletedAt: null,
       bookingDate: { gte: from, lte: to },
-      status: { not: 'CANCELLED' },
+      // Revenue is confirmed sales. A draft is a sale somebody typed in; it
+      // accrues nothing and belongs in no period's revenue until confirmed.
+      status: 'CONFIRMED',
       ...owner,
     },
     select: {
@@ -224,10 +226,17 @@ async function payrollByGroup(
   const payslips = await prisma.hrPayslip.findMany({
     where: {
       tenantId,
-      run: { is: { periodStart: { gte: from }, periodEnd: { lte: to } } },
+      // Cost is payroll that was approved to be paid. A draft or cancelled run
+      // is a calculation, not money; counting it understated every margin.
+      run: {
+        is: { periodStart: { gte: from }, periodEnd: { lte: to }, status: { in: ['APPROVED', 'LOCKED', 'PAID'] } },
+      },
     },
     select: {
       grossEarnings: true,
+      teamIdSnapshot: true,
+      branchIdSnapshot: true,
+      regionIdSnapshot: true,
       employee: {
         select: {
           membership: {
@@ -249,6 +258,7 @@ async function payrollByGroup(
 
   const byGroup = new Map<string | null, Prisma.Decimal>();
   let unlinked = 0;
+  let unsnapshotted = 0;
 
   for (const slip of payslips) {
     const user = slip.employee.membership?.salesUser;
@@ -260,19 +270,33 @@ async function payrollByGroup(
     // not a cost they are being measured on.
     if (userIds.length > 0 && !userIds.includes(user.id)) continue;
 
-    const key =
-      grouping === 'team' ? (user.teams[0]?.teamId ?? null) : grouping === 'region' ? user.regionId : user.branchId;
+    // Where the employee sat when the payslip was calculated, frozen on it —
+    // the same rule the booking side applies at confirmation, so a transfer
+    // cannot move last quarter's cost. Payslips calculated before the snapshot
+    // existed fall back to today's placement, and the caveat counts them.
+    const snapshot =
+      grouping === 'team' ? slip.teamIdSnapshot : grouping === 'region' ? slip.regionIdSnapshot : slip.branchIdSnapshot;
+    let key: string | null;
+    if (slip.teamIdSnapshot !== null || slip.branchIdSnapshot !== null || slip.regionIdSnapshot !== null) {
+      key = snapshot;
+    } else {
+      unsnapshotted += 1;
+      key =
+        grouping === 'team' ? (user.teams[0]?.teamId ?? null) : grouping === 'region' ? user.regionId : user.branchId;
+    }
     byGroup.set(key, (byGroup.get(key) ?? ZERO).plus(slip.grossEarnings));
   }
 
   if (unlinked > 0) {
     caveats.push(
-      `${unlinked} payslip${unlinked === 1 ? '' : 's'} belong to staff with no sales record and are excluded.`,
+      `${unlinked} payslip${unlinked === 1 ? '' : 's'} belong to employees with no Sales account and are grouped as unassigned.`,
     );
   }
-  // Payroll carries no currency column of its own; saying so is cheaper than a
-  // silently wrong subtraction.
-  caveats.push(`Payroll is assumed to be in ${currency}.`);
-
+  if (unsnapshotted > 0) {
+    caveats.push(
+      `${unsnapshotted} payslip${unsnapshotted === 1 ? ' was' : 's were'} calculated before placement was frozen on payslips and are grouped by the employee's current placement, which may not be where they sat in that period.`,
+    );
+  }
+  void currency;
   return byGroup;
 }

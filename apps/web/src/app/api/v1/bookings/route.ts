@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
+import { can } from '@/lib/security/rbac';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 import { moveUnitIn } from '@/services/inventory/unitStatus';
 import { nextReference } from '@/services/shared/reference';
@@ -96,6 +97,14 @@ export const POST = route(
     }
     if (!body.projectId && !body.listingId && !body.unitInventoryId) {
       throw Invalid([{ field: 'projectId', code: 'required', message: 'Say what was sold.' }]);
+    }
+    // D-20: the agreed agency fee is a commercial term, set by whoever may
+    // propose it — not by whoever may record a sale. Nothing else on this
+    // route ever writes it; changes go through /api/v1/collections/fee-amendments.
+    if (body.agencyFee !== undefined && !can(ctx, 'agencyfee', 'CREATE')) {
+      throw Forbidden(
+        'Recording the agreed agency fee needs the agency-fee permission. Record the sale without it and propose the fee separately.',
+      );
     }
 
     return withTx(ctx.tenantId, async (tx) => {

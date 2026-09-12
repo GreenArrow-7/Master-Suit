@@ -44,6 +44,7 @@ const PREFIX: Record<string, string> = {
   BOOKING: 'BK',
   PAYOUT: 'PO',
   RECEIPT: 'RCT',
+  FEE_AMENDMENT: 'FEE',
 };
 
 /** Tables the counter has to be seeded from. Only those carrying `reference`. */
@@ -55,6 +56,7 @@ const TABLE: Record<string, string> = {
   LISTING: 'Listing',
   BOOKING: 'Booking',
   RECEIPT: 'AgencyFeeReceipt',
+  FEE_AMENDMENT: 'AgencyFeeAmendment',
 };
 
 /**

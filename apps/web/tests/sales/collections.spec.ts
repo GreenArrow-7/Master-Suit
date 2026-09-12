@@ -554,7 +554,8 @@ describe('reversals: before and after money is paid out', () => {
     expect(kase.status).toBe('OPEN');
     expect(kase.commissionId).toBe(commissionId);
     expect(kase.payoutId).toBe(payout.id);
-    expect(kase.shortfall.toString()).toBe('25000');
+    expect(kase.shortfall?.toString()).toBe('25000');
+    expect(kase.kind).toBe('RECEIPT_REVERSAL');
     expect(kase.currency).toBe('AED');
   });
 });

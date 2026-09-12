@@ -435,7 +435,10 @@ export async function decideReceipt(input: DecideReceiptInput) {
     // already permitted.
     const consequences =
       input.to === 'VERIFIED' && receipt.kind === 'REVERSAL'
-        ? await reevaluateAfterReversal(tx, ctx, first.bookingId, receipt.id)
+        ? await reevaluateCoverage(tx, ctx, first.bookingId, {
+            receiptId: receipt.id,
+            why: `receipt ${receipt.reference} reversed`,
+          })
         : { regressed: [] as string[], detachedFromPayouts: [] as string[], recoveryCases: [] as string[] };
 
     return { receipt: updated, ...consequences };
@@ -443,11 +446,18 @@ export async function decideReceipt(input: DecideReceiptInput) {
 }
 
 /**
- * Coverage has gone down. Unpaid commission loses its eligibility and leaves
- * its payout; paid commission opens a recovery case. The booking row is
+ * Coverage has gone down — a verified reversal, or an approved fee amendment
+ * that raised the bar. Unpaid commission loses its eligibility and leaves its
+ * payout; paid commission opens a case for finance. The booking row is
  * already locked by the caller.
  */
-async function reevaluateAfterReversal(tx: TxClient, ctx: Ctx, bookingId: string, reversalId: string) {
+export interface CoverageCause {
+  receiptId?: string;
+  amendmentId?: string;
+  why: string;
+}
+
+export async function reevaluateCoverage(tx: TxClient, ctx: Ctx, bookingId: string, cause: CoverageCause) {
   const c = await coverage(tx, ctx.tenantId, bookingId);
   const result = { regressed: [] as string[], detachedFromPayouts: [] as string[], recoveryCases: [] as string[] };
   if (c.covered) return result;
@@ -466,10 +476,12 @@ async function reevaluateAfterReversal(tx: TxClient, ctx: Ctx, bookingId: string
           bookingId,
           commissionId: commission.id,
           payoutId: commission.payoutId,
-          receiptId: reversalId,
+          kind: cause.amendmentId ? 'FEE_AMENDMENT' : 'RECEIPT_REVERSAL',
+          receiptId: cause.receiptId ?? null,
+          amendmentId: cause.amendmentId ?? null,
           shortfall: shortfall.gt(ZERO) ? shortfall : ZERO.plus('0.01'),
           currency: c.currency,
-          reason: `Receipt reversed after payment: verified receipts now cover ${c.verified.toFixed(2)} of ${c.due?.toFixed(2)} ${c.currency}.`,
+          reason: `Coverage fell after payment (${cause.why}): verified receipts now cover ${c.verified.toFixed(2)} of ${c.due?.toFixed(2)} ${c.currency}.`,
           createdById: ctx.actor.id,
         },
       });
@@ -480,7 +492,7 @@ async function reevaluateAfterReversal(tx: TxClient, ctx: Ctx, bookingId: string
           event: 'RECORD_CREATED',
           objectType: 'collection_recovery',
           recordId: kase.id,
-          newValue: { commissionId: commission.id, shortfall: shortfall.toFixed(2) },
+          newValue: { commissionId: commission.id, shortfall: shortfall.toFixed(2), cause: cause.why },
         },
         tx,
       );
@@ -502,7 +514,7 @@ async function reevaluateAfterReversal(tx: TxClient, ctx: Ctx, bookingId: string
         objectType: 'commissions',
         recordId: commission.id,
         previousValue: { status: 'COLLECTED', payoutId: commission.payoutId },
-        newValue: { status: 'CONFIRMED', payoutId: null, reason: `receipt ${reversalId} reversed` },
+        newValue: { status: 'CONFIRMED', payoutId: null, reason: cause.why },
       },
       tx,
     );
@@ -513,7 +525,7 @@ async function reevaluateAfterReversal(tx: TxClient, ctx: Ctx, bookingId: string
         select: { amount: true },
       });
       const total = rows.reduce((sum, r) => sum.plus(r.amount), ZERO);
-      const note = `${commission.payout.note ? commission.payout.note + ' | ' : ''}Reopened: a receipt on ${bookingId} was reversed; commission ${commission.id} removed.`;
+      const note = `${commission.payout.note ? commission.payout.note + ' | ' : ''}Reopened: ${cause.why}; commission ${commission.id} removed.`;
       await tx.payout.update({
         where: { id: commission.payout.id, tenantId: ctx.tenantId },
         data: {

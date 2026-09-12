@@ -422,3 +422,109 @@ describe('the P&L', () => {
     expect(other.totals.agencyFee.toString()).toBe('0');
   });
 });
+
+describe('the P&L — the three defects of 12 September', () => {
+  it('counts confirmed sales only: a draft is not revenue', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.booking.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
+        leadId: fixture.a.leadIds[0],
+        projectId,
+        ownerId: fixture.a.userId,
+        teamId: teamA,
+        status: 'DRAFT',
+        saleValue: D(9_000_000),
+        agencyFee: D(270_000),
+        currency: 'AED',
+        bookingDate: new Date('2026-08-12T00:00:00Z'),
+      },
+    });
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    const row = report.rows.find((r) => r.key === teamA)!;
+    expect(row.agencyFee.toString()).toBe('30000');
+    expect(row.bookings).toBe(1);
+  });
+
+  async function payslip(opts: {
+    status: 'DRAFT' | 'APPROVED' | 'PAID';
+    gross: number;
+    teamIdSnapshot?: string | null;
+    period?: [Date, Date];
+  }) {
+    const membership = await prisma.workspaceMembership.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, salesUserId: fixture.a.userId },
+      select: { id: true },
+    });
+    const employee =
+      (await prisma.employeeProfile.findFirst({
+        where: { tenantId: fixture.a.tenantId, membershipId: membership.id },
+      })) ??
+      (await prisma.employeeProfile.create({
+        data: {
+          tenantId: fixture.a.tenantId,
+          membershipId: membership.id,
+          employeeNumber: `E-${Math.random().toString(36).slice(2, 8)}`,
+        },
+      }));
+    const [periodStart, periodEnd] = opts.period ?? [
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-31T00:00:00Z'),
+    ];
+    const run = await prisma.hrPayrollRun.create({
+      data: { tenantId: fixture.a.tenantId, periodStart, periodEnd, status: opts.status, currency: 'AED' },
+    });
+    return prisma.hrPayslip.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        runId: run.id,
+        employeeId: employee.id,
+        currency: 'AED',
+        basic: D(opts.gross),
+        grossEarnings: D(opts.gross),
+        totalDeductions: D(0),
+        netPay: D(opts.gross),
+        inputs: {},
+        ...(opts.teamIdSnapshot === undefined ? {} : { teamIdSnapshot: opts.teamIdSnapshot }),
+      },
+    });
+  }
+
+  it('counts payroll that was approved to be paid, not a draft calculation', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await payslip({ status: 'DRAFT', gross: 50_000, teamIdSnapshot: teamA });
+    const draftOnly = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(draftOnly.rows.find((r) => r.key === teamA)?.payrollCost).toBeNull();
+
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'APPROVED', gross: 20_000, teamIdSnapshot: teamA });
+    const approved = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    const row = approved.rows.find((r) => r.key === teamA)!;
+    expect(row.payrollCost?.toString()).toBe('20000');
+    expect(row.margin?.toString()).toBe('10000'); // 30k fee − 0 commission − 20k payroll
+  });
+
+  it('groups payroll by where the person sat when the payslip was calculated, not where they sit today', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: teamA });
+
+    // The person moves to team B afterwards.
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    await prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId: teamB } });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost?.toString()).toBe('20000');
+    expect(report.rows.find((r) => r.key === teamB)?.payrollCost ?? null).toBeNull();
+    expect(report.caveats.join(' ')).not.toMatch(/before placement was frozen/);
+  });
+
+  it('says so when a payslip predates the snapshot, and falls back to today’s placement for it', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: null });
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.caveats.join(' ')).toMatch(/before placement was frozen/);
+  });
+});

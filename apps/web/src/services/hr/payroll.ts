@@ -286,9 +286,32 @@ export async function calculateRun(ctx: Ctx, runId: string) {
       // hired on the final day of the period, who had nonetheless worked it.
       OR: [{ joinedOn: null }, { joinedOn: { lt: new Date(toDay(run.periodEnd).getTime() + 86_400_000) } }],
     },
-    select: { id: true, joinedOn: true, iban: true, basicSalary: true, totalSalary: true },
+    select: {
+      id: true,
+      joinedOn: true,
+      iban: true,
+      basicSalary: true,
+      totalSalary: true,
+      // Frozen onto the payslip: the P&L groups cost by where the person sat
+      // when the run was calculated, never by where they sit today.
+      membership: {
+        select: {
+          salesUser: { select: { branchId: true, regionId: true, teams: { select: { teamId: true }, take: 1 } } },
+        },
+      },
+    },
   });
   if (!employees.length) throw Conflict('There are no employees to pay in this period.');
+  const placementOf = new Map(
+    employees.map((e) => [
+      e.id,
+      {
+        teamIdSnapshot: e.membership?.salesUser?.teams[0]?.teamId ?? null,
+        branchIdSnapshot: e.membership?.salesUser?.branchId ?? null,
+        regionIdSnapshot: e.membership?.salesUser?.regionId ?? null,
+      },
+    ]),
+  );
 
   const employeeIds = employees.map((employee) => employee.id);
   const [overtimeTotals, unpaidLeave, adjustments] = await Promise.all([
@@ -362,6 +385,7 @@ export async function calculateRun(ctx: Ctx, runId: string) {
           unpaidDays: draft.unpaidDays,
           overtimeMinutes: draft.overtimeMinutes,
           ibanSnapshot: draft.ibanSnapshot,
+          ...(placementOf.get(draft.employeeId) ?? {}),
           inputs: draft.inputs,
           lines: {
             create: draft.lines.map((line) => ({

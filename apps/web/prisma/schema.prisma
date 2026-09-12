@@ -625,6 +625,8 @@ model Tenant {
   agencyFeeReceipts          AgencyFeeReceipt[]
   collectionRecoveryCases    CollectionRecoveryCase[]
 
+  agencyFeeAmendments AgencyFeeAmendment[]
+
   @@index([status])
 }
 
@@ -1590,27 +1592,36 @@ model HrPayrollRun {
 }
 
 model HrPayslip {
-  id              String   @id @default(cuid())
-  tenantId        String
-  runId           String
-  employeeId      String
-  currency        String   @default("AED")
-  basic           Decimal  @db.Decimal(14, 2)
-  grossEarnings   Decimal  @db.Decimal(14, 2)
-  totalDeductions Decimal  @db.Decimal(14, 2)
-  netPay          Decimal  @db.Decimal(14, 2)
-  workedDays      Float    @default(0)
-  unpaidDays      Float    @default(0)
-  overtimeMinutes Int      @default(0)
+  id               String   @id @default(cuid())
+  tenantId         String
+  runId            String
+  employeeId       String
+  currency         String   @default("AED")
+  basic            Decimal  @db.Decimal(14, 2)
+  grossEarnings    Decimal  @db.Decimal(14, 2)
+  totalDeductions  Decimal  @db.Decimal(14, 2)
+  netPay           Decimal  @db.Decimal(14, 2)
+  workedDays       Float    @default(0)
+  unpaidDays       Float    @default(0)
+  overtimeMinutes  Int      @default(0)
   /**
    * Every input the figures came from, so the breakdown survives a recalculation elsewhere.
    */
-  inputs          Json
+  inputs           Json
   /**
    * The IBAN as it stood when the run was calculated; a later bank change must not rewrite a past transfer.
    */
-  ibanSnapshot    String?
-  createdAt       DateTime @default(now())
+  ibanSnapshot     String?
+  /**
+   * Where the employee sat when this payslip was calculated. The P&L groups
+   * cost by these, never by the team the person is on today — the same
+   * freezing the booking side does at confirmation. Null for payslips
+   * calculated before the columns existed; the report says how many.
+   */
+  teamIdSnapshot   String?
+  branchIdSnapshot String?
+  regionIdSnapshot String?
+  createdAt        DateTime @default(now())
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run      HrPayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -5067,14 +5078,15 @@ model Document {
   updatedById       String?
   deletedAt         DateTime?
 
-  lead        Lead?              @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  opportunity Opportunity?       @relation(fields: [opportunityId], references: [id])
-  account     Account?           @relation(fields: [accountId], references: [id])
-  ticket      Ticket?            @relation(fields: [ticketId], references: [id])
-  task        Task?              @relation(fields: [taskId], references: [id])
-  activity    Activity?          @relation(fields: [activityId], references: [id])
-  feeReceipts AgencyFeeReceipt[]
-  product     Product?           @relation(fields: [productId], references: [id])
+  lead             Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity      Opportunity?             @relation(fields: [opportunityId], references: [id])
+  account          Account?                 @relation(fields: [accountId], references: [id])
+  ticket           Ticket?                  @relation(fields: [ticketId], references: [id])
+  task             Task?                    @relation(fields: [taskId], references: [id])
+  activity         Activity?                @relation(fields: [activityId], references: [id])
+  feeReceipts      AgencyFeeReceipt[]
+  recoveryEvidence CollectionRecoveryCase[] @relation("RecoveryEvidence")
+  product          Product?                 @relation(fields: [productId], references: [id])
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -6976,7 +6988,26 @@ enum ReceiptStatus {
 
 enum RecoveryCaseStatus {
   OPEN
+  ACKNOWLEDGED
+  RESOLUTION_PROPOSED
   RESOLVED
+}
+
+enum RecoveryCaseKind {
+  RECEIPT_REVERSAL
+  FEE_AMENDMENT
+}
+
+enum RecoveryOutcome {
+  RECOVERED
+  WRITTEN_OFF
+  ADJUSTED
+}
+
+enum FeeAmendmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum PayoutStatus {
@@ -7050,7 +7081,8 @@ model Booking {
   receipts    AgencyFeeReceipt[]
   recoveries  CollectionRecoveryCase[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feeAmendments AgencyFeeAmendment[]
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, reference])
   @@index([tenantId, teamId, bookingDate])
@@ -7190,21 +7222,45 @@ model AgencyFeeReceipt {
   @@index([evidenceDocumentId])
 }
 
-/// A verified reversal took coverage below the agency fee after the commission
-/// was already paid. Nothing is rewritten and nobody is debited: this is the
-/// case finance reviews, with the numbers it needs.
+/// A case for finance to review: a verified reversal took coverage below the
+/// agency fee after commission was paid, or an approved fee amendment changed
+/// what a paid commission should have been. Nothing is rewritten and nobody is
+/// debited: the case carries the numbers and a workflow — assign, acknowledge
+/// (which is not recovery), recover with evidence, or write off / adjust under
+/// a second person's approval.
 model CollectionRecoveryCase {
   id           String             @id @default(cuid())
   tenantId     String
   bookingId    String
   commissionId String
   payoutId     String?
-  receiptId    String
+  kind         RecoveryCaseKind   @default(RECEIPT_REVERSAL)
+  receiptId    String?
+  amendmentId  String?
   status       RecoveryCaseStatus @default(OPEN)
   /// agencyFee minus net verified receipts at the moment the reversal was verified.
-  shortfall    Decimal            @db.Decimal(18, 2)
+  shortfall    Decimal?           @db.Decimal(18, 2)
+  /// Signed: what the paid commission should change by under the amendment.
+  adjustment   Decimal?           @db.Decimal(18, 2)
   currency     String
   reason       String
+
+  assigneeId       String?
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+
+  /// Recovered means money with evidence. Written off or adjusted means two people.
+  outcome                RecoveryOutcome?
+  recoveredAmount        Decimal?         @db.Decimal(18, 2)
+  resolutionReference    String?
+  providerTransactionRef String?
+  evidenceDocumentId     String?
+  proposedOutcome        RecoveryOutcome?
+  proposedById           String?
+  proposedAt             DateTime?
+  proposalReason         String?
+  approvedById           String?
+  approvedAt             DateTime?
 
   resolvedById   String?
   resolvedAt     DateTime?
@@ -7214,16 +7270,60 @@ model CollectionRecoveryCase {
   updatedAt   DateTime @updatedAt
   createdById String?
 
-  booking    Booking          @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  commission Commission       @relation(fields: [commissionId], references: [id], onDelete: Restrict)
-  receipt    AgencyFeeReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  booking    Booking             @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  commission Commission          @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  receipt    AgencyFeeReceipt?   @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  amendment  AgencyFeeAmendment? @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+  evidence   Document?           @relation("RecoveryEvidence", fields: [evidenceDocumentId], references: [id], onDelete: SetNull)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
   @@index([tenantId, commissionId])
+  @@index([tenantId, assigneeId, status])
   @@index([bookingId])
   @@index([receiptId])
+  @@index([amendmentId])
+  @@index([evidenceDocumentId])
+}
+
+/// D-20: the agreed agency fee is a controlled commercial term. Proposed by a
+/// commercial administrator with a reason and the agreement it rests on,
+/// approved by a different person from finance once the sale is confirmed,
+/// and never changed by a generic booking update. Previous and new value,
+/// both people and both times are kept here; the effect on commission is
+/// previewed at proposal and applied at approval.
+model AgencyFeeAmendment {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  bookingId          String
+  reference          String
+  status             FeeAmendmentStatus @default(PENDING)
+  previousFee        Decimal?           @db.Decimal(18, 2)
+  proposedFee        Decimal            @db.Decimal(18, 2)
+  /// Always the booking's currency. A currency change is a separate correction.
+  currency           String
+  reason             String
+  agreementReference String
+  /// The effect computed at proposal, refreshed under the lock at approval.
+  preview            Json               @default("{}")
+  proposedById       String
+  proposedAt         DateTime           @default(now())
+  decidedById        String?
+  decidedAt          DateTime?
+  decisionNote       String?
+  appliedAt          DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  recoveries CollectionRecoveryCase[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, bookingId, status])
+  @@index([tenantId, status])
 }
 
 model Commission {
