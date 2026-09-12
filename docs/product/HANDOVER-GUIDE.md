@@ -12,14 +12,14 @@ seed are **not** for production use: they are shared credentials with broad
 permissions, every action they take is attributed to "demo" in the audit trail,
 and anyone who has ever seen the demo can sign in as one.
 
-| Role | Who | What they can reach |
-| --- | --- | --- |
-| Sales Representative | Agents | Their own leads, their own tasks |
-| Team Manager | Team leads | Their team's leads and tasks, reassignment |
-| Branch / Regional Manager | Branch and region heads | Their branch or region |
-| Sales Director | Head of sales | The whole workspace |
-| HR Administrator | HR | Employee records, leave, payroll |
-| Employee | Everyone with an HR record | Their own attendance, leave and payslips |
+| Role                      | Who                        | What they can reach                        |
+| ------------------------- | -------------------------- | ------------------------------------------ |
+| Sales Representative      | Agents                     | Their own leads, their own tasks           |
+| Team Manager              | Team leads                 | Their team's leads and tasks, reassignment |
+| Branch / Regional Manager | Branch and region heads    | Their branch or region                     |
+| Sales Director            | Head of sales              | The whole workspace                        |
+| HR Administrator          | HR                         | Employee records, leave, payroll           |
+| Employee                  | Everyone with an HR record | Their own attendance, leave and payslips   |
 
 **First login for every account:** the administrator issues a temporary
 password, and the person is taken straight to "set your own password" and cannot
@@ -35,15 +35,15 @@ sharing one account.
 The **Follow-up** column is now **your** next action on that lead — not the
 team's, not your manager's. It reads one of three ways:
 
-| It says | It means |
-| --- | --- |
-| A date in red | You are late |
-| A date in grey | That is when you next owe something |
+| It says                       | It means                                                                                                                      |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| A date in red                 | You are late                                                                                                                  |
+| A date in grey                | That is when you next owe something                                                                                           |
 | **No action assigned to you** | You have nothing scheduled here. Somebody else may or may not — the system does not tell you, because that is their business. |
 
 **The chips above the list:**
 
-- **Overdue** — leads where *you* are late.
+- **Overdue** — leads where _you_ are late.
 - **No next action** — live leads with nothing scheduled by you. **These are the
   ones that quietly go cold.** Work this list once a day.
 - **Mine**, **Unassigned**, **SLA breached**, **High score** — as before.
@@ -116,23 +116,23 @@ Three consequences people will notice on day one:
   rather than forcing it, because inventory and the ledger disagreeing is
   exactly what should be looked at by a person.
 
-| Thing | What people will see | What to say |
-| --- | --- | --- |
-| Agency-fee receipts | **API only — there is no screen yet.** A finance user records a receipt (amount, currency, payment date, reference, evidence) and a *different* finance user verifies it, through `/api/v1/collections/receipts`. Selling agents cannot record receipts. Commission cannot be collected or paid out until verified receipts fully cover the agreed agency fee | Finance needs an API client or the screen to be built (scheduled). A receipt certifies **agency-fee money received by the agency** — not the purchase price, not developer receipts, not escrow |
-| The old "collected" date on a booking | Still shown on old bookings | It is a historical button press, **not** verified money. It no longer unlocks anything. Finance re-records those as receipts |
-| A saved view built on "next follow-up date" | An explicit notice, and an unfiltered list | Use the **Overdue** or **No next action** view, or rebuild the saved view |
-| Sorting by Follow-up | Sorts the page you are on, not all results | Filter first, then sort |
-| Reminders | Do not fire for follow-ups, only tasks, and only when `OPEN` | Do not rely on reminders yet |
+| Thing                                       | What people will see                                                                                                                                                                                                                                                                                                                                                                                                                                           | What to say                                                                                                                                                                         |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agency-fee receipts                         | **Sales → Collections.** A finance user records a receipt (amount, currency, payment date, reference, evidence) and a _different_ finance user verifies it; reversals work the same way. Selling agents cannot record receipts. Commission cannot be collected or paid out until verified receipts fully cover the agreed agency fee. The agreed fee itself is proposed by a commercial administrator and approved by finance (Sales → Collections → the sale) | A receipt certifies **agency-fee money received by the agency** — not the purchase price, not developer receipts, not escrow. Acknowledging a recovery case is not recovering money |
+| The old "collected" date on a booking       | Still shown on old bookings                                                                                                                                                                                                                                                                                                                                                                                                                                    | It is a historical button press, **not** verified money. It no longer unlocks anything. Finance re-records those as receipts                                                        |
+| A saved view built on "next follow-up date" | An explicit notice, and an unfiltered list                                                                                                                                                                                                                                                                                                                                                                                                                     | Use the **Overdue** or **No next action** view, or rebuild the saved view                                                                                                           |
+| Sorting by Follow-up                        | Sorts the page you are on, not all results                                                                                                                                                                                                                                                                                                                                                                                                                     | Filter first, then sort                                                                                                                                                             |
+| Reminders                                   | Do not fire for follow-ups, only tasks, and only when `OPEN`                                                                                                                                                                                                                                                                                                                                                                                                   | Do not rely on reminders yet                                                                                                                                                        |
 
 ---
 
 ## 6. Support and escalation
 
-| Level | Who | For what |
-| --- | --- | --- |
-| 1 | Workspace administrator (client-side) | Passwords, permissions, "I cannot see a lead" |
-| 2 | Production operator | Anything needing the server: a failed deployment, a stuck queue, a restore |
-| 3 | Client owner | Any decision about scope, data or policy |
+| Level | Who                                   | For what                                                                   |
+| ----- | ------------------------------------- | -------------------------------------------------------------------------- |
+| 1     | Workspace administrator (client-side) | Passwords, permissions, "I cannot see a lead"                              |
+| 2     | Production operator                   | Anything needing the server: a failed deployment, a stuck queue, a restore |
+| 3     | Client owner                          | Any decision about scope, data or policy                                   |
 
 **Escalate immediately, do not wait for a pattern:** a lead assigned to two
 people; a sign-in loop; an employee seeing another employee's HR record; a
@@ -144,18 +144,18 @@ number on a dashboard that disagrees with the list behind it.
 
 Run at **start of day, midday and end of day** on day one. Ten minutes each.
 
-| # | Check | Where | Healthy looks like |
-| --- | --- | --- | --- |
-| 1 | Application answering | `GET /api/health` | `{"status":"ok","checks":{"database":"up","redis":"up"}}` |
-| 2 | Running version | container `BUILD_COMMIT` | the release SHA, not `unknown` |
-| 3 | Workers alive | worker container logs | `workers started`, 9 queues |
-| 4 | Nothing stuck in the queues | BullMQ / logs | no growing backlog |
-| 5 | **Notifications delivering** | `NotificationOutbox` | no row `PENDING` for more than 10 minutes; `ABANDONED` is 0 |
-| 6 | **Follow-up drift** | worker log at 03:20, or `rc-preflight.mjs` | **0 after the backfill.** Non-zero means a write path is not recomputing — escalate, do not "fix" by re-running the backfill |
-| 7 | Unassigned queue not growing | `Sales → Allocation → Waiting` | stable or falling |
-| 8 | Errors | web container logs | no `"level":50` entries you cannot explain |
-| 9 | Sign-ins working | ask two real users | no reports |
-| 10 | Mail arriving | ask one person who was invited | received, and the link works |
+| #   | Check                        | Where                                      | Healthy looks like                                                                                                           |
+| --- | ---------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Application answering        | `GET /api/health`                          | `{"status":"ok","checks":{"database":"up","redis":"up"}}`                                                                    |
+| 2   | Running version              | container `BUILD_COMMIT`                   | the release SHA, not `unknown`                                                                                               |
+| 3   | Workers alive                | worker container logs                      | `workers started`, 9 queues                                                                                                  |
+| 4   | Nothing stuck in the queues  | BullMQ / logs                              | no growing backlog                                                                                                           |
+| 5   | **Notifications delivering** | `NotificationOutbox`                       | no row `PENDING` for more than 10 minutes; `ABANDONED` is 0                                                                  |
+| 6   | **Follow-up drift**          | worker log at 03:20, or `rc-preflight.mjs` | **0 after the backfill.** Non-zero means a write path is not recomputing — escalate, do not "fix" by re-running the backfill |
+| 7   | Unassigned queue not growing | `Sales → Allocation → Waiting`             | stable or falling                                                                                                            |
+| 8   | Errors                       | web container logs                         | no `"level":50` entries you cannot explain                                                                                   |
+| 9   | Sign-ins working             | ask two real users                         | no reports                                                                                                                   |
+| 10  | Mail arriving                | ask one person who was invited             | received, and the link works                                                                                                 |
 
 Stop and consider rollback (runbook §9) if 1, 2, 3 or 9 fails, or if 5 shows
 notifications piling up.

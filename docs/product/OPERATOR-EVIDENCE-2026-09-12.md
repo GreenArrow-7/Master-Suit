@@ -82,7 +82,7 @@ MIGRATION_DATABASE_URL='«owner-url»' node scripts/rc-collections-legacy-audit.
 | Unpaid payouts containing them                               | Will be refused at `APPROVED`/`PAID` with `not_covered`                                                                                | As above                                                                                                                                              |
 | Confirmed bookings with no agreed agency fee                 | Nothing can be measured against them; not eligible                                                                                     | Needs the amendment decision in the checkpoint §1                                                                                                     |
 
-**Stop condition:** none — this audit never blocks a deploy. It blocks _money_, which is the point. Its output goes to finance before go-live so the first payout run after deployment is not a surprise.
+**Stop condition — revised 12 September evening:** any row in sections 2 or 3 is an **operational migration issue that must be reviewed before release**, not a guard that worked. Those runs and commissions will be refused at approval and payment the moment the candidate is deployed; if finance has not worked the list first, real payouts stop on day one. The deploy does not fail on it; the release decision should.
 
 ### 2.5 P&L — exact defects, so acceptance is of something specific
 

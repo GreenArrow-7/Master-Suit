@@ -193,7 +193,15 @@ collection half.
 
 Implementation: `COLLECTIONS-CHECKPOINT-2026-09-12.md`. The original questions and proposal are kept below for the record.
 
-### D-20 · May finance record or amend the agreed agency fee on a confirmed booking? — **open, surfaced by D-8**
+### D-20 · Agency fee ownership and amendments — **ANSWERED 12 September 2026, implemented on the branch**
+
+**Owner's decisions:** the agreed agency fee is a controlled commercial term. Authorized commercial administrators propose the initial fee or an amendment; a designated finance approver approves post-confirmation amendments; the proposer cannot approve their own, administrators included; a proposal requires the amount, a reason and the supporting agreement/reference; previous value, new value, proposer, approver and timestamps are preserved; generic booking updates cannot bypass the workflow; currency is unchanged through it (currency corrections are a separate process). Missing or zero fees never qualify commission automatically — zero-fee bookings are not supported by this workflow. Commission: no silent re-accrual and no overwriting of history; the effect is previewed before approval; approved changes reach unpaid commission through traceable recalculation from the frozen agreement; an affected approved unpaid payout loses its approval; paid commission keeps its history and opens an adjustment/recovery case; coverage and eligibility are re-checked transactionally.
+
+Implementation: `feeAmendments.ts`, `recoveryCases.ts`, `/api/v1/collections/fee-amendments*`, `/api/v1/collections/recovery*`, the Collections screens, `tests/sales/fee-amendments.spec.ts`. See `FINANCE-CHECKPOINT-2026-09-12.md`.
+
+**One consequence to note (not a conflict):** `POST /api/v1/bookings` still accepts `agencyFee` at creation, but only from a caller holding `agencyfee:CREATE`; a selling agent recording a sale gets a 403 if they include it. Before that change the seller set the fee. No existing contractual capability was removed — the seller never had authority over the fee in any document; the code simply had not enforced it.
+
+### D-20 (original question, for the record)
 
 `Booking.agencyFee` is the obligation receipts are measured against. It can only be set at `POST /api/v1/bookings`; there is no route to record it later or correct it. A confirmed booking created without one can never become eligible (correct under D-8.4), and a wrong one cannot be fixed. Amending it changes the commission base for `PERCENT_OF_AGENCY_FEE` slabs, so it is a change to the commission agreement, not bookkeeping. **Question:** which role may set or amend it after confirmation, is a second person required, and does a change re-run accrual or leave existing commission untouched? Not implemented pending the answer.
 
@@ -439,7 +447,7 @@ soon as implementation is approved.
 
 ---
 
-## D-18 · May someone see *that* a lead has work on it without seeing *whose* or *when*?
+## D-18 · May someone see _that_ a lead has work on it without seeing _whose_ or _when_?
 
 **Raised by** the next-follow-up derivation, 2026-09-11. **Answer needed before
 the derivation is enabled for a workspace with divergent role scopes.**
@@ -448,7 +456,7 @@ The product direction asked for "no action assigned to you" and "no action
 scheduled for this lead" to read differently — and they now do, as **"Not
 yours"** and **"No next action"**.
 
-Telling them apart requires knowing whether *anything* is open on the lead,
+Telling them apart requires knowing whether _anything_ is open on the lead,
 which is a fact about obligations the viewer may not be able to see. The
 implementation discloses the **existence** of work and nothing else: no date, no
 owner, no title, no count. It reads the stored aggregate as a boolean and the
@@ -470,4 +478,3 @@ disclosive, and it gives up the distinction the direction asked for.
 
 This is a one-line change either way; it is flagged because it is a disclosure
 decision, not a technical one.
-
