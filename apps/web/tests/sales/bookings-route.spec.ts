@@ -170,10 +170,14 @@ describe('the booking state machine', () => {
     expect(again.status).toBe(422);
   });
 
-  it('will not mark a draft collected', async () => {
+  it('no longer accepts a COLLECT verb at all — money received is a verified receipt now', async () => {
     const id = await draft();
     const res = await patch(patchBooking, '/api/v1/bookings', { action: 'COLLECT', bookingId: id }, cookie);
+    // The verb is gone from the body schema, so this is a validation refusal,
+    // not a state-machine one; and nothing wrote the legacy timestamp.
     expect(res.status).toBe(422);
+    const booking = await prisma.booking.findFirstOrThrow({ where: { id, tenantId } });
+    expect(booking.collectedAt).toBeNull();
   });
 
   it('refuses to cancel while a commission is still live', async () => {
