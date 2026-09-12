@@ -13,13 +13,13 @@ by the author of this document.
 
 ## 0. Identity of this release
 
-| | |
-| --- | --- |
-| Release SHA | `c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2` |
-| Branch | `claude/restructure-foundation` |
-| Web image | `master-suite/web:c09cb43` — digest `sha256:45d6a416e5b8cc14cd598b17c49edaafbdec4c496cd0146be15cb017cc0b75b5` |
-| Worker image | `master-suite/worker:c09cb43` — digest `sha256:b8168ab848f2da481842a6cf094e010b5877199492562cf791372882110b5f95` |
-| Migrations added | 4 — see §3 |
+|                           |                                                                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Release SHA               | `c09cb43e6058e6d9244e8ddb4e5afdad87bfd3b2`                                                                                                                                                                                                                                                        |
+| Branch                    | `claude/restructure-foundation`                                                                                                                                                                                                                                                                   |
+| Web image                 | `master-suite/web:c09cb43` — digest `sha256:45d6a416e5b8cc14cd598b17c49edaafbdec4c496cd0146be15cb017cc0b75b5`                                                                                                                                                                                     |
+| Worker image              | `master-suite/worker:c09cb43` — digest `sha256:b8168ab848f2da481842a6cf094e010b5877199492562cf791372882110b5f95`                                                                                                                                                                                  |
+| Migrations added          | 4 — see §3                                                                                                                                                                                                                                                                                        |
 | Previous deployed version | **Confirm before starting.** `scripts/release.sh status` on the VM reports what is running and what can be rolled back to. This runbook assumes the deployed version is at or after `main` (`f16ed67`); if it is older, stop and re-inventory — there will be more than four migrations to apply. |
 
 Both images carry the commit as `BUILD_COMMIT` and surface it as
@@ -39,19 +39,19 @@ container reported exactly that value. `unknown` means the image was built witho
 
 No secret values appear here. Each row is a name and what it must be true of.
 
-| Variable | Requirement |
-| --- | --- |
-| `DATABASE_URL` | The **application** role. Must be `NOBYPASSRLS`. |
-| `MIGRATION_DATABASE_URL` | The **owning** role. Different database user from the line above — startup refuses if the two URLs match. |
-| `REDIS_URL` | Must carry a password. `npm run check:redis-auth` is the gate. |
-| `APP_URL` | The public HTTPS origin. Used for origin checks and for links in email; a wrong value produces working pages and unusable invitation links. |
-| `TRUSTED_PROXY_CIDRS` | The addresses of the TLS terminator. **Startup refuses without it in production** — without it every request is attributed to the proxy, per-IP rate limiting collapses into one bucket and every audit row records `unknown`. |
-| `FIELD_ENCRYPTION_KEY` | 32 bytes, base64. **Losing it makes encrypted fields unreadable** — it is not regenerable. Back it up with the database, not beside it. |
-| `WEBHOOK_SIGNING_PEPPER` | As above. |
-| `EMAIL_PROVIDER` + `SMTP_*` | A real SMTP host. Production refuses to start with `mock`. |
-| `WHATSAPP_PROVIDER`, `ANTIVIRUS_PROVIDER` | Real providers. Production refuses `mock` for either. |
-| `S3_*` | Object storage for documents and attendance captures. |
-| `ALLOW_DEMO_SEED` | **Must be absent.** It gates the demo seed, which creates dozens of active logins. |
+| Variable                                  | Requirement                                                                                                                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                            | The **application** role. Must be `NOBYPASSRLS`.                                                                                                                                                                               |
+| `MIGRATION_DATABASE_URL`                  | The **owning** role. Different database user from the line above — startup refuses if the two URLs match.                                                                                                                      |
+| `REDIS_URL`                               | Must carry a password. `npm run check:redis-auth` is the gate.                                                                                                                                                                 |
+| `APP_URL`                                 | The public HTTPS origin. Used for origin checks and for links in email; a wrong value produces working pages and unusable invitation links.                                                                                    |
+| `TRUSTED_PROXY_CIDRS`                     | The addresses of the TLS terminator. **Startup refuses without it in production** — without it every request is attributed to the proxy, per-IP rate limiting collapses into one bucket and every audit row records `unknown`. |
+| `FIELD_ENCRYPTION_KEY`                    | 32 bytes, base64. **Losing it makes encrypted fields unreadable** — it is not regenerable. Back it up with the database, not beside it.                                                                                        |
+| `WEBHOOK_SIGNING_PEPPER`                  | As above.                                                                                                                                                                                                                      |
+| `EMAIL_PROVIDER` + `SMTP_*`               | A real SMTP host. Production refuses to start with `mock`.                                                                                                                                                                     |
+| `WHATSAPP_PROVIDER`, `ANTIVIRUS_PROVIDER` | Real providers. Production refuses `mock` for either.                                                                                                                                                                          |
+| `S3_*`                                    | Object storage for documents and attendance captures.                                                                                                                                                                          |
+| `ALLOW_DEMO_SEED`                         | **Must be absent.** It gates the demo seed, which creates dozens of active logins.                                                                                                                                             |
 
 ### 1.1 Database and application role separation
 
@@ -84,14 +84,14 @@ lead, employee or customer data — so it is safe to paste.
 
 **Read these lines before continuing:**
 
-| Line | What to do |
-| --- | --- |
-| `unfinished migration rows` > 0 | **Stop.** A previous migration is half-applied; `migrate deploy` will refuse. Resolve it first. |
-| `orphaned leadId references` > 0 | Expected and handled — the migration **detaches** them (sets `leadId` NULL), it does not delete them. Note the number; §3 verifies it afterwards. |
-| `cross-workspace references` > 0 | **Stop and investigate.** A follow-up pointing at a lead in another workspace is a tenancy fault the foreign key cannot catch, and this release does not repair it. |
-| `rules that will start failing` > 0 | **Stop.** An automation rule writes `nextFollowUpAt`, which this release refuses. Rewrite the rule first, or it will fail on its next run. |
-| `Lead`/`Task`/`FollowUpTask` row counts | Sets the lock windows in §3. Judge them there. |
-| `saved views mentioning it` > 0 | Not blocking. Those views show an explicit notice instead of filtering; tell the affected users (§7 of the assessment). |
+| Line                                    | What to do                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unfinished migration rows` > 0         | **Stop.** A previous migration is half-applied; `migrate deploy` will refuse. Resolve it first.                                                                     |
+| `orphaned leadId references` > 0        | Expected and handled — the migration **detaches** them (sets `leadId` NULL), it does not delete them. Note the number; §3 verifies it afterwards.                   |
+| `cross-workspace references` > 0        | **Stop and investigate.** A follow-up pointing at a lead in another workspace is a tenancy fault the foreign key cannot catch, and this release does not repair it. |
+| `rules that will start failing` > 0     | **Stop.** An automation rule writes `nextFollowUpAt`, which this release refuses. Rewrite the rule first, or it will fail on its next run.                          |
+| `Lead`/`Task`/`FollowUpTask` row counts | Sets the lock windows in §3. Judge them there.                                                                                                                      |
+| `saved views mentioning it` > 0         | Not blocking. Those views show an explicit notice instead of filtering; tell the affected users (§7 of the assessment).                                             |
 
 ### 2.1 Booking/unit audit — also read-only, also before anything changes
 
@@ -103,11 +103,11 @@ Two of the migrations below add constraints that existing data can block, and
 this is the only way to find out before `migrate deploy` does. It exits non-zero
 if either is blocked.
 
-| Line | What to do |
-| --- | --- |
-| `Units carrying more than one live confirmed booking` — any rows | **Stop.** That is a double-sale already in the data, and `CREATE UNIQUE INDEX` will fail on it. Each pair is a business decision — which sale stands — and it is the client's, not the operator's. The script prints booking references so they can be found. |
-| `Live confirmed bookings naming no unit` — any rows | **Stop.** Migration 6 will fail. Each row must be given its unit or moved back to `DRAFT`, by the client. |
-| `confirmed sales whose unit still reads available/held/blocked` > 0 | **Not blocking, and expected.** Historical drift from before confirmation touched inventory. Note the number; from this release forward it can only be created by hand. |
+| Line                                                                | What to do                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Units carrying more than one live confirmed booking` — any rows    | **Stop.** That is a double-sale already in the data, and `CREATE UNIQUE INDEX` will fail on it. Each pair is a business decision — which sale stands — and it is the client's, not the operator's. The script prints booking references so they can be found. |
+| `Live confirmed bookings naming no unit` — any rows                 | **Stop.** Migration 6 will fail. Each row must be given its unit or moved back to `DRAFT`, by the client.                                                                                                                                                     |
+| `confirmed sales whose unit still reads available/held/blocked` > 0 | **Not blocking, and expected.** Historical drift from before confirmation touched inventory. Note the number; from this release forward it can only be created by hand.                                                                                       |
 
 Capture the output into the ticket. It prints booking references and ids — no
 client name, phone number or email — so it is safe to paste.
@@ -119,14 +119,14 @@ client name, phone number or email — so it is safe to paste.
 Six migrations, in this order. `prisma migrate deploy` applies them
 automatically — the breakdown is here so the operator knows what each one locks.
 
-| # | Migration | What it does | Lock |
-| --- | --- | --- | --- |
-| 1 | `20260910190000_lead_triage_queue` | New table `LeadTriageEntry`, 2 enums, 7 indexes | New table — nothing existing is locked |
-| 2 | `20260911100000_triage_idempotency_and_outbox` | New tables `IdempotentRequest`, `NotificationOutbox`; 1 column on the new `LeadTriageEntry` | As above |
-| 3 | `20260911150000_follow_up_lead_relation` | Detaches orphans; adds the FK **`NOT VALID`**; 2 indexes on `Task` and `FollowUpTask` | The `NOT VALID` add is brief. **The two `CREATE INDEX` statements take a `SHARE` lock on `Task` and `FollowUpTask` for the build — writes to those two tables wait, reads do not.** |
-| 4 | `20260911150500_follow_up_lead_relation_validate` | `VALIDATE CONSTRAINT` | `SHARE UPDATE EXCLUSIVE` — **does not block writes** |
-| 5 | `20260912020000_booking_unit_exclusivity` | `Booking_confirmed_requires_unit` (CHECK, `NOT VALID`) and `Booking_one_confirmed_per_unit` (partial unique index) | The `NOT VALID` add is brief. **`CREATE UNIQUE INDEX` takes a `SHARE` lock on `Booking` for the build — writes to `Booking` wait, reads do not.** The index covers only live confirmed rows, so the build is proportional to confirmed sales, not to every booking ever written. |
-| 6 | `20260912020500_booking_unit_exclusivity_validate` | `VALIDATE CONSTRAINT` on the CHECK | `SHARE UPDATE EXCLUSIVE` — **does not block writes** |
+| #   | Migration                                          | What it does                                                                                                       | Lock                                                                                                                                                                                                                                                                             |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `20260910190000_lead_triage_queue`                 | New table `LeadTriageEntry`, 2 enums, 7 indexes                                                                    | New table — nothing existing is locked                                                                                                                                                                                                                                           |
+| 2   | `20260911100000_triage_idempotency_and_outbox`     | New tables `IdempotentRequest`, `NotificationOutbox`; 1 column on the new `LeadTriageEntry`                        | As above                                                                                                                                                                                                                                                                         |
+| 3   | `20260911150000_follow_up_lead_relation`           | Detaches orphans; adds the FK **`NOT VALID`**; 2 indexes on `Task` and `FollowUpTask`                              | The `NOT VALID` add is brief. **The two `CREATE INDEX` statements take a `SHARE` lock on `Task` and `FollowUpTask` for the build — writes to those two tables wait, reads do not.**                                                                                              |
+| 4   | `20260911150500_follow_up_lead_relation_validate`  | `VALIDATE CONSTRAINT`                                                                                              | `SHARE UPDATE EXCLUSIVE` — **does not block writes**                                                                                                                                                                                                                             |
+| 5   | `20260912020000_booking_unit_exclusivity`          | `Booking_confirmed_requires_unit` (CHECK, `NOT VALID`) and `Booking_one_confirmed_per_unit` (partial unique index) | The `NOT VALID` add is brief. **`CREATE UNIQUE INDEX` takes a `SHARE` lock on `Booking` for the build — writes to `Booking` wait, reads do not.** The index covers only live confirmed rows, so the build is proportional to confirmed sales, not to every booking ever written. |
+| 6   | `20260912020500_booking_unit_exclusivity_validate` | `VALIDATE CONSTRAINT` on the CHECK                                                                                 | `SHARE UPDATE EXCLUSIVE` — **does not block writes**                                                                                                                                                                                                                             |
 
 The foreign key is split across migrations 3 and 4 deliberately. A plain
 `ADD CONSTRAINT ... FOREIGN KEY` scans every row while holding
@@ -237,7 +237,6 @@ The same applies to the worker, which sends mail of its own:
 docker compose -p master-suite -f infra/docker-compose.prod.yml exec worker   sh -c 'ls -l "$NODE_EXTRA_CA_CERTS"'
 ```
 
-
 ```bash
 # TLS terminates in front, and the chain is complete (not just "responds").
 curl -sS -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' https://<APP_URL>/login
@@ -270,25 +269,25 @@ curl -fsS https://<APP_URL>/api/health       # database and Redis reachable
 
 Then these, by hand, as a **real client account** — not the demo account:
 
-| # | Smoke test | Pass condition |
-| --- | --- | --- |
-| 1 | Sign in as an agent | Reaches the workspace |
-| 2 | Sign out, then open a workspace URL | Redirected to login, not a 500 |
-| 3 | Sign in as an agent and open a page their role forbids | "You do not have permission", not an error page |
-| 4 | Create a lead | Appears in the list |
-| 5 | Assign it to an agent | Owner shows on the row |
-| 6 | Create a follow-up on it | The **Follow-up** column shows that date within one page refresh |
-| 7 | Reschedule it | The column moves to the new date |
-| 8 | Complete it | The column reads **No action assigned to you** |
-| 9 | Open `/leads?filter=overdue` as an agent | Only leads with **their own** overdue work |
-| 10 | The same as a manager | `Overdue · team` and `Overdue · mine` are separate chips and return different sets |
-| 11 | Open the leads list on a phone | The follow-up state is visible; no horizontal scrolling |
-| 12 | An employee opens self-service | Their own record, not somebody else's |
-| 13 | An employee submits a leave request | Appears in the manager's queue |
-| 14 | The manager approves it | State changes and the employee sees it |
-| 15 | Clock in / clock out | Attendance records, capture stored |
-| 16 | Worker processing | Create an unassignable lead; within 5 minutes it appears in the triage queue |
-| 17 | Notification recovery | Stop the worker mid-sweep, start it again; the pending notice is delivered exactly once in-app |
+| #   | Smoke test                                             | Pass condition                                                                                 |
+| --- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 1   | Sign in as an agent                                    | Reaches the workspace                                                                          |
+| 2   | Sign out, then open a workspace URL                    | Redirected to login, not a 500                                                                 |
+| 3   | Sign in as an agent and open a page their role forbids | "You do not have permission", not an error page                                                |
+| 4   | Create a lead                                          | Appears in the list                                                                            |
+| 5   | Assign it to an agent                                  | Owner shows on the row                                                                         |
+| 6   | Create a follow-up on it                               | The **Follow-up** column shows that date within one page refresh                               |
+| 7   | Reschedule it                                          | The column moves to the new date                                                               |
+| 8   | Complete it                                            | The column reads **No action assigned to you**                                                 |
+| 9   | Open `/leads?filter=overdue` as an agent               | Only leads with **their own** overdue work                                                     |
+| 10  | The same as a manager                                  | `Overdue · team` and `Overdue · mine` are separate chips and return different sets             |
+| 11  | Open the leads list on a phone                         | The follow-up state is visible; no horizontal scrolling                                        |
+| 12  | An employee opens self-service                         | Their own record, not somebody else's                                                          |
+| 13  | An employee submits a leave request                    | Appears in the manager's queue                                                                 |
+| 14  | The manager approves it                                | State changes and the employee sees it                                                         |
+| 15  | Clock in / clock out                                   | Attendance records, capture stored                                                             |
+| 16  | Worker processing                                      | Create an unassignable lead; within 5 minutes it appears in the triage queue                   |
+| 17  | Notification recovery                                  | Stop the worker mid-sweep, start it again; the pending notice is delivered exactly once in-app |
 
 Stop and consider rollback if **any of 1–8, 12–14 or 16** fails. Those are the
 workflows the client uses daily.
@@ -344,7 +343,7 @@ application.** The exception arrived with the booking migrations (5 and 6):
   previous application never wrote `unitInventoryId` at confirmation and never
   required it, so after a rollback **`PATCH /api/v1/bookings` with
   `action: 'CONFIRM'` on a draft that names no unit fails with a 500** — the
-  old code does not know the constraint exists. Confirming a draft that *does*
+  old code does not know the constraint exists. Confirming a draft that _does_
   name a unit still works. Nothing else in the old version writes rows these
   constraints see.
 - `Booking_one_confirmed_per_unit` can also refuse the old code: two
@@ -386,17 +385,17 @@ recoverable before you need it.
 
 ## 10. Responsibilities
 
-| Step | Owner |
-| --- | --- |
-| Approve the release scope | Client owner |
-| §2 preflight, and the decision on its stop conditions | Production operator |
-| §9.2 backup taken and **verified restorable** before §3 | Production operator |
-| §3 migration | Production operator |
-| §4 start order | Production operator |
-| §5 backfill, per workspace | Production operator |
-| §6–7 checks and smoke tests | Production operator, with one client agent and one client manager for 9–15 |
-| Declaring the deployment good, or calling §9 | Client owner, on the operator's report |
-| First-day monitoring (§7 of the handover) | Named support contact |
+| Step                                                    | Owner                                                                      |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Approve the release scope                               | Client owner                                                               |
+| §2 preflight, and the decision on its stop conditions   | Production operator                                                        |
+| §9.2 backup taken and **verified restorable** before §3 | Production operator                                                        |
+| §3 migration                                            | Production operator                                                        |
+| §4 start order                                          | Production operator                                                        |
+| §5 backfill, per workspace                              | Production operator                                                        |
+| §6–7 checks and smoke tests                             | Production operator, with one client agent and one client manager for 9–15 |
+| Declaring the deployment good, or calling §9            | Client owner, on the operator's report                                     |
+| First-day monitoring (§7 of the handover)               | Named support contact                                                      |
 
 The author of this release has **no production access and has run none of the
 above against production.** Every figure quoted in this runbook was measured in
