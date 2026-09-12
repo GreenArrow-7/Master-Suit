@@ -7,6 +7,7 @@ import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
 import { requirePlatformServiceActor, recordPlatformAccess } from '../auth/service-identity';
+import { assertSensitiveAccess } from '../auth/sensitive-access';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
@@ -39,6 +40,14 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
   auditEvent?: AuditEventName;
   /** Per-route override; otherwise the credential's default applies. */
   rateLimit?: { max: number; windowSeconds: number };
+  /**
+   * Content a platform monitoring identity may only read under a grant flagged
+   * `sensitive` — recordings, transcripts, AI analyses and call audits. Named
+   * here rather than inside each handler so the check runs after the permission
+   * and before the body, where a refusal cannot leak the lookup it would have
+   * made. Customer roles are untouched. See lib/auth/sensitive-access.ts.
+   */
+  sensitive?: string;
 }
 
 export interface HandlerArgs<P, Q, B> {
@@ -130,6 +139,7 @@ export function route<
          * decision and are left as they were.
          */
         if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
+        if (spec.sensitive) await assertSensitiveAccess(ctx, spec.sensitive);
       } else if (!spec.anonymous) throw Unauthorized();
 
       // 4. Validate ────────────────────────────────────────────────────────────

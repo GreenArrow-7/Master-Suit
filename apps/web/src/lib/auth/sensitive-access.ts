@@ -33,10 +33,14 @@ import { platformUserIdOf } from './support-actor';
  * decoration. The migration marks those rows `sensitive` so the column describes
  * what the grant actually confers.
  */
-export async function assertSensitiveAccess(ctx: Ctx, what: string): Promise<void> {
+/**
+ * The decision as a yes/no, for a page that still renders a call's metadata to
+ * a monitoring identity and withholds only the conversation.
+ */
+export async function hasSensitiveAccess(ctx: Ctx): Promise<boolean> {
   const platformUserId = ctx.service?.platformUserId ?? platformUserIdOf(ctx.actor.id);
   // One of the customer's own people. Their role already decided this.
-  if (!platformUserId) return;
+  if (!platformUserId) return true;
 
   /**
    * A machine identity is decided by its credential's scopes, which are minted
@@ -46,7 +50,7 @@ export async function assertSensitiveAccess(ctx: Ctx, what: string): Promise<voi
    * those scopes before the route's own permission check ran, so a credential
    * without `calls:read` never reaches here at all.
    */
-  if (ctx.service) return;
+  if (ctx.service) return true;
 
   const now = new Date();
   const [grant, coverage] = await Promise.all([
@@ -60,7 +64,11 @@ export async function assertSensitiveAccess(ctx: Ctx, what: string): Promise<voi
     }),
   ]);
 
-  if (!grant && !coverage) {
+  return Boolean(grant || coverage);
+}
+
+export async function assertSensitiveAccess(ctx: Ctx, what: string): Promise<void> {
+  if (!(await hasSensitiveAccess(ctx))) {
     throw Forbidden(
       `Monitoring access to this workspace does not include ${what}. ` +
         'It is granted separately, and the grant records who asked and why.',

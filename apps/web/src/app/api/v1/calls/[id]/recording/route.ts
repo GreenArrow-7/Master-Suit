@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { NotFound, Forbidden } from '@/lib/errors';
 
 const params = z.object({ id: z.string().cuid() });
@@ -42,9 +41,15 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'VIEW',
+    params,
+    auditEvent: 'RECORDING_ACCESSED',
+    sensitive: 'call recordings',
+  },
   async ({ ctx, params }) => {
-    await assertSensitiveAccess(ctx, 'call recordings');
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

@@ -27,6 +27,9 @@ import {
 } from '@/app/api/v1/platform/workspaces/[workspaceId]/enter/route';
 import { POST as grantMonitoring, DELETE as revokeMonitoring } from '@/app/api/v1/platform/monitoring/grants/route';
 import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
+import { GET as readAnalysis } from '@/app/api/v1/calls/[id]/analysis/route';
+import { GET as readCallAudits } from '@/app/api/v1/calls/[id]/audit/route';
+import { GET as readTranscript } from '@/app/api/v1/calls/[id]/transcript/route';
 import { authorizedTenantIds } from '@/lib/auth/platform-access';
 import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { resolveCtx } from '@/lib/auth/session';
@@ -414,6 +417,19 @@ describe('8 — sensitive data needs its own grant', () => {
     await expect(assertSensitiveAccess(ctx, 'call recordings')).rejects.toThrow(/granted separately/i);
   });
 
+  it('refuses AI analyses, call audits and transcripts on the route, before any lookup', async () => {
+    // What the model made of a conversation is the conversation. The id does
+    // not exist, so a 403 here proves the gate ran ahead of the query — a route
+    // that looked first would have answered 404.
+    const cookie = await createPlatformSessionToken(supportId, granted.id);
+    const params = Promise.resolve({ id: 'clzzzzzzzzzzzzzzzzzzzzzz' });
+    for (const read of [readAnalysis, readCallAudits, readTranscript]) {
+      const res = await read(new Request('http://localhost/api/v1/calls/x', { headers: { cookie } }), { params });
+      expect(res.status).toBe(403);
+      expect(await res.text()).toMatch(/granted separately/i);
+    }
+  });
+
   it('still allows everything the grant is for', async () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
     const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
@@ -447,6 +463,13 @@ describe('8 — sensitive data needs its own grant', () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
     const wider = await resolveCtx(new Request('http://internal/', { headers: { cookie } }), 'req-sensitive-2');
     await expect(assertSensitiveAccess(wider, 'call recordings')).resolves.toBeUndefined();
+
+    // The same routes now get past the gate and answer for the record itself.
+    const params = Promise.resolve({ id: 'clzzzzzzzzzzzzzzzzzzzzzz' });
+    for (const read of [readAnalysis, readCallAudits]) {
+      const res = await read(new Request('http://localhost/api/v1/calls/x', { headers: { cookie } }), { params });
+      expect(res.status).not.toBe(403);
+    }
   });
 
   it('leaves one of the customer’s own employees untouched', async () => {
