@@ -118,6 +118,9 @@ say "mirroring bucket ${BUCKET} ..."
 NETWORK="$(${DC} ps --format '{{.Name}}' minio | head -1 | xargs -r docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')"
 [ -n "${NETWORK}" ] || fail "could not determine the compose network — is the stack running?"
 
+# quay.io, not Docker Hub: `minio/mc` on the Hub answers "pull access denied /
+# repository does not exist" (checked 2026-09-12). A host without the image cached
+# — a fresh one, or one after `docker image prune` — could not take a backup at all.
 docker run --rm \
   --network "${NETWORK}" \
   --env-file ../.env.production \
