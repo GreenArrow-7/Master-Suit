@@ -122,7 +122,7 @@ docker run --rm \
   --network "${NETWORK}" \
   --env-file ../.env.production \
   -v "${DEST}/objects:/backup" \
-  --entrypoint sh minio/mc:latest -c "
+  --entrypoint sh quay.io/minio/mc:latest -c "
     set -e
     mc alias set src http://minio:9000 \"\$S3_ACCESS_KEY_ID\" \"\$S3_SECRET_ACCESS_KEY\" >/dev/null
     mc mirror --overwrite --remove src/${BUCKET} /backup
