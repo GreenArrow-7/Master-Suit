@@ -19,21 +19,16 @@
  * Every statement is a SELECT. Needs a role that can read across tenants —
  * the owning/migration role. It does not need write access.
  */
-import pg from 'pg';
+import { openAudit } from './rc-readonly.mjs';
 
-const url = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
 const since = process.argv[2];
-if (!url || !since || Number.isNaN(Date.parse(since))) {
+if (!since || Number.isNaN(Date.parse(since))) {
   console.error('Usage: MIGRATION_DATABASE_URL=<owner url> node scripts/rc-post-deploy-delta.mjs <ISO-8601 instant>');
   process.exit(2);
 }
 
-const c = new pg.Client({ connectionString: url });
-await c.connect();
-const rows = async (sql, params = []) => (await c.query(sql, params)).rows;
-
-const who = (await rows('SELECT current_database() AS db, current_user AS role, now() AS at'))[0];
-console.log(`Post-deployment delta — database "${who.db}" as "${who.role}", server time ${who.at.toISOString()}`);
+const { rows, who, done } = await openAudit('Post-deployment delta');
+console.log(`Server time ${who.at.toISOString()}.`);
 console.log(`Rows created or modified since ${new Date(since).toISOString()}. Read-only.`);
 
 // Every table with both timestamps and a tenantId: the business tables. The
@@ -92,4 +87,4 @@ const [money] = await rows(
 console.log('\nMoney state written since then (cannot be reconstructed from memory):');
 for (const [k, v] of Object.entries(money)) console.log(`  ${k.padEnd(22)} ${v}`);
 
-await c.end();
+await done();

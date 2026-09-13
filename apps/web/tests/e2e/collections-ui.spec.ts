@@ -562,4 +562,60 @@ test.describe('Collections through the screens', () => {
       await context.close();
     }
   });
+  test('P&L: payroll with no team history for its period shows as Unknown historical team, on the screen and in the API', async ({
+    browser,
+  }) => {
+    // A leader with no team membership at all: nothing establishes a team for August.
+    const leader = await person('pl-leader', [['reports', 'VIEW']]);
+    const membership = await prisma.workspaceMembership.findFirstOrThrow({
+      where: { tenantId, salesUserId: leader.id },
+      select: { id: true },
+    });
+    const employee = await prisma.employeeProfile.create({
+      data: { tenantId, membershipId: membership.id, employeeNumber: `PL-${run}` },
+    });
+    const payrollRun = await prisma.hrPayrollRun.create({
+      data: {
+        tenantId,
+        periodStart: new Date('2026-08-01T00:00:00Z'),
+        periodEnd: new Date('2026-08-31T00:00:00Z'),
+        status: 'APPROVED',
+        currency: 'AED',
+      },
+    });
+    await prisma.hrPayslip.create({
+      data: {
+        tenantId,
+        runId: payrollRun.id,
+        employeeId: employee.id,
+        currency: 'AED',
+        basic: '12345.67',
+        grossEarnings: '12345.67',
+        totalDeductions: '0',
+        netPay: '12345.67',
+        inputs: {},
+      },
+    });
+
+    const l = await signedIn(browser, leader);
+    try {
+      await l.page.goto(at('/sales/leadership?view=pl&from=2026-08-01&to=2026-08-31'));
+      const line = l.page.getByTestId('pl-unknown-historical');
+      await expect(line).toContainText('Unknown historical team: 1 payslip,', { timeout: 30_000 });
+      await expect(line).toContainText('12,345.67');
+
+      const res = await l.page.request.get('/api/v1/leadership?view=pl&from=2026-08-01&to=2026-08-31T23:59:59Z');
+      expect(res.status()).toBe(200);
+      const { data } = await res.json();
+      expect(data.historicalPlacementUnknown.payslips).toBe(1);
+      expect(Number(data.historicalPlacementUnknown.amount)).toBe(12345.67);
+      const row = data.rows.find((r: { name: string }) => r.name === 'Unknown historical team');
+      expect(Number(row?.payrollCost)).toBe(12345.67);
+      expect(Number(data.totals.payrollCost)).toBe(
+        data.rows.reduce((s: number, r: { payrollCost: string | null }) => s + Number(r.payrollCost ?? 0), 0),
+      );
+    } finally {
+      await l.close();
+    }
+  });
 });

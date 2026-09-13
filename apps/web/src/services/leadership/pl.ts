@@ -245,7 +245,7 @@ async function payrollByGroup(
       teamIdSnapshot: true,
       branchIdSnapshot: true,
       regionIdSnapshot: true,
-      run: { select: { periodStart: true } },
+      run: { select: { periodStart: true, periodEnd: true } },
       employee: { select: { membership: { select: { salesUserId: true } } } },
     },
   });
@@ -259,23 +259,27 @@ async function payrollByGroup(
   // placement could not be established when they were — are resolved from the
   // records that prove placement for their own period, and never from where
   // the person sits today. See placement.ts.
+  // Keyed by the whole period: whether it has ended, and what was added during it, both depend on its end.
+  const periodKey = (run: { periodStart: Date; periodEnd: Date }) =>
+    `${run.periodStart.toISOString()}|${run.periodEnd.toISOString()}`;
   const resolved = new Map<string, Map<string, Placement>>();
   for (const slip of payslips) {
     const uid = slip.employee.membership?.salesUserId;
     if (!uid) continue;
-    const k = slip.run.periodStart.toISOString();
+    const k = periodKey(slip.run);
     if (!resolved.has(k)) resolved.set(k, new Map());
   }
   for (const k of resolved.keys()) {
     const ids = [
       ...new Set(
         payslips
-          .filter((p) => p.run.periodStart.toISOString() === k)
+          .filter((p) => periodKey(p.run) === k)
           .map((p) => p.employee.membership?.salesUserId)
           .filter((x): x is string => !!x),
       ),
     ];
-    resolved.set(k, await historicalPlacement(tenantId, ids, new Date(k)));
+    const [start, end] = k.split('|');
+    resolved.set(k, await historicalPlacement(tenantId, ids, new Date(start), new Date(end)));
   }
 
   const field = grouping === 'team' ? 'teamId' : grouping === 'region' ? 'regionId' : 'branchId';
@@ -299,7 +303,7 @@ async function payrollByGroup(
 
     const snapshot =
       grouping === 'team' ? slip.teamIdSnapshot : grouping === 'region' ? slip.regionIdSnapshot : slip.branchIdSnapshot;
-    const key = snapshot ?? resolved.get(slip.run.periodStart.toISOString())?.get(uid)?.[field] ?? UNKNOWN_HISTORICAL;
+    const key = snapshot ?? resolved.get(periodKey(slip.run))?.get(uid)?.[field] ?? UNKNOWN_HISTORICAL;
     if (key === UNKNOWN_HISTORICAL) {
       unknown.payslips += 1;
       unknown.amount = unknown.amount.plus(slip.grossEarnings);

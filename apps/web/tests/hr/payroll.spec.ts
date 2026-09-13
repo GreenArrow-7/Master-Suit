@@ -590,3 +590,24 @@ describe('WPS export · spreadsheet formula injection', () => {
     expect(sif.content).toContain('AE070331234567890123456');
   });
 });
+
+describe('placement frozen on the payslip', () => {
+  it('records the team for the run period, and none for a period the person joined during', async () => {
+    const team = await prisma.team.create({ data: { tenantId, name: 'Payroll team', code: `PT-${suffix}` } });
+    // Joined on 10 February: not provably in the team for February, provably so for May.
+    await prisma.userTeam.create({
+      data: { tenantId, userId: userIds.worker!, teamId: team.id, createdAt: new Date('2026-02-10T00:00:00Z') },
+    });
+    const snapshotFor = async (start: string, end: string) => {
+      const run = await createRun(ctxFor('officer', OFFICER), new Date(start), new Date(end));
+      await calculateRun(ctxFor('officer', OFFICER), run.id);
+      const slip = await prisma.hrPayslip.findFirstOrThrow({
+        where: { tenantId, runId: run.id, employeeId: employees.worker! },
+        select: { teamIdSnapshot: true },
+      });
+      return slip.teamIdSnapshot;
+    };
+    expect(await snapshotFor('2026-02-01', '2026-02-28')).toBeNull();
+    expect(await snapshotFor('2026-05-01', '2026-05-31')).toBe(team.id);
+  });
+});

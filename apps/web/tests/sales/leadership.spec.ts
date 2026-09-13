@@ -606,38 +606,53 @@ describe('the P&L — the three defects of 12 September', () => {
 });
 
 describe('historical placement for a payroll period', () => {
+  const JUNE: [Date, Date] = [new Date('2026-06-01T00:00:00Z'), new Date('2026-06-30T00:00:00Z')];
+  const member = (teamId: string, createdAt?: Date) =>
+    prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId, createdAt } });
+  const clear = () => prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+  const teamIn = async (start: Date, end: Date, now?: Date) =>
+    (await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], start, end, now)).get(fixture.a.userId)
+      ?.teamId ?? null;
+
   it('a backdated run does not take the team the person joined afterwards', async () => {
-    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
-    await prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId: teamB } }); // joined today
-    const backdated = await historicalPlacement(
-      fixture.a.tenantId,
-      [fixture.a.userId],
-      new Date('2026-06-01T00:00:00Z'),
-    );
-    expect(backdated.get(fixture.a.userId)?.teamId).toBeNull();
-    // The same membership does establish a period that starts after it.
-    const current = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date(Date.now() + 60_000));
-    expect(current.get(fixture.a.userId)?.teamId).toBe(teamB);
+    await clear();
+    await member(teamB); // joined today
+    expect(await teamIn(...JUNE)).toBeNull();
+    // The same membership does establish a finished period that began after it.
+    const start = new Date(Date.now() + 60_000);
+    expect(await teamIn(start, start, new Date(Date.now() + 3 * 86_400_000))).toBe(teamB);
+  });
+
+  it('one membership from before the period, and nothing added during it, gives that team', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-07-15T00:00:00Z')); // after June: says nothing about June
+    expect(await teamIn(...JUNE)).toBe(teamA);
+  });
+
+  it('a team added during the period is a transfer or a second team: unknown', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-06-15T00:00:00Z'));
+    expect(await teamIn(...JUNE)).toBeNull();
   });
 
   it('two memberships spanning the period are ambiguous, not a pick', async () => {
-    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
-    for (const teamId of [teamA, teamB]) {
-      await prisma.userTeam.create({
-        data: {
-          tenantId: fixture.a.tenantId,
-          userId: fixture.a.userId,
-          teamId,
-          createdAt: new Date('2026-01-01T00:00:00Z'),
-        },
-      });
-    }
-    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date('2026-06-01T00:00:00Z'));
-    expect(p.get(fixture.a.userId)?.teamId).toBeNull();
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-01-01T00:00:00Z'));
+    expect(await teamIn(...JUNE)).toBeNull();
+  });
+
+  it('a period that has not ended yet is not established, whatever the membership', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    expect(await teamIn(JUNE[0], JUNE[1], new Date('2026-06-20T00:00:00Z'))).toBeNull();
+    expect(await teamIn(JUNE[0], JUNE[1], new Date('2026-07-01T00:00:00Z'))).toBe(teamA);
   });
 
   it('branch and region are trusted only if the user row has not changed since the period began', async () => {
-    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date('2026-06-01T00:00:00Z'));
+    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], ...JUNE);
     expect(p.get(fixture.a.userId)?.branchId).toBeNull(); // the fixture user was written today
   });
 });

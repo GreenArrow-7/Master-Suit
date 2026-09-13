@@ -307,6 +307,7 @@ export async function calculateRun(ctx: Ctx, runId: string) {
     ctx.tenantId,
     [...salesUserOf.values()].filter((x): x is string => !!x),
     run.periodStart,
+    run.periodEnd,
   );
   const placementOf = (employeeId: string) => {
     const p = placements.get(salesUserOf.get(employeeId) ?? '');

@@ -25,22 +25,12 @@
  * Needs a role that can SELECT across tenants — the owning/migration role, the
  * same one `prisma migrate deploy` uses. It does not need write access.
  */
-import pg from 'pg';
+import { openAudit } from './rc-readonly.mjs';
 
-const url = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!url) {
-  console.error('Set MIGRATION_DATABASE_URL (or DATABASE_URL) to the database to inspect.');
-  process.exit(2);
-}
-
-const c = new pg.Client({ connectionString: url });
-await c.connect();
+const { rows, done } = await openAudit('Booking/unit audit');
 
 const head = (t) => console.log(`\n${t}\n${'─'.repeat(t.length)}`);
-const rows = async (sql) => (await c.query(sql)).rows;
 
-const who = (await rows('SELECT current_database() AS db, current_user AS role'))[0];
-console.log(`Booking/unit audit — database "${who.db}" as "${who.role}"`);
 console.log(`Read-only. Nothing is created, changed or deleted.`);
 
 head('Totals');
@@ -101,5 +91,5 @@ console.log('  (Historical only. Confirmation now moves the unit in the same tra
 
 const blocked = dupes.length > 0 || unitless.length > 0;
 head(blocked ? 'RESULT: resolve the rows above before deploying' : 'RESULT: clear to deploy');
-await c.end();
+await done();
 process.exit(blocked ? 1 : 0);

@@ -23,27 +23,15 @@
  * Needs a role that can SELECT across tenants — the owning/migration role, the
  * same one `prisma migrate deploy` uses. It does not need write access.
  */
-import pg from 'pg';
+import { openAudit } from './rc-readonly.mjs';
 
-const url = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!url) {
-  console.error('Set MIGRATION_DATABASE_URL (or DATABASE_URL) to the database to inspect.');
-  process.exit(2);
-}
+const { rows: all, done } = await openAudit('Release preflight');
 
-const c = new pg.Client({ connectionString: url });
-await c.connect();
-
-const one = async (sql, params = []) => (await c.query(sql, params)).rows[0];
-const all = async (sql, params = []) => (await c.query(sql, params)).rows;
+const one = async (sql, params = []) => (await all(sql, params))[0];
 
 const line = (label, value, note = '') =>
   console.log(`  ${String(label).padEnd(38)} ${String(value).padStart(10)}  ${note}`);
 const head = (t) => console.log(`\n${t}\n${'─'.repeat(t.length)}`);
-
-// Which database, without printing credentials.
-const who = await one('SELECT current_database() AS db, current_user AS role');
-console.log(`database ${who.db} as ${who.role}`);
 
 // ── 1. Where the schema currently is ────────────────────────────────────────
 head('1. Applied migrations');
@@ -57,10 +45,12 @@ const pending = [
   '20260911100000_triage_idempotency_and_outbox',
   '20260911150000_follow_up_lead_relation',
   '20260911150500_follow_up_lead_relation_validate',
+  '20260912020000_booking_unit_exclusivity',
+  '20260912020500_booking_unit_exclusivity_validate',
+  '20260912100000_agency_fee_receipts',
+  '20260912200000_fee_amendments_recovery_workflow',
 ];
-const { rows: allApplied } = await c.query(
-  `SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`,
-);
+const allApplied = await all(`SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`);
 const appliedAll = new Set(allApplied.map((r) => r.migration_name));
 head('   Of this release, still to apply');
 for (const m of pending) console.log(`  ${appliedAll.has(m) ? 'applied ' : 'PENDING '} ${m}`);
@@ -181,11 +171,13 @@ head('6. Saved views referencing the withdrawn nextFollowUpAt filter');
 // anything else unfiltered behind an explicit notice — but the operator should
 // know how many people will see that notice on the first morning.
 for (const table of ['SmartView', 'SavedFilter', 'DashboardWidget', 'Report']) {
-  const r = await one(
-    `SELECT count(*)::int AS n FROM "${table}" WHERE "filterTree"::text LIKE '%nextFollowUpAt%'`,
-  ).catch(() => null);
+  // An absent table reads as n/a; any other error stops the script instead of hiding behind n/a.
+  const exists = (await one('SELECT to_regclass($1) IS NOT NULL AS ok', [`"${table}"`])).ok;
+  const r = exists
+    ? await one(`SELECT count(*)::int AS n FROM "${table}" WHERE "filterTree"::text LIKE '%nextFollowUpAt%'`)
+    : null;
   line(`  ${table}`, r ? r.n : 'n/a', r && r.n ? 'will show the compatibility notice' : '');
 }
 
 console.log('\npreflight complete — nothing was written.');
-await c.end();
+await done();

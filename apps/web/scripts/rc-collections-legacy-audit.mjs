@@ -18,26 +18,30 @@
  *
  * Prints references and identifiers only. No client name, phone or email.
  */
-import pg from 'pg';
+import { openAudit } from './rc-readonly.mjs';
 
-const url = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!url) {
-  console.error('Set MIGRATION_DATABASE_URL (or DATABASE_URL) to the database to inspect.');
-  process.exit(2);
-}
-const c = new pg.Client({ connectionString: url });
-await c.connect();
-const rows = async (sql) => (await c.query(sql)).rows;
+const { rows, done } = await openAudit('Collections legacy audit');
 const head = (t) => console.log(`\n${t}\n${'─'.repeat(t.length)}`);
 
-const who = (await rows('SELECT current_database() AS db, current_user AS role'))[0];
-console.log(`Collections legacy audit — database "${who.db}" as "${who.role}". Read-only.`);
+// Before migration 20260912100000 there is no receipts table. That is not "no
+// affected payouts": no receipt can exist, so every legacy mark and every
+// collected or paid commission is unbacked and listed below for review. An
+// empty relation of the same shape stands in for the table so the same queries
+// answer.
+const hasReceipts = (await rows(`SELECT to_regclass('"AgencyFeeReceipt"') IS NOT NULL AS ok`))[0].ok;
+if (!hasReceipts) {
+  console.log('LEGACY STATE: the receipts table does not exist yet. Nothing below is backed by a receipt;');
+  console.log('every row listed needs a finance decision before release.');
+}
+const RECEIPTS = hasReceipts
+  ? '"AgencyFeeReceipt"'
+  : '(SELECT NULL::text AS "bookingId", NULL::text AS "kind", NULL::numeric AS "amount", NULL::text AS "status" WHERE false)';
 
 head('1. Bookings with a legacy collectedAt and no verified receipt');
 const legacy = await rows(`
   SELECT b."reference", b."id", b."tenantId", b."currency",
          b."agencyFee", b."collectedAt"::date AS marked,
-         (SELECT count(*) FROM "AgencyFeeReceipt" r WHERE r."bookingId" = b."id" AND r."status" = 'VERIFIED') AS verified_receipts
+         (SELECT count(*) FROM ${RECEIPTS} r WHERE r."bookingId" = b."id" AND r."status" = 'VERIFIED') AS verified_receipts
   FROM "Booking" b
   WHERE b."collectedAt" IS NOT NULL AND b."deletedAt" IS NULL
   ORDER BY b."collectedAt"`);
@@ -53,7 +57,7 @@ const commissions = await rows(`
     SELECT r."bookingId",
            COALESCE(SUM(CASE WHEN r."kind" = 'RECEIPT' THEN r."amount" ELSE -r."amount" END)
                     FILTER (WHERE r."status" = 'VERIFIED'), 0) AS verified
-    FROM "AgencyFeeReceipt" r GROUP BY r."bookingId")
+    FROM ${RECEIPTS} r GROUP BY r."bookingId")
   SELECT cm."id", cm."status"::text AS status, cm."amount", cm."currency", cm."payoutId",
          b."reference" AS booking, b."agencyFee", COALESCE(cov.verified, 0) AS verified
   FROM "Commission" cm
@@ -79,7 +83,7 @@ const payouts = await rows(`
     SELECT r."bookingId",
            COALESCE(SUM(CASE WHEN r."kind" = 'RECEIPT' THEN r."amount" ELSE -r."amount" END)
                     FILTER (WHERE r."status" = 'VERIFIED'), 0) AS verified
-    FROM "AgencyFeeReceipt" r GROUP BY r."bookingId")
+    FROM ${RECEIPTS} r GROUP BY r."bookingId")
   SELECT DISTINCT p."reference", p."id", p."status"::text AS status, p."totalAmount", p."currency"
   FROM "Payout" p
   JOIN "Commission" cm ON cm."payoutId" = p."id" AND cm."reversesId" IS NULL
@@ -99,9 +103,12 @@ const nofee = await rows(`
 console.log(`  ${nofee.length} booking(s). Nothing can be measured against them until finance records the fee due.`);
 for (const b of nofee) console.log(`    ${b.reference}  id=${b.id}  ${b.currency}`);
 
+const listed = unbacked.length + commissions.length + payouts.length + nofee.length;
 head(
-  unbacked.length + commissions.length + payouts.length + nofee.length === 0
-    ? 'RESULT: nothing legacy to review'
-    : 'RESULT: rows above need a finance decision each — none was changed',
+  listed > 0
+    ? `RESULT: ${listed} row(s) above need a finance decision each; none was changed${hasReceipts ? '' : ' (receipts table absent: legacy state)'}`
+    : hasReceipts
+      ? 'RESULT: nothing legacy to review'
+      : 'RESULT: receipts table absent, and nothing it would have to back exists yet (no collected mark, collected or paid commission, open payout, or confirmed booking without a fee)',
 );
-await c.end();
+await done();
