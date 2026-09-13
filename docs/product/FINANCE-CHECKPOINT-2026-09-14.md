@@ -81,6 +81,8 @@ The checklist is `OPERATOR-CHECKLIST.md`. It pins the scripts to `cfe582f` and l
 | Restore target guards                                                                                                                                             | refused with exit 1 and nothing dropped: an existing unmarked target, a target in use, a live-database name that does not exist, a role row security applies to. An early failure leaves an existing target alone. A marked leftover is replaced, restored and dropped, and the live database is untouched | `restore-guard-cfe582f.log`               |
 | The earlier restore script                                                                                                                                        | dropped any `<db>_restorecheck` with forced disconnects, including on early exit. That is fixed at `cfe582f`. The deployed weekly unit still runs the old script until release, so step 4 of the checklist looks for a collision first | code review                                |
 
+Log hashes, SHA-256: `operator-commands-cfe582f.log` `152a035f…`, `audit-guards-host-cfe582f.log` `c388d325…`, `audit-legacy-and-rls-cfe582f.log` `39a72e98…`, `restore-guard-cfe582f.log` `fbb143f7…`.
+
 All local proofs used disposable, uniquely named databases, since dropped. No shared database, file or container was changed.
 
 ## 5. Acceptance criteria mapped to evidence
