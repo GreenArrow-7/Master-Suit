@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_COVERAGE_MINUTES,
@@ -74,6 +74,11 @@ export async function POST(req: Request) {
     const subject = await subjectOr404(input.platformUserId);
 
     if (input.workspaceId) {
+      // Same rule openCoverage enforces. Break-glass is the one self-issued
+      // elevation, and it has its own route and audit mode.
+      if (subject.id === ctx.platformUserId) {
+        throw Forbidden('Monitoring access has to be granted by somebody else.');
+      }
       const workspace = await prisma.tenant.findFirst({
         where: { id: input.workspaceId, deletedAt: null },
         select: { id: true, slug: true },

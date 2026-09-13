@@ -500,6 +500,27 @@ describe('7 — the owner-only boundary holds', () => {
     expect(res.status).toBe(403);
   });
 
+  it('nor a workspace grant — sensitive or not — to themselves', async () => {
+    // Break-glass is the one self-issued elevation, on its own route and labelled
+    // in the audit trail. A monitoring grant is issued by somebody else.
+    for (const sensitive of [false, true]) {
+      const res = await grantMonitoring(
+        json(
+          'http://localhost/api/v1/platform/monitoring/grants',
+          'POST',
+          {
+            platformUserId: ownerId,
+            workspaceId: granted.id,
+            reason: 'Issuing myself monitoring access to this customer',
+            sensitive,
+          },
+          ownerCookie,
+        ),
+      );
+      expect(res.status).toBe(403);
+    }
+  });
+
   it('and the owner cannot grant themselves coverage either', async () => {
     const res = await grantMonitoring(
       json(
