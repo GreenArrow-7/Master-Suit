@@ -22,6 +22,20 @@ by the author of this document.
 | Migrations added | 4 — see §3 |
 | Previous deployed version | **Confirm before starting.** `scripts/release.sh status` on the VM reports what is running and what can be rolled back to. This runbook assumes the deployed version is at or after `main` (`f16ed67`); if it is older, stop and re-inventory — there will be more than four migrations to apply. |
 
+> **Integration candidate addendum — `integration/monitoring-on-restructure`.**
+> The restructuring release above plus the platform monitoring console. Candidate
+> `9df91d8c675e12bfdf32999a16b80a834a248d6f`. It adds **six** migrations to a
+> database at `main` or the incident RC (both at 65), or **two** to one already at
+> the restructuring release (§3). It changes what rollback means for platform staff
+> access (§9.1), and it depends on the backup and reboot fixes in §9.2–§9.4.
+> Evidence for every step marked **VERIFIED** is in
+> `docs/product/RELEASE-CHECKPOINT-MONITORING-INTEGRATION.md`. **VERIFIED** means
+> rehearsed on isolated, disposable systems — never against production.
+> **PROPOSED** means written from the code and not rehearsed.
+> No image for this candidate has been built with `infra/Dockerfile`; the rehearsed
+> artifact is the standalone bundle `next build` produces, served with
+> `node server.js`, which is what the Dockerfile's production stage copies.
+
 Both images carry the commit as `BUILD_COMMIT` and surface it as
 `masterapp_build_info` on the metrics endpoint. Confirm after deploying:
 
@@ -97,8 +111,12 @@ lead, employee or customer data — so it is safe to paste.
 
 ## 3. Migration
 
-Four migrations, in this order. `prisma migrate deploy` applies them
-automatically — the breakdown is here so the operator knows what each one locks.
+Six migrations for the integration candidate, in this order (four for the
+restructuring release alone). `prisma migrate deploy` applies them automatically —
+the breakdown is here so the operator knows what each one locks. Confirm the
+starting point first: `SELECT count(*) FROM "_prisma_migrations" WHERE finished_at
+IS NOT NULL` is **65** at `main` / the incident RC and **69** at the restructuring
+release; after this release it is **71**.
 
 | # | Migration | What it does | Lock |
 | --- | --- | --- | --- |
@@ -106,6 +124,19 @@ automatically — the breakdown is here so the operator knows what each one lock
 | 2 | `20260911100000_triage_idempotency_and_outbox` | New tables `IdempotentRequest`, `NotificationOutbox`; 1 column on the new `LeadTriageEntry` | As above |
 | 3 | `20260911150000_follow_up_lead_relation` | Detaches orphans; adds the FK **`NOT VALID`**; 2 indexes on `Task` and `FollowUpTask` | The `NOT VALID` add is brief. **The two `CREATE INDEX` statements take a `SHARE` lock on `Task` and `FollowUpTask` for the build — writes to those two tables wait, reads do not.** |
 | 4 | `20260911150500_follow_up_lead_relation_validate` | `VALIDATE CONSTRAINT` | `SHARE UPDATE EXCLUSIVE` — **does not block writes** |
+| 5 | `20260911160000_platform_monitoring_grants` | Enum `PlatformGrantKind`; column `PlatformAccessGrant.kind` (default `READ`); **every existing grant row set to `WRITE`** (all pre-existing rows were break-glass); index replaced; new table `PlatformCoverageGrant` with its grant to the application role | `ACCESS EXCLUSIVE` on `PlatformAccessGrant` for the column add, index swap and update — a small, rarely-written table; staff grant checks wait for it, customer traffic does not touch it |
+| 6 | `20260911160500_monitoring_sensitive_scope` | Column `sensitive` on both grant tables (default `false`); existing `WRITE` rows set `sensitive = true` | As 5, on both grant tables |
+
+**Migrations 5–6 create no authority.** No coverage row is created; every
+pre-existing grant keeps the meaning it had (break-glass, which already conferred
+everything); new rows default to the weaker `READ` / non-sensitive. VERIFIED on a
+database staged at the restructuring schema with a live pre-upgrade grant (§3.1).
+
+**Deployment window for 5–6.** If the old web tier is still serving after migration
+5, a break-glass it opens gets the column default: `READ`, non-sensitive. That is
+the safe direction — less authority than intended — but the owner will have to
+reopen it under the new release. Identify any such row afterwards with the §3.1
+query (`kind = 'READ'` held by an `OWNER`, `grantedAt` after the migration).
 
 The foreign key is split across migrations 3 and 4 deliberately. A plain
 `ADD CONSTRAINT ... FOREIGN KEY` scans every row while holding
@@ -142,6 +173,18 @@ MIGRATION_DATABASE_URL=<owner url> node scripts/rc-preflight.mjs
   count from §2. **No `FollowUpTask` row is deleted by this migration** — the
   total row count is unchanged. If it fell, stop and restore.
 
+Grant meaning after 5–6 (owner role, read-only):
+
+```sql
+SELECT g.kind, g.sensitive, u."platformRole", count(*)
+  FROM "PlatformAccessGrant" g JOIN "PlatformUser" u ON u.id = g."platformUserId"
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+-- expect: every row that existed before the migration is WRITE / true, held by OWNER.
+SELECT count(*) FROM "PlatformCoverageGrant";   -- expect 0
+```
+
+The row count of `PlatformAccessGrant` must be unchanged across the migration.
+
 ---
 
 ## 4. Start web, then workers
@@ -161,6 +204,29 @@ distribution, sla, automation, maintenance, notifications, ai, campaigns, media,
 webhook, liveStream. The maintenance queue arms four schedules — retention
 (03:00), reminders (every 15 min), lead triage (every 5 min) and the
 **follow-up drift canary (03:20, report-only)**.
+
+### 4.1 Web and worker restart — what survives it
+
+**VERIFIED** (isolated): with web and worker both stopped, a notice committed to
+`NotificationOutbox` stays `PENDING`; after starting web, then the worker, it is
+delivered exactly once, traced by its `eventKey`. A notice claimed by a worker
+that died is reclaimed after its 60-second lease and delivered once. A replayed
+decision (same `eventKey`) never produces a second notice. `/api/health/live`
+answers 200 after the restart.
+
+After any restart in production (**PROPOSED** — the same checks, read-only):
+
+```sql
+-- nothing stuck: pending notices older than ten minutes (expect 0 once the worker is up)
+SELECT count(*) FROM "NotificationOutbox" WHERE status = 'PENDING' AND "createdAt" < now() - interval '10 minutes';
+-- nothing given up on during the outage
+SELECT count(*) FROM "NotificationOutbox" WHERE status = 'ABANDONED' AND "updatedAt" > now() - interval '1 hour';
+```
+
+One outbox row per event is enforced by the unique `(tenantId, eventKey)`, so it
+needs no check. A duplicate *in-app notice* cannot be detected by query in
+production — `Notification` does not carry the event key — which is why the
+exactly-once property is established by the rehearsal, not by a production query.
 
 ---
 
@@ -266,14 +332,93 @@ Stop immediately, and do not proceed to the next step, if:
 
 **These are two different operations. Do not confuse them.**
 
-### 9.1 Application rollback — the normal case
+### 9.1 Application rollback
 
-```bash
-scripts/release.sh rollback production
-```
+> **Integration candidate: application rollback is NOT a normal operation.**
+> Every release this candidate can roll back to — `main` (`f16ed67`), the incident
+> RC (`f585e48`) and the restructuring release (`d5eef50`) — has the same platform
+> staff code, and it cannot hold the monitoring boundary:
+>
+> - its enter route admits **any OWNER to any workspace, with no grant**;
+> - a staff session inside a workspace gets **every `VIEW` permission, HR and
+>   payroll included**, with no grant checked on the request;
+> - it ignores grant `kind`, so **any live grant an OWNER holds is full write
+>   control** — including a monitoring READ grant issued by a second owner.
+>
+> Each of these was **demonstrated** against the previous release in the isolated
+> rehearsal. Revoking grants does not fix the first two. The only boundary that
+> release still enforces for staff is **account status**, checked at sign-in and
+> on every session.
+>
+> **Preferred: roll forward.** Fix the defect on the candidate line and release
+> again. **Only if roll-forward is impossible** (for example, the release cannot
+> serve customers at all), use the emergency procedure in §9.1.1, which rolls the
+> application back with **all platform staff workspace access suspended**. Customer
+> accounts are unaffected; platform administration is unavailable until §9.1.2.
 
-**The previous application version runs correctly against the new schema.** This
-was checked, not assumed:
+#### 9.1.1 Emergency rollback with staff access suspended — VERIFIED (isolated)
+
+**Authorisation, before anything is touched:** a change ticket naming the reason
+roll-forward is not possible; approval by the client owner **and** the designated
+security reviewer; two operators, one executing and one reading back each step
+into the ticket. Record the ticket id — it goes into every audit row (`<CHG>`
+below). **`<CHG>` must be unique to this rollback.** §9.1.2 restores accounts by
+selecting on it; a reused id restores accounts suspended by an earlier change too
+(the rehearsal reproduced exactly that before the id was made unique).
+
+1. **Freeze.** Announce it. Stop the **web** tier and the **workers** of the
+   candidate. With the web tier stopped nothing can issue a grant, open a session
+   or enter a workspace. *(Rehearsed: the grant route is unreachable.)*
+2. **Back up** (§9.2) and verify it restores. Do not skip.
+3. **Identify** every live item the old release would honour, with the owner role,
+   read-only, and paste the output into the ticket. This includes anything issued
+   during the deployment window — there is no time filter:
+
+   ```sql
+   SELECT g.id, u."platformRole", g.kind, g.sensitive, g."tenantId", g."grantedAt"
+     FROM "PlatformAccessGrant" g JOIN "PlatformUser" u ON u.id = g."platformUserId"
+    WHERE g."revokedAt" IS NULL AND g."expiresAt" > now();
+   SELECT id, "platformUserId", sensitive, "grantedAt", "grantedById"
+     FROM "PlatformCoverageGrant" WHERE "revokedAt" IS NULL AND "expiresAt" > now();
+   SELECT s.id, u."platformRole", s."activeTenantId"
+     FROM "PlatformSession" s JOIN "PlatformUser" u ON u.id = s."platformUserId"
+    WHERE s."revokedAt" IS NULL AND s."expiresAt" > now()
+      AND u."platformRole" IN ('OWNER', 'SUPPORT', 'SECURITY_AUDITOR');
+   SELECT id, email, "platformRole" FROM "PlatformUser"
+    WHERE "platformRole" IN ('OWNER', 'SUPPORT', 'SECURITY_AUDITOR')
+      AND status = 'ACTIVE' AND "deletedAt" IS NULL;
+   ```
+
+4. **Remediate in one transaction, scoped to exactly the ids from step 3** — revoke
+   those grants, coverage and sessions; set those identities to `SUSPENDED`; write
+   one `ROLLBACK_STAFF_ACCESS_SUSPENDED` audit row per identity
+   (`metadata: {"change": "<CHG>", "priorStatus": "ACTIVE", "role": …}`) and one
+   `ROLLBACK_ACCESS_REMEDIATION` summary row listing every id. Each `UPDATE` keeps
+   its state predicate (`"revokedAt" IS NULL`, `status = 'ACTIVE'`), and the
+   affected-row counts must equal the step-3 counts — if not, `ROLLBACK` and
+   return to step 3. The rehearsed statements are in
+   `docs/product/RELEASE-CHECKPOINT-MONITORING-INTEGRATION.md` §6.
+   **`USER` and `AI_SERVICE` identities are not touched** (service credentials
+   behave on the old release as they did before this candidate).
+5. **Roll back the application:** `scripts/release.sh rollback production`.
+6. **Verify on the rolled-back release** (rehearsed): every staff identity is
+   refused at sign-in; the pre-rollback staff sessions are refused (no workspace
+   read, no HR, no write); a real customer account signs in and reads its leads
+   and HR normally.
+
+#### 9.1.2 Returning staff access — VERIFIED (isolated)
+
+After the candidate line is released again (roll forward): restore **only** the
+identities the change suspended — the `objectId`s of its
+`ROLLBACK_STAFF_ACCESS_SUSPENDED` rows — back to `ACTIVE`, in one transaction,
+writing a `ROLLBACK_STAFF_ACCESS_RESTORED` row. Grants stay revoked: each one is
+re-issued deliberately by a second person. *(Rehearsed: staff sign in again and see
+no workspace until re-granted.)*
+
+#### 9.1.3 Schema compatibility of the old application — restructuring release
+
+`scripts/release.sh rollback production` restarts the previous image tag. For the
+restructuring release this was checked, not assumed:
 
 - The three new tables (`LeadTriageEntry`, `IdempotentRequest`,
   `NotificationOutbox`) are additions. The old application does not know they
@@ -287,27 +432,113 @@ was checked, not assumed:
   After rollback the column stops being maintained and slowly goes stale again,
   which is the behaviour that version already had.
 
-**So no schema change prevents restarting the older application.** Application
-rollback needs no database recovery, and is the first thing to try.
+**So no schema change prevents restarting the older application.** For the
+restructuring release alone, application rollback needs no database recovery.
+**For the integration candidate the schema is equally compatible** — migrations
+5–6 add columns with defaults and a table the old application never queries, and
+the previous release booted, served sign-in and read data against the migrated
+schema in the rehearsal — **but §9.1's staff-access procedure is mandatory**.
+Compatibility of the four restructuring tables with `main` or the incident RC was
+not re-rehearsed for this candidate.
 
-### 9.2 Database recovery — only for data loss
+### 9.2 Database backup and recovery
 
-Needed only if data is wrong or missing, not merely if the release misbehaves.
+Needed for data loss, and as step 2 of §9.1.1. Run from `apps/web/infra` on the
+host, with the backup environment the schedule uses.
+
+**Take and prove a backup — VERIFIED (isolated, Linux):**
 
 ```bash
-scripts/backup-ship.sh              # take one NOW, before anything else
-scripts/restore-verify.sh           # restore into a scratch database and compare
+cd apps/web/infra
+BACKUP_PASSPHRASE=… BACKUP_REMOTE=… BACKUP_REQUIRE_ENCRYPTION=1 BACKUP_REQUIRE_REMOTE=1 \
+  ../scripts/backup.sh /var/backups/master-suite        # takes it, encrypts, ships it off-host
+BACKUP_PASSPHRASE=… BACKUP_REMOTE=… \
+  ../scripts/restore-verify.sh --prefer-remote /var/backups/master-suite/latest
 ```
 
+`restore-verify.sh` must print `RESTORE VERIFIED`: dump restored without errors,
+ledger at head (**71/71** for this candidate), every counted table reconciled
+(Tenant, PlatformUser, Lead, Recording, AuditLog) and the object count matching.
+Three defects that made this unreliable are fixed in the candidate and must be on
+the host before relying on it: the manifest regex that matched nothing
+(`24b0a77`), the row-count loop that stopped after the first table (`660bee1`),
+and `backup.sh` pulling `minio/mc`, which Docker Hub no longer serves — a host
+without the image cached could not take a backup (`85ec940`, now
+`quay.io/minio/mc`). If the host has an older copy of `scripts/`, update it first.
+
+*Known, not fixed:* `--from-remote <stamp>` (the host-gone form) verifies correctly
+but prints a "No such file or directory" error writing its `.verified-at` marker,
+so `backup-status.sh` will not count that verification. The scheduled unit passes
+a path, not a stamp, and is unaffected.
+
+**Restore for real — VERIFIED (isolated, Linux), into a new database, never over the live one:**
+
+```bash
+dc exec -T postgres psql -U leadflow -d postgres -c 'CREATE DATABASE leadflow_restored;'
+gpg -d --batch --passphrase "$BACKUP_PASSPHRASE" database.dump.gpg \
+  | dc exec -T postgres pg_restore -U leadflow -d leadflow_restored --no-owner --no-privileges
+```
+
+Then, against `leadflow_restored`, as the owner role:
+
+```sql
+-- 1. ledger complete (expect 0, and 71 applied)
+SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL;
+-- 2. tenant isolation survived (expect 0)
+SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity AND NOT c.relforcerowsecurity;
+-- 3. REQUIRED: the application role has NO privileges after a --no-privileges restore
+--    (rehearsed: 0 tables). They were granted by migrations, which do not re-run. Reapply:
+GRANT USAGE ON SCHEMA public TO master_saas_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO master_saas_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO master_saas_app;
+```
+
+Rehearsed after step 3: the application role, pinned to one tenant, sees exactly
+that tenant's rows and none of another's. Then restore the objects
+(`mc mirror --overwrite ./objects target/leadflow-documents`), point a **staging**
+deployment at the restored database, sign in, read a lead and download one
+document (**PROPOSED** — not rehearsed), and only then repoint production.
+
 Restoring a backup taken **before** the migration returns the schema to its
-previous shape, so the **new** application will not run against it — the new code
-expects `LeadTriageEntry` and the rest. After a database restore you must also
-roll the application back (§9.1). Do them in that order: database, then
-application.
+previous shape, so the **new** application will not run against it. After such a
+restore you must also roll the application back — and for the integration
+candidate that means §9.1.1, with its staff-access suspension. Order: database,
+then application.
 
 `FIELD_ENCRYPTION_KEY` is **not** in the database. A restore without the
 matching key leaves every encrypted field unreadable. Confirm the key is
 recoverable before you need it.
+
+### 9.3 Host reboot durability — PROPOSED (not rehearsed)
+
+Docker's `restart: unless-stopped` restarts containers and never recreates them.
+`prometheus` and `alertmanager` render their configuration into `tmpfs` mounts
+that did not survive a kernel-change reboot on 2026-09-07 (incident record). The
+candidate carries `scripts/recreate-runtime-services.sh` and
+`infra/systemd/master-suite-recreate-runtime.service`, which recreate exactly
+those two services at boot using the image tag read from the running web/worker
+container, and refuse to run if that tag cannot be determined.
+
+Install once (as root on the host):
+
+```bash
+install -m 0644 apps/web/infra/systemd/master-suite-recreate-runtime.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable master-suite-recreate-runtime.service
+```
+
+Validate after the next planned reboot:
+
+```bash
+systemctl status master-suite-recreate-runtime.service      # Result=success
+docker inspect -f '{{.State.Health.Status}} restarts={{.RestartCount}}' infra-prometheus-1 infra-alertmanager-1
+curl -fsS https://<APP_URL>/api/health/ready                 # web and worker back, database reachable
+```
+
+What was verified: the script's fail-closed branch — with no deployed web/worker
+container it refuses to run rather than resolving images to `:dev`. What was
+**not**: a real reboot, systemd ordering, or recreation of the two services; that
+needs the production-shaped host.
 
 ---
 
@@ -323,6 +554,10 @@ recoverable before you need it.
 | §5 backfill, per workspace | Production operator |
 | §6–7 checks and smoke tests | Production operator, with one client agent and one client manager for 9–15 |
 | Declaring the deployment good, or calling §9 | Client owner, on the operator's report |
+| Approving §9.1.1 emergency rollback (integration candidate) | Client owner **and** designated security reviewer, in the change ticket |
+| Executing §9.1.1 steps 1–6 and §9.1.2 | Two production operators — one executes, one reads back into the ticket |
+| Re-issuing monitoring grants after §9.1.2 | A platform owner, for another person (self-issued grants are refused) |
+| §9.3 reboot unit install and post-reboot validation | Production operator |
 | First-day monitoring (§7 of the handover) | Named support contact |
 
 The author of this release has **no production access and has run none of the
