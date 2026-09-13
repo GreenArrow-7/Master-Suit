@@ -35,6 +35,9 @@ const at = (path: string) => `/${workspace.slug}${path}`;
 let tenantId = '';
 let bookingId = '';
 let bookingRef = '';
+let projectId = '';
+let leadId = '';
+let director = { email: '', id: '' };
 let recorder = { email: '', id: '' };
 let verifier = { email: '', id: '' };
 
@@ -77,6 +80,7 @@ const FINANCE = [
   ['collections', 'APPROVE'],
   ['bookings', 'VIEW'],
   ['agencyfee', 'VIEW'],
+  ['agencyfee', 'APPROVE'],
 ] as const;
 
 async function signedIn(
@@ -118,13 +122,19 @@ test.describe('Collections through the screens', () => {
     tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } })).id;
     recorder = await person('recorder', FINANCE);
     verifier = await person('verifier', FINANCE);
+    director = await person('director', [
+      ['collections', 'VIEW'],
+      ['bookings', 'VIEW'],
+      ['agencyfee', 'VIEW'],
+      ['agencyfee', 'CREATE'],
+    ]);
 
     await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const project = await page.request.post('/api/v1/projects', {
       data: { name: `Tower ${run}`, code: `T-${run}`.slice(0, 40) },
     });
-    const projectId = (await project.json()).id as string;
+    projectId = (await project.json()).id as string;
     await page.request.post(`/api/v1/projects/${projectId}/units`, {
       data: { fromFloor: 1, toFloor: 1, unitsPerFloor: 1, price: 1_000_000 },
     });
@@ -136,7 +146,7 @@ test.describe('Collections through the screens', () => {
     });
     const booking = await page.request.post('/api/v1/bookings', {
       data: {
-        leadId: (await lead.json()).id,
+        leadId: (leadId = (await lead.json()).id),
         projectId,
         unitInventoryId: unitId,
         saleValue: 1_000_000,
@@ -259,6 +269,196 @@ test.describe('Collections through the screens', () => {
       await expect(v.page.getByTestId('kpi-verified')).toContainText('30,000.00', { timeout: 30_000 });
       await expect(v.page.getByTestId('kpi-eligibility')).toContainText('Eligible');
     } finally {
+      await v.close();
+    }
+  });
+  test('fee amendment: the director previews and proposes; cannot approve; finance approves and the fee due moves', async ({
+    browser,
+  }) => {
+    const d = await signedIn(browser, director);
+    const v = await signedIn(browser, verifier);
+    try {
+      await d.page.goto(at(`/sales/collections/${bookingId}`));
+      await d.page.getByRole('button', { name: 'Propose an amendment' }).click();
+      await d.page.getByLabel('Proposed fee').fill('40000.00');
+      await d.page.getByLabel('Amendment reason').fill(`Addendum ${run}`);
+      await d.page.getByLabel('Agreement reference').fill(`ADD-${run}`);
+      await d.page.getByRole('button', { name: 'Preview effect' }).click();
+      // 30,000 verified against a 40,000 fee: approving would block eligibility, and the preview says so first.
+      await expect(d.page.getByTestId('fee-preview')).toContainText('eligible → blocked', { timeout: 30_000 });
+      const proposed = d.page.waitForResponse(
+        (r) => r.url().endsWith('/api/v1/collections/fee-amendments') && r.request().method() === 'POST',
+      );
+      await d.page.getByRole('button', { name: 'Propose for finance approval' }).click();
+      expect((await proposed).status()).toBe(200);
+      const ownRow = d.page.getByTestId('amendments-table').getByRole('row', { name: new RegExp(`Addendum ${run}`) });
+      await expect(ownRow).toContainText('Awaiting finance', { timeout: 30_000 });
+      await expect(ownRow.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
+      await expect(d.page.getByTestId('kpi-due')).toContainText('30,000.00'); // not applied yet
+
+      await v.page.goto(at(`/sales/collections/${bookingId}`));
+      const row = v.page.getByTestId('amendments-table').getByRole('row', { name: new RegExp(`Addendum ${run}`) });
+      const decided = v.page.waitForResponse((r) => r.url().includes('/fee-amendments/decide'));
+      await row.getByRole('button', { name: 'Approve', exact: true }).click();
+      expect((await decided).status()).toBe(200);
+      await expect(v.page.getByTestId('kpi-due')).toContainText('40,000.00', { timeout: 30_000 });
+      await expect(v.page.getByTestId('kpi-eligibility')).toContainText('Blocked');
+
+      const amendment = await prisma.agencyFeeAmendment.findFirstOrThrow({
+        where: { tenantId, bookingId, reason: `Addendum ${run}` },
+      });
+      expect(amendment.status).toBe('APPROVED');
+      expect(amendment.previousFee?.toString()).toBe('30000');
+      expect(amendment.proposedById).toBe(director.id);
+      expect(amendment.decidedById).toBe(verifier.id);
+    } finally {
+      await d.close();
+      await v.close();
+    }
+  });
+
+  /** A paid commission whose money later moved: the state a verified reversal after payment leaves. */
+  async function openCase() {
+    const tag = randomBytes(4).toString('hex');
+    const booking = await prisma.booking.create({
+      data: {
+        tenantId,
+        reference: `BK-RC-${tag}`,
+        leadId,
+        projectId,
+        ownerId: recorder.id,
+        status: 'DRAFT',
+        saleValue: 1_000_000,
+        agencyFee: 30_000,
+        currency: 'AED',
+        bookingDate: new Date(),
+      },
+    });
+    const receipt = await prisma.agencyFeeReceipt.create({
+      data: {
+        tenantId,
+        bookingId: booking.id,
+        reference: `RCT-RC-${tag}`,
+        kind: 'RECEIPT',
+        status: 'VERIFIED',
+        amount: 30_000,
+        currency: 'AED',
+        paidAt: new Date(),
+        paymentReference: `rc-${tag}`,
+        providerTransactionRef: `txn_${tag}`,
+        recordedById: recorder.id,
+        verifiedById: verifier.id,
+        verifiedAt: new Date(),
+      },
+    });
+    const commission = await prisma.commission.create({
+      data: {
+        tenantId,
+        bookingId: booking.id,
+        userId: recorder.id,
+        status: 'PAID',
+        baseAmount: 1_000_000,
+        amount: 20_000,
+        currency: 'AED',
+        paidAt: new Date(),
+      },
+    });
+    return prisma.collectionRecoveryCase.create({
+      data: {
+        tenantId,
+        bookingId: booking.id,
+        commissionId: commission.id,
+        kind: 'RECEIPT_REVERSAL',
+        receiptId: receipt.id,
+        shortfall: 5_000,
+        currency: 'AED',
+        reason: `Chargeback ${tag}`,
+      },
+    });
+  }
+
+  const patchedRecovery = (page: Page) =>
+    page.waitForResponse(
+      (res) => res.url().endsWith('/api/v1/collections/recovery') && res.request().method() === 'PATCH',
+    );
+
+  test('recovery case, desktop: acknowledging moves no money; recording a recovery needs evidence', async ({
+    browser,
+  }) => {
+    const kase = await openCase();
+    const r = await signedIn(browser, recorder);
+    try {
+      await r.page.goto(at('/sales/collections/recovery'));
+      const card = r.page.getByTestId(`case-${kase.id}`);
+      await expect(card).toBeVisible({ timeout: 30_000 });
+
+      await card.getByRole('button', { name: 'Acknowledge' }).click();
+      await card.getByLabel('Acknowledgement note').fill('Spoke to the developer');
+      const acked = patchedRecovery(r.page);
+      await card.getByRole('button', { name: 'Save acknowledgement' }).click();
+      expect((await acked).status()).toBe(200);
+      await expect(card).toContainText('ACKNOWLEDGED', { timeout: 30_000 });
+      const afterAck = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: kase.id, tenantId } });
+      expect(afterAck.outcome).toBeNull();
+      expect(afterAck.recoveredAmount).toBeNull();
+
+      await card.getByRole('button', { name: 'Record recovery' }).click();
+      const form = card.getByTestId('recover-form');
+      await form.getByLabel('Amount recovered').fill('5000.00');
+      await form.getByLabel('Recovery reference').fill(`RCV-${run}`);
+      // The submit stays disabled until there is evidence.
+      await expect(form.getByRole('button', { name: 'Record recovery' })).toBeDisabled();
+      await form.getByLabel('Recovery transaction id').fill(`txn_recovered_${run}`);
+      const recovered = patchedRecovery(r.page);
+      await form.getByRole('button', { name: 'Record recovery' }).click();
+      expect((await recovered).status()).toBe(200);
+      await expect(card).toContainText('RECOVERED', { timeout: 30_000 });
+
+      const done = await prisma.collectionRecoveryCase.findFirstOrThrow({
+        where: { id: kase.id, tenantId },
+        include: { commission: true },
+      });
+      expect(done.status).toBe('RESOLVED');
+      expect(done.providerTransactionRef).toBe(`txn_recovered_${run}`);
+      expect(done.commission.status).toBe('PAID'); // nothing rewritten
+    } finally {
+      await r.close();
+    }
+  });
+
+  test('recovery case, mobile: a write-off proposed by one person is approved only by another', async ({ browser }) => {
+    const kase = await openCase();
+    const r = await signedIn(browser, recorder, true);
+    const v = await signedIn(browser, verifier, true);
+    try {
+      await r.page.goto(at('/sales/collections/recovery'));
+      const mine = r.page.getByTestId(`case-${kase.id}`);
+      await expect(mine).toBeVisible({ timeout: 30_000 });
+      await mine.getByRole('button', { name: 'Propose write-off / adjustment' }).click();
+      await mine.getByLabel('Proposal reason').fill('Uneconomic to pursue');
+      const proposed = patchedRecovery(r.page);
+      await mine.getByRole('button', { name: 'Propose', exact: true }).click();
+      expect((await proposed).status()).toBe(200);
+      await expect(mine).toContainText(/Awaiting a second person/, { timeout: 30_000 });
+      await expect(mine.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+      const overflow = await r.page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+
+      await v.page.goto(at('/sales/collections/recovery'));
+      const theirs = v.page.getByTestId(`case-${kase.id}`);
+      const approved = v.page.waitForResponse((res) => res.url().includes('/api/v1/collections/recovery/approve'));
+      await theirs.getByRole('button', { name: /Approve written off/ }).click();
+      expect((await approved).status()).toBe(200);
+      await expect(theirs).toContainText('WRITTEN OFF', { timeout: 30_000 });
+
+      const done = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: kase.id, tenantId } });
+      expect(done.outcome).toBe('WRITTEN_OFF');
+      expect(done.proposedById).toBe(recorder.id);
+      expect(done.approvedById).toBe(verifier.id);
+    } finally {
+      await r.close();
       await v.close();
     }
   });
