@@ -21,6 +21,7 @@
  * keeps reconciling against the hours behind it.
  */
 import { Prisma } from '@prisma/client';
+import { historicalPlacement } from '@/services/leadership/placement';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
@@ -292,26 +293,29 @@ export async function calculateRun(ctx: Ctx, runId: string) {
       iban: true,
       basicSalary: true,
       totalSalary: true,
-      // Frozen onto the payslip: the P&L groups cost by where the person sat
-      // when the run was calculated, never by where they sit today.
-      membership: {
-        select: {
-          salesUser: { select: { branchId: true, regionId: true, teams: { select: { teamId: true }, take: 1 } } },
-        },
-      },
+      // The Sales user, whose placement for the run's own period is frozen onto
+      // the payslip below.
+      membership: { select: { salesUserId: true } },
     },
   });
   if (!employees.length) throw Conflict('There are no employees to pay in this period.');
-  const placementOf = new Map(
-    employees.map((e) => [
-      e.id,
-      {
-        teamIdSnapshot: e.membership?.salesUser?.teams[0]?.teamId ?? null,
-        branchIdSnapshot: e.membership?.salesUser?.branchId ?? null,
-        regionIdSnapshot: e.membership?.salesUser?.regionId ?? null,
-      },
-    ]),
+  // Where each person sat for the whole run period, established from records
+  // that cannot be rewritten — not where they sit at calculation time, which
+  // for a backdated run is a different question. Null where it cannot be shown.
+  const salesUserOf = new Map(employees.map((e) => [e.id, e.membership?.salesUserId ?? null]));
+  const placements = await historicalPlacement(
+    ctx.tenantId,
+    [...salesUserOf.values()].filter((x): x is string => !!x),
+    run.periodStart,
   );
+  const placementOf = (employeeId: string) => {
+    const p = placements.get(salesUserOf.get(employeeId) ?? '');
+    return {
+      teamIdSnapshot: p?.teamId ?? null,
+      branchIdSnapshot: p?.branchId ?? null,
+      regionIdSnapshot: p?.regionId ?? null,
+    };
+  };
 
   const employeeIds = employees.map((employee) => employee.id);
   const [overtimeTotals, unpaidLeave, adjustments] = await Promise.all([
@@ -385,7 +389,7 @@ export async function calculateRun(ctx: Ctx, runId: string) {
           unpaidDays: draft.unpaidDays,
           overtimeMinutes: draft.overtimeMinutes,
           ibanSnapshot: draft.ibanSnapshot,
-          ...(placementOf.get(draft.employeeId) ?? {}),
+          ...placementOf(draft.employeeId),
           inputs: draft.inputs,
           lines: {
             create: draft.lines.map((line) => ({

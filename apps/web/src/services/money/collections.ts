@@ -32,6 +32,10 @@ import { findReplay, recordOutcome } from '@/services/idempotency';
 import { nextReference } from '@/services/shared/reference';
 
 export const ZERO = new Prisma.Decimal(0);
+
+/** Receipt evidence documents: their category, and the storage prefix that binds each to one booking. */
+export const EVIDENCE_CATEGORY = 'agency-fee-evidence';
+export const evidencePrefix = (tenantId: string, bookingId: string) => `documents/t-${tenantId}/booking-${bookingId}/`;
 const D = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v);
 
 /** One reason per way a booking can fail the 100 % rule. Stable strings, for tests and screens. */
@@ -215,8 +219,17 @@ export async function recordReceipt(input: RecordReceiptInput) {
       ]);
     }
     if (input.evidenceDocumentId) {
+      // Uploaded as evidence, clean, and for this booking — a document uploaded
+      // for one sale cannot evidence money received on another.
       const doc = await tx.document.findFirst({
-        where: { id: input.evidenceDocumentId, tenantId: ctx.tenantId, deletedAt: null },
+        where: {
+          id: input.evidenceDocumentId,
+          tenantId: ctx.tenantId,
+          deletedAt: null,
+          category: EVIDENCE_CATEGORY,
+          scanState: 'CLEAN',
+          storageKey: { startsWith: evidencePrefix(ctx.tenantId, booking.id) },
+        },
         select: { id: true },
       });
       if (!doc) throw NotFound('Evidence document');

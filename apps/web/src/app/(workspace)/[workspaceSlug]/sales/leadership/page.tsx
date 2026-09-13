@@ -603,6 +603,13 @@ export default async function LeadershipPage({
             </div>
           )}
 
+          {pl.historicalPlacementUnknown.payslips > 0 && (
+            <p className="lf-hint" data-testid="pl-unknown-historical">
+              Unknown historical team: {pl.historicalPlacementUnknown.payslips} payslip
+              {pl.historicalPlacementUnknown.payslips === 1 ? '' : 's'},{' '}
+              {money(pl.historicalPlacementUnknown.amount, pl.currency)} — included in the payroll total.
+            </p>
+          )}
           {pl.rows.length === 0 ? (
             <div className="lf-card" style={CARD}>
               <EmptyState title="No sales this period" description="Confirmed bookings roll up here by team." />

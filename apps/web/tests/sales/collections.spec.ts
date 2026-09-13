@@ -14,6 +14,9 @@ import { prisma } from '@/lib/db';
 import { POST as recordRoute, GET as listRoute } from '@/app/api/v1/collections/receipts/route';
 import { PATCH as decideRoute } from '@/app/api/v1/collections/receipts/decide/route';
 import { POST as reverseRoute } from '@/app/api/v1/collections/receipts/reverse/route';
+import { POST as uploadEvidence } from '@/app/api/v1/collections/receipts/evidence/route';
+import { GET as downloadEvidence } from '@/app/api/v1/collections/receipts/evidence/[id]/route';
+import { GET as downloadLeadDocument } from '@/app/api/v1/documents/[id]/download/route';
 import { accrueCommission, transitionCommission } from '@/services/money/commissions';
 import { buildPayout, decidePayout } from '@/services/money/payouts';
 import { coverage, decideReceipt, recordReceipt, reverseReceipt } from '@/services/money/collections';
@@ -664,5 +667,78 @@ describe('two hands at once', () => {
       expect(commission.status).toBe('CONFIRMED');
       expect(cases).toBe(0);
     }
+  });
+});
+
+// ── Evidence documents ───────────────────────────────────────────────────────
+describe('receipt evidence documents', () => {
+  const PDF = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n');
+  const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+
+  const upload = async (cookie: string, bookingId: string, bytes: Buffer, name = 'receipt.pdf') => {
+    const form = new FormData();
+    form.set('bookingId', bookingId);
+    form.set('file', new File([new Uint8Array(bytes)], name));
+    const res = await uploadEvidence(
+      new Request('http://localhost/api/v1/collections/receipts/evidence', {
+        method: 'POST',
+        headers: { cookie },
+        body: form,
+      }),
+    );
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+  const download = (cookie: string, id: string) =>
+    get(downloadEvidence, `/api/v1/collections/receipts/evidence/${id}`, cookie, { id });
+
+  it('a finance user uploads a PDF, records a receipt with it and no transaction id, and it is still only pending', async () => {
+    const b = await sale();
+    const up = await upload(recorder.cookie, b.id, PDF);
+    expect(up.status, JSON.stringify(up.body)).toBe(200);
+
+    const body = receiptBody(b.id, '1000.00', { evidenceDocumentId: up.body.id });
+    delete (body as Record<string, unknown>).providerTransactionRef;
+    const rec = await post(recordRoute, '/api/v1/collections/receipts', body, recorder.cookie);
+    expect(rec.status, JSON.stringify(rec.body)).toBe(200);
+    expect(rec.body.receipt.evidenceDocumentId).toBe(up.body.id);
+    expect(rec.body.receipt.status).toBe('PENDING');
+    expect(rec.body.receipt.verifiedById).toBeNull();
+
+    expect((await download(verifier.cookie, up.body.id)).status).toBe(200);
+  });
+
+  it('refuses the wrong people: a seller cannot upload or download; another workspace cannot download', async () => {
+    const b = await sale();
+    expect((await upload(seller.cookie, b.id, PDF)).status).toBe(403);
+    const up = await upload(recorder.cookie, b.id, PDF);
+    expect((await download(seller.cookie, up.body.id)).status).toBe(403);
+    expect((await download(foreignFinance.cookie, up.body.id)).status).toBe(404);
+  });
+
+  it('is not reachable through the lead-document download', async () => {
+    const b = await sale();
+    const up = await upload(recorder.cookie, b.id, PDF);
+    const viewer = await person(tenantId, 'lead-viewer', [
+      ['leads', 'VIEW'],
+      ['bookings', 'VIEW'],
+    ]);
+    const res = await get(downloadLeadDocument, `/api/v1/documents/${up.body.id}/download`, viewer.cookie, {
+      id: up.body.id,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('validates by content, refuses malware without storing it, and binds a document to its own booking', async () => {
+    const b = await sale();
+    const other = await sale();
+    expect((await upload(recorder.cookie, b.id, Buffer.from('just text'), 'receipt.pdf')).status).toBe(422);
+    const before = await prisma.document.count({ where: { tenantId, category: 'agency-fee-evidence' } });
+    expect((await upload(recorder.cookie, b.id, Buffer.concat([PDF, Buffer.from(EICAR)]))).status).toBe(422);
+    expect(await prisma.document.count({ where: { tenantId, category: 'agency-fee-evidence' } })).toBe(before);
+
+    const up = await upload(recorder.cookie, b.id, PDF);
+    const body = receiptBody(other.id, '10.00', { evidenceDocumentId: up.body.id });
+    delete (body as Record<string, unknown>).providerTransactionRef;
+    expect((await post(recordRoute, '/api/v1/collections/receipts', body, recorder.cookie)).status).toBe(404);
   });
 });

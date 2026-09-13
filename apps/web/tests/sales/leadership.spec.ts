@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { activityCompliance, chasingQueue, conversion, funnel, performerBoard } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
+import { historicalPlacement } from '@/services/leadership/placement';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { fixtureUnit } from '../helpers/inventory';
 import type { ObligationAccess } from '@/services/leads/nextFollowUp';
@@ -520,11 +521,123 @@ describe('the P&L — the three defects of 12 September', () => {
     expect(report.caveats.join(' ')).not.toMatch(/before placement was frozen/);
   });
 
-  it('says so when a payslip predates the snapshot, and falls back to today’s placement for it', async () => {
+  it('puts a payslip whose period team cannot be established in "Unknown historical team", and keeps it in the total', async () => {
     await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
     await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    // No snapshot, and the membership was created after August began: nothing proves August's team.
+    await prisma.userTeam.updateMany({
+      where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId },
+      data: { createdAt: new Date('2026-08-15T00:00:00Z') },
+    });
     await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: null });
+
     const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
-    expect(report.caveats.join(' ')).toMatch(/before placement was frozen/);
+    const unknown = report.rows.find((r) => r.name === 'Unknown historical team');
+    expect(unknown?.payrollCost?.toString()).toBe('20000');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost ?? null).toBeNull(); // not today's team
+    expect(report.historicalPlacementUnknown.payslips).toBe(1);
+    expect(report.historicalPlacementUnknown.amount.toString()).toBe('20000');
+    expect(report.totals.payrollCost?.toString()).toBe('20000'); // reconciles
+    expect(report.caveats.join(' ')).toMatch(/1 payslip totalling 20000\.00 could not be placed/);
+  });
+
+  it('uses a membership that provably spanned the pay period, even without a snapshot', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    await prisma.userTeam.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        userId: fixture.a.userId,
+        teamId: teamA,
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+      },
+    });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: null });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost?.toString()).toBe('20000');
+    expect(report.historicalPlacementUnknown.payslips).toBe(0);
+  });
+
+  it('keeps pay for employees with no Sales account in the organisation total, as Unassigned', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: teamA });
+    const hrOnly = await prisma.workspaceMembership.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        platformUserId: (
+          await prisma.platformUser.create({
+            data: {
+              email: `hr-only-${Date.now()}@pl.test`,
+              normalizedEmail: `hr-only-${Date.now()}@pl.test`,
+              fullName: 'HR only',
+              status: 'ACTIVE',
+            },
+          })
+        ).id,
+        status: 'ACTIVE',
+        joinedAt: new Date(),
+      },
+    });
+    const employee = await prisma.employeeProfile.create({
+      data: { tenantId: fixture.a.tenantId, membershipId: hrOnly.id, employeeNumber: `E-HR-${Date.now()}` },
+    });
+    const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId } });
+    await prisma.hrPayslip.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        runId: run.id,
+        employeeId: employee.id,
+        currency: 'AED',
+        basic: D(5_000),
+        grossEarnings: D(5_000),
+        totalDeductions: D(0),
+        netPay: D(5_000),
+        inputs: {},
+      },
+    });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === null)?.payrollCost?.toString()).toBe('5000');
+    expect(report.totals.payrollCost?.toString()).toBe('25000');
+  });
+});
+
+describe('historical placement for a payroll period', () => {
+  it('a backdated run does not take the team the person joined afterwards', async () => {
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    await prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId: teamB } }); // joined today
+    const backdated = await historicalPlacement(
+      fixture.a.tenantId,
+      [fixture.a.userId],
+      new Date('2026-06-01T00:00:00Z'),
+    );
+    expect(backdated.get(fixture.a.userId)?.teamId).toBeNull();
+    // The same membership does establish a period that starts after it.
+    const current = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date(Date.now() + 60_000));
+    expect(current.get(fixture.a.userId)?.teamId).toBe(teamB);
+  });
+
+  it('two memberships spanning the period are ambiguous, not a pick', async () => {
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    for (const teamId of [teamA, teamB]) {
+      await prisma.userTeam.create({
+        data: {
+          tenantId: fixture.a.tenantId,
+          userId: fixture.a.userId,
+          teamId,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+      });
+    }
+    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date('2026-06-01T00:00:00Z'));
+    expect(p.get(fixture.a.userId)?.teamId).toBeNull();
+  });
+
+  it('branch and region are trusted only if the user row has not changed since the period began', async () => {
+    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], new Date('2026-06-01T00:00:00Z'));
+    expect(p.get(fixture.a.userId)?.branchId).toBeNull(); // the fixture user was written today
   });
 });

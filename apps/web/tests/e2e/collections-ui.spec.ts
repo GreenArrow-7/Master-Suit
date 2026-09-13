@@ -38,6 +38,8 @@ let bookingRef = '';
 let projectId = '';
 let leadId = '';
 let director = { email: '', id: '' };
+let seller = { email: '', id: '' };
+let evidenceHref = '';
 let recorder = { email: '', id: '' };
 let verifier = { email: '', id: '' };
 
@@ -122,6 +124,11 @@ test.describe('Collections through the screens', () => {
     tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } })).id;
     recorder = await person('recorder', FINANCE);
     verifier = await person('verifier', FINANCE);
+    seller = await person('seller', [
+      ['bookings', 'VIEW'],
+      ['bookings', 'CREATE'],
+      ['bookings', 'EDIT'],
+    ]);
     director = await person('director', [
       ['collections', 'VIEW'],
       ['bookings', 'VIEW'],
@@ -460,6 +467,99 @@ test.describe('Collections through the screens', () => {
     } finally {
       await r.close();
       await v.close();
+    }
+  });
+  test('evidence upload: a failed upload keeps the form, a PDF attaches, the receipt stays pending and the file persists', async ({
+    browser,
+  }) => {
+    const r = await signedIn(browser, recorder);
+    try {
+      await r.page.goto(at(`/sales/collections/${bookingId}`));
+      await r.page.getByRole('button', { name: 'Record a receipt' }).click();
+      await r.page.getByLabel('Amount received').fill('1000.00');
+      await r.page.getByLabel('Payment date').fill('2026-09-11');
+      await r.page.getByLabel('Payment reference').fill(`REF-E-${run}`);
+
+      // A file that is not a PDF, PNG or JPEG, whatever its name says.
+      await r.page.getByLabel('Evidence document').setInputFiles({
+        name: 'receipt.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('not really a pdf'),
+      });
+      await expect(r.page.getByTestId('evidence-status')).toContainText('must be a PDF, PNG or JPEG', {
+        timeout: 30_000,
+      });
+      await expect(r.page.getByLabel('Amount received')).toHaveValue('1000.00'); // nothing typed was lost
+
+      await r.page.getByLabel('Evidence document').setInputFiles({
+        name: `bank-advice-${run}.pdf`,
+        mimeType: 'application/pdf',
+        buffer: Buffer.from(`%PDF-1.4\n% evidence ${run}\n%%EOF\n`),
+      });
+      await expect(r.page.getByTestId('evidence-status')).toContainText(`Attached: bank-advice-${run}.pdf`, {
+        timeout: 30_000,
+      });
+      const saved = r.page.waitForResponse(
+        (res) => res.url().endsWith('/api/v1/collections/receipts') && res.request().method() === 'POST',
+      );
+      await r.page.getByRole('button', { name: 'Save receipt' }).click();
+      expect((await saved).status()).toBe(200);
+
+      // Persistence: a fresh load shows the receipt, pending, with its document.
+      await r.page.reload();
+      const row = r.page.getByTestId('receipts-table').getByRole('row', { name: new RegExp(`REF-E-${run}`) });
+      await expect(row).toContainText('PENDING', { timeout: 30_000 });
+      await expect(row.getByTestId('evidence-link')).toBeVisible();
+      evidenceHref = (await row.getByTestId('evidence-link').getAttribute('href')) ?? '';
+      expect(evidenceHref).toMatch(/\/api\/v1\/collections\/receipts\/evidence\//);
+
+      const receipt = await prisma.agencyFeeReceipt.findFirstOrThrow({
+        where: { tenantId, bookingId, paymentReference: `REF-E-${run}` },
+      });
+      expect(receipt.status).toBe('PENDING');
+      expect(receipt.verifiedById).toBeNull();
+      expect(receipt.providerTransactionRef).toBeNull();
+      expect(receipt.evidenceDocumentId).not.toBeNull();
+    } finally {
+      await r.close();
+    }
+  });
+
+  test('evidence download: the verifier gets the file; a seller is refused; another workspace cannot see it', async ({
+    browser,
+  }) => {
+    const v = await signedIn(browser, verifier);
+    const s = await signedIn(browser, seller);
+    try {
+      const ok = await v.page.request.get(evidenceHref);
+      expect(ok.status()).toBe(200);
+      expect((await ok.body()).toString()).toContain(`% evidence ${run}`);
+      expect((await s.page.request.get(evidenceHref)).status()).toBe(403);
+    } finally {
+      await v.close();
+      await s.close();
+    }
+
+    // A second workspace, created the way a real one is; its administrator holds the whole catalogue.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      const foreign = {
+        displayName: `Collections UI Foreign ${run}`,
+        slug: `cuif-${run}`.toLowerCase(),
+        adminName: `Foreign Admin ${run}`,
+        adminEmail: `cuif-admin-${run}@masterapp.local`,
+        adminPassword: strongPassword(`cuif${run}`),
+        modules: ['SALES'] as ('SALES' | 'HRMS')[],
+      };
+      await resetLoginThrottle();
+      await loginPlatformOwner(page);
+      await createWorkspaceViaWizard(page, foreign);
+      await resetLoginThrottle();
+      await login(page, foreign.adminEmail, foreign.adminPassword);
+      expect((await page.request.get(evidenceHref)).status()).toBe(404);
+    } finally {
+      await context.close();
     }
   });
 });

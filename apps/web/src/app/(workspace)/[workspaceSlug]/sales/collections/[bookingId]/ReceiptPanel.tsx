@@ -79,6 +79,11 @@ export default function ReceiptPanel({
   });
   const [reason, setReason] = useState('');
   const [reverseAmount, setReverseAmount] = useState('');
+  const [upload, setUpload] = useState<{
+    state: 'idle' | 'uploading' | 'done' | 'failed';
+    name?: string;
+    message?: string;
+  }>({ state: 'idle' });
 
   const run = async (key: string, fn: () => Promise<string | null>) => {
     setBusy(key);
@@ -91,6 +96,7 @@ export default function ReceiptPanel({
         setReversing(null);
         setRejecting(null);
         setForm({ amount: '', paidAt: '', paymentReference: '', providerTransactionRef: '', evidenceDocumentId: '' });
+        setUpload({ state: 'idle' });
         setReason('');
         setReverseAmount('');
         router.refresh();
@@ -98,6 +104,33 @@ export default function ReceiptPanel({
     } finally {
       setBusy(null);
     }
+  };
+
+  // Upload first, then the form carries the document id. A failed upload keeps
+  // everything else typed, says why, and can be retried — or the transaction id
+  // used instead. Uploading records nothing and verifies nothing.
+  const uploadEvidence = async (file: File | undefined) => {
+    if (!file) return;
+    setUpload({ state: 'uploading', name: file.name });
+    setForm((f) => ({ ...f, evidenceDocumentId: '' }));
+    const body = new FormData();
+    body.set('bookingId', bookingId);
+    body.set('file', file);
+    const res = await fetch('/api/v1/collections/receipts/evidence', { method: 'POST', body });
+    if (!res.ok) {
+      let message = `Upload failed (${res.status})`;
+      try {
+        const problem = await res.json();
+        message = problem.detail ?? problem.title ?? message;
+      } catch {
+        // not a problem document; keep the status-code message
+      }
+      setUpload({ state: 'failed', name: file.name, message });
+      return;
+    }
+    const doc = await res.json();
+    setForm((f) => ({ ...f, evidenceDocumentId: doc.id }));
+    setUpload({ state: 'done', name: doc.name });
   };
 
   const record = () =>
@@ -199,16 +232,23 @@ export default function ReceiptPanel({
             />
           </label>
           <label className="lf-field">
-            <span>Evidence document id (if no transaction id)</span>
+            <span>Evidence document (PDF, PNG or JPEG) — if no transaction id</span>
             <input
               className="lf-input"
-              value={form.evidenceDocumentId}
-              onChange={(e) => setForm({ ...form, evidenceDocumentId: e.target.value })}
-              aria-label="Evidence document id"
+              type="file"
+              accept="application/pdf,image/png,image/jpeg"
+              aria-label="Evidence document"
+              disabled={upload.state === 'uploading'}
+              onChange={(e) => void uploadEvidence(e.target.files?.[0])}
             />
+            <span data-testid="evidence-status" role={upload.state === 'failed' ? 'alert' : undefined}>
+              {upload.state === 'uploading' ? `Uploading ${upload.name}…` : null}
+              {upload.state === 'done' ? `Attached: ${upload.name}` : null}
+              {upload.state === 'failed' ? `${upload.name}: ${upload.message}` : null}
+            </span>
           </label>
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)' }}>
-            <button type="submit" className="lf-btn" disabled={busy !== null}>
+            <button type="submit" className="lf-btn" disabled={busy !== null || upload.state === 'uploading'}>
               Save receipt
             </button>
             <button type="button" className="lf-btn lf-btn--secondary" onClick={() => setRecording(false)}>
@@ -259,7 +299,17 @@ export default function ReceiptPanel({
                     <td>
                       <strong>{r.paymentReference}</strong>
                       <span>
-                        {r.providerTransactionRef ?? (r.evidenceDocumentId ? `document ${r.evidenceDocumentId}` : '—')}
+                        {r.providerTransactionRef ??
+                          (r.evidenceDocumentId ? (
+                            <a
+                              href={`/api/v1/collections/receipts/evidence/${r.evidenceDocumentId}`}
+                              data-testid="evidence-link"
+                            >
+                              Evidence document
+                            </a>
+                          ) : (
+                            '—'
+                          ))}
                       </span>
                     </td>
                     <td>

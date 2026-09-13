@@ -18,7 +18,9 @@ export const GET = route(
     const document = await prisma.document.findFirst({
       where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
     });
-    if (!document) throw NotFound('Document');
+    // Receipt evidence is finance's, served only by the collections route under
+    // collections:VIEW. Without this, leads:VIEW could fetch it by id.
+    if (!document || document.category === 'agency-fee-evidence') throw NotFound('Document');
     if (document.scanState !== 'CLEAN' || !document.storageKey) {
       throw Forbidden('This file is not available for download.');
     }
