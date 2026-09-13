@@ -9,7 +9,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { test, expect, devices, type Browser, type Page } from '@playwright/test';
-import { prisma } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import {
   createWorkspaceViaWizard,
@@ -565,6 +565,16 @@ test.describe('Collections through the screens', () => {
   test('P&L: payroll with no team history for its period shows as Unknown historical team, on the screen and in the API', async ({
     browser,
   }) => {
+    // Payroll only reaches the P&L in a workspace that has HR; without it the
+    // report says "Payroll is not available" and shows no payroll at all.
+    // Granted the way the platform console grants a module: platform context, not a workspace's.
+    await withPlatformTx((tx) =>
+      tx.moduleEntitlement.upsert({
+        where: { tenantId_module: { tenantId, module: 'HRMS' } },
+        update: { state: 'ACTIVE' },
+        create: { tenantId, module: 'HRMS', state: 'ACTIVE' },
+      }),
+    );
     // A leader with no team membership at all: nothing establishes a team for August.
     const leader = await person('pl-leader', [['reports', 'VIEW']]);
     const membership = await prisma.workspaceMembership.findFirstOrThrow({
@@ -606,7 +616,7 @@ test.describe('Collections through the screens', () => {
 
       const res = await l.page.request.get('/api/v1/leadership?view=pl&from=2026-08-01&to=2026-08-31T23:59:59Z');
       expect(res.status()).toBe(200);
-      const { data } = await res.json();
+      const data = await res.json(); // the P&L view returns the report itself
       expect(data.historicalPlacementUnknown.payslips).toBe(1);
       expect(Number(data.historicalPlacementUnknown.amount)).toBe(12345.67);
       const row = data.rows.find((r: { name: string }) => r.name === 'Unknown historical team');
