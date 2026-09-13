@@ -1,5 +1,7 @@
 # Operator evidence — commands, expected results, stop conditions
 
+> **Superseded for audit and restore commands (14 September 2026):** use `OPERATOR-CHECKLIST.md`. It runs the audits in the `migrate` service with read-only, role-checked connections and uses the guarded restore script, all verified locally against the baseline.
+
 **For the production operator. Nothing here has been run against production by this work; every result column is empty until the operator fills it in.** Engineering state is in `COLLECTIONS-CHECKPOINT-2026-09-12.md`; this file is only what needs a production host or a production backup.
 
 Conventions used throughout:

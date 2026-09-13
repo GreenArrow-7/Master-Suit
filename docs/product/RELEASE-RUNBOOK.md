@@ -1,5 +1,7 @@
 # Deployment runbook — YOUHAN ONE / Master Suite
 
+> **Superseded for audit and restore commands (14 September 2026):** use `OPERATOR-CHECKLIST.md`. It runs the audits in the `migrate` service with read-only, role-checked connections and uses the guarded restore script, all verified locally against the baseline.
+
 One document, executed top to bottom by the production operator. Every command
 is meant to be run as written. Nothing in here has been run against production
 by the author of this document.
