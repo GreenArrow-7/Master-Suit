@@ -143,9 +143,15 @@ export interface CoverageGrant {
  * specific one is cheaper, is the common case, and is the one an operator will
  * have created deliberately. Coverage is the exception and is looked up only when
  * the specific answer is no.
+ *
+ * A live break-glass (WRITE) grant also admits its holder, for its lifetime. It is
+ * owner-only, reason-bound and time-boxed, and every read under it is labelled
+ * mode=break-glass; without this a sole owner, who may not issue themselves a
+ * monitoring grant, could never use it.
  */
 export async function mayEnterWorkspace(platformUserId: string, tenantId: string): Promise<boolean> {
   if (await activeGrant(platformUserId, tenantId, 'READ')) return true;
+  if (await activeGrant(platformUserId, tenantId, 'WRITE')) return true;
   return (await activeCoverage(platformUserId)) !== null;
 }
 

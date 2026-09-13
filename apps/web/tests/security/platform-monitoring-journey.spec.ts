@@ -26,6 +26,10 @@ import {
   DELETE as leaveWorkspace,
 } from '@/app/api/v1/platform/workspaces/[workspaceId]/enter/route';
 import { POST as grantMonitoring, DELETE as revokeMonitoring } from '@/app/api/v1/platform/monitoring/grants/route';
+import {
+  POST as openBreakGlass,
+  DELETE as closeBreakGlass,
+} from '@/app/api/v1/platform/workspaces/[workspaceId]/access/route';
 import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { GET as readAnalysis } from '@/app/api/v1/calls/[id]/analysis/route';
 import { GET as readCallAudits } from '@/app/api/v1/calls/[id]/audit/route';
@@ -500,6 +504,51 @@ describe('7 — the owner-only boundary holds', () => {
     expect(res.status).toBe(403);
   });
 
+  it('break-glass alone lets the owner in, labelled, and handing it back shuts them out', async () => {
+    // Self-issued monitoring grants are refused, so the owner's only way into a
+    // workspace is the deliberate, time-boxed elevation. It has to be usable on
+    // its own; if it needed a READ grant too, a sole owner could never use it.
+    const params = { params: Promise.resolve({ workspaceId: ungranted.id }) };
+    const cookie = await createPlatformSessionToken(ownerId, null);
+    const opened = await openBreakGlass(
+      json(
+        `http://localhost/api/v1/platform/workspaces/${ungranted.id}/access`,
+        'POST',
+        { reason: 'Repairing a record at the customer written request' },
+        cookie,
+      ),
+      params,
+    );
+    expect(opened.status).toBeLessThan(300);
+    const entered = await enterWorkspace(
+      new Request('http://localhost/enter', { method: 'POST', headers: { cookie } }),
+      params,
+    );
+    expect(entered.status).toBe(200);
+    const inside = await createPlatformSessionToken(ownerId, ungranted.id);
+    const read = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: inside } }), {
+      params: Promise.resolve({}),
+    });
+    expect(read.status).toBe(200);
+    const row = await prisma.platformAuditEvent.findFirst({
+      where: { tenantId: ungranted.id, actorUserId: ownerId, event: 'SUPPORT_READ' },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect((row?.metadata as { mode?: string }).mode).toBe('break-glass');
+
+    const closed = await closeBreakGlass(
+      new Request(`http://localhost/api/v1/platform/workspaces/${ungranted.id}/access`, {
+        method: 'DELETE',
+        headers: { cookie },
+      }),
+      params,
+    );
+    expect(closed.status).toBe(200);
+    const after = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: inside } }), {
+      params: Promise.resolve({}),
+    });
+    expect(after.status).toBe(403);
+  });
   it('nor a workspace grant — sensitive or not — to themselves', async () => {
     // Break-glass is the one self-issued elevation, on its own route and labelled
     // in the audit trail. A monitoring grant is issued by somebody else.
