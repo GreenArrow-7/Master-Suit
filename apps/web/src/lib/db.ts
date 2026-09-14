@@ -71,6 +71,8 @@ export const GLOBAL_MODELS = new Set([
   // no single workspace can be named. Every query against it pins a
   // platformUserId, which is what bounds it.
   'PlatformCoverageGrant',
+  // A sign-in's second step, before any workspace is chosen. No tenantId.
+  'PlatformMfaChallenge',
   // A push registration belongs to a handset, not to a workspace. The device
   // mints one token and returns it to whoever signs in next, so the row has to
   // be globally unique on that token — a tenant-scoped copy per workspace is

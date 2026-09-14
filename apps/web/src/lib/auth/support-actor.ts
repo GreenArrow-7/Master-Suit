@@ -123,6 +123,13 @@ export async function buildSupportActor(
    * their platform role and — for OWNER — a break-glass grant.
    */
   serviceScopes?: string[],
+  /**
+   * `monitoringOnly`: the session was proven with the MONITORING password. It
+   * gets the monitoring allowlist and nothing else — no break-glass elevation,
+   * even for an OWNER holding a live WRITE grant. `credentialPurpose` is carried
+   * onto the actor so audit rows can name it.
+   */
+  options: { monitoringOnly?: boolean; credentialPurpose?: 'PLATFORM_ADMIN' | 'MONITORING' | null } = {},
 ): Promise<Actor> {
   // Checked on every request rather than cached with the session: a grant that
   // has expired, or been handed back from another tab, must stop working now and
@@ -132,7 +139,8 @@ export async function buildSupportActor(
   // there is no grant, no scope string and no column value that reaches this
   // branch for AI_SERVICE. Giving it write capability later means editing this
   // line, in review, which is the intended cost.
-  const fullControl = platformRole === 'OWNER' && (await activeGrant(platformUserId, tenantId)) !== null;
+  const fullControl =
+    !options.monitoringOnly && platformRole === 'OWNER' && (await activeGrant(platformUserId, tenantId)) !== null;
   /**
    * Three different questions, and only the first is a denylist-shaped one.
    *
@@ -204,5 +212,6 @@ export async function buildSupportActor(
     managedUserIds: [],
     permissions,
     platformMode: platformRole === 'AI_SERVICE' ? 'service' : fullControl ? 'break-glass' : 'monitoring',
+    credentialPurpose: options.credentialPurpose ?? null,
   };
 }

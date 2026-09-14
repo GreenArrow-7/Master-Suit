@@ -6,9 +6,14 @@ import { useRouter } from 'next/navigation';
 
 /**
  * Two visual steps over one endpoint: credentials, then — only when the server
- * says so — the second factor, with the credentials collapsed to a summary and
- * kept in hidden inputs. Every state the endpoint can answer with has a screen:
- * signed in, MFA required, enrolment required, throttled, refused.
+ * says so — the second factor. Every state the endpoint can answer with has a
+ * screen: signed in, MFA required, enrolment required, throttled, refused.
+ *
+ * The second step sends the opaque challenge the server issued for the password
+ * that verified, and the code. It never re-sends the password and never names a
+ * mode: which of an account's passwords was typed is recorded on the server and
+ * decides where the session lands. The password is dropped from memory once the
+ * challenge arrives.
  */
 export default function LoginForm() {
   const router = useRouter();
@@ -21,6 +26,7 @@ export default function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
+  const [challenge, setChallenge] = useState<string | null>(null);
   const submitting = useRef(false);
 
   async function submit(e?: React.FormEvent, codeOverride?: string) {
@@ -36,13 +42,17 @@ export default function LoginForm() {
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          ...(useRecoveryCode ? recoveryCode && { recoveryCode } : code && { mfaCode: code }),
-        }),
+        body: JSON.stringify(
+          challenge ? { challenge, ...(useRecoveryCode ? { recoveryCode } : { mfaCode: code }) } : { email, password },
+        ),
       });
       const data = await res.json();
+      if (!res.ok && challenge && res.status === 401 && /expired/i.test(data.detail ?? '')) {
+        // The challenge is spent or stale: start the sign-in again from the password.
+        resetToCredentials();
+        setError(data.detail);
+        return;
+      }
       if (!res.ok) {
         setError(
           data.detail ??
@@ -69,6 +79,8 @@ export default function LoginForm() {
         return;
       }
       if (data.mfaRequired) {
+        setChallenge(data.challenge ?? null);
+        setPassword('');
         setMfaNeeded(true);
         return;
       }
@@ -80,6 +92,13 @@ export default function LoginForm() {
       submitting.current = false;
       setBusy(false);
     }
+  }
+
+  function resetToCredentials() {
+    setChallenge(null);
+    setMfaNeeded(false);
+    setMfaCode('');
+    setRecoveryCode('');
   }
 
   /** Auto-submit the moment the sixth digit lands; typing stays interruptible. */
@@ -159,15 +178,13 @@ export default function LoginForm() {
         </>
       ) : (
         <>
-          {/* Credentials stay in the request; on screen they collapse to this. */}
+          {/* The password step is done; the server holds its result as a challenge. */}
           <div className="lf-auth-summary">
             <span>{email}</span>
             <button
               type="button"
               onClick={() => {
-                setMfaNeeded(false);
-                setMfaCode('');
-                setRecoveryCode('');
+                resetToCredentials();
                 setError(null);
               }}
             >

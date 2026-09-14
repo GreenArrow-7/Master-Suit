@@ -5,6 +5,8 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { refuseOwnerLockout } from '@/services/platform/identity';
+import { isPlatformStaff } from '@/lib/auth/credentials';
+import { dropMonitoringCredential } from '@/services/identity/platformCredentials';
 
 const updateSchema = z
   .object({
@@ -58,6 +60,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
           data: { revokedAt: new Date(), revokedReason: 'ACCOUNT_STATUS_CHANGE' },
         });
       }
+      if (body.status && body.status !== 'ACTIVE') {
+        await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: current.id, consumedAt: null } });
+      }
       await tx.platformAuditEvent.create({
         data: {
           actorUserId: ctx.platformUserId,
@@ -75,6 +80,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
       });
       return updated;
     });
+    // Leaving platform staff ends the monitoring password. The session layer
+    // already refuses a monitoring session for a non-staff identity; this removes
+    // the credential itself so it cannot come back with a later promotion.
+    if (body.platformRole && !isPlatformStaff(body.platformRole)) {
+      await dropMonitoringCredential(current.id, 'ROLE_CHANGED');
+    }
 
     return NextResponse.json({ user }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
@@ -118,6 +129,15 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ userI
       await tx.platformSession.updateMany({
         where: { platformUserId: current.id, revokedAt: null },
         data: { revokedAt: now, revokedReason: 'ACCOUNT_DELETED' },
+      });
+      await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: current.id, consumedAt: null } });
+      await tx.platformUser.update({
+        where: { id: current.id },
+        data: {
+          monitoringPasswordHash: null,
+          monitoringPasswordVersion: { increment: 1 },
+          monitoringPasswordSetAt: null,
+        },
       });
       await tx.workspaceMembership.updateMany({
         where: { platformUserId: current.id },

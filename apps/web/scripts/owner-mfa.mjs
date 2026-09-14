@@ -104,8 +104,11 @@ if (process.argv.includes('--reset')) {
   await db.authenticationFactor.deleteMany({ where: { platformUserId: owner.id } }).catch(() => {});
   await db.platformSession.updateMany({
     where: { platformUserId: owner.id, revokedAt: null },
-    data: { revokedAt: new Date() },
+    data: { revokedAt: new Date(), revokedReason: 'MFA_RESET' },
   });
+  // Unfinished sign-ins were waiting on the factor that just went away — for both
+  // of the owner's passwords.
+  await db.platformMfaChallenge.deleteMany({ where: { platformUserId: owner.id, consumedAt: null } });
   console.log(`${email}: MFA enrolment reset. Next password login opens the authenticator setup screen.`);
   await db.$disconnect();
   process.exit(0);
@@ -119,6 +122,7 @@ if (process.argv.includes('--enroll')) {
     where: { id: owner.id },
     data: { mfaSecret: secret, mfaEnabled: true },
   });
+  await db.platformMfaChallenge.deleteMany({ where: { platformUserId: owner.id, consumedAt: null } });
   console.log(`Enrolled ${email} for TOTP.\n`);
   console.log(`  Secret:       ${secret}`);
   console.log(

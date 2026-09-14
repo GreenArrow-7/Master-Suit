@@ -789,6 +789,23 @@ enum PlatformGrantKind {
   WRITE
 }
 
+/// Which of a platform staff identity's two passwords was proven.
+///
+/// PLATFORM_ADMIN is the identity's primary password (`PlatformUser.passwordHash`).
+/// It confers exactly what the identity's current platform role confers — an
+/// OWNER administers the platform, SUPPORT and SECURITY_AUDITOR monitor — and
+/// never more.
+///
+/// MONITORING is the optional second password
+/// (`PlatformUser.monitoringPasswordHash`). It always yields read-only
+/// monitoring of explicitly authorised workspaces, whatever the role, however
+/// many grants the identity holds, and even while a break-glass WRITE grant is
+/// live.
+enum PlatformCredentialPurpose {
+  PLATFORM_ADMIN
+  MONITORING
+}
+
 model PlatformAccessGrant {
   id             String            @id @default(cuid())
   tenantId       String
@@ -1164,9 +1181,9 @@ model User {
 /// the User copy while login read only this one, so a reset silently did
 /// nothing and a leaked password stayed valid. The duplicate columns are gone.
 model PlatformUser {
-  id                String       @id @default(cuid())
-  email             String       @unique
-  normalizedEmail   String       @unique
+  id                        String       @id @default(cuid())
+  email                     String       @unique
+  normalizedEmail           String       @unique
   /// Interactive login identifier, separate from the email address.
   ///
   /// Only `AI_SERVICE` identities have one. Their `email` is a stable internal
@@ -1176,24 +1193,36 @@ model PlatformUser {
   ///
   /// Nullable and unique together: Postgres allows many NULLs in a unique index,
   /// so every human account can leave it unset without colliding.
-  username          String?      @unique
-  passwordHash      String?
-  fullName          String
-  avatarUrl         String?
-  phone             String?
-  status            UserStatus   @default(INVITED)
-  platformRole      PlatformRole @default(USER)
-  emailVerifiedAt   DateTime?
-  mfaEnabled        Boolean      @default(false)
-  mfaSecret         String?
-  mfaRecoveryCodes  String[]     @default([])
-  failedLoginCount  Int          @default(0)
-  lockedUntil       DateTime?
-  lastLoginAt       DateTime?
-  passwordChangedAt DateTime?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  deletedAt         DateTime?
+  username                  String?      @unique
+  passwordHash              String?
+  /// Version of `passwordHash` (the PLATFORM_ADMIN credential for platform
+  /// staff). Every write of `passwordHash` increments it; staff sessions and MFA
+  /// challenges carry the version they were issued under.
+  passwordVersion           Int          @default(1)
+  /// The MONITORING credential: a second, independently salted Argon2id hash.
+  /// Null unless the identity itself set one from a platform-administration
+  /// session with fresh re-authentication. Never provisioned by a migration,
+  /// seed or default.
+  monitoringPasswordHash    String?
+  /// Incremented when the monitoring credential is set, changed or revoked.
+  monitoringPasswordVersion Int          @default(0)
+  monitoringPasswordSetAt   DateTime?
+  fullName                  String
+  avatarUrl                 String?
+  phone                     String?
+  status                    UserStatus   @default(INVITED)
+  platformRole              PlatformRole @default(USER)
+  emailVerifiedAt           DateTime?
+  mfaEnabled                Boolean      @default(false)
+  mfaSecret                 String?
+  mfaRecoveryCodes          String[]     @default([])
+  failedLoginCount          Int          @default(0)
+  lockedUntil               DateTime?
+  lastLoginAt               DateTime?
+  passwordChangedAt         DateTime?
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+  deletedAt                 DateTime?
 
   /// Read scopes an **interactive** `AI_SERVICE` session may use, in the same
   /// `module:read` form a machine credential carries.
@@ -1218,6 +1247,7 @@ model PlatformUser {
   accessGrants          PlatformAccessGrant[]
   coverageGrants        PlatformCoverageGrant[]     @relation("PlatformCoverageSubject")
   serviceCredentials    PlatformServiceCredential[]
+  mfaChallenges         PlatformMfaChallenge[]
 
   @@index([status, platformRole])
 }
@@ -2862,14 +2892,14 @@ model PasswordHistory {
 }
 
 model PlatformSession {
-  id             String    @id @default(cuid())
-  platformUserId String
-  activeTenantId String?
-  tokenHash      String    @unique
-  ipAddress      String?
-  userAgent      String?
-  deviceLabel    String?
-  mfaSatisfied   Boolean   @default(false)
+  id                String                     @id @default(cuid())
+  platformUserId    String
+  activeTenantId    String?
+  tokenHash         String                     @unique
+  ipAddress         String?
+  userAgent         String?
+  deviceLabel       String?
+  mfaSatisfied      Boolean                    @default(false)
   /// What this session is allowed to do. FULL is an ordinary signed-in session.
   /// MFA_ENROLMENT is a short-lived grant that may reach only the enrolment,
   /// verification and logout endpoints — issued when a workspace mandates 2FA
@@ -2881,12 +2911,22 @@ model PlatformSession {
   /// an AI_SERVICE identity holding a FULL session is refused, because a FULL
   /// session is what the *human* login route issues and reaching one would mean
   /// the dedicated path had been bypassed.
-  purpose        String    @default("FULL")
-  expiresAt      DateTime
-  lastSeenAt     DateTime  @default(now())
-  revokedAt      DateTime?
-  revokedReason  String?
-  createdAt      DateTime  @default(now())
+  purpose           String                     @default("FULL")
+  /// Which of the identity's two passwords proved this session. Set for platform
+  /// staff (OWNER, SUPPORT, SECURITY_AUDITOR) only; null for workspace users and
+  /// machine identities, whose authentication is unchanged. A staff session with
+  /// no purpose is a legacy session and `resolvePlatformCtx` refuses it — the
+  /// mode is never inferred from the identity's role.
+  credentialPurpose PlatformCredentialPurpose?
+  /// The version of that credential when the session was issued. A changed or
+  /// revoked credential bumps the version, so its sessions stop resolving on the
+  /// next request even if a revocation write was missed.
+  credentialVersion Int?
+  expiresAt         DateTime
+  lastSeenAt        DateTime                   @default(now())
+  revokedAt         DateTime?
+  revokedReason     String?
+  createdAt         DateTime                   @default(now())
 
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
   activeTenant Tenant?      @relation(fields: [activeTenantId], references: [id], onDelete: SetNull)
@@ -2938,20 +2978,24 @@ model UserTeam {
 }
 
 model PasswordResetToken {
-  id             String    @id @default(cuid())
+  id                String                     @id @default(cuid())
   /// The credential lives on PlatformUser, so this is what a reset acts on.
   /// tenantId/userId are set when the account has a workspace, which is where
   /// the password policy and the audit entry come from; a platform-only
   /// account (the owner before any workspace exists) has neither.
-  platformUserId String?
-  tenantId       String?
-  userId         String?
-  tokenHash      String    @unique
-  ipAddress      String?
-  userAgent      String?
-  expiresAt      DateTime
-  usedAt         DateTime?
-  createdAt      DateTime  @default(now())
+  platformUserId    String?
+  tenantId          String?
+  userId            String?
+  tokenHash         String                     @unique
+  /// The credential this link may set. Emailed reset links only ever target
+  /// the primary password: PLATFORM_ADMIN for platform staff, null for workspace
+  /// users. The MONITORING credential is never reset by email.
+  credentialPurpose PlatformCredentialPurpose?
+  ipAddress         String?
+  userAgent         String?
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime                   @default(now())
 
   platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
@@ -2961,6 +3005,38 @@ model PasswordResetToken {
 
   @@index([platformUserId])
   @@index([tenantId, userId])
+  @@index([expiresAt])
+}
+
+/// The second step of a password sign-in, held on the server.
+///
+/// Issued only after a password verified, and bound to what that password was:
+/// the identity, which credential matched, and that credential's version. The
+/// MFA step presents the opaque token and a code — never a mode, a role or the
+/// password again — and the session it produces takes its purpose from this
+/// row. Changing or revoking the credential, resetting MFA, or disabling the
+/// account makes an unfinished challenge unusable: the version no longer
+/// matches, or completion re-reads the identity and refuses.
+///
+/// Only the SHA-256 of the token is stored. Single use, short-lived, and a
+/// bounded number of wrong codes burns it.
+model PlatformMfaChallenge {
+  id                String                     @id @default(cuid())
+  platformUserId    String
+  tokenHash         String                     @unique
+  /// Null for workspace users, whose sign-in has a single credential.
+  credentialPurpose PlatformCredentialPurpose?
+  credentialVersion Int
+  attempts          Int                        @default(0)
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime                   @default(now())
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  @@index([platformUserId, consumedAt])
   @@index([expiresAt])
 }
 

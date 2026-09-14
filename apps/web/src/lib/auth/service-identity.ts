@@ -395,7 +395,13 @@ export async function recordPlatformAccess(
               // Ctx.service.declaredInitiator.
               declaredInitiator: ctx.service.declaredInitiator,
             }
-          : { roleKey: ctx.actor.roleKey, mode: ctx.actor.platformMode }),
+          : {
+              roleKey: ctx.actor.roleKey,
+              mode: ctx.actor.platformMode,
+              // Which password proved the session: the audit trail distinguishes a
+              // monitoring-password read from an administration-password read.
+              credentialPurpose: ctx.actor.credentialPurpose ?? null,
+            }),
       },
     },
   });

@@ -11,6 +11,14 @@ import { isSupportRole } from '@/lib/auth/support-actor';
  */
 export async function requirePlatformOwner(req: Request, requestId: string): Promise<PlatformCtx> {
   const ctx = await resolvePlatformCtx(req, requestId);
+  // The role says what the identity may do; the credential says what this
+  // session may do. A session proven with the monitoring password is monitoring
+  // only, even for an OWNER.
+  if (ctx.credentialPurpose === 'MONITORING') {
+    throw Forbidden(
+      'This session is for monitoring only. Sign in with your administration password to use the console.',
+    );
+  }
   if (!isPlatformOwner(ctx.platformRole)) {
     throw Forbidden('Platform-owner access is required.');
   }

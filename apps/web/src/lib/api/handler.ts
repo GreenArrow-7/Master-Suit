@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
+import { AppError, Forbidden, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
@@ -119,6 +119,7 @@ export function route<
 
       // 3. Authorize — before the handler body runs ────────────────────────────
       if (ctx) {
+        assertMonitoringReadOnly(ctx, req.method, spec.selfService);
         // Only when the route declares one. The previous `?? 'SALES'` default
         // silently demanded the Sales entitlement from routes that had nothing
         // to do with Sales, and made "forgot to declare it" indistinguishable
@@ -364,4 +365,28 @@ function toResponse(err: unknown, requestId: string, meta: Record<string, unknow
 
   const problem = new AppError(500, 'internal-error', 'Something went wrong on our side.', [], false);
   return NextResponse.json(problem.toProblem(requestId), { status: 500, headers });
+}
+
+/**
+ * Monitoring is read-only, and that is decided here as well as by the map.
+ *
+ * A platform actor in monitoring mode — the MONITORING password, or staff with
+ * no break-glass in force — already holds only VIEW permissions, so a write
+ * route refuses it at `assertPermission`. That leaves two shapes the permission
+ * map does not see: self-service routes, which skip the permission check by
+ * design (password change, two-factor, recovery codes), and routes that do
+ * something other than read under a VIEW action. Both are refused before the
+ * handler runs, whatever the permission map says.
+ *
+ * Machine credentials and service sessions are `platformMode: 'service'` and are
+ * unaffected; workspace members carry no platform mode at all.
+ */
+export function assertMonitoringReadOnly(ctx: Ctx, method: string, selfService?: boolean) {
+  if (ctx.actor.platformMode !== 'monitoring') return;
+  if (selfService) {
+    throw Forbidden('A monitoring session cannot change account settings.');
+  }
+  if (method !== 'GET' && method !== 'HEAD') {
+    throw Forbidden('Monitoring is read-only.');
+  }
 }

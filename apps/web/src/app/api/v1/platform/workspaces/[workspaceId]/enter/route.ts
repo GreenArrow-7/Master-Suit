@@ -42,7 +42,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
      * distinguishable from one that does not exist — otherwise the endpoint
      * enumerates the platform's customer list to any member of staff.
      */
-    if (!(await mayEnterWorkspace(ctx.platformUserId, workspace.id))) throw NotFound('Workspace');
+    // Break-glass admits its holder only in an administration session. A
+    // monitoring session needs a READ grant or coverage.
+    const allowBreakGlass = ctx.credentialPurpose !== 'MONITORING';
+    if (!(await mayEnterWorkspace(ctx.platformUserId, workspace.id, { allowBreakGlass }))) throw NotFound('Workspace');
 
     await withPlatformTx(async (tx) => {
       await tx.platformSession.update({

@@ -165,12 +165,38 @@ export async function pageLoad<T>(load: Promise<T>): Promise<T> {
  * case than an endpoint.
  */
 async function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
-  if (options.permission !== SELF_SERVICE) {
+  const accessModule = options.permission === SELF_SERVICE ? 'self' : options.permission[0];
+  const action = options.permission === SELF_SERVICE ? 'VIEW' : options.permission[1];
+
+  /**
+   * Refusals are recorded too, then refused.
+   *
+   * A monitoring session is refused self-service screens outright — they are
+   * where passwords, two-factor and recovery codes are managed, and a monitoring
+   * session manages neither credential. Every other refusal is the permission
+   * check. Either way the row is written before `forbidden()` interrupts, so an
+   * attempt is as visible as a success. Best effort: a failed write here must
+   * not turn a refusal into an error page.
+   */
+  let refused = false;
+  if (options.permission === SELF_SERVICE) {
+    refused = ctx.actor.platformMode === 'monitoring';
+  } else {
     try {
       assertPermission(ctx, options.permission[0], options.permission[1]);
     } catch {
-      forbidden();
+      refused = true;
     }
+  }
+  if (refused) {
+    await recordPlatformAccess(ctx, {
+      module: accessModule,
+      action,
+      method: 'GET',
+      path: await pagePath(),
+      status: 403,
+    }).catch(() => {});
+    forbidden();
   }
 
   await recordPlatformAccess(ctx, {

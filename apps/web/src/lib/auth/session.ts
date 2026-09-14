@@ -10,6 +10,7 @@ import { buildSupportActor, isSupportRole } from './support-actor';
 import { mayEnterWorkspace } from './platform-access';
 import { isPrivilegedPlatformRole, isPlatformServiceRole } from './platform-policy';
 import { isInAny, parseCidrList, parseIp, type Cidr } from '../security/cidr';
+import { credentialRefusal, type CredentialPurpose } from './credentials';
 import { logger } from '../logger';
 
 export const SESSION_COOKIE = 'lf_session';
@@ -52,6 +53,13 @@ export async function createPlatformSession(input: {
   userAgent: string | null;
   mfaSatisfied: boolean;
   purpose?: SessionPurpose;
+  /**
+   * Which password proved this session, for platform staff. Taken from the MFA
+   * challenge (or, for a first-run enrolment, from the enrolment session) —
+   * never from anything the client sent.
+   */
+  credentialPurpose?: CredentialPurpose | null;
+  credentialVersion?: number | null;
 }) {
   const token = randomBytes(32).toString('base64url');
   const purpose = input.purpose ?? 'FULL';
@@ -84,6 +92,8 @@ export async function createPlatformSession(input: {
       userAgent: input.userAgent,
       mfaSatisfied: input.mfaSatisfied,
       purpose,
+      credentialPurpose: input.credentialPurpose ?? null,
+      credentialVersion: input.credentialVersion ?? null,
       expiresAt,
     },
   });
@@ -188,6 +198,13 @@ export type PlatformCtx = {
   activeTenantId: string | null;
   sessionId: string;
   purpose: SessionPurpose;
+  /**
+   * PLATFORM_ADMIN or MONITORING for platform staff; null for workspace users and
+   * machine identities. MONITORING confers read-only monitoring and nothing else,
+   * whatever `platformRole` says — every gate that reads the role reads this too.
+   */
+  credentialPurpose: CredentialPurpose | null;
+  credentialVersion: number | null;
   requestId: string;
   ip: string | null;
   userAgent: string | null;
@@ -370,6 +387,28 @@ export async function resolvePlatformCtx(
    * /enroll-2fa and nothing else, so an owner without an authenticator can still
    * set one up rather than being locked out for good.
    */
+  /**
+   * Which password proved this session, and whether it still stands.
+   *
+   * A staff session carries its credential's purpose and version. A legacy one
+   * (issued before the purpose existed) cannot say which password proved it and
+   * is refused rather than read as administration. A changed or revoked
+   * credential has a new version, so its sessions stop here on the next request
+   * even if the revocation write was missed. See lib/auth/credentials.ts.
+   */
+  const credentialProblem = credentialRefusal(session, user);
+  if (credentialProblem) {
+    logger.warn(
+      { platformUserId: user.id, sessionId: session.id, reason: credentialProblem },
+      'platform session refused: credential purpose or version',
+    );
+    await prisma.platformSession.update({
+      where: { id: session.id },
+      data: { revokedAt: now, revokedReason: credentialProblem },
+    });
+    throw Unauthorized('Sign in again to continue.');
+  }
+
   if (session.purpose !== 'MFA_ENROLMENT' && !session.mfaSatisfied && isPrivilegedPlatformRole(user.platformRole)) {
     throw Forbidden('Two-factor authentication is required for platform access. Sign in again to set it up.');
   }
@@ -387,6 +426,8 @@ export async function resolvePlatformCtx(
     activeTenantId: session.activeTenantId,
     sessionId: session.id,
     purpose: session.purpose as SessionPurpose,
+    credentialPurpose: session.credentialPurpose,
+    credentialVersion: session.credentialVersion,
     requestId,
     ip: clientIp(req),
     userAgent: req.headers.get('user-agent'),
@@ -431,16 +472,26 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
   // reverse; MFA_ENROLMENT stays excluded, as it reaches no workspace at all.
   const platformCtx = await resolvePlatformCtx(req, requestId, ['FULL', 'AI_SERVICE']);
   if (!platformCtx.activeTenantId) throw Unauthorized('Choose a workspace to continue.');
-  const membership = await prisma.workspaceMembership.findFirst({
-    where: {
-      platformUserId: platformCtx.platformUserId,
-      tenantId: platformCtx.activeTenantId,
-      status: 'ACTIVE',
-      tenant: { status: 'ACTIVE', deletedAt: null },
-      salesUser: { status: 'ACTIVE', deletedAt: null },
-    },
-    select: { salesUserId: true },
-  });
+  /**
+   * A monitoring session never acts as a member, even of a workspace the
+   * identity belongs to. The membership actor carries whatever the member's
+   * workspace role grants — writes, exports, HR — and the monitoring password
+   * must not reach any of it. Such a session gets the monitoring actor or
+   * nothing.
+   */
+  const monitoring = platformCtx.credentialPurpose === 'MONITORING';
+  const membership = monitoring
+    ? null
+    : await prisma.workspaceMembership.findFirst({
+        where: {
+          platformUserId: platformCtx.platformUserId,
+          tenantId: platformCtx.activeTenantId,
+          status: 'ACTIVE',
+          tenant: { status: 'ACTIVE', deletedAt: null },
+          salesUser: { status: 'ACTIVE', deletedAt: null },
+        },
+        select: { salesUserId: true },
+      });
   // Platform staff have no membership by design. Rather than locking them out
   // of every workspace URL, give them a support actor — full control for the
   // OWNER, read-only for SUPPORT and SECURITY_AUDITOR. See support-actor.ts.
@@ -496,10 +547,23 @@ export async function resolveCtx(req: Request, requestId: string): Promise<Ctx> 
  * a sign-in page that will not help.
  */
 async function supportSessionActor(platformCtx: PlatformCtx): Promise<Actor> {
-  if (!(await mayEnterWorkspace(platformCtx.platformUserId, platformCtx.activeTenantId!))) {
+  // Break-glass is administration. A monitoring session is admitted only by a
+  // READ grant or coverage, and never elevated by a WRITE grant the identity holds.
+  const monitoringOnly = platformCtx.credentialPurpose === 'MONITORING';
+  if (
+    !(await mayEnterWorkspace(platformCtx.platformUserId, platformCtx.activeTenantId!, {
+      allowBreakGlass: !monitoringOnly,
+    }))
+  ) {
     throw Forbidden('You are not authorised for that workspace.');
   }
-  return buildSupportActor(platformCtx.activeTenantId!, platformCtx.platformUserId, platformCtx.platformRole);
+  return buildSupportActor(
+    platformCtx.activeTenantId!,
+    platformCtx.platformUserId,
+    platformCtx.platformRole,
+    undefined,
+    { monitoringOnly, credentialPurpose: platformCtx.credentialPurpose },
+  );
 }
 
 /**

@@ -55,7 +55,18 @@ export async function hasSensitiveAccess(ctx: Ctx): Promise<boolean> {
   const now = new Date();
   const [grant, coverage] = await Promise.all([
     prisma.platformAccessGrant.findFirst({
-      where: { platformUserId, tenantId: ctx.tenantId, revokedAt: null, expiresAt: { gt: now }, sensitive: true },
+      where: {
+        platformUserId,
+        tenantId: ctx.tenantId,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        sensitive: true,
+        // A break-glass WRITE grant is sensitive by construction, and it answers
+        // only for a session actually running under it. A monitoring session —
+        // including one whose identity holds a live WRITE grant — needs a READ
+        // grant that was issued with the sensitive flag.
+        ...(ctx.actor.platformMode === 'break-glass' ? {} : { kind: 'READ' as const }),
+      },
       select: { id: true },
     }),
     prisma.platformCoverageGrant.findFirst({

@@ -149,9 +149,15 @@ export interface CoverageGrant {
  * mode=break-glass; without this a sole owner, who may not issue themselves a
  * monitoring grant, could never use it.
  */
-export async function mayEnterWorkspace(platformUserId: string, tenantId: string): Promise<boolean> {
+export async function mayEnterWorkspace(
+  platformUserId: string,
+  tenantId: string,
+  // Off unless the caller says otherwise: omitting it can never widen entry. A
+  // monitoring session passes false, so a WRITE grant never admits it.
+  options: { allowBreakGlass?: boolean } = {},
+): Promise<boolean> {
   if (await activeGrant(platformUserId, tenantId, 'READ')) return true;
-  if (await activeGrant(platformUserId, tenantId, 'WRITE')) return true;
+  if (options.allowBreakGlass && (await activeGrant(platformUserId, tenantId, 'WRITE'))) return true;
   return (await activeCoverage(platformUserId)) !== null;
 }
 

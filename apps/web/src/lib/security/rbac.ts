@@ -66,6 +66,11 @@ export interface Actor {
    * an elevated read is distinguishable from a routine one after the fact.
    */
   platformMode?: 'monitoring' | 'break-glass' | 'service';
+  /**
+   * Platform staff only: which password proved the session. MONITORING is always
+   * read-only; written to audit rows alongside `platformMode`.
+   */
+  credentialPurpose?: 'PLATFORM_ADMIN' | 'MONITORING' | null;
 }
 
 export interface Ctx {

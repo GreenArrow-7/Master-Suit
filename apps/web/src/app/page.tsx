@@ -24,6 +24,9 @@ export default async function Root() {
         select: { slug: true },
       });
       if (workspace) destination = `/${workspace.slug}/dashboard`;
+    } else if (ctx.credentialPurpose === 'MONITORING') {
+      // The password chose the mode; the role does not override it.
+      destination = '/monitoring';
     } else if (isPlatformOwner(ctx.platformRole)) {
       destination = '/platform';
     } else if (isSupportRole(ctx.platformRole)) {
