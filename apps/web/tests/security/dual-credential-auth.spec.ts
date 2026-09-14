@@ -49,6 +49,7 @@ import { POST as openBreakGlass } from '@/app/api/v1/platform/workspaces/[worksp
 import { POST as enterWorkspace } from '@/app/api/v1/platform/workspaces/[workspaceId]/enter/route';
 import { POST as userActions } from '@/app/api/v1/platform/users/[userId]/actions/route';
 import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
+import { GET as exportLeads } from '@/app/api/v1/leads/export/route';
 import { GET as readTranscript } from '@/app/api/v1/calls/[id]/transcript/route';
 import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { POST as selfService } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
@@ -172,6 +173,7 @@ beforeAll(async () => {
     ['leads', 'EDIT'],
     ['calls', 'VIEW'],
     ['employee', 'VIEW'],
+    ['leads', 'EXPORT'],
     ['identity_self', 'VIEW'],
   ]);
   const ownerAsMember = await prisma.user.create({
@@ -685,6 +687,21 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
     expect(password.status).toBe(403);
   });
 
+  it('is refused the lead export that the same person is allowed as a workspace admin', async () => {
+    // Positive control: the customer member holds the same role, EXPORT included.
+    await freshLimits(memberEmail);
+    const member = await callLogin({ email: memberEmail, password: OTHER_PASSWORD });
+    const allowed = await exportLeads(
+      request('http://localhost/api/v1/leads/export', 'GET', undefined, cookieOf(member.token!)),
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.text()).toContain(LEAD_NAME);
+
+    const refused = await exportLeads(request('http://localhost/api/v1/leads/export', 'GET', undefined, monitorCookie));
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).not.toContain(LEAD_NAME);
+  });
+
   it('is refused every administration API, workspace creation, grants, break-glass and credential management', async () => {
     const attempts: [string, Promise<Response>][] = [
       [
@@ -1177,5 +1194,57 @@ describe('customer sign-in and legacy sessions', () => {
     await expect(
       resolveCtx(request('http://internal/', 'GET', undefined, cookieOf(customerToken)), 'r'),
     ).resolves.toBeTruthy();
+  });
+});
+
+// ── Last, because it replaces password A for good ────────────────────────────
+
+describe('an emailed reset of the administration password', () => {
+  it('sets A, ends every session in both modes, and leaves the monitoring password working', async () => {
+    const admin = await signIn(ownerEmail, PASSWORD_A);
+    const monitor = await signIn(ownerEmail, PASSWORD_B);
+    const NEW_A = `Reset-${suffix}-Admin4`;
+    const token = randomBytes(32).toString('base64url');
+    await prisma.passwordResetToken.create({
+      data: {
+        platformUserId: ownerId,
+        tenantId: null,
+        tokenHash: sha256(token),
+        credentialPurpose: 'PLATFORM_ADMIN',
+        expiresAt: new Date(Date.now() + 600_000),
+      },
+    });
+    const res = await resetPasswordRoute(
+      request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: NEW_A }),
+    );
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    for (const cookie of [admin.cookie, monitor.cookie]) {
+      await expect(
+        resolvePlatformCtx(request('http://internal/', 'GET', undefined, cookie), 'r'),
+      ).rejects.toMatchObject({
+        status: 401,
+      });
+    }
+    // Single use.
+    const again = await resetPasswordRoute(
+      request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: `${NEW_A}x` }),
+    );
+    expect(again.status).toBe(401);
+
+    await freshLimits(ownerEmail);
+    expect((await callLogin({ email: ownerEmail, password: PASSWORD_A })).status).toBe(401);
+    const newAdmin = await signIn(ownerEmail, NEW_A);
+    expect((await sessionRow(newAdmin.token))!.credentialPurpose).toBe('PLATFORM_ADMIN');
+    const newMonitor = await signIn(ownerEmail, PASSWORD_B);
+    expect((await sessionRow(newMonitor.token))!.credentialPurpose).toBe('MONITORING');
+
+    const audit = await prisma.platformAuditEvent.findFirst({
+      where: { objectId: ownerId, event: 'PASSWORD_RESET' },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(audit).toBeTruthy();
+    expect(JSON.stringify(audit)).not.toContain(token);
+    expect(JSON.stringify(audit)).not.toContain(NEW_A);
   });
 });
