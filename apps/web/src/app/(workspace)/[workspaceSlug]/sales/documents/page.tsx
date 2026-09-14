@@ -36,7 +36,8 @@ export default async function DocumentsPage() {
   const rows = await prisma.document.findMany({
     // Receipt evidence is read under `collections`, not `documents`. Spelled as an
     // OR because `category: { not }` would also drop documents with no category.
-    where: { AND: [scope, { OR: [{ category: null }, { category: { not: EVIDENCE_CATEGORY } }] }] },
+    // `tenantId` stays at the top level, where lib/db.ts pins the tenant from.
+    where: { ...scope, AND: [{ OR: [{ category: null }, { category: { not: EVIDENCE_CATEGORY } }] }] },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {

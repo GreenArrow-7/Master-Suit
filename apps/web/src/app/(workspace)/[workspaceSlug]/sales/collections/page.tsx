@@ -42,7 +42,8 @@ export default async function CollectionsPage() {
   const moneyScope = await visibilityWhere(ctx, 'collections', 'VIEW');
 
   const bookings = await prisma.booking.findMany({
-    where: { AND: [scope, moneyScope], deletedAt: null, status: 'CONFIRMED' },
+    // `tenantId` stays at the top level: lib/db.ts pins the tenant from there and refuses a read without it.
+    where: { ...scope, AND: [moneyScope], deletedAt: null, status: 'CONFIRMED' },
     orderBy: { bookingDate: 'desc' },
     take: 100,
     select: {
