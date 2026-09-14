@@ -426,7 +426,7 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
                       maxLength={6}
                       autoComplete="one-time-code"
                       value={ownerCode}
-                      onChange={(event) => setOwnerCode(event.target.value.replace(/D/g, '').slice(0, 6))}
+                      onChange={(event) => setOwnerCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
                     />
                     <button
                       type="button"
