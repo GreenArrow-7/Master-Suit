@@ -173,7 +173,18 @@ export async function recordRecovery(input: RecordRecoveryInput) {
     // second person; neither does this. Decline the proposal first.
     if (row.status === 'RESOLUTION_PROPOSED') throw Conflict('A resolution is waiting for approval.');
     // The same test a receipt's evidence passes, against the case's own sale.
-    if (input.evidenceDocumentId) await assertEvidenceFor(tx, ctx.tenantId, row.bookingId, input.evidenceDocumentId);
+    if (input.evidenceDocumentId) {
+      await assertEvidenceFor(tx, ctx.tenantId, row.bookingId, input.evidenceDocumentId);
+      // Evidence that money arrived, or came back on another case, is not
+      // evidence that this money came back.
+      // ponytail: checked, not constrained — two cases on one sale citing one new
+      // document at the same instant could both pass; a unique index closes it.
+      const where = { tenantId: ctx.tenantId, evidenceDocumentId: input.evidenceDocumentId };
+      const cited =
+        (await tx.agencyFeeReceipt.count({ where })) +
+        (await tx.collectionRecoveryCase.count({ where: { ...where, id: { not: row.id } } }));
+      if (cited) throw Conflict('That document already evidences other money. A recovery needs its own evidence.');
+    }
     const updated = await tx.collectionRecoveryCase.update({
       where: { id: row.id, tenantId: ctx.tenantId },
       data: {

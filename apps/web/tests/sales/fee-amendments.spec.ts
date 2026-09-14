@@ -730,6 +730,23 @@ describe('record scope and recovery evidence', () => {
     expect(b.body.outcome).toBe('RECOVERED');
   });
 
+  it('a recovery cannot cite a document that already evidences a receipt', async () => {
+    const { caseId, bookingId } = await paidCase();
+    const d = await doc(bookingId);
+    await recordReceipt({
+      ctx: financeACtx,
+      bookingId,
+      amount: '10.00',
+      currency: 'AED',
+      paidAt: new Date(),
+      paymentReference: `r-${randomBytes(3).toString('hex')}`,
+      evidenceDocumentId: d.id,
+    });
+    const res = await recover(caseId, { evidenceDocumentId: d.id });
+    const kase = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: caseId, tenantId } });
+    expect({ status: res.status, caseStatus: kase.status }).toEqual({ status: 409, caseStatus: 'OPEN' });
+  });
+
   it('a write-off waiting for a second person cannot be overtaken by a recovery; a recovery audits its evidence', async () => {
     const { caseId, bookingId } = await paidCase();
     const proposed = await patch(
