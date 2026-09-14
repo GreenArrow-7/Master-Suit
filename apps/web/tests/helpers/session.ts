@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { SESSION_COOKIE } from '@/lib/auth/session';
+import { isPlatformStaff } from '@/lib/auth/credentials';
 
 /**
  * A signed-in workspace user, as a Cookie header value.
@@ -44,9 +45,37 @@ export async function createPlatformSessionToken(
    * resolvePlatformCtx must now refuse — it is a server-side column, never
    * something a client can assert.
    */
-  options: { mfaSatisfied?: boolean; purpose?: 'FULL' | 'MFA_ENROLMENT' | 'AI_SERVICE' } = {},
+  options: {
+    mfaSatisfied?: boolean;
+    purpose?: 'FULL' | 'MFA_ENROLMENT' | 'AI_SERVICE';
+    /**
+     * Which of a staff identity's passwords the sign-in proved. Staff sessions
+     * default to the administration password at its current version, as a real
+     * login issues; `null` mints the purpose-less legacy session the application
+     * must refuse. Ignored for workspace users and machine sessions, whose
+     * sessions carry no purpose.
+     */
+    credentialPurpose?: 'PLATFORM_ADMIN' | 'MONITORING' | null;
+  } = {},
 ): Promise<string> {
   const token = randomBytes(32).toString('base64url');
+  const purpose = options.purpose ?? 'FULL';
+  const identity = await prisma.platformUser.findUnique({
+    where: { id: platformUserId },
+    select: { platformRole: true, passwordVersion: true, monitoringPasswordVersion: true },
+  });
+  const credentialPurpose =
+    identity && purpose !== 'AI_SERVICE' && isPlatformStaff(identity.platformRole)
+      ? options.credentialPurpose === undefined
+        ? 'PLATFORM_ADMIN'
+        : options.credentialPurpose
+      : null;
+  const credentialVersion =
+    credentialPurpose === 'MONITORING'
+      ? identity!.monitoringPasswordVersion
+      : credentialPurpose === 'PLATFORM_ADMIN'
+        ? identity!.passwordVersion
+        : null;
   await prisma.platformSession.create({
     data: {
       platformUserId,
@@ -55,7 +84,9 @@ export async function createPlatformSessionToken(
       ipAddress: '127.0.0.1',
       userAgent: 'vitest',
       mfaSatisfied: options.mfaSatisfied ?? true,
-      purpose: options.purpose ?? 'FULL',
+      purpose,
+      credentialPurpose,
+      credentialVersion,
       expiresAt: new Date(Date.now() + 60 * 60_000),
     },
   });

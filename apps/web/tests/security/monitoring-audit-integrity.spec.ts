@@ -126,8 +126,18 @@ describe('what the audit row is allowed to contain', () => {
     expect(serialised).not.toContain(SECRET_LEAD_PHONE);
 
     const meta = rows[0]!.metadata as Record<string, unknown>;
-    expect(Object.keys(meta).sort()).toEqual(['action', 'method', 'mode', 'path', 'roleKey', 'status']);
+    expect(Object.keys(meta).sort()).toEqual([
+      'action',
+      'credentialPurpose',
+      'method',
+      'mode',
+      'path',
+      'roleKey',
+      'status',
+    ]);
     expect(meta.mode).toBe('monitoring');
+    // Which of the identity's passwords opened the session — the purpose, never the credential.
+    expect(meta.credentialPurpose).toBe('PLATFORM_ADMIN');
   });
 
   it('attributes the row to server-side identity, never to anything the caller sent', async () => {

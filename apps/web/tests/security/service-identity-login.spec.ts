@@ -101,6 +101,8 @@ const ownerCtx = () =>
     activeTenantId: null,
     sessionId: 'test-session',
     purpose: 'FULL',
+    credentialPurpose: 'PLATFORM_ADMIN',
+    credentialVersion: 1,
     requestId: 'test-request',
     ip: null,
     userAgent: null,
