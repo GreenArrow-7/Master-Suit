@@ -36,6 +36,17 @@ by the author of this document.
 > artifact is the standalone bundle `next build` produces, served with
 > `node server.js`, which is what the Dockerfile's production stage copies.
 
+> **Dual-credential addendum — `feat/dual-credential-monitoring-login`.**
+> The integration candidate plus one platform identity with two passwords: the
+> administration password opens what the role allows, the monitoring password opens
+> read-only monitoring only. Candidate
+> `03823b8d487cb916b831d3cc9053b477e7f58c96`, on top of `05a7b90`. It adds
+> **one** migration (§3, #7) that **signs out every platform staff member** and
+> retires their unused reset links, and it changes rollback again (§9.1.4). Evidence:
+> `docs/product/RELEASE-CHECKPOINT-DUAL-CREDENTIAL.md`. Provisioning the designated
+> identity is a separate, authorised step after release (§3.2) — nothing in this
+> release creates a monitoring password or a grant.
+
 Both images carry the commit as `BUILD_COMMIT` and surface it as
 `masterapp_build_info` on the metrics endpoint. Confirm after deploying:
 
@@ -184,6 +195,58 @@ SELECT count(*) FROM "PlatformCoverageGrant";   -- expect 0
 ```
 
 The row count of `PlatformAccessGrant` must be unchanged across the migration.
+
+### 3.1a Dual-credential migration (#7)
+
+| # | Migration | What it does | Lock |
+| --- | --- | --- | --- |
+| 7 | `20260914120000_dual_credential_sessions` | Enum `PlatformCredentialPurpose`; columns `PlatformUser.passwordVersion` (default 1), `monitoringPasswordHash` (NULL), `monitoringPasswordVersion` (default 0), `monitoringPasswordSetAt`; `PlatformSession.credentialPurpose` / `credentialVersion` (NULL); `PasswordResetToken.credentialPurpose` (NULL); new table `PlatformMfaChallenge` with its grant to the application role. **Revokes every live session of an OWNER, SUPPORT or SECURITY_AUDITOR identity** (`revokedReason = 'CREDENTIAL_PURPOSE_MIGRATION'`, `AI_SERVICE` sessions excluded) and marks their unused reset links used. | `ACCESS EXCLUSIVE` on `PlatformUser`, `PlatformSession` and `PasswordResetToken` for the column adds (metadata-only with constant defaults on Postgres 16) and the two updates. Every request resolves a session, so sign-in and session checks wait for the transaction; keep it in the same quiet window as the rest. |
+
+**It creates no authority.** No monitoring password, no grant, no coverage. A staff
+session issued before it carries no credential purpose and the new release refuses
+such a session rather than guessing that it was administration — the migration
+revokes them up front so the refusal is not a surprise mid-shift. **Tell platform
+staff before the window: they sign in again, with MFA.** Customer (`USER`) sessions
+and reset links are untouched. Finished migrations afterwards: **72**.
+
+Verify (owner role, read-only):
+
+```sql
+SELECT count(*) FROM "PlatformUser" WHERE "monitoringPasswordHash" IS NOT NULL;      -- expect 0
+SELECT count(*) FROM "PlatformSession" s JOIN "PlatformUser" u ON u.id = s."platformUserId"
+ WHERE s."revokedAt" IS NULL AND s."expiresAt" > now() AND s.purpose <> 'AI_SERVICE'
+   AND u."platformRole" IN ('OWNER','SUPPORT','SECURITY_AUDITOR');                    -- expect 0
+SELECT count(*) FROM "PlatformMfaChallenge";                                          -- expect 0
+-- PlatformAccessGrant and PlatformCoverageGrant row counts unchanged from §2.
+```
+
+### 3.2 Provisioning the designated monitoring identity — separate authorised step
+
+**Not part of the deployment.** Do it only after the release is verified, under its
+own change ticket. No password is ever sent in chat, a ticket, email or a script.
+
+1. **Find the identity; never create a second one.** Owner role, read-only:
+   `SELECT id, "platformRole", status, "mfaEnabled", "monitoringPasswordHash" IS NOT NULL AS has_monitoring FROM "PlatformUser" WHERE "normalizedEmail" = lower('<designated email>');`
+   - No row → stop. Creating a platform identity is its own decision
+     (`scripts/bootstrap-owner.mjs` for the first owner only).
+   - `platformRole = 'USER'` (a customer account) → **stop**. Nothing promotes it
+     automatically; `bootstrap-owner.mjs` refuses without `--promote-existing`, and
+     that is an owner decision recorded in its own ticket.
+   - `mfaEnabled = false` → the person signs in with their administration password
+     and enrols first. A monitoring password cannot be set without MFA.
+2. **The person sets it themselves**: signed in with the **administration** password
+   and MFA → *Platform → Sign-in and passwords* → *Set monitoring password*. The form
+   asks again for the administration password and a current code; the new password
+   must differ from the administration password. Audit row
+   `MONITORING_CREDENTIAL_SET`, no secret in it.
+3. **Authorise workspaces separately**: a **second** owner issues READ grants through
+   `POST /api/v1/platform/monitoring/grants` (there is no grant-management screen yet;
+   an owner cannot grant themselves). The password alone opens no workspace.
+4. **Verify**: sign in with the monitoring password → lands on `/monitoring`, banner
+   reads *read-only monitoring session*; `/platform` shows *no platform access*.
+5. **Revoke without touching the administration password**: the person (*Remove
+   monitoring password*) or another owner (*Users → the person → Remove monitoring
+   password*, with that owner's code). Either ends every monitoring session at once.
 
 ---
 
@@ -440,6 +503,54 @@ the previous release booted, served sign-in and read data against the migrated
 schema in the rehearsal — **but §9.1's staff-access procedure is mandatory**.
 Compatibility of the four restructuring tables with `main` or the incident RC was
 not re-rehearsed for this candidate.
+
+#### 9.1.4 Dual-credential release — rollback targets and session safety — VERIFIED (isolated)
+
+**No earlier release is a safe rollback target by image swap alone.** Every release
+before this candidate — `05a7b90` / `9df91d8`, the restructuring release, the incident RC
+and `main` — ignores `PlatformSession.credentialPurpose`. It resolves a session by
+role, so **a live monitoring session of an OWNER becomes a full owner session** on
+the old release: console, workspace creation, grants and (for those releases)
+everything §9.1 lists. Demonstrated against `05a7b90` on isolated systems, with the
+remediation and roll-forward below — checkpoint §5. The monitoring *password*
+itself is harmless there: the old sign-in reads only `passwordHash`, so password B
+signs in nowhere.
+
+| Target | Schema | Verdict |
+| --- | --- | --- |
+| `05a7b90` / `9df91d8` (integration candidate) | compatible — #7 adds nullable/defaulted columns and a table the old code never reads | **Unsafe by image swap.** Allowed only through §9.1.1, whose step 3–4 revoke every staff session (monitoring sessions included) and suspend staff. |
+| restructuring release, incident RC, `main` | as §9.1.3 | Unsafe — §9.1 already applies; this release adds the monitoring-session case to it. |
+| No down-migration is provided or needed | — | Do not drop the new columns: roll-forward relies on them. |
+
+**If rollback is authorised (inside §9.1.1, after step 1 has stopped the web tier)**,
+additionally, in the same transaction as step 4, and paste the counts into the ticket:
+
+```sql
+UPDATE "PlatformSession" SET "revokedAt" = now(), "revokedReason" = 'ROLLBACK_MONITORING_SESSION'
+ WHERE "credentialPurpose" = 'MONITORING' AND "revokedAt" IS NULL;
+DELETE FROM "PlatformMfaChallenge" WHERE "consumedAt" IS NULL;
+-- expect afterwards:
+SELECT count(*) FROM "PlatformSession"
+ WHERE "credentialPurpose" = 'MONITORING' AND "revokedAt" IS NULL AND "expiresAt" > now();   -- 0
+```
+
+Keep the monitoring password hashes and versions: they grant nothing on the old
+release and let roll-forward restore monitoring without re-provisioning.
+
+**Roll-forward to this release** needs no data step for sessions: every session the
+old release issued carries no credential purpose and is refused (and revoked as
+`LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE`) — staff sign in again with MFA. Two
+things to check first, owner role:
+
+- A password changed or reset **by the old release** did not advance
+  `passwordVersion`. The old release revoked that identity's sessions itself, so no
+  stale session survives; nothing to do.
+- If the old release set an administration password equal to that person's
+  monitoring password, sign-in refuses both and records `LOGIN_CREDENTIAL_AMBIGUOUS`.
+  Clear the monitoring password for that identity under the ticket
+  (`monitoringPasswordHash = NULL, monitoringPasswordSetAt = NULL,
+  monitoringPasswordVersion = monitoringPasswordVersion + 1`), and the person sets a
+  new one (§3.2).
 
 ### 9.2 Database backup and recovery
 
