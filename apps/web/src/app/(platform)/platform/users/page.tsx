@@ -303,6 +303,7 @@ function serialise(detail: Awaited<ReturnType<typeof platformUserDetail>>): Plat
     createdAt: when(detail.createdAt),
     emailVerified: detail.emailVerifiedAt !== null,
     hasPassword: detail.hasPassword,
+    hasMonitoringCredential: detail.monitoringPasswordSetAt !== null,
     mustChangePassword: detail.mustChangePassword,
     passwordChangedAt: detail.passwordChangedAt ? when(detail.passwordChangedAt) : null,
     canSignIn: detail.canSignIn,

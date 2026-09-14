@@ -45,8 +45,11 @@ export default async function MonitoringLayout({ children }: { children: React.R
           {/* The signed-in identity, shown because monitoring is attributable by
               design: whoever is looking should be able to see whose name is on
               the audit rows they are generating. */}
-          <p className="lf-muted" style={{ marginBottom: 16 }}>
-            Signed in as {staff!.email} · {staff!.platformRole}
+          <p className="lf-muted" style={{ marginBottom: 16 }} data-testid="monitoring-session-mode">
+            Signed in as {staff!.email} ·{' '}
+            {staff!.credentialPurpose === 'MONITORING'
+              ? 'monitoring password · read-only monitoring session'
+              : `${staff!.platformRole} · administration password`}
           </p>
           {children}
         </main>

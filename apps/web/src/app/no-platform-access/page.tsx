@@ -27,6 +27,10 @@ export default function NoPlatformAccess() {
           The platform console is not part of your account
         </h1>
         <p style={{ color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+          If you signed in with your monitoring password, this session is read-only monitoring by design: sign in with
+          your administration password to use the console.
+        </p>
+        <p style={{ color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
           You are signed in, and this is not a session problem. Creating and administering workspaces belongs to the
           platform owner — not to an administrator inside a workspace, including this one. Ask your platform owner if
           you need a workspace provisioned.

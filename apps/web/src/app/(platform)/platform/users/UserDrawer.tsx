@@ -28,6 +28,8 @@ export interface PlatformUserView {
   createdAt: string;
   emailVerified: boolean;
   hasPassword: boolean;
+  /** Whether a monitoring password exists. Never the credential itself. */
+  hasMonitoringCredential: boolean;
   mustChangePassword: boolean;
   passwordChangedAt: string | null;
   canSignIn: { ok: boolean; reason: string };
@@ -54,6 +56,7 @@ type Action =
   | { action: 'reset-password'; password?: string; requireChange: boolean }
   | { action: 'unlock' }
   | { action: 'reset-mfa' }
+  | { action: 'revoke-monitoring-credential'; mfaCode: string }
   | { action: 'set-active'; active: boolean }
   | { action: 'set-platform-role'; platformRole: string }
   | { action: 'membership-status'; membershipId: string; status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED' }
@@ -92,6 +95,7 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [requireChange, setRequireChange] = useState(true);
+  const [ownerCode, setOwnerCode] = useState('');
   const closeRef = useRef<HTMLAnchorElement>(null);
 
   /**
@@ -204,7 +208,10 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
               </div>
               <div>
                 <dt>Authentication</dt>
-                <dd>{user.hasPassword ? 'Password' : 'No password set'}</dd>
+                <dd>
+                  {user.hasPassword ? 'Password' : 'No password set'}
+                  {user.hasMonitoringCredential ? ' · monitoring password set' : ''}
+                </dd>
               </div>
               <div>
                 <dt>MFA</dt>
@@ -396,6 +403,62 @@ export default function UserDrawer({ user, back }: { user: PlatformUserView; bac
               )}
             </div>
           </section>
+
+          {/* ── Monitoring password ─────────────────────────────────────── */}
+          {user.hasMonitoringCredential && (
+            <section>
+              <h3 className="lf-section-title">Monitoring password</h3>
+              <div className="lf-actionbox" data-danger={armed === 'revoke-monitoring-credential'}>
+                <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
+                  This account has a second password that opens read-only monitoring. Removing it ends the sessions it
+                  signed in and leaves their administration password, grants and other sessions untouched. Only the
+                  account holder can set one.
+                </span>
+                {armed === 'revoke-monitoring-credential' ? (
+                  <div className="lf-actionrow">
+                    <label className="lf-label" htmlFor="ownerCode" style={{ flexBasis: '100%' }}>
+                      Your authentication code
+                    </label>
+                    <input
+                      id="ownerCode"
+                      className="lf-input lf-num"
+                      inputMode="numeric"
+                      maxLength={6}
+                      autoComplete="one-time-code"
+                      value={ownerCode}
+                      onChange={(event) => setOwnerCode(event.target.value.replace(/D/g, '').slice(0, 6))}
+                    />
+                    <button
+                      type="button"
+                      className="lf-btn lf-btn--danger"
+                      disabled={busy !== null || ownerCode.length !== 6}
+                      onClick={() =>
+                        void send(
+                          { action: 'revoke-monitoring-credential', mfaCode: ownerCode },
+                          'Monitoring password removed.',
+                        ).then(() => setOwnerCode(''))
+                      }
+                    >
+                      {busy === 'revoke-monitoring-credential' ? 'Removing…' : 'Remove monitoring password'}
+                    </button>
+                    <button type="button" className="lf-btn lf-btn--secondary" onClick={() => setArmed(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="lf-actionrow">
+                    <button
+                      type="button"
+                      className="lf-btn lf-btn--danger"
+                      onClick={() => setArmed('revoke-monitoring-credential')}
+                    >
+                      Remove monitoring password
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* ── Account standing ────────────────────────────────────────── */}
           <section>
