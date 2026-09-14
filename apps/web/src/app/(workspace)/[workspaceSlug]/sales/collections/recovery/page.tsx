@@ -1,6 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -16,8 +17,9 @@ export const metadata = { title: 'Recovery cases' };
  */
 export default async function RecoveryCasesPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['collections', 'VIEW'] });
+  const booking = await visibilityWhere(ctx, 'collections', 'VIEW');
   const cases = await prisma.collectionRecoveryCase.findMany({
-    where: { tenantId: ctx.tenantId },
+    where: { tenantId: ctx.tenantId, booking },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     take: 200,
     include: {

@@ -24,10 +24,11 @@
  * each other; whichever arrives second sees the other's result.
  */
 import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { AppError, Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
+import type { Action, Ctx } from '@/lib/security/rbac';
+import { assertRecordVisible } from '@/lib/security/visibility';
 import { findReplay, recordOutcome } from '@/services/idempotency';
 import { nextReference } from '@/services/shared/reference';
 
@@ -128,6 +129,58 @@ export async function lockBooking(tx: TxClient, tenantId: string, bookingId: str
   return row;
 }
 
+/**
+ * Refuses a sale outside the actor's scope on a money module, as not found.
+ *
+ * `collections` and `agencyfee` are granted at the role's default scope "so a
+ * finance role scoped to a branch stays scoped to it" (migration
+ * 20260912100000), measured against the sale's owner like every other record
+ * scope. An organisation-wide grant reaches every sale; nothing here asks for
+ * the selling side's `bookings` visibility. Not found rather than forbidden,
+ * and named after what the caller asked for, so a hidden sale is not
+ * confirmed to exist.
+ */
+export async function assertBookingInScope(
+  tx: TxClient,
+  ctx: Ctx,
+  module: 'collections' | 'agencyfee',
+  action: Action,
+  bookingId: string,
+  what = 'Booking',
+) {
+  const booking = await tx.booking.findFirst({
+    where: { id: bookingId, tenantId: ctx.tenantId, deletedAt: null },
+    select: { id: true, tenantId: true, ownerId: true },
+  });
+  if (!booking) throw NotFound(what);
+  try {
+    await assertRecordVisible(ctx, module, booking, tx, action);
+  } catch (err) {
+    if (err instanceof AppError && err.status === 403) throw NotFound(what);
+    throw err;
+  }
+}
+
+/**
+ * The evidence document, if it was uploaded as evidence, scanned clean, and
+ * stored under this booking — a document uploaded for one sale cannot evidence
+ * money on another. Receipts and recoveries both cite evidence through here.
+ */
+export async function assertEvidenceFor(tx: TxClient, tenantId: string, bookingId: string, documentId: string) {
+  const doc = await tx.document.findFirst({
+    where: {
+      id: documentId,
+      tenantId,
+      deletedAt: null,
+      category: EVIDENCE_CATEGORY,
+      scanState: 'CLEAN',
+      storageKey: { startsWith: evidencePrefix(tenantId, bookingId) },
+    },
+    select: { id: true },
+  });
+  if (!doc) throw NotFound('Evidence document');
+}
+
 /** Throws the reason a booking is not eligible, for the three places that gate money on it. */
 export async function assertCovered(tx: TxClient, tenantId: string, bookingId: string, what: string) {
   const c = await coverage(tx, tenantId, bookingId);
@@ -203,6 +256,7 @@ export async function recordReceipt(input: RecordReceiptInput) {
   }
 
   return withTx(ctx.tenantId, async (tx) => {
+    await assertBookingInScope(tx, ctx, 'collections', 'CREATE', input.bookingId);
     const booking = await lockBooking(tx, ctx.tenantId, input.bookingId);
     if (booking.status !== 'CONFIRMED') {
       throw Invalid([
@@ -218,22 +272,7 @@ export async function recordReceipt(input: RecordReceiptInput) {
         },
       ]);
     }
-    if (input.evidenceDocumentId) {
-      // Uploaded as evidence, clean, and for this booking — a document uploaded
-      // for one sale cannot evidence money received on another.
-      const doc = await tx.document.findFirst({
-        where: {
-          id: input.evidenceDocumentId,
-          tenantId: ctx.tenantId,
-          deletedAt: null,
-          category: EVIDENCE_CATEGORY,
-          scanState: 'CLEAN',
-          storageKey: { startsWith: evidencePrefix(ctx.tenantId, booking.id) },
-        },
-        select: { id: true },
-      });
-      if (!doc) throw NotFound('Evidence document');
-    }
+    if (input.evidenceDocumentId) await assertEvidenceFor(tx, ctx.tenantId, booking.id, input.evidenceDocumentId);
 
     const reference = await nextReference(tx, ctx.tenantId, 'RECEIPT');
     const receipt = await tx.agencyFeeReceipt.create({
@@ -301,6 +340,7 @@ export async function reverseReceipt(input: ReverseReceiptInput) {
       where: { id: input.receiptId, tenantId: ctx.tenantId },
     });
     if (!original) throw NotFound('Receipt');
+    await assertBookingInScope(tx, ctx, 'collections', 'CREATE', original.bookingId, 'Receipt');
     await lockBooking(tx, ctx.tenantId, original.bookingId);
 
     if (original.kind !== 'RECEIPT' || original.status !== 'VERIFIED') {
@@ -394,6 +434,7 @@ export async function decideReceipt(input: DecideReceiptInput) {
       select: { id: true, bookingId: true },
     });
     if (!first) throw NotFound('Receipt');
+    await assertBookingInScope(tx, ctx, 'collections', 'APPROVE', first.bookingId, 'Receipt');
 
     // Booking first, then the receipt: the same order as a payout approval,
     // so a reversal and an approval on the same booking cannot interleave.
@@ -557,6 +598,7 @@ export async function reevaluateCoverage(tx: TxClient, ctx: Ctx, bookingId: stri
 
 export async function listReceipts(ctx: Ctx, bookingId: string) {
   return withTx(ctx.tenantId, async (tx) => {
+    await assertBookingInScope(tx, ctx, 'collections', 'VIEW', bookingId);
     const c = await coverage(tx, ctx.tenantId, bookingId);
     const receipts = await tx.agencyFeeReceipt.findMany({
       where: { tenantId: ctx.tenantId, bookingId },

@@ -51,6 +51,7 @@ export default async function CollectionsBookingPage({ params }: { params: Promi
   });
   if (!booking) notFound();
   await assertRecordVisible(ctx, 'bookings', booking, prisma, 'VIEW');
+  await assertRecordVisible(ctx, 'collections', booking, prisma, 'VIEW');
 
   const [c, receipts, amendments, cases, commissions] = await withTx(ctx.tenantId, async (tx) => [
     await coverage(tx, ctx.tenantId, booking.id),

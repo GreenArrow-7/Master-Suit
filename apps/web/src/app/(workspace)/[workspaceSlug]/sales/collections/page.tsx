@@ -39,9 +39,10 @@ const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {
 export default async function CollectionsPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['collections', 'VIEW'] });
   const scope = await visibilityWhere(ctx, 'bookings', 'VIEW');
+  const moneyScope = await visibilityWhere(ctx, 'collections', 'VIEW');
 
   const bookings = await prisma.booking.findMany({
-    where: { ...scope, deletedAt: null, status: 'CONFIRMED' },
+    where: { AND: [scope, moneyScope], deletedAt: null, status: 'CONFIRMED' },
     orderBy: { bookingDate: 'desc' },
     take: 100,
     select: {
@@ -69,7 +70,7 @@ export default async function CollectionsPage() {
     return out;
   });
   const openCasesTotal = await prisma.collectionRecoveryCase.count({
-    where: { tenantId: ctx.tenantId, status: { not: 'RESOLVED' } },
+    where: { tenantId: ctx.tenantId, booking: moneyScope, status: { not: 'RESOLVED' } },
   });
 
   return (

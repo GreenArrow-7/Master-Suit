@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { scanBuffer } from '@/lib/antivirus';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { deleteObject, putObject } from '@/lib/storage';
-import { EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
+import { assertBookingInScope, EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
 
 /** The only kinds of file a receipt is evidenced by, recognised by their first bytes rather than their name. */
 const SIGNATURES: { type: string; bytes: number[] }[] = [
@@ -50,13 +50,9 @@ export async function POST(req: Request) {
     if (file.size > maxBytes) throw tooLarge();
 
     const bookingId = String(form.get('bookingId') ?? '');
-    const booking = bookingId
-      ? await prisma.booking.findFirst({
-          where: { tenantId: ctx.tenantId, id: bookingId, deletedAt: null },
-          select: { id: true },
-        })
-      : null;
-    if (!booking) throw new AppError(404, 'not-found', 'Booking not found.');
+    if (!bookingId) throw new AppError(404, 'not-found', 'Booking not found.');
+    await withTx(ctx.tenantId, (tx) => assertBookingInScope(tx, ctx, 'collections', 'CREATE', bookingId));
+    const booking = { id: bookingId };
 
     const bytes = Buffer.from(await file.arrayBuffer());
     const kind = SIGNATURES.find((s) => s.bytes.every((b, i) => bytes[i] === b));

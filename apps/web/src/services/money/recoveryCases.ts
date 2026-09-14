@@ -21,14 +21,19 @@ import { Prisma } from '@prisma/client';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
+import type { Action, Ctx } from '@/lib/security/rbac';
+import { visibilityWhere } from '@/lib/security/visibility';
+import { assertBookingInScope, assertEvidenceFor } from './collections';
 
 const D = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v);
 
-async function lockCase(tx: TxClient, tenantId: string, id: string) {
+/** The case row `FOR UPDATE`, if the actor's collections scope reaches its sale; otherwise not found. */
+async function lockCase(tx: TxClient, ctx: Ctx, id: string, action: Action = 'CREATE') {
+  const tenantId = ctx.tenantId;
   const [row] = await tx.$queryRaw<
     {
       id: string;
+      bookingId: string;
       status: string;
       kind: string;
       proposedById: string | null;
@@ -38,19 +43,24 @@ async function lockCase(tx: TxClient, tenantId: string, id: string) {
       adjustment: Prisma.Decimal | null;
     }[]
   >`
-    SELECT "id", "status"::text AS status, "kind"::text AS kind, "proposedById", "proposedOutcome"::text AS "proposedOutcome",
+    SELECT "id", "bookingId", "status"::text AS status, "kind"::text AS kind, "proposedById", "proposedOutcome"::text AS "proposedOutcome",
            "currency", "shortfall", "adjustment"
     FROM "CollectionRecoveryCase" WHERE "id" = ${id} AND "tenantId" = ${tenantId} FOR UPDATE
   `;
   if (!row) throw NotFound('Recovery case');
+  await assertBookingInScope(tx, ctx, 'collections', action, row.bookingId, 'Recovery case');
   return row;
 }
 
 export async function listCases(ctx: Ctx, filter: { status?: string; assigneeId?: string } = {}) {
+  // Resolved before the transaction: the scope lookup must not run on the
+  // transaction's connection through the global client (see visibility.ts).
+  const booking = await visibilityWhere(ctx, 'collections', 'VIEW');
   return withTx(ctx.tenantId, (tx) =>
     tx.collectionRecoveryCase.findMany({
       where: {
         tenantId: ctx.tenantId,
+        booking,
         ...(filter.status ? { status: filter.status as never } : {}),
         ...(filter.assigneeId ? { assigneeId: filter.assigneeId } : {}),
       },
@@ -68,7 +78,7 @@ export async function listCases(ctx: Ctx, filter: { status?: string; assigneeId?
 export async function assignCase(input: { ctx: Ctx; caseId: string; assigneeId: string }) {
   const { ctx } = input;
   return withTx(ctx.tenantId, async (tx) => {
-    const row = await lockCase(tx, ctx.tenantId, input.caseId);
+    const row = await lockCase(tx, ctx, input.caseId);
     if (row.status === 'RESOLVED') throw Conflict('This case is resolved.');
     const assignee = await tx.user.findFirst({
       where: { id: input.assigneeId, tenantId: ctx.tenantId },
@@ -99,7 +109,7 @@ export async function acknowledgeCase(input: { ctx: Ctx; caseId: string; note: s
   if (input.note.trim().length < 4)
     throw Invalid([{ field: 'note', code: 'required', message: 'Say what was found.' }]);
   return withTx(ctx.tenantId, async (tx) => {
-    const row = await lockCase(tx, ctx.tenantId, input.caseId);
+    const row = await lockCase(tx, ctx, input.caseId);
     if (row.status !== 'OPEN') throw Conflict(`This case is ${row.status.toLowerCase().replace('_', ' ')}, not open.`);
     const updated = await tx.collectionRecoveryCase.update({
       where: { id: row.id, tenantId: ctx.tenantId },
@@ -157,15 +167,13 @@ export async function recordRecovery(input: RecordRecoveryInput) {
     ]);
   }
   return withTx(ctx.tenantId, async (tx) => {
-    const row = await lockCase(tx, ctx.tenantId, input.caseId);
+    const row = await lockCase(tx, ctx, input.caseId);
     if (row.status === 'RESOLVED') throw Conflict('This case is resolved.');
-    if (input.evidenceDocumentId) {
-      const doc = await tx.document.findFirst({
-        where: { id: input.evidenceDocumentId, tenantId: ctx.tenantId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!doc) throw NotFound('Evidence document');
-    }
+    // The screen offers no recovery while a write-off or adjustment waits for a
+    // second person; neither does this. Decline the proposal first.
+    if (row.status === 'RESOLUTION_PROPOSED') throw Conflict('A resolution is waiting for approval.');
+    // The same test a receipt's evidence passes, against the case's own sale.
+    if (input.evidenceDocumentId) await assertEvidenceFor(tx, ctx.tenantId, row.bookingId, input.evidenceDocumentId);
     const updated = await tx.collectionRecoveryCase.update({
       where: { id: row.id, tenantId: ctx.tenantId },
       data: {
@@ -192,6 +200,8 @@ export async function recordRecovery(input: RecordRecoveryInput) {
           outcome: 'RECOVERED',
           recoveredAmount: amount.toFixed(2),
           reference: input.resolutionReference,
+          providerTransactionRef: input.providerTransactionRef ?? null,
+          evidenceDocumentId: input.evidenceDocumentId ?? null,
         },
       },
       tx,
@@ -211,7 +221,7 @@ export async function proposeResolution(input: {
   if (input.reason.trim().length < 4)
     throw Invalid([{ field: 'reason', code: 'required', message: 'Say why the money is not being recovered.' }]);
   return withTx(ctx.tenantId, async (tx) => {
-    const row = await lockCase(tx, ctx.tenantId, input.caseId);
+    const row = await lockCase(tx, ctx, input.caseId);
     if (row.status === 'RESOLVED') throw Conflict('This case is resolved.');
     if (row.status === 'RESOLUTION_PROPOSED') throw Conflict('A resolution is already waiting for approval.');
     if (input.outcome === 'ADJUSTED' && row.kind !== 'FEE_AMENDMENT') {
@@ -252,7 +262,7 @@ export async function proposeResolution(input: {
 export async function decideResolution(input: { ctx: Ctx; caseId: string; approve: boolean; note?: string }) {
   const { ctx } = input;
   return withTx(ctx.tenantId, async (tx) => {
-    const row = await lockCase(tx, ctx.tenantId, input.caseId);
+    const row = await lockCase(tx, ctx, input.caseId, 'APPROVE');
     if (row.status !== 'RESOLUTION_PROPOSED' || !row.proposedOutcome)
       throw Conflict('Nothing is waiting for approval on this case.');
     if (row.proposedById === ctx.actor.id)

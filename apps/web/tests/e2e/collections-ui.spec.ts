@@ -43,16 +43,16 @@ let evidenceHref = '';
 let recorder = { email: '', id: '' };
 let verifier = { email: '', id: '' };
 
-async function person(label: string, grants: readonly (readonly [string, string])[]) {
+async function person(label: string, grants: readonly (readonly [string, string, string?])[]) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${run}`, name: label, rank: 40, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
+  for (const [module, action, scope = 'ORGANIZATION'] of grants) {
     const permission = await prisma.permission.findUniqueOrThrow({
       where: { module_action: { module, action: action as never } },
     });
     await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
+      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: scope as never },
     });
   }
   const email = `${label}-${run}@masterapp.local`;
@@ -562,6 +562,46 @@ test.describe('Collections through the screens', () => {
       await context.close();
     }
   });
+  test('scope on the screens: finance limited to its own sales sees none of this one; evidence is not a listed document', async ({
+    browser,
+  }) => {
+    // Every sale here belongs to the workspace administrator. This person may see
+    // every booking, but collections only over their own sales.
+    const scoped = await person('scoped-finance', [
+      ...FINANCE.filter(([m]) => m !== 'bookings').map(([m, a]) => [m, a, 'OWN'] as const),
+      ['bookings', 'VIEW'],
+    ]);
+    const reader = await person('document-reader', [['documents', 'VIEW']]);
+    const s = await signedIn(browser, scoped);
+    const d = await signedIn(browser, reader);
+    try {
+      await s.page.goto(at('/sales/collections'));
+      await expect(s.page.getByRole('heading', { name: 'Collections' })).toBeVisible({ timeout: 30_000 });
+      await expect(s.page.getByText(bookingRef)).toHaveCount(0);
+
+      await s.page.goto(at(`/sales/collections/${bookingId}`));
+      await s.page.waitForLoadState('networkidle');
+      await expect(s.page.getByTestId('coverage')).toHaveCount(0);
+      await expect(s.page.getByTestId('receipts-table')).toHaveCount(0);
+
+      await s.page.goto(at('/sales/collections/recovery'));
+      await expect(s.page.getByRole('heading', { name: 'Recovery and adjustment cases' })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(s.page.getByTestId(/^case-/)).toHaveCount(0);
+
+      expect((await s.page.request.get(evidenceHref)).status()).toBe(404);
+      expect((await s.page.request.get(`/api/v1/collections/receipts?bookingId=${bookingId}`)).status()).toBe(404);
+
+      await d.page.goto(at('/sales/documents'));
+      await expect(d.page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 });
+      await expect(d.page.getByText(`bank-advice-${run}.pdf`)).toHaveCount(0);
+    } finally {
+      await s.close();
+      await d.close();
+    }
+  });
+
   test('P&L: payroll with no team history for its period shows as Unknown historical team, on the screen and in the API', async ({
     browser,
   }) => {

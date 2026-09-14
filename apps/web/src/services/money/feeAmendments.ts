@@ -29,7 +29,7 @@ import { withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { nextReference } from '@/services/shared/reference';
-import { coverage, lockBooking, reevaluateCoverage, ZERO, type Coverage } from './collections';
+import { assertBookingInScope, coverage, lockBooking, reevaluateCoverage, ZERO, type Coverage } from './collections';
 
 const D = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v);
 const money = (v: Prisma.Decimal) => v.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -236,6 +236,7 @@ export async function proposeAmendment(input: ProposeInput) {
   }
 
   return withTx(ctx.tenantId, async (tx) => {
+    await assertBookingInScope(tx, ctx, 'agencyfee', 'CREATE', input.bookingId);
     const booking = await lockBooking(tx, ctx.tenantId, input.bookingId);
     if (booking.agencyFee && booking.agencyFee.equals(proposedFee)) {
       throw Conflict('That is already the agreed fee.');
@@ -323,6 +324,7 @@ export async function decideAmendment(input: DecideInput) {
       select: { id: true, bookingId: true },
     });
     if (!first) throw NotFound('Amendment');
+    await assertBookingInScope(tx, ctx, 'agencyfee', 'APPROVE', first.bookingId, 'Amendment');
 
     // Booking first — the same lock a payout approval, a payment and a receipt
     // decision take — then the amendment row.
@@ -552,7 +554,11 @@ export async function decideAmendment(input: DecideInput) {
 }
 
 export async function listAmendments(ctx: Ctx, bookingId: string) {
-  return withTx(ctx.tenantId, (tx) =>
-    tx.agencyFeeAmendment.findMany({ where: { tenantId: ctx.tenantId, bookingId }, orderBy: { createdAt: 'desc' } }),
-  );
+  return withTx(ctx.tenantId, async (tx) => {
+    await assertBookingInScope(tx, ctx, 'agencyfee', 'VIEW', bookingId);
+    return tx.agencyFeeAmendment.findMany({
+      where: { tenantId: ctx.tenantId, bookingId },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
 }

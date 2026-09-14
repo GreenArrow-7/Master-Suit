@@ -7,6 +7,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import { columnsFor } from '@/lib/grid/resolve';
+import { EVIDENCE_CATEGORY } from '@/services/money/collections';
 
 export const metadata = { title: 'Documents' };
 
@@ -33,7 +34,9 @@ export default async function DocumentsPage() {
   const scope = await visibilityWhere(ctx, 'documents', 'VIEW');
 
   const rows = await prisma.document.findMany({
-    where: scope,
+    // Receipt evidence is read under `collections`, not `documents`. Spelled as an
+    // OR because `category: { not }` would also drop documents with no category.
+    where: { AND: [scope, { OR: [{ category: null }, { category: { not: EVIDENCE_CATEGORY } }] }] },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {

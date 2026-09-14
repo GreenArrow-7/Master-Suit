@@ -742,3 +742,148 @@ describe('receipt evidence documents', () => {
     expect((await post(recordRoute, '/api/v1/collections/receipts', body, recorder.cookie)).status).toBe(404);
   });
 });
+
+// ── Record scope ─────────────────────────────────────────────────────────────
+// collections is its own module, granted at the role's default scope "so a
+// finance role scoped to a branch stays scoped to it" (migration
+// 20260912100000). The designated finance role holds it organisation-wide and
+// holds no bookings grant at all, so it is the collections scope — not the
+// selling agent's bookings visibility — that decides which sales' money a
+// person may see or touch. A booking outside that scope is not found.
+describe('record scope: collections permissions reach only the sales their scope covers', () => {
+  const PDF = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n');
+  let scoped = { id: '', cookie: '' };
+  let financeOnly = { id: '', cookie: '' };
+
+  const upload = async (cookie: string, bookingId: string) => {
+    const form = new FormData();
+    form.set('bookingId', bookingId);
+    form.set('file', new File([new Uint8Array(PDF)], 'receipt.pdf'));
+    const res = await uploadEvidence(
+      new Request('http://localhost/api/v1/collections/receipts/evidence', {
+        method: 'POST',
+        headers: { cookie },
+        body: form,
+      }),
+    );
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+
+  beforeAll(async () => {
+    const role = await prisma.role.create({
+      data: { tenantId, key: `scoped-finance-${suffix}`, name: 'scoped finance', rank: 50, defaultScope: 'OWN' },
+    });
+    await grantPermissions(tenantId, role.id, FINANCE, 'OWN');
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `scoped-finance-${suffix}@collections.test`,
+      fullName: 'scoped finance',
+    });
+    scoped = { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+    // The seeded finance role's shape: collections organisation-wide, no bookings grant.
+    financeOnly = await person(tenantId, 'finance-only', [
+      ['collections', 'VIEW'],
+      ['collections', 'CREATE'],
+      ['collections', 'APPROVE'],
+    ]);
+  });
+
+  it("a finance user scoped to their own sales cannot see or act on anyone else's, and nothing is written", async () => {
+    const b = await sale(); // the seller's
+    const up = await upload(recorder.cookie, b.id);
+    expect(up.status, JSON.stringify(up.body)).toBe(200);
+    const verified = await verifiedReceipt(b.id, '1000.00');
+    const { receipt: pending } = await recordReceipt({
+      ctx: recorderCtx,
+      bookingId: b.id,
+      amount: '10.00',
+      currency: 'AED',
+      paidAt: new Date(),
+      paymentReference: `ref-${randomBytes(3).toString('hex')}`,
+      providerTransactionRef: `txn_${randomBytes(6).toString('hex')}`,
+    });
+    const before = await prisma.agencyFeeReceipt.count({ where: { tenantId, bookingId: b.id } });
+
+    const statuses = {
+      list: (await get(listRoute, `/api/v1/collections/receipts?bookingId=${b.id}`, scoped.cookie)).status,
+      download: (
+        await get(downloadEvidence, `/api/v1/collections/receipts/evidence/${up.body.id}`, scoped.cookie, {
+          id: up.body.id,
+        })
+      ).status,
+      upload: (await upload(scoped.cookie, b.id)).status,
+      record: (await post(recordRoute, '/api/v1/collections/receipts', receiptBody(b.id, '10.00'), scoped.cookie))
+        .status,
+      reverse: (
+        await post(
+          reverseRoute,
+          '/api/v1/collections/receipts/reverse',
+          { receiptId: verified, amount: '5.00', reason: 'Chargeback test' },
+          scoped.cookie,
+        )
+      ).status,
+      verify: (
+        await patch(
+          decideRoute,
+          '/api/v1/collections/receipts/decide',
+          { receiptId: pending.id, to: 'VERIFIED' },
+          scoped.cookie,
+        )
+      ).status,
+    };
+    expect(statuses).toEqual({ list: 404, download: 404, upload: 404, record: 404, reverse: 404, verify: 404 });
+
+    expect(await prisma.agencyFeeReceipt.count({ where: { tenantId, bookingId: b.id } })).toBe(before);
+    expect((await prisma.agencyFeeReceipt.findFirstOrThrow({ where: { id: pending.id, tenantId } })).status).toBe(
+      'PENDING',
+    );
+    expect(
+      await prisma.document.count({ where: { tenantId, category: 'agency-fee-evidence', createdById: scoped.id } }),
+    ).toBe(0);
+  });
+
+  it('the refusal says nothing about the sale behind it', async () => {
+    const b = await sale();
+    const hidden = await get(listRoute, `/api/v1/collections/receipts?bookingId=${b.id}`, scoped.cookie);
+    const absent = await get(
+      listRoute,
+      `/api/v1/collections/receipts?bookingId=c${randomBytes(12).toString('hex')}`,
+      scoped.cookie,
+    );
+    expect(hidden.status).toBe(absent.status);
+    expect(hidden.body.title).toBe(absent.body.title);
+    expect(JSON.stringify(hidden.body)).not.toContain(b.reference);
+  });
+
+  it('the same user still records against and reads their own sale', async () => {
+    const own = await sale(100_000, 2_000_000, scoped.id);
+    const rec = await post(recordRoute, '/api/v1/collections/receipts', receiptBody(own.id, '10.00'), scoped.cookie);
+    expect(rec.status, JSON.stringify(rec.body)).toBe(200);
+    const list = await get(listRoute, `/api/v1/collections/receipts?bookingId=${own.id}`, scoped.cookie);
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    expect(list.body.receipts).toHaveLength(1);
+  });
+
+  it('organisation-wide finance reaches every sale, without needing a bookings grant', async () => {
+    const b = await sale();
+    const up = await upload(financeOnly.cookie, b.id);
+    expect(up.status, JSON.stringify(up.body)).toBe(200);
+    const list = await get(listRoute, `/api/v1/collections/receipts?bookingId=${b.id}`, financeOnly.cookie);
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    expect(
+      (
+        await get(downloadEvidence, `/api/v1/collections/receipts/evidence/${up.body.id}`, financeOnly.cookie, {
+          id: up.body.id,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('another workspace sees nothing, whatever its grant', async () => {
+    const b = await sale();
+    expect((await get(listRoute, `/api/v1/collections/receipts?bookingId=${b.id}`, foreignFinance.cookie)).status).toBe(
+      404,
+    );
+  });
+});

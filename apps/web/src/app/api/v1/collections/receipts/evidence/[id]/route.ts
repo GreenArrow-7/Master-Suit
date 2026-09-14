@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { getObject } from '@/lib/storage';
-import { EVIDENCE_CATEGORY } from '@/services/money/collections';
+import { assertBookingInScope, EVIDENCE_CATEGORY } from '@/services/money/collections';
 
-/** Download receipt evidence. `collections:VIEW`, this workspace only, clean files only; every read is audited. */
+/**
+ * Download receipt evidence. `collections:VIEW` over the sale it was uploaded
+ * for, this workspace only, clean files only; every read is audited.
+ */
 export const GET = route(
   {
     module: 'collections',
@@ -24,7 +27,10 @@ export const GET = route(
         deletedAt: null,
       },
     });
-    if (!document?.storageKey) throw NotFound('Document');
+    // Evidence is stored under its booking (evidencePrefix); that is the sale whose scope governs it.
+    const bookingId = document?.storageKey.match(/^documents\/t-[^/]+\/booking-([^/]+)\//)?.[1];
+    if (!document || !bookingId) throw NotFound('Document');
+    await withTx(ctx.tenantId, (tx) => assertBookingInScope(tx, ctx, 'collections', 'VIEW', bookingId, 'Document'));
     const body = await getObject(document.storageKey);
     return new Response(new Uint8Array(body), {
       headers: {

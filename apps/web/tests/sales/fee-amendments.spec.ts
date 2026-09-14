@@ -8,10 +8,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, type PermissionAction } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { POST as createBooking } from '@/app/api/v1/bookings/route';
-import { POST as proposeRoute } from '@/app/api/v1/collections/fee-amendments/route';
+import { GET as listAmendmentsRoute, POST as proposeRoute } from '@/app/api/v1/collections/fee-amendments/route';
 import { PATCH as decideRoute } from '@/app/api/v1/collections/fee-amendments/decide/route';
 import { GET as previewRoute } from '@/app/api/v1/collections/fee-amendments/preview/route';
-import { PATCH as recoveryRoute } from '@/app/api/v1/collections/recovery/route';
+import { GET as listCasesRoute, PATCH as recoveryRoute } from '@/app/api/v1/collections/recovery/route';
 import { PATCH as recoveryApproveRoute } from '@/app/api/v1/collections/recovery/approve/route';
 import { accrueCommission, transitionCommission } from '@/services/money/commissions';
 import { buildPayout, decidePayout } from '@/services/money/payouts';
@@ -619,5 +619,237 @@ describe('recovery cases: a workflow, not a note', () => {
     expect(declined.status).toBe(200);
     expect(declined.body.status).toBe('ACKNOWLEDGED');
     expect(declined.body.outcome).toBeNull();
+  });
+});
+
+// ── Record scope and recovery evidence ───────────────────────────────────────
+describe('record scope and recovery evidence', () => {
+  let scoped = { id: '', cookie: '' };
+
+  async function paidCase() {
+    const agent = `agent-${randomBytes(3).toString('hex')}`;
+    const b = await sale(100_000, agent);
+    const receiptId = await cover(b.id, '100000.00');
+    await collected(b.id);
+    const { payout } = await buildPayout({ ctx: clerk, userId: agent, ...PERIOD });
+    await decidePayout({ ctx: approver, payoutId: payout.id, to: 'APPROVED' });
+    await decidePayout({ ctx: approver, payoutId: payout.id, to: 'PAID', paymentRef: 'TRF-x' });
+    const { receipt } = await reverseReceipt({ ctx: financeACtx, receiptId, amount: '25000.00', reason: 'Chargeback' });
+    const decided = await decideReceipt({ ctx: financeBCtx, receiptId: receipt.id, to: 'VERIFIED' });
+    return { caseId: decided.recoveryCases[0] as string, bookingId: b.id };
+  }
+
+  const doc = (
+    bookingId: string,
+    over: { tenantId?: string; category?: string | null; scanState?: string; key?: string } = {},
+  ) => {
+    const t = over.tenantId ?? tenantId;
+    return prisma.document.create({
+      data: {
+        tenantId: t,
+        name: 'evidence.pdf',
+        category: over.category === undefined ? 'agency-fee-evidence' : over.category,
+        storageKey: over.key ?? `documents/t-${t}/booking-${bookingId}/${randomBytes(4).toString('hex')}-evidence.pdf`,
+        storageBucket: 'test',
+        mimeType: 'application/pdf',
+        sizeBytes: 10,
+        scanState: over.scanState ?? 'CLEAN',
+      },
+      select: { id: true },
+    });
+  };
+
+  const recover = (caseId: string, evidence: Record<string, string>, cookie = financeB.cookie) =>
+    patch(
+      recoveryRoute,
+      '/api/v1/collections/recovery',
+      { action: 'RECOVER', caseId, recoveredAmount: '25000.00', resolutionReference: 'RCV-S', ...evidence },
+      cookie,
+    );
+
+  beforeAll(async () => {
+    const role = await prisma.role.create({
+      data: { tenantId, key: `scoped-${suffix}`, name: 'scoped', rank: 40, defaultScope: 'OWN' },
+    });
+    await grantPermissions(tenantId, role.id, [...FINANCE, ['agencyfee', 'CREATE']], 'OWN');
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `scoped-${suffix}@fee.test`,
+      fullName: 'scoped',
+    });
+    scoped = { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
+  });
+
+  it("recovery evidence must be clean agency-fee evidence uploaded for the case's own sale", async () => {
+    const other = await sale(100_000);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { id: leadId, tenantId } });
+    const outcomes: Record<string, unknown> = {};
+    const expected: Record<string, unknown> = {};
+    const cases: [string, (bookingId: string) => Promise<{ id: string }>][] = [
+      ['another workspace', (bk) => doc(bk, { tenantId: fixture.b.tenantId })],
+      [
+        'a lead attachment',
+        () =>
+          doc('', {
+            category: null,
+            key: `documents/t-${tenantId}/lead-${lead.id}/${randomBytes(4).toString('hex')}.pdf`,
+          }),
+      ],
+      ['evidence for another sale', () => doc(other.id)],
+      ['scan pending', (bk) => doc(bk, { scanState: 'PENDING' })],
+      ['scan infected', (bk) => doc(bk, { scanState: 'INFECTED' })],
+      ['scan failed', (bk) => doc(bk, { scanState: 'ERROR' })],
+    ];
+    for (const [label, make] of cases) {
+      const { caseId, bookingId } = await paidCase();
+      const d = await make(bookingId);
+      const res = await recover(caseId, { evidenceDocumentId: d.id });
+      const kase = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: caseId, tenantId } });
+      outcomes[label] = {
+        status: res.status,
+        mentionsDocument: JSON.stringify(res.body).includes(d.id),
+        caseStatus: kase.status,
+        evidence: kase.evidenceDocumentId,
+      };
+      expected[label] = { status: 404, mentionsDocument: false, caseStatus: 'OPEN', evidence: null };
+    }
+    expect(outcomes).toEqual(expected);
+  });
+
+  it("clean evidence for the case's own sale, or a transaction id alone, still recovers", async () => {
+    const withDoc = await paidCase();
+    const d = await doc(withDoc.bookingId);
+    const a = await recover(withDoc.caseId, { evidenceDocumentId: d.id });
+    expect(a.status, JSON.stringify(a.body)).toBe(200);
+    expect(a.body.evidenceDocumentId).toBe(d.id);
+
+    const withRef = await paidCase();
+    const b = await recover(withRef.caseId, { providerTransactionRef: `txn_${randomBytes(6).toString('hex')}` });
+    expect(b.status, JSON.stringify(b.body)).toBe(200);
+    expect(b.body.outcome).toBe('RECOVERED');
+  });
+
+  it('a write-off waiting for a second person cannot be overtaken by a recovery; a recovery audits its evidence', async () => {
+    const { caseId, bookingId } = await paidCase();
+    const proposed = await patch(
+      recoveryRoute,
+      '/api/v1/collections/recovery',
+      { action: 'PROPOSE', caseId, outcome: 'WRITTEN_OFF', reason: 'Uneconomic' },
+      financeA.cookie,
+    );
+    expect(proposed.status, JSON.stringify(proposed.body)).toBe(200);
+    const overtaken = await recover(caseId, { providerTransactionRef: 'txn_overtake_1' }, financeA.cookie);
+    const waiting = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: caseId, tenantId } });
+    expect({ status: overtaken.status, caseStatus: waiting.status }).toEqual({
+      status: 409,
+      caseStatus: 'RESOLUTION_PROPOSED',
+    });
+
+    // Declined by the second person, the case can be recovered, and the audit names the evidence.
+    const declined = await patch(
+      recoveryApproveRoute,
+      '/api/v1/collections/recovery/approve',
+      { caseId, approve: false, note: 'Money came back' },
+      financeB.cookie,
+    );
+    expect(declined.status, JSON.stringify(declined.body)).toBe(200);
+    const d = await doc(bookingId);
+    const txn = `txn_${randomBytes(6).toString('hex')}`;
+    expect(
+      (await recover(caseId, { evidenceDocumentId: d.id, providerTransactionRef: txn }, financeA.cookie)).status,
+    ).toBe(200);
+    const entry = await prisma.auditLog.findFirstOrThrow({
+      where: { tenantId, recordId: caseId, objectType: 'collection_recovery' },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(entry.newValue).toMatchObject({
+      outcome: 'RECOVERED',
+      evidenceDocumentId: d.id,
+      providerTransactionRef: txn,
+    });
+  });
+
+  it('a scoped finance user cannot list, work or approve a case, or amend a fee, on a sale outside their scope', async () => {
+    const { caseId, bookingId } = await paidCase();
+    const proposed = await patch(
+      recoveryRoute,
+      '/api/v1/collections/recovery',
+      { action: 'PROPOSE', caseId, outcome: 'WRITTEN_OFF', reason: 'Uneconomic' },
+      financeA.cookie,
+    );
+    expect(proposed.status, JSON.stringify(proposed.body)).toBe(200);
+    const amendment = await post(
+      proposeRoute,
+      '/api/v1/collections/fee-amendments',
+      { bookingId, proposedFee: '90000.00', reason: 'Renegotiated', agreementReference: 'ADD-S' },
+      director.cookie,
+    );
+    expect(amendment.status, JSON.stringify(amendment.body)).toBe(200);
+
+    const listed = await get(listCasesRoute, '/api/v1/collections/recovery', scoped.cookie);
+    const statuses = {
+      caseListed: listed.body.data.some((k: { id: string }) => k.id === caseId),
+      acknowledge: (
+        await patch(
+          recoveryRoute,
+          '/api/v1/collections/recovery',
+          { action: 'ACKNOWLEDGE', caseId, note: 'Looked at it' },
+          scoped.cookie,
+        )
+      ).status,
+      recover: (await recover(caseId, { providerTransactionRef: 'txn_scoped_1' }, scoped.cookie)).status,
+      approve: (
+        await patch(
+          recoveryApproveRoute,
+          '/api/v1/collections/recovery/approve',
+          { caseId, approve: true },
+          scoped.cookie,
+        )
+      ).status,
+      amendments: (
+        await get(listAmendmentsRoute, `/api/v1/collections/fee-amendments?bookingId=${bookingId}`, scoped.cookie)
+      ).status,
+      preview: (
+        await get(
+          previewRoute,
+          `/api/v1/collections/fee-amendments/preview?bookingId=${bookingId}&proposedFee=80000.00`,
+          scoped.cookie,
+        )
+      ).status,
+      propose: (
+        await post(
+          proposeRoute,
+          '/api/v1/collections/fee-amendments',
+          { bookingId, proposedFee: '80000.00', reason: 'Scoped try', agreementReference: 'ADD-X' },
+          scoped.cookie,
+        )
+      ).status,
+      decide: (
+        await patch(
+          decideRoute,
+          '/api/v1/collections/fee-amendments/decide',
+          { amendmentId: amendment.body.amendment.id, to: 'APPROVED' },
+          scoped.cookie,
+        )
+      ).status,
+    };
+    expect(statuses).toEqual({
+      caseListed: false,
+      acknowledge: 404,
+      recover: 404,
+      approve: 404,
+      amendments: 404,
+      preview: 404,
+      propose: 404,
+      decide: 404,
+    });
+
+    const kase = await prisma.collectionRecoveryCase.findFirstOrThrow({ where: { id: caseId, tenantId } });
+    expect(kase.status).toBe('RESOLUTION_PROPOSED');
+    const row = await prisma.agencyFeeAmendment.findFirstOrThrow({
+      where: { id: amendment.body.amendment.id, tenantId },
+    });
+    expect(row.status).toBe('PENDING');
   });
 });
