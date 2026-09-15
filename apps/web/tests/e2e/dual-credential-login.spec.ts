@@ -40,13 +40,26 @@ test.describe('Dual-credential sign-in', () => {
   const code = () => totp(secret, currentTotpStep());
   /**
    * The next code this identity has not spent. Every accepted code spends its
-   * step, so a sign-in followed by a re-authentication waits for the
-   * authenticator's next code — as a person would. This is the evidence that the
-   * flows stay usable with replay prevention on.
+   * step, so a re-authentication right after a sign-in waits for the
+   * authenticator's next code — as a person would. The two credential-change
+   * tests use it: the evidence that those flows stay usable with replay
+   * prevention on.
    */
   let spentStep = -1;
   const nextCode = async () => {
     while (currentTotpStep() <= spentStep) await new Promise((resolve) => setTimeout(resolve, 250));
+    spentStep = currentTotpStep();
+    return code();
+  };
+  /**
+   * A code for a fresh sign-in. Each test starts a new sign-in, often within the
+   * same 30 seconds as the previous test's; waiting out the step every time cost
+   * the suite minutes. Clearing this synthetic identity's last-used step is test
+   * setup, like the fixtures above — replay refusal itself is proven in
+   * tests/security/mfa-replay.spec.ts.
+   */
+  const signInCode = async () => {
+    await prisma.platformUser.update({ where: { normalizedEmail: email }, data: { mfaLastUsedStep: null } });
     spentStep = currentTotpStep();
     return code();
   };
@@ -61,7 +74,7 @@ test.describe('Dual-credential sign-in', () => {
     await expect(field).toBeVisible({ timeout: 60_000 });
     // The password is not kept on the page once the server has issued a challenge.
     await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
-    await field.fill(await nextCode());
+    await field.fill(await signInCode());
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
   }
 
