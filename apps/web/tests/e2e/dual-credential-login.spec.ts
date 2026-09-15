@@ -110,30 +110,28 @@ test.describe('Dual-credential sign-in', () => {
     });
     userId = user.id;
     const expiresAt = new Date(Date.now() + 60 * 60_000);
-    await prisma.platformAccessGrant.createMany({
-      data: [
-        // Monitoring access, as a second owner would issue it: READ, not sensitive.
-        { platformUserId: userId, tenantId, kind: 'READ', reason: 'Browser regression: monitoring grant', expiresAt },
-        // A live break-glass on the same workspace, with sensitive scope.
-        {
-          platformUserId: userId,
-          tenantId,
-          kind: 'WRITE',
-          sensitive: true,
-          reason: 'Browser regression: live break-glass on the monitored workspace',
-          expiresAt,
-        },
-        // And a workspace held only by break-glass.
-        {
-          platformUserId: userId,
-          tenantId: writeOnlyTenantId,
-          kind: 'WRITE',
-          sensitive: true,
-          reason: 'Browser regression: break-glass only',
-          expiresAt,
-        },
-      ],
-    });
+    // One insert per grant: the tenant guard pins row-level security to one
+    // workspace per statement, so a multi-workspace createMany is refused.
+    for (const grant of [
+      // Monitoring access, as a second owner would issue it: READ, not sensitive.
+      { tenantId, kind: 'READ' as const, sensitive: false, reason: 'Browser regression: monitoring grant' },
+      // A live break-glass on the same workspace, with sensitive scope.
+      {
+        tenantId,
+        kind: 'WRITE' as const,
+        sensitive: true,
+        reason: 'Browser regression: live break-glass on the monitored workspace',
+      },
+      // And a workspace held only by break-glass.
+      {
+        tenantId: writeOnlyTenantId,
+        kind: 'WRITE' as const,
+        sensitive: true,
+        reason: 'Browser regression: break-glass only',
+      },
+    ]) {
+      await prisma.platformAccessGrant.create({ data: { platformUserId: userId, expiresAt, ...grant } });
+    }
     planCode = (await prisma.subscriptionPlan.findFirstOrThrow({ where: { active: true }, select: { code: true } }))
       .code;
   });
