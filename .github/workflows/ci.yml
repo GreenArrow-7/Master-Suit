@@ -126,8 +126,23 @@ jobs:
       # application never connects as would prove nothing, so it throws rather
       # than skipping. Derived from .env rather than repeated, so the two cannot
       # drift apart.
-      - name: Export RLS connection
-        run: echo "RLS_DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      #
+      # The server integration and browser suites refuse to run unless their
+      # target is named explicitly (tests/helpers/isolation.ts,
+      # docs/TEST-ISOLATION.md): fixtures connect as the owner role to the same
+      # database the application reads, and use the application's Redis
+      # database. Both come from `.env` for the same reason. This runner's
+      # database is called `leadflow`, which the guard does not recognise as
+      # disposable; it is created and destroyed with the job, and the override
+      # says so where a reviewer can see it.
+      - name: Export test connections
+        run: |
+          {
+            echo "RLS_DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)"
+            echo "E2E_DATABASE_URL=$(grep '^MIGRATION_DATABASE_URL=' .env | cut -d= -f2-)"
+            echo "E2E_REDIS_URL=$(grep '^REDIS_URL=' .env | cut -d= -f2-)"
+            echo "E2E_ALLOW_UNMARKED_DATABASE=yes"
+          } >> "$GITHUB_ENV"
 
       - name: Apply migrations
         run: npx prisma migrate deploy
