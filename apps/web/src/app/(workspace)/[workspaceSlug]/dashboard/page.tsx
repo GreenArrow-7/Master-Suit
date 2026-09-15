@@ -643,12 +643,17 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
                     </td>
                     <td
                       data-label="Due"
+                      data-overdue={overdue || undefined}
                       style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}
                     >
                       {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
                       {overdue ? ' · overdue' : ''}
                     </td>
-                    <td data-label="Priority">{row.priority.toLowerCase()}</td>
+                    <td data-label="Priority">
+                      <span className="lf-dash-priority" data-priority={row.priority}>
+                        {row.priority.toLowerCase()}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}

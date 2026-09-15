@@ -135,3 +135,55 @@ test.describe('Mobile viewport', () => {
     }
   });
 });
+
+/**
+ * The sign-in screens on a phone: one column, the form using the width.
+ * A later desktop rule once kept two columns at every width, so a phone showed
+ * the form squeezed into the left 40% and an empty right side.
+ */
+test.describe('Sign-in screens on a phone', () => {
+  for (const width of [360, 390, 430, 768]) {
+    test(`one column at ${width}px, with the form across the screen`, async ({ browser }) => {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        isMobile: width < 761,
+        hasTouch: width < 761,
+      });
+      const page = await context.newPage();
+      try {
+        for (const path of ['/login', '/forgot-password']) {
+          await page.goto(path);
+          const card = page.locator('.lf-auth-card');
+          await expect(card).toBeVisible();
+          await expect(page.locator('.lf-auth-story')).toBeHidden();
+          const box = (await card.boundingBox())!;
+          expect(box.width, `${path} at ${width}px: form width`).toBeGreaterThanOrEqual(Math.min(400, width - 48) - 1);
+          expect(
+            Math.abs(box.x + box.width / 2 - width / 2),
+            `${path} at ${width}px: form centred`,
+          ).toBeLessThanOrEqual(2);
+          expect(
+            await page.evaluate(() => document.documentElement.scrollWidth),
+            `${path}: page width`,
+          ).toBeLessThanOrEqual(width);
+        }
+        await page.goto('/login');
+        const [label, forgot] = await Promise.all([
+          page.locator('label[for="password"]').boundingBox(),
+          page.getByRole('link', { name: 'Forgot password?' }).boundingBox(),
+        ]);
+        expect(Math.abs(label!.y - forgot!.y), 'Password label and Forgot link share a line').toBeLessThanOrEqual(6);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
+  test('a desktop keeps the brand story beside the form', async ({ browser }) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto('/login');
+    await expect(page.locator('.lf-auth-story')).toBeVisible();
+    expect((await page.locator('.lf-auth-pane').boundingBox())!.width).toBeGreaterThan(640);
+    await page.close();
+  });
+});

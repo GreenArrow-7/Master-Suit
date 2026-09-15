@@ -91,7 +91,9 @@ export default async function CollectionsPage() {
         }
       />
       {rows.length === 0 ? (
-        <EmptyState title="No confirmed sales yet" />
+        <section className="lf-card">
+          <EmptyState title="No confirmed sales yet" />
+        </section>
       ) : (
         <div className="lf-table-wrap">
           <table className="lf-table" data-testid="collections-table">
