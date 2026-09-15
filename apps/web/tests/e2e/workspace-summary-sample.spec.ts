@@ -263,7 +263,7 @@ test.describe('Workspace Summary sample', () => {
         expect(errors.length).toBeLessThanOrEqual(earlierErrors.length);
       }
       if (!before) {
-        await expect(page.locator('[data-lf-sample="summary-glass"]')).toHaveCount(1);
+        await expect(page.locator('.lf-app-frame[data-lf-surface="workspace"]')).toHaveCount(1);
         expect(errors).toEqual([]);
       }
     } finally {
@@ -314,14 +314,13 @@ test.describe('Workspace Summary sample', () => {
         .getByRole('link', { name: 'Leads', exact: true })
         .click();
       await expect(page).toHaveURL(new RegExp(`${at('/sales/leads')}$`));
-      // Off the Summary, the sample is not in force.
-      await expect(page.locator('[data-lf-sample="summary-glass"]')).toHaveCount(0);
+      // Off the Summary, the same look stays in force: it belongs to the workspace, not the page.
       const radius = () =>
         page
           .locator('.lf-area-tabs')
           .first()
           .evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
-      expect(await radius()).toBe('0px');
+      expect(await radius()).toBe('12px');
     } finally {
       await close();
     }

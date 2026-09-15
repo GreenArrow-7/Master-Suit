@@ -1,14 +1,11 @@
 /*
- * Workspace Summary — visual sample (restrained glass).
+ * Workspace surface — the approved Workspace Summary look, for every workspace screen.
  *
- * Opt-in and page-scoped. Every rule begins with the same selector: the default
- * light theme, and an app frame that currently contains the page's
- * `data-lf-sample="summary-glass"` marker. Nothing here reaches another page; a
- * page reached by client-side navigation stops matching the moment the marker
- * leaves the DOM; and the Dark and Glassy appearance settings are untouched.
- * Where `:has()` is unsupported, nothing matches and the default styling stays.
- *
- * To revert: delete this file, its import and the marker in dashboard/page.tsx.
+ * Imported by the workspace layout. Every rule begins with the same selector: the
+ * default light theme, and the workspace app frame (`data-lf-surface="workspace"`
+ * in [workspaceSlug]/layout.tsx). The platform console shares `.lf-app-frame`
+ * without the marker, so it is untouched; so are the public and sign-in pages,
+ * and the Dark and Glassy appearance settings.
  *
  * Glass is spent in two places only — the sticky top bar and the tab strip —
  * both small, both with a solid fallback. Content surfaces stay opaque; the
@@ -16,7 +13,7 @@
  */
 
 /* ── Canvas: soft blue-grey, one restrained wash ──────────────────────────── */
-html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-lf-sample='summary-glass']) {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] {
   background-color: #eef2f7;
   background-image:
     radial-gradient(1100px 480px at 100% -12%, rgb(8 123 245 / 0.07), transparent 62%),
@@ -25,63 +22,55 @@ html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-
 
 /* ── Sidebar: midnight, lifted; clearer ink and a firmer active state ──────── */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-workspace-sidebar {
   background-color: #030b1d;
   background-image: linear-gradient(180deg, #071630 0%, #030b1d 42%, #020817 100%);
   border-right: 1px solid rgb(148 178 222 / 0.12);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-nav-label {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-nav-label {
   color: rgb(214 226 242 / 0.66);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-nav-link {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-nav-link {
   min-height: 36px;
   margin: 1px 10px;
   padding: 7px 12px;
   border-radius: 9px;
   color: rgb(236 242 250 / 0.86);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-nav-link:hover {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-nav-link:hover {
   color: #ffffff;
   background: rgb(255 255 255 / 0.07);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-nav-link
   .lf-nav-icon {
   opacity: 0.82;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-nav-link[aria-current='page'] {
   color: #ffffff;
   background-color: rgb(59 130 246 / 0.2);
   box-shadow: inset 0 0 0 1px rgb(147 197 253 / 0.22);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-nav-link[aria-current='page']
   .lf-nav-icon {
   opacity: 1;
   color: #9fd4ff;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-nav-link[aria-current='page']::before {
   inset: 8px auto 8px -10px;
   background: var(--yh-cyan);
 }
 
 /* ── Top bar: lightly frosted, solid where blur is unavailable ────────────── */
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-shell-topbar {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
   height: 60px;
   background-color: rgb(248 250 253 / 0.74);
   -webkit-backdrop-filter: saturate(150%) blur(12px);
@@ -89,9 +78,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   border-bottom: 1px solid rgb(15 35 70 / 0.08);
   box-shadow: 0 8px 24px -18px rgb(15 35 70 / 0.35);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-cmdk-trigger {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-cmdk-trigger {
   height: 36px;
   border-radius: 10px;
   background: #ffffff;
@@ -101,21 +88,15 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 }
 
 /* ── Page: less top whitespace, tighter rhythm ─────────────────────────────── */
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-page-main {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-page-main {
   padding-top: 16px;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-page-stack {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-page-stack {
   gap: 16px;
 }
 
 /* ── Work-area tabs: a frosted strip, a solid active tab, overflow shadows ── */
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-area-tabs {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-area-tabs {
   gap: 2px;
   margin-bottom: 14px;
   padding: 4px;
@@ -136,7 +117,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   box-shadow: 0 1px 2px rgb(15 35 70 / 0.04);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs
   .lf-tab {
   min-height: 36px;
@@ -147,14 +128,14 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   color: #3a4960;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs
   .lf-tab:hover {
   color: var(--lf-ink);
   background: rgb(255 255 255 / 0.9);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs
   .lf-tab[aria-current='page'] {
   color: #0f3f94;
@@ -165,33 +146,47 @@ html:not([data-theme='dark']):not([data-theme='glass'])
     inset 0 0 0 1px rgb(15 35 70 / 0.08);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs
   .lf-tab[aria-current='page']::after {
   display: none;
 }
 
-/* ── Header: title first, scope as a readable chip ─────────────────────────── */
+/* In-page tabs stay an underline, one level below the strip, in the same ink. */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-dash-head {
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-tabs:not(.lf-area-tabs)
+  .lf-tab:is([aria-selected='true'], [aria-current='page']) {
+  color: #0f3f94;
+  font-weight: 600;
+}
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-tabs:not(.lf-area-tabs)
+  .lf-tab:is([aria-selected='true'], [aria-current='page'])::after {
+  background: var(--yh-azure);
+}
+
+/* ── Header: title first, scope as a readable chip ─────────────────────────── */
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-dash-head {
   align-items: center;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-dash-head
-  h1 {
+  .lf-app-frame[data-lf-surface='workspace']
+  :is(.lf-dash-head h1, .lf-page-title, .lf-list-header__title, .lf-page-main > * > h1) {
   font-size: clamp(1.35rem, 1.15rem + 0.7vw, 1.625rem);
 }
+/* The page stack already spaces the header from what follows. */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-dash-head
-  p {
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-page-stack
+  > :is(.lf-page-header, .lf-list-header) {
+  margin-bottom: 0;
+}
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-dash-head p {
   margin-top: 2px;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-dash-meta {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-dash-meta {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
@@ -205,33 +200,25 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 }
 
 /* ── Summary cards: compact, opaque, readable ──────────────────────────────── */
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-kpi-grid {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
   gap: 12px;
 }
-html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-lf-sample='summary-glass']) .lf-kpi {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi {
   padding: 10px 14px 12px;
   background: #ffffff;
   border: 1px solid rgb(15 35 70 / 0.08);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgb(15 35 70 / 0.05);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  a.lf-kpi:hover {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] a.lf-kpi:hover {
   border-color: rgb(8 123 245 / 0.35);
   box-shadow: 0 6px 16px -10px rgb(15 35 70 / 0.35);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-kpi__label {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi__label {
   color: var(--lf-ink-2);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-kpi__value {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi__value {
   margin-top: 4px;
   font-size: 22px;
   font-weight: 650;
@@ -239,7 +226,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 }
 
 /* ── Needs attention: the page's priority ──────────────────────────────────── */
-html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-lf-sample='summary-glass']) .lf-attn {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn {
   background: #ffffff;
   border: 1px solid rgb(15 35 70 / 0.1);
   border-radius: 14px;
@@ -247,58 +234,38 @@ html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-
     0 10px 28px -20px rgb(15 35 70 / 0.45),
     0 1px 2px rgb(15 35 70 / 0.05);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__head {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__head {
   padding: 14px 18px 12px;
   background: linear-gradient(180deg, #f5f8fd 0%, #ffffff 100%);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__head
-  h2 {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__head h2 {
   font-size: 1.0625rem;
   font-weight: 650;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__head
-  span {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__head span {
   color: var(--lf-ink-2);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__row {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__row {
   grid-template-columns: 48px minmax(0, 1fr) auto 32px;
   min-height: 52px;
   padding: 8px 18px;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__row:hover {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__row:hover {
   background: #f4f8ff;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__count {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__count {
   height: 28px;
   min-width: 44px;
   border-radius: 999px;
   font-weight: 700;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__label {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__label {
   font-size: 0.9375rem;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__hint {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__hint {
   color: var(--lf-ink-2);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-attn__go {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__go {
   display: inline-grid;
   place-items: center;
   width: 28px;
@@ -308,7 +275,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   background: var(--yh-neutral-sub);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-attn__row:hover
   .lf-attn__go {
   color: #ffffff;
@@ -316,9 +283,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 }
 
 /* ── AI insight: compact, supporting ───────────────────────────────────────── */
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-ai-surface {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-ai-surface {
   padding: 10px 16px 10px 18px;
   border-radius: 12px;
   border-color: rgb(15 35 70 / 0.08);
@@ -327,46 +292,27 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 
 /* ── Tables and panels: opaque, consistent radii, calmer rows ──────────────── */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-table-wrap,
-html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame:has([data-lf-sample='summary-glass']) .lf-panel {
+  .lf-app-frame[data-lf-surface='workspace']
+  :is(.lf-table-wrap, .lf-grid-wrap, .lf-panel, .lf-card) {
   background: #ffffff;
   border: 1px solid rgb(15 35 70 / 0.08);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgb(15 35 70 / 0.05);
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-table-wrap {
-  overflow: hidden;
-}
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-table-wrap
-  h2 {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-table-wrap h2 {
   font-weight: 650;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-panel__head
-  h2 {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-panel__head h2 {
   font-size: 0.9375rem;
   font-weight: 650;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-kv
-  > div {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kv > div {
   padding: 8px 0;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-panel-duo {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-panel-duo {
   gap: 12px;
 }
-html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-dash-priority {
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-dash-priority {
   display: inline-flex;
   align-items: center;
   min-height: 22px;
@@ -379,13 +325,13 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   color: var(--lf-slate);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-dash-priority[data-priority='HIGH'] {
   background: var(--lf-brass-sub);
   color: var(--lf-brass);
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-dash-priority[data-priority='URGENT'] {
   background: var(--lf-vermillion-sub);
   color: var(--lf-vermillion);
@@ -393,7 +339,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 
 /* Section links read the same size everywhere on the page. */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-table-wrap
   .lf-link {
   font-size: var(--lf-text-xs);
@@ -402,18 +348,18 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 
 /* ── Keyboard focus: visible on every action this page offers ─────────────── */
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
-  :is(.lf-kpi, .lf-attn__row, .lf-link, .lf-area-tabs .lf-tab, .lf-cmdk-trigger):focus-visible {
+  .lf-app-frame[data-lf-surface='workspace']
+  :is(.lf-kpi, .lf-attn__row, .lf-link, .lf-tab, .lf-cmdk-trigger):focus-visible {
   outline: 2px solid var(--yh-azure);
   outline-offset: 2px;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-attn__row:focus-visible {
   outline-offset: -2px;
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
-  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-app-frame[data-lf-surface='workspace']
   .lf-nav-link:focus-visible {
   outline: 2px solid #8cc8ff;
   outline-offset: 1px;
@@ -421,57 +367,41 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 
 /* ── Solid fallback where backdrop blur is not supported ───────────────────── */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-shell-topbar {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
     background-color: #f7f9fc;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-area-tabs {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-area-tabs {
     background-color: #ffffff;
   }
 }
 
 /* ── Phones: full-width strip, two cards a row, comfortable targets ────────── */
 @media (max-width: 760px) {
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-page-main {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-page-main {
     padding-top: 12px;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-area-tabs {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-area-tabs {
     margin-inline: 0;
     padding-inline: 4px;
   }
   html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
+    .lf-app-frame[data-lf-surface='workspace']
     .lf-area-tabs
     .lf-tab {
     min-height: 44px;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-kpi-grid {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-kpi__value {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi__value {
     font-size: 20px;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-attn__row {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__row {
     grid-template-columns: 44px minmax(0, 1fr) 28px;
     padding: 8px 14px;
   }
-  html:not([data-theme='dark']):not([data-theme='glass'])
-    .lf-app-frame:has([data-lf-sample='summary-glass'])
-    .lf-attn__head {
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-attn__head {
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;

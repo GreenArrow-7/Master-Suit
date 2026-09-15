@@ -5,8 +5,6 @@ import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
-// Visual sample, scoped to this page by the marker on its root; see the file header.
-import './summary-glass.css';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -502,7 +500,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   ) : null;
 
   return (
-    <div className="lf-page-stack" data-lf-sample="summary-glass">
+    <div className="lf-page-stack">
       {/* The greeting: who you are and what the day holds, on the workspace's
           own light surface. This used to be a midnight band with the figures
           inside it; the figures are cards now, because a number a person acts

@@ -15,6 +15,8 @@ import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
+// The approved workspace look, scoped to this frame's marker; see the file header.
+import './workspace-surface.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +65,7 @@ export default async function WorkspaceLayout({
   }
 
   return (
-    <div className="lf-app-frame">
+    <div className="lf-app-frame" data-lf-surface="workspace">
       <ModuleTheme />
       <WorkspaceSidebar
         slug={shell.slug}
