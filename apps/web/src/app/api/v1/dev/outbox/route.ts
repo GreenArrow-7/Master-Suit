@@ -1,5 +1,6 @@
 import { env } from '@/lib/env';
 import { mockOutbox } from '@/lib/mailer';
+import { isDirectLocalRequest } from '@/lib/security/directRequest';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,13 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: Request) {
   if (env.NODE_ENV === 'production' || env.EMAIL_PROVIDER !== 'mock') {
+    return new Response(null, { status: 404 });
+  }
+  // A development server can still be reachable from outside — through a dev
+  // tunnel or a port forward — and the outbox holds live reset and invitation
+  // links. Serve it only to this machine; everyone else gets the same 404 as a
+  // server with no outbox at all.
+  if (!isDirectLocalRequest(req)) {
     return new Response(null, { status: 404 });
   }
 

@@ -123,7 +123,13 @@ function definitions(slug: string): SectionDef[] {
           icon: 'home',
           personal: true,
           tabs: [
-            { label: 'My Day', href: `/${slug}/dashboard`, keywords: 'home dashboard today start' },
+            // The existing home screen: role-scoped summary cards and workspace-wide
+            // queues. Labelled for what it shows; the personal My Day is Milestone 2.
+            {
+              label: 'Workspace Summary',
+              href: `/${slug}/dashboard`,
+              keywords: 'home dashboard my day today start',
+            },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
               label: 'Team Work',

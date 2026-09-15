@@ -12,7 +12,7 @@ Paths below omit `/{workspace}`. `s` is `/sales`, `p` is `/people`, `a` is `/adm
 
 | Area | Tab | Route | Notes |
 | --- | --- | --- | --- |
-| My Workspace | My Day | `/dashboard` | |
+| My Workspace | Workspace Summary | `/dashboard` | the existing home screen; see below |
 | | Sales Overview | `s` | existing sales desk: overdue follow-ups, SLA breaches, unassigned |
 | | Team Work | `s/leadership?view=chasing` | existing chasing queue; needs `reports` |
 | | Business Overview | `s/leadership` | existing leadership summary |
@@ -119,25 +119,58 @@ People screens serve an employee and HR from the same route, scoped by role on t
 
 The Leadership page's internal view tabs became tabs of My Workspace and Reports. Moving between them keeps the page's date range and person filter.
 
-## Screens the plan names that do not exist yet
+## My Workspace: what each screen is for
 
-These are not rendered. Each is listed against the milestone where its business rules are set.
+These are existing screens, labelled for what they show. None of them is the personal My Day the plan describes; that is Milestone 2.
 
-| Area | Planned tab | Current state | Milestone |
+| Tab | Route | What it shows | Scope |
 | --- | --- | --- | --- |
-| My Workspace | Approvals | decisions exist per record (receipts, fee amendments, recovery write-offs, payroll, leave, overtime); there is no combined queue | 2 |
-| My Workspace | My Day, Team Work content | existing pages; the role-aware queues described in the plan | 2 |
-| Inbox | Action Required, Mentions, Updates | one notification list; no read-state tabs, no mention workflow | 3 |
-| Customers | Duplicate Review | duplicate rules exist; there is no review screen | 5 |
-| Opportunities | Pipeline, Needs Attention | list only; no stage board, no stalled threshold | 2 (needs attention), 5 (pipeline) |
-| Property Inventory | Units | units are edited inside a project; no cross-project unit list | 5 |
-| Campaigns | Audiences, Delivery/Results | audience and results live inside a campaign | 5 |
-| My HR | My Profile, My Documents | no employee self-profile or self-document screen | 4 |
-| Payroll | Approval Queue, Payslips (administration) | approval happens inside a run; the payslips screen is the employee's own pay | 4 |
-| Bookings | All, Drafts, Confirmed, Cancelled | bookings are managed from leads and collections; there is no bookings list, so the area is not shown | 5 |
-| Collections | Receipts, Awaiting Verification, Fee Amendments | handled per sale; no cross-sale lists | 5 |
-| Commissions & Payouts | Exceptions | no exceptions list | 5 |
-| Reports | Marketing | no marketing report | 5 |
+| Workspace Summary | `/dashboard` | summary cards (pipeline value, open opportunities, active leads, present today), items needing attention, follow-ups across the workspace, and panels shown by permission: People summary, Call quality, Subscription, Security | each card and list is limited to what the viewer's role may see; for an administrator that is the whole workspace |
+| Sales Overview | `s` | the sales desk: follow-ups due today and overdue, leads in scope, leads waiting for an owner, SLA breaches, target progress | the viewer's sales scope |
+| Team Work | `s/leadership?view=chasing` | the chasing queue: overdue obligations across the people the viewer leads | people the viewer leads; needs `reports` |
+| Business Overview | `s/leadership` | funnel, conversion and performer board for a period, filterable by person | people the viewer leads; needs `reports` |
+| Team Feed | `s/engagement` | team posts, contests and awards | the workspace; needs `posts` |
+
+Overlap to assess:
+
+- Workspace Summary and Sales Overview both list follow-ups due and overdue.
+- Team Work's chasing queue repeats overdue items for managers.
+- Business Overview does not repeat the others; it is period analytics.
+
+Milestone 2 is where My Day, Team Work and Approvals get their defined content. The overlap is resolved there, not by relabelling.
+
+## Planned tabs, classified
+
+Three different situations are easy to confuse:
+
+- **Inside another screen.** The work can be done today, on a record's page.
+- **Route missing.** The data and actions exist, but there is no list screen that gathers them.
+- **Feature missing.** The capability itself does not exist.
+
+A missing tab is not a missing feature.
+
+| Area | Planned tab | Classification | Where the existing functionality is |
+| --- | --- | --- | --- |
+| Collections | Receipts | inside another screen; cross-sale list route missing | `s/collections/[bookingId]` renders `ReceiptPanel.tsx`: record, verify or reject, reverse, upload and download evidence. The Collections list shows verified and pending amounts per sale. `GET /api/v1/collections/receipts` requires a `bookingId` |
+| Collections | Awaiting Verification | inside another screen; cross-sale queue route missing | pending receipts are marked per sale on `s/collections` (Pending column) and verified in `ReceiptPanel.tsx` |
+| Collections | Fee Amendments | inside another screen; cross-sale list route missing | `s/collections/[bookingId]` renders `FeeAmendmentPanel.tsx`: propose, preview, approve or reject. The Collections list flags "Fee amendment pending". `GET /api/v1/collections/fee-amendments` requires a `bookingId` |
+| Collections | Recovery Cases | **exists as a tab** | `s/collections/recovery` with `RecoveryCaseList.tsx`: assign, acknowledge, record a recovery, propose and approve a write-off or adjustment |
+| Bookings | All, Drafts, Confirmed, Cancelled | route missing; creating, confirming and cancelling from the screens is also missing | `GET /api/v1/bookings` lists with a status filter; `POST` creates; `PATCH` confirms and cancels. Confirmed sales with an agreed fee appear on `s/collections` and `s/collections/[bookingId]`. There is no bookings screen, and no screen that creates or confirms a booking. The Commissions page notes "No bookings page yet" |
+| Property Inventory | Units | inside another screen; cross-project list route missing | `s/projects/[id]` renders `UnitBoard.tsx`: list and edit a project's units. The API is `GET` and `POST /api/v1/projects/[id]/units` and `PATCH …/units/[unitId]` |
+| Campaigns | Audiences | inside another screen; cross-campaign route missing | `s/campaigns/[id]` renders `AudiencePicker.tsx`, adding leads through `POST /api/v1/campaigns/[id]/audience`, and shows the member count (`/api/v1/campaigns/[id]/members`). There is no reusable saved audience separate from a campaign |
+| Campaigns | Delivery/Results | inside another screen | `s/campaigns/[id]` (`CampaignSend.tsx`, status actions, members); calling campaigns through `s/campaigns/[id]/dialer` |
+| Payroll | Approval Queue | inside another screen | `p/payroll`: runs with Prepared by and Approved by, approval actions for the payroll approver, maker-checker enforced |
+| Payroll | Payslips (administration) | inside another screen | a run's payslips on `p/payroll?run=…`; `p/payslips` is the employee's own pay |
+| Customers | Duplicate Review | feature missing | duplicate detection rules are configured on `a/settings`; there is no review queue of suspected duplicates |
+| Opportunities | Pipeline | feature missing | `s/opportunities` is a list with an open-pipeline total; there is no stage board |
+| Opportunities | Needs Attention | feature missing | no stalled-opportunity rule or threshold exists |
+| Inbox | Action Required, Mentions, Updates | Action Required and Updates: route missing; Mentions: feature missing | `/notifications` lists notifications with a Read column; there is no mention workflow |
+| My Workspace | Approvals | route missing | decisions happen on each record: receipts, fee amendments, recovery write-offs, payroll runs, leave, overtime |
+| My HR | My Profile, My Documents | feature missing | no employee self-profile or self-document screen; HR documents (`p/documents`) are for `hr_documents` holders |
+| Commissions & Payouts | Exceptions | feature missing | no exception list; blocked payouts show their reason on `s/commissions?view=payouts` |
+| Reports | Marketing | feature missing | no marketing report |
+
+"Route missing" items are navigation work over existing services. "Feature missing" items are new product work, each in the milestone where its rules are set.
 
 ## Defect fixed along the way
 
