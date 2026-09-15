@@ -300,7 +300,7 @@ test.describe('Workspace Summary sample', () => {
       await page.goBack();
 
       await page.getByRole('button', { name: 'Search and jump to any page' }).click();
-      await page.getByRole('textbox', { name: 'Jump to a page or search' }).fill('recovery cases');
+      await page.getByRole('combobox', { name: 'Jump to a page or search' }).fill('recovery cases');
       await page.keyboard.press('Enter');
       await expect(page).toHaveURL(/\/sales\/collections\/recovery$/);
       await page.goBack();
@@ -351,7 +351,7 @@ test.describe('Workspace Summary sample', () => {
         '.lf-area-tabs .lf-tab:not([aria-current])',
         '.lf-nav-link[aria-current="page"]',
         '.lf-nav-link:not([aria-current])',
-        '.lf-shell-search input',
+        '.lf-cmdk-trigger span',
       ])
         expect(await contrastOf(desktop.page, selector), selector).toBeGreaterThanOrEqual(4.5);
 

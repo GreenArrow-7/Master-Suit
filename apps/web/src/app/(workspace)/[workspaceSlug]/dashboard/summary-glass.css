@@ -91,12 +91,13 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 }
 html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame:has([data-lf-sample='summary-glass'])
-  .lf-shell-search
-  .lf-input {
+  .lf-cmdk-trigger {
   height: 36px;
   border-radius: 10px;
   background: #ffffff;
   border-color: rgb(15 35 70 / 0.12);
+  color: var(--lf-ink-2);
+  box-shadow: 0 1px 2px rgb(15 35 70 / 0.04);
 }
 
 /* ── Page: less top whitespace, tighter rhythm ─────────────────────────────── */
@@ -393,7 +394,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 /* ── Keyboard focus: visible on every action this page offers ─────────────── */
 html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame:has([data-lf-sample='summary-glass'])
-  :is(.lf-kpi, .lf-attn__row, .lf-link, .lf-area-tabs .lf-tab):focus-visible {
+  :is(.lf-kpi, .lf-attn__row, .lf-link, .lf-area-tabs .lf-tab, .lf-cmdk-trigger):focus-visible {
   outline: 2px solid var(--yh-azure);
   outline-offset: 2px;
 }
