@@ -103,14 +103,16 @@ jobs:
       # browser suites, as it is in every environment; without a store here
       # those uploads fail. The credentials are the local defaults `.env` was
       # just generated with, read from it so the two cannot drift. lib/storage.ts
-      # creates the bucket on first use.
+      # creates the bucket on first use. MinIO no longer publishes to Docker Hub
+      # (`minio/minio` is refused), so the image is its own registry's copy of the
+      # release the local stack runs, pinned by digest.
       - name: Object storage
         run: |
           KEY="$(grep '^S3_ACCESS_KEY_ID=' .env | cut -d= -f2-)"
           SECRET="$(grep '^S3_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)"
           docker run -d --name ci-minio -p 9000:9000 \
             -e MINIO_ROOT_USER="$KEY" -e MINIO_ROOT_PASSWORD="$SECRET" \
-            minio/minio:latest server /data
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
               echo "object storage ready after ${i}s"; exit 0
