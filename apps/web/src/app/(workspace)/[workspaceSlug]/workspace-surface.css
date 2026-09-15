@@ -177,7 +177,10 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs::before {
+  /* Decorative: the second declaration gives empty alternative text, so screen
+     readers skip the glyph; browsers without that syntax keep the first. */
   content: '\2039';
+  content: '\2039' / '';
   order: -1;
   /* -4px: over the strip's 4px padding too, or a sliver of a clipped tab shows beside it. */
   left: -4px;
@@ -188,6 +191,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs::after {
   content: '\203A';
+  content: '\203A' / '';
   right: -4px;
   margin-left: -30px;
   background: linear-gradient(to left, #ffffff 55%, rgb(255 255 255 / 0));

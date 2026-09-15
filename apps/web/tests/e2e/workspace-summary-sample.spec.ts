@@ -845,6 +845,8 @@ test.describe('Workspace on a phone', () => {
         await activeInView('direct link', 'Audit Log');
         // More tabs exist before it, and the strip says so.
         await expect(strip).toHaveAttribute('data-more', /start/);
+        // The edge indicators are decoration: nothing extra is announced.
+        expect(await strip.ariaSnapshot()).not.toMatch(/[‹›]/);
         if (shotDir && width === 360) await page.screenshot({ path: `${shotDir}/settings-audit-360.png` });
 
         await page.goto(at('/admin/settings'));
