@@ -14,7 +14,7 @@ import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { annualLeaveAccrued, dayKey, daysBetween, toDay, workingDays } from './rules';
 import { getHrPolicy, type HrPolicy } from './settings';
-import { isApprover, isHrAdmin } from './access';
+import { isApprover, isHrAdmin, mayReadAllEmployees } from './access';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyLeaveDecided, notifyLeaveRaised } from './notify';
 
@@ -36,6 +36,23 @@ export async function myEmployee(ctx: Ctx, db: Db = prisma) {
   return db.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, deletedAt: null, membership: { salesUserId: ctx.actor.id } },
   });
+}
+
+/**
+ * Which employee records this actor may read, as a filter on `EmployeeProfile`.
+ *
+ * Every record in the workspace with `employee:VIEW` at ORGANIZATION scope;
+ * otherwise only their own, and nothing for someone with no employee record.
+ * This is the rule the HR API's `employees` resource already applied. The
+ * directory page, the joining/leaving dashboard and the expiring-documents list
+ * read the same people without it, so a role holding `employee:VIEW` at OWN
+ * scope was shown every employee's name, work email and number, and everyone's
+ * expiring identity documents.
+ */
+export async function employeeRecordScope(ctx: Ctx, db: Db = prisma): Promise<{ id?: string }> {
+  if (mayReadAllEmployees(ctx)) return {};
+  const self = await myEmployee(ctx, db);
+  return { id: self?.id ?? '' };
 }
 
 export async function requireEmployee(ctx: Ctx, employeeId: string, db: Db = prisma) {

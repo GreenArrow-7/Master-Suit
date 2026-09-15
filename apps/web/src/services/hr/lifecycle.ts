@@ -16,7 +16,8 @@ import { revokeAllSessions } from '@/lib/auth/session';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { addDays, daysBetween, expirySeverity, gratuityUae, noticePayInLieu, toDay, type NoticeBasis } from './rules';
-import { isHrAdmin, myEmployee, requireEmployee } from './leave';
+import { employeeRecordScope, isHrAdmin, myEmployee, requireEmployee } from './leave';
+import { mayReadSensitiveDocuments } from './access';
 import { getHrPolicy } from './settings';
 import { EMPLOYEE_WITH_PERSON, MEMBERSHIP_PUBLIC } from './publicSelect';
 
@@ -296,20 +297,27 @@ export async function activateEmployee(ctx: Ctx, employeeId: string) {
  * Visa, Emirates ID and BRN expiries. Feed this to a daily job: 90/60/30-day
  * windows are the useful triggers, because a UAE residence-visa renewal
  * realistically needs 30+ days of runway.
+ *
+ * Scoped to the employee records the actor may read, and the document number —
+ * a passport or Emirates ID number — only for someone who may read identity
+ * documents, or on their own documents. Knowing *whose* visa lapses next month
+ * is HR's job; the number itself is not.
  */
 export async function expiringDocuments(ctx: Ctx, withinDays?: number, employeeId?: string) {
   const days = withinDays ?? (await getHrPolicy(ctx)).documentExpiryHorizonDays;
   const horizon = addDays(new Date(), days);
+  const [scope, self] = await Promise.all([employeeRecordScope(ctx), myEmployee(ctx)]);
   const documents = await prisma.hrEmployeeDocument.findMany({
     where: {
       tenantId: ctx.tenantId,
       expiresAt: { not: null, lte: horizon },
       ...(employeeId ? { employeeId } : {}),
-      employee: { deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+      employee: { deletedAt: null, employmentStatus: { notIn: ['EXITED'] }, ...scope },
     },
     include: { employee: EMPLOYEE_WITH_PERSON },
     orderBy: { expiresAt: 'asc' },
   });
+  const mayReadNumbers = mayReadSensitiveDocuments(ctx);
 
   return documents.map((document) => {
     const daysRemaining = daysBetween(new Date(), document.expiresAt!);
@@ -319,7 +327,7 @@ export async function expiringDocuments(ctx: Ctx, withinDays?: number, employeeI
       employeeName: document.employee.membership.platformUser.fullName,
       employeeNumber: document.employee.employeeNumber,
       kind: document.kind,
-      number: document.number,
+      number: mayReadNumbers || document.employeeId === self?.id ? document.number : null,
       expiresAt: document.expiresAt!,
       daysRemaining,
       severity: expirySeverity(daysRemaining),
@@ -563,22 +571,33 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
 
 // ── HR dashboard ───────────────────────────────────────────────────────────
 
-/** What HR needs on a Monday morning. */
+/**
+ * What HR needs on a Monday morning.
+ *
+ * Names who is joining and leaving, so it reads only the employee records the
+ * actor may read; the counts follow the same scope.
+ */
 export async function lifecycleDashboard(ctx: Ctx) {
   const employeeInclude = { membership: MEMBERSHIP_PUBLIC } as const;
+  const scope = await employeeRecordScope(ctx);
   const [joining, leaving, overdueTasks, documents] = await Promise.all([
     prisma.employeeProfile.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ONBOARDING' },
+      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'ONBOARDING', ...scope },
       include: employeeInclude,
       orderBy: { joinedOn: 'asc' },
     }),
     prisma.employeeProfile.findMany({
-      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE' },
+      where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'NOTICE', ...scope },
       include: employeeInclude,
       orderBy: { exitedOn: 'asc' },
     }),
     prisma.hrChecklistTask.count({
-      where: { tenantId: ctx.tenantId, completedAt: null, dueDate: { lt: toDay(new Date()) } },
+      where: {
+        tenantId: ctx.tenantId,
+        completedAt: null,
+        dueDate: { lt: toDay(new Date()) },
+        ...(scope.id !== undefined ? { employeeId: scope.id } : {}),
+      },
     }),
     expiringDocuments(ctx, 60),
   ]);
