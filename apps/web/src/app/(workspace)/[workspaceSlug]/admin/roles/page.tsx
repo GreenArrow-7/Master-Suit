@@ -349,52 +349,54 @@ export default async function Page({
         {history.length === 0 ? (
           <div className="lf-card lf-leave__empty">No additional role assignments.</div>
         ) : (
-          <TableSearch placeholder="User, role, scope or status…" label="Search the history">
-            <div className="lf-table-wrap">
-              <table className="lf-table">
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Scope</th>
-                    <th>Window</th>
-                    <th>Status</th>
-                    <th>When</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((assignment) => (
-                    <tr key={assignment.id}>
-                      <td data-label="User">{assignment.holder}</td>
-                      <td data-label="Role">{assignment.role.key}</td>
-                      <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
-                      <td data-label="Window">
-                        {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
-                      </td>
-                      <td data-label="Status">
-                        <span className="lf-badge">
-                          {assignment.inForce ? 'active' : assignment.status.toLowerCase()}
-                        </span>
-                      </td>
-                      <td data-label="When">{stamp(assignment.assignedAt)}</td>
-                      <td data-label="">
-                        {mayManage && assignment.status === 'ACTIVE' && (
-                          <WorkspaceActionButton
-                            endpoint={`${endpoint}/revoke`}
-                            body={{ assignmentId: assignment.id }}
-                            label="Revoke"
-                            variant="ghost"
-                            promptFor={{ name: 'reason', label: 'Reason', required: false }}
-                          />
-                        )}
-                      </td>
+          <div className="lf-card" style={{ padding: 'var(--lf-space-4)' }}>
+            <TableSearch placeholder="User, role, scope or status…" label="Search the history">
+              <div className="lf-table-wrap">
+                <table className="lf-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>Scope</th>
+                      <th>Window</th>
+                      <th>Status</th>
+                      <th>When</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </TableSearch>
+                  </thead>
+                  <tbody>
+                    {history.map((assignment) => (
+                      <tr key={assignment.id}>
+                        <td data-label="User">{assignment.holder}</td>
+                        <td data-label="Role">{assignment.role.key}</td>
+                        <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
+                        <td data-label="Window">
+                          {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
+                        </td>
+                        <td data-label="Status">
+                          <span className="lf-badge">
+                            {assignment.inForce ? 'active' : assignment.status.toLowerCase()}
+                          </span>
+                        </td>
+                        <td data-label="When">{stamp(assignment.assignedAt)}</td>
+                        <td data-label="">
+                          {mayManage && assignment.status === 'ACTIVE' && (
+                            <WorkspaceActionButton
+                              endpoint={`${endpoint}/revoke`}
+                              body={{ assignmentId: assignment.id }}
+                              label="Revoke"
+                              variant="ghost"
+                              promptFor={{ name: 'reason', label: 'Reason', required: false }}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TableSearch>
+          </div>
         )}
       </section>
     </div>

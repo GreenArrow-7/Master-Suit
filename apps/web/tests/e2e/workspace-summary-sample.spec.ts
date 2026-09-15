@@ -592,6 +592,315 @@ test.describe('Workspace Summary sample', () => {
   });
 });
 
+/**
+ * Phone usability: the defects found on the rolled-out shell, pinned so they stay fixed.
+ * Runs after the fixture above (one worker, file order).
+ */
+test.describe('Workspace on a phone', () => {
+  // Common phone screens in CSS pixels; 412×915 is the Pixel 7 the review used.
+  const HEIGHTS: Record<number, number> = { 360: 740, 390: 844, 412: 915, 430: 932 };
+  const PHONES = [360, 390, 412, 430];
+  const phone = (width: number) => ({
+    viewport: { width, height: HEIGHTS[width]! },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const shotDir = process.env.MOBILE_SHOT_DIR;
+
+  /** The page is exactly as wide as the screen and not zoomed out to fit something wider. */
+  async function fitsScreen(page: Page, label: string) {
+    const width = page.viewportSize()!.width;
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth), { message: `${label}: page width` })
+      .toBeLessThanOrEqual(width);
+    const { inner, scale } = await page.evaluate(() => ({
+      inner: window.innerWidth,
+      scale: window.visualViewport?.scale ?? 1,
+    }));
+    expect(inner, `${label}: layout viewport`).toBe(width);
+    expect(scale, `${label}: viewport scale`).toBe(1);
+  }
+
+  /**
+   * Every scroll position at which the control's centre is inside the visible content area
+   * (below the top bar, above the tab bar) but a tap there would land on something else.
+   */
+  async function coveredPositions(page: Page, control: ReturnType<Page['locator']>) {
+    await control.scrollIntoViewIfNeeded();
+    const handle = await control.elementHandle();
+    return page.evaluate(async (el) => {
+      const top = document.querySelector('.lf-shell-topbar')!.getBoundingClientRect().bottom;
+      const bottom = document.querySelector('.lf-tabbar')!.getBoundingClientRect().top;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const covered: { y: number; by: string }[] = [];
+      for (let y = 0; y <= max; y += 12) {
+        window.scrollTo(0, y);
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        const box = el!.getBoundingClientRect();
+        const cx = box.left + box.width / 2;
+        const cy = box.top + box.height / 2;
+        if (cy <= top + 1 || cy >= bottom - 1) continue;
+        const hit = document.elementFromPoint(cx, cy);
+        if (hit && !el!.contains(hit)) covered.push({ y, by: hit.className.toString() || hit.tagName });
+      }
+      return covered;
+    }, handle);
+  }
+
+  test('the assistant never covers View all, date fields or Remove, and still opens', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    test.setTimeout(300_000);
+    for (const width of PHONES) {
+      const { page, errors, close } = await signedIn(
+        browser,
+        workspace.adminEmail,
+        workspace.adminPassword,
+        phone(width),
+      );
+      try {
+        const fab = page.locator('.lf-ai-fab');
+        // People: "View all" opens its list.
+        await page.goto(at('/people'));
+        const viewAll = page.getByRole('link', { name: 'View all' }).first();
+        await expect(viewAll).toBeVisible({ timeout: 60_000 });
+        if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/people-390.png` });
+        expect(await coveredPositions(page, viewAll), `${width}px: View all covered`).toEqual([]);
+        const target = await viewAll.getAttribute('href');
+        await viewAll.click();
+        await expect(page).toHaveURL(new RegExp(`${target!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+
+        // Leave: both date fields take a date by tap and keyboard.
+        await page.goto(at('/people/leave'));
+        for (const name of ['First day', 'Last day']) {
+          const field = page.getByLabel(name);
+          await expect(field).toBeVisible({ timeout: 60_000 });
+          expect(await coveredPositions(page, field), `${width}px: ${name} covered`).toEqual([]);
+          await field.click();
+          await expect(field).toBeFocused();
+          await field.fill('2026-12-01');
+          await expect(field).toHaveValue('2026-12-01');
+        }
+        if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/leave-390.png` });
+
+        // Users: Remove opens its confirmation, and closes again without removing anyone.
+        await page.goto(at('/admin/users'));
+        const remove = page.getByRole('button', { name: 'Remove', exact: true }).first();
+        await expect(remove).toBeVisible({ timeout: 60_000 });
+        expect(await coveredPositions(page, remove), `${width}px: Remove covered`).toEqual([]);
+        await remove.click();
+        await expect(page.getByText(/^Remove .+ from this workspace$/)).toBeVisible();
+        await remove.click();
+        await expect(page.getByText(/^Remove .+ from this workspace$/)).toHaveCount(0);
+        if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/users-390.png` });
+
+        // The assistant sits in the tab bar, below every sheet, and still opens and closes.
+        const [fabBox, barBox] = [await fab.boundingBox(), await page.locator('.lf-tabbar').boundingBox()];
+        expect(fabBox!.y, `${width}px: assistant inside the tab bar`).toBeGreaterThanOrEqual(barBox!.y - 1);
+        await page.getByRole('button', { name: /^Filters/ }).click();
+        const onTop = await fab.evaluate((el) => {
+          const b = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+        });
+        expect(onTop, `${width}px: assistant above an open sheet`).toBe(false);
+        await page.keyboard.press('Escape');
+        await fab.click();
+        const panel = page.getByRole('dialog', {
+          name: await fab.evaluate((el) => el.getAttribute('aria-label')!.slice(5)),
+        });
+        await expect(panel).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(fab).toBeVisible();
+        await fitsScreen(page, `${width}px users`);
+        expect(errors).toEqual([]);
+      } finally {
+        await close();
+      }
+    }
+  });
+
+  test('secondary view tabs and header actions stay inside the content edges', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    test.setTimeout(300_000);
+    const sizes = [
+      ...PHONES.map(phone),
+      { viewport: { width: 768, height: 1024 } },
+      { viewport: { width: 1280, height: 900 } },
+    ];
+    for (const profile of sizes) {
+      const width = profile.viewport.width;
+      const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, profile);
+      try {
+        for (const [path, strip, second, key] of [
+          ['/sales/activities', 'Activity type', 'Calls', 'tab=CALL'],
+          ['/sales/calls', 'Call filter', null, null],
+        ] as const) {
+          await page.goto(at(path));
+          const views = page.getByRole('navigation', { name: strip });
+          await expect(views).toBeVisible({ timeout: 60_000 });
+          await fitsScreen(page, `${width}px ${path}`);
+          const edges = await page.evaluate(() => {
+            const h1 = document.querySelector('main h1')!.getBoundingClientRect();
+            const tabs = document.querySelector('.lf-area-tabs')?.getBoundingClientRect();
+            return {
+              left: h1.left,
+              right: tabs ? tabs.right : document.querySelector('main')!.getBoundingClientRect().right,
+            };
+          });
+          // The strip scrolls inside itself; its box stays within the content column.
+          const box = (await views.boundingBox())!;
+          expect(box.x, `${width}px ${path}: view tabs left edge`).toBeGreaterThanOrEqual(edges.left - 1);
+          expect(box.x + box.width, `${width}px ${path}: view tabs right edge`).toBeLessThanOrEqual(edges.right + 1);
+          // Header actions line up with the title and wrap inside the column.
+          for (const action of await page.locator('.lf-list-header__actions > *').all()) {
+            const a = await action.boundingBox();
+            if (!a || a.width === 0) continue;
+            expect(a.x, `${width}px ${path}: action left`).toBeGreaterThanOrEqual(edges.left - 1);
+            expect(a.x + a.width, `${width}px ${path}: action right`).toBeLessThanOrEqual(edges.right + 1);
+          }
+          // Work-area tabs and view tabs look different: a filled active tab against an underlined one.
+          const [primary, secondary] = await page.evaluate(
+            ([name]) => {
+              const bg = (el: Element | null) => (el ? getComputedStyle(el).backgroundColor : null);
+              return [
+                bg(document.querySelector('.lf-area-tabs .lf-tab[aria-current="page"]')),
+                bg(document.querySelector(`nav[aria-label="${name}"] .lf-tab[aria-selected="true"]`)),
+              ];
+            },
+            [strip],
+          );
+          expect(primary, `${width}px ${path}: distinct active tabs`).not.toBe(secondary);
+          if (second) {
+            await views.getByRole('tab', { name: second }).click();
+            await expect(page).toHaveURL(new RegExp(`${key}$`));
+            await expect(views.getByRole('tab', { name: second })).toHaveAttribute('aria-selected', 'true');
+            await page.goBack();
+            await expect(views.getByRole('tab', { name: 'All' })).toHaveAttribute('aria-selected', 'true');
+            await fitsScreen(page, `${width}px ${path} after back`);
+          }
+          if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/${path.split('/').pop()}-390.png` });
+        }
+        await page.goto(at('/sales/accounts'));
+        await expect(page.locator('main h1')).toBeVisible({ timeout: 60_000 });
+        await fitsScreen(page, `${width}px accounts`);
+        const [title, search] = await Promise.all([
+          page.locator('main h1').boundingBox(),
+          page.getByRole('searchbox', { name: 'Search accounts' }).boundingBox(),
+        ]);
+        if (width <= 760)
+          expect(Math.abs(search!.x - title!.x), `${width}px: search aligned with title`).toBeLessThanOrEqual(1);
+        if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/accounts-390.png` });
+      } finally {
+        await close();
+      }
+    }
+  });
+
+  test('Settings tabs: the active tab is in view on direct links, clicks and back/forward, without page scroll', async ({
+    browser,
+  }) => {
+    test.skip(before, 'recorded on the new build only');
+    test.setTimeout(240_000);
+    for (const profile of [
+      phone(360),
+      phone(430),
+      { viewport: { width: 768, height: 1024 } },
+      { viewport: { width: 1280, height: 900 } },
+    ]) {
+      const width = profile.viewport.width;
+      const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, profile);
+      const strip = page.getByRole('navigation', { name: 'Settings screens' });
+      const activeInView = async (label: string, name: string) => {
+        await expect(strip.locator('[aria-current="page"]'), label).toHaveText(name);
+        await expect
+          .poll(
+            () =>
+              strip.evaluate((nav) => {
+                const tab = nav.querySelector('[aria-current="page"]')!.getBoundingClientRect();
+                const box = nav.getBoundingClientRect();
+                return tab.left >= box.left - 1 && tab.right <= box.right + 1;
+              }),
+            { message: `${width}px ${label}: active tab within the strip` },
+          )
+          .toBe(true);
+        expect(await page.evaluate(() => window.scrollY), `${width}px ${label}: no page scroll`).toBe(0);
+        await fitsScreen(page, `${width}px ${label}`);
+      };
+      try {
+        await page.goto(at('/admin/audit'));
+        await expect(strip).toBeVisible({ timeout: 60_000 });
+        await activeInView('direct link', 'Audit Log');
+        // More tabs exist before it, and the strip says so.
+        await expect(strip).toHaveAttribute('data-more', /start/);
+        if (shotDir && width === 360) await page.screenshot({ path: `${shotDir}/settings-audit-360.png` });
+
+        await page.goto(at('/admin/settings'));
+        await activeInView('first tab', 'Workspace');
+        if (await strip.evaluate((nav) => nav.scrollWidth > nav.clientWidth))
+          await expect(strip).toHaveAttribute('data-more', /end/);
+
+        // Keyboard: a focused tab is scrolled into the strip, and Enter opens it.
+        const roles = strip.getByRole('link', { name: 'Roles', exact: true });
+        await roles.focus();
+        await expect(roles).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(page).toHaveURL(new RegExp(`${at('/admin/roles')}$`));
+        await activeInView('after keyboard', 'Roles');
+
+        await strip.getByRole('link', { name: 'Audit Log', exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`${at('/admin/audit')}$`));
+        await activeInView('after click', 'Audit Log');
+        await page.goBack();
+        await expect(page).toHaveURL(new RegExp(`${at('/admin/roles')}$`));
+        await activeInView('back', 'Roles');
+        await page.goBack();
+        await activeInView('back to first', 'Workspace');
+        await page.goForward();
+        await activeInView('forward', 'Roles');
+      } finally {
+        await close();
+      }
+    }
+  });
+
+  test('Coaching filters and Roles assignment history sit on panels', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, phone(390));
+    try {
+      await page.goto(at('/sales/coaching'));
+      const filters = page.locator('form[method="get"]').filter({ has: page.getByRole('button', { name: 'Filter' }) });
+      await expect(filters).toBeVisible({ timeout: 60_000 });
+      await expect(filters).toHaveClass(/lf-card/);
+      await fitsScreen(page, 'coaching');
+      if (shotDir) await page.screenshot({ path: `${shotDir}/coaching-390.png` });
+      await page.goto(at('/admin/roles'));
+      const history = page.getByRole('heading', { name: 'Assignment history' });
+      await expect(history).toBeVisible({ timeout: 60_000 });
+      await expect(history.locator('xpath=following-sibling::*[1]')).toHaveClass(/lf-card/);
+      await fitsScreen(page, 'roles');
+    } finally {
+      await close();
+    }
+  });
+
+  test('a restricted role is still refused Settings and finance, on a phone', async ({ browser }) => {
+    const { page, close } = await signedIn(browser, agentEmail, agentPassword, phone(390));
+    try {
+      for (const path of ['/admin/users', '/admin/roles', '/sales/collections']) {
+        await page.goto(at(path));
+        await expect(page.getByRole('heading', { name: 'You do not have access to this page' }), path).toBeVisible({
+          timeout: 60_000,
+        });
+      }
+      expect((await page.request.get('/api/v1/leadership?view=pl')).status()).toBe(403);
+      await page.goto(at('/sales/leads'));
+      await expect(page.getByRole('heading', { level: 1, name: 'Leads' })).toBeVisible({ timeout: 60_000 });
+    } finally {
+      await close();
+    }
+  });
+});
+
 /** The shell's computed look: equal on two screens means no visual switch between them. */
 function shell(page: Page) {
   return page.evaluate(() => {

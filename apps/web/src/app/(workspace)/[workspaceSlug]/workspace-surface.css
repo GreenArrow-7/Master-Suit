@@ -152,6 +152,54 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   display: none;
 }
 
+/* Edge indicators: shown only on the edges with more tabs beyond them (data-more,
+   set by WorkAreaTabs). Sticky inside the scroller, so they stay at the edges
+   while the tabs move; no net width, so nothing shifts; never take a tap. */
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs::before,
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs::after {
+  position: sticky;
+  z-index: 1;
+  flex: none;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  border-radius: 8px;
+  color: #3a4960;
+  font: 600 18px/1 var(--lf-font-ui);
+  pointer-events: none;
+  opacity: 0;
+}
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs::before {
+  content: '\2039';
+  order: -1;
+  left: 0;
+  margin-right: -30px;
+  background: linear-gradient(to right, #ffffff 55%, rgb(255 255 255 / 0));
+}
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs::after {
+  content: '\203A';
+  right: 0;
+  margin-left: -30px;
+  background: linear-gradient(to left, #ffffff 55%, rgb(255 255 255 / 0));
+}
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs[data-more~='start']::before,
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame[data-lf-surface='workspace']
+  .lf-area-tabs[data-more~='end']::after {
+  opacity: 1;
+}
+
 /* In-page tabs stay an underline, one level below the strip, in the same ink. */
 html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame[data-lf-surface='workspace']
