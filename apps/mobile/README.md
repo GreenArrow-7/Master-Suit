@@ -68,6 +68,41 @@ A simulator build needs no signing. A build on a physical iPhone or TestFlight
 needs an Apple Developer team selected under Signing & Capabilities, which this
 project does not have.
 
+### TestFlight from GitHub Actions (no Mac needed locally)
+
+`.github/workflows/ios-testflight.yml` archives with automatic signing on a
+GitHub-hosted `macos-26` runner (Xcode 26 or newer) and uploads to App Store
+Connect. It is manual only: push a tag `ios-testflight-<anything>` that points at
+a commit on `dev/mobile-app`. macOS runner minutes are billed on private
+repositories — check the account's Actions usage and budget first.
+
+Before the first run:
+
+1. **Apple Developer Program** — an active membership (individual or organisation)
+   and its 10-character Team ID (developer.apple.com → Account → Membership details).
+2. **Bundle identifier** — decide the final one (it cannot change after the first
+   upload to an app record). Register it under Certificates, Identifiers & Profiles
+   → Identifiers, or let automatic signing register it.
+3. **App Store Connect app record** — My Apps → + → New App: platform iOS, name
+   (e.g. "YOUHAN ONE"), primary language, the bundle identifier above, a SKU.
+4. **App Store Connect API key** — Users and Access → Integrations → App Store
+   Connect API → Team Keys → generate with the **App Manager** (or Admin) role.
+   Note the Key ID and Issuer ID; download `AuthKey_<KeyID>.p8` once.
+5. **GitHub environment** — repository Settings → Environments → New environment
+   `ios-testflight`:
+   - Variables: `APPLE_TEAM_ID`, `IOS_BUNDLE_ID`, `IOS_STAGING_URL` (the staging https origin).
+   - Secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64` — the .p8 file
+     base64-encoded, e.g. PowerShell
+     `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8")) | Set-Clipboard`,
+     pasted into the secret field. Never paste key contents anywhere else.
+6. **TestFlight testers** — App Store Connect → the app → TestFlight → Internal
+   Testing → add yourself (a user on the team with a role). Internal testers need
+   no beta review; install the TestFlight app on the iPhone and accept the invite.
+
+The workflow refuses to run with any of these missing, with the placeholder
+bundle id, or on a commit outside `dev/mobile-app`, and prints only names, never
+values.
+
 ## Brand assets
 
 `node scripts/render-brand-assets.mjs` renders the YOUHAN ONE mark
