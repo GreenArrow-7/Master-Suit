@@ -625,11 +625,18 @@ test.describe('Workspace on a phone', () => {
   /**
    * Every scroll position at which the control's centre is inside the visible content area
    * (below the top bar, above the tab bar) but a tap there would land on something else.
+   * The page is padded by a screen above and below while scanning, so the control passes
+   * through every screen position whatever the fixture's content length — a short page must
+   * not hide an overlay that a longer one would put on top of the control.
    */
   async function coveredPositions(page: Page, control: ReturnType<Page['locator']>) {
     await control.scrollIntoViewIfNeeded();
     const handle = await control.elementHandle();
     return page.evaluate(async (el) => {
+      const main = document.querySelector<HTMLElement>('main')!;
+      const [padTop, padBottom] = [main.style.paddingTop, main.style.paddingBottom];
+      main.style.paddingTop = `${window.innerHeight}px`;
+      main.style.paddingBottom = `${window.innerHeight}px`;
       const top = document.querySelector('.lf-shell-topbar')!.getBoundingClientRect().bottom;
       const bottom = document.querySelector('.lf-tabbar')!.getBoundingClientRect().top;
       const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -637,13 +644,20 @@ test.describe('Workspace on a phone', () => {
       for (let y = 0; y <= max; y += 12) {
         window.scrollTo(0, y);
         await new Promise((r) => requestAnimationFrame(() => r(null)));
+        // A 3×3 grid of tap points, 3px inside the control: partly covered is covered.
         const box = el!.getBoundingClientRect();
-        const cx = box.left + box.width / 2;
-        const cy = box.top + box.height / 2;
-        if (cy <= top + 1 || cy >= bottom - 1) continue;
-        const hit = document.elementFromPoint(cx, cy);
-        if (hit && !el!.contains(hit)) covered.push({ y, by: hit.className.toString() || hit.tagName });
+        if (box.top <= top + 1 || box.bottom >= bottom - 1) continue;
+        for (const fx of [0, 0.5, 1])
+          for (const fy of [0, 0.5, 1]) {
+            const hit = document.elementFromPoint(
+              box.left + 3 + fx * (box.width - 6),
+              box.top + 3 + fy * (box.height - 6),
+            );
+            if (hit && !el!.contains(hit)) covered.push({ y, by: hit.className.toString() || hit.tagName });
+          }
       }
+      Object.assign(main.style, { paddingTop: padTop, paddingBottom: padBottom });
+      window.scrollTo(0, 0);
       return covered;
     }, handle);
   }
@@ -704,10 +718,9 @@ test.describe('Workspace on a phone', () => {
         });
         expect(onTop, `${width}px: assistant above an open sheet`).toBe(false);
         await page.keyboard.press('Escape');
+        const assistant = (await fab.getAttribute('aria-label'))!.replace(/^Open /, '');
         await fab.click();
-        const panel = page.getByRole('dialog', {
-          name: await fab.evaluate((el) => el.getAttribute('aria-label')!.slice(5)),
-        });
+        const panel = page.getByRole('dialog', { name: assistant });
         await expect(panel).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(fab).toBeVisible();
@@ -775,7 +788,7 @@ test.describe('Workspace on a phone', () => {
             await expect(page).toHaveURL(new RegExp(`${key}$`));
             await expect(views.getByRole('tab', { name: second })).toHaveAttribute('aria-selected', 'true');
             await page.goBack();
-            await expect(views.getByRole('tab', { name: 'All' })).toHaveAttribute('aria-selected', 'true');
+            await expect(views.getByRole('tab', { name: 'All', exact: true })).toHaveAttribute('aria-selected', 'true');
             await fitsScreen(page, `${width}px ${path} after back`);
           }
           if (shotDir && width === 390) await page.screenshot({ path: `${shotDir}/${path.split('/').pop()}-390.png` });
