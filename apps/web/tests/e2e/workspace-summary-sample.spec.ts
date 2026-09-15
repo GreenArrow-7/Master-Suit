@@ -420,4 +420,140 @@ test.describe('Workspace Summary sample', () => {
       await phone.close();
     }
   });
+
+  test('Inbox: its own title, the caught-up message only when empty, and the Summary shell', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    const agent = await signedIn(browser, agentEmail, agentPassword);
+    try {
+      await openSummary(agent.page);
+      const summaryShell = await shell(agent.page);
+      await agent.page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Inbox' }).click();
+      await expect(agent.page).toHaveURL(new RegExp(`${at('/notifications')}$`));
+      await expect(agent.page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+      await expect(agent.page.getByText("You're all caught up")).toBeVisible();
+      await expect(agent.page.getByText('New notifications will appear here.')).toBeVisible();
+      await expect(
+        agent.page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name: 'Inbox' }),
+      ).toHaveAttribute('aria-current', 'page');
+      expect(await shell(agent.page)).toEqual(summaryShell);
+      if (process.env.SURFACE_SHOT_DIR)
+        await agent.page.screenshot({ path: `${process.env.SURFACE_SHOT_DIR}/inbox-empty.png` });
+      expect(agent.errors).toEqual([]);
+    } finally {
+      await agent.close();
+    }
+
+    const tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } }))
+      .id;
+    const adminUser = await prisma.user.findFirstOrThrow({
+      where: { tenantId, email: workspace.adminEmail },
+      select: { id: true },
+    });
+    await prisma.notification.create({
+      data: { tenantId, userId: adminUser.id, kind: 'test', title: `Viewing confirmed ${RUN_TAG}`, body: 'Tomorrow' },
+    });
+    const admin = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
+    try {
+      await admin.page.goto(at('/notifications'));
+      await expect(admin.page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible({ timeout: 60_000 });
+      await expect(admin.page.locator('.lf-table')).toContainText(`Viewing confirmed ${RUN_TAG}`);
+      await expect(admin.page.getByText("You're all caught up")).toHaveCount(0);
+    } finally {
+      await admin.close();
+    }
+  });
+
+  test('one shell on list, detail and form screens; the platform console keeps its own', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    const desktop = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
+    const shot = (name: string) =>
+      process.env.SURFACE_SHOT_DIR
+        ? desktop.page.screenshot({ path: `${process.env.SURFACE_SHOT_DIR}/${name}.png`, fullPage: true })
+        : undefined;
+    try {
+      await openSummary(desktop.page);
+      const summaryShell = await shell(desktop.page);
+      const sidebar = desktop.page.getByRole('navigation', { name: 'Workspace' });
+
+      // List screen: the grid and its filters still work inside the same shell.
+      await sidebar.getByRole('link', { name: 'Leads', exact: true }).click();
+      await expect(desktop.page).toHaveURL(new RegExp(`${at('/sales/leads')}$`));
+      await expect(desktop.page.getByText('Rana Haddad')).toBeVisible({ timeout: 60_000 });
+      expect(await shell(desktop.page)).toEqual(summaryShell);
+      await expect(sidebar.getByRole('link', { name: 'Leads', exact: true })).toHaveAttribute('aria-current', 'page');
+      await noSidewaysOverflow(desktop.page);
+      await shot('leads-list');
+
+      // Detail screen: the sidebar keeps Leads active.
+      await desktop.page.getByRole('link', { name: 'Rana Haddad' }).first().click();
+      await expect(desktop.page).toHaveURL(new RegExp(`${at('/sales/leads/')}[^/]+$`));
+      await expect(desktop.page.getByText('Rana Haddad').first()).toBeVisible({ timeout: 60_000 });
+      expect(await shell(desktop.page)).toEqual(summaryShell);
+      await expect(sidebar.getByRole('link', { name: 'Leads', exact: true })).toHaveAttribute('aria-current', 'page');
+      await noSidewaysOverflow(desktop.page);
+      await shot('lead-detail');
+
+      // Form screen: fields stay opaque, focusable and readable.
+      await desktop.page.goto(at('/sales/leads/new'));
+      const name = desktop.page.getByLabel(/Full name/i);
+      await expect(name).toBeVisible({ timeout: 60_000 });
+      expect(await shell(desktop.page)).toEqual(summaryShell);
+      await name.focus();
+      expect(await name.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
+      expect(await contrastOf(desktop.page, 'main label')).toBeGreaterThanOrEqual(4.5);
+      await desktop.page.setViewportSize({ width: 640, height: 450 });
+      await noSidewaysOverflow(desktop.page);
+      await shot('lead-new-zoom200');
+      expect(desktop.errors).toEqual([]);
+    } finally {
+      await desktop.close();
+    }
+
+    const phone = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, { ...devices['Pixel 7'] });
+    try {
+      for (const path of ['/notifications', '/sales/leads', '/sales/leads/new']) {
+        await phone.page.goto(at(path));
+        await expect(phone.page.locator('main h1').first()).toBeVisible({ timeout: 60_000 });
+        await noSidewaysOverflow(phone.page);
+      }
+      if (process.env.SURFACE_SHOT_DIR)
+        await phone.page.screenshot({ path: `${process.env.SURFACE_SHOT_DIR}/lead-new-mobile.png` });
+    } finally {
+      await phone.close();
+    }
+
+    const owner = await browser.newPage();
+    try {
+      await loginPlatformOwner(owner);
+      await owner.goto('/platform/workspaces');
+      await expect(owner.locator('.lf-app-frame')).toHaveCount(1, { timeout: 60_000 });
+      await expect(owner.locator('.lf-app-frame')).not.toHaveAttribute('data-lf-surface', /./);
+      expect(await owner.locator('.lf-app-frame').evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+        'rgb(238, 242, 247)',
+      );
+    } finally {
+      await owner.close();
+    }
+  });
 });
+
+/** The shell's computed look: equal on two screens means no visual switch between them. */
+function shell(page: Page) {
+  return page.evaluate(() => {
+    const style = (selector: string) => {
+      const el = document.querySelector(selector);
+      return el ? getComputedStyle(el) : null;
+    };
+    const frame = style('.lf-app-frame');
+    const sidebar = style('.lf-workspace-sidebar');
+    const topbar = style('.lf-shell-topbar');
+    const active = style('.lf-workspace-sidebar .lf-nav-link[aria-current="page"]');
+    return {
+      canvas: frame && `${frame.backgroundColor} ${frame.backgroundImage}`,
+      sidebar: sidebar && `${sidebar.backgroundImage} ${sidebar.borderRightColor}`,
+      topbar: topbar && `${topbar.height} ${topbar.backgroundColor} ${topbar.boxShadow}`,
+      activeNav: active && `${active.backgroundColor} ${active.borderRadius} ${active.boxShadow}`,
+      pagePadding: style('.lf-page-main')?.paddingTop,
+    };
+  });
+}
