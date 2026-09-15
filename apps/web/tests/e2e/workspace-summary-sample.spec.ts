@@ -316,6 +316,12 @@ test.describe('Workspace Summary sample', () => {
       await expect(page).toHaveURL(new RegExp(`${at('/sales/leads')}$`));
       // Off the Summary, the sample is not in force.
       await expect(page.locator('[data-lf-sample="summary-glass"]')).toHaveCount(0);
+      const radius = () =>
+        page
+          .locator('.lf-area-tabs')
+          .first()
+          .evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+      expect(await radius()).toBe('0px');
     } finally {
       await close();
     }
@@ -357,6 +363,17 @@ test.describe('Workspace Summary sample', () => {
 
       if (process.env.SUMMARY_SHOT_AFTER)
         await desktop.page.screenshot({ path: process.env.SUMMARY_SHOT_AFTER, fullPage: true });
+      // The sample applies to the default light theme only; Dark and Glassy keep their own look.
+      const tabRadius = () =>
+        desktop.page
+          .locator('.lf-area-tabs')
+          .first()
+          .evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+      expect(await tabRadius()).toBe('12px');
+      await desktop.page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      expect(await tabRadius()).toBe('0px');
+      await desktop.page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+
       // Keyboard focus is visible on the page's own actions.
       await desktop.page.locator('.lf-attn__row').first().focus();
       const ring = await desktop.page
