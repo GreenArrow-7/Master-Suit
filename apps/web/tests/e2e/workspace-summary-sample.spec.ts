@@ -355,6 +355,8 @@ test.describe('Workspace Summary sample', () => {
       ])
         expect(await contrastOf(desktop.page, selector), selector).toBeGreaterThanOrEqual(4.5);
 
+      if (process.env.SUMMARY_SHOT_AFTER)
+        await desktop.page.screenshot({ path: process.env.SUMMARY_SHOT_AFTER, fullPage: true });
       // Keyboard focus is visible on the page's own actions.
       await desktop.page.locator('.lf-attn__row').first().focus();
       const ring = await desktop.page
@@ -369,8 +371,6 @@ test.describe('Workspace Summary sample', () => {
       // Status is named in words, not only coloured.
       for (const row of await desktop.page.locator('.lf-attn__row .lf-attn__label').allTextContents())
         expect(row.trim()).not.toBe('');
-      if (process.env.SUMMARY_SHOT_AFTER)
-        await desktop.page.screenshot({ path: process.env.SUMMARY_SHOT_AFTER, fullPage: true });
 
       // 200% browser zoom on a 1280px window is a 640px CSS viewport.
       await desktop.page.setViewportSize({ width: 640, height: 450 });

@@ -391,6 +391,15 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   color: var(--lf-vermillion);
 }
 
+/* Section links read the same size everywhere on the page. */
+html:not([data-theme='dark']):not([data-theme='glass'])
+  .lf-app-frame:has([data-lf-sample='summary-glass'])
+  .lf-table-wrap
+  .lf-link {
+  font-size: var(--lf-text-xs);
+  white-space: nowrap;
+}
+
 /* ── Keyboard focus: visible on every action this page offers ─────────────── */
 html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame:has([data-lf-sample='summary-glass'])
@@ -459,5 +468,12 @@ html:not([data-theme='dark']):not([data-theme='glass'])
     .lf-attn__row {
     grid-template-columns: 44px minmax(0, 1fr) 28px;
     padding: 8px 14px;
+  }
+  html:not([data-theme='dark']):not([data-theme='glass'])
+    .lf-app-frame:has([data-lf-sample='summary-glass'])
+    .lf-attn__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 }
