@@ -1,4 +1,6 @@
 import { resolveCtx } from '../auth/session';
+import { recordPlatformAccess } from '../auth/service-identity';
+import { assertMonitoringReadOnly } from './handler';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
 import { consume, limits, type Limit } from '../security/ratelimit';
@@ -57,11 +59,37 @@ export async function resolveGuardedCtx(req: Request, requestId: string, spec: G
   // this module, may *you* do this, and are you doing it too often. Each step
   // can throw, and each throws before the next runs.
   const ctx = await resolveCtx(req, requestId);
-  await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+  const access = {
+    module: spec.permission?.[0] ?? spec.productModule.toLowerCase(),
+    action: spec.permission?.[1] ?? 'VIEW',
+    method: req.method,
+    path: new URL(req.url).pathname,
+  };
 
-  if (spec.workspaceSlug) await requireWorkspace(ctx, spec.workspaceSlug, spec.productModule);
-  if (spec.permission) assertPermission(ctx, spec.permission[0], spec.permission[1]);
+  try {
+    // The kernel's read-only rule for monitoring, before anything else runs.
+    assertMonitoringReadOnly(ctx, req.method);
+    await assertModuleEntitlement(ctx.tenantId, spec.productModule);
 
-  await consume(spec.limit ?? limits.sessionUser(ctx.actor.id));
+    if (spec.workspaceSlug) await requireWorkspace(ctx, spec.workspaceSlug, spec.productModule);
+    if (spec.permission) assertPermission(ctx, spec.permission[0], spec.permission[1]);
+
+    await consume(spec.limit ?? limits.sessionUser(ctx.actor.id));
+  } catch (error) {
+    /**
+     * A platform actor refused here is recorded, as the kernel records it. These
+     * routes stream and download outside the kernel, and a refusal at one of them —
+     * a monitoring identity asking for a payslip PDF or an HR document — used to
+     * leave no row at all. Best effort on the refusal path, so a failed audit write
+     * cannot turn a 403 into a 500. A no-op for workspace members.
+     */
+    const status = (error as { status?: number }).status ?? 500;
+    await recordPlatformAccess(ctx, { ...access, status }).catch(() => {});
+    throw error;
+  }
+
+  // Awaited and allowed to throw: a platform read that cannot be recorded does
+  // not proceed, the same rule the kernel applies.
+  await recordPlatformAccess(ctx, { ...access, status: 200 });
   return ctx;
 }

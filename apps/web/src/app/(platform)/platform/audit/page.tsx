@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 export const metadata = { title: 'Platform audit' };
 
@@ -22,6 +23,7 @@ export const metadata = { title: 'Platform audit' };
 type ServiceMeta = { credentialId?: string; declaredInitiator?: string | null; action?: string; path?: string };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ event?: string }> }) {
+  await requirePlatformPage();
   const { event } = await searchParams;
   const rows = await prisma.platformAuditEvent.findMany({
     take: 250,

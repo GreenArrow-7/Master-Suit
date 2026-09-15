@@ -22,6 +22,7 @@ export default function WorkspaceSidebar({
   user,
   serviceMode = false,
   peopleOversight = false,
+  platformStaff = false,
 }: {
   slug: string;
   name: string;
@@ -32,6 +33,8 @@ export default function WorkspaceSidebar({
   serviceMode?: boolean;
   /** Sees other employees' People records; decides My HR versus the HR areas. */
   peopleOversight?: boolean;
+  /** Platform staff or service inside a customer workspace; People is hidden. */
+  platformStaff?: boolean;
   workspaces: { slug: string; name: string }[];
   user: { name: string; role: string };
 }) {
@@ -106,8 +109,8 @@ export default function WorkspaceSidebar({
   }, [mobileOpen]);
 
   const sections = useMemo<NavSection[]>(
-    () => buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight }),
-    [slug, modules, permitted, serviceMode, peopleOversight],
+    () => buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight, platformStaff }),
+    [slug, modules, permitted, serviceMode, peopleOversight, platformStaff],
   );
   const activeArea = findActive(sections, pathname, new URLSearchParams(search.toString()))?.area.key;
 

@@ -227,11 +227,14 @@ fi
 
 # ── 5. Reconcile row counts against the manifest ────────────────────────────
 say "reconciling row counts ..."
+# `</dev/null` on the psql below, because this loop reads the manifest on stdin and
+# `docker compose exec` (even with -T) hands that same stdin to psql, which drains
+# it: only the first rows.* line was ever reconciled. Rehearsed 2026-09-12.
 while IFS='=' read -r key expected; do
   case "${key}" in rows.*) ;; *) continue ;; esac
   table="${key#rows.}"
   actual="$(${DC} exec -T postgres psql -U "${PG_USER}" -d "${CHECK_DB}" -qtA \
-    -c "SELECT count(*) FROM \"${table}\";" 2>/dev/null | tr -d '\r ' || echo "?")"
+    -c "SELECT count(*) FROM \"${table}\";" 2>/dev/null </dev/null | tr -d '\r ' || echo "?")"
   if [ "${actual}" = "${expected}" ]; then
     ok "${table}: ${actual}"
   else

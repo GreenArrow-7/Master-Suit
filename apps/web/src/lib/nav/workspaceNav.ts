@@ -89,6 +89,13 @@ export interface NavInput {
   serviceMode?: boolean;
   /** Sees other employees' People records (employee VIEW at TEAM scope or wider). */
   peopleOversight?: boolean;
+  /**
+   * Platform staff or a platform service identity inside a customer workspace.
+   * The People section is hidden outright: they hold no employee record here, so
+   * the self-service tabs (which carry no permission) are meaningless, and the
+   * monitoring boundary excludes HR.
+   */
+  platformStaff?: boolean;
 }
 
 interface AreaDef {
@@ -634,6 +641,7 @@ export function tabAllowed(tab: NavTab, input: NavInput): boolean {
 
 export function buildNavigation(input: NavInput): NavSection[] {
   return definitions(input.slug)
+    .filter((section) => !(input.platformStaff && section.key === 'people'))
     .map((section) => ({
       key: section.key,
       label: section.label,

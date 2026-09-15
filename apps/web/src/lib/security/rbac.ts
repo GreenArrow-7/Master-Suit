@@ -59,6 +59,18 @@ export interface Actor {
   teamIds: readonly string[];
   managedUserIds: readonly string[];
   permissions: PermissionMap;
+  /**
+   * Platform identities only. `break-glass` is the deliberate, time-boxed
+   * elevation an OWNER opens with a WRITE grant; `monitoring` is the read-only
+   * default every other platform session runs in. Written to each audit row so
+   * an elevated read is distinguishable from a routine one after the fact.
+   */
+  platformMode?: 'monitoring' | 'break-glass' | 'service';
+  /**
+   * Platform staff only: which password proved the session. MONITORING is always
+   * read-only; written to audit rows alongside `platformMode`.
+   */
+  credentialPurpose?: 'PLATFORM_ADMIN' | 'MONITORING' | null;
 }
 
 export interface Ctx {

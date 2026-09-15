@@ -31,6 +31,11 @@ export async function POST(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const ctx = await resolvePlatformCtx(req, requestId, ALLOWED);
+    // A factor is enrolled with the administration password, never the
+    // monitoring one: a monitoring session manages no credential.
+    if (ctx.credentialPurpose === 'MONITORING') {
+      throw Forbidden('A monitoring session cannot change two-factor authentication.');
+    }
     const body = await readJsonBody(
       req,
       z.object({
@@ -131,6 +136,10 @@ export async function POST(req: Request) {
       // path had been bypassed. Enrolment must hand back the same restricted
       // session service-login would.
       purpose: isService ? 'AI_SERVICE' : 'FULL',
+      // The enrolment grant was issued by the password step and carries that
+      // step's credential; the full session inherits it rather than re-deciding.
+      credentialPurpose: ctx.credentialPurpose,
+      credentialVersion: ctx.credentialVersion,
     });
 
     await prisma.platformAuditEvent

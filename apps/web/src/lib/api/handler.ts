@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
+import { AppError, Forbidden, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
 import { authenticateApiKey } from '../auth/apiKey';
-import { requirePlatformServiceActor, recordServiceAccess } from '../auth/service-identity';
+import { requirePlatformServiceActor, recordPlatformAccess } from '../auth/service-identity';
+import { assertSensitiveAccess } from '../auth/sensitive-access';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
@@ -39,6 +40,14 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
   auditEvent?: AuditEventName;
   /** Per-route override; otherwise the credential's default applies. */
   rateLimit?: { max: number; windowSeconds: number };
+  /**
+   * Content a platform monitoring identity may only read under a grant flagged
+   * `sensitive` — recordings, transcripts, AI analyses and call audits. Named
+   * here rather than inside each handler so the check runs after the permission
+   * and before the body, where a refusal cannot leak the lookup it would have
+   * made. Customer roles are untouched. See lib/auth/sensitive-access.ts.
+   */
+  sensitive?: string;
 }
 
 export interface HandlerArgs<P, Q, B> {
@@ -110,6 +119,7 @@ export function route<
 
       // 3. Authorize — before the handler body runs ────────────────────────────
       if (ctx) {
+        assertMonitoringReadOnly(ctx, req.method, spec.selfService);
         // Only when the route declares one. The previous `?? 'SALES'` default
         // silently demanded the Sales entitlement from routes that had nothing
         // to do with Sales, and made "forgot to declare it" indistinguishable
@@ -130,6 +140,7 @@ export function route<
          * decision and are left as they were.
          */
         if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
+        if (spec.sensitive) await assertSensitiveAccess(ctx, spec.sensitive);
       } else if (!spec.anonymous) throw Unauthorized();
 
       // 4. Validate ────────────────────────────────────────────────────────────
@@ -170,16 +181,22 @@ export function route<
       }
 
       /**
-       * Every request from a platform service identity, not only the routes
-       * that declare an `auditEvent`.
+       * Every request from a platform identity — machine or human — and not only
+       * the routes that declare an `auditEvent`.
+       *
+       * The `if (ctx?.service)` that used to stand here is why a *person* with
+       * platform staff authority could read a customer's whole workspace behind
+       * a single WORKSPACE_OPENED row while an automated credential had every
+       * request recorded. `recordPlatformAccess` decides for itself from the
+       * actor id, so the caller cannot be the thing that forgets.
        *
        * Awaited and unguarded on purpose: if this write fails the request fails
        * with it. The alternative is serving a customer's records to a
-       * cross-tenant machine reader and having no record that it happened, which
-       * is the one outcome the identity is not allowed to produce.
+       * cross-tenant reader and having no record that it happened, which is the
+       * one outcome neither identity is allowed to produce.
        */
-      if (ctx?.service) {
-        await recordServiceAccess(ctx, {
+      if (ctx) {
+        await recordPlatformAccess(ctx, {
           module: spec.module,
           action: spec.action,
           method: req.method,
@@ -237,14 +254,14 @@ export function route<
        * customer data, so a failed audit write must not turn a 403 into a 500
        * and lose the real cause.
        */
-      if (ctx?.service) {
-        await recordServiceAccess(ctx, {
+      if (ctx) {
+        await recordPlatformAccess(ctx, {
           module: spec.module,
           action: spec.action,
           method: req.method,
           path: new URL(req.url).pathname,
           status: response.status,
-        }).catch((auditErr) => logger.error({ err: auditErr, requestId }, 'service audit write failed'));
+        }).catch((auditErr) => logger.error({ err: auditErr, requestId }, 'platform audit write failed'));
       }
       // Counted here rather than inside toResponse: this is the one place that
       // sees both the outcome and how long reaching it took, and a slow 500 is a
@@ -348,4 +365,28 @@ function toResponse(err: unknown, requestId: string, meta: Record<string, unknow
 
   const problem = new AppError(500, 'internal-error', 'Something went wrong on our side.', [], false);
   return NextResponse.json(problem.toProblem(requestId), { status: 500, headers });
+}
+
+/**
+ * Monitoring is read-only, and that is decided here as well as by the map.
+ *
+ * A platform actor in monitoring mode — the MONITORING password, or staff with
+ * no break-glass in force — already holds only VIEW permissions, so a write
+ * route refuses it at `assertPermission`. That leaves two shapes the permission
+ * map does not see: self-service routes, which skip the permission check by
+ * design (password change, two-factor, recovery codes), and routes that do
+ * something other than read under a VIEW action. Both are refused before the
+ * handler runs, whatever the permission map says.
+ *
+ * Machine credentials and service sessions are `platformMode: 'service'` and are
+ * unaffected; workspace members carry no platform mode at all.
+ */
+export function assertMonitoringReadOnly(ctx: Ctx, method: string, selfService?: boolean) {
+  if (ctx.actor.platformMode !== 'monitoring') return;
+  if (selfService) {
+    throw Forbidden('A monitoring session cannot change account settings.');
+  }
+  if (method !== 'GET' && method !== 'HEAD') {
+    throw Forbidden('Monitoring is read-only.');
+  }
 }

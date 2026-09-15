@@ -23,6 +23,7 @@ import { verifyPassword } from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
 import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
 import { audit } from '@/lib/security/audit';
+import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import type { Ctx } from '@/lib/security/rbac';
 import { decryptSecret, encryptSecret } from './secrets';
 
@@ -212,6 +213,12 @@ export async function regenerateRecoveryCodes(ctx: Ctx, code: string) {
  */
 export async function disableTotp(ctx: Ctx, password: string, code: string) {
   const user = await platformUserFor(ctx);
+  // Two-factor authentication is mandatory for platform staff, and both of a
+  // staff identity's passwords depend on it. It is reset by a platform owner,
+  // which revokes every session; it is not switched off from a workspace screen.
+  if (isPrivilegedPlatformRole(user.platformRole)) {
+    throw Forbidden('Two-factor authentication is required for platform staff and cannot be turned off here.');
+  }
   if (!user.mfaEnabled || !user.mfaSecret) throw Conflict('Two-factor authentication is not enabled on this account.');
   if (!user.passwordHash || !(await verifyPassword(user.passwordHash, password)))
     throw Forbidden('That password is not correct.');
@@ -235,9 +242,14 @@ export async function disableTotp(ctx: Ctx, password: string, code: string) {
 export async function removeTotpFor(ctx: Ctx, userId: string) {
   const target = await prisma.user.findFirst({
     where: { tenantId: ctx.tenantId, id: userId, deletedAt: null },
-    include: { role: true, workspaceMembership: true },
+    include: { role: true, workspaceMembership: { include: { platformUser: { select: { platformRole: true } } } } },
   });
   if (!target?.workspaceMembership) throw NotFound('User');
+  // A workspace administrator does not remove a platform staff identity's factor:
+  // that would open the enrolment path to whoever holds its password.
+  if (isPrivilegedPlatformRole(target.workspaceMembership.platformUser.platformRole)) {
+    throw Forbidden("This person's two-factor authentication is managed by the platform owner.");
+  }
   if (target.id !== ctx.actor.id && target.role.rank <= ctx.actor.roleRank) {
     throw Forbidden('You cannot administer an account at or above your own level.');
   }
@@ -262,6 +274,8 @@ async function clearFactors(ctx: Ctx, platformUserId: string) {
       data: { mfaEnabled: false, mfaSecret: null, mfaRecoveryCodes: [] },
     });
     await tx.authenticationFactor.deleteMany({ where: { platformUserId, type: 'TOTP' } });
+    // An unfinished sign-in was waiting on the factor that just went away.
+    await tx.platformMfaChallenge.deleteMany({ where: { platformUserId, consumedAt: null } });
   });
 }
 

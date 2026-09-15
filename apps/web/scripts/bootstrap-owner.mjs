@@ -6,6 +6,21 @@
  * Usage:
  *   node scripts/bootstrap-owner.mjs --email owner@example.com
  *   node scripts/bootstrap-owner.mjs                # takes PLATFORM_OWNER_EMAIL
+ *   node scripts/bootstrap-owner.mjs --email x@y --promote-existing
+ *
+ * ── It does not promote an existing account unless told to ─────────────────
+ *
+ * An address that already belongs to someone — a customer's administrator, an
+ * employee — is not quietly made the platform owner and given a new password.
+ * That used to happen: the upsert's update branch set platformRole OWNER and
+ * replaced the password of whatever account the address named. Promoting an
+ * existing person is a decision; `--promote-existing` is where it is made, and on
+ * a running platform the owner console's role change (audited, by another owner)
+ * is the better place. Resetting an account that is already the owner needs no
+ * flag.
+ *
+ * It never sets a monitoring password. The account holder sets one themselves,
+ * from the console, after signing in with the administration password and MFA.
  *
  * ── Why this exists separately from the seed ───────────────────────────────
  *
@@ -63,8 +78,18 @@ async function main() {
 
   const existing = await client.platformUser.findUnique({
     where: { normalizedEmail: email },
-    select: { id: true },
+    select: { id: true, platformRole: true, deletedAt: true },
   });
+  if (existing && existing.platformRole !== 'OWNER' && !argv.includes('--promote-existing')) {
+    console.error('');
+    console.error(`  ${email} already belongs to an account (platform role ${existing.platformRole}).`);
+    console.error('  Refusing to promote it to platform owner and replace its password.');
+    console.error('  If that is intended, re-run with --promote-existing, or have another owner');
+    console.error('  change its role from the platform console.');
+    console.error('');
+    process.exitCode = 2;
+    return;
+  }
 
   const owner = await client.platformUser.upsert({
     where: { normalizedEmail: email },
@@ -77,7 +102,15 @@ async function main() {
      * instead, because a seeded credential is the account's own from the first
      * minute; one printed to a terminal is not.
      */
-    update: { passwordHash, passwordChangedAt: null, platformRole: 'OWNER', status: 'ACTIVE' },
+    // A new passwordVersion ends every administration session and unfinished
+    // sign-in issued under the old password, on their next use.
+    update: {
+      passwordHash,
+      passwordVersion: { increment: 1 },
+      passwordChangedAt: null,
+      platformRole: 'OWNER',
+      status: 'ACTIVE',
+    },
     create: {
       email,
       normalizedEmail: email,
@@ -100,6 +133,9 @@ async function main() {
         data: { revokedAt: new Date(), revokedReason: 'PASSWORD_RESET' },
       })
     : { count: 0 };
+  if (existing) {
+    await client.platformMfaChallenge.deleteMany({ where: { platformUserId: owner.id, consumedAt: null } });
+  }
 
   console.log('');
   console.log(`  ${existing ? 'Reset' : 'Created'} Platform Owner  ${email}`);

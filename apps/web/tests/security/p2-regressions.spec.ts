@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
@@ -159,6 +159,7 @@ describe('P2-5: the telephony webhook is rate limited before it touches the data
     const keys = await redis.keys(`rl:webhook:${integrationKey}*`);
     if (keys.length) await redis.del(...keys);
   });
+  afterEach(() => vi.useRealTimers());
 
   it('declares a webhook limit keyed by integration, not by IP', () => {
     const limit = limits.webhook(integrationKey);
@@ -169,6 +170,18 @@ describe('P2-5: the telephony webhook is rate limited before it touches the data
 
   it('answers 429 once the window is spent', async () => {
     const limit = limits.webhook(integrationKey);
+
+    // Pinned, because the limiter's window is sixty seconds of wall clock and
+    // six hundred round trips take twenty-odd of them under a full parallel
+    // run (2.5 s idle, 22 s measured mid-suite). On the real clock the loop
+    // straddled a window boundary in roughly a third of runs, the route's own
+    // consume() then landed in a fresh window, and the request fell through to
+    // the connection lookup: a 401 where a 429 was expected. Only Date is
+    // faked; the Redis client and its timers stay real, so the counters still
+    // expire on schedule.
+    const windowMs = limit.windowSeconds * 1000;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Math.floor(Date.now() / windowMs) * windowMs + 1000);
 
     // The budget is spent through the limiter itself rather than by sending 600
     // requests: the point under test is that the route consumes the bucket

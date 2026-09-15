@@ -18,6 +18,21 @@ export const verifyPassword = (digest: string, plain: string) => verify(digest, 
 const DUMMY = '$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHR2YWx1ZQ$3l4Xh0Z2vJ1qk9kQ0f5oV1oV3yq0mLZ0Xz5qv1p7hAk';
 export const burnTiming = () => verify(DUMMY, 'not-the-password', opts).catch(() => false);
 
+/**
+ * Verifies against a stored digest, or burns the same work when there is none.
+ *
+ * Sign-in checks two credential slots for every attempt. An empty slot must cost
+ * what a filled one costs, or response time would say which accounts hold a
+ * second password.
+ */
+export const verifyOrBurn = async (digest: string | null | undefined, plain: string): Promise<boolean> => {
+  if (!digest) {
+    await burnTiming();
+    return false;
+  }
+  return verifyPassword(digest, plain);
+};
+
 export interface PasswordPolicy {
   minLength: number;
   requireUpper: boolean;

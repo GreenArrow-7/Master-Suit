@@ -103,12 +103,31 @@ async function main() {
     let employeeId;
     let revocations = { sessions: 0, resetTokens: 0 };
 
+    // A platform staff identity's password is not reset from a workspace tool:
+    // it is also that person's administration (or monitoring-adjacent) credential.
+    const identity = await client.platformUser.findUnique({
+      where: { normalizedEmail: email },
+      select: { platformRole: true },
+    });
+    if (identity && identity.platformRole !== 'USER') {
+      throw new Error(
+        `${email} is platform staff (${identity.platformRole}). Its credentials are managed on the platform, not by this script.`,
+      );
+    }
+
     if (existingUser?.workspaceMembership) {
       // passwordChangedAt: null is what makes the next sign-in demand a password
       // of the account holder's own choosing.
       await client.platformUser.update({
         where: { id: existingUser.workspaceMembership.platformUserId },
-        data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null, status: 'ACTIVE' },
+        data: {
+          passwordHash,
+          passwordVersion: { increment: 1 },
+          passwordChangedAt: null,
+          failedLoginCount: 0,
+          lockedUntil: null,
+          status: 'ACTIVE',
+        },
       });
       await client.user.update({
         where: { id: existingUser.id },
@@ -133,7 +152,13 @@ async function main() {
     } else {
       const platformUser = await client.platformUser.upsert({
         where: { normalizedEmail: email },
-        update: { passwordHash, passwordChangedAt: null, status: 'ACTIVE', fullName },
+        update: {
+          passwordHash,
+          passwordVersion: { increment: 1 },
+          passwordChangedAt: null,
+          status: 'ACTIVE',
+          fullName,
+        },
         create: {
           email,
           normalizedEmail: email,

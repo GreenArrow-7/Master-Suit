@@ -23,6 +23,8 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword, type PasswordPolicy } from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
+import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
+import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { assertNotReused, recordPreviousPassword } from './passwordHistory';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
@@ -124,6 +126,7 @@ async function loadTarget(ctx: Ctx, userId: string) {
               mfaEnabled: true,
               mfaRecoveryCodes: true,
               passwordChangedAt: true,
+              platformRole: true,
             },
           },
         },
@@ -202,11 +205,9 @@ export async function changeOwnPassword(ctx: Ctx, currentPassword: string, newPa
   // `reuseWindow`, which nothing read until now.
   await assertNotReused(identity.id, newPassword, policy);
 
-  const passwordHash = await hashPassword(newPassword);
-  await prisma.platformUser.update({
-    where: { id: identity.id },
-    data: { passwordHash, passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null },
-  });
+  // The one writer: refuses a password the identity's monitoring credential
+  // already accepts, and bumps the credential version.
+  await writePrimaryPassword(identity.id, newPassword, { passwordChangedAt: new Date() });
   await recordPreviousPassword(identity.id, identity.passwordHash);
 
   await revokeAllSessions(ctx.tenantId, ctx.actor.id, undefined, 'PASSWORD_CHANGED');
@@ -240,10 +241,21 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   if (!target.workspaceMembership) {
     throw Conflict('That account has no login to reset. Invite them, or recreate the account.');
   }
+  /**
+   * A workspace administrator resets workspace sign-ins, not platform ones.
+   *
+   * The credential lives on the person's platform identity, so resetting it
+   * from inside a workspace used to reset it everywhere — including for someone
+   * who is also a platform owner, whose administration password a customer's own
+   * administrator could then replace and read back. A platform staff identity's
+   * credentials are managed on the platform.
+   */
+  if (isPrivilegedPlatformRole(target.workspaceMembership.platformUser.platformRole)) {
+    throw Forbidden("This person's sign-in is managed by the platform owner, not by a workspace.");
+  }
 
   const password = temporaryPassword ?? generateTemporaryPassword();
   assertPolicy(password, await passwordPolicy(ctx.tenantId));
-  const passwordHash = await hashPassword(password);
 
   /**
    * The old hash is *recorded* but the reuse window is not *enforced* here.
@@ -262,10 +274,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
     select: { passwordHash: true },
   });
 
-  await prisma.platformUser.update({
-    where: { id: target.workspaceMembership.platformUserId },
-    data: { passwordHash, passwordChangedAt: null, failedLoginCount: 0, lockedUntil: null },
-  });
+  await writePrimaryPassword(target.workspaceMembership.platformUserId, password, { passwordChangedAt: null });
   await recordPreviousPassword(target.workspaceMembership.platformUserId, previous?.passwordHash ?? null);
 
   await revokeAllSessions(ctx.tenantId, target.id, undefined, 'PASSWORD_RESET');

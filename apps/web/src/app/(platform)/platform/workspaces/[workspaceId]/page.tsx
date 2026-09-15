@@ -4,11 +4,13 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import BreakGlass from './BreakGlass';
 import WorkspaceControls from './WorkspaceControls';
 import WorkspaceEditForm from './WorkspaceEditForm';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 const date = (value: Date | null | undefined) => value?.toLocaleDateString('en-AE') ?? '—';
 const isoDate = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : '');
 
 export default async function Page({ params }: { params: Promise<{ workspaceId: string }> }) {
+  await requirePlatformPage();
   const { workspaceId } = await params;
 
   const [workspace, plans] = await Promise.all([

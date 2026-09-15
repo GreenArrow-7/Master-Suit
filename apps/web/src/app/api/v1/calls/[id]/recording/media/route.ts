@@ -28,7 +28,14 @@ const params = z.object({ id: z.string().cuid() });
  * immediately for playback and not only for future recordings.
  */
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'VIEW',
+    params,
+    auditEvent: 'RECORDING_ACCESSED',
+    sensitive: 'call recordings',
+  },
   async ({ ctx, params }) => {
     const [recording, consent] = await Promise.all([
       prisma.recording.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),

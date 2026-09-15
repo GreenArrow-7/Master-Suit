@@ -19,10 +19,10 @@ import { buildNavigation, findActive, tabTarget, type NavInput } from '@/lib/nav
 export default function WorkAreaTabs(props: NavInput) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { slug, modules, permitted, serviceMode, peopleOversight } = props;
+  const { slug, modules, permitted, serviceMode, peopleOversight, platformStaff } = props;
   const sections = useMemo(
-    () => buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight }),
-    [slug, modules, permitted, serviceMode, peopleOversight],
+    () => buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight, platformStaff }),
+    [slug, modules, permitted, serviceMode, peopleOversight, platformStaff],
   );
   const search = new URLSearchParams(searchParams.toString());
   const active = findActive(sections, pathname, search);

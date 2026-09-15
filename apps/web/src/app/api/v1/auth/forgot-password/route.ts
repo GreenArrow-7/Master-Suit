@@ -10,6 +10,7 @@ import { clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { sendMail } from '@/lib/mailer';
 import { readJsonBody } from '@/lib/api/read-body';
+import { isPlatformStaff } from '@/lib/auth/credentials';
 
 /**
  * Email only.
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
         email: true,
         status: true,
         deletedAt: true,
+        platformRole: true,
         memberships: {
           where: { status: 'ACTIVE', tenant: { status: 'ACTIVE', deletedAt: null } },
           select: { tenantId: true, salesUserId: true },
@@ -76,6 +78,9 @@ export async function POST(req: Request) {
           tenantId: membership?.tenantId ?? null,
           userId: membership?.salesUserId ?? null,
           tokenHash: sha256(token),
+          // An emailed link only ever sets the primary password — the
+          // administration credential, for platform staff. Never the monitoring one.
+          credentialPurpose: isPlatformStaff(identity.platformRole) ? 'PLATFORM_ADMIN' : null,
           ipAddress: ip,
           userAgent: req.headers.get('user-agent'),
           expiresAt: new Date(Date.now() + RESET_TTL_MINUTES * 60_000),

@@ -5,7 +5,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { AppError, Invalid, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { hashPassword, checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { assertDistinctFromOtherCredential, isPlatformStaff } from '@/lib/auth/credentials';
+import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
 import { revokeAllPlatformSessions } from '@/lib/auth/session';
@@ -74,24 +76,37 @@ export async function POST(req: Request) {
 
     const previous = await prisma.platformUser.findUnique({
       where: { id: platformUserId },
-      select: { passwordHash: true },
+      select: { passwordHash: true, monitoringPasswordHash: true, platformRole: true, deletedAt: true },
     });
-    const passwordHash = await hashPassword(body.newPassword);
+    if (!previous || previous.deletedAt) throw Unauthorized('This reset link is invalid or has expired.');
 
-    await prisma.$transaction([
-      prisma.platformUser.update({
-        where: { id: platformUserId },
-        data: { passwordHash, passwordChangedAt: now, failedLoginCount: 0, lockedUntil: null },
-      }),
-      // Scoped the way invitations are consumed (`{ tenantId, id }`): the guard
-      // needs a tenant term on every write, and a platform-only token carries
-      // `tenantId: null`, which pins exactly that row rather than any tenant's.
-      prisma.passwordResetToken.update({
-        where: { id: record.id, tenantId: record.tenantId },
-        data: { usedAt: now },
-      }),
-    ]);
-    await recordPreviousPassword(platformUserId, previous?.passwordHash ?? null);
+    /**
+     * The link sets the credential it was issued for, and only that one.
+     *
+     * Emailed links target the primary password: PLATFORM_ADMIN for platform
+     * staff, no purpose for a workspace user. A link whose purpose does not fit
+     * the identity as it stands now — issued before the purpose existed, or before
+     * a role change — is refused rather than guessed at. The MONITORING password
+     * is never reset by email, so a link naming it is refused too.
+     */
+    const staff = isPlatformStaff(previous.platformRole);
+    const purposeFits = staff ? record.credentialPurpose === 'PLATFORM_ADMIN' : record.credentialPurpose === null;
+    if (!purposeFits) throw Unauthorized('This reset link is invalid or has expired.');
+    await assertDistinctFromOtherCredential(previous, body.newPassword, 'PLATFORM_ADMIN');
+
+    // Spend the link first, conditionally, so two requests racing with the same
+    // link cannot both reset. Scoped the way invitations are consumed
+    // (`{ tenantId, id }`): the guard needs a tenant term on every write, and a
+    // platform-only token carries `tenantId: null`, which pins exactly that row.
+    const claimed = await prisma.passwordResetToken.updateMany({
+      where: { id: record.id, tenantId: record.tenantId, usedAt: null },
+      data: { usedAt: now },
+    });
+    if (claimed.count !== 1) throw Unauthorized('This reset link is invalid or has expired.');
+
+    // New hash, new version, unfinished sign-ins for the old one cancelled.
+    await writePrimaryPassword(platformUserId, body.newPassword, { passwordChangedAt: now });
+    await recordPreviousPassword(platformUserId, previous.passwordHash ?? null);
 
     // A password reset invalidates every existing session — the whole point of the
     // flow. There is one session store, keyed by platform identity.
@@ -110,7 +125,10 @@ export async function POST(req: Request) {
           requestId,
         },
       });
-    } else {
+    }
+    // Platform staff are recorded on the platform trail as well, naming the
+    // credential the link set.
+    if (staff || !(tenant && record.userId)) {
       await prisma.platformAuditEvent.create({
         data: {
           actorUserId: platformUserId,
@@ -120,7 +138,7 @@ export async function POST(req: Request) {
           requestId,
           ipAddress: record.ipAddress,
           userAgent: record.userAgent,
-          metadata: { result: 'ok', via: 'reset-link' },
+          metadata: { result: 'ok', via: 'reset-link', ...(staff ? { credentialPurpose: 'PLATFORM_ADMIN' } : {}) },
         },
       });
     }

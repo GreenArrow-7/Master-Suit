@@ -34,6 +34,7 @@ export default function CommandPalette({
   permitted,
   serviceMode = false,
   peopleOversight = false,
+  platformStaff = false,
 }: NavInput) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -44,7 +45,7 @@ export default function CommandPalette({
 
   const pages = useMemo(
     () =>
-      buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight }).flatMap((section) =>
+      buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight, platformStaff }).flatMap((section) =>
         section.areas.flatMap((area) =>
           area.tabs.map((tab) => ({
             key: `${area.key}:${tab.href}`,
@@ -55,7 +56,7 @@ export default function CommandPalette({
           })),
         ),
       ),
-    [slug, modules, permitted, serviceMode, peopleOversight],
+    [slug, modules, permitted, serviceMode, peopleOversight, platformStaff],
   );
   const targets = useMemo(() => searchTargets({ slug, modules, permitted }), [slug, modules, permitted]);
 

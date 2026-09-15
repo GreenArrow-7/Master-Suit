@@ -27,6 +27,7 @@ const sections = [
     'Identity & security',
     [
       ['Platform users', '/platform/users'],
+      ['Sign-in and passwords', '/platform/security'],
       ['Audit logs', '/platform/audit'],
       ['System health', '/platform/system-health'],
       ['Platform settings', '/platform/settings'],

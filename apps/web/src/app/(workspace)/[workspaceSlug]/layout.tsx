@@ -74,6 +74,7 @@ export default async function WorkspaceLayout({
         user={shell.user}
         serviceMode={shell.serviceMode}
         peopleOversight={shell.peopleOversight}
+        platformStaff={shell.platformStaff}
       />
       <div className="lf-content-column">
         {shell.supportMode && (
@@ -96,6 +97,7 @@ export default async function WorkspaceLayout({
             permitted={shell.permitted}
             serviceMode={shell.serviceMode}
             peopleOversight={shell.peopleOversight}
+            platformStaff={shell.platformStaff}
           />
           {children}
         </main>
@@ -111,6 +113,7 @@ export default async function WorkspaceLayout({
         permitted={shell.permitted}
         serviceMode={shell.serviceMode}
         peopleOversight={shell.peopleOversight}
+        platformStaff={shell.platformStaff}
       />
       <NativePush />
     </div>
@@ -155,13 +158,19 @@ async function loadShell(workspaceSlug: string) {
      * VIEW_REPORTS and there is no path to anything else.
      */
     const supportMode = ctx.actor.roleKey === 'platform_support' || ctx.actor.roleKey === 'platform_owner';
-    const supportReadOnly = ctx.actor.roleKey === 'platform_support';
+    // Read-only unless a break-glass grant is live. An OWNER signed in with the
+    // monitoring password, or without a grant, is as read-only as SUPPORT, and
+    // the banner must say so; the server enforces it either way.
+    const supportReadOnly = ctx.actor.platformMode !== 'break-glass';
 
     return {
       workspaceId: workspace.id,
       supportMode,
       supportReadOnly,
       serviceMode,
+      // Any platform identity, support or service: neither holds an employee
+      // record here, so neither gets a People section.
+      platformStaff: supportMode || serviceMode,
       slug: workspace.slug,
       displayName: workspace.displayName,
       /**

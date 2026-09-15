@@ -38,6 +38,32 @@ export const DEFAULT_GRANT_MINUTES = 30;
 export const MAX_GRANT_MINUTES = 240;
 
 /**
+ * The same two numbers for a READ grant, and they are much larger on purpose.
+ *
+ * A write grant is held for the length of a repair; a monitoring authorisation is
+ * held for the length of an engagement, and re-asking every four hours would make
+ * the control an obstacle people route around rather than one they use. Thirty
+ * days is long enough to cover a support relationship and short enough that a
+ * customer who left is not still being watched a quarter later.
+ *
+ * Still bounded, and that is the point that must not be lost: no path anywhere
+ * creates a workspace authorisation that does not expire.
+ */
+export const DEFAULT_READ_GRANT_MINUTES = 60 * 24 * 7;
+export const MAX_READ_GRANT_MINUTES = 60 * 24 * 30;
+
+/**
+ * And for coverage of every workspace at once, shorter than a single-workspace
+ * authorisation rather than longer.
+ *
+ * The instinct is the reverse — coverage feels like a standing arrangement — and
+ * that instinct is what turns "explicit grant" back into a role. Seven days is a
+ * fortnight's on-call rotation's worth of asking again.
+ */
+export const DEFAULT_COVERAGE_MINUTES = 60 * 24;
+export const MAX_COVERAGE_MINUTES = 60 * 24 * 7;
+
+/**
  * Long enough to be a sentence. "fix" is not a reason; it is a word.
  *
  * Exported so the console can refuse the same input the API refuses, and say so
@@ -46,27 +72,124 @@ export const MAX_GRANT_MINUTES = 240;
  */
 export const MIN_REASON = 12;
 
+export type GrantKind = 'READ' | 'WRITE';
+
 export interface AccessGrant {
   id: string;
   tenantId: string;
+  kind: GrantKind;
   reason: string;
   grantedAt: Date;
   expiresAt: Date;
 }
 
 /**
- * The caller's live write grant for this workspace, or null.
+ * The caller's live grant of this kind for this workspace, or null.
  *
  * `revokedAt: null` and `expiresAt > now`, both checked in the query so a
  * revoked-and-expired grant cannot be resurrected by a clock skew on one side.
+ *
+ * `kind` defaults to WRITE because that is what every caller wanted when this
+ * function had no kind at all, and getting it wrong in that direction would hand
+ * somebody write access on the strength of a read grant. A caller that means
+ * "may this person be in this workspace" asks `mayEnterWorkspace` below, which
+ * also weighs coverage, rather than asking for a READ grant directly.
  */
-export async function activeGrant(platformUserId: string, tenantId: string): Promise<AccessGrant | null> {
+export async function activeGrant(
+  platformUserId: string,
+  tenantId: string,
+  kind: GrantKind = 'WRITE',
+): Promise<AccessGrant | null> {
   const grant = await prisma.platformAccessGrant.findFirst({
-    where: { platformUserId, tenantId, revokedAt: null, expiresAt: { gt: new Date() } },
+    where: { platformUserId, tenantId, kind, revokedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { expiresAt: 'desc' },
-    select: { id: true, tenantId: true, reason: true, grantedAt: true, expiresAt: true },
+    select: { id: true, tenantId: true, kind: true, reason: true, grantedAt: true, expiresAt: true },
   });
   return grant;
+}
+
+/**
+ * Live coverage of every workspace, for this person, or null.
+ *
+ * Deliberately not folded into `activeGrant`: coverage names no workspace, so a
+ * function whose whole signature is "(person, workspace)" cannot express it, and
+ * making `tenantId` optional there would turn one clear question into two
+ * unclear ones.
+ */
+export async function activeCoverage(platformUserId: string): Promise<CoverageGrant | null> {
+  return prisma.platformCoverageGrant.findFirst({
+    where: { platformUserId, revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { expiresAt: 'desc' },
+    select: { id: true, reason: true, grantedAt: true, expiresAt: true },
+  });
+}
+
+export interface CoverageGrant {
+  id: string;
+  reason: string;
+  grantedAt: Date;
+  expiresAt: Date;
+}
+
+/**
+ * May this member of platform staff be inside this workspace at all?
+ *
+ * The question `enter` asks before pointing a session at a tenant, and the one
+ * `resolveCtx` asks again on every request afterwards — because an authorisation
+ * checked only at the door is an authorisation that survives its own revocation
+ * for as long as the session lives.
+ *
+ * Answered by a named workspace grant or by live coverage, in that order: the
+ * specific one is cheaper, is the common case, and is the one an operator will
+ * have created deliberately. Coverage is the exception and is looked up only when
+ * the specific answer is no.
+ *
+ * A live break-glass (WRITE) grant also admits its holder, for its lifetime. It is
+ * owner-only, reason-bound and time-boxed, and every read under it is labelled
+ * mode=break-glass; without this a sole owner, who may not issue themselves a
+ * monitoring grant, could never use it.
+ */
+export async function mayEnterWorkspace(
+  platformUserId: string,
+  tenantId: string,
+  // Off unless the caller says otherwise: omitting it can never widen entry. A
+  // monitoring session passes false, so a WRITE grant never admits it.
+  options: { allowBreakGlass?: boolean } = {},
+): Promise<boolean> {
+  if (await activeGrant(platformUserId, tenantId, 'READ')) return true;
+  if (options.allowBreakGlass && (await activeGrant(platformUserId, tenantId, 'WRITE'))) return true;
+  return (await activeCoverage(platformUserId)) !== null;
+}
+
+/**
+ * Every workspace this person may currently open.
+ *
+ * Returns `null` to mean "all of them", which the caller turns into an unfiltered
+ * query. A list of every tenant id would be the same answer and would grow with
+ * the customer count on a page that then has to filter by it; `null` says the
+ * thing the coverage grant actually said.
+ */
+export async function authorizedTenantIds(platformUserId: string): Promise<string[] | null> {
+  if (await activeCoverage(platformUserId)) return null;
+  /**
+   * `withPlatformTx`, for the same reason `liveGrantCount` below needs it and
+   * `activeGrant` above does not.
+   *
+   * This is the one grant query that names no tenant — it is asking *which*
+   * tenants, so it cannot pin one. PlatformAccessGrant is under row-level
+   * security (20260826120000), and a query that sets no `app.tenant_id` does not
+   * error against that policy: it quietly matches nothing. A staff member would
+   * have signed in to be told they are authorised for no workspaces at all,
+   * which reads as "access revoked" rather than as a bug, and is the failure this
+   * whole table was put under a policy to make impossible in the other direction.
+   */
+  const grants = await withPlatformTx((tx) =>
+    tx.platformAccessGrant.findMany({
+      where: { platformUserId, kind: 'READ', revokedAt: null, expiresAt: { gt: new Date() } },
+      select: { tenantId: true },
+    }),
+  );
+  return [...new Set(grants.map((grant) => grant.tenantId))];
 }
 
 /**
@@ -79,28 +202,40 @@ export async function activeGrant(platformUserId: string, tenantId: string): Pro
 export async function openGrant(input: {
   platformUserId: string;
   tenantId: string;
+  kind?: GrantKind;
+  /** Also covers recordings, transcripts and documents. Off unless asked for. */
+  sensitive?: boolean;
   reason: string;
   minutes?: number;
   requestId?: string;
 }): Promise<AccessGrant> {
+  const kind = input.kind ?? 'WRITE';
   const reason = input.reason.trim();
   if (reason.length < MIN_REASON) {
     throw Invalid([
       {
         field: 'reason',
         code: 'invalid',
-        message: `Say why you need to change this customer's data — at least ${MIN_REASON} characters. It is written to the workspace's audit trail.`,
+        message:
+          kind === 'WRITE'
+            ? `Say why you need to change this customer's data — at least ${MIN_REASON} characters. It is written to the workspace's audit trail.`
+            : `Say why this workspace needs to be monitored — at least ${MIN_REASON} characters. It is written to the workspace's audit trail.`,
       },
     ]);
   }
 
-  const minutes = Math.min(Math.max(Math.round(input.minutes ?? DEFAULT_GRANT_MINUTES), 1), MAX_GRANT_MINUTES);
+  const ceiling = kind === 'WRITE' ? MAX_GRANT_MINUTES : MAX_READ_GRANT_MINUTES;
+  const fallback = kind === 'WRITE' ? DEFAULT_GRANT_MINUTES : DEFAULT_READ_GRANT_MINUTES;
+  const minutes = Math.min(Math.max(Math.round(input.minutes ?? fallback), 1), ceiling);
 
-  const existing = await activeGrant(input.platformUserId, input.tenantId);
+  const existing = await activeGrant(input.platformUserId, input.tenantId, kind);
   if (existing) {
     throw Forbidden(
-      `You already have write access to this workspace until ${existing.expiresAt.toISOString()}. ` +
-        'Hand it back before opening another.',
+      kind === 'WRITE'
+        ? `You already have write access to this workspace until ${existing.expiresAt.toISOString()}. ` +
+            'Hand it back before opening another.'
+        : `That person is already authorised for this workspace until ${existing.expiresAt.toISOString()}. ` +
+            'Revoke it before issuing another.',
     );
   }
 
@@ -108,20 +243,93 @@ export async function openGrant(input: {
     data: {
       tenantId: input.tenantId,
       platformUserId: input.platformUserId,
+      kind,
+      // A WRITE grant reaches everything through buildSupportActor anyway, so
+      // recording it as sensitive keeps the column an honest description of the
+      // grant rather than a second gate that disagrees with the first.
+      sensitive: input.sensitive ?? kind === 'WRITE',
       reason,
       expiresAt: new Date(Date.now() + minutes * 60_000),
       requestId: input.requestId ?? null,
     },
-    select: { id: true, tenantId: true, reason: true, grantedAt: true, expiresAt: true },
+    select: { id: true, tenantId: true, kind: true, reason: true, grantedAt: true, expiresAt: true },
   });
   return grant;
 }
 
-/** Hands it back early. Idempotent: closing what is already closed is not an error. */
-export async function revokeGrants(platformUserId: string, tenantId: string): Promise<number> {
+/**
+ * Hands it back early. Idempotent: closing what is already closed is not an error.
+ *
+ * `kind` is optional and omitting it closes both, which is what "revoke this
+ * person's access to this workspace" means to whoever asks for it. A caller that
+ * means only the elevation — the break-glass DELETE, which must not also strip
+ * the authorisation to be there — names WRITE.
+ */
+export async function revokeGrants(platformUserId: string, tenantId: string, kind?: GrantKind): Promise<number> {
   const { count } = await prisma.platformAccessGrant.updateMany({
-    where: { platformUserId, tenantId, revokedAt: null },
+    where: { platformUserId, tenantId, revokedAt: null, ...(kind ? { kind } : {}) },
     data: { revokedAt: new Date() },
+  });
+  return count;
+}
+
+/**
+ * Opens coverage of every workspace for one person.
+ *
+ * Refuses a self-grant. Every other control here is about making authority
+ * visible and bounded; one person being able to award themselves sight of every
+ * customer would leave a perfect audit trail of an act nobody approved. The
+ * caller is the platform owner and the subject is whoever they name, and those
+ * must be two people.
+ */
+export async function openCoverage(input: {
+  platformUserId: string;
+  grantedById: string;
+  sensitive?: boolean;
+  reason: string;
+  minutes?: number;
+  requestId?: string;
+}): Promise<CoverageGrant> {
+  const reason = input.reason.trim();
+  if (reason.length < MIN_REASON) {
+    throw Invalid([
+      {
+        field: 'reason',
+        code: 'invalid',
+        message: `Say why this person needs every workspace — at least ${MIN_REASON} characters.`,
+      },
+    ]);
+  }
+  if (input.platformUserId === input.grantedById) {
+    throw Forbidden('Coverage of every workspace has to be granted by somebody else.');
+  }
+
+  const existing = await activeCoverage(input.platformUserId);
+  if (existing) {
+    throw Forbidden(
+      `That person already has coverage until ${existing.expiresAt.toISOString()}. Revoke it before issuing another.`,
+    );
+  }
+
+  const minutes = Math.min(Math.max(Math.round(input.minutes ?? DEFAULT_COVERAGE_MINUTES), 1), MAX_COVERAGE_MINUTES);
+  return prisma.platformCoverageGrant.create({
+    data: {
+      platformUserId: input.platformUserId,
+      grantedById: input.grantedById,
+      sensitive: input.sensitive ?? false,
+      reason,
+      expiresAt: new Date(Date.now() + minutes * 60_000),
+      requestId: input.requestId ?? null,
+    },
+    select: { id: true, reason: true, grantedAt: true, expiresAt: true },
+  });
+}
+
+/** Ends it now. Idempotent, like its per-workspace sibling. */
+export async function revokeCoverage(platformUserId: string, reason: string): Promise<number> {
+  const { count } = await prisma.platformCoverageGrant.updateMany({
+    where: { platformUserId, revokedAt: null },
+    data: { revokedAt: new Date(), revokedReason: reason },
   });
   return count;
 }

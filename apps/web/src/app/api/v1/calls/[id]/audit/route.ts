@@ -55,7 +55,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call audits' },
   async ({ ctx, params }) => {
     const data = await prisma.callAudit.findMany({
       where: { callId: params.id, tenantId: ctx.tenantId },

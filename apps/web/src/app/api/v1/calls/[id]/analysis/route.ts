@@ -62,7 +62,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call analyses' },
   async ({ ctx, params }) => {
     const analysis = await prisma.aIAnalysis.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
