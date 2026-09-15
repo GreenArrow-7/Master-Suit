@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { buildWorkspaceNav, searchTargets, type NavInput } from '@/lib/nav/workspaceNav';
+import { buildNavigation, searchTargets, type NavInput } from '@/lib/nav/workspaceNav';
 
 /**
  * ⌘K. Jump to any page you may open, or search a list by name.
@@ -28,7 +28,13 @@ interface Result {
 
 const MAX_PAGES = 9;
 
-export default function CommandPalette({ slug, modules, permitted, serviceMode = false }: NavInput) {
+export default function CommandPalette({
+  slug,
+  modules,
+  permitted,
+  serviceMode = false,
+  peopleOversight = false,
+}: NavInput) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -38,16 +44,18 @@ export default function CommandPalette({ slug, modules, permitted, serviceMode =
 
   const pages = useMemo(
     () =>
-      buildWorkspaceNav({ slug, modules, permitted, serviceMode }).flatMap((group) =>
-        group.items.map((item) => ({
-          key: item.href,
-          group: group.label.replace('More · ', ''),
-          label: item.label,
-          href: item.href,
-          haystack: `${item.label} ${item.keywords ?? ''} ${group.label}`.toLowerCase(),
-        })),
+      buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight }).flatMap((section) =>
+        section.areas.flatMap((area) =>
+          area.tabs.map((tab) => ({
+            key: `${area.key}:${tab.href}`,
+            group: area.label,
+            label: area.tabs.length > 1 ? `${area.label} · ${tab.label}` : area.label,
+            href: tab.href,
+            haystack: `${tab.label} ${area.label} ${tab.keywords ?? ''} ${section.label}`.toLowerCase(),
+          })),
+        ),
       ),
-    [slug, modules, permitted, serviceMode],
+    [slug, modules, permitted, serviceMode, peopleOversight],
   );
   const targets = useMemo(() => searchTargets({ slug, modules, permitted }), [slug, modules, permitted]);
 

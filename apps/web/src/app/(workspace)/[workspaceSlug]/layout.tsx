@@ -2,12 +2,14 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
-import { can } from '@/lib/security/rbac';
+import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
+import { NAV_PERMISSIONS, parsePermission } from '@/lib/nav/workspaceNav';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import MobileTabBar from '@/components/workspace/MobileTabBar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
+import WorkAreaTabs from '@/components/workspace/WorkAreaTabs';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
@@ -15,40 +17,6 @@ import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
 
 export const dynamic = 'force-dynamic';
-
-/** Every permission module the workspace navigation can gate an item on. */
-const PERMISSION_KEYS = [
-  'leads',
-  'opportunities',
-  'accounts',
-  'contacts',
-  'activities',
-  'tasks',
-  'documents',
-  'tickets',
-  'products',
-  'fieldsales',
-  'campaigns',
-  'calls',
-  'events',
-  'forms',
-  'landingpages',
-  'communications',
-  'automation',
-  'reports',
-  'dashboards',
-  'smartviews',
-  'users',
-  'roles',
-  'settings',
-  'integrations',
-  'auditlogs',
-  // HR, split by authority (P1-8).
-  'employee',
-  'leave',
-  'attendance',
-  'hr_documents',
-];
 
 export default async function WorkspaceLayout({
   children,
@@ -105,6 +73,7 @@ export default async function WorkspaceLayout({
         workspaces={shell.availableWorkspaces}
         user={shell.user}
         serviceMode={shell.serviceMode}
+        peopleOversight={shell.peopleOversight}
       />
       <div className="lf-content-column">
         {shell.supportMode && (
@@ -120,7 +89,16 @@ export default async function WorkspaceLayout({
           plan={shell.plan}
           creatable={shell.creatable}
         />
-        <main className="lf-page-main">{children}</main>
+        <main className="lf-page-main">
+          <WorkAreaTabs
+            slug={shell.slug}
+            modules={shell.modules}
+            permitted={shell.permitted}
+            serviceMode={shell.serviceMode}
+            peopleOversight={shell.peopleOversight}
+          />
+          {children}
+        </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
         <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
       </div>
@@ -132,6 +110,7 @@ export default async function WorkspaceLayout({
         modules={shell.modules}
         permitted={shell.permitted}
         serviceMode={shell.serviceMode}
+        peopleOversight={shell.peopleOversight}
       />
       <NativePush />
     </div>
@@ -219,9 +198,18 @@ async function loadShell(workspaceSlug: string) {
         memberships.length > 0
           ? memberships.map((membership) => ({ slug: membership.tenant.slug, name: membership.tenant.displayName }))
           : [{ slug: workspace.slug, name: workspace.displayName }],
-      // The sidebar is a client component and cannot evaluate permissions
-      // itself, so the VIEW grants are resolved here and handed over as a list.
-      permitted: PERMISSION_KEYS.filter((key) => can(ctx, key, 'VIEW')),
+      // The sidebar is a client component and cannot evaluate permissions itself,
+      // so every token the navigation model names is resolved here and handed
+      // over as a list. Taken from the model rather than a second list, which had
+      // drifted: Collections, Commissions, Projects, Payroll and a dozen more were
+      // never checked and so never shown to anyone.
+      permitted: NAV_PERMISSIONS.filter((token) => {
+        const [module, action] = parsePermission(token);
+        return can(ctx, module, action as Action);
+      }),
+      // Whether People screens show this person's own records or other people's;
+      // decides "My Leave" versus "Leave Requests" for the same route.
+      peopleOversight: SCOPE_RANK[scopeFor(ctx, 'employee', 'VIEW')] >= SCOPE_RANK.TEAM,
       // Same trick for the + Create menu: entries whose module the role cannot
       // CREATE never render (a read-only executive gets no menu at all).
       creatable: ['leads', 'opportunities', 'accounts', 'contacts', 'calls', 'events'].filter((key) =>

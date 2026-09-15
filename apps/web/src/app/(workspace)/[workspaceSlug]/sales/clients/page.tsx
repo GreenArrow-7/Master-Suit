@@ -84,25 +84,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         }
       />
 
-      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="View">
-        {(
-          [
-            ['Profiles', 'profiles'],
-            ['Testimonials', 'testimonials'],
-            ['Referrals', 'referrals'],
-          ] as const
-        ).map(([label, key]) => (
-          <SalesLink
-            key={key}
-            className="lf-tab"
-            href={key === 'profiles' ? '/clients' : `/clients?view=${key}`}
-            aria-selected={view === key}
-            role="tab"
-          >
-            {label}
-          </SalesLink>
-        ))}
-      </nav>
+      {/* Its views are the tabs of this work area (lib/nav/workspaceNav.ts), rendered above the page. */}
 
       {view === 'profiles' &&
         (profiles.length === 0 ? (

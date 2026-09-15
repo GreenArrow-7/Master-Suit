@@ -1713,10 +1713,12 @@ a:hover {
   color: var(--lf-ink);
   background: var(--lf-wine-050);
 }
-.lf-tab[aria-selected='true'] {
+.lf-tab[aria-selected='true'],
+.lf-tab[aria-current='page'] {
   color: var(--lf-wine-700);
 }
-.lf-tab[aria-selected='true']::after {
+.lf-tab[aria-selected='true']::after,
+.lf-tab[aria-current='page']::after {
   content: '';
   position: absolute;
   inset: auto 0 -1px 0;
@@ -6517,4 +6519,13 @@ a.lf-kpi:hover {
     height: 34px;
     font-size: var(--lf-text-sm);
   }
+}
+
+/* The tabs of the current work area, above the page's own header. */
+.lf-area-tabs {
+  margin-bottom: var(--lf-space-5);
+}
+.lf-tab:focus-visible {
+  outline: 2px solid var(--lf-wine-700);
+  outline-offset: -2px;
 }
