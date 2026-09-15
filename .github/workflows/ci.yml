@@ -22,7 +22,8 @@ defaults:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # E2E below may take 25; the gates before it take ~10 and Build/Audit ~5.
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -379,7 +380,12 @@ jobs:
       - name: E2E
         id: e2e
         if: github.event_name == 'push' || github.base_ref == 'main'
-        timeout-minutes: 15
+        # 86 tests on one worker against the dev server. At 15 the suite no
+        # longer fits: main finished in 15.0 (run 34970295696) and the release
+        # closeout's runs timed out at 53 and 69 of 86 with nothing failing
+        # (34974531433, 34977699059). A limit, not an assertion: every test
+        # still has to pass.
+        timeout-minutes: 25
         run: npx playwright test
 
       # Not a gate — the diagnosis for the one above.
