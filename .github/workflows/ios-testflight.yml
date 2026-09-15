@@ -59,7 +59,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          git fetch --no-tags origin dev/mobile-app
+          git fetch --no-tags origin +refs/heads/dev/mobile-app:refs/remotes/origin/dev/mobile-app
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/dev/mobile-app; then
             echo "::error::$GITHUB_SHA is not on dev/mobile-app; refusing to build."
             exit 1
