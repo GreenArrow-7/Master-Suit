@@ -1,100 +1,104 @@
-# Mobile shell
+# Mobile shell — DEVELOPMENT PROOF OF CONCEPT
 
-Android and iOS store builds of `apps/web`. The native projects are a WebView
-pointed at the running server — see the reasoning in
-[`capacitor.config.js`](capacitor.config.js). No screen, route or API call is
-duplicated here, so there is nothing to keep in sync with the web app: a deploy
-updates the phones.
+Android and iOS builds of `apps/web`. The native projects are a WebView pointed at
+the running server — see [`capacitor.config.js`](capacitor.config.js). No screen,
+route or API call is duplicated here: a deploy updates the phones.
 
-## Build
+**Not production-ready.** The app loads the server through Capacitor's
+`server.url`, which Capacitor documents as "intended for use with live-reload
+servers" and "not intended for use in production" (capacitorjs.com/docs/config,
+v8). Builds from this project are development proofs of concept until a
+production-supported architecture is chosen. Do not submit them to a store.
 
-```bash
-cd apps/mobile && npm install
-```
+## What this build contains
 
-Then, with the URL of the server the app should load:
+| Area | State |
+|---|---|
+| Server | `MOBILE_SERVER_URL` at sync time — an https origin only (enforced) |
+| Navigation | The server origin only; every other host opens in the system browser (no `allowNavigation`) |
+| Session | The web app's httpOnly session cookie, first-party in the WebView; no passwords or tokens stored by the app |
+| Permissions | Android: `INTERNET`, `CAMERA` (Take photo on lead documents). iOS: `NSCameraUsageDescription` |
+| Backup | Android backup and device transfer disabled (the WebView cookie store holds the session) |
+| FileProvider | Limited to the camera capture folder (`external-files-path` `Pictures/`) |
+| Push | **Not included.** The plugin is removed until FCM/APNs credentials exist (see below) |
+| Location, microphone | **Not declared.** Face check-in, the site-visit GPS punch and any audio feature cannot work in this build |
+| Identifiers | `com.mastersuite.app` is a **placeholder**; label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
 
-```bash
-MOBILE_SERVER_URL=https://app.example.com npm run sync
-```
+## Android: build the development APK
 
-`sync` bakes that URL into `android/app/src/main/assets/capacitor.config.json`
-and the iOS equivalent, so **it has to be set on every sync that precedes a
-store build**. Sync without it and the binary opens `www/index.html`, which says
-so rather than showing a blank screen. The committed config carries no URL on
-purpose — the value differs per environment and the tunnel host in `.env` is not
-a production origin.
-
-Open the native project and build from there:
-
-```bash
-npm run open:android
-```
+Requirements, matching this project: JDK 21, Android SDK platform 36 and
+build-tools 35/36, platform-tools; Gradle 8.14.3 comes from the wrapper.
 
 ```bash
-npm run open:ios
+cd apps/mobile && npm ci
 ```
 
-Android needs Android Studio. iOS needs a Mac with Xcode and CocoaPods —
-`npx cap add ios` ran on Windows and produced a valid project, but `pod install`
-did not, so run it once on the Mac before the first Xcode build.
+```bash
+MOBILE_SERVER_URL=https://your-staging-origin npm run sync
+```
 
-## Native edits already made
+```bash
+cd android && ./gradlew assembleDebug lintDebug
+```
 
-Both are required by screens that already exist in the web app, and both are
-lost if the `android/` or `ios/` directory is ever regenerated:
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk`, signed with the
+local Android **debug** certificate. It installs on a phone with "Install unknown
+apps" allowed, or with `adb install -r app-debug.apk`. It is debuggable: anyone
+with the phone and a USB cable can inspect the WebView, including the session.
+Use test accounts only.
 
-- `android/app/src/main/AndroidManifest.xml` — `CAMERA` and location
-  permissions. The WebView cannot grant the page a permission the app does not
-  hold; without these, face check-in and the site-visit GPS punch fail silently
-  inside the app while working in the phone's browser.
-- `ios/App/App/Info.plist` — `NSCameraUsageDescription` and
-  `NSLocationWhenInUseUsageDescription`. iOS kills the app instead of prompting
-  when these are absent.
+`sync` bakes the origin into `android/app/src/main/assets/capacitor.config.json`
+(git-ignored) and runs `scripts/fix-ios-spm-paths.mjs`, which rewrites the
+backslash paths `cap sync` writes into the iOS Swift package manifest on Windows.
 
-## Push notifications
+No release keystore exists and none is committed (`*.jks` and `*.keystore` are
+git-ignored). An AAB for Play needs an upload key with a named owner and recovery
+plan first.
 
-Wired end to end. Every HR notification the web app already writes — the
-eighteen events in `apps/web/src/services/hr/notify.ts` — now also rings the
-recipients' phones, and a tap opens the record it is about.
+## iOS
 
-The transports are spoken directly, with no SDK: FCM for Android, APNs for iOS.
-Routing iOS through Firebase as well would have meant the Firebase iOS SDK and an
-AppDelegate that swizzles the APNs callbacks; `apps/web/src/lib/push/send.ts`
-signs both vendors' JWTs with `node:crypto` instead.
+The Xcode project uses Swift Package Manager (no CocoaPods). It needs a Mac with
+Xcode 26 to build; App Store Connect uploads require the Xcode 26 / iOS 26 SDK.
 
-Nothing here is on until the credentials exist. With the server's push variables
-unset, notifications are written in-app and emailed exactly as before.
+```bash
+cd apps/mobile && npm ci && MOBILE_SERVER_URL=https://your-staging-origin npm run sync && npm run open:ios
+```
 
-**Server** — set the `FCM_*` and `APNS_*` block in `apps/web/.env` (documented in
-`.env.example`). `APNS_BUNDLE_ID` must equal `appId` in `capacitor.config.js`, and
-`APNS_SANDBOX=true` for development and TestFlight builds.
+A simulator build needs no signing. A build on a physical iPhone or TestFlight
+needs an Apple Developer team selected under Signing & Capabilities, which this
+project does not have.
 
-**Android** — download `google-services.json` from the Firebase console into
-`android/app/`. The Gradle files already apply the plugin when that file is
-present and skip it when it is not, so nothing else changes.
+## Brand assets
 
-**iOS** — in Xcode, Signing & Capabilities, add **Push Notifications**; upload an
-APNs auth key to the Apple Developer portal and use the same key in `APNS_KEY`.
-The two delegate callbacks the plugin needs are already in `AppDelegate.swift` —
-the Capacitor template omits them, and without them iOS registers with Apple and
-hands the token to nobody.
+`node scripts/render-brand-assets.mjs` renders the YOUHAN ONE mark
+(`apps/web/src/app/icon.svg`) into the Android launcher icons (legacy, round and
+adaptive foreground on midnight `#020817`), the Android splash images, the iOS
+1024 app icon and the iOS splash image, using the Playwright Chromium already
+installed for `apps/web`.
 
-## Before the first submission
+## Push notifications (not in this build)
 
-- **`appId`** — `com.mastersuite.app` is a placeholder and neither store lets you
-  change it after a published upload. `branding.ts` says the product name is
-  expected to change before launch; settle both first.
-- **Icons and splash** — the native projects still carry the default Capacitor
-  logo. With a 1024×1024 `assets/icon.png` and a 2732×2732 `assets/splash.png`,
-  `npx @capacitor/assets generate` fills in every size for both platforms. Worth
-  doing once there is a real mark rather than the placeholder "MS" tile.
-- **A stable HTTPS origin.** `APP_URL` is currently a dev tunnel. Session
-  cookies are `Secure`, and a URL that changes strands every installed app.
-- **App Store guideline 4.2** rejects apps that are only a website. The camera
-  attendance capture, the GPS site-visit punch and native push are the defence —
-  three things the browser build cannot do. Push needs its credentials in place
-  before review, or the reviewer sees the same website the guideline is about.
-- **Privacy policy URL** — both stores require one, and the camera and location
-  use has to be declared in Play's Data Safety form and Apple's privacy
-  nutrition labels.
+The server side exists: `apps/web/src/lib/push/send.ts` speaks FCM HTTP v1 and
+APNs token auth, and `apps/web/src/lib/pwa/nativePush.ts` registers a device when
+the plugin is present (and does nothing when it is not). To add it back:
+
+1. `npm install @capacitor/push-notifications` here, then sync.
+2. Android: `google-services.json` from the Firebase project into `android/app/`
+   (git-ignored), and declare `POST_NOTIFICATIONS`.
+3. iOS: Push Notifications capability with a team; APNs auth key. The two delegate
+   callbacks are already in `AppDelegate.swift`.
+4. Server: the `FCM_*` and `APNS_*` variables (`.env.example`); `APNS_BUNDLE_ID`
+   must equal `appId`.
+
+Without Firebase configured, the Android plugin's `register()` calls
+`FirebaseMessaging.getInstance()` with no Firebase app, which is why it is not
+shipped in a build that has no credentials.
+
+## Before any release build
+
+- **Architecture** — `server.url` is not production-supported (see top).
+- **`appId`** — `com.mastersuite.app` is a placeholder; neither store allows a change after a published upload.
+- **A stable, approved HTTPS origin** — dev tunnels show Microsoft's one-time "developer tunnel" warning page to browsers and WebViews.
+- **Release signing** — upload key ownership (Android), Apple team, certificates and provisioning (iOS).
+- **App Store guideline 4.2** — apps that are only a website are rejected.
+- **Privacy** — privacy policy URL, Play Data safety form, App Privacy labels, iOS privacy manifest.

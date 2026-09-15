@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Master Suite</string>
+        <string>YOUHAN ONE Dev</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -31,9 +31,7 @@
 	  them. App Review also reads the strings, and rejects the generic ones.
 	-->
 	<key>NSCameraUsageDescription</key>
-	<string>Used to take the photo that confirms your attendance check-in.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to confirm you are at the site when you check in or log a visit.</string>
+	<string>Used to take photos you attach to records, such as lead documents.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -59,7 +57,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

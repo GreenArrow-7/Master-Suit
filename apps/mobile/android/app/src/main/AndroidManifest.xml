@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      No backup and no device-to-device transfer of app data: the WebView's cookie
+      store holds the signed-in session, and restoring it onto another phone would
+      carry the session with it. Cleartext is refused outright; the app only loads
+      an https origin.
+    -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -40,15 +49,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-      The WebView asks for these on behalf of the page. Android's WebView cannot
-      grant a web permission the host app does not hold, so without them
-      getUserMedia and navigator.geolocation fail silently inside the app while
-      working in Chrome on the same phone — face check-in and the site-visit GPS
-      punch are the screens that break.
+      Only what the implemented journey uses. CAMERA backs "Take photo" on lead
+      documents: the WebView cannot hand the page a camera the app does not hold,
+      and Capacitor asks for it at the moment of capture.
+
+      Not declared in this development build, on purpose: location (face check-in
+      and the site-visit GPS punch are not part of the verified journey, so those
+      screens cannot read a position in the app), microphone, and notifications
+      (push is not configured). Add each with the feature that is verified to need it.
     -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!--
       Declaring CAMERA otherwise makes Play treat a camera as a hardware
