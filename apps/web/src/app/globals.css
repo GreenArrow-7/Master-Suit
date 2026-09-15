@@ -6508,9 +6508,13 @@ a.lf-kpi:hover {
   }
 }
 
-/* Login: brand 40, form 60. */
-.lf-auth {
-  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+/* Login: brand 40, form 60 — above the phone tier only. Unconditional, this rule
+   came after the 820px phone rule and won, so a phone kept two columns: the form
+   squeezed into the left 40% and the right 60% empty. */
+@media (min-width: 821px) {
+  .lf-auth {
+    grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+  }
 }
 
 /* Fields inside a toolbar: compact on a desktop (the placeholder is the
