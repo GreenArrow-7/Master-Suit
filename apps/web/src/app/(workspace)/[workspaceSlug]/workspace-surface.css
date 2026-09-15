@@ -179,7 +179,8 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-area-tabs::before {
   content: '\2039';
   order: -1;
-  left: 0;
+  /* -4px: over the strip's 4px padding too, or a sliver of a clipped tab shows beside it. */
+  left: -4px;
   margin-right: -30px;
   background: linear-gradient(to right, #ffffff 55%, rgb(255 255 255 / 0));
 }
@@ -187,7 +188,7 @@ html:not([data-theme='dark']):not([data-theme='glass'])
   .lf-app-frame[data-lf-surface='workspace']
   .lf-area-tabs::after {
   content: '\203A';
-  right: 0;
+  right: -4px;
   margin-left: -30px;
   background: linear-gradient(to left, #ffffff 55%, rgb(255 255 255 / 0));
 }
