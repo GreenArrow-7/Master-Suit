@@ -49,6 +49,16 @@ by the author of this document.
 > identity is a separate, authorised step after release (§3.2) — nothing in this
 > release creates a monitoring password or a grant.
 
+> **Integrated candidate — `integration/dual-credential-on-workspace-restructure`.**
+> The workspace restructure (`dev/workspace-restructure`, `7cf5828`) plus the
+> employee-record scope fix (`2ac9407`) plus everything above, merged at
+> `ae7ce2a28677a28ac054f745e50e8c7d84f1f9a6`. The validated artifact was built from
+> that commit; later commits on the branch change tests and documentation only.
+> **76 migrations** on a fresh database; a database at the restructure candidate
+> (73) receives the monitoring migrations and #11. Evidence:
+> `docs/product/RELEASE-CHECKPOINT-DUAL-CREDENTIAL-INTEGRATION.md`. **Open blocker
+> before any install or upgrade: the permission catalogue (§3.1b).**
+
 Both images carry the commit as `BUILD_COMMIT` and surface it as
 `masterapp_build_info` on the metrics endpoint. Confirm after deploying:
 
@@ -234,7 +244,8 @@ session issued before it carries no credential purpose and the new release refus
 such a session rather than guessing that it was administration — the migration
 revokes them up front so the refusal is not a surprise mid-shift. **Tell platform
 staff before the window: they sign in again, with MFA.** Customer (`USER`) sessions
-and reset links are untouched. Finished migrations afterwards: **72**.
+and reset links are untouched. Finished migrations afterwards: **72** on the
+monitoring line alone, **76** on the integrated candidate.
 
 Verify (owner role, read-only):
 
@@ -246,6 +257,28 @@ SELECT count(*) FROM "PlatformSession" s JOIN "PlatformUser" u ON u.id = s."plat
 SELECT count(*) FROM "PlatformMfaChallenge";                                          -- expect 0
 -- PlatformAccessGrant and PlatformCoverageGrant row counts unchanged from §2.
 ```
+
+### 3.1b Permission catalogue — BLOCKER on a fresh install (VERIFIED, isolated)
+
+A role can only be granted a permission whose `Permission` row exists. On a clean
+database taken through the supported path — `prisma migrate deploy`,
+`bootstrap-owner.mjs`, sign-in with MFA enrolment, a plan and a workspace created
+through the platform API, **no demo seed** — nine permissions the navigation gates
+on have no row: `automation`, `communications`, `documents`, `fieldsales`, `forms`,
+`landingpages`, `products`, `smartviews` and `tickets` (VIEW). Their screens can be
+granted to nobody, and the monitoring allowlist's `tickets:VIEW` is inert
+(monitoring fails closed there). Migrations create 114 rows; workspace creation adds
+the floor in `api/v1/platform/workspaces` (252 after one workspace). Only
+`prisma/seed` creates the rest, and the seed refuses to run under `APP_ENV` production or staging
+and without `ALLOW_DEMO_SEED=yes` — it is demo data, not an install step.
+
+This is not introduced by the dual-credential work: the provisioning code and the
+migrations are unchanged from `7cf5828`. The test suites pass because CI seeds.
+
+**Before an install or upgrade:** read the catalogue on the target (owner role):
+`SELECT module, action FROM "Permission" WHERE (module, action) IN (('tickets','VIEW'),('documents','VIEW'),('products','VIEW'),('forms','VIEW'),('landingpages','VIEW'),('automation','VIEW'),('communications','VIEW'),('smartviews','VIEW'),('fieldsales','VIEW'));`
+— nine rows expected. Missing rows need a reviewed catalogue migration (a code
+change, not a manual insert), which is not part of this candidate.
 
 ### 3.2 Provisioning the designated monitoring identity — separate authorised step
 
@@ -580,14 +613,16 @@ before this candidate — `05a7b90` / `9df91d8`, the restructuring release, the 
 and `main` — ignores `PlatformSession.credentialPurpose`. It resolves a session by
 role, so **a live monitoring session of an OWNER becomes a full owner session** on
 the old release: console, workspace creation, grants and (for those releases)
-everything §9.1 lists. Demonstrated against `05a7b90` on isolated systems, with the
-remediation and roll-forward below — checkpoint §5. The monitoring *password*
+everything §9.1 lists. Demonstrated against `05a7b90` and, for the integrated
+candidate, against `7cf5828`, on isolated systems, with the remediation and
+roll-forward below — checkpoints §5 and (integration) §6. The monitoring *password*
 itself is harmless there: the old sign-in reads only `passwordHash`, so password B
 signs in nowhere.
 
 | Target | Schema | Verdict |
 | --- | --- | --- |
 | `05a7b90` / `9df91d8` (integration candidate) | compatible — #7 adds nullable/defaulted columns and a table the old code never reads | **Unsafe by image swap.** Allowed only through §9.1.1, whose step 3–4 revoke every staff session (monitoring sessions included) and suspend staff. |
+| `7cf5828` (`dev/workspace-restructure`, the integrated candidate's base) | compatible — it booted and served on the migrated database | **Unsafe by image swap, demonstrated:** a live monitoring session is the owner (console 200, every workspace listed), is admitted to a break-glass-only workspace and to a workspace with **no grant**, and receives that workspace's **HR employee records**; an administration session enters an ungranted workspace. It also holds the employee-directory scope defect this candidate fixes. Allowed only through §9.1.1 plus the monitoring-session revocation below. |
 | restructuring release, incident RC, `main` | as §9.1.3 | Unsafe — §9.1 already applies; this release adds the monitoring-session case to it. |
 | No down-migration is provided or needed | — | Do not drop the new columns: roll-forward relies on them. |
 
