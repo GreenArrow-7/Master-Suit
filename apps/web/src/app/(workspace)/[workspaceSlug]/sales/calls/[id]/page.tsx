@@ -76,18 +76,25 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
       orderBy: { dueAt: 'asc' },
       take: 10,
     }),
-    prisma.objectionMatch.findMany({
-      where: { tenantId: ctx.tenantId, callId: params.id },
-      include: { objection: { select: { name: true, recommendedResponses: true } } },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
-    }),
-    prisma.coachingNote.findMany({
-      where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      include: { author: { select: { id: true, fullName: true } } },
-      take: 50,
-    }),
+    // Objection matches quote the line of the transcript they fired on, and
+    // coaching notes are a manager's account of the conversation: both follow
+    // the sensitive authorisation, like the transcript itself.
+    sensitive
+      ? prisma.objectionMatch.findMany({
+          where: { tenantId: ctx.tenantId, callId: params.id },
+          include: { objection: { select: { name: true, recommendedResponses: true } } },
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+        })
+      : [],
+    sensitive
+      ? prisma.coachingNote.findMany({
+          where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          include: { author: { select: { id: true, fullName: true } } },
+          take: 50,
+        })
+      : [],
   ]);
 
   if (!call) notFound();
@@ -386,7 +393,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               Notes
             </div>
             <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', whiteSpace: 'pre-wrap' }}>
-              {call.notes || 'No notes recorded.'}
+              {sensitive ? call.notes || 'No notes recorded.' : 'Not included in this access.'}
             </p>
           </section>
         </div>
