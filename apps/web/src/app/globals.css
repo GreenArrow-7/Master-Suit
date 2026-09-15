@@ -1087,7 +1087,8 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font: 600 var(--lf-text-base)/1 var(--lf-font-ui);
+    /* 1.3, not 1: with overflow hidden a line-height of 1 clips descenders ("g", "y"). */
+    font: 600 var(--lf-text-base)/1.3 var(--lf-font-ui);
     color: var(--lf-ink);
   }
 
@@ -5688,6 +5689,14 @@ a.lf-kpi:hover {
 .lf-page-header {
   align-items: flex-end;
   margin-bottom: var(--lf-space-4);
+}
+@media (max-width: 760px) {
+  /* The phone header is a column (see the 760px block above); flex-end there
+     pushed a short title and its count line to the right edge. */
+  .lf-list-header,
+  .lf-page-header {
+    align-items: flex-start;
+  }
 }
 /* Eyebrow + breadcrumb + title was three lines saying one thing. */
 .lf-page-header .lf-eyebrow,

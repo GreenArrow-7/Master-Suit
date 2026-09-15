@@ -573,6 +573,12 @@ test.describe('Workspace Summary sample', () => {
           const { activeNav, ...now } = await shell(page);
           expect(now, path).toEqual(summaryShell);
           if (!phone) expect(activeNav, `${path}: a sidebar item is active`).not.toBeNull();
+          // The title starts at the content edge, not pushed right by a short count line.
+          const [titleLeft, mainLeft] = await page.evaluate(() => [
+            document.querySelector('main h1')!.getBoundingClientRect().left,
+            document.querySelector('main')!.getBoundingClientRect().left,
+          ]);
+          expect(titleLeft - mainLeft, `${path}: title indent`).toBeLessThan(40);
           await noSidewaysOverflow(page);
           if (dir)
             await page.screenshot({ path: `${dir}/area-${name}${phone ? '-mobile' : ''}.png`, fullPage: !phone });

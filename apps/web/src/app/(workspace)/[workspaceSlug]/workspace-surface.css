@@ -199,6 +199,11 @@ html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-su
   font-weight: 600;
 }
 
+/* Section headings on HR and settings screens carry the panel headings' weight. */
+html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-leave__section {
+  font-weight: 650;
+}
+
 /* ── Summary cards: compact, opaque, readable ──────────────────────────────── */
 html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-kpi-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));

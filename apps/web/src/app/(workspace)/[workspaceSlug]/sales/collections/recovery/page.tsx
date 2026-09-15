@@ -56,7 +56,9 @@ export default async function RecoveryCasesPage() {
         }
       />
       {cases.length === 0 ? (
-        <EmptyState title="No cases" />
+        <section className="lf-card">
+          <EmptyState title="No cases" />
+        </section>
       ) : (
         <RecoveryCaseList
           cases={cases.map((k) => ({
