@@ -112,7 +112,7 @@ test.describe('Request budget: the five hot navigations', () => {
     await test.step('warmup: compile/visit every route once', async () => {
       // First visits pay dev-server route compilation; the measured pass below
       // must observe steady-state behaviour, not compile time.
-      for (const path of ['/dashboard', '/sales/leads', '/people/employees', '/admin/settings']) {
+      for (const path of ['/dashboard', '/sales/leads', '/people', '/people/employees', '/admin/settings']) {
         await page.goto(`/${workspace.slug}${path}`);
         await page.waitForLoadState('networkidle');
       }
@@ -155,22 +155,38 @@ test.describe('Request budget: the five hot navigations', () => {
     });
 
     await test.step('employees', async () => {
-      // One rail for both modules: Employees is a click away from any page,
-      // with no module switch to make first.
-      const requests = await requestsDuring(page, origin, async () => {
-        await page.locator(`aside a[href="/${workspace.slug}/people/employees"]`).first().click();
+      // One rail for both modules, as work areas: the rail's Employees area opens
+      // its first tab (the People overview), and the directory is that area's
+      // Directory tab. Both clicks are in-app navigations through persistent
+      // chrome, so each is measured against the same budget the single rail
+      // link used to be.
+      const rail = page.getByRole('navigation', { name: 'Workspace' });
+      const toArea = await requestsDuring(page, origin, async () => {
+        await rail.getByRole('link', { name: 'Employees', exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/people$`));
+        await expect(page.getByRole('navigation', { name: 'Employees screens' })).toBeVisible();
+      });
+      assertBudget('dashboard → employees area', toArea);
+
+      const toDirectory = await requestsDuring(page, origin, async () => {
+        await page
+          .getByRole('navigation', { name: 'Employees screens' })
+          .getByRole('link', { name: 'Directory', exact: true })
+          .click();
+        await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/people/employees`));
         await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible();
       });
-      assertBudget('dashboard → employees', requests);
+      assertBudget('employees area → directory tab', toDirectory);
     });
 
     await test.step('settings', async () => {
-      // Admin is a collapsed group in the rail; opening it is DOM only, and it
-      // happens outside the measured window so the budget counts the
-      // navigation alone.
-      await page.locator('aside summary', { hasText: 'Admin' }).click();
+      // Administration is an always-open rail section in the work-area
+      // navigation; its Settings area opens the Workspace settings tab.
       const requests = await requestsDuring(page, origin, async () => {
-        await page.locator(`aside a[href="/${workspace.slug}/admin/settings"]`).first().click();
+        await page
+          .getByRole('navigation', { name: 'Workspace' })
+          .getByRole('link', { name: 'Settings', exact: true })
+          .click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/admin/settings`));
       });
       assertBudget('employees → settings', requests);
