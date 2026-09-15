@@ -121,9 +121,10 @@ async function contrastOf(page: Page, selector: string) {
     });
 }
 
+/** Measured against the configured viewport: a mobile browser widens innerWidth along with the page. */
 const noSidewaysOverflow = (page: Page) =>
   expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
+    .poll(async () => (await page.evaluate(() => document.documentElement.scrollWidth)) - page.viewportSize()!.width)
     .toBeLessThanOrEqual(0);
 
 test.describe('Workspace Summary sample', () => {

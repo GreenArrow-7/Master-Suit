@@ -5692,10 +5692,12 @@ a.lf-kpi:hover {
 }
 @media (max-width: 760px) {
   /* The phone header is a column (see the 760px block above); flex-end there
-     pushed a short title and its count line to the right edge. */
+     pushed a short title and its count line to the right edge. Stretch, not
+     flex-start: the actions row must stay screen-wide so it scrolls inside
+     itself instead of widening the page. */
   .lf-list-header,
   .lf-page-header {
-    align-items: flex-start;
+    align-items: stretch;
   }
 }
 /* Eyebrow + breadcrumb + title was three lines saying one thing. */
