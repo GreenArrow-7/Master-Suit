@@ -77,10 +77,23 @@ function key(): Buffer {
  * retention window instead of one global number, and it keeps a workspace's
  * biometric captures in a single subtree — which is what a deletion request
  * under PDPL actually needs to be able to act on.
+ *
+ * Joined with '/' rather than `path.join`, because the result is not a path on
+ * this machine — it is written to `HrAttendancePunch.capturePath` and later used
+ * to build an object key. `path.join` emits the *host's* separator, so a punch
+ * taken on a Windows host stored `t-x\emp-y\2026-08\punch-z.jpg.enc`, and
+ * `objectKey` splitting on `path.sep` on a Linux reader then found nothing to
+ * split: the key kept its backslashes, missed the object, and the capture became
+ * unreadable — the evidence for a disputed punch, lost to a separator.
+ *
+ * '/' is what the docblock below already promises the column holds, and it is
+ * correct on both platforms: `path.resolve` accepts it on Windows, and
+ * `objectKey`'s split is then a no-op rather than a corruption. Existing rows
+ * written on Linux are byte-identical to what this produces.
  */
 function pathFor(tenantId: string, employeeId: string, punchId: string, when: Date) {
   const month = `${when.getUTCFullYear()}-${String(when.getUTCMonth() + 1).padStart(2, '0')}`;
-  return path.join(`t-${tenantId}`, `emp-${employeeId}`, month, `punch-${punchId}${SUFFIX}`);
+  return [`t-${tenantId}`, `emp-${employeeId}`, month, `punch-${punchId}${SUFFIX}`].join('/');
 }
 
 /** Ciphertext, not an image. Labelling it image/jpeg would be a lie a browser acts on. */

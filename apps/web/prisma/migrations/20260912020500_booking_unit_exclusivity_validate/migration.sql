@@ -1,0 +1,14 @@
+-- Hold the existing rows to the policy.
+--
+-- Separate file on purpose. Prisma wraps each migration in one transaction, so
+-- adding and validating together would keep the ACCESS EXCLUSIVE lock from the
+-- ADD CONSTRAINT held across the whole scan — a write outage on Booking for as
+-- long as the table takes to read. VALIDATE on its own takes only SHARE UPDATE
+-- EXCLUSIVE, which readers and writers pass.
+--
+-- This statement FAILS if any live confirmed booking has no unit. That is
+-- intended: such a row is a sale nobody can point at a flat, and choosing what
+-- it should be — attach the unit, or move it back to DRAFT — is the client's
+-- call, not a migration's. Run `node scripts/rc-booking-audit.mjs` first; it
+-- lists exactly these rows without changing anything.
+ALTER TABLE "Booking" VALIDATE CONSTRAINT "Booking_confirmed_requires_unit";

@@ -17,6 +17,7 @@ export interface LeadRow {
   grade?: string | null;
   priority: string;
   slaState: string;
+  /** The viewer's own next obligation on this lead — never the lead-wide one. */
   nextFollowUpAt?: string | Date | null;
   updatedAt: string | Date;
   ownerId?: string | null;
@@ -37,6 +38,7 @@ export default function LeadGrid({
   taskTypes,
   canAssign,
   canEdit,
+  emptyLabel,
 }: {
   rows: LeadRow[];
   columns: ColumnDef[];
@@ -45,6 +47,8 @@ export default function LeadGrid({
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
   canEdit: boolean;
+  /** What an empty follow-up cell says for this viewer. */
+  emptyLabel: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -55,6 +59,22 @@ export default function LeadGrid({
 
   const sorted = useMemo(() => {
     const copy = [...rows];
+    if (sort.key === 'nextFollowUpAt') {
+      // "Nothing owed" is not an early date. Floating it to the top of an
+      // ascending sort is how a lead nobody scheduled anything for gets
+      // mistaken for the most urgent one, so it sinks in both directions and
+      // ties break on id so the order is stable between renders.
+      copy.sort((a, b) => {
+        const av = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : null;
+        const bv = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : null;
+        if (av === null && bv === null) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        if (av !== bv) return sort.dir === 'asc' ? av - bv : bv - av;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      return copy;
+    }
     copy.sort((a, b) => {
       const av = a[sort.key] ?? '',
         bv = b[sort.key] ?? '';
@@ -329,7 +349,7 @@ export default function LeadGrid({
                     data-priority={column.primary ? 'primary' : undefined}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
-                    {cell(column.key, row)}
+                    {cell(column.key, row, emptyLabel)}
                   </td>
                 ))}
               </tr>
@@ -341,7 +361,7 @@ export default function LeadGrid({
   );
 }
 
-function cell(key: string, row: LeadRow) {
+function cell(key: string, row: LeadRow, emptyLabel: string) {
   switch (key) {
     case 'reference':
       return (
@@ -387,7 +407,7 @@ function cell(key: string, row: LeadRow) {
     case 'owner':
       return row.owner?.fullName ?? <em style={{ color: 'var(--lf-wine-700)' }}>Unassigned</em>;
     case 'nextFollowUpAt':
-      return <span style={{ color: overdueColor(row.nextFollowUpAt) }}>{formatDate(row.nextFollowUpAt)}</span>;
+      return <FollowUpCell value={row.nextFollowUpAt} emptyLabel={emptyLabel} />;
     case 'email':
       return <span style={{ color: 'var(--lf-ink-2)' }}>{row.email ?? '—'}</span>;
     case 'phone':
@@ -406,7 +426,28 @@ function formatDate(value?: string | Date | null) {
   return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
-function overdueColor(value?: string | Date | null) {
-  if (!value) return 'var(--lf-ink-3)';
-  return new Date(value) < new Date() ? 'var(--lf-vermillion)' : 'var(--lf-ink-2)';
+/**
+ * Three states, two of them not a date.
+ *
+ * An em dash for "nothing owed" reads as missing data, and the same grey as
+ * every other empty cell hides the one case the chasing queue exists to catch.
+ * "Overdue" gets the only colour, because it is the only one that is a problem;
+ * the rest are ordinary facts and are written out in words rather than punctuation.
+ *
+ * `emptyLabel` is a statement about the viewer, not about the lead — see
+ * `emptyFollowUpLabel`. It deliberately does not reveal whether somebody else
+ * has work here.
+ *
+ * The label is also the accessible name — no title-attribute-only meaning, which
+ * a screen reader announces inconsistently and a touch device never shows at all.
+ */
+function FollowUpCell({ value, emptyLabel }: { value?: string | Date | null; emptyLabel: string }) {
+  if (!value) return <span style={{ color: 'var(--lf-ink-3)' }}>{emptyLabel}</span>;
+  const overdue = new Date(value) < new Date();
+  return (
+    <span style={{ color: overdue ? 'var(--lf-vermillion)' : 'var(--lf-ink-2)' }}>
+      {formatDate(value)}
+      {overdue && <span className="lf-visually-hidden"> (overdue)</span>}
+    </span>
+  );
 }

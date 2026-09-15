@@ -1,6 +1,7 @@
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
 import { updateRecordField, addTag, type AutomationObjectType } from './records';
+import { withRecompute } from '@/services/leads/nextFollowUp';
 
 export interface ActionContext {
   ctx: Ctx;
@@ -31,16 +32,25 @@ export async function runAction({ ctx, objectType, recordId, spec }: ActionConte
       });
       if (!type) throw new Error(`Unknown task type "${spec.taskTypeKey}"`);
       const dueInMinutes = (spec.dueInMinutes as number) ?? 30;
-      await prisma.task.create({
-        data: {
-          tenantId: ctx.tenantId,
-          typeId: type.id,
-          title: spec.title as string,
-          dueAt: new Date(Date.now() + dueInMinutes * 60_000),
-          ownerId: ctx.actor.id,
-          [`${objectType.toLowerCase()}Id`]: recordId,
-        },
-      });
+      // A rule firing on a lead creates an obligation on that lead, so it takes
+      // the same lock and recompute as a person creating one by hand. Rules on
+      // an opportunity, account or ticket attach elsewhere and affect no lead
+      // aggregate — hence the conditional id rather than an unconditional one.
+      const leadId = objectType === 'LEAD' ? recordId : null;
+      await withTx(ctx.tenantId, (tx) =>
+        withRecompute(tx, ctx.tenantId, [leadId], () =>
+          tx.task.create({
+            data: {
+              tenantId: ctx.tenantId,
+              typeId: type.id,
+              title: spec.title as string,
+              dueAt: new Date(Date.now() + dueInMinutes * 60_000),
+              ownerId: ctx.actor.id,
+              [`${objectType.toLowerCase()}Id`]: recordId,
+            },
+          }),
+        ),
+      );
       return;
     }
 

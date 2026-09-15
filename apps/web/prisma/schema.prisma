@@ -280,6 +280,50 @@ enum JobStatus {
   CANCELLED
 }
 
+/// Why automatic assignment could not place a lead.
+///
+/// Each value is a different administrative fix, which is the whole point of
+/// separating them: NO_RULE and EMPTY_POOL are configuration, NO_ELIGIBLE_AGENT
+/// is usually staffing or leave, and ALL_AT_CAPACITY is a quota that is doing
+/// its job. A single "unassigned" flag would leave a manager guessing which.
+enum LeadTriageReason {
+  /// No active distribution rule for leads in this workspace.
+  NO_RULE
+  /// A rule exists but names nobody.
+  EMPTY_POOL
+  /// Candidates exist; none of them may currently receive a lead.
+  NO_ELIGIBLE_AGENT
+  /// Everyone eligible is at a configured quota or capacity limit.
+  ALL_AT_CAPACITY
+
+  /// Found by reconciliation: unassigned before the queue existed.
+  ///
+  /// Deliberately its own reason rather than a guess at one of the four above.
+  /// Nothing recorded why this lead was never placed, and inventing a cause
+  /// would put a fabricated fact in front of a manager. Entries carrying it also
+  /// set `historyUnknown`, because their `openedAt` is when reconciliation found
+  /// them and not when the customer started waiting.
+  PRE_EXISTING
+}
+
+enum OutboxStatus {
+  PENDING
+  DELIVERED
+  /// Retried to exhaustion. Left visible rather than deleted: "why was I not
+  /// told" has to be answerable.
+  ABANDONED
+}
+
+enum LeadTriageStatus {
+  /// Waiting for a human decision. At most one per lead, by partial unique index.
+  WAITING
+  /// Somebody was given the lead. Terminal.
+  ASSIGNED
+  /// Closed without an assignment — the lead was deleted, merged, or the
+  /// episode was superseded. Terminal.
+  CANCELLED
+}
+
 enum DistributionMethod {
   ROUND_ROBIN
   WEIGHTED_ROUND_ROBIN
@@ -512,6 +556,9 @@ model Tenant {
   leadScoreHistories         LeadScoreHistory[]
   leadStages                 LeadStage[]
   leadStageHistories         LeadStageHistory[]
+  leadTriageEntries          LeadTriageEntry[]
+  idempotentRequests         IdempotentRequest[]
+  notificationOutbox         NotificationOutbox[]
   leadTags                   LeadTag[]
   listings                   Listing[]
   listingMedias              ListingMedia[]
@@ -575,6 +622,10 @@ model Tenant {
   webhookEvents              WebhookEvent[]
   referenceCounters          TenantReferenceCounter[]
   platformAccessGrants       PlatformAccessGrant[]
+  agencyFeeReceipts          AgencyFeeReceipt[]
+  collectionRecoveryCases    CollectionRecoveryCase[]
+
+  agencyFeeAmendments AgencyFeeAmendment[]
 
   @@index([status])
 }
@@ -1089,7 +1140,7 @@ model PlatformUser {
   passwordHistory       PasswordHistory[]
   passwordResetTokens   PasswordResetToken[]
   sessions              PlatformSession[]
-  platformAuditEvents   PlatformAuditEvent[]   @relation("PlatformAuditActor")
+  platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
   serviceCredentials    PlatformServiceCredential[]
@@ -1541,27 +1592,36 @@ model HrPayrollRun {
 }
 
 model HrPayslip {
-  id              String   @id @default(cuid())
-  tenantId        String
-  runId           String
-  employeeId      String
-  currency        String   @default("AED")
-  basic           Decimal  @db.Decimal(14, 2)
-  grossEarnings   Decimal  @db.Decimal(14, 2)
-  totalDeductions Decimal  @db.Decimal(14, 2)
-  netPay          Decimal  @db.Decimal(14, 2)
-  workedDays      Float    @default(0)
-  unpaidDays      Float    @default(0)
-  overtimeMinutes Int      @default(0)
+  id               String   @id @default(cuid())
+  tenantId         String
+  runId            String
+  employeeId       String
+  currency         String   @default("AED")
+  basic            Decimal  @db.Decimal(14, 2)
+  grossEarnings    Decimal  @db.Decimal(14, 2)
+  totalDeductions  Decimal  @db.Decimal(14, 2)
+  netPay           Decimal  @db.Decimal(14, 2)
+  workedDays       Float    @default(0)
+  unpaidDays       Float    @default(0)
+  overtimeMinutes  Int      @default(0)
   /**
    * Every input the figures came from, so the breakdown survives a recalculation elsewhere.
    */
-  inputs          Json
+  inputs           Json
   /**
    * The IBAN as it stood when the run was calculated; a later bank change must not rewrite a past transfer.
    */
-  ibanSnapshot    String?
-  createdAt       DateTime @default(now())
+  ibanSnapshot     String?
+  /**
+   * Where the employee sat when this payslip was calculated. The P&L groups
+   * cost by these, never by the team the person is on today — the same
+   * freezing the booking side does at confirmation. Null for payslips
+   * calculated before the columns existed; the report says how many.
+   */
+  teamIdSnapshot   String?
+  branchIdSnapshot String?
+  regionIdSnapshot String?
+  createdAt        DateTime @default(now())
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   run      HrPayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -2813,20 +2873,20 @@ model UserTeam {
 }
 
 model PasswordResetToken {
-  id        String    @id @default(cuid())
+  id             String    @id @default(cuid())
   /// The credential lives on PlatformUser, so this is what a reset acts on.
   /// tenantId/userId are set when the account has a workspace, which is where
   /// the password policy and the audit entry come from; a platform-only
   /// account (the owner before any workspace exists) has neither.
   platformUserId String?
-  tenantId  String?
-  userId    String?
-  tokenHash String    @unique
-  ipAddress String?
-  userAgent String?
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  tenantId       String?
+  userId         String?
+  tokenHash      String    @unique
+  ipAddress      String?
+  userAgent      String?
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
 
   platformUser PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
@@ -3024,9 +3084,11 @@ model Lead {
   customValues   LeadCustomFieldValue[]
   stageHistory   LeadStageHistory[]
   assignments    LeadAssignmentHistory[]
+  triageEntries  LeadTriageEntry[]
   scoreHistory   LeadScoreHistory[]
   activities     Activity[]
   tasks          Task[]
+  followUpTasks  FollowUpTask[]
   opportunities  Opportunity[]
   documents      Document[]
   communications Communication[]
@@ -3707,6 +3769,7 @@ model Task {
   @@index([tenantId, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, status, dueAt])
+  @@index([tenantId, leadId, status, dueAt])
   @@index([accountId])
   @@index([opportunityId])
   @@index([parentTaskId])
@@ -3747,6 +3810,220 @@ model DistributionRule {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, objectType, isActive, position])
+}
+
+/// One recorded outcome of one logical operation, so a retry returns it again.
+///
+/// The manual-assignment endpoint accepted a `requestKey` and did nothing with
+/// it: a client that sent a request, lost the response and retried got a 409
+/// saying somebody else had dealt with it — which was a lie about its own
+/// earlier attempt, and left the caller unable to tell "I succeeded" from
+/// "somebody beat me to it".
+///
+/// This is the record that makes the difference answerable. It is written in the
+/// **same transaction** as the operation it describes, so a result can never
+/// exist without its effect or an effect without its result.
+///
+/// **Expiry is safe by construction.** A key whose row has been swept away is
+/// simply unknown, and an unknown key is treated as a new request — which then
+/// meets the operation's own guards (the lead already has an owner, the episode
+/// is already resolved) and is refused there. Correctness never depends on the
+/// row still being present; the row only turns a correct refusal into an exact
+/// replay of the original answer.
+model IdempotentRequest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Which operation this key belongs to. Keys are per-operation, so the same
+  /// client-minted string used for two different actions cannot collide.
+  operation String
+
+  /// The caller's key. One logical attempt, retained across its retries.
+  requestKey String
+
+  /// A hash of the inputs that define the request. A replay carrying different
+  /// inputs is a conflict, not a hit — the alternative is returning the first
+  /// call's answer for a second call that asked something else.
+  fingerprint String
+
+  /// Who made it. A replay by a different actor is a conflict even when every
+  /// input matches: who committed to a decision is part of the decision.
+  actorUserId String
+
+  /// What this operation was about — for triage assignment, the episode id.
+  /// A replay after the lead has entered a *later* waiting episode is refused
+  /// rather than re-applied to the new one.
+  scopeRef String?
+
+  /// The response the first call returned, replayed verbatim.
+  result Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  /// When this record may be swept. Not a business retention decision: it is
+  /// how long a retry is still recognised as a retry. See the note above on why
+  /// expiry cannot make anything unsafe.
+  expiresAt DateTime
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, operation, requestKey])
+  @@index([expiresAt])
+  @@index([tenantId, scopeRef])
+}
+
+/// A notification that has been decided on but not yet written.
+///
+/// Notifications were created *after* the transaction that caused them, which is
+/// right — a notice enqueued inside a transaction that then rolls back tells
+/// somebody about work they do not have. The cost of that ordering is a window:
+/// a process that dies between the commit and the notification loses it
+/// entirely, and nothing afterwards knows it was owed.
+///
+/// A conditional timestamp (`notifiedAt`, `escalatedAt`) does not close that
+/// window. It stops two workers claiming the same notice, and it *causes* the
+/// loss when the winner dies after claiming: the stamp is set, so no later sweep
+/// will ever pick it up again.
+///
+/// So the decision is committed *with* the business change as a row here, and
+/// delivery is a separate, resumable step. For the in-app channel that step
+/// writes the `Notification` and marks this row delivered in one transaction, so
+/// "delivered but not recorded" cannot happen. External channels are
+/// at-least-once and say so.
+model NotificationOutbox {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Stable identity of the *logical* notification — one per thing that
+  /// happened, whatever the retries. Unique, so a redelivered job, an
+  /// overlapping sweep and a resumed worker converge on one row rather than
+  /// three notices.
+  eventKey String
+
+  userId     String
+  kind       String
+  title      String
+  body       String?
+  objectType String?
+  recordId   String?
+  priority   Priority @default(MEDIUM)
+
+  status    OutboxStatus @default(PENDING)
+  attempts  Int          @default(0)
+  lastError String?
+
+  /// A lease rather than a flag: a worker that dies mid-delivery stops renewing
+  /// it, the lease lapses, and the next sweep may claim it. A boolean "claimed"
+  /// would strand the row forever, which is the bug this model exists to avoid.
+  claimedBy    String?
+  claimedUntil DateTime?
+
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, eventKey])
+  @@index([status, claimedUntil])
+  @@index([tenantId, userId, status])
+}
+
+/// One episode of a lead waiting for a human to place it.
+///
+/// `assignLead` used to `return` on three different failures — no rule, empty
+/// pool, lead already taken — and record nothing. The lead kept `ownerId = null`
+/// and joined the pool, indistinguishable from one nobody had got to yet, with
+/// no deadline, nobody accountable and no statement of what went wrong. This is
+/// that missing record.
+///
+/// **An episode, not a flag.** A lead can enter the queue, be assigned, be
+/// routed back to a team pool and enter again — and "how long did it wait the
+/// second time" must be answerable separately from the first. A boolean on Lead
+/// would overwrite the first episode's history with the second's.
+///
+/// **Assignment state, not sales stage.** Nothing here touches `Lead.stageId`.
+/// A lead can be in the triage queue while sitting in any open stage, and moving
+/// stage neither opens nor closes an episode.
+model LeadTriageEntry {
+  id       String @id @default(cuid())
+  tenantId String
+  leadId   String
+
+  /// 1 for the first time this lead waited, 2 for the next. Unique per lead, so
+  /// a re-entry is a distinguishable new episode rather than a reopened row.
+  episode Int
+
+  reason LeadTriageReason
+
+  /// Per-candidate refusal detail behind `reason`: which agents were considered
+  /// and why each was passed over. A manager who cannot see "3 on leave, 1 at
+  /// daily quota" has to guess, and guessing is how the queue gets ignored.
+  detail Json @default("{}")
+
+  /// The rule that was consulted, where there was one.
+  ruleId String?
+
+  /// Who is accountable for clearing this. Resolved from the rule's fallback,
+  /// then the lead's team manager — never widened to "any administrator".
+  responsibleTeamId String?
+  responsibleUserId String?
+
+  /// When a human is expected to have dealt with it. Null with
+  /// `reviewPolicyMissing` means no review window is configured — the entry
+  /// stays visible and says so, rather than inheriting an invented number.
+  reviewDueAt DateTime?
+
+  /// No `escalateAfterMins` on the governing rule. Surfaced, never defaulted.
+  reviewPolicyMissing Boolean @default(false)
+
+  /// Routing configuration names nobody accountable. An administrative
+  /// exception in its own right, and deliberately not solved by escalating to
+  /// whoever happens to have broad permissions.
+  routingPolicyMissing Boolean @default(false)
+
+  /// `openedAt` is when reconciliation *discovered* this lead, not when it began
+  /// waiting, and no historical failure reason exists for it.
+  ///
+  /// Every surface that shows a waiting time has to say so rather than report a
+  /// duration that reads as fact. A lead unassigned for eight months and found
+  /// this morning would otherwise show "3 min" — which is worse than showing
+  /// nothing, because it looks precise.
+  historyUnknown Boolean @default(false)
+
+  status LeadTriageStatus @default(WAITING)
+
+  openedAt DateTime @default(now())
+
+  /// Stamped when the deadline escalation has been raised, so repeated sweeps
+  /// produce one logical alert. Independent of whether delivery succeeded.
+  escalatedAt DateTime?
+
+  /// Stamped when the opening notification has been enqueued. Null on a WAITING
+  /// entry means the enqueue never happened — a recovery sweep picks it up
+  /// rather than the manager silently never hearing.
+  notifiedAt DateTime?
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  /// How it ended, in words a manager wrote or the system chose.
+  resolution   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, leadId, episode])
+  /// The queue, oldest first.
+  @@index([tenantId, status, openedAt])
+  /// The deadline sweep.
+  @@index([tenantId, status, reviewDueAt])
+  /// "What is waiting on me" / "on my team".
+  @@index([tenantId, responsibleUserId, status])
+  @@index([tenantId, responsibleTeamId, status])
+  @@index([leadId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4801,13 +5078,15 @@ model Document {
   updatedById       String?
   deletedAt         DateTime?
 
-  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
-  account     Account?     @relation(fields: [accountId], references: [id])
-  ticket      Ticket?      @relation(fields: [ticketId], references: [id])
-  task        Task?        @relation(fields: [taskId], references: [id])
-  activity    Activity?    @relation(fields: [activityId], references: [id])
-  product     Product?     @relation(fields: [productId], references: [id])
+  lead             Lead?                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity      Opportunity?             @relation(fields: [opportunityId], references: [id])
+  account          Account?                 @relation(fields: [accountId], references: [id])
+  ticket           Ticket?                  @relation(fields: [ticketId], references: [id])
+  task             Task?                    @relation(fields: [taskId], references: [id])
+  activity         Activity?                @relation(fields: [activityId], references: [id])
+  feeReceipts      AgencyFeeReceipt[]
+  recoveryEvidence CollectionRecoveryCase[] @relation("RecoveryEvidence")
+  product          Product?                 @relation(fields: [productId], references: [id])
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -5066,14 +5345,14 @@ model Notification {
 /// every read here is already inside one workspace. See `GLOBAL_MODELS` in
 /// src/lib/db.ts, where the guard exemption this needs is argued.
 model DeviceToken {
-  id       String @id @default(cuid())
-  userId   String
-  token    String @unique
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
   /// 'ios' or 'android'. It decides which of the two push transports sends —
   /// APNs speaks to iOS directly, FCM to Android — so a wrong value is a device
   /// that silently never rings. Written only by /api/v1/devices, behind a
   /// closed zod enum.
-  platform String
+  platform   String
   /// Stamped on every re-registration, which the app does at each launch. A
   /// token that has not been seen for months belongs to an app that was deleted
   /// without telling anyone; the transports prune those on rejection.
@@ -5486,11 +5765,14 @@ model FollowUpTask {
   createdById String?
   deletedAt   DateTime?
 
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, ownerId, status, dueAt])
   @@index([tenantId, leadId])
   @@index([tenantId, callId])
+  // The derivation reads open obligations per lead; this is the index it uses.
+  @@index([tenantId, leadId, status, dueAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6689,6 +6971,45 @@ enum CommissionStatus {
   CLAWED_BACK
 }
 
+/// A receipt certifies agency-fee money received by the agency. It does not
+/// certify the purchase price, developer receipts or escrow funds (D-8.5).
+enum ReceiptKind {
+  RECEIPT
+  /// Reverses part or all of a VERIFIED receipt. Its own row, independently
+  /// verified; the original is never edited.
+  REVERSAL
+}
+
+enum ReceiptStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RecoveryCaseStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLUTION_PROPOSED
+  RESOLVED
+}
+
+enum RecoveryCaseKind {
+  RECEIPT_REVERSAL
+  FEE_AMENDMENT
+}
+
+enum RecoveryOutcome {
+  RECOVERED
+  WRITTEN_OFF
+  ADJUSTED
+}
+
+enum FeeAmendmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum PayoutStatus {
   DRAFT
   APPROVED
@@ -6753,12 +7074,15 @@ model Booking {
   /// ever hard-deleted, and by the time a booking exists one usually is.
   deletedAt   DateTime?
 
-  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  unit        UnitInventory? @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
-  listing     Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  project     Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  unit        UnitInventory?           @relation(fields: [unitInventoryId], references: [id], onDelete: SetNull)
+  listing     Listing?                 @relation(fields: [listingId], references: [id], onDelete: SetNull)
   commissions Commission[]
+  receipts    AgencyFeeReceipt[]
+  recoveries  CollectionRecoveryCase[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feeAmendments AgencyFeeAmendment[]
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, reference])
   @@index([tenantId, teamId, bookingDate])
@@ -6842,6 +7166,166 @@ model CommissionSlabBand {
 }
 
 /// What one person earned on one booking.
+/// Money the agency actually received against a booking's agency fee.
+///
+/// Recorded by one person, verified by a different one, never edited: a
+/// mistake is a REVERSAL row plus a new receipt, each with its own reason and
+/// its own verifier. `Booking.agencyFee` is the obligation these rows are
+/// measured against; `Booking.collectedAt` is a legacy timestamp that is *not*
+/// a receipt and is never promoted into one.
+model AgencyFeeReceipt {
+  id        String        @id @default(cuid())
+  tenantId  String
+  bookingId String
+  reference String
+  kind      ReceiptKind   @default(RECEIPT)
+  status    ReceiptStatus @default(PENDING)
+
+  /// Always positive. A reversal's sign is its `kind`, not its amount.
+  amount                 Decimal  @db.Decimal(18, 2)
+  currency               String
+  /// When the money moved — not when somebody typed it in.
+  paidAt                 DateTime
+  /// The payer's or bank's reference. On its own it is not evidence.
+  paymentReference       String
+  /// One of these two is the evidence: a traceable provider/bank transaction
+  /// id, or an uploaded document.
+  providerTransactionRef String?
+  evidenceDocumentId     String?
+
+  /// Why a reversal exists, or why a receipt was rejected.
+  reason     String?
+  reversesId String?
+
+  recordedById String
+  recordedAt   DateTime  @default(now())
+  verifiedById String?
+  verifiedAt   DateTime?
+  rejectedById String?
+  rejectedAt   DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  reverses   AgencyFeeReceipt?        @relation("ReceiptReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversals  AgencyFeeReceipt[]       @relation("ReceiptReversal")
+  evidence   Document?                @relation(fields: [evidenceDocumentId], references: [id], onDelete: SetNull)
+  recoveries CollectionRecoveryCase[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, bookingId, status])
+  @@index([reversesId])
+  @@index([evidenceDocumentId])
+}
+
+/// A case for finance to review: a verified reversal took coverage below the
+/// agency fee after commission was paid, or an approved fee amendment changed
+/// what a paid commission should have been. Nothing is rewritten and nobody is
+/// debited: the case carries the numbers and a workflow — assign, acknowledge
+/// (which is not recovery), recover with evidence, or write off / adjust under
+/// a second person's approval.
+model CollectionRecoveryCase {
+  id           String             @id @default(cuid())
+  tenantId     String
+  bookingId    String
+  commissionId String
+  payoutId     String?
+  kind         RecoveryCaseKind   @default(RECEIPT_REVERSAL)
+  receiptId    String?
+  amendmentId  String?
+  status       RecoveryCaseStatus @default(OPEN)
+  /// agencyFee minus net verified receipts at the moment the reversal was verified.
+  shortfall    Decimal?           @db.Decimal(18, 2)
+  /// Signed: what the paid commission should change by under the amendment.
+  adjustment   Decimal?           @db.Decimal(18, 2)
+  currency     String
+  reason       String
+
+  assigneeId       String?
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+
+  /// Recovered means money with evidence. Written off or adjusted means two people.
+  outcome                RecoveryOutcome?
+  recoveredAmount        Decimal?         @db.Decimal(18, 2)
+  resolutionReference    String?
+  providerTransactionRef String?
+  evidenceDocumentId     String?
+  proposedOutcome        RecoveryOutcome?
+  proposedById           String?
+  proposedAt             DateTime?
+  proposalReason         String?
+  approvedById           String?
+  approvedAt             DateTime?
+
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  booking    Booking             @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  commission Commission          @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  receipt    AgencyFeeReceipt?   @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  amendment  AgencyFeeAmendment? @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+  evidence   Document?           @relation("RecoveryEvidence", fields: [evidenceDocumentId], references: [id], onDelete: SetNull)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, commissionId])
+  @@index([tenantId, assigneeId, status])
+  @@index([bookingId])
+  @@index([receiptId])
+  @@index([amendmentId])
+  @@index([evidenceDocumentId])
+}
+
+/// D-20: the agreed agency fee is a controlled commercial term. Proposed by a
+/// commercial administrator with a reason and the agreement it rests on,
+/// approved by a different person from finance once the sale is confirmed,
+/// and never changed by a generic booking update. Previous and new value,
+/// both people and both times are kept here; the effect on commission is
+/// previewed at proposal and applied at approval.
+model AgencyFeeAmendment {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  bookingId          String
+  reference          String
+  status             FeeAmendmentStatus @default(PENDING)
+  previousFee        Decimal?           @db.Decimal(18, 2)
+  proposedFee        Decimal            @db.Decimal(18, 2)
+  /// Always the booking's currency. A currency change is a separate correction.
+  currency           String
+  reason             String
+  agreementReference String
+  /// The effect computed at proposal, refreshed under the lock at approval.
+  preview            Json               @default("{}")
+  proposedById       String
+  proposedAt         DateTime           @default(now())
+  decidedById        String?
+  decidedAt          DateTime?
+  decisionNote       String?
+  appliedAt          DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  recoveries CollectionRecoveryCase[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, bookingId, status])
+  @@index([tenantId, status])
+}
+
 model Commission {
   id        String @id @default(cuid())
   tenantId  String
@@ -6888,9 +7372,10 @@ model Commission {
   createdById String?
   updatedById String?
 
-  booking Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  slab    CommissionSlab? @relation(fields: [slabId], references: [id], onDelete: SetNull)
-  payout  Payout?         @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  slab       CommissionSlab?          @relation(fields: [slabId], references: [id], onDelete: SetNull)
+  payout     Payout?                  @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  recoveries CollectionRecoveryCase[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

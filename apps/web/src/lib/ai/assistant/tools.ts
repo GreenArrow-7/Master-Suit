@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import type { EntityType } from '@/lib/nav/entityRoute';
 import { redact } from '../redact';
 
@@ -100,7 +101,15 @@ const num = { type: 'number' as const };
 
 const fmtDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 16).replace('T', ' ') : null);
 
-const leadBrief = (l: any) => ({
+/**
+ * `due` is the viewer's scoped follow-up map; without it no date is emitted.
+ *
+ * Fails closed on purpose. The stored column aggregates every owner, so a call
+ * site that forgets to pass the map returns `null` rather than quietly handing
+ * the assistant a date the asker is not entitled to — the assistant is a text
+ * interface over the same data, not a way around the rules that govern it.
+ */
+const leadBrief = (l: any, due?: ReadonlyMap<string, Date>) => ({
   id: l.id,
   reference: l.reference,
   name: l.fullName,
@@ -112,9 +121,18 @@ const leadBrief = (l: any) => ({
   priority: l.priority,
   sla: l.slaState,
   owner: l.owner?.fullName ?? null,
-  nextFollowUpAt: fmtDate(l.nextFollowUpAt),
+  nextFollowUpAt: fmtDate(due?.get(l.id) ?? null),
   lastActivityAt: fmtDate(l.lastActivityAt),
 });
+
+/** The viewer's own next obligation for a bounded set of leads. */
+async function dueFor(ctx: Ctx, rows: { id: string }[]) {
+  return scopedNextFollowUp(
+    ctx.tenantId,
+    rows.map((r) => r.id),
+    await obligationAccess(ctx, 'scope'),
+  );
+}
 
 const LEAD_SELECT = {
   id: true,
@@ -168,7 +186,10 @@ export const TOOLS: ToolDef[] = [
           where.ownerId = null;
           break;
         case 'overdue_followup':
-          where.nextFollowUpAt = { lt: now };
+          // The assistant answers with the asker's own reach, like every other
+          // surface. Reading the stored column here would let someone ask the
+          // assistant a question their own screens refuse to answer.
+          Object.assign(where, obligationWhere(await obligationAccess(ctx, 'scope'), 'overdue', now));
           break;
         case 'sla_breached':
           where.slaState = 'BREACHED';
@@ -210,8 +231,9 @@ export const TOOLS: ToolDef[] = [
         take: limit,
         select: LEAD_SELECT,
       });
+      const dueMap = await dueFor(ctx, rows);
       return {
-        data: { count: rows.length, capped: rows.length === limit, leads: rows.map(leadBrief) },
+        data: { count: rows.length, capped: rows.length === limit, leads: rows.map((r) => leadBrief(r, dueMap)) },
         sources: rows.slice(0, 6).map((l) => ({ label: `Lead · ${l.fullName}`, type: 'lead' as const, id: l.id })),
       };
     },
@@ -226,7 +248,7 @@ export const TOOLS: ToolDef[] = [
       const lead = await findLead(ctx, args);
       if (!lead) return { data: { error: 'No matching lead found in the CRM.' } };
       return {
-        data: leadBrief(lead),
+        data: leadBrief(lead, await dueFor(ctx, [lead])),
         sources: [{ label: `Lead · ${lead.fullName}`, type: 'lead' as const, id: lead.id }],
       };
     },
@@ -774,13 +796,14 @@ export const TOOLS: ToolDef[] = [
           where: { tenantId: ctx.tenantId, callerId: ctx.actor.id, deletedAt: null, createdAt: { gte: todayStart } },
         }),
       ]);
+      const dashDue = await dueFor(ctx, [...breached, ...hot]);
       return {
         data: {
           overdueFollowUps: overdueFups.map((f) => ({ title: f.title, due: fmtDate(f.dueAt) })),
           followUpsDueToday: todayFups,
           overdueTasks,
-          slaBreachedLeads: breached.map(leadBrief),
-          hottestLeads: hot.map(leadBrief),
+          slaBreachedLeads: breached.map((l) => leadBrief(l, dashDue)),
+          hottestLeads: hot.map((l) => leadBrief(l, dashDue)),
           // Omitted rather than empty: an empty list reads as "nothing on the
           // calendar", which is a different and wrong answer.
           ...(mayReadEvents ? { upcomingEvents: events.map((e) => ({ title: e.title, at: fmtDate(e.startAt) })) } : {}),
@@ -841,7 +864,7 @@ export const TOOLS: ToolDef[] = [
       ]);
       return {
         data: {
-          profile: leadBrief(lead),
+          profile: leadBrief(lead, await dueFor(ctx, [lead])),
           recentActivity: activities.map((a) => ({
             at: fmtDate(a.occurredAt),
             kind: a.type.name,

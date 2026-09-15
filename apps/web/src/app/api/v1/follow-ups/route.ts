@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
+import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
   .object({
@@ -17,9 +18,15 @@ const createBody = z
 export const POST = route(
   { module: 'leads', productModule: 'SALES', action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
-    return prisma.followUpTask.create({
-      data: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, createdById: ctx.actor.id, ...body },
-    });
+    // Same contract as a task: the lead is locked and its stored aggregate
+    // recomputed in the transaction that creates the obligation.
+    return withTx(ctx.tenantId, (tx) =>
+      withRecompute(tx, ctx.tenantId, [body.leadId], () =>
+        tx.followUpTask.create({
+          data: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, createdById: ctx.actor.id, ...body },
+        }),
+      ),
+    );
   },
 );
 

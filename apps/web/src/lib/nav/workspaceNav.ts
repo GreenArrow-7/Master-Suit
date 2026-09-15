@@ -110,6 +110,13 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         { label: 'Accounts', href: s('/accounts'), icon: 'company', permission: 'accounts', keywords: 'companies' },
         { label: 'Contacts', href: s('/contacts'), icon: 'contact', permission: 'contacts', keywords: 'people' },
         { label: 'Calendar', href: s('/calendar'), icon: 'calendar', permission: 'tasks', keywords: 'schedule' },
+        {
+          label: 'Collections',
+          href: s('/collections'),
+          icon: 'deal',
+          permission: 'collections',
+          keywords: 'receipts agency fee money recovery',
+        },
       ],
     });
 

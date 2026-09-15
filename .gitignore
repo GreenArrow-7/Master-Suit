@@ -29,6 +29,10 @@ cloudflared.exe
 # Test environment carries real database credentials and secrets. The template
 # beside it (.env.test.example) is what belongs in the repository.
 **/.env.test
+# Vite/vitest load `.env.<mode>.local` in preference to `.env.<mode>`, so a
+# local override carries exactly the same real credentials as the file above —
+# and `**/.env.test` does not match it. Ignored by the same reasoning.
+**/.env.*.local
 
 # Playwright run artefacts: traces, screenshots and the last-run summary.
 **/test-results/
@@ -49,3 +53,23 @@ cloudflared.exe
 .env.bak*
 .env.*.bak
 *.env.bak
+
+# next 16.3 writes these on every build ("Generated AGENTS.md and CLAUDE.md for
+# AI agents"). They are build output that restates the installed Next version's
+# own guidance, so committing them would put a generated copy of node_modules
+# documentation under review and re-conflict on every upgrade. Disable with
+# `agentRules: false` in next.config.ts if they are unwanted entirely.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
+
+# Locally generated test certificates and keys for the STARTTLS-capable Mailpit
+# capture server and the local HTTPS terminator. Regenerate with
+# `apps/web/scripts/make-local-tls.sh`; see docs/TEST-ISOLATION.md. Private keys
+# never belong in the repository.
+apps/web/infra/tls-local/
+
+# Playwright traces record every request and response header of a real signed-in
+# session, which means the session cookie and any reset or invitation token that
+# happened to be in flight. Useful locally, never in a shared artifact.
+validation-evidence/e2e-artifacts/
+**/trace.zip

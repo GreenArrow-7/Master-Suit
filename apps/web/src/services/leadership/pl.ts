@@ -12,6 +12,7 @@
  */
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { historicalPlacement, type Placement } from './placement';
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -45,6 +46,8 @@ export interface PlReport {
    * missing one, so the gaps are named rather than rolled into a total.
    */
   caveats: string[];
+  /** Payroll whose placement in its own period could not be established. Included in the totals. */
+  historicalPlacementUnknown: { payslips: number; amount: Prisma.Decimal };
 }
 
 const FIELD: Record<Grouping, 'teamId' | 'regionId' | 'branchId'> = {
@@ -73,7 +76,9 @@ export async function profitAndLoss(
       tenantId,
       deletedAt: null,
       bookingDate: { gte: from, lte: to },
-      status: { not: 'CANCELLED' },
+      // Revenue is confirmed sales. A draft is a sale somebody typed in; it
+      // accrues nothing and belongs in no period's revenue until confirmed.
+      status: 'CONFIRMED',
       ...owner,
     },
     select: {
@@ -143,7 +148,8 @@ export async function profitAndLoss(
     }
   }
 
-  const payroll = await payrollByGroup(tenantId, userIds, from, to, grouping, currency, caveats);
+  const historicalPlacementUnknown = { payslips: 0, amount: ZERO };
+  const payroll = await payrollByGroup(tenantId, userIds, from, to, grouping, caveats, historicalPlacementUnknown);
   for (const [key, cost] of payroll) bucket(key).payrollCost = cost;
 
   for (const row of buckets.values()) {
@@ -156,10 +162,11 @@ export async function profitAndLoss(
   const names = await groupNames(
     tenantId,
     grouping,
-    [...buckets.keys()].filter((k): k is string => k !== null),
+    [...buckets.keys()].filter((k): k is string => k !== null && k !== UNKNOWN_HISTORICAL),
   );
   for (const row of buckets.values()) {
-    if (row.key) row.name = names.get(row.key) ?? 'Removed';
+    if (row.key === UNKNOWN_HISTORICAL) row.name = `Unknown historical ${grouping}`;
+    else if (row.key) row.name = names.get(row.key) ?? 'Removed';
   }
 
   const rows = [...buckets.values()].sort((a, b) => Number(b.agencyFee.minus(a.agencyFee).toString()));
@@ -178,7 +185,7 @@ export async function profitAndLoss(
   totals.margin =
     totals.payrollCost === null ? null : totals.agencyFee.minus(totals.commissionCost).minus(totals.payrollCost);
 
-  return { from, to, grouping, currency, rows, totals, caveats };
+  return { from, to, grouping, currency, rows, totals, caveats, historicalPlacementUnknown };
 }
 
 /** Ids to something a human can read. */
@@ -203,14 +210,17 @@ async function groupNames(tenantId: string, grouping: Grouping, ids: string[]): 
  * an empty map when HR is not running here, which the caller reports as unknown
  * rather than as zero.
  */
+/** The bucket for payroll whose team, branch or region in its period cannot be established. */
+export const UNKNOWN_HISTORICAL = '__unknown_historical__';
+
 async function payrollByGroup(
   tenantId: string,
   userIds: string[],
   from: Date,
   to: Date,
   grouping: Grouping,
-  currency: string,
   caveats: string[],
+  unknown: { payslips: number; amount: Prisma.Decimal },
 ): Promise<Map<string | null, Prisma.Decimal>> {
   const entitled = await prisma.moduleEntitlement.findFirst({
     where: { tenantId, module: 'HRMS', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
@@ -224,21 +234,19 @@ async function payrollByGroup(
   const payslips = await prisma.hrPayslip.findMany({
     where: {
       tenantId,
-      run: { is: { periodStart: { gte: from }, periodEnd: { lte: to } } },
+      // Cost is payroll that was approved to be paid. A draft or cancelled run
+      // is a calculation, not money; counting it understated every margin.
+      run: {
+        is: { periodStart: { gte: from }, periodEnd: { lte: to }, status: { in: ['APPROVED', 'LOCKED', 'PAID'] } },
+      },
     },
     select: {
       grossEarnings: true,
-      employee: {
-        select: {
-          membership: {
-            select: {
-              salesUser: {
-                select: { id: true, branchId: true, regionId: true, teams: { select: { teamId: true }, take: 1 } },
-              },
-            },
-          },
-        },
-      },
+      teamIdSnapshot: true,
+      branchIdSnapshot: true,
+      regionIdSnapshot: true,
+      run: { select: { periodStart: true, periodEnd: true } },
+      employee: { select: { membership: { select: { salesUserId: true } } } },
     },
   });
 
@@ -247,32 +255,71 @@ async function payrollByGroup(
     return new Map();
   }
 
+  // Payslips without a snapshot — calculated before snapshots existed, or whose
+  // placement could not be established when they were — are resolved from the
+  // records that prove placement for their own period, and never from where
+  // the person sits today. See placement.ts.
+  // Keyed by the whole period: whether it has ended, and what was added during it, both depend on its end.
+  const periodKey = (run: { periodStart: Date; periodEnd: Date }) =>
+    `${run.periodStart.toISOString()}|${run.periodEnd.toISOString()}`;
+  const resolved = new Map<string, Map<string, Placement>>();
+  for (const slip of payslips) {
+    const uid = slip.employee.membership?.salesUserId;
+    if (!uid) continue;
+    const k = periodKey(slip.run);
+    if (!resolved.has(k)) resolved.set(k, new Map());
+  }
+  for (const k of resolved.keys()) {
+    const ids = [
+      ...new Set(
+        payslips
+          .filter((p) => periodKey(p.run) === k)
+          .map((p) => p.employee.membership?.salesUserId)
+          .filter((x): x is string => !!x),
+      ),
+    ];
+    const [start, end] = k.split('|');
+    resolved.set(k, await historicalPlacement(tenantId, ids, new Date(start), new Date(end)));
+  }
+
+  const field = grouping === 'team' ? 'teamId' : grouping === 'region' ? 'regionId' : 'branchId';
   const byGroup = new Map<string | null, Prisma.Decimal>();
   let unlinked = 0;
 
   for (const slip of payslips) {
-    const user = slip.employee.membership?.salesUser;
-    if (!user) {
+    const uid = slip.employee.membership?.salesUserId;
+    if (!uid) {
+      // An employee with no Sales account has no team; in an organisation-wide
+      // report their pay is still cost, so it lands in Unassigned rather than
+      // falling out of the total.
+      if (userIds.length > 0) continue;
       unlinked += 1;
+      byGroup.set(null, (byGroup.get(null) ?? ZERO).plus(slip.grossEarnings));
       continue;
     }
     // A leader's report covers their own people, so somebody else's payroll is
     // not a cost they are being measured on.
-    if (userIds.length > 0 && !userIds.includes(user.id)) continue;
+    if (userIds.length > 0 && !userIds.includes(uid)) continue;
 
-    const key =
-      grouping === 'team' ? (user.teams[0]?.teamId ?? null) : grouping === 'region' ? user.regionId : user.branchId;
+    const snapshot =
+      grouping === 'team' ? slip.teamIdSnapshot : grouping === 'region' ? slip.regionIdSnapshot : slip.branchIdSnapshot;
+    const key = snapshot ?? resolved.get(periodKey(slip.run))?.get(uid)?.[field] ?? UNKNOWN_HISTORICAL;
+    if (key === UNKNOWN_HISTORICAL) {
+      unknown.payslips += 1;
+      unknown.amount = unknown.amount.plus(slip.grossEarnings);
+    }
     byGroup.set(key, (byGroup.get(key) ?? ZERO).plus(slip.grossEarnings));
   }
 
   if (unlinked > 0) {
     caveats.push(
-      `${unlinked} payslip${unlinked === 1 ? '' : 's'} belong to staff with no sales record and are excluded.`,
+      `${unlinked} payslip${unlinked === 1 ? '' : 's'} belong to employees with no Sales account and are grouped as unassigned.`,
     );
   }
-  // Payroll carries no currency column of its own; saying so is cheaper than a
-  // silently wrong subtraction.
-  caveats.push(`Payroll is assumed to be in ${currency}.`);
-
+  if (unknown.payslips > 0) {
+    caveats.push(
+      `${unknown.payslips} payslip${unknown.payslips === 1 ? '' : 's'} totalling ${unknown.amount.toFixed(2)} could not be placed in the ${grouping} the employee belonged to in that pay period, and ${unknown.payslips === 1 ? 'is' : 'are'} shown as "Unknown historical ${grouping}". The amount is still counted in the total.`,
+    );
+  }
   return byGroup;
 }

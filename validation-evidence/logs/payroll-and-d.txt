@@ -1,0 +1,27 @@
+payroll_officer  login                                    200  
+finance_admin    login                                    200  
+payroll_officer  payroll: run create                      200  
+payroll_officer  payroll: calculate                       200  
+payroll_officer  payroll: submit for approval             200  
+payroll_officer  payroll: approve own run (must refuse)   403  Your role does not allow approve on payroll.
+finance_admin    payroll: approve (separate authority)    403  Your role does not allow view on employee.
+employee (OWN scope) login                                    200  
+employee (OWN scope) reports offered by the UI                200  
+employee (OWN scope) report payroll-register                  200  
+employee (OWN scope) report salary-cost-by-department         200  
+employee (OWN scope) report headcount-by-department           200  
+dept_manager (TEAM scope) login                                    200  
+dept_manager (TEAM scope) reports offered by the UI                200  
+dept_manager (TEAM scope) report payroll-register                  403  This report needs payroll:VIEW.
+dept_manager (TEAM scope) report salary-cost-by-department         403  This report needs payroll:VIEW.
+dept_manager (TEAM scope) report headcount-by-department           200  
+payroll_officer (ORG) login                                    200  
+payroll_officer (ORG) reports offered by the UI                200  
+payroll_officer (ORG) report payroll-register                  200  
+payroll_officer (ORG) report salary-cost-by-department         200  
+payroll_officer (ORG) report headcount-by-department           200  
+other-workspace employee login                                    200  
+other-workspace employee reports offered by the UI                404  Workspace not found.
+other-workspace employee report payroll-register                  404  Workspace not found.
+other-workspace employee report salary-cost-by-department         404  Workspace not found.
+other-workspace employee report headcount-by-department           404  Workspace not found.

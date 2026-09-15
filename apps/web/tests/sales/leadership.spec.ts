@@ -3,7 +3,20 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { activityCompliance, chasingQueue, conversion, funnel, performerBoard } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
+import { historicalPlacement } from '@/services/leadership/placement';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { fixtureUnit } from '../helpers/inventory';
+import type { ObligationAccess } from '@/services/leads/nextFollowUp';
+
+/** The chasing queue is a manager surface; these tests drive it unrestricted. */
+const ALL_OBLIGATIONS: ObligationAccess = { task: { kind: 'all' }, followUp: { kind: 'all' }, unrestricted: true };
+
+/** An open follow-up on a lead, which is what the queue now derives from. */
+async function owe(tenantId: string, leadId: string, ownerId: string, dueAt: Date) {
+  return prisma.followUpTask.create({
+    data: { tenantId, leadId, ownerId, title: 'Chase', dueAt, status: 'OPEN' },
+  });
+}
 
 /**
  * M10 — the leader's numbers.
@@ -90,6 +103,7 @@ async function sale(opts: {
       reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
       leadId: fixture.a.leadIds[0],
       projectId,
+      unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
       ownerId: opts.ownerId,
       teamId: opts.teamId,
       status: 'CONFIRMED',
@@ -251,38 +265,38 @@ describe('the chasing queue', () => {
   it('finds a lead whose follow-up has passed, oldest first', async () => {
     const T = fixture.a.tenantId;
     const now = new Date('2026-08-20T00:00:00Z');
-    await prisma.lead.update({
-      where: { id: fixture.a.leadIds[0], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-05T00:00:00Z'), stageId: stageOpenId },
+    // Real obligations, not a hand-set column. Setting `nextFollowUpAt`
+    // directly is what this test used to do, and it passed against a column
+    // nothing maintained — so it proved the assertion, not the feature.
+    await prisma.lead.updateMany({
+      where: { tenantId: T, id: { in: [fixture.a.leadIds[0], fixture.a.leadIds[1]] } },
+      data: { stageId: stageOpenId },
     });
-    await prisma.lead.update({
-      where: { id: fixture.a.leadIds[1], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-18T00:00:00Z'), stageId: stageOpenId },
-    });
+    const first = await owe(T, fixture.a.leadIds[0], fixture.a.userId, new Date('2026-08-05T00:00:00Z'));
+    const second = await owe(T, fixture.a.leadIds[1], fixture.a.userId, new Date('2026-08-18T00:00:00Z'));
 
-    const queue = await chasingQueue(T, [], now);
+    const queue = await chasingQueue(T, [], ALL_OBLIGATIONS, now);
     expect(queue.length).toBeGreaterThanOrEqual(2);
     // The point of a queue is that somebody works down it.
     expect(queue[0].overdueDays).toBeGreaterThanOrEqual(queue[1].overdueDays);
     expect(queue[0].leadId).toBe(fixture.a.leadIds[0]);
     expect(queue[0].overdueDays).toBe(15);
 
-    await prisma.lead.updateMany({
-      where: { tenantId: T, id: { in: [fixture.a.leadIds[0], fixture.a.leadIds[1]] } },
-      data: { nextFollowUpAt: null },
-    });
+    await prisma.followUpTask.deleteMany({ where: { tenantId: T, id: { in: [first.id, second.id] } } });
   });
 
   it('leaves a won lead alone', async () => {
     const T = fixture.a.tenantId;
     await prisma.lead.update({
       where: { id: fixture.a.leadIds[0], tenantId: T },
-      data: { nextFollowUpAt: new Date('2026-08-01T00:00:00Z'), stageId: stageWonId },
+      data: { stageId: stageWonId },
     });
+    const owed = await owe(T, fixture.a.leadIds[0], fixture.a.userId, new Date('2026-08-01T00:00:00Z'));
 
-    const queue = await chasingQueue(T, [], new Date('2026-08-20T00:00:00Z'));
+    const queue = await chasingQueue(T, [], ALL_OBLIGATIONS, new Date('2026-08-20T00:00:00Z'));
     expect(queue.map((r) => r.leadId)).not.toContain(fixture.a.leadIds[0]);
 
+    await prisma.followUpTask.delete({ where: { tenantId: T, id: owed.id } });
     await prisma.lead.update({
       where: { id: fixture.a.leadIds[0], tenantId: T },
       data: { nextFollowUpAt: null, stageId: stageOpenId },
@@ -380,6 +394,7 @@ describe('the P&L', () => {
         reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
         leadId: fixture.a.leadIds[0],
         projectId,
+        unitInventoryId: (await fixtureUnit(fixture.a.tenantId, projectId)).id,
         ownerId: fixture.a.userId,
         teamId: teamA,
         status: 'CONFIRMED',
@@ -406,5 +421,238 @@ describe('the P&L', () => {
     await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 5_000_000, agencyFee: 150_000 });
     const other = await profitAndLoss(fixture.b.tenantId, [], RANGE.from, RANGE.to, 'team');
     expect(other.totals.agencyFee.toString()).toBe('0');
+  });
+});
+
+describe('the P&L — the three defects of 12 September', () => {
+  it('counts confirmed sales only: a draft is not revenue', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.booking.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        reference: `BK-${Math.random().toString(36).slice(2, 10)}`,
+        leadId: fixture.a.leadIds[0],
+        projectId,
+        ownerId: fixture.a.userId,
+        teamId: teamA,
+        status: 'DRAFT',
+        saleValue: D(9_000_000),
+        agencyFee: D(270_000),
+        currency: 'AED',
+        bookingDate: new Date('2026-08-12T00:00:00Z'),
+      },
+    });
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    const row = report.rows.find((r) => r.key === teamA)!;
+    expect(row.agencyFee.toString()).toBe('30000');
+    expect(row.bookings).toBe(1);
+  });
+
+  async function payslip(opts: {
+    status: 'DRAFT' | 'APPROVED' | 'PAID';
+    gross: number;
+    teamIdSnapshot?: string | null;
+    period?: [Date, Date];
+  }) {
+    const membership = await prisma.workspaceMembership.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, salesUserId: fixture.a.userId },
+      select: { id: true },
+    });
+    const employee =
+      (await prisma.employeeProfile.findFirst({
+        where: { tenantId: fixture.a.tenantId, membershipId: membership.id },
+      })) ??
+      (await prisma.employeeProfile.create({
+        data: {
+          tenantId: fixture.a.tenantId,
+          membershipId: membership.id,
+          employeeNumber: `E-${Math.random().toString(36).slice(2, 8)}`,
+        },
+      }));
+    const [periodStart, periodEnd] = opts.period ?? [
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-31T00:00:00Z'),
+    ];
+    const run = await prisma.hrPayrollRun.create({
+      data: { tenantId: fixture.a.tenantId, periodStart, periodEnd, status: opts.status, currency: 'AED' },
+    });
+    return prisma.hrPayslip.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        runId: run.id,
+        employeeId: employee.id,
+        currency: 'AED',
+        basic: D(opts.gross),
+        grossEarnings: D(opts.gross),
+        totalDeductions: D(0),
+        netPay: D(opts.gross),
+        inputs: {},
+        ...(opts.teamIdSnapshot === undefined ? {} : { teamIdSnapshot: opts.teamIdSnapshot }),
+      },
+    });
+  }
+
+  it('counts payroll that was approved to be paid, not a draft calculation', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await payslip({ status: 'DRAFT', gross: 50_000, teamIdSnapshot: teamA });
+    const draftOnly = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(draftOnly.rows.find((r) => r.key === teamA)?.payrollCost).toBeNull();
+
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'APPROVED', gross: 20_000, teamIdSnapshot: teamA });
+    const approved = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    const row = approved.rows.find((r) => r.key === teamA)!;
+    expect(row.payrollCost?.toString()).toBe('20000');
+    expect(row.margin?.toString()).toBe('10000'); // 30k fee − 0 commission − 20k payroll
+  });
+
+  it('groups payroll by where the person sat when the payslip was calculated, not where they sit today', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: teamA });
+
+    // The person moves to team B afterwards.
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    await prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId: teamB } });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost?.toString()).toBe('20000');
+    expect(report.rows.find((r) => r.key === teamB)?.payrollCost ?? null).toBeNull();
+    expect(report.caveats.join(' ')).not.toMatch(/before placement was frozen/);
+  });
+
+  it('puts a payslip whose period team cannot be established in "Unknown historical team", and keeps it in the total', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    // No snapshot, and the membership was created after August began: nothing proves August's team.
+    await prisma.userTeam.updateMany({
+      where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId },
+      data: { createdAt: new Date('2026-08-15T00:00:00Z') },
+    });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: null });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    const unknown = report.rows.find((r) => r.name === 'Unknown historical team');
+    expect(unknown?.payrollCost?.toString()).toBe('20000');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost ?? null).toBeNull(); // not today's team
+    expect(report.historicalPlacementUnknown.payslips).toBe(1);
+    expect(report.historicalPlacementUnknown.amount.toString()).toBe('20000');
+    expect(report.totals.payrollCost?.toString()).toBe('20000'); // reconciles
+    expect(report.caveats.join(' ')).toMatch(/1 payslip totalling 20000\.00 could not be placed/);
+  });
+
+  it('uses a membership that provably spanned the pay period, even without a snapshot', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+    await prisma.userTeam.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        userId: fixture.a.userId,
+        teamId: teamA,
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+      },
+    });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: null });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === teamA)?.payrollCost?.toString()).toBe('20000');
+    expect(report.historicalPlacementUnknown.payslips).toBe(0);
+  });
+
+  it('keeps pay for employees with no Sales account in the organisation total, as Unassigned', async () => {
+    await sale({ ownerId: fixture.a.userId, teamId: teamA, saleValue: 1_000_000, agencyFee: 30_000 });
+    await prisma.hrPayrollRun.deleteMany({ where: { tenantId: fixture.a.tenantId } });
+    await payslip({ status: 'PAID', gross: 20_000, teamIdSnapshot: teamA });
+    const hrOnly = await prisma.workspaceMembership.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        platformUserId: (
+          await prisma.platformUser.create({
+            data: {
+              email: `hr-only-${Date.now()}@pl.test`,
+              normalizedEmail: `hr-only-${Date.now()}@pl.test`,
+              fullName: 'HR only',
+              status: 'ACTIVE',
+            },
+          })
+        ).id,
+        status: 'ACTIVE',
+        joinedAt: new Date(),
+      },
+    });
+    const employee = await prisma.employeeProfile.create({
+      data: { tenantId: fixture.a.tenantId, membershipId: hrOnly.id, employeeNumber: `E-HR-${Date.now()}` },
+    });
+    const run = await prisma.hrPayrollRun.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId } });
+    await prisma.hrPayslip.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        runId: run.id,
+        employeeId: employee.id,
+        currency: 'AED',
+        basic: D(5_000),
+        grossEarnings: D(5_000),
+        totalDeductions: D(0),
+        netPay: D(5_000),
+        inputs: {},
+      },
+    });
+
+    const report = await profitAndLoss(fixture.a.tenantId, [], RANGE.from, RANGE.to, 'team');
+    expect(report.rows.find((r) => r.key === null)?.payrollCost?.toString()).toBe('5000');
+    expect(report.totals.payrollCost?.toString()).toBe('25000');
+  });
+});
+
+describe('historical placement for a payroll period', () => {
+  const JUNE: [Date, Date] = [new Date('2026-06-01T00:00:00Z'), new Date('2026-06-30T00:00:00Z')];
+  const member = (teamId: string, createdAt?: Date) =>
+    prisma.userTeam.create({ data: { tenantId: fixture.a.tenantId, userId: fixture.a.userId, teamId, createdAt } });
+  const clear = () => prisma.userTeam.deleteMany({ where: { tenantId: fixture.a.tenantId, userId: fixture.a.userId } });
+  const teamIn = async (start: Date, end: Date, now?: Date) =>
+    (await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], start, end, now)).get(fixture.a.userId)
+      ?.teamId ?? null;
+
+  it('a backdated run does not take the team the person joined afterwards', async () => {
+    await clear();
+    await member(teamB); // joined today
+    expect(await teamIn(...JUNE)).toBeNull();
+    // The same membership does establish a finished period that began after it.
+    const start = new Date(Date.now() + 60_000);
+    expect(await teamIn(start, start, new Date(Date.now() + 3 * 86_400_000))).toBe(teamB);
+  });
+
+  it('one membership from before the period, and nothing added during it, gives that team', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-07-15T00:00:00Z')); // after June: says nothing about June
+    expect(await teamIn(...JUNE)).toBe(teamA);
+  });
+
+  it('a team added during the period is a transfer or a second team: unknown', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-06-15T00:00:00Z'));
+    expect(await teamIn(...JUNE)).toBeNull();
+  });
+
+  it('two memberships spanning the period are ambiguous, not a pick', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    await member(teamB, new Date('2026-01-01T00:00:00Z'));
+    expect(await teamIn(...JUNE)).toBeNull();
+  });
+
+  it('a period that has not ended yet is not established, whatever the membership', async () => {
+    await clear();
+    await member(teamA, new Date('2026-01-01T00:00:00Z'));
+    expect(await teamIn(JUNE[0], JUNE[1], new Date('2026-06-20T00:00:00Z'))).toBeNull();
+    expect(await teamIn(JUNE[0], JUNE[1], new Date('2026-07-01T00:00:00Z'))).toBe(teamA);
+  });
+
+  it('branch and region are trusted only if the user row has not changed since the period began', async () => {
+    const p = await historicalPlacement(fixture.a.tenantId, [fixture.a.userId], ...JUNE);
+    expect(p.get(fixture.a.userId)?.branchId).toBeNull(); // the fixture user was written today
   });
 });

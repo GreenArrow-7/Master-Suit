@@ -1,0 +1,178 @@
+[
+  {
+    "role": "agent",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "agent",
+    "page": "sales-leads",
+    "route": "/manath-homes/sales/leads",
+    "status": 200,
+    "heading": "Leads",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\agent-sales-leads.png"
+  },
+  {
+    "role": "agent",
+    "page": "sales-followups",
+    "route": "/manath-homes/sales/follow-ups",
+    "status": 200,
+    "heading": "Follow-ups",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\agent-sales-followups.png"
+  },
+  {
+    "role": "agent",
+    "page": "bookings-missing",
+    "route": "/manath-homes/sales/bookings",
+    "status": 404,
+    "heading": "We couldn’t find that",
+    "refused": false,
+    "notFound": true,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\agent-bookings-missing.png"
+  },
+  {
+    "role": "manager",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "manager",
+    "page": "sales-leads",
+    "route": "/manath-homes/sales/leads",
+    "status": 200,
+    "heading": "Leads",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\manager-sales-leads.png"
+  },
+  {
+    "role": "manager",
+    "page": "leadership",
+    "route": "/manath-homes/sales/leadership",
+    "status": 200,
+    "heading": "Leadership",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\manager-leadership.png"
+  },
+  {
+    "role": "hr",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "hr",
+    "page": "people-employees",
+    "route": "/manath-homes/people/employees",
+    "status": 200,
+    "heading": "Employees",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\hr-people-employees.png"
+  },
+  {
+    "role": "hr",
+    "page": "people-leave",
+    "route": "/manath-homes/people/leave",
+    "status": 200,
+    "heading": "Leave",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\hr-people-leave.png"
+  },
+  {
+    "role": "hr",
+    "page": "people-reports",
+    "route": "/manath-homes/people/reports",
+    "status": 200,
+    "heading": "Reports",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\hr-people-reports.png"
+  },
+  {
+    "role": "finance",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "finance",
+    "page": "commissions",
+    "route": "/manath-homes/sales/commissions",
+    "status": 200,
+    "heading": "Commissions",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\finance-commissions.png"
+  },
+  {
+    "role": "finance",
+    "page": "commission-slabs",
+    "route": "/manath-homes/sales/commissions/slabs",
+    "status": 200,
+    "heading": "Commission slabs",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\finance-commission-slabs.png"
+  },
+  {
+    "role": "employee",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "employee",
+    "page": "people-reports-payroll-offered",
+    "route": "/manath-homes/people/reports",
+    "status": 200,
+    "heading": "Reports",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\employee-people-reports-payroll-offered.png"
+  },
+  {
+    "role": "wsadmin",
+    "page": "login",
+    "ok": true,
+    "url": "/manath-homes/dashboard"
+  },
+  {
+    "role": "wsadmin",
+    "page": "leadership-pl",
+    "route": "/manath-homes/sales/leadership?view=pl",
+    "status": 200,
+    "heading": "Leadership",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\wsadmin-leadership-pl.png"
+  },
+  {
+    "role": "wsadmin",
+    "page": "projects",
+    "route": "/manath-homes/sales/projects",
+    "status": 200,
+    "heading": "Projects",
+    "refused": false,
+    "notFound": false,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\wsadmin-projects.png"
+  },
+  {
+    "role": "wsadmin",
+    "page": "bookings-missing",
+    "route": "/manath-homes/sales/bookings",
+    "status": 404,
+    "heading": "We couldn’t find that",
+    "refused": false,
+    "notFound": true,
+    "screenshot": "..\\..\\validation-evidence\\screenshots\\wsadmin-bookings-missing.png"
+  }
+]

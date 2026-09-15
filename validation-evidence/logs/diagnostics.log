@@ -1,0 +1,340 @@
+
+ RUN  v4.1.10 C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts (8 tests | 7 failed) 2126ms
+     × E1: automatic round-robin honours the daily quota that bulk allocation honours 330ms
+     × E2: an agent marked unavailable is skipped by automatic assignment 162ms
+     × E3: an agent on leave today is skipped by automatic assignment 126ms
+     × E4: a SUSPENDED agent is skipped by automatic assignment 150ms
+     × E5: a SUSPENDED agent is skipped by bulk allocation too 133ms
+     × E6: concurrent bulk allocations cannot push one agent past their quota 290ms
+     × E7: concurrent automatic assignments advance the rotation once per lead 201ms
+     ✓ E8: approving HR leave marks the agent unavailable for the leave dates 85ms
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts (6 tests | 6 failed) 2569ms
+     × B1: confirming a booking marks its unit as no longer available 345ms
+     × B2: a unit already SOLD cannot take a second confirmed booking 192ms
+     × B3: two concurrent confirmations against one unit — only one may win 363ms
+     × B4: a unit held by another agent cannot be booked out from under them 476ms
+     × C1: booking EDIT alone is not enough to record collection 203ms
+     × C2: collection records how much arrived, not just that something did 171ms
+ ❯ tests/diagnostic/finding-a-pl.diag.ts (6 tests | 5 failed) 1316ms
+     × A1: a DRAFT booking is not agency revenue 123ms
+     ✓ A1b: a CONFIRMED booking is agency revenue (control) 71ms
+     × A2: a CANCELLED payroll run is not a cost 123ms
+     × A2b: a DRAFT payroll run is not a cost 109ms
+     × A3: moving the employee to another team does not restate last month’s payroll 175ms
+     × A4: the report separates contracted agency fee from money actually collected 94ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/diagnostic/finding-a-pl.diag.ts > Finding A — what the P&L counts > A1: a DRAFT booking is not agency revenue
+AssertionError: expected '100000' to be '0' // Object.is equality
+
+Expected: "0"
+Received: "100000"
+
+ ❯ tests/diagnostic/finding-a-pl.diag.ts:155:48
+    153|     // A draft is an unconfirmed intention. Counting its fee as revenu…
+    154|     // business the agency has not won.
+    155|     expect(report.totals.agencyFee.toString()).toBe('0');
+       |                                                ^
+    156|     expect(report.totals.bookings).toBe(0);
+    157|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯
+
+ FAIL  tests/diagnostic/finding-a-pl.diag.ts > Finding A — what the P&L counts > A2: a CANCELLED payroll run is not a cost
+AssertionError: expected '40000' to be '0' // Object.is equality
+
+Expected: "0"
+Received: "40000"
+
+ ❯ tests/diagnostic/finding-a-pl.diag.ts:174:58
+    172|
+    173|     // A cancelled run paid nobody. Costing it understates margin by i…
+    174|     expect(report.totals.payrollCost?.toString() ?? '0').toBe('0');
+       |                                                          ^
+    175|   });
+    176|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯
+
+ FAIL  tests/diagnostic/finding-a-pl.diag.ts > Finding A — what the P&L counts > A2b: a DRAFT payroll run is not a cost
+AssertionError: expected '40000' to be '0' // Object.is equality
+
+Expected: "0"
+Received: "40000"
+
+ ❯ tests/diagnostic/finding-a-pl.diag.ts:182:58
+    180|
+    181|     const report = await profitAndLoss(tenantId, [], RANGE.from, RANGE…
+    182|     expect(report.totals.payrollCost?.toString() ?? '0').toBe('0');
+       |                                                          ^
+    183|   });
+    184|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯
+
+ FAIL  tests/diagnostic/finding-a-pl.diag.ts > Finding A — what the P&L counts > A3: moving the employee to another team does not restate last month’s payroll
+AssertionError: expected undefined to be '40000' // Object.is equality
+
+- Expected:
+"40000"
+
++ Received:
+undefined
+
+ ❯ tests/diagnostic/finding-a-pl.diag.ts:198:78
+    196|
+    197|     const after = await profitAndLoss(tenantId, [], RANGE.from, RANGE.…
+    198|     expect(after.rows.find((r) => r.key === teamA)?.payrollCost?.toStr…
+       |                                                                              ^
+    199|     expect(after.rows.find((r) => r.key === teamB)?.payrollCost ?? nul…
+    200|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/18]⎯
+
+ FAIL  tests/diagnostic/finding-a-pl.diag.ts > Finding A — what the P&L counts > A4: the report separates contracted agency fee from money actually collected
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/diagnostic/finding-a-pl.diag.ts:211:101
+    209|     // collected there should be a collected figure of its own, or a c…
+    210|     // saying the revenue line is billed rather than banked.
+    211|     expect('agencyFeeCollected' in report.totals || report.caveats.som…
+       |                                                                                                     ^
+    212|   });
+    213| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding B — booking confirmation and unit availability > B1: confirming a booking marks its unit as no longer available
+AssertionError: expected 'AVAILABLE' not to be 'AVAILABLE' // Object.is equality
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:132:30
+    130|     // A confirmed sale against a unit that still reads AVAILABLE is i…
+    131|     // the next agent will be shown and can sell again.
+    132|     expect(after.status).not.toBe('AVAILABLE');
+       |                              ^
+    133|   });
+    134|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding B — booking confirmation and unit availability > B2: a unit already SOLD cannot take a second confirmed booking
+AssertionError: expected 200 to be greater than or equal to 400
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:140:24
+    138|
+    139|     const res = await patch(patchBooking, '/api/v1/bookings', { action…
+    140|     expect(res.status).toBeGreaterThanOrEqual(400);
+       |                        ^
+    141|   });
+    142|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding B — booking confirmation and unit availability > B3: two concurrent confirmations against one unit — only one may win
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:156:23
+    154|     // Two confirmed bookings on one flat is the double-sale this cont…
+    155|     // to prevent.
+    156|     expect(confirmed).toBe(1);
+       |                       ^
+    157|   });
+    158|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding B — booking confirmation and unit availability > B4: a unit held by another agent cannot be booked out from under them
+AssertionError: expected 200 to be greater than or equal to 400
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:175:24
+    173|
+    174|     const res = await patch(patchBooking, '/api/v1/bookings', { action…
+    175|     expect(res.status).toBeGreaterThanOrEqual(400);
+       |                        ^
+    176|   });
+    177| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding C — collection authority and evidence > C1: booking EDIT alone is not enough to record collection
+AssertionError: expected 200 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 200
+
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:194:24
+    192|     // Recording that money arrived is a finance fact. The seller who …
+    193|     // sale should not also be the one who certifies it was paid.
+    194|     expect(res.status).toBe(403);
+       |                        ^
+    195|   });
+    196|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/18]⎯
+
+ FAIL  tests/diagnostic/finding-bc-booking.diag.ts > Finding C — collection authority and evidence > C2: collection records how much arrived, not just that something did
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/diagnostic/finding-bc-booking.diag.ts:209:93
+    207|     // commission eligibility hangs off it. Somewhere there must be an…
+    208|     const keys = Object.keys(booking);
+    209|     expect(keys.some((k) => /collectedAmount|amountCollected|receipt|p…
+       |                                                                                             ^
+    210|   });
+    211| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E1: automatic round-robin honours the daily quota that bulk allocation honours
+AssertionError: expected 'cmtv82uja0004soly83xnqjta' to be null
+
+- Expected:
+null
+
++ Received:
+"cmtv82uja0004soly83xnqjta"
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:128:26
+    126|
+    127|     const lead = await prisma.lead.findFirstOrThrow({ where: { id: ext…
+    128|     expect(lead.ownerId).toBeNull();
+       |                          ^
+    129|   });
+    130|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E2: an agent marked unavailable is skipped by automatic assignment
+AssertionError: expected 'cmtv82uja0004soly83xnqjta' to be null
+
+- Expected:
+null
+
++ Received:
+"cmtv82uja0004soly83xnqjta"
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:139:26
+    137|
+    138|     const lead = await prisma.lead.findFirstOrThrow({ where: { id: lea…
+    139|     expect(lead.ownerId).toBeNull();
+       |                          ^
+    140|   });
+    141|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E3: an agent on leave today is skipped by automatic assignment
+AssertionError: expected 'cmtv82uja0004soly83xnqjta' to be null
+
+- Expected:
+null
+
++ Received:
+"cmtv82uja0004soly83xnqjta"
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:153:26
+    151|
+    152|     const lead = await prisma.lead.findFirstOrThrow({ where: { id: lea…
+    153|     expect(lead.ownerId).toBeNull();
+       |                          ^
+    154|   });
+    155|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E4: a SUSPENDED agent is skipped by automatic assignment
+AssertionError: expected 'cmtv82uja0004soly83xnqjta' to be null
+
+- Expected:
+null
+
++ Received:
+"cmtv82uja0004soly83xnqjta"
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:164:26
+    162|
+    163|     const lead = await prisma.lead.findFirstOrThrow({ where: { id: lea…
+    164|     expect(lead.ownerId).toBeNull();
+       |                          ^
+    165|   });
+    166|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E5: a SUSPENDED agent is skipped by bulk allocation too
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:172:26
+    170|
+    171|     const result = await allocate({ ctx: leaderCtx, userIds: [agentId]…
+    172|     expect(result.total).toBe(0);
+       |                          ^
+    173|   });
+    174|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E6: concurrent bulk allocations cannot push one agent past their quota
+AssertionError: expected 4 to be less than or equal to 2
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:186:19
+    184|     const owned = await prisma.lead.count({ where: { tenantId, ownerId…
+    185|     expect(a.total + b.total).toBe(owned);
+    186|     expect(owned).toBeLessThanOrEqual(2);
+       |                   ^
+    187|   });
+    188|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/18]⎯
+
+ FAIL  tests/diagnostic/finding-e-allocation.diag.ts > Finding E — do both allocation paths enforce the same eligibility? > E7: concurrent automatic assignments advance the rotation once per lead
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ tests/diagnostic/finding-e-allocation.diag.ts:201:56
+    199|     });
+    200|     // Two leads, two agents in the rotation: one each.
+    201|     expect(new Set(owners.map((o) => o.ownerId)).size).toBe(2);
+       |                                                        ^
+    202|   });
+    203| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/18]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  18 failed | 2 passed (20)
+   Start at  11:45:17
+   Duration  8.86s (transform 463ms, setup 0ms, import 2.04s, tests 6.01s, environment 0ms)
+

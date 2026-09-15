@@ -23,9 +23,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/**
+ * Selection borrowed `--lf-wine-900` for its foreground, and that token is a
+ * near-black used as a *panel background* elsewhere — so it is deliberately not
+ * re-defined for the dark themes. The result was #020817 text on the dark
+ * selection fill #16305a: 1.53:1. Selecting text in dark mode made it vanish.
+ *
+ * Its own pair, so a change to either theme's panel colours cannot silently
+ * break selection again. Measured: light 14.63:1, dark 11.25:1.
+ */
 ::selection {
-  background: var(--lf-wine-200);
-  color: var(--lf-wine-900);
+  background: var(--lf-select-bg);
+  color: var(--lf-select-ink);
 }
 :focus-visible {
   outline: none;
@@ -226,8 +235,8 @@ body {
 }
 .lf-brand-copy span {
   margin-top: 2px;
-  color: rgb(255 255 255 / 0.5);
-  font-size: 10.5px;
+  color: rgb(255 255 255 / 0.62);
+  font-size: 11.5px;
 }
 /* The workspace switcher reads as the line of text it replaces, not as a
    control — it only becomes a <select> when there is more than one workspace,
@@ -388,21 +397,23 @@ body {
 }
 .lf-sidebar-user-copy strong {
   color: #fff;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 .lf-sidebar-user-copy span {
-  color: rgb(255 255 255 / 0.42);
-  font-size: 9px;
+  /* Was 9px at 42% white — a role label nobody could read, on the one line
+     that tells you which account you are signed in as. */
+  color: rgb(255 255 255 / 0.6);
+  font-size: 11px;
   text-transform: capitalize;
 }
 /* The parent company, once, at the foot of the rail. */
 .lf-sidebar-built-by {
   padding: 0 14px 12px;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.3);
+  color: rgb(255 255 255 / 0.5); /* was 0.3 — 2.56:1 */
   white-space: nowrap;
 }
 .lf-mobile-nav-button {
@@ -522,6 +533,22 @@ body {
 .lf-table-wrap {
   width: 100%;
   overflow: auto;
+  /**
+   * `min-width: 0`, and it is doing real work.
+   *
+   * `.lf-table` sets `min-width: 720px`, and this wrapper is meant to scroll it
+   * horizontally inside a card. That only happens if the wrapper is allowed to
+   * be narrower than its content — and a flex or grid *item* defaults to
+   * `min-width: auto`, which means "at least as wide as what is inside me". So
+   * in any flex or grid parent the wrapper silently grew to 720px, the
+   * `overflow: auto` never engaged, and the whole page scrolled sideways
+   * instead of the table.
+   *
+   * Measured on the People → Leave screen at 390px: 274px of horizontal page
+   * overflow before this line, 0 after. The screens that looked fine were the
+   * ones whose wrapper happened to sit in a block parent.
+   */
+  min-width: 0;
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
@@ -574,7 +601,7 @@ body {
   display: block;
   margin-top: 2px;
   color: var(--lf-ink-3);
-  font-size: 10px;
+  font-size: var(--lf-text-xs);
 }
 
 .lf-form-grid {
@@ -5675,8 +5702,21 @@ a.lf-kpi:hover {
 .lf-grid {
   font-size: var(--lf-text-sm);
 }
-.lf-table {
-  min-width: 640px;
+/**
+ * Desktop only. Two earlier `@media (max-width: 760px)` blocks reset
+ * `.lf-table { min-width: 0 }` so rows can stack into cards on a phone — but a
+ * media query adds no specificity, and this rule sits ~3600 lines later with
+ * the same `(0,1,0)` weight, so it won the cascade and put the 640px floor
+ * back on every phone. The stacked-card layout was in the stylesheet and
+ * unreachable. Scoped to the same breakpoint the resets use.
+ *
+ * Measured on People → Leave at 390px: 274px of horizontal page overflow
+ * before, 0 after.
+ */
+@media (min-width: 761px) {
+  .lf-table {
+    min-width: 640px;
+  }
 }
 .lf-table th,
 .lf-grid thead th {
@@ -5688,14 +5728,18 @@ a.lf-kpi:hover {
   background: var(--lf-surface-2);
   border-bottom: 1px solid var(--lf-line);
   color: var(--lf-ink-2);
-  font: 500 11px/1 var(--lf-font-ui);
+  font: 500 12px/1 var(--lf-font-ui);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 .lf-table td,
 .lf-grid tbody td {
-  height: 44px;
+  /* `--lf-row` is the density token — 44px comfortable, 32px compact. It was
+     defined, and the toggle flipped it, but every table hardcoded 44px, so
+     Compact only shrank the type and fitted no extra rows. Reading the token is
+     what makes the control do the thing it is named after. */
+  height: var(--lf-row);
   padding: 0 var(--lf-space-3);
   border-bottom: 1px solid color-mix(in srgb, var(--lf-line) 65%, transparent);
   color: var(--lf-ink);
@@ -5841,8 +5885,10 @@ a.lf-kpi:hover {
 }
 .lf-nav-label {
   padding: 0 16px 6px;
-  color: rgb(255 255 255 / 0.38);
-  font-size: 10px;
+  /* 0.38 measured 3.48:1 against the rail — a section label you have to lean
+     in for. 0.5 is 5.34:1 and still reads as a label, not a link. */
+  color: rgb(255 255 255 / 0.5);
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -5852,7 +5898,9 @@ a.lf-kpi:hover {
   padding: 6px 12px 6px 14px;
   margin: 0 8px;
   border-radius: var(--lf-radius-sm);
-  font-size: 12.5px;
+  /* 12.5px for the primary navigation. Raised with the rest of the small end
+     of the scale; the sidebar has room for it at every width. */
+  font-size: 13.5px;
   color: rgb(255 255 255 / 0.7);
 }
 .lf-nav-link:hover {

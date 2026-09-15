@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { deleteObject } from '@/lib/storage';
+import { EVIDENCE_CATEGORY } from '@/services/money/collections';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -41,9 +42,11 @@ export const DELETE = route(
   async ({ ctx, params }) => {
     const document = await prisma.document.findFirst({
       where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
-      select: { id: true, name: true, storageKey: true, leadId: true },
+      select: { id: true, name: true, storageKey: true, leadId: true, category: true },
     });
-    if (!document) throw NotFound('Document');
+    // Receipt evidence backs recorded money and is not a lead document; like the
+    // download beside this route, this route does not reach it.
+    if (!document || document.category === EVIDENCE_CATEGORY) throw NotFound('Document');
 
     if (document.storageKey) {
       await deleteObject(document.storageKey).catch(() => {});

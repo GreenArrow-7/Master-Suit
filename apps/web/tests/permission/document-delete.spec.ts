@@ -165,6 +165,28 @@ describe('deleting a lead document', () => {
   });
 });
 
+describe('agency-fee evidence is not a lead document', () => {
+  it('cannot be removed through the document delete, even by the administrator; bytes and row stay', async () => {
+    const doc = await prisma.document.create({
+      data: {
+        tenantId,
+        name: 'bank-advice.pdf',
+        category: 'agency-fee-evidence',
+        storageKey: `documents/t-${tenantId}/booking-x/bank-advice.pdf`,
+        storageBucket: 'test',
+        mimeType: 'application/pdf',
+        sizeBytes: 4,
+        status: 'UPLOADED',
+        scanState: 'CLEAN',
+      },
+      select: { id: true },
+    });
+    const res = await del(deleteDocument, `/api/v1/documents/${doc.id}`, adminCookie, { id: doc.id });
+    expect(res.status).toBe(404);
+    expect(await prisma.document.findFirst({ where: { tenantId, id: doc.id, deletedAt: null } })).not.toBeNull();
+  });
+});
+
 describe('reading the documents list', () => {
   it('narrows a representative to their own and leaves the administrator everything', async () => {
     const mine = await makeDocument(repUserId, 'mine.txt');

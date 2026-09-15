@@ -6,12 +6,13 @@
  * notification. A second caller — bulk assignment, an automation — must get the
  * same guarantees without reimplementing them.
  */
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { Forbidden, NotFound, Conflict } from '@/lib/errors';
 import { assertPermission, scopeFor } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { nextDistributionOwner } from '@/services/distribution/assignLead';
+import { DEFAULT_POLICY, lockAndVerify } from '@/services/distribution/eligibility';
 import type { Ctx } from '@/lib/security/rbac';
 
 export interface AssignInput {
@@ -50,9 +51,13 @@ export async function assignSocialLead(ctx: Ctx, input: AssignInput) {
 
   if (input.toUserId) {
     /**
-     * Re-checked against the tenant and against eligibility, never trusted from
-     * the request. Assigning to a suspended account produces an enquiry nobody
-     * sees, which is worse than leaving it unassigned.
+     * Re-checked against the tenant, never trusted from the request.
+     *
+     * The comment here used to say "and against eligibility", and the check
+     * below is `status = ACTIVE` — which is not the eligibility rule. Somebody
+     * whose employment had ended, who was on approved leave, or who was at
+     * capacity passed it. The shared rule is applied at the write boundary
+     * instead; see the transaction below.
      */
     const target = await prisma.user.findFirst({
       where: { tenantId: ctx.tenantId, id: input.toUserId, status: 'ACTIVE', deletedAt: null },
@@ -79,36 +84,60 @@ export async function assignSocialLead(ctx: Ctx, input: AssignInput) {
     throw Conflict('Choose a person or a team.');
   }
 
-  const [updated] = await prisma.$transaction([
-    prisma.socialComment.update({
-      where: { id: enquiry.id, tenantId: ctx.tenantId },
-      data: {
-        ownerId: toUserId,
-        teamId: toTeamId,
-        // The sticky value: automated reprocessing must never undo this.
-        assignmentSource: 'MANUAL',
-        assignedAt: new Date(),
-        assignmentNote: note,
-        // A claimed enquiry is being worked, unless it is already further along.
-        ...(enquiry.status === 'NEW' && toUserId ? { status: 'ASSIGNED' } : {}),
-      },
-      select: { id: true, ownerId: true, teamId: true, status: true },
-    }),
-    // Append-only. History is never edited, only added to.
-    prisma.socialAssignmentHistory.create({
-      data: {
-        tenantId: ctx.tenantId,
-        socialCommentId: enquiry.id,
-        fromOwnerId: enquiry.ownerId,
-        toOwnerId: toUserId,
-        teamId: toTeamId,
-        source: 'MANUAL',
-        // The actor comes from the session, never from the request body.
-        assignedById: ctx.actor.id,
-        reason: input.reason?.slice(0, 300) ?? null,
-      },
-    }),
-  ]);
+  /**
+   * One transaction, with the eligibility re-check inside it.
+   *
+   * The rotation's answer and the explicit-user check above are both reads taken
+   * before this point — by the time the write lands, HR may have approved leave,
+   * an administrator may have suspended the account, or another enquiry may have
+   * taken the person's last free slot. `lockAndVerify` takes the user's row and
+   * re-runs the one shared rule, which is what makes this path agree with
+   * `assignLead` and bulk allocation rather than having a third answer.
+   *
+   * Lock order is `User` then the enquiry, the same as everywhere else in this
+   * subsystem.
+   */
+  const [updated] = await withTx(ctx.tenantId, async (tx) => {
+    if (toUserId) {
+      const verdict = await lockAndVerify(tx, ctx.tenantId, toUserId, DEFAULT_POLICY);
+      const hard = verdict.blockers.filter((b) => b.code !== 'QUOTA_REACHED' && b.code !== 'AT_CAPACITY');
+      if (hard.length > 0) {
+        // Redacted: this reaches a Sales screen, and the specifics may be HR
+        // records. See distribution/eligibility.ts.
+        throw Conflict('That person cannot take this enquiry right now.');
+      }
+    }
+    return tx.$transaction([
+      tx.socialComment.update({
+        where: { id: enquiry.id, tenantId: ctx.tenantId },
+        data: {
+          ownerId: toUserId,
+          teamId: toTeamId,
+          // The sticky value: automated reprocessing must never undo this.
+          assignmentSource: 'MANUAL',
+          assignedAt: new Date(),
+          assignmentNote: note,
+          // A claimed enquiry is being worked, unless it is already further along.
+          ...(enquiry.status === 'NEW' && toUserId ? { status: 'ASSIGNED' } : {}),
+        },
+        select: { id: true, ownerId: true, teamId: true, status: true },
+      }),
+      // Append-only. History is never edited, only added to.
+      tx.socialAssignmentHistory.create({
+        data: {
+          tenantId: ctx.tenantId,
+          socialCommentId: enquiry.id,
+          fromOwnerId: enquiry.ownerId,
+          toOwnerId: toUserId,
+          teamId: toTeamId,
+          source: 'MANUAL',
+          // The actor comes from the session, never from the request body.
+          assignedById: ctx.actor.id,
+          reason: input.reason?.slice(0, 300) ?? null,
+        },
+      }),
+    ]);
+  });
 
   /**
    * Tell the new owner, unless they just claimed it themselves — nobody needs a

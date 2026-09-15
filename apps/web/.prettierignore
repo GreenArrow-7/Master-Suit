@@ -5,6 +5,7 @@
 # their own sources, so once anybody had run a production build the check was
 # measuring third-party packages.
 .next-prod
+.next-preview
 node_modules
 coverage
 package-lock.json

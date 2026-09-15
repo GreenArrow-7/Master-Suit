@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { audit } from '@/lib/security/audit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
@@ -32,7 +33,6 @@ const query = z.object({ filter: z.string().max(40).optional(), q: z.string().ma
 
 const FILTERS: Record<string, (now: Date) => Record<string, unknown>> = {
   unassigned: () => ({ ownerId: null }),
-  overdue: (now) => ({ nextFollowUpAt: { lt: now } }),
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
 };
@@ -85,7 +85,21 @@ async function handle(req: Request, requestId: string) {
   const params = query.parse(Object.fromEntries(url.searchParams));
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-  const extra = params.filter && FILTERS[params.filter] ? FILTERS[params.filter]!(new Date()) : {};
+  /**
+   * An export is an egress path, so it gets the same treatment as the screen.
+   *
+   * The CSV used to carry the stored column straight out of the database — the
+   * one number in this package that aggregates every owner — which made a file
+   * download the easiest way to read a colleague's schedule. Both the row filter
+   * and the emitted date are the viewer's own derivation.
+   */
+  const access = await obligationAccess(ctx, 'scope');
+  const extra =
+    params.filter === 'overdue'
+      ? (obligationWhere(access, 'overdue', new Date()) as Record<string, unknown>)
+      : params.filter && FILTERS[params.filter]
+        ? FILTERS[params.filter]!(new Date())
+        : {};
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
 
   const where = mergeWhere(scope, extra, search);
@@ -171,9 +185,18 @@ async function handle(req: Request, requestId: string) {
         return;
       }
 
+      // One derivation per page, not per row. Bounded by PAGE like the query it
+      // follows, so a 50,000-row export is still two extra queries per page.
+      const due = await scopedNextFollowUp(
+        ctx.tenantId,
+        page.map((r) => r.id),
+        access,
+      );
+
       // Masking runs on the export exactly as it does on the grid — an export must
       // not be a way around field-level security.
       const body = page
+        .map((row) => ({ ...row, nextFollowUpAt: due.get(row.id) ?? null }))
         .map((row) => applyFieldSecurity(ctx, 'LEAD', rules, row, LEAD_SENSITIVE_FIELDS) as Record<string, any>)
         .map((row) => columns.map((column) => csvCell(value(row, column.key))).join(','))
         .join('\r\n');

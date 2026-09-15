@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
+import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -75,6 +76,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   ]);
   if (!lead) notFound();
 
+  const personalAccess = await obligationAccess(ctx, 'personal');
+  const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
+
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
 
   // Serialize dates to ISO strings for the client component
@@ -97,7 +101,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     grade: lead.grade,
     notes: lead.notes,
     tags: lead.tags,
-    nextFollowUpAt: lead.nextFollowUpAt?.toISOString() ?? null,
+    // The viewer's own next obligation. The stored aggregate is not consulted
+    // at all — not even as a boolean, which would disclose whether a colleague
+    // has work here. The empty label speaks about the viewer instead.
+    nextFollowUpAt: (scopedDue.get(lead.id) ?? null)?.toISOString() ?? null,
+    followUpEmptyLabel: emptyFollowUpLabel(personalAccess, 'personal'),
     lastActivityAt: lead.lastActivityAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(),
     stage: { key: lead.stage.key, name: lead.stage.name },

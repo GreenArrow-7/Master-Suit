@@ -14,7 +14,7 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url));
  * `npm test` stays fast and needs no infrastructure beyond Postgres and Redis.
  */
 export default defineConfig(({ mode }) => {
-  Object.assign(process.env, loadEnv(mode, rootDir, ''));
+  for (const [k, v] of Object.entries(loadEnv(mode, rootDir, ''))) process.env[k] ??= v;
   return {
     resolve: {
       alias: { '@': path.resolve(rootDir, 'src') },

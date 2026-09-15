@@ -1,0 +1,14 @@
+backup round trip (local transport)
+  ok    shipped 20260820T031500Z to the remote
+  ok    the manifest is present at the destination
+  ok    a .shipped-at marker was written beside the source
+  ok    the remote lists exactly the stamp that was shipped
+  ok    pulled 20260820T031500Z back from the remote
+  ok    what came back is identical to what went out, nested objects included
+  ok    refused a remote copy with no manifest
+  ok    refused to pull over an existing directory
+  ok    refused to ship a directory with no manifest
+  ok    nothing was written to the remote for the unfinished backup
+  ok    --from-remote refuses when there is no remote configured
+
+backup round trip: all checks passed.

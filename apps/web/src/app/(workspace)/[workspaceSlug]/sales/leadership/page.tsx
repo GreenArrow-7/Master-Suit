@@ -14,6 +14,7 @@ import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
+import { obligationAccess } from '@/services/leads/nextFollowUp';
 
 export const metadata = { title: 'Leadership' };
 
@@ -141,7 +142,7 @@ export default async function LeadershipPage({
     funnel(ctx.tenantId, userIds, range),
     conversion(ctx.tenantId, userIds, range),
     performerBoard(ctx.tenantId, userIds, range, 'revenue'),
-    chasingQueue(ctx.tenantId, userIds, new Date(), 50),
+    chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), 50),
     view === 'compliance' ? activityCompliance(ctx.tenantId, userIds, range) : [],
     view === 'feed' ? interactionFeed(ctx.tenantId, userIds, range, 50) : [],
     view === 'pl' ? profitAndLoss(ctx.tenantId, userIds, range.from, range.to, 'team') : null,
@@ -602,6 +603,13 @@ export default async function LeadershipPage({
             </div>
           )}
 
+          {pl.historicalPlacementUnknown.payslips > 0 && (
+            <p className="lf-hint" data-testid="pl-unknown-historical">
+              Unknown historical team: {pl.historicalPlacementUnknown.payslips} payslip
+              {pl.historicalPlacementUnknown.payslips === 1 ? '' : 's'},{' '}
+              {money(pl.historicalPlacementUnknown.amount, pl.currency)} — included in the payroll total.
+            </p>
+          )}
           {pl.rows.length === 0 ? (
             <div className="lf-card" style={CARD}>
               <EmptyState title="No sales this period" description="Confirmed bookings roll up here by team." />

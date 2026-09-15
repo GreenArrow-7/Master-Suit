@@ -1,0 +1,145 @@
+
+> master-app@0.1.0 test:server
+> vitest run --config vitest.server.mts
+
+
+ RUN  v4.1.10 C:/Users/admin/Music/Youhan One/Master-Suit/.claude/worktrees/master-suite-baseline-validation-7c75ce/apps/web
+
+(node:25148) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/server/unified-saas.spec.ts (1 test | 1 failed) 4096ms
+     × provisions two isolated workspaces with HRMS and Sales on one identity system 3830ms
+ ❯ tests/server/session-lifecycle.spec.ts (5 tests | 5 failed) 1219ms
+     × rotates the token and revokes the previous one 171ms
+     × refuses an expired session and does not issue a token for it 116ms
+     × treats replay of a rotated token as theft and revokes every session 88ms
+     × signs out every device on logout-all, including the caller 101ms
+     × leaves other devices signed in on an ordinary logout 118ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/server/session-lifecycle.spec.ts > session lifecycle > rotates the token and revokes the previous one
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SDQGX6VBTG5PA414RVEF"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ login tests/server/session-lifecycle.spec.ts:97:58
+     95|     body: JSON.stringify({ email, password }),
+     96|   });
+     97|   expect(response.status, await response.clone().text()).toBe(200);
+       |                                                          ^
+     98|   return response.headers.get('set-cookie')!.split(';')[0]!;
+     99| }
+ ❯ tests/server/session-lifecycle.spec.ts:108:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/server/session-lifecycle.spec.ts > session lifecycle > refuses an expired session and does not issue a token for it
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SDVM8TV4E1Q2Q4ZB0F0A"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ login tests/server/session-lifecycle.spec.ts:97:58
+     95|     body: JSON.stringify({ email, password }),
+     96|   });
+     97|   expect(response.status, await response.clone().text()).toBe(200);
+       |                                                          ^
+     98|   return response.headers.get('set-cookie')!.split(';')[0]!;
+     99| }
+ ❯ tests/server/session-lifecycle.spec.ts:126:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/server/session-lifecycle.spec.ts > session lifecycle > treats replay of a rotated token as theft and revokes every session
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SDYTR4YQT8ASRAEMZFJ9"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ login tests/server/session-lifecycle.spec.ts:97:58
+     95|     body: JSON.stringify({ email, password }),
+     96|   });
+     97|   expect(response.status, await response.clone().text()).toBe(200);
+       |                                                          ^
+     98|   return response.headers.get('set-cookie')!.split(';')[0]!;
+     99| }
+ ❯ tests/server/session-lifecycle.spec.ts:138:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/server/session-lifecycle.spec.ts > session lifecycle > signs out every device on logout-all, including the caller
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SE1JHD5EAZ375RP4RBBN"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ login tests/server/session-lifecycle.spec.ts:97:58
+     95|     body: JSON.stringify({ email, password }),
+     96|   });
+     97|   expect(response.status, await response.clone().text()).toBe(200);
+       |                                                          ^
+     98|   return response.headers.get('set-cookie')!.split(';')[0]!;
+     99| }
+ ❯ tests/server/session-lifecycle.spec.ts:160:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/server/session-lifecycle.spec.ts > session lifecycle > leaves other devices signed in on an ordinary logout
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SE59XNDPHH6M7PY246JJ"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ login tests/server/session-lifecycle.spec.ts:97:58
+     95|     body: JSON.stringify({ email, password }),
+     96|   });
+     97|   expect(response.status, await response.clone().text()).toBe(200);
+       |                                                          ^
+     98|   return response.headers.get('set-cookie')!.split(';')[0]!;
+     99| }
+ ❯ tests/server/session-lifecycle.spec.ts:172:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/server/unified-saas.spec.ts > unified commercial SaaS acceptance scenario > provisions two isolated workspaces with HRMS and Sales on one identity system
+AssertionError: {"type":"https://docs.leadflow.example/errors/unauthorized","title":"Authentication required","status":401,"detail":"That email and password=<redacted> did not work.","requestId":"01M252SBF3H1TD7CR8SFSWARHE"}: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ tests/server/unified-saas.spec.ts:76:68
+     74|      */
+     75|     const firstAttempt = await call('/api/v1/auth/login', 'POST', { em…
+     76|     expect(firstAttempt.status, JSON.stringify(firstAttempt.data)).toB…
+       |                                                                    ^
+     77|     expect(firstAttempt.data.mfaEnrolmentRequired, 'an owner signed in…
+     78|     expect(firstAttempt.data.destination).toBe('/enroll-2fa');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  6 failed (6)
+   Start at  11:15:17
+   Duration  64.37s (transform 233ms, setup 0ms, import 3.60s, tests 5.32s, environment 0ms)
+

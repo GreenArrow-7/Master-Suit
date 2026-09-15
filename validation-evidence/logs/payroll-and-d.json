@@ -1,0 +1,218 @@
+[
+  {
+    "role": "payroll_officer",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "finance_admin",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "payroll_officer",
+    "step": "payroll: run create",
+    "status": 200
+  },
+  {
+    "role": "payroll_officer",
+    "step": "payroll: calculate",
+    "status": 200
+  },
+  {
+    "role": "payroll_officer",
+    "step": "payroll: submit for approval",
+    "status": 200
+  },
+  {
+    "role": "payroll_officer",
+    "step": "payroll: approve own run (must refuse)",
+    "status": 403,
+    "detail": "Your role does not allow approve on payroll."
+  },
+  {
+    "role": "finance_admin",
+    "step": "payroll: approve (separate authority)",
+    "status": 403,
+    "detail": "Your role does not allow view on employee."
+  },
+  {
+    "role": "employee (OWN scope)",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "employee (OWN scope)",
+    "step": "reports offered by the UI",
+    "status": 200,
+    "offered": [
+      "headcount-by-department",
+      "joiners-and-leavers",
+      "probation-ending",
+      "overtime-cost",
+      "onboarding-status",
+      "payroll-register",
+      "salary-cost-by-department",
+      "rating-distribution",
+      "overdue-reviews",
+      "pip-status"
+    ]
+  },
+  {
+    "role": "employee (OWN scope)",
+    "step": "report payroll-register",
+    "status": 200,
+    "reportRows": 0,
+    "exportStatus": 200,
+    "exportRows": "9",
+    "distinctEmployeesInCsv": 9
+  },
+  {
+    "role": "employee (OWN scope)",
+    "step": "report salary-cost-by-department",
+    "status": 200,
+    "reportRows": 0,
+    "exportStatus": 200,
+    "exportRows": "1"
+  },
+  {
+    "role": "employee (OWN scope)",
+    "step": "report headcount-by-department",
+    "status": 200,
+    "reportRows": 1,
+    "exportStatus": 200,
+    "exportRows": "1"
+  },
+  {
+    "role": "dept_manager (TEAM scope)",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "dept_manager (TEAM scope)",
+    "step": "reports offered by the UI",
+    "status": 200,
+    "offered": [
+      "headcount-by-department",
+      "joiners-and-leavers",
+      "probation-ending",
+      "flagged-punches",
+      "overtime-cost",
+      "leave-balances",
+      "leave-utilisation",
+      "onboarding-status",
+      "rating-distribution",
+      "overdue-reviews",
+      "pip-status"
+    ]
+  },
+  {
+    "role": "dept_manager (TEAM scope)",
+    "step": "report payroll-register",
+    "status": 403,
+    "detail": "This report needs payroll:VIEW.",
+    "reportRows": null,
+    "exportStatus": 403,
+    "exportRows": null
+  },
+  {
+    "role": "dept_manager (TEAM scope)",
+    "step": "report salary-cost-by-department",
+    "status": 403,
+    "detail": "This report needs payroll:VIEW.",
+    "reportRows": null,
+    "exportStatus": 403,
+    "exportRows": null
+  },
+  {
+    "role": "dept_manager (TEAM scope)",
+    "step": "report headcount-by-department",
+    "status": 200,
+    "reportRows": 1,
+    "exportStatus": 200,
+    "exportRows": "1"
+  },
+  {
+    "role": "payroll_officer (ORG)",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "payroll_officer (ORG)",
+    "step": "reports offered by the UI",
+    "status": 200,
+    "offered": [
+      "headcount-by-department",
+      "joiners-and-leavers",
+      "probation-ending",
+      "overtime-cost",
+      "onboarding-status",
+      "payroll-register",
+      "salary-cost-by-department"
+    ]
+  },
+  {
+    "role": "payroll_officer (ORG)",
+    "step": "report payroll-register",
+    "status": 200,
+    "reportRows": 0,
+    "exportStatus": 200,
+    "exportRows": "9",
+    "distinctEmployeesInCsv": 9
+  },
+  {
+    "role": "payroll_officer (ORG)",
+    "step": "report salary-cost-by-department",
+    "status": 200,
+    "reportRows": 0,
+    "exportStatus": 200,
+    "exportRows": "1"
+  },
+  {
+    "role": "payroll_officer (ORG)",
+    "step": "report headcount-by-department",
+    "status": 200,
+    "reportRows": 1,
+    "exportStatus": 200,
+    "exportRows": "1"
+  },
+  {
+    "role": "other-workspace employee",
+    "step": "login",
+    "status": 200
+  },
+  {
+    "role": "other-workspace employee",
+    "step": "reports offered by the UI",
+    "status": 404,
+    "detail": "Workspace not found.",
+    "offered": []
+  },
+  {
+    "role": "other-workspace employee",
+    "step": "report payroll-register",
+    "status": 404,
+    "detail": "Workspace not found.",
+    "reportRows": null,
+    "exportStatus": 404,
+    "exportRows": null
+  },
+  {
+    "role": "other-workspace employee",
+    "step": "report salary-cost-by-department",
+    "status": 404,
+    "detail": "Workspace not found.",
+    "reportRows": null,
+    "exportStatus": 404,
+    "exportRows": null
+  },
+  {
+    "role": "other-workspace employee",
+    "step": "report headcount-by-department",
+    "status": 404,
+    "detail": "Workspace not found.",
+    "reportRows": null,
+    "exportStatus": 404,
+    "exportRows": null
+  }
+]

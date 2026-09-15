@@ -92,6 +92,30 @@ describe('storing a capture', () => {
     expect(relative).toBe('t-t1/emp-emp1/2026-08/punch-punch1.jpg.enc');
   });
 
+  /**
+   * The shape assertion above is host-dependent unless the separator is pinned:
+   * `path.join` emits '\' on Windows, so the column would hold a value a Linux
+   * reader cannot turn back into an object key. The stored path is a portable
+   * identifier, not a path on the machine that wrote it, and this says so in a
+   * way that fails on whichever platform regresses it.
+   */
+  it('never writes a host separator into the column', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'punch1', FRAME);
+    expect(relative).not.toContain('\\');
+    expect(relative!.split('/')).toHaveLength(4);
+  });
+
+  /**
+   * The consequence, not the format: a capture must survive the round trip
+   * whatever the host, because the read side derives the object key from this
+   * value and a wrong separator loses the evidence for a disputed punch.
+   */
+  it('round-trips through the object key on any host', async () => {
+    const relative = await vault.storeCapture('t1', 'emp1', 'portable', FRAME);
+    expect([...bucket.keys()]).toContain(`attendance/${relative}`);
+    await expect(vault.loadCapture(relative!)).resolves.toEqual(FRAME);
+  });
+
   it('writes under one prefix, so a sweep can find captures without walking the bucket', async () => {
     await vault.storeCapture('t1', 'emp1', 'punch1', FRAME);
     expect([...bucket.keys()][0].startsWith('attendance/')).toBe(true);

@@ -1,0 +1,9 @@
+INDEX:
+  CREATE UNIQUE INDEX "Booking_one_confirmed_per_unit" ON public."Booking" USING btree ("unitInventoryId") WHERE ((status = 'CONFIRMED'::"BookingStatus") AND ("deletedAt" IS NULL) AND ("unitInventoryId" IS NOT NULL))
+CHECK:
+  Booking_agency_fee_check  validated=true  CHECK ((("agencyFee" IS NULL) OR ("agencyFee" >= (0)::numeric)))
+  Booking_buyer_check  validated=true  CHECK ((("leadId" IS NOT NULL) OR ("contactId" IS NOT NULL) OR ("accountId" IS NOT NULL)))
+  Booking_cancel_check  validated=true  CHECK ((("cancelledAt" IS NULL) = ("cancelReason" IS NULL)))
+  Booking_confirmed_requires_unit  validated=true  CHECK (((status <> 'CONFIRMED'::"BookingStatus") OR ("deletedAt" IS NOT NULL) OR ("unitInventoryId" IS NOT NULL)))
+  Booking_sale_value_check  validated=true  CHECK (("saleValue" > (0)::numeric))
+  Booking_subject_check  validated=true  CHECK ((("projectId" IS NOT NULL) OR ("listingId" IS NOT NULL) OR ("unitInventoryId" IS NOT NULL)))

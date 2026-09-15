@@ -83,6 +83,14 @@ RUN addgroup -g 1001 -S leadflow && adduser -u 1001 -S leadflow -G leadflow
 
 COPY --from=build --chown=leadflow:leadflow /app/.next/standalone ./
 COPY --from=build --chown=leadflow:leadflow /app/.next/static ./.next/static
+# `next build` does not fold `public/` into the standalone output — it has to be
+# copied, and it was not. Everything in it 404'd in every image ever built:
+# `sw.js`, so the service worker could not register and the console carried a
+# fetch error on every page load; `offline.html`, so there was no offline
+# fallback to serve; and both PWA icons, so "add to home screen" — the way a
+# field agent actually opens this — had no icon. Found by a 404 in the browser
+# console while photographing the release artifact.
+COPY --from=build --chown=leadflow:leadflow /app/public ./public
 COPY --from=build --chown=leadflow:leadflow /app/prisma ./prisma
 
 # ATTENDANCE_CAPTURE_DIR writes here. Created in the image and owned by the

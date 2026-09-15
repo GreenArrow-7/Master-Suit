@@ -3,6 +3,9 @@ import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { headroom, poolDepth } from '@/services/distribution/allocation';
 import { pendingRequests } from '@/services/distribution/requests';
+import { assessEligibility } from '@/services/distribution/eligibility';
+import { listTriageQueue } from '@/services/distribution/triageQueue';
+import WaitingQueue from './WaitingQueue';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -20,7 +23,7 @@ export const metadata = { title: 'Allocation' };
 export default async function AllocationPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['allocation', 'VIEW'] });
-  const view = params.view === 'capacity' ? 'capacity' : 'requests';
+  const view = params.view === 'capacity' ? 'capacity' : params.view === 'waiting' ? 'waiting' : 'requests';
 
   const isLeader = can(ctx, 'allocation', 'APPROVE');
 
@@ -31,11 +34,20 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
     take: 100,
   });
 
-  const [depth, requests, room] = await Promise.all([
+  const [depth, requests, room, waiting, eligibility] = await Promise.all([
     poolDepth(ctx.tenantId),
     pendingRequests(ctx.tenantId, 50),
     view === 'capacity'
       ? headroom(
+          ctx.tenantId,
+          agents.map((a) => a.id),
+        )
+      : [],
+    // Counted on every view, because the tab has to carry the number: a queue
+    // you only see once you click into it is one nobody clicks into.
+    listTriageQueue(ctx, { take: 100 }),
+    view === 'waiting'
+      ? assessEligibility(
           ctx.tenantId,
           agents.map((a) => a.id),
         )
@@ -52,6 +64,12 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
         description={
           <>
             {depth.toLocaleString('en-GB')} unassigned lead{depth === 1 ? '' : 's'} in the pool
+            {waiting.length > 0 && (
+              <>
+                {' · '}
+                <strong>{waiting.length} could not be assigned automatically</strong>
+              </>
+            )}
             {requests.length > 0 && <> · {requests.length} waiting to be decided</>}
           </>
         }
@@ -61,10 +79,49 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
         <SalesLink className="lf-tab" href="/allocation" aria-selected={view === 'requests'} role="tab">
           Requests
         </SalesLink>
+        <SalesLink className="lf-tab" href="/allocation?view=waiting" aria-selected={view === 'waiting'} role="tab">
+          Waiting{waiting.length > 0 ? ` (${waiting.length})` : ''}
+        </SalesLink>
         <SalesLink className="lf-tab" href="/allocation?view=capacity" aria-selected={view === 'capacity'} role="tab">
           Capacity
         </SalesLink>
       </nav>
+
+      {view === 'waiting' && (
+        <WaitingQueue
+          canAssign={can(ctx, 'leads', 'ASSIGN')}
+          rows={waiting.map((r) => ({
+            id: r.id,
+            leadId: r.leadId,
+            episode: r.episode,
+            leadName: r.leadName,
+            source: r.source,
+            sourceDetail: r.sourceDetail,
+            reason: r.reason,
+            reasonText: r.reasonText,
+            candidates: r.detail.candidates ?? [],
+            unsupportedPolicy: r.detail.unsupported ?? [],
+            openedAt: r.openedAt.toISOString(),
+            waitingMs: r.waitingMs,
+            reviewDueAt: r.reviewDueAt?.toISOString() ?? null,
+            reviewPolicyMissing: r.reviewPolicyMissing,
+            routingPolicyMissing: r.routingPolicyMissing,
+            historyUnknown: r.historyUnknown,
+            overdue: r.overdue,
+            responsibleUserName: r.responsibleUserName,
+            responsibleTeamName: r.responsibleTeamName,
+          }))}
+          assignees={agents.map((a) => {
+            const v = eligibility.find((e) => e.userId === a.id);
+            return {
+              id: a.id,
+              name: nameBy.get(a.id) ?? a.id,
+              available: v?.available ?? null,
+              blockedBy: v && !v.eligible ? v.blockers.map((b) => b.detail).join('; ') : null,
+            };
+          })}
+        />
+      )}
 
       {view === 'requests' &&
         (requests.length === 0 ? (

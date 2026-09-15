@@ -61,7 +61,10 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
     { key: 'slaState', label: 'SLA', byDefault: true },
     { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
-    { key: 'nextFollowUpAt', label: 'Follow-up', byDefault: true, hideMobile: true },
+    // Visible on phones. It was hidden while it held a stale lead-wide number
+    // nobody maintained; now it is the viewer's own next action and is the one
+    // thing a rep checks on a phone between appointments.
+    { key: 'nextFollowUpAt', label: 'Follow-up', byDefault: true },
     { key: 'email', label: 'Email', hideMobile: true },
     { key: 'phone', label: 'Phone', hideMobile: true },
     { key: 'grade', label: 'Grade', hideMobile: true },

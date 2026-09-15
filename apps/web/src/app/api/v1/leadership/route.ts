@@ -10,6 +10,7 @@ import {
   subtree,
 } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
+import { obligationAccess } from '@/services/leads/nextFollowUp';
 
 const query = z
   .object({
@@ -63,7 +64,9 @@ export const GET = route(
       case 'feed':
         return { range, data: await interactionFeed(ctx.tenantId, userIds, range, q.limit) };
       case 'chasing':
-        return { data: await chasingQueue(ctx.tenantId, userIds, new Date(), q.limit) };
+        return {
+          data: await chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), q.limit),
+        };
       case 'pl':
         return profitAndLoss(ctx.tenantId, userIds, range.from, range.to, q.grouping);
       default: {
@@ -74,7 +77,7 @@ export const GET = route(
           funnel(ctx.tenantId, userIds, range),
           conversion(ctx.tenantId, userIds, range),
           performerBoard(ctx.tenantId, userIds, range, q.metric),
-          chasingQueue(ctx.tenantId, userIds, new Date(), 10),
+          chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), 10),
         ]);
         return { range, funnel: funnelRows, conversion: conversionRates, board, chasing };
       }

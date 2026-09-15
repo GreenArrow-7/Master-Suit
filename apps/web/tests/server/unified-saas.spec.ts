@@ -5,8 +5,10 @@ import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '@/lib/auth/password';
 import { totp } from '@/lib/auth/mfa';
+import { assertDisposableEnvironment } from './environment';
 
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+const targets = assertDisposableEnvironment();
 
 /**
  * This spec drives a *running server*, so it must read the database that server
@@ -15,10 +17,7 @@ const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
  * the owner it created could never log in.
  */
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({
-    connectionString:
-      process.env.E2E_DATABASE_URL ?? 'postgresql://leadflow:leadflow@localhost:5432/leadflow?schema=public',
-  }),
+  adapter: new PrismaPg({ connectionString: targets.databaseUrl }),
 });
 const suffix = Date.now().toString(36);
 const ownerEmail = `e2e.owner.${suffix}@masterapp.local`;
@@ -33,7 +32,7 @@ const leadersSlug = `leadersfort-${suffix}`;
  * looks like a product bug and is actually the limiter doing its job.
  */
 beforeAll(async () => {
-  const redis = new Redis(process.env.E2E_REDIS_URL ?? 'redis://:leadflow@localhost:6379/0');
+  const redis = new Redis(targets.redisUrl);
   const keys = await redis.keys('rl:login:*');
   if (keys.length) await redis.del(...keys);
   await redis.quit();

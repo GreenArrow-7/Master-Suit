@@ -154,6 +154,22 @@ case "${OUT}" in
   *) bad "--from-remote did not refuse without a remote; said: ${OUT}" ;;
 esac
 
+# ── 8 · the checksum line in the form backup.sh writes it ──────────────────
+#
+# backup.sh records the dump as `sha256sum database.dump`, with no `./`. Every
+# manifest above is built with `./`, which hid a pattern that matched only that
+# form: restore verification aborted at the checksum on every real backup,
+# before restoring anything. DC=false stops the run at the database step, after
+# the integrity check has spoken.
+PLAIN="${WORK}/backups/plain"
+make_backup "${PLAIN}"
+( cd "${PLAIN}" && sed -i '/database\.dump$/d' manifest.txt && sha256sum database.dump >> manifest.txt )
+OUT="$(DC=false "${VERIFY}" "${PLAIN}" 2>&1 || true)"
+case "${OUT}" in
+  *"dump checksum matches the manifest"*) ok "reads the dump checksum in the form backup.sh writes it" ;;
+  *) bad "did not read the dump checksum backup.sh writes; said: ${OUT}" ;;
+esac
+
 echo
 if [ "${FAILURES}" -eq 0 ]; then
   echo "backup round trip: all checks passed."

@@ -1,6 +1,8 @@
 node_modules/
 .next/
 .next-prod/
+# A dev server started with NEXT_DIST_DIR=.next-preview (a second one beside `next dev`).
+.next-preview/
 .env
 .env.local
 # Deployment secrets: database passwords, SMTP credentials and the field

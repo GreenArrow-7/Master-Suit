@@ -3,6 +3,9 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
+import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
+import { deliverOutbox } from '@/services/notifications/outbox';
+import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -33,31 +36,86 @@ const DAILY_PATTERN = '0 3 * * *';
  */
 const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
 
+/**
+ * Every five minutes, for the unassigned-lead queue.
+ *
+ * Faster than the reminder sweep because its unit is a *review deadline a
+ * manager configured*, and a workspace that sets a fifteen-minute window would
+ * otherwise learn about the breach a quarter of an hour after it happened. The
+ * three passes are all idempotent and all no-ops on an empty queue, so the
+ * cadence costs a handful of indexed reads when nothing is waiting.
+ */
+const FIVE_MINUTE_PATTERN = '*/5 * * * *';
+
+/**
+ * The maintenance queue's dispatch, as a named function.
+ *
+ * Lifted out of the `Worker` constructor so a test can drive the **registered**
+ * handler rather than a copy of it beside the real one. A copy passes while the
+ * original is broken — a job name nobody handles, a payload unpacked wrongly —
+ * which is exactly the class of failure a worker test exists to catch.
+ */
+export async function handleMaintenanceJob(job: { name: string }): Promise<unknown> {
+  if (job.name === 'retention') {
+    // Never a dry run from the scheduler. The dry run exists so an operator
+    // can see what a sweep *would* remove before authorising it; a
+    // scheduled sweep that only counted would be the current bug wearing a
+    // cron expression.
+    return runRetentionCleanup(false);
+  }
+  if (job.name === 'reminders') {
+    const result = await runReminderSweep();
+    logger.info(result, 'reminder sweep complete');
+    return result;
+  }
+  if (job.name === 'triage-sweep') {
+    /**
+     * Stale first: an entry whose lead already has an owner must not be
+     * escalated to a manager who would open it and find the work done. Then
+     * deadlines, then the notification backfill.
+     *
+     * Each pass claims by conditional UPDATE, so two overlapping runs of
+     * this job produce one alert between them rather than one each.
+     */
+    const stale = await sweepStaleTriage();
+    const deadlines = await sweepTriageDeadlines();
+    const notices = await sweepTriageNotifications();
+    /**
+     * Delivery last, and in the same pass: the three sweeps above *decide*
+     * on notices inside their own transactions, and this is what turns those
+     * decisions into notifications people can see. Running it here rather
+     * than on its own schedule means a decision is never more than one sweep
+     * old, and a crash between the two is recovered by the next pass rather
+     * than losing the notice.
+     */
+    const delivery = await deliverOutbox();
+    const result = { ...stale, ...deadlines, ...notices, ...delivery };
+    logger.info(result, 'lead triage sweep complete');
+    return result;
+  }
+  if (job.name === 'follow-up-drift') {
+    /**
+     * Report-only, by design and without an override.
+     *
+     * Every writer recomputes under the lead's lock, so a non-zero count here
+     * means a path exists that does not — and auto-correcting would hide the
+     * one signal that says so. Repair is an operator action against a named
+     * workspace, not something a cron does at 03:20.
+     */
+    const result = await sweepDriftCanary();
+    logger.info(result, 'next-follow-up drift canary complete');
+    return result;
+  }
+  logger.warn({ jobName: job.name }, 'unknown maintenance job');
+}
+
 export function startMaintenanceWorker() {
-  return new Worker(
-    'maintenance',
-    async (job) => {
-      if (job.name === 'retention') {
-        // Never a dry run from the scheduler. The dry run exists so an operator
-        // can see what a sweep *would* remove before authorising it; a
-        // scheduled sweep that only counted would be the current bug wearing a
-        // cron expression.
-        return runRetentionCleanup(false);
-      }
-      if (job.name === 'reminders') {
-        const result = await runReminderSweep();
-        logger.info(result, 'reminder sweep complete');
-        return result;
-      }
-      logger.warn({ jobName: job.name }, 'unknown maintenance job');
-    },
-    {
-      connection: redis,
-      // One at a time. The sweep deletes across every tenant and two concurrent
-      // passes would contend on the same rows for no gain.
-      concurrency: 1,
-    },
-  );
+  return new Worker('maintenance', handleMaintenanceJob, {
+    connection: redis,
+    // One at a time. The sweep deletes across every tenant and two concurrent
+    // passes would contend on the same rows for no gain.
+    concurrency: 1,
+  });
 }
 
 /**
@@ -76,6 +134,13 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { pattern: QUARTER_HOURLY_PATTERN },
     { name: 'reminders' },
   );
+  await queue.upsertJobScheduler(
+    'lead-triage-five-minutely',
+    { pattern: FIVE_MINUTE_PATTERN },
+    { name: 'triage-sweep' },
+  );
+  // 03:20, after retention has settled: the canary reads what the night left.
+  await queue.upsertJobScheduler('follow-up-drift-daily', { pattern: '20 3 * * *' }, { name: 'follow-up-drift' });
   await queue.close();
-  return ['retention-daily', 'reminders-quarter-hourly'];
+  return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely', 'follow-up-drift-daily'];
 }

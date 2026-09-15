@@ -1,0 +1,15 @@
+Schema drift	0	5
+Tenant isolation	0	1
+Raw SQL scope	0	0
+Typecheck	0	70
+Lint	0	183
+Format check	1	21
+README schema counts	1	1
+Observability drift	1	1
+Redis auth	1	2
+Face token gate	0	1
+Backup round trip	0	5
+Test	1	188
+Integration (server)	1	77
+Build	0	136
+Audit	1	19

@@ -29,6 +29,7 @@ export default tseslint.config(
     ignores: [
       '.next/**',
       '.next-prod/**',
+      '.next-preview/**',
       // Scratch verification scripts, already git-ignored.
       '.verify/**',
       'node_modules/**',

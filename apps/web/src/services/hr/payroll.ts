@@ -21,6 +21,7 @@
  * keeps reconciling against the hours behind it.
  */
 import { Prisma } from '@prisma/client';
+import { historicalPlacement } from '@/services/leadership/placement';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
@@ -286,9 +287,36 @@ export async function calculateRun(ctx: Ctx, runId: string) {
       // hired on the final day of the period, who had nonetheless worked it.
       OR: [{ joinedOn: null }, { joinedOn: { lt: new Date(toDay(run.periodEnd).getTime() + 86_400_000) } }],
     },
-    select: { id: true, joinedOn: true, iban: true, basicSalary: true, totalSalary: true },
+    select: {
+      id: true,
+      joinedOn: true,
+      iban: true,
+      basicSalary: true,
+      totalSalary: true,
+      // The Sales user, whose placement for the run's own period is frozen onto
+      // the payslip below.
+      membership: { select: { salesUserId: true } },
+    },
   });
   if (!employees.length) throw Conflict('There are no employees to pay in this period.');
+  // Where each person sat for the whole run period, established from records
+  // that cannot be rewritten — not where they sit at calculation time, which
+  // for a backdated run is a different question. Null where it cannot be shown.
+  const salesUserOf = new Map(employees.map((e) => [e.id, e.membership?.salesUserId ?? null]));
+  const placements = await historicalPlacement(
+    ctx.tenantId,
+    [...salesUserOf.values()].filter((x): x is string => !!x),
+    run.periodStart,
+    run.periodEnd,
+  );
+  const placementOf = (employeeId: string) => {
+    const p = placements.get(salesUserOf.get(employeeId) ?? '');
+    return {
+      teamIdSnapshot: p?.teamId ?? null,
+      branchIdSnapshot: p?.branchId ?? null,
+      regionIdSnapshot: p?.regionId ?? null,
+    };
+  };
 
   const employeeIds = employees.map((employee) => employee.id);
   const [overtimeTotals, unpaidLeave, adjustments] = await Promise.all([
@@ -362,6 +390,7 @@ export async function calculateRun(ctx: Ctx, runId: string) {
           unpaidDays: draft.unpaidDays,
           overtimeMinutes: draft.overtimeMinutes,
           ibanSnapshot: draft.ibanSnapshot,
+          ...placementOf(draft.employeeId),
           inputs: draft.inputs,
           lines: {
             create: draft.lines.map((line) => ({

@@ -1,0 +1,23 @@
+seeded 37 leads into nfu-fixture-05174395 on master_suite_nfu
+
+planted, then measured:
+  leads                      37  ✓
+  agreeing                   16  ✓
+  missing                     7  ✓
+  stale                       9  ✓
+  unexpected                  5  ✓
+  open tasks                  9  ✓
+  open follow-ups            19  ✓
+  unattached tasks            0  ✓
+  unattached follow-ups       0  ✓
+  ambiguous tasks             0  ✓
+  undated obligations         0  ✓
+
+dry run: considered 21, repaired 0
+  disagreeing after dry run   21  ✓
+
+applied: considered 21, repaired 21
+  disagreeing after repair    0  ✓
+  considered on rerun         0  ✓
+
+workspace: nfu-fixture-05174395 — remove with --clean

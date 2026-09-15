@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Restores a backup into a scratch database and a scratch bucket prefix, then
-# reconciles what came back against the manifest.
+# Restores a backup into a scratch database, then reconciles what came back,
+# and the object files in the backup, against the manifest.
 #
 # ── Why a script rather than a paragraph ────────────────────────────────────
 #
@@ -11,8 +11,9 @@
 # during the incident. An untested backup is a hope, not a control.
 #
 # This never touches the live database or the live bucket. It restores into
-# `<db>_restorecheck` and `<bucket>-restorecheck`, both created and dropped by
-# this script, so it is safe to run against production at any time — and it
+# `<db>_restorecheck`, created, marked and dropped by this script, and refuses
+# any target it did not create (section 3). Objects are checked from the backup's
+# own files; no bucket is written. So it is safe to run against production at any time — and it
 # should be, because a backup verified on a laptop proves nothing about the
 # backup the server is taking.
 #
@@ -69,10 +70,11 @@ ORIGINAL_SRC="${SRC}"
 DC="${DC:-docker compose --env-file ../.env.production -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.azure.yml}"
 PG_USER="${PG_USER:-leadflow}"
 PG_DB="${PG_DB:-leadflow}"
-BUCKET="${S3_BUCKET:-leadflow-documents}"
 
 CHECK_DB="${PG_DB}_restorecheck"
-CHECK_BUCKET="${BUCKET}-restorecheck"
+SCRATCH_MARK='master-suite restore-verify scratch copy'
+# Set only once this run has created the scratch database. Cleanup drops nothing else.
+CREATED=0
 WORK="$(mktemp -d)"
 FAILURES=0
 PULLED=""
@@ -86,9 +88,12 @@ bad()  { printf '[verify] FAIL  %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
 ok()   { printf '[verify] ok    %s\n' "$1"; }
 
 cleanup() {
-  say "tearing down the scratch database and bucket ..."
-  ${DC} exec -T postgres psql -U "${PG_USER}" -d postgres -q \
-    -c "DROP DATABASE IF EXISTS \"${CHECK_DB}\" WITH (FORCE);" >/dev/null 2>&1 || true
+  if [ "${CREATED}" = "1" ]; then
+    say "dropping the scratch database this run created ..."
+    ${DC} exec -T postgres psql -U "${PG_USER}" -d postgres -q \
+      -c "DROP DATABASE IF EXISTS \"${CHECK_DB}\";" >/dev/null 2>&1 \
+      || say "could not drop ${CHECK_DB}; drop it by hand once nothing is connected"
+  fi
   rm -rf "${WORK}"
   # The pulled copy goes too. It is a second full-size duplicate of a backup on
   # a disk that is sized for the backups themselves, and leaving one behind
@@ -146,7 +151,18 @@ if [ -f "${SRC}/database.dump.gpg" ]; then
 fi
 
 # ── 2. Integrity ────────────────────────────────────────────────────────────
-EXPECTED_SHA="$(grep -E '  ?\./?database\.dump$' "${SRC}/manifest.txt" | awk '{print $1}' | head -1)"
+# `(\./)?`, not `\./?`. The second makes only the slash optional and leaves the
+# dot mandatory, so it matches `./database.dump` and never plain
+# `database.dump` — and plain is what `backup.sh` writes for the unencrypted
+# artefact (`sha256sum database.dump`), while the `.gpg` lines it appends later
+# carry `./`. The capture therefore came back empty on every backup ever taken,
+# and because `set -e` fails an assignment whose command substitution exits
+# non-zero, restore verification aborted here every single time — before
+# restoring anything. That is why it has never once succeeded.
+#
+# `|| true` as well, so a manifest genuinely missing the line degrades to the
+# "no sha recorded" branch below instead of killing the run.
+EXPECTED_SHA="$(grep -E '  ?(\./)?database\.dump$' "${SRC}/manifest.txt" | awk '{print $1}' | head -1 || true)"
 if [ -n "${EXPECTED_SHA}" ]; then
   ACTUAL_SHA="$(sha256sum "${DUMP}" | awk '{print $1}')"
   [ "${EXPECTED_SHA}" = "${ACTUAL_SHA}" ] && ok "dump checksum matches the manifest" \
@@ -154,9 +170,37 @@ if [ -n "${EXPECTED_SHA}" ]; then
 fi
 
 # ── 3. Restore the database into a scratch copy ─────────────────────────────
+#
+# The target guard comes first, because the next statement drops a database.
+# A name ending in _restorecheck proves nothing by itself, so the target must
+# also be: a plain identifier; not the database this deployment runs on; not
+# connected to by anyone; and either absent or carrying the comment this script
+# writes when it creates one. A database that merely shares the name is left
+# alone and the run stops. The role must see every row, or the row counts below
+# would compare two filtered numbers and agree.
+say "checking the restore target ${CHECK_DB} ..."
+admin() { ${DC} exec -T postgres psql -U "${PG_USER}" -d postgres -qtA -c "$1" | tr -d '\r'; }
+refuse() { echo "[verify] REFUSED  $1 Nothing was dropped or restored." >&2; exit 1; }
+[[ "${CHECK_DB}" =~ ^[a-z0-9_]+_restorecheck$ ]] || refuse "restore target '${CHECK_DB}' is not a plain <db>_restorecheck name."
+[ "${CHECK_DB}" != "${PG_DB}" ] || refuse "restore target is the live database."
+ROLE_OK="$(admin "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;")"
+[ "${ROLE_OK}" = "t" ] || refuse "role ${PG_USER} is subject to row-level security, so its row counts cannot be trusted."
+admin "SELECT 1 FROM pg_database WHERE datname = '${PG_DB}';" | grep -qx 1 \
+  || refuse "live database '${PG_DB}' does not exist here; PG_DB does not name this deployment's database."
+IN_USE="$(admin "SELECT count(*) FROM pg_stat_activity WHERE datname = '${CHECK_DB}' AND pid <> pg_backend_pid();")"
+[ "${IN_USE}" = "0" ] || refuse "${CHECK_DB} has ${IN_USE} open connection(s); something is using it."
+if admin "SELECT 1 FROM pg_database WHERE datname = '${CHECK_DB}';" | grep -qx 1; then
+  [ "$(admin "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = '${CHECK_DB}';")" = "${SCRATCH_MARK}" ] \
+    || refuse "${CHECK_DB} already exists and was not created by this script."
+  say "removing the scratch copy a previous run left behind"
+fi
+ok "restore target is a scratch database this script owns"
+
 say "restoring into ${CHECK_DB} ..."
-${DC} exec -T postgres psql -U "${PG_USER}" -d postgres -q \
-  -c "DROP DATABASE IF EXISTS \"${CHECK_DB}\" WITH (FORCE);" -c "CREATE DATABASE \"${CHECK_DB}\";"
+admin "DROP DATABASE IF EXISTS \"${CHECK_DB}\";" >/dev/null
+admin "CREATE DATABASE \"${CHECK_DB}\";" >/dev/null
+CREATED=1
+admin "COMMENT ON DATABASE \"${CHECK_DB}\" IS '${SCRATCH_MARK}';" >/dev/null
 # --no-owner / --no-privileges: the scratch database has no master_saas_app grant
 # chain and does not need one to be counted.
 ${DC} exec -T postgres pg_restore -U "${PG_USER}" -d "${CHECK_DB}" --no-owner --no-privileges < "${DUMP}" \

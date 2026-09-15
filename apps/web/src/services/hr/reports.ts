@@ -22,8 +22,9 @@ import { Prisma } from '@prisma/client';
 import { prismaRead } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
-import type { Action, Ctx } from '@/lib/security/rbac';
-import { can } from '@/lib/security/rbac';
+import type { Action, Ctx, Scope } from '@/lib/security/rbac';
+import { can, scopeFor } from '@/lib/security/rbac';
+import { resolveOwnerIds } from '@/lib/security/visibility';
 import { addDays, dayKey, toDay } from './rules';
 
 /**
@@ -67,6 +68,17 @@ export interface ReportResult {
   rows: Record<string, unknown>[];
 }
 
+/**
+ * Whose records a report is about.
+ *
+ * `employee` reports narrow to the people the caller's scope covers.
+ * `workspace` reports — open requisitions, the candidate pipeline — are about
+ * the company rather than about a person, so there is nothing to narrow *to*.
+ * Those require ORGANIZATION scope instead of being silently returned whole,
+ * which is the distinction the previous code did not draw.
+ */
+export type ReportSubject = 'employee' | 'workspace';
+
 export interface ReportDefinition {
   key: string;
   title: string;
@@ -74,8 +86,73 @@ export interface ReportDefinition {
   group: ReportGroup;
   /** The authority over the *data*, not over reporting. See the file note. */
   permission: [string, Action];
+  /** Which column carries the employee, for the scope narrowing below. */
+  subject: ReportSubject;
+  subjectField?: 'id' | 'employeeId';
   filters: FilterKey[];
-  run: (ctx: Ctx, filters: ReportFilters) => Promise<ReportResult>;
+  run: (ctx: Ctx, filters: ReportFilters, audience: ReportAudience) => Promise<ReportResult>;
+}
+
+/**
+ * The people this caller's grant actually covers.
+ *
+ * `employeeIds: null` means "everyone in the workspace" and is reached only at
+ * ORGANIZATION scope. Every narrower scope resolves to a list, and a list is
+ * what the report queries filter on.
+ */
+export interface ReportAudience {
+  scope: Scope;
+  employeeIds: string[] | null;
+}
+
+/**
+ * Scope → the employees it covers.
+ *
+ * `resolveOwnerIds` answers in *sales user* ids, because that is what owns a
+ * lead. HR reports are about `EmployeeProfile`, which reaches a user through
+ * `membership.salesUser`, so the ids are translated once here rather than in
+ * fourteen queries.
+ *
+ * The caller's own employee record is always included. Somebody whose grant is
+ * OWN is asking about themselves, and a payslip report that excluded the
+ * reader would be a strange kind of correct.
+ */
+async function audienceFor(ctx: Ctx, permission: [string, Action]): Promise<ReportAudience> {
+  const scope = scopeFor(ctx, permission[0], permission[1]);
+  if (scope === 'ORGANIZATION') return { scope, employeeIds: null };
+
+  const userIds = await resolveOwnerIds(ctx, scope);
+  const rows = await prismaRead.employeeProfile.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      OR: [
+        { membership: { is: { salesUserId: { in: userIds } } } },
+        // The reader themselves, whether or not they hold a sales user row.
+        { membership: { is: { salesUserId: ctx.actor.id } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return { scope, employeeIds: rows.map((r) => r.id) };
+}
+
+/**
+ * The narrowing clause, or `{}` when the caller may see everyone.
+ *
+ * Spread into a report's `where`. Returning an empty object at ORGANIZATION
+ * keeps the generated SQL identical to what it was for the roles that always
+ * could see everything, so this change costs those reports nothing.
+ *
+ * `AND` rather than a bare `{ employeeId: … }`, and that is load-bearing. The
+ * leave-balances report also honours an `employeeId` *filter*, and a plain key
+ * would be overwritten by whichever spread came last — silently widening the
+ * result to the whole team when a caller asked about one person. `AND`
+ * intersects instead of colliding, so the narrowing cannot be displaced by a
+ * later key no matter how a report's `where` is written.
+ */
+function within(audience: ReportAudience, field: 'id' | 'employeeId'): Record<string, unknown> {
+  if (audience.employeeIds === null) return {};
+  return { AND: [{ [field]: { in: audience.employeeIds } }] };
 }
 
 /** Reports return a bounded number of rows; a report is not an export pipeline. */
@@ -98,10 +175,17 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Active employees in each department, with the average length of service.',
     group: 'employees',
     permission: ['employee', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'id',
     filters: [],
-    async run(ctx) {
+    async run(ctx, _filters, audience) {
       const rows = await prismaRead.employeeProfile.findMany({
-        where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'id'),
+          deletedAt: null,
+          employmentStatus: { notIn: ['EXITED'] },
+        },
         select: { joinedOn: true, department: { select: { name: true } } },
       });
       const grouped = new Map<string, { headcount: number; totalYears: number }>();
@@ -134,22 +218,29 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Who joined and who left in the period, with turnover against the current headcount.',
     group: 'employees',
     permission: ['employee', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'id',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const [joiners, leavers, headcount] = await Promise.all([
         prismaRead.employeeProfile.findMany({
-          where: { tenantId: ctx.tenantId, joinedOn: { gte: from, lte: to } },
+          where: { tenantId: ctx.tenantId, ...within(audience, 'id'), joinedOn: { gte: from, lte: to } },
           select: { employeeNumber: true, joinedOn: true, department: { select: { name: true } } },
           take: MAX_ROWS,
         }),
         prismaRead.employeeProfile.findMany({
-          where: { tenantId: ctx.tenantId, exitedOn: { gte: from, lte: to } },
+          where: { tenantId: ctx.tenantId, ...within(audience, 'id'), exitedOn: { gte: from, lte: to } },
           select: { employeeNumber: true, exitedOn: true, department: { select: { name: true } } },
           take: MAX_ROWS,
         }),
         prismaRead.employeeProfile.count({
-          where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: { notIn: ['EXITED'] } },
+          where: {
+            tenantId: ctx.tenantId,
+            ...within(audience, 'id'),
+            deletedAt: null,
+            employmentStatus: { notIn: ['EXITED'] },
+          },
         }),
       ]);
       return {
@@ -185,10 +276,12 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Employees still in probation, oldest first — the ones a decision is already overdue on.',
     group: 'employees',
     permission: ['employee', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'id',
     filters: [],
-    async run(ctx) {
+    async run(ctx, _filters, audience) {
       const rows = await prismaRead.employeeProfile.findMany({
-        where: { tenantId: ctx.tenantId, deletedAt: null, employmentStatus: 'PROBATION' },
+        where: { tenantId: ctx.tenantId, ...within(audience, 'id'), deletedAt: null, employmentStatus: 'PROBATION' },
         select: { employeeNumber: true, joinedOn: true, designation: true, department: { select: { name: true } } },
         orderBy: { joinedOn: 'asc' },
         take: MAX_ROWS,
@@ -219,12 +312,15 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Days present, hours worked and average day length per employee.',
     group: 'attendance',
     permission: ['attendance', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to', 'employeeId'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrAttendanceRecord.findMany({
         where: {
           tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
           workDate: { gte: from, lte: to },
           employeeId: filters.employeeId,
         },
@@ -269,12 +365,15 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Every punch the engine did not accept, with the reason — the review queue as a report.',
     group: 'attendance',
     permission: ['attendance', 'APPROVE'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrAttendancePunch.findMany({
         where: {
           tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
           serverTime: { gte: from, lte: addDays(to, 1) },
           result: { not: 'ACCEPTED' },
         },
@@ -315,11 +414,18 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Approved overtime hours and the weighted hours payroll will pay for.',
     group: 'attendance',
     permission: ['overtime', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrOvertimeRequest.findMany({
-        where: { tenantId: ctx.tenantId, workDate: { gte: from, lte: to }, status: 'APPROVED' },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          workDate: { gte: from, lte: to },
+          status: 'APPROVED',
+        },
         select: {
           minutes: true,
           multiplier: true,
@@ -363,10 +469,12 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Accrued, taken and remaining leave per employee and type.',
     group: 'leave',
     permission: ['leave', 'APPROVE'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['employeeId'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const rows = await prismaRead.hrLeaveBalance.findMany({
-        where: { tenantId: ctx.tenantId, employeeId: filters.employeeId },
+        where: { tenantId: ctx.tenantId, ...within(audience, 'employeeId'), employeeId: filters.employeeId },
         include: { employee: { select: { employeeNumber: true } }, leaveType: { select: { name: true } } },
         take: MAX_ROWS,
       });
@@ -394,11 +502,19 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Approved leave by type and department — where the absence actually falls.',
     group: 'leave',
     permission: ['leave', 'APPROVE'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrLeaveRequest.findMany({
-        where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: to }, endDate: { gte: from } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          status: 'APPROVED',
+          startDate: { lte: to },
+          endDate: { gte: from },
+        },
         include: {
           leaveType: { select: { name: true, paid: true } },
           employee: { select: { department: { select: { name: true } } } },
@@ -436,10 +552,16 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Checklist completion per employee, and what is overdue.',
     group: 'lifecycle',
     permission: ['employee', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['status'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const rows = await prismaRead.hrChecklistTask.findMany({
-        where: { tenantId: ctx.tenantId, phase: filters.status as 'ONBOARDING' | 'OFFBOARDING' | undefined },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          phase: filters.status as 'ONBOARDING' | 'OFFBOARDING' | undefined,
+        },
         include: { employee: { select: { employeeNumber: true } } },
         take: MAX_ROWS,
       });
@@ -478,11 +600,13 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Visas, Emirates IDs, passports and labour cards approaching expiry, soonest first.',
     group: 'lifecycle',
     permission: ['hr_documents', 'VIEW_SENSITIVE_FIELDS'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const horizon = filters.to ?? addDays(new Date(), 90);
       const rows = await prismaRead.hrEmployeeDocument.findMany({
-        where: { tenantId: ctx.tenantId, expiresAt: { not: null, lte: horizon } },
+        where: { tenantId: ctx.tenantId, ...within(audience, 'employeeId'), expiresAt: { not: null, lte: horizon } },
         include: { employee: { select: { employeeNumber: true } } },
         orderBy: { expiresAt: 'asc' },
         take: MAX_ROWS,
@@ -513,11 +637,17 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Every payslip in a run: basic, gross, deductions and net.',
     group: 'payroll',
     permission: ['payroll', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrPayslip.findMany({
-        where: { tenantId: ctx.tenantId, run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } },
+        },
         include: {
           employee: { select: { employeeNumber: true, department: { select: { name: true } } } },
           run: { select: { periodStart: true, periodEnd: true, status: true } },
@@ -554,11 +684,17 @@ export const REPORTS: ReportDefinition[] = [
     description: 'What each department costs per payroll run, and the average per head.',
     group: 'payroll',
     permission: ['payroll', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['from', 'to'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const { from, to } = window(filters);
       const rows = await prismaRead.hrPayslip.findMany({
-        where: { tenantId: ctx.tenantId, run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          run: { periodStart: { gte: addDays(from, -31) }, periodEnd: { lte: to } },
+        },
         include: { employee: { select: { department: { select: { name: true } } } } },
         take: MAX_ROWS,
       });
@@ -599,6 +735,7 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Approved requisitions still open, with how many people are in each pipeline.',
     group: 'recruitment',
     permission: ['recruitment', 'VIEW'],
+    subject: 'workspace',
     filters: [],
     async run(ctx) {
       const rows = await prismaRead.hrRequisition.findMany({
@@ -634,6 +771,7 @@ export const REPORTS: ReportDefinition[] = [
     description: 'The pipeline across every requisition, and where people are stuck.',
     group: 'recruitment',
     permission: ['recruitment', 'VIEW'],
+    subject: 'workspace',
     filters: [],
     async run(ctx) {
       const rows = await prismaRead.hrCandidate.groupBy({
@@ -664,11 +802,18 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Final ratings across a cycle — the curve calibration is meant to produce.',
     group: 'performance',
     permission: ['performance', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['cycleId'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const rows = await prismaRead.hrReview.groupBy({
         by: ['finalRating'],
-        where: { tenantId: ctx.tenantId, cycleId: filters.cycleId, finalRating: { not: null } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          cycleId: filters.cycleId,
+          finalRating: { not: null },
+        },
         _count: { _all: true },
       });
       const total = rows.reduce((sum, row) => sum + row._count._all, 0);
@@ -694,10 +839,17 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Reviews not yet complete, and whose desk each is sitting on.',
     group: 'performance',
     permission: ['performance', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: ['cycleId'],
-    async run(ctx, filters) {
+    async run(ctx, filters, audience) {
       const rows = await prismaRead.hrReview.findMany({
-        where: { tenantId: ctx.tenantId, cycleId: filters.cycleId, status: { not: 'COMPLETE' } },
+        where: {
+          tenantId: ctx.tenantId,
+          ...within(audience, 'employeeId'),
+          cycleId: filters.cycleId,
+          status: { not: 'COMPLETE' },
+        },
         include: {
           employee: { select: { employeeNumber: true } },
           manager: { select: { employeeNumber: true } },
@@ -736,10 +888,12 @@ export const REPORTS: ReportDefinition[] = [
     description: 'Open and closed plans, with checkpoint progress and acknowledgement.',
     group: 'performance',
     permission: ['performance', 'VIEW'],
+    subject: 'employee',
+    subjectField: 'employeeId',
     filters: [],
-    async run(ctx) {
+    async run(ctx, _filters, audience) {
       const rows = await prismaRead.hrPip.findMany({
-        where: { tenantId: ctx.tenantId },
+        where: { tenantId: ctx.tenantId, ...within(audience, 'employeeId') },
         include: {
           employee: { select: { employeeNumber: true } },
           checkpoints: { select: { completedAt: true, met: true } },
@@ -784,7 +938,14 @@ const mayReport = (ctx: Ctx) => can(ctx, 'hr_reports', 'VIEW') || can(ctx, 'empl
 /** The reports this caller may actually run. The UI renders exactly this list. */
 export function availableReports(ctx: Ctx) {
   if (!mayReport(ctx)) return [];
-  return REPORTS.filter((report) => can(ctx, report.permission[0], report.permission[1])).map((report) => ({
+  return REPORTS.filter((report) => {
+    const scope = scopeFor(ctx, report.permission[0], report.permission[1]);
+    if (scope === 'NONE') return false;
+    // Same rule `resolve` applies. Offering a report the run endpoint would
+    // refuse is how a list stops being a description of what the caller can do.
+    if (report.subject === 'workspace' && scope !== 'ORGANIZATION') return false;
+    return true;
+  }).map((report) => ({
     key: report.key,
     title: report.title,
     description: report.description,
@@ -804,13 +965,40 @@ function resolve(ctx: Ctx, key: string): ReportDefinition {
   if (!report) throw NotFound('Report');
   if (!can(ctx, report.permission[0], report.permission[1]))
     throw Forbidden(`This report needs ${report.permission[0]}:${report.permission[1]}.`);
+
+  /**
+   * A workspace-wide report has nobody to narrow to.
+   *
+   * `open-positions` and `candidates-by-stage` are about requisitions, not about
+   * people, so there is no employee column to filter on. Returning them whole to
+   * a TEAM-scoped caller is what the old code did to *every* report; refusing is
+   * the honest answer for these two.
+   */
+  if (report.subject === 'workspace' && scopeFor(ctx, report.permission[0], report.permission[1]) !== 'ORGANIZATION') {
+    throw Forbidden(
+      `This report covers the whole workspace and needs ${report.permission[0]}:${report.permission[1]} at organization scope.`,
+    );
+  }
   return report;
 }
 
-export async function runReport(ctx: Ctx, key: string, filters: ReportFilters = {}) {
+/**
+ * Resolve, authorise, and work out whose records the caller may see.
+ *
+ * One function so the run endpoint, the CSV export and the page cannot drift:
+ * an export that computed a different audience from the screen is exactly the
+ * §56 failure the registry exists to prevent.
+ */
+async function resolveWithAudience(ctx: Ctx, key: string) {
   const report = resolve(ctx, key);
-  const result = await report.run(ctx, filters);
-  return { key: report.key, title: report.title, ...result };
+  const audience = await audienceFor(ctx, report.permission);
+  return { report, audience };
+}
+
+export async function runReport(ctx: Ctx, key: string, filters: ReportFilters = {}) {
+  const { report, audience } = await resolveWithAudience(ctx, key);
+  const result = await report.run(ctx, filters, audience);
+  return { key: report.key, title: report.title, scope: audience.scope, ...result };
 }
 
 /**
@@ -821,8 +1009,8 @@ export async function runReport(ctx: Ctx, key: string, filters: ReportFilters = 
  * information to be logged.
  */
 export async function exportReportCsv(ctx: Ctx, key: string, filters: ReportFilters = {}) {
-  const report = resolve(ctx, key);
-  const result = await report.run(ctx, filters);
+  const { report, audience } = await resolveWithAudience(ctx, key);
+  const result = await report.run(ctx, filters, audience);
 
   const lines = [
     result.columns.map((column) => csvCell(column.label)).join(','),
@@ -838,6 +1026,10 @@ export async function exportReportCsv(ctx: Ctx, key: string, filters: ReportFilt
       report: report.key,
       rows: result.rows.length,
       permission: `${report.permission[0]}:${report.permission[1]}`,
+      // The scope the rows were actually narrowed to, not merely the grant. An
+      // audit row saying "exported 9 payslips" is only meaningful alongside
+      // whose payslips the caller was entitled to.
+      scope: audience.scope,
       filters: { ...filters, from: filters.from?.toISOString(), to: filters.to?.toISOString() },
     },
   });

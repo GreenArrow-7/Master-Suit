@@ -16,6 +16,7 @@ import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { nextReference } from '@/services/shared/reference';
+import { assertCovered, lockBooking } from '@/services/money/collections';
 
 export const PAYOUT_STATUSES = ['DRAFT', 'APPROVED', 'PAID', 'CANCELLED'] as const;
 export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
@@ -30,6 +31,23 @@ const ALLOWED: Record<PayoutStatus, readonly PayoutStatus[]> = {
 export const canTransition = (from: PayoutStatus, to: PayoutStatus) => ALLOWED[from].includes(to);
 
 const ZERO = new Prisma.Decimal(0);
+
+/**
+ * D-8.4, at the three moments money moves: every booking behind a payout's
+ * commissions must still be fully covered by verified receipts. Bookings are
+ * locked first, in id order — the same order a reversal takes — so a reversal
+ * verified concurrently either lands before this check and is seen, or waits
+ * behind it and re-evaluates afterwards.
+ */
+async function assertPayoutCovered(tx: TxClient, tenantId: string, commissionIds: string[], what: string) {
+  const lines = await tx.commission.findMany({
+    where: { tenantId, id: { in: commissionIds }, reversesId: null },
+    select: { id: true, bookingId: true },
+  });
+  const bookingIds = [...new Set(lines.map((l) => l.bookingId))].sort();
+  for (const bookingId of bookingIds) await lockBooking(tx, tenantId, bookingId);
+  for (const bookingId of bookingIds) await assertCovered(tx, tenantId, bookingId, what);
+}
 
 /** Recomputes the total from the attached rows. Never incremented in place. */
 async function retotal(tx: TxClient, tenantId: string, payoutId: string) {
@@ -87,6 +105,12 @@ export async function buildPayout(input: BuildPayoutInput) {
     if (payable.length === 0) {
       throw Conflict('Nothing is payable to this person for that period.');
     }
+    await assertPayoutCovered(
+      tx,
+      ctx.tenantId,
+      payable.map((c) => c.id),
+      'Cannot build the payout',
+    );
 
     // One currency per run. Netting dirhams against rupees produces a number
     // that means nothing and a transfer nobody can make.
@@ -176,6 +200,22 @@ export async function decidePayout(input: DecidePayoutInput) {
     }
     if (input.to === 'PAID' && !payout.approvedById) {
       throw Conflict('This payout has not been approved.');
+    }
+
+    // Re-checked at approval and again at execution, not only when the run
+    // was built: a reversal verified in between withdraws eligibility, and an
+    // approval given for a different set of lines is not an approval of these.
+    if (input.to === 'APPROVED' || input.to === 'PAID') {
+      const lines = await tx.commission.findMany({
+        where: { tenantId: ctx.tenantId, payoutId: payout.id },
+        select: { id: true },
+      });
+      await assertPayoutCovered(
+        tx,
+        ctx.tenantId,
+        lines.map((l) => l.id),
+        `Cannot ${input.to === 'PAID' ? 'pay' : 'approve'} this payout`,
+      );
     }
 
     const updated = await tx.payout.update({

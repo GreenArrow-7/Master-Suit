@@ -1,0 +1,25 @@
+[
+  {
+    migration_name: '20260912020000_booking_unit_exclusivity',
+    done: true
+  },
+  {
+    migration_name: '20260912020500_booking_unit_exclusivity_validate',
+    done: true
+  },
+  { migration_name: '20260912100000_agency_fee_receipts', done: true }
+]
+AgencyFeeReceipt_amount_check:true, AgencyFeeReceipt_evidence_check:true, AgencyFeeReceipt_rejected_pair_check:true, AgencyFeeReceipt_reversal_target_check:true, AgencyFeeReceipt_status_stamps_check:true, AgencyFeeReceipt_two_people_check:true, AgencyFeeReceipt_verified_pair_check:true
+[
+  {
+    relname: 'AgencyFeeReceipt',
+    relrowsecurity: true,
+    relforcerowsecurity: true
+  },
+  {
+    relname: 'CollectionRecoveryCase',
+    relrowsecurity: true,
+    relforcerowsecurity: true
+  }
+]
+VIEW,CREATE,APPROVE

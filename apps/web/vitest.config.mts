@@ -6,7 +6,21 @@ import { loadEnv } from 'vite';
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  Object.assign(process.env, loadEnv(mode, rootDir, ''));
+  /**
+   * Real environment wins over the dotenv files.
+   *
+   * `Object.assign(process.env, loadEnv(...))` had it the other way round, which
+   * made a run's database depend on an untracked file rather than on what the
+   * caller asked for: passing `DATABASE_URL` to the runner did nothing, and the
+   * only way to point a containerised gate run at a different database was to
+   * write `.env.test.local` on the host. Deleting that file mid-run is what
+   * produced a 91-file "regression" that was nothing of the kind.
+   *
+   * This is the precedence dotenv itself uses, and CI is unaffected: the
+   * workflow deliberately ships no `.env.test`, so the values still come from
+   * `.env` there.
+   */
+  for (const [k, v] of Object.entries(loadEnv(mode, rootDir, ''))) process.env[k] ??= v;
   return {
     resolve: {
       alias: { '@': path.resolve(rootDir, 'src') },

@@ -1,0 +1,58 @@
+# Mailpit with STARTTLS, for production-mode testing.
+#
+# ── What this is for ────────────────────────────────────────────────────────
+#
+# `lib/mailer.ts` sets `requireTLS: true` on every port but 465, deliberately, so
+# a relay that cannot offer TLS fails rather than sending in the clear. The base
+# stack runs Mailpit with no certificate, so it advertises no STARTTLS and the
+# application correctly refuses it:
+#
+#     Error upgrading connection with STARTTLS: 502 5.5.1 Command not implemented
+#
+# That is the application behaving properly against a capture server that was
+# never configured for TLS — not a Mailpit limitation. Mailpit has supported
+# STARTTLS for a long time (`--smtp-tls-cert` / `--smtp-tls-key`, and
+# `--smtp-require-starttls`); it simply needs a certificate.
+#
+# Layer this file over the base stack to give it one:
+#
+#   bash scripts/make-local-tls.sh
+#   docker compose -p master-saas \
+#     -f infra/docker-compose.yml -f infra/docker-compose.mailpit-tls.yml \
+#     up -d mailpit
+#
+# Then point the application at it, with SMTP_HOST matching the certificate's
+# name and the CA added to Node's trust store:
+#
+#   SMTP_HOST=mailpit.test          # 127.0.0.1 in /etc/hosts or the Windows equivalent
+#   SMTP_PORT=1025
+#   EMAIL_PROVIDER=smtp
+#   NODE_EXTRA_CA_CERTS=<abs path>/apps/web/infra/tls-local/ca.pem
+#
+# `NODE_EXTRA_CA_CERTS` *adds a trust anchor*. It does not disable verification,
+# and hostname checking still applies — which is why SMTP_HOST has to be a name
+# the certificate actually carries. `NODE_TLS_REJECT_UNAUTHORIZED=0` would make
+# this work too and must not be used: it would turn the check off everywhere in
+# the process, including against real hosts.
+#
+# ── Nothing can leave the machine ───────────────────────────────────────────
+#
+# No relay is configured (`--smtp-relay-config` is absent), so Mailpit's release
+# and forward features have nowhere to send. Captured mail is readable over the
+# API on 8025 and goes no further.
+services:
+  mailpit:
+    environment:
+      # Enables STARTTLS on the SMTP listener.
+      MP_SMTP_TLS_CERT: /certs/smtp.pem
+      MP_SMTP_TLS_KEY: /certs/smtp.key
+      # Refuse a client that will not upgrade. The application always upgrades;
+      # this makes a regression that silently sends in the clear fail loudly here
+      # instead of being captured and looking fine.
+      MP_SMTP_REQUIRE_STARTTLS: 'true'
+      # With STARTTLS required, credentials are never on the wire in the clear,
+      # so the insecure-auth allowance the base file needs is switched back off.
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'false'
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+    volumes:
+      - ./tls-local:/certs:ro

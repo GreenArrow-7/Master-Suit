@@ -1,0 +1,249 @@
+
+> master-app@0.1.0 lint
+> eslint .
+
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\prisma\seed\crm.ts
+  311:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  735:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  862:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  981:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\prisma\seed\index.ts
+   461:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   570:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   576:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   929:60  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   984:60  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1047:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1080:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1084:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1128:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1147:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1174:79  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1175:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1251:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1256:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(platform)\platform\subscriptions\page.tsx
+  39:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  46:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  47:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\admin\settings\page.tsx
+  31:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  31:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\accounts\page.tsx
+  93:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\activities\page.tsx
+  84:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\calls\[id]\CallActions.tsx
+   56:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   68:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   87:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  105:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  129:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  151:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  171:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\calls\[id]\page.tsx
+  281:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  328:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\calls\page.tsx
+  166:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\campaigns\page.tsx
+  58:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\communications\page.tsx
+  80:82  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\contacts\page.tsx
+  92:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\documents\page.tsx
+  71:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\field-sales\page.tsx
+  132:81  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\follow-ups\page.tsx
+  131:82  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\forms\page.tsx
+  40:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\landing-pages\page.tsx
+  40:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\leads\[id]\LeadDetail.tsx
+  145:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  483:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  594:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  773:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  786:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  978:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\leads\[id]\page.tsx
+  141:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  143:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\leads\page.tsx
+  212:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\opportunities\[id]\page.tsx
+  95:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\opportunities\page.tsx
+  125:80  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\page.tsx
+  144:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  381:44  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\products\page.tsx
+  19:79  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  69:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\service\page.tsx
+  31:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  84:75  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\(workspace)\[workspaceSlug]\sales\smart-views\page.tsx
+  196:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\accounts\route.ts
+  67:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\auth\accept-invite\route.ts
+  67:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  67:78  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\auth\forgot-password\route.ts
+  103:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\auth\login\route.ts
+  339:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  339:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\contacts\route.ts
+  65:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\exports\[resource]\route.ts
+  52:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\leads\export\route.ts
+   98:38   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  177:108  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\leads\import\route.ts
+  57:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\leads\route.ts
+  84:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\opportunities\route.ts
+  72:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\platform\subscriptions\[subscriptionId]\route.ts
+  61:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  61:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\app\api\v1\workspaces\[workspaceSlug]\hr\[resource]\route.ts
+  684:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\components\workspace\gridCells.tsx
+  8:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\ai\assistant\service.ts
+  217:81   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  225:22   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  253:112  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  259:67   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:75   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  284:21   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  290:64   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  338:71   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  346:54   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  362:60   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  370:56   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  384:19   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  418:50   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  461:57   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  464:67   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  483:79   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\ai\assistant\tools.ts
+   75:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\integrations\retry.ts
+  39:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\integrations\telephony\http.ts
+  62:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\integrations\transcription.ts
+  196:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  298:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  356:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  416:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  477:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\lib\queue.ts
+  40:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\accounts\createAccount.ts
+  41:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\automation\actions.ts
+  49:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\automation\evaluateFilter.ts
+   8:77  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  23:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  25:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  27:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  29:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  49:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  49:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\automation\records.ts
+  21:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\contacts\createContact.ts
+  43:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\hr\lifecycle.ts
+  107:7    warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  132:100  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  274:82   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  461:48   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  485:81   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  527:38   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\leads\createLead.ts
+   75:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   81:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  182:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  191:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\leads\findDuplicates.ts
+  106:6  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\src\services\opportunities\createOpportunity.ts
+  63:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\admin\Music\Youhan One\Master-Suit\.claude\worktrees\master-suite-baseline-validation-7c75ce\apps\web\tests\security\service-identity-browser.spec.ts
+  50:3  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-explicit-any')
+
+✖ 131 problems (0 errors, 131 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

@@ -19,6 +19,12 @@ process.env.E2E_RUN_TAG ??= `e2e${Date.now().toString(36)}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
+  /**
+   * Isolation is checked before any spec loads, and before globalTeardown can
+   * delete anything — a teardown that removes rows by RUN_TAG is only safe if
+   * the database was the intended one to begin with.
+   */
+  globalSetup: './tests/e2e/globalSetup.ts',
   globalTeardown: './tests/e2e/globalTeardown.ts',
 
   /**
@@ -81,6 +87,24 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.APP_URL ?? 'http://localhost:3000',
+    /**
+     * Off by default, including against an HTTPS target.
+     *
+     * Validating the real production serving path needs TLS in front, because
+     * the production build sets `secure: true` on the session cookie and a
+     * browser will not return it over plain HTTP. That does *not* mean the
+     * suite should stop checking certificates: the local terminator is signed
+     * by the CA `scripts/make-local-tls.sh` writes, and importing that CA into
+     * the operating system's trust store makes the browser verify it for real —
+     * chain and hostname both. See docs/TEST-ISOLATION.md.
+     *
+     * `E2E_ALLOW_UNTRUSTED_TLS=yes` is the escape, and it is deliberately
+     * awkward: it has to be typed into the command, where a reviewer sees it,
+     * rather than being implied by the URL scheme. An earlier version of this
+     * file turned verification off for any https URL, which would also have
+     * hidden a genuine certificate fault on a real host.
+     */
+    ignoreHTTPSErrors: process.env.E2E_ALLOW_UNTRUSTED_TLS === 'yes',
     navigationTimeout: 60_000,
     actionTimeout: 20_000,
     trace: 'retain-on-failure',
@@ -100,6 +124,13 @@ export default defineConfig({
     // there is never one, and silently reusing a stale process would test the
     // wrong build.
     reuseExistingServer: !process.env.CI,
+    /**
+     * The readiness probe has its own option, and it must agree with `use`
+     * above — without it the probe fails the certificate, Playwright concludes
+     * no server is there, spawns `npm run dev` on port 3000, and then times out
+     * waiting for the URL it was actually given.
+     */
+    ignoreHTTPSErrors: process.env.E2E_ALLOW_UNTRUSTED_TLS === 'yes',
     timeout: 180_000,
     stdout: 'pipe',
     stderr: 'pipe',

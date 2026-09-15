@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { prisma } from '@/lib/db';
+import { prisma, withTx } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
   .object({
@@ -46,14 +47,21 @@ export const POST = route(
       resolvedOwner = ownerId;
     }
 
-    return prisma.task.create({
-      data: {
-        tenantId: ctx.tenantId,
-        ownerId: resolvedOwner,
-        createdById: ctx.actor.id,
-        ...rest,
-      },
-      include: { type: true, owner: { select: { fullName: true } } },
-    });
+    // A new task can be earlier than everything already open on the lead, so the
+    // stored aggregate is recomputed under the lead's lock in the same
+    // transaction that creates the row. A task with no lead locks nothing.
+    return withTx(ctx.tenantId, (tx) =>
+      withRecompute(tx, ctx.tenantId, [rest.leadId], () =>
+        tx.task.create({
+          data: {
+            tenantId: ctx.tenantId,
+            ownerId: resolvedOwner,
+            createdById: ctx.actor.id,
+            ...rest,
+          },
+          include: { type: true, owner: { select: { fullName: true } } },
+        }),
+      ),
+    );
   },
 );

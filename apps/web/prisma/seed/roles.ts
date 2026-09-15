@@ -38,6 +38,9 @@ export const ROLES: RoleSpec[] = [
     rank: 20,
     defaultScope: A,
     grants: {
+      // D-20: the commercial administrator proposes the agreed agency fee and
+      // amendments to it; finance approves.
+      agencyfee: { VIEW: A, CREATE: A },
       leads: {
         VIEW: A,
         CREATE: A,
@@ -466,6 +469,12 @@ export const ROLES: RoleSpec[] = [
       commissions: { VIEW: A, CREATE: A, EDIT: A, APPROVE: A, EXPORT: A },
       commissionslabs: { VIEW: A, EDIT: A },
       payouts: { VIEW: A, APPROVE: A, EXPORT: A },
+      // D-8.1/D-8.2: the designated finance role records and verifies agency-fee
+      // receipts. Two people are still required — the same account cannot verify
+      // what it recorded, and no rank overrides that.
+      collections: { VIEW: A, CREATE: A, APPROVE: A },
+      // D-20: finance approves fee amendments; it does not propose them.
+      agencyfee: { VIEW: A, APPROVE: A },
       overtime: { VIEW: A, APPROVE: A },
       reports: { VIEW: A, VIEW_REPORTS: A, EXPORT: A },
       hr_reports: { VIEW: A, VIEW_REPORTS: A, EXPORT: A },

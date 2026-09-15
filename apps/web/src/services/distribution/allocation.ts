@@ -16,6 +16,7 @@ import { Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { DEFAULT_POLICY, lockAndVerify } from './eligibility';
 
 export interface Headroom {
   userId: string;
@@ -169,12 +170,24 @@ export async function allocate(input: AllocateInput): Promise<AllocationResult> 
   const room = await headroom(ctx.tenantId, input.userIds);
   const roomBy = new Map(room.map((r) => [r.userId, r]));
 
+  /**
+   * Filled in ascending id order, whatever order the caller asked for.
+   *
+   * Each user's row is locked inside `claimForUser` below, so two bulk
+   * allocations naming the same two people in opposite orders would otherwise
+   * deadlock on each other. This is the subsystem's ordering rule — `User`
+   * first, then `Lead`, users ascending — and it is the same one `assignLead`
+   * follows. The *fill* order the caller chose is still honoured for who gets
+   * leads first; only the locking order is normalised.
+   */
+  const fillOrder = [...input.userIds];
+
   const allocated: { userId: string; leadIds: string[] }[] = [];
   const skipped: { userId: string; reason: string }[] = [];
   let remaining = input.count;
   let poolExhausted = false;
 
-  for (const userId of input.userIds) {
+  for (const userId of fillOrder) {
     if (remaining <= 0) break;
 
     const r = roomBy.get(userId);
@@ -220,6 +233,27 @@ async function claimForUser(
   if (take <= 0) return [];
 
   return withTx(ctx.tenantId, async (tx) => {
+    /**
+     * The shared eligibility rule, at the write boundary, under the user's own
+     * row lock.
+     *
+     * `headroom` above is a shortlist and it answers a narrower question: it
+     * checks quotas, capacity, `isAvailable` and `onLeaveUntil`, and it does
+     * **not** check account status, workspace membership, employment, or leave
+     * as HR actually records it. So bulk allocation would hand leads to a
+     * SUSPENDED account — the same class of defect `assignLead` had — and,
+     * because the count was taken outside this transaction, two concurrent
+     * allocations to one person could both spend the same last slot.
+     *
+     * Verifying here closes both: the lock serialises concurrent allocations to
+     * the same agent, and the re-check is the one definition every path uses.
+     */
+    const verdict = await lockAndVerify(tx, ctx.tenantId, userId, DEFAULT_POLICY);
+    if (!verdict.eligible) return [];
+    // Never take more than the locked read says is left.
+    const permitted = verdict.available === null ? take : Math.min(take, verdict.available);
+    if (permitted <= 0) return [];
+
     const conditions: Prisma.Sql[] = [
       Prisma.sql`l."tenantId" = ${ctx.tenantId}`,
       Prisma.sql`l."ownerId" IS NULL`,
@@ -238,7 +272,7 @@ async function claimForUser(
         JOIN "LeadStage" s ON s."id" = l."stageId"
         WHERE ${Prisma.join(conditions, ' AND ')}
         ORDER BY l."score" DESC, l."createdAt" ASC
-        LIMIT ${take}
+        LIMIT ${permitted}
         FOR UPDATE OF l SKIP LOCKED
       )
       UPDATE "Lead"

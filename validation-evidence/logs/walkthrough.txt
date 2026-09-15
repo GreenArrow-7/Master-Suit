@@ -1,0 +1,34 @@
+agent            login                              200
+agent            lead: create                       200
+agent            lead: list (own scope)             200
+agent            lead: view own                     200
+agent            follow-up: create                  422  2 fields failed validation
+agent            allocation: bulk (expect deny)     403  Your role does not allow create on allocation.
+agent            hr report: payroll register        403  Your role does not allow view on employee.
+wsAdmin          login                              200
+wsAdmin          projects: list                     200
+wsAdmin          units: list                        200
+wsAdmin          booking: create (DRAFT)            200
+wsAdmin          booking: CONFIRM                   200
+wsAdmin          unit status after CONFIRM          200
+agent            booking: COLLECT (finance act)     403  Your role does not allow edit on bookings.
+finance          login                              200
+finance          commission: accrue                 200
+finance          commissions: list                  200
+finance          commission: -> CONFIRMED           200
+finance          commission: -> COLLECTED           422  1 field failed validation
+finance          payouts: list                      200
+finance          hr report: payroll register        403  Your role does not allow view on employee.
+employee         login                              200
+employee         leave types: list                  200
+employee         leave: apply                       200
+employee         hr report: payroll register        200  Payroll register
+employee         hr export: payroll register CSV    200
+hr               login                              200
+hr               leave: approve                     200
+hr               payroll: run create                403  Your role does not allow create on payroll.
+teamManager      login                              200
+teamManager      leads: list (team scope)           200
+teamManager      hr reports: list                   403  Your role does not allow view on employee.
+teamManager      hr report: payroll register        403  Your role does not allow view on employee.
+teamManager      hr report: headcount               403  Your role does not allow view on employee.
