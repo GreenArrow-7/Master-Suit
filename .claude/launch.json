@@ -47,6 +47,20 @@
       ],
       "port": 3100,
       "url": "https://master-suite-app-3100.aue.devtunnels.ms"
+    },
+    {
+      "name": "web-prod-3100-rebuild",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:local",
+        "--",
+        "--build",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
     }
   ]
 }
