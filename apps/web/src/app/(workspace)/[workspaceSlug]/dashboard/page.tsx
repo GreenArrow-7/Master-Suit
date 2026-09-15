@@ -5,6 +5,8 @@ import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
+// Visual sample, scoped to this page by the marker on its root; see the file header.
+import './summary-glass.css';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -500,7 +502,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   ) : null;
 
   return (
-    <div className="lf-page-stack">
+    <div className="lf-page-stack" data-lf-sample="summary-glass">
       {/* The greeting: who you are and what the day holds, on the workspace's
           own light surface. This used to be a midnight band with the figures
           inside it; the figures are cards now, because a number a person acts
@@ -643,12 +645,17 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
                     </td>
                     <td
                       data-label="Due"
+                      data-overdue={overdue || undefined}
                       style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}
                     >
                       {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
                       {overdue ? ' · overdue' : ''}
                     </td>
-                    <td data-label="Priority">{row.priority.toLowerCase()}</td>
+                    <td data-label="Priority">
+                      <span className="lf-dash-priority" data-priority={row.priority}>
+                        {row.priority.toLowerCase()}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
