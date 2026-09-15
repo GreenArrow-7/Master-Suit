@@ -535,6 +535,54 @@ test.describe('Workspace Summary sample', () => {
       await owner.close();
     }
   });
+
+  test('every work area opens inside the same shell, without sideways scrolling', async ({ browser }) => {
+    test.skip(before, 'recorded on the new build only');
+    test.setTimeout(300_000);
+    const areas: [string, string][] = [
+      ['crm-accounts', '/sales/accounts'],
+      ['crm-opportunities', '/sales/opportunities'],
+      ['activities', '/sales/activities'],
+      ['tasks', '/tasks'],
+      ['calls', '/sales/calls'],
+      ['coaching', '/sales/coaching'],
+      ['property-projects', '/sales/projects'],
+      ['property-listings', '/sales/listings'],
+      ['marketing-campaigns', '/sales/campaigns'],
+      ['people', '/people'],
+      ['people-employees', '/people/employees'],
+      ['my-hr-leave', '/people/leave'],
+      ['finance-collections', '/sales/collections'],
+      ['finance-commissions', '/sales/commissions'],
+      ['reports', '/sales/reports'],
+      ['settings', '/admin/settings'],
+      ['settings-users', '/admin/users'],
+      ['settings-roles', '/admin/roles'],
+    ];
+    const dir = process.env.SURFACE_SHOT_DIR;
+    for (const profile of [{ viewport: { width: 1280, height: 900 } }, { ...devices['Pixel 7'] }]) {
+      const phone = 'isMobile' in profile;
+      const { page, errors, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, profile);
+      try {
+        await openSummary(page);
+        const { activeNav: _summaryNav, ...summaryShell } = await shell(page);
+        for (const [name, path] of areas) {
+          await page.goto(at(path));
+          await expect(page.locator('main h1').first(), path).toBeVisible({ timeout: 60_000 });
+          await expect(page.getByRole('heading', { name: 'You do not have access to this page' }), path).toHaveCount(0);
+          const { activeNav, ...now } = await shell(page);
+          expect(now, path).toEqual(summaryShell);
+          if (!phone) expect(activeNav, `${path}: a sidebar item is active`).not.toBeNull();
+          await noSidewaysOverflow(page);
+          if (dir)
+            await page.screenshot({ path: `${dir}/area-${name}${phone ? '-mobile' : ''}.png`, fullPage: !phone });
+        }
+        expect(errors).toEqual([]);
+      } finally {
+        await close();
+      }
+    }
+  });
 });
 
 /** The shell's computed look: equal on two screens means no visual switch between them. */
