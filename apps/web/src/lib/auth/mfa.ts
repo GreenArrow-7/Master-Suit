@@ -8,16 +8,32 @@ const DRIFT_WINDOWS = 1; // accept the previous and next step for clock skew
 
 export const generateSecret = () => base32Encode(randomBytes(20));
 
-export function verifyTotp(secretBase32: string, code: string): boolean {
-  if (!/^\d{6}$/.test(code)) return false;
+/**
+ * The time step a code belongs to, or null when it matches none in the window.
+ *
+ * This is a comparison, not an acceptance: a matching code can be replayed until
+ * its step leaves the window. Accepting a code is `consumeTotp` in
+ * `lib/auth/totp-consume.ts`, which records the step atomically and refuses it
+ * the second time. Nothing else may call this — `tests/unit/totp-replay.spec.ts`
+ * fails if anything does.
+ */
+export function matchTotpStep(secretBase32: string, code: string): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
   const counter = Math.floor(Date.now() / 1000 / STEP_SECONDS);
 
+  // Every window is compared, matched or not, so timing does not say which one matched.
+  let matched: number | null = null;
   for (let drift = -DRIFT_WINDOWS; drift <= DRIFT_WINDOWS; drift++) {
     const expected = totp(secretBase32, counter + drift);
-    if (expected.length === code.length && timingSafeEqual(Buffer.from(expected), Buffer.from(code))) return true;
+    if (expected.length === code.length && timingSafeEqual(Buffer.from(expected), Buffer.from(code))) {
+      matched ??= counter + drift;
+    }
   }
-  return false;
+  return matched;
 }
+
+/** The current time step, for tests and for waiting out a spent code. */
+export const currentTotpStep = () => Math.floor(Date.now() / 1000 / STEP_SECONDS);
 
 export function otpauthUrl(secret: string, account: string, issuer = PRODUCT_NAME) {
   const label = encodeURIComponent(`${issuer}:${account}`);

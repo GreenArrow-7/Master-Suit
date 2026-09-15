@@ -15,13 +15,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { generateSecret, totp } from '@/lib/auth/mfa';
+import { generateSecret } from '@/lib/auth/mfa';
 import { encryptSecret } from '@/services/identity/secrets';
 import { resolvePlatformCtx, SESSION_COOKIE, MFA_ENROLMENT_TTL_MINUTES } from '@/lib/auth/session';
 import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { POST as login } from '@/app/api/v1/auth/login/route';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
+import { freshTotp } from '../helpers/totp';
 
 const suffix = randomBytes(5).toString('hex');
 const slug = `mfa-${suffix}`;
@@ -188,7 +189,9 @@ describe('after enrolment the account logs in normally', () => {
     const res = await post(login, '/api/v1/auth/login', {
       email,
       password: PASSWORD,
-      mfaCode: totp(secret, Math.floor(Date.now() / 1000 / 30)),
+      // The secret was just replaced as test setup, so no earlier step of this
+      // file counts as spent against it.
+      mfaCode: await freshTotp({ id: platformUserId }, secret),
     });
 
     expect(res.status).toBe(200);

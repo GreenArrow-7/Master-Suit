@@ -2,7 +2,7 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword } from '@/lib/auth/password';
-import { verifyTotp } from '@/lib/auth/mfa';
+import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import {
@@ -12,7 +12,6 @@ import {
   revokeSessionsForCredential,
   type CredentialPurpose,
 } from '@/lib/auth/credentials';
-import { decryptSecret } from '@/services/identity/secrets';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
 
 /**
@@ -92,11 +91,20 @@ export async function reauthenticate(
   await consume(limits.mfaConfirm(identity.id));
   const passwordOk =
     Boolean(identity.passwordHash) && (await verifyPassword(identity.passwordHash!, proof.currentPassword));
-  const codeOk =
-    identity.mfaEnabled && Boolean(identity.mfaSecret) && verifyTotp(decryptSecret(identity.mfaSecret!), proof.mfaCode);
-  if (!passwordOk || !codeOk) {
-    await record(prisma, actor, 'CREDENTIAL_REAUTHENTICATION_FAILED', identity, { operation });
-    throw Forbidden('Re-authentication failed. Enter your administration password and a current code.');
+  // The code is spent only when the password was right, so a wrong password
+  // does not burn the holder's current code.
+  const codeOutcome =
+    passwordOk && identity.mfaEnabled ? await consumeTotp(identity.id, identity.mfaSecret, proof.mfaCode) : 'INVALID';
+  if (!passwordOk || codeOutcome !== 'ACCEPTED') {
+    await record(prisma, actor, 'CREDENTIAL_REAUTHENTICATION_FAILED', identity, {
+      operation,
+      ...(codeOutcome === 'REPLAYED' ? { reason: 'MFA_CODE_REPLAYED' } : {}),
+    });
+    throw Forbidden(
+      codeOutcome === 'REPLAYED'
+        ? 'That authenticator code has already been used. Wait for the next code and try again.'
+        : 'Re-authentication failed. Enter your administration password and a current code.',
+    );
   }
 }
 
@@ -194,12 +202,18 @@ export async function revokeMonitoringCredentialFor(
   }
   const owner = await loadStaffIdentity(actor.platformUserId);
   await consume(limits.mfaConfirm(owner.id));
-  if (!owner.mfaEnabled || !owner.mfaSecret || !verifyTotp(decryptSecret(owner.mfaSecret), input.mfaCode)) {
+  const codeOutcome = owner.mfaEnabled ? await consumeTotp(owner.id, owner.mfaSecret, input.mfaCode) : 'INVALID';
+  if (codeOutcome !== 'ACCEPTED') {
     await record(prisma, actor, 'CREDENTIAL_REAUTHENTICATION_FAILED', owner, {
       operation: 'revoke-monitoring-credential-for',
       target: targetId,
+      ...(codeOutcome === 'REPLAYED' ? { reason: 'MFA_CODE_REPLAYED' } : {}),
     });
-    throw Forbidden('Re-authentication failed. Enter a current code from your authenticator.');
+    throw Forbidden(
+      codeOutcome === 'REPLAYED'
+        ? 'That authenticator code has already been used. Wait for the next code and try again.'
+        : 'Re-authentication failed. Enter a current code from your authenticator.',
+    );
   }
   const target = await prisma.platformUser.findUnique({ where: { id: targetId }, select: IDENTITY });
   if (!target || target.deletedAt) throw NotFound('Platform identity');

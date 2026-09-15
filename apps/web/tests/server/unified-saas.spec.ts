@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '@/lib/auth/password';
 import { totp } from '@/lib/auth/mfa';
 import { assertDisposableEnvironment } from './environment';
+import { waitForNextTotpStep } from '../helpers/totp';
 
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const targets = assertDisposableEnvironment();
@@ -90,6 +91,9 @@ describe.sequential('unified commercial SaaS acceptance scenario', () => {
     );
     expect(confirm.status, JSON.stringify(confirm.data)).toBe(200);
 
+    // The confirming code spent its step. Signing in takes the authenticator's
+    // next code, exactly as it would for a person.
+    await waitForNextTotpStep();
     const ownerLogin = await call('/api/v1/auth/login', 'POST', {
       email: ownerEmail,
       password: ownerPassword,

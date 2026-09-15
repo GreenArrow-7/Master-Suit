@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { totp } from '@/lib/auth/mfa';
+import { waitForNextTotpStep } from '../helpers/totp';
 import {
   createWorkspaceViaWizard,
   login,
@@ -117,6 +118,9 @@ test.describe('Sign-in and two-factor enrolment', () => {
     await expect(page.locator('.lf-alert, .lf-auth-alert')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
 
+    // The code that confirmed enrolment is spent; a person signing in again
+    // straight away waits for the authenticator's next code, and so does this.
+    await waitForNextTotpStep();
     await code.fill(currentCode(secret));
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
   });
