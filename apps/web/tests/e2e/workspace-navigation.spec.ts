@@ -217,6 +217,16 @@ test.describe('Work-area navigation', () => {
       await tabs(page, 'Commissions & Payouts').getByRole('link', { name: 'Payout Runs' }).click();
       await expect(page).toHaveURL(/\/sales\/commissions\?view=payouts$/);
       await expect(currentTab(page, 'Commissions & Payouts')).toHaveText('Payout Runs');
+      // Collections opens for finance, and its recovery cases are one tab away.
+      await rail(page).getByRole('link', { name: 'Collections', exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`${at('/sales/collections')}$`));
+      await expect(page.getByRole('heading', { name: 'You do not have access to this page' })).toHaveCount(0);
+      await expect(tabs(page, 'Collections').getByRole('link')).toHaveText(['Overview', 'Recovery Cases']);
+      await tabs(page, 'Collections').getByRole('link', { name: 'Recovery Cases' }).click();
+      await expect(page).toHaveURL(/\/sales\/collections\/recovery$/);
+      await expect(page.getByRole('heading', { name: 'Recovery and adjustment cases' })).toBeVisible();
+      await expect(currentTab(page, 'Collections')).toHaveText('Recovery Cases');
+
       for (const area of ['Leads', 'Settings', 'Employees'])
         await expect(rail(page).getByRole('link', { name: area, exact: true })).toHaveCount(0);
     } finally {
@@ -247,6 +257,35 @@ test.describe('Work-area navigation', () => {
       await page.goto(at('/people/users'));
       await expect(currentTab(page, 'Settings')).toHaveText('Users');
       await page.screenshot({ path: 'test-results/nav-admin-settings.png', fullPage: false });
+    } finally {
+      await close();
+    }
+  });
+
+  test('administrator: the screens the every-route spec does not visit open inside their area', async ({ browser }) => {
+    const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
+    try {
+      const screens: [string, string, string][] = [
+        ['/sales/collections', 'Collections', 'Overview'],
+        ['/sales/collections/recovery', 'Collections', 'Recovery Cases'],
+        ['/sales/communications/inbox', 'Customers', 'Conversations'],
+        ['/sales/playbook', 'Calls & Coaching', 'Playbook'],
+        ['/sales/practice', 'Calls & Coaching', 'Practice'],
+        ['/sales/social-leads', 'Lead Sources', 'Social Sources'],
+        ['/admin/company', 'Settings', 'Company'],
+        ['/admin/modules', 'Settings', 'Modules'],
+        ['/admin/subscription', 'Settings', 'Subscription'],
+        ['/admin/security', 'Settings', 'Security Policy'],
+        ['/sales/people', 'Settings', 'Teams'],
+        ['/dashboard', 'My Workspace', 'Workspace Summary'],
+      ];
+      for (const [path, area, tab] of screens) {
+        const response = await page.goto(at(path));
+        expect(response?.status(), path).toBeLessThan(400);
+        await expect(page.getByRole('heading', { name: 'You do not have access to this page' }), path).toHaveCount(0);
+        await expect(page.getByText(/Application error|Internal Server Error/), path).toHaveCount(0);
+        await expect(currentTab(page, area), path).toHaveText(tab);
+      }
     } finally {
       await close();
     }
