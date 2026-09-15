@@ -139,8 +139,11 @@ test.describe('Refusal, empty and search states', () => {
     // Permission is resolved server-side and handed to the sidebar as a list;
     // hiding a link the viewer can still reach by typing the URL would be
     // cosmetic, which is why the refusal case above exists too.
-    await expect(page.getByRole('link', { name: 'Roles & permissions' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Audit logs' })).toHaveCount(0);
+    // Administration is one work area; with no settings, users, roles, audit or
+    // integration grant it has no tab to offer and is not shown at all.
+    const rail = page.getByRole('navigation', { name: 'Workspace' });
+    await expect(rail.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Audit Log', exact: true })).toHaveCount(0);
 
     // And the workspace is still usable — this is a filter, not a blank page.
     await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible();

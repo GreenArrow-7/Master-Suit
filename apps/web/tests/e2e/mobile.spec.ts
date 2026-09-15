@@ -117,7 +117,8 @@ test.describe('Mobile viewport', () => {
 
     await button.click();
     await expect(sidebar).toBeInViewport();
-    await expect(sidebar.getByRole('link', { name: 'People' })).toBeVisible();
+    // Work areas, not modules: the administrator's People work starts at Employees.
+    await expect(sidebar.getByRole('link', { name: 'Employees', exact: true })).toBeVisible();
   });
 
   test('an HR table renders as labelled blocks, not a sideways scroll', async ({ page }) => {

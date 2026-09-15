@@ -6521,9 +6521,14 @@ a.lf-kpi:hover {
   }
 }
 
-/* The tabs of the current work area, above the page's own header. */
+/* The tabs of the current work area, above the page's own header. An area can
+   hold more tabs than fit (Settings has fourteen), so the strip scrolls at every
+   width and fades at the trailing edge to say so, as it already does on phones. */
 .lf-area-tabs {
   margin-bottom: var(--lf-space-5);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  padding-right: 40px;
 }
 .lf-tab:focus-visible {
   outline: 2px solid var(--lf-wine-700);
