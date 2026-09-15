@@ -234,6 +234,14 @@ async function readCookie(req: Request, name: string): Promise<string | undefine
 }
 
 /**
+ * The ordinary (human) session token this request carries, if any — for a caller
+ * that must spare the current session while revoking the rest.
+ */
+export async function currentSessionToken(req: Request): Promise<string | undefined> {
+  return readCookie(req, SESSION_COOKIE);
+}
+
+/**
  * The tokens this request carries, in the order they should be tried for a
  * given set of allowed purposes.
  *

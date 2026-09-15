@@ -15,6 +15,7 @@ import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
+import { loginPathFor } from '@/lib/security/redirect';
 // The approved workspace look, scoped to this frame's marker; see the file header.
 import './workspace-surface.css';
 
@@ -39,7 +40,12 @@ export default async function WorkspaceLayout({
    * try block renders outside it.
    */
   const shell = await loadShell(workspaceSlug);
-  if (!shell) redirect('/login');
+  if (!shell) {
+    // Back to this screen after signing in (a notification, a shared link, an app
+    // deep link). The sign-in page decides whether the return is allowed.
+    const request = await headers();
+    redirect(loginPathFor(request.get('x-pathname'), request.get('x-search') ?? ''));
+  }
 
   /**
    * One central gate for an account still on an administrator-issued password.

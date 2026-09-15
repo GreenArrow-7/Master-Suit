@@ -179,7 +179,17 @@ async function otherActiveAdmins(tenantId: string, excludeUserId: string) {
  * unlocked laptop is a permanent account takeover. Every other session is
  * revoked, keeping the one making the change.
  */
-export async function changeOwnPassword(ctx: Ctx, currentPassword: string, newPassword: string) {
+export async function changeOwnPassword(
+  ctx: Ctx,
+  currentPassword: string,
+  newPassword: string,
+  /**
+   * The token of the session making the change, which stays signed in. Omitted,
+   * every session ends — including this one — which is what the screen used to do
+   * while saying "every other device".
+   */
+  keepSessionToken?: string,
+) {
   // The credential lives on PlatformUser and nowhere else, so it is read and
   // written in one place. Verifying against a second copy is how the two used
   // to drift apart.
@@ -210,7 +220,7 @@ export async function changeOwnPassword(ctx: Ctx, currentPassword: string, newPa
   await writePrimaryPassword(identity.id, newPassword, { passwordChangedAt: new Date() });
   await recordPreviousPassword(identity.id, identity.passwordHash);
 
-  await revokeAllSessions(ctx.tenantId, ctx.actor.id, undefined, 'PASSWORD_CHANGED');
+  await revokeAllSessions(ctx.tenantId, ctx.actor.id, keepSessionToken, 'PASSWORD_CHANGED');
   await audit(ctx, {
     event: 'PASSWORD_CHANGED',
     objectType: 'user',

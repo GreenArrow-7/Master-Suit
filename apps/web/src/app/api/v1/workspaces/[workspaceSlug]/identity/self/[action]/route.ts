@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Forbidden, MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
+import { currentSessionToken } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { changeOwnPassword, mustChangePassword } from '@/services/identity/accounts';
 import {
@@ -58,7 +59,7 @@ export const POST = route(
     params: paramsSchema,
     body: z.record(z.string(), z.unknown()),
   },
-  async ({ ctx, params, body }) => {
+  async ({ ctx, params, body, req }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
 
     /**
@@ -75,7 +76,8 @@ export const POST = route(
         const input = z
           .object({ currentPassword: z.string().min(1).max(512), newPassword: z.string().min(8).max(512) })
           .parse(body);
-        return changeOwnPassword(ctx, input.currentPassword, input.newPassword);
+        // The device making the change stays signed in; every other session ends.
+        return changeOwnPassword(ctx, input.currentPassword, input.newPassword, await currentSessionToken(req));
       }
       case 'two-factor-begin': {
         // Re-authentication: see beginTotpEnrolment for why enrolment is not a

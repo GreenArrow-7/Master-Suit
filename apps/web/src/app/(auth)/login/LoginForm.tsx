@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signInLanding } from '@/lib/security/redirect';
 
 /**
  * Two visual steps over one endpoint: credentials, then — only when the server
@@ -15,7 +16,7 @@ import { useRouter } from 'next/navigation';
  * decides where the session lands. The password is dropped from memory once the
  * challenge arrives.
  */
-export default function LoginForm() {
+export default function LoginForm({ next = null }: { next?: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,7 +85,10 @@ export default function LoginForm() {
         setMfaNeeded(true);
         return;
       }
-      router.push(data.destination ?? '/home');
+      // Back to the screen that sent the visitor here, when the server's answer is an
+      // ordinary landing and the screen is in one of this account's workspaces.
+      const slugs = Array.isArray(data.workspaces) ? data.workspaces.map((w: { slug: string }) => w.slug) : [];
+      router.push(signInLanding(next, data.destination ?? '/home', slugs));
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
