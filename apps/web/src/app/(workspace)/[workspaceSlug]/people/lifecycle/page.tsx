@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
-import { isHrAdmin } from '@/services/hr/access';
+import { isApprover, isHrAdmin } from '@/services/hr/access';
+import { myEmployee } from '@/services/hr/leave';
 import { checklistFor, expiringDocuments, lifecycleDashboard } from '@/services/hr/lifecycle';
 import LifecycleScreen, { type ChecklistTask, type ExpiringDoc, type JourneyRow, type Person } from './LifecycleScreen';
 
@@ -33,6 +34,10 @@ export default async function Page({
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
   const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
   const canManage = isHrAdmin(ctx);
+  // `?employee=` names whose checklist to open. The same rule as the HR API's
+  // checklist read: your own, or anyone's for an approver or HR.
+  const self = selected ? await myEmployee(ctx) : null;
+  const mayOpenChecklist = Boolean(selected) && (selected === self?.id || canManage || isApprover(ctx));
 
   const [dashboard, documents, staff, tasks] = await Promise.all([
     lifecycleDashboard(ctx),
@@ -44,7 +49,7 @@ export default async function Page({
           orderBy: { employeeNumber: 'asc' },
         })
       : Promise.resolve([]),
-    selected ? checklistFor(ctx, selected) : Promise.resolve([]),
+    mayOpenChecklist ? checklistFor(ctx, selected!) : Promise.resolve([]),
   ]);
 
   const kpis: [string, number, boolean][] = [

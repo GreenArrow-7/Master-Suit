@@ -29,7 +29,7 @@
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { type Ctx } from '@/lib/security/rbac';
-import { balancesFor, myEmployee, teamCalendar } from '@/services/hr/leave';
+import { balancesFor, employeeRecordScope, myEmployee, teamCalendar } from '@/services/hr/leave';
 import { isApprover, isAttendanceApprover, isHrAdmin, mayReadAllEmployees } from '@/services/hr/access';
 import { checklistFor, expiringDocuments, lifecycleDashboard, settlementFor } from '@/services/hr/lifecycle';
 import { attendanceDays, faceStatus, myPunches, reviewQueue } from '@/services/hr/attendance';
@@ -76,13 +76,6 @@ async function resolveEmployeeId(ctx: Ctx, requested?: string) {
   }
   if (!isApprover(ctx)) throw Forbidden('You can only view your own record.');
   return requested;
-}
-
-/** Which employee records this actor may read. */
-async function employeeScope(ctx: Ctx) {
-  if (mayReadAllEmployees(ctx)) return {};
-  const self = await myEmployee(ctx);
-  return { id: self?.id ?? '' };
 }
 
 /** Attendance follows the employee records the actor may read. */
@@ -137,7 +130,7 @@ export async function readHrResource({
     // conferred: without ORGANIZATION scope you see yourself, and nothing else.
     case 'employees':
       return prisma.employeeProfile.findMany({
-        where: { tenantId: ctx.tenantId, deletedAt: null, ...(await employeeScope(ctx)) },
+        where: { tenantId: ctx.tenantId, deletedAt: null, ...(await employeeRecordScope(ctx)) },
         include: { membership: MEMBERSHIP_WITH_ROLE_PUBLIC, department: true, designationRecord: true },
         orderBy: { employeeNumber: 'asc' },
         // ponytail: hard cap, not pagination. At 10k employees this endpoint

@@ -28,7 +28,13 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { redis } from '@/lib/redis';
 import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
-import { checkPolicy, DEFAULT_POLICY, hashPassword } from '@/lib/auth/password';
+import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { isPlatformStaff } from '@/lib/auth/credentials';
+import {
+  dropMonitoringCredential,
+  revokeMonitoringCredentialFor,
+  writePrimaryPassword,
+} from '@/services/identity/platformCredentials';
 import { generateTemporaryPassword } from '@/services/identity/accounts';
 import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import type { PlatformCtx } from '@/lib/auth/session';
@@ -52,6 +58,8 @@ const SAFE_USER = {
   lockedUntil: true,
   lastLoginAt: true,
   passwordChangedAt: true,
+  // Whether a monitoring password exists, and since when. Never the hash.
+  monitoringPasswordSetAt: true,
   createdAt: true,
 } as const;
 
@@ -460,18 +468,13 @@ export async function resetPassword(
     throw Invalid(problems.map((message) => ({ field: 'password', code: 'weak-password', message })));
   }
 
-  const passwordHash = await hashPassword(password);
+  // Refuses a password equal to the target's monitoring credential, bumps the
+  // version and cancels unfinished sign-ins; also clears the lock, so a reset
+  // that left the account locked does not look like it had failed.
+  await writePrimaryPassword(target.id, password, {
+    passwordChangedAt: options.requireChange ? null : new Date(),
+  });
   await withPlatformTx(async (tx) => {
-    await tx.platformUser.update({
-      where: { id: target.id },
-      data: {
-        passwordHash,
-        passwordChangedAt: options.requireChange ? null : new Date(),
-        // A reset that left the account locked would look like it had failed.
-        failedLoginCount: 0,
-        lockedUntil: null,
-      },
-    });
     // The old sessions belong to whoever held the old password. That is exactly
     // the case a reset exists for, so they end here rather than at their TTL.
     await tx.platformSession.updateMany({
@@ -563,6 +566,8 @@ export async function resetMfa(ctx: PlatformCtx, userId: string) {
       where: { platformUserId: target.id, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'MFA_RESET' },
     });
+    // Both passwords depend on the factor that was just removed.
+    await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: target.id, consumedAt: null } });
   });
 
   await record(ctx, 'MFA_RESET', target, {
@@ -594,6 +599,7 @@ export async function setAccountActive(ctx: PlatformCtx, userId: string, active:
         where: { platformUserId: target.id, revokedAt: null },
         data: { revokedAt: new Date(), revokedReason: 'ACCOUNT_DEACTIVATED' },
       });
+      await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: target.id, consumedAt: null } });
     }
   });
   if (active) await clearSignInThrottle(target.email, target.username);
@@ -614,13 +620,20 @@ export async function setPlatformRole(ctx: PlatformCtx, userId: string, platform
       where: { platformUserId: target.id, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: 'ROLE_CHANGED' },
     });
+    await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: target.id, consumedAt: null } });
   });
+  // Leaving platform staff ends the monitoring password with the role that made
+  // it meaningful. Moving between staff roles keeps it; it stays monitoring-only.
+  const droppedMonitoringCredential = isPlatformStaff(platformRole)
+    ? false
+    : await dropMonitoringCredential(target.id, 'ROLE_CHANGED');
 
   await record(ctx, 'ROLE_CHANGED', target, {
     result: 'ok',
     scope: 'platform',
     from: target.platformRole,
     to: platformRole,
+    ...(droppedMonitoringCredential ? { monitoringCredentialRevoked: true } : {}),
   });
   return { userId: target.id, platformRole };
 }
@@ -632,6 +645,27 @@ export async function setPlatformRole(ctx: PlatformCtx, userId: string, platform
  * row, the user's `roleId`, and the membership snapshot login reads — rather
  * than inventing a platform-side permission of its own.
  */
+/**
+ * A platform owner withdraws another staff member's monitoring password. Their
+ * administration password, their grants and their other sessions are untouched.
+ * Requires the acting owner's current authenticator code.
+ */
+export async function revokeMonitoringCredential(ctx: PlatformCtx, userId: string, mfaCode: string) {
+  const target = await loadTarget(userId);
+  const result = await revokeMonitoringCredentialFor(
+    {
+      platformUserId: ctx.platformUserId,
+      sessionId: ctx.sessionId,
+      requestId: ctx.requestId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    },
+    target.id,
+    { mfaCode },
+  );
+  return { userId: target.id, ...result };
+}
+
 export async function changeWorkspaceRole(ctx: PlatformCtx, membershipId: string, roleId: string) {
   const membership = await membershipFor(membershipId);
   const role = await prisma.role.findFirst({

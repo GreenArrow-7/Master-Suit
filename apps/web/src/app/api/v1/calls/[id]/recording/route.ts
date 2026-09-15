@@ -41,7 +41,14 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'RECORDING_ACCESSED' },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'VIEW',
+    params,
+    auditEvent: 'RECORDING_ACCESSED',
+    sensitive: 'call recordings',
+  },
   async ({ ctx, params }) => {
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },

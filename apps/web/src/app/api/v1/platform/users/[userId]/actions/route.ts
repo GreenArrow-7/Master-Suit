@@ -7,6 +7,7 @@ import {
   changeWorkspaceRole,
   resetMfa,
   resetPassword,
+  revokeMonitoringCredential,
   setAccountActive,
   setMembershipStatus,
   setPlatformRole,
@@ -32,6 +33,8 @@ const bodySchema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('unlock') }),
   z.object({ action: z.literal('reset-mfa') }),
+  // Removes access only; the acting owner proves possession of their own factor.
+  z.object({ action: z.literal('revoke-monitoring-credential'), mfaCode: z.string().length(6) }),
   z.object({ action: z.literal('set-active'), active: z.boolean() }),
   z.object({
     action: z.literal('set-platform-role'),
@@ -85,6 +88,8 @@ function run(ctx: Ctx, userId: string, body: z.infer<typeof bodySchema>) {
       return unlockAccount(ctx, userId);
     case 'reset-mfa':
       return resetMfa(ctx, userId);
+    case 'revoke-monitoring-credential':
+      return revokeMonitoringCredential(ctx, userId, body.mfaCode);
     case 'set-active':
       return setAccountActive(ctx, userId, body.active);
     case 'set-platform-role':

@@ -1713,10 +1713,12 @@ a:hover {
   color: var(--lf-ink);
   background: var(--lf-wine-050);
 }
-.lf-tab[aria-selected='true'] {
+.lf-tab[aria-selected='true'],
+.lf-tab[aria-current='page'] {
   color: var(--lf-wine-700);
 }
-.lf-tab[aria-selected='true']::after {
+.lf-tab[aria-selected='true']::after,
+.lf-tab[aria-current='page']::after {
   content: '';
   position: absolute;
   inset: auto 0 -1px 0;
@@ -6517,4 +6519,18 @@ a.lf-kpi:hover {
     height: 34px;
     font-size: var(--lf-text-sm);
   }
+}
+
+/* The tabs of the current work area, above the page's own header. An area can
+   hold more tabs than fit (Settings has fourteen), so the strip scrolls at every
+   width and fades at the trailing edge to say so, as it already does on phones. */
+.lf-area-tabs {
+  margin-bottom: var(--lf-space-5);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  padding-right: 40px;
+}
+.lf-tab:focus-visible {
+  outline: 2px solid var(--lf-wine-700);
+  outline-offset: -2px;
 }

@@ -307,13 +307,7 @@ export default async function LeadershipPage({
         </span>
       </form>
 
-      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="View">
-        {TABS.map(([label, key]) => (
-          <SalesLink key={label} className="lf-tab" href={tabHref(key)} aria-selected={view === key} role="tab">
-            {label}
-          </SalesLink>
-        ))}
-      </nav>
+      {/* Its views are the tabs of this work area (lib/nav/workspaceNav.ts), rendered above the page. */}
 
       {view === '' && (
         <>

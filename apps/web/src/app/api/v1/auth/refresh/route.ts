@@ -6,7 +6,8 @@ import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
 import { AppError, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { SESSION_COOKIE, clientIp, createPlatformSession } from '@/lib/auth/session';
+import { SESSION_COOKIE, clientIp, createPlatformSession, type SessionPurpose } from '@/lib/auth/session';
+import { credentialRefusal } from '@/lib/auth/credentials';
 
 /**
  * Rotates the session token.
@@ -34,7 +35,21 @@ export async function POST(req: Request) {
       where: { tokenHash },
       // Only what the checks below read. `true` would pull the credential
       // columns into a rotation that has no use for them.
-      include: { platformUser: { select: { id: true, status: true, deletedAt: true } } },
+      // The credential *version* columns are read so rotation can refuse a
+      // session whose credential changed; no hash is compared here.
+      include: {
+        platformUser: {
+          select: {
+            id: true,
+            status: true,
+            deletedAt: true,
+            platformRole: true,
+            passwordVersion: true,
+            monitoringPasswordHash: true,
+            monitoringPasswordVersion: true,
+          },
+        },
+      },
     });
     if (!session) throw Unauthorized('Your session has expired.');
 
@@ -78,6 +93,30 @@ export async function POST(req: Request) {
     const user = session.platformUser;
     if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
 
+    /**
+     * Rotation carries the session exactly as it was, or does not happen.
+     *
+     * This used to mint the replacement with the default purpose, FULL, whatever
+     * it replaced — so an MFA-enrolment grant, which reaches only the enrolment
+     * endpoints and has never satisfied a second factor, rotated into an ordinary
+     * signed-in session. An enrolment grant is not refreshable: it lives ten
+     * minutes and ends at enrolment. Every other session keeps its purpose, its
+     * credential and that credential's version, and one whose credential has
+     * since changed or been revoked is refused rather than rotated.
+     */
+    if (session.purpose === 'MFA_ENROLMENT') {
+      throw Unauthorized('Finish setting up two-factor authentication before continuing.');
+    }
+    const credentialProblem = credentialRefusal(session, user);
+    if (credentialProblem) {
+      await prisma.platformSession.update({
+        where: { id: session.id },
+        data: { revokedAt: now, revokedReason: credentialProblem },
+      });
+      jar.delete(SESSION_COOKIE);
+      throw Unauthorized('Sign in again to continue.');
+    }
+
     // New token first, then revoke the old one: if issuing fails, the caller
     // still holds a working session rather than being signed out by a fault.
     const rotated = await createPlatformSession({
@@ -86,6 +125,9 @@ export async function POST(req: Request) {
       ip: clientIp(req),
       userAgent: req.headers.get('user-agent'),
       mfaSatisfied: session.mfaSatisfied,
+      purpose: session.purpose as SessionPurpose,
+      credentialPurpose: session.credentialPurpose,
+      credentialVersion: session.credentialVersion,
     });
     await prisma.platformSession.update({
       where: { id: session.id },

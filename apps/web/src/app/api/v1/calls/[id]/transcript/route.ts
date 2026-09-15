@@ -113,8 +113,31 @@ export const POST = route(
   },
 );
 
+/**
+ * The text of a client's conversation, and — now — a record of who read it.
+ *
+ * This declared no `auditEvent` while both of its siblings did: the recording
+ * metadata route and the media stream each write `RECORDING_ACCESSED`. The
+ * transcript is the same conversation in a form that is easier to read, search
+ * and copy, so the one of the three that left no trail was the one that cost
+ * least to abuse.
+ *
+ * `DOCUMENT_ACCESSED` rather than a new enum value: it is the event this
+ * codebase already uses for reading a stored artefact — `payslipDetail` and the
+ * HR document download both write it — and adding an enum member is a migration
+ * on the audit table for no distinction a reader needs. `objectType` is `calls`
+ * and the metadata carries the path, so a transcript read is separable from a
+ * recording read by the query that would ask.
+ */
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'VIEW',
+    params,
+    auditEvent: 'DOCUMENT_ACCESSED',
+    sensitive: 'call transcripts',
+  },
   async ({ ctx, params }) => {
     const transcript = await prisma.transcript.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },

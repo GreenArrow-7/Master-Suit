@@ -13,7 +13,14 @@ const params = z.object({ id: z.string().cuid() });
  * be able to see the lead the document hangs off.
  */
 export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW', params, auditEvent: 'DOCUMENT_ACCESSED' },
+  {
+    module: 'leads',
+    productModule: 'SALES',
+    action: 'VIEW',
+    params,
+    auditEvent: 'DOCUMENT_ACCESSED',
+    sensitive: 'customer documents',
+  },
   async ({ ctx, params }) => {
     const document = await prisma.document.findFirst({
       where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },

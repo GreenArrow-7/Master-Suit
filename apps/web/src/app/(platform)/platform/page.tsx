@@ -3,6 +3,7 @@ import { withPlatformTx } from '@/lib/db';
 import { PRODUCT_NAME } from '@/lib/branding';
 import { buildId } from '@/lib/build';
 import { platformSecuritySnapshot } from '@/services/platform/identity';
+import { requirePlatformPage } from '@/lib/platform-page';
 
 /**
  * The owner's control room.
@@ -16,6 +17,7 @@ import { platformSecuritySnapshot } from '@/services/platform/identity';
  * voice: tone dots and monospace timestamps.
  */
 export default async function PlatformOverviewPage() {
+  await requirePlatformPage();
   const [
     workspaceCount,
     activeCount,

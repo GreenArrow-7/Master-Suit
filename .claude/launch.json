@@ -47,6 +47,41 @@
       ],
       "port": 3100,
       "url": "https://master-suite-app-3100.aue.devtunnels.ms"
+    },
+    {
+      "name": "web-prod-3100-rebuild",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:local",
+        "--",
+        "--build",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "web-e2e-smtp-3101",
+      "cwd": "apps/web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:local",
+        "--",
+        "-p",
+        "3101"
+      ],
+      "port": 3101,
+      "env": {
+        "EMAIL_PROVIDER": "smtp",
+        "SMTP_HOST": "127.0.0.1",
+        "SMTP_PORT": "1025",
+        "APP_URL": "http://127.0.0.1:3101",
+        "ALLOWED_ORIGINS": "http://localhost:3101",
+        "NODE_EXTRA_CA_CERTS": "infra/tls-local/ca.pem"
+      }
     }
   ]
 }

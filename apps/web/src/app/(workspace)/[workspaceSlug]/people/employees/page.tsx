@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { employeeRecordScope } from '@/services/hr/leave';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PageHeader from '@/components/ui/PageHeader';
 import Badge from '@/components/ui/Badge';
@@ -32,7 +33,9 @@ export default async function EmployeesPage({
     : {};
 
   const rows = await prisma.employeeProfile.findMany({
-    where: { tenantId: ctx.tenantId, deletedAt: null, ...search },
+    // The same records the HR API returns this viewer: everyone only with
+    // `employee:VIEW` at ORGANIZATION scope, otherwise their own.
+    where: { tenantId: ctx.tenantId, deletedAt: null, ...search, ...(await employeeRecordScope(ctx)) },
     // Exactly the columns the table shows. The previous include pulled the full
     // PlatformUser row — passwordHash, mfaSecret and recovery codes included —
     // for every employee on every visit to this page.

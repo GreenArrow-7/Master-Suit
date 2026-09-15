@@ -1,0 +1,19 @@
+# Recreates the services whose runtime state does not survive a reboot.
+# See scripts/recreate-runtime-services.sh for why this is needed and why it is
+# scoped to two services rather than the whole stack.
+[Unit]
+Description=Master Suite: recreate services with reboot-fragile runtime state
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/opt/mastersuite/apps/web/scripts/recreate-runtime-services.sh
+# Docker can take a moment to accept connections after the socket appears.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do docker info >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

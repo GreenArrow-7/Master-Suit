@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { COMPANY_NAME, PRODUCT_NAME } from '@/lib/branding';
 import YouhanMark from '@/components/brand/YouhanMark';
-import { buildWorkspaceNav, type IconName, type NavGroup, type NavItem } from '@/lib/nav/workspaceNav';
+import { buildNavigation, findActive, type IconName, type NavSection, type WorkArea } from '@/lib/nav/workspaceNav';
 
 /**
- * The rail. One navigation for the whole product — see lib/nav/workspaceNav.ts
- * for the model and the reasoning. This component only decides how it renders:
- * a full rail on desktop, an icon rail on a tablet, a drawer on a phone.
+ * The rail: one entry per work area. The screens inside an area are its tabs,
+ * rendered above the page by WorkAreaTabs — see lib/nav/workspaceNav.ts for the
+ * model. This component only decides how it renders: a full rail on desktop, an
+ * icon rail on a tablet, a drawer on a phone.
  */
 export default function WorkspaceSidebar({
   slug,
@@ -20,6 +21,8 @@ export default function WorkspaceSidebar({
   workspaces,
   user,
   serviceMode = false,
+  peopleOversight = false,
+  platformStaff = false,
 }: {
   slug: string;
   name: string;
@@ -28,10 +31,15 @@ export default function WorkspaceSidebar({
   permitted: string[];
   /** A platform service identity is viewing; the personal groups are dropped. */
   serviceMode?: boolean;
+  /** Sees other employees' People records; decides My HR versus the HR areas. */
+  peopleOversight?: boolean;
+  /** Platform staff or service inside a customer workspace; People is hidden. */
+  platformStaff?: boolean;
   workspaces: { slug: string; name: string }[];
   user: { name: string; role: string };
 }) {
   const pathname = usePathname();
+  const search = useSearchParams();
   const router = useRouter();
   // null = follow the tier; true/false = the viewer overrode it deliberately.
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
@@ -100,10 +108,11 @@ export default function WorkspaceSidebar({
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileOpen]);
 
-  const groups = useMemo<NavGroup[]>(
-    () => buildWorkspaceNav({ slug, modules, permitted, serviceMode }),
-    [slug, modules, permitted, serviceMode],
+  const sections = useMemo<NavSection[]>(
+    () => buildNavigation({ slug, modules, permitted, serviceMode, peopleOversight, platformStaff }),
+    [slug, modules, permitted, serviceMode, peopleOversight, platformStaff],
   );
+  const activeArea = findActive(sections, pathname, new URLSearchParams(search.toString()))?.area.key;
 
   return (
     <>
@@ -155,31 +164,31 @@ export default function WorkspaceSidebar({
         </div>
 
         <nav className="lf-sidebar-nav" aria-label="Workspace">
-          {groups.map((group) => {
-            const inside = group.items.some((item) => isActive(item, pathname));
-            const links = group.items.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                pathname={pathname}
+          {sections.map((section) => {
+            const inside = section.areas.some((area) => area.key === activeArea);
+            const links = section.areas.map((area) => (
+              <AreaLink
+                key={area.key}
+                area={area}
+                active={area.key === activeArea}
                 collapsed={collapsed}
                 onNavigate={() => setMobileOpen(false)}
               />
             ));
             /*
-             * The long tail is a native <details>: no state, keyboard reachable,
-             * and it remembers nothing — which is right, because it opens itself
-             * whenever the current page is inside it. The icon rail forces every
-             * group open; a collapsed group in a rail of icons is invisible.
+             * A collapsible section is a native <details>: no state, keyboard
+             * reachable, and open whenever the current page is inside it. The icon
+             * rail forces every section open; a collapsed group in a rail of icons
+             * is invisible.
              */
-            return group.collapsible ? (
-              <details key={group.key} className="lf-nav-group" open={collapsed || inside || undefined}>
-                <summary className="lf-nav-label">{group.label}</summary>
+            return section.collapsible ? (
+              <details key={section.key} className="lf-nav-group" open={collapsed || inside || undefined}>
+                <summary className="lf-nav-label">{section.label}</summary>
                 {links}
               </details>
             ) : (
-              <section key={group.key} className="lf-nav-section">
-                <div className="lf-nav-label">{group.label}</div>
+              <section key={section.key} className="lf-nav-section">
+                <div className="lf-nav-label">{section.label}</div>
                 {links}
               </section>
             );
@@ -206,40 +215,27 @@ export default function WorkspaceSidebar({
   );
 }
 
-/**
- * Module roots (`/{slug}/sales`, `/{slug}/people`, `/{slug}/dashboard`) match
- * exactly — prefix matching would light "Sales overview" on every sales page.
- * Query-string items (`/clients?view=referrals`) match on the full string only.
- */
-function isActive(item: NavItem, pathname: string) {
-  const [path, query] = item.href.split('?');
-  if (query) return false;
-  const moduleRoot = path.split('/').filter(Boolean).length <= 2;
-  return pathname === path || (!moduleRoot && pathname.startsWith(`${path}/`));
-}
-
-function NavLink({
-  item,
-  pathname,
+function AreaLink({
+  area,
+  active,
   collapsed,
   onNavigate,
 }: {
-  item: NavItem;
-  pathname: string;
+  area: WorkArea;
+  active: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const active = isActive(item, pathname);
   return (
     <Link
       className="lf-nav-link"
-      href={item.href}
+      href={area.href}
       aria-current={active ? 'page' : undefined}
-      title={collapsed ? item.label : undefined}
+      title={collapsed ? area.label : undefined}
       onClick={onNavigate}
     >
-      <Icon name={item.icon} />
-      {!collapsed && item.label}
+      <Icon name={area.icon} />
+      {!collapsed && area.label}
     </Link>
   );
 }

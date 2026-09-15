@@ -131,7 +131,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
     const { workspaceId } = await params;
     const workspace = await workspaceOr404(workspaceId);
 
-    const closed = await revokeGrants(ctx.platformUserId, workspace.id);
+    // WRITE only. This endpoint hands back the *elevation*; the READ grant that
+    // authorises being in the workspace at all is a separate thing with a
+    // separate lifetime, and closing it here would eject the owner from the
+    // workspace they are still legitimately supporting the moment they finished
+    // a repair.
+    const closed = await revokeGrants(ctx.platformUserId, workspace.id, 'WRITE');
     // Only audited when something was actually open — a DELETE against nothing
     // is idempotency, not an event, and a trail full of no-ops is a trail nobody
     // reads.

@@ -129,14 +129,7 @@ export default async function CommissionsPage({ searchParams }: { searchParams: 
         }
       />
 
-      <nav className="lf-tabs" style={{ marginBottom: 'var(--lf-space-4)' }} aria-label="View">
-        <SalesLink className="lf-tab" href="/commissions" aria-selected={view === 'earnings'} role="tab">
-          Earnings
-        </SalesLink>
-        <SalesLink className="lf-tab" href="/commissions?view=payouts" aria-selected={view === 'payouts'} role="tab">
-          Payout runs
-        </SalesLink>
-      </nav>
+      {/* Its views are the tabs of this work area (lib/nav/workspaceNav.ts), rendered above the page. */}
 
       {view === 'payouts' ? (
         payouts.length === 0 ? (

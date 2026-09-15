@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
@@ -38,6 +39,10 @@ function fmtDuration(s: number | null) {
 export default async function CallDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  // A monitoring identity reaches this page on calls:VIEW; what the model made
+  // of the conversation is a separate authorisation, the same one the
+  // transcript and recording routes declare. See lib/auth/sensitive-access.ts.
+  const sensitive = await hasSensitiveAccess(ctx);
 
   const [call, analysis, audits, followUps, objectionMatches, coachingNotes] = await Promise.all([
     prisma.call.findFirst({
@@ -58,12 +63,14 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
         transcript: { select: { id: true, wordCount: true, language: true, createdAt: true } },
       },
     }),
-    prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
-    prisma.callAudit.findMany({
-      where: { callId: params.id, tenantId: ctx.tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    }),
+    sensitive ? prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }) : null,
+    sensitive
+      ? prisma.callAudit.findMany({
+          where: { callId: params.id, tenantId: ctx.tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        })
+      : [],
     prisma.followUpTask.findMany({
       where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
       orderBy: { dueAt: 'asc' },
@@ -182,6 +189,9 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               existingRequirementId={openRequirement?.id ?? null}
               detected={detectedRequirement}
             />
+          )}
+          {!sensitive && (
+            <p className="lf-muted">Conversation intelligence is not included in this monitoring grant.</p>
           )}
           <AnalysisPanel
             analysis={

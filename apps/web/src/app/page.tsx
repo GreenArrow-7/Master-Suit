@@ -3,6 +3,8 @@ import { headers } from 'next/headers';
 import { ulid } from 'ulid';
 import { prisma } from '@/lib/db';
 import { resolvePlatformCtx } from '@/lib/auth/session';
+import { isPlatformOwner } from '@/lib/auth/platform-policy';
+import { isSupportRole } from '@/lib/auth/support-actor';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,8 +24,27 @@ export default async function Root() {
         select: { slug: true },
       });
       if (workspace) destination = `/${workspace.slug}/dashboard`;
-    } else if (ctx.platformRole !== 'USER') {
+    } else if (ctx.credentialPurpose === 'MONITORING') {
+      // The password chose the mode; the role does not override it.
+      destination = '/monitoring';
+    } else if (isPlatformOwner(ctx.platformRole)) {
       destination = '/platform';
+    } else if (isSupportRole(ctx.platformRole)) {
+      /**
+       * SUPPORT and SECURITY_AUDITOR land on the workspace list they are
+       * authorised for, not on the control plane.
+       *
+       * `platformRole !== 'USER'` used to send all three here, which was the
+       * right instinct pointed at the wrong door: `/platform` is gated on
+       * OWNER, so a support identity signing in was redirected straight into a
+       * refusal. It read as "my account is broken" and was one of the reasons
+       * the SUPPORT role, though fully modelled and tested, had never been used.
+       *
+       * AI_SERVICE is deliberately not here. It reaches a workspace through
+       * api/v1/auth/service-login, which names the workspace itself, and it has
+       * no console to land on.
+       */
+      destination = '/monitoring';
     }
   } catch {
     // No session, or one that no longer resolves: the login page is correct.

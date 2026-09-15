@@ -281,8 +281,14 @@ describe('the rendered page', () => {
   }
 
   it('puts the workspace’s spend on the page, both columns', async () => {
-    const { default: AiUsagePage } = await import('@/app/(platform)/platform/ai-usage/page');
-    const text = strings(await AiUsagePage());
+    // The loader and the view, not the route module. `page.tsx` exports only
+    // its default now — it authorizes, then reads, then renders — so there is
+    // no function on it that produces the protected page without the gate.
+    // This still asserts the whole database-to-screen path: real rows in,
+    // rendered strings out. The gate itself is covered by REG-003.
+    const { loadAiUsage } = await import('@/app/(platform)/platform/ai-usage/data');
+    const { default: AiUsageView } = await import('@/app/(platform)/platform/ai-usage/AiUsageView');
+    const text = strings(AiUsageView(await loadAiUsage()));
 
     // The name is what an operator scans for; the numbers are what they act on.
     expect(text).toContain(`Live ${suffix}`);
