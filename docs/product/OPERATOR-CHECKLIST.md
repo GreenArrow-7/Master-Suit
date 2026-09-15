@@ -19,7 +19,7 @@ DC="docker compose --env-file ../.env.production -f docker-compose.yml -f docker
 
 # The audits and the guarded restore check are not in the deployed commit.
 # Take them from the checkpoint commit into /tmp. The working tree is not touched.
-SHA=cfe582f9eed24d99c54c401f056ee841f255dfa0
+SHA=8c21f2790244592209c110e031e5e01ea331bc30
 git -C "$REPO_DIR" fetch origin claude/restructure-foundation
 rm -rf /tmp/rc-audit && mkdir -p /tmp/rc-audit
 git -C "$REPO_DIR" archive "$SHA" \
@@ -87,7 +87,7 @@ Not verified here:
 
 ## Script checksums at the checkpoint commit
 
-Output of `sha256sum /tmp/rc-audit/*` for the files taken from `cfe582f9eed24d99c54c401f056ee841f255dfa0`:
+Output of `sha256sum /tmp/rc-audit/*` for the files taken from `8c21f2790244592209c110e031e5e01ea331bc30`. `restore-verify.sh` differs from `cfe582f` only in reading the dump checksum line in the form `backup.sh` writes it (`2fa097d`); the other six files are unchanged.
 
 ```text
 17ac6918f10a3acc39c298acda5b52c3914ee4c14e00970e9596317d0c184ee8  backup-ship.sh
@@ -96,5 +96,5 @@ Output of `sha256sum /tmp/rc-audit/*` for the files taken from `cfe582f9eed24d99
 cefbf191ed7c9c38a36cbf3b56f2125793563564b60c5c1038a1c52ceed6e4eb  rc-post-deploy-delta.mjs
 65e784e1826160b221fd3e2f4340892f937e7ec48b82516f552150ec310d481e  rc-preflight.mjs
 3e1df2732d048b1ed4668316055fdea7f538725f3b8100749040f732ec30a184  rc-readonly.mjs
-e7c68bb2f72e8e82a9b749a19a77ba0fce7bb91868c995454e6abbfc4c4d015b  restore-verify.sh
+40430079fa986d688aa81c06e42eeed4ade67f3146cc37ba4810a0ea8c6b82e9  restore-verify.sh
 ```

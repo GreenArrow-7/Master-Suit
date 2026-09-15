@@ -69,7 +69,7 @@ Browser results, `d95092b` specs against the `cfe582f` artifact, are in §6 unde
 
 ## 4. Operator commands, verified locally
 
-The checklist is `OPERATOR-CHECKLIST.md`. It pins the scripts to `cfe582f` and lists their checksums. What was proven is below. Evidence logs are in `validation-evidence/release-candidate/`. Log files are git-ignored in this repository, so they stay on the validation machine and are identified here by name and SHA-256.
+The checklist is `OPERATOR-CHECKLIST.md`. It pins the scripts to the release candidate and lists their checksums; see §10 for the current pin. What was proven is below. Evidence logs are in `validation-evidence/release-candidate/`. Log files are git-ignored in this repository, so they stay on the validation machine and are identified here by name and SHA-256.
 
 | Point                                                                                                                                                           | Result                                                                                                                                       | Evidence                                   |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
@@ -192,3 +192,25 @@ Re-estimate after steps 1 to 3 return. A large legacy list moves the window by a
 | Package 2                                                                                                                                                  | **Paused**                                                     |
 
 Production remains NOT APPROVED. Package 2 remains paused. Nothing was merged or deployed, and nothing in production was changed.
+
+## 10. Addendum, 15 September: the release candidate moves to `8c21f27`
+
+Three reviewed fixes sit on top of `b455d7a`. Another session wrote them and ran the gates; their logs were read directly for this addendum.
+
+| Commit    | What                                                                                                                                                                                                                 |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `3e83b45` | Collections and agency-fee record scope. Receipts, evidence, recovery cases and fee amendments now respect a finance role scoped below the organisation; a sale outside scope is not found. Recovery evidence is validated like receipt evidence. Receipt evidence cannot be deleted or listed as a lead document. |
+| `2fa097d` | A recovery cannot cite evidence already used by a receipt or another case. `restore-verify.sh` now reads the dump checksum in the form `backup.sh` writes, which had aborted every real verification; `backup-status.sh` handles the marker's float timestamp. |
+| `8c21f27` | The Collections and Documents lists keep the tenant filter at the top level, which the database client requires.                                                                                                     |
+
+| Gate                      | Revision  | Result                                   | Log (SHA-256, first 8)                  |
+| ------------------------- | --------- | ---------------------------------------- | --------------------------------------- |
+| 1 to 12, 15, 16 (Linux)   | `8c21f27` | all exit 0; unit suite 2209 passed, 0 skipped | `gates-linux-8c21f27.log` (`ff9cf199`)  |
+| 13 integration (Windows)  | `8c21f27` | 6 passed of 6                            | `gate13-integration-8c21f27.log` (`de43978e`) |
+| 14 browser and artifact   | `8c21f27` | 68 passed of 68                          | `gate14-e2e-8c21f27.log` (`11011db0`)   |
+
+The web and worker images for `8c21f27` were built by that session (`web` `sha256:8a944ba9…`, `worker` `sha256:30b2b436…`).
+
+**Operator checklist.** Re-pinned to `8c21f27`. Only `restore-verify.sh` changes checksum; the guards proven in §4 are unchanged.
+
+**CI on GitHub.** The workflow now starts object storage, because the evidence suites store real files. The pull request run is the first CI run for this work on GitHub; its result is recorded on the pull request.
