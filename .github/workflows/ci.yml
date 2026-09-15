@@ -99,6 +99,26 @@ jobs:
       - name: Generate .env
         run: node scripts/generate-secrets.mjs .env
 
+      # Object storage. Receipt evidence is stored for real by the unit and
+      # browser suites, as it is in every environment; without a store here
+      # those uploads fail. The credentials are the local defaults `.env` was
+      # just generated with, read from it so the two cannot drift. lib/storage.ts
+      # creates the bucket on first use.
+      - name: Object storage
+        run: |
+          KEY="$(grep '^S3_ACCESS_KEY_ID=' .env | cut -d= -f2-)"
+          SECRET="$(grep '^S3_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)"
+          docker run -d --name ci-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER="$KEY" -e MINIO_ROOT_PASSWORD="$SECRET" \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              echo "object storage ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::object storage did not become ready"; docker logs ci-minio; exit 1
+
       # tests/tenant/rls.spec.ts refuses to run unless RLS_DATABASE_URL is set and
       # names the *same* connection as DATABASE_URL — testing a role the
       # application never connects as would prove nothing, so it throws rather
