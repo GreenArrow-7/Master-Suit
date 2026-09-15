@@ -22,7 +22,7 @@ production-supported architecture is chosen. Do not submit them to a store.
 | FileProvider | Limited to the camera capture folder (`external-files-path` `Pictures/`) |
 | Push | **Not included.** The plugin is removed until FCM/APNs credentials exist (see below) |
 | Location, microphone | **Not declared.** Face check-in, the site-visit GPS punch and any audio feature cannot work in this build |
-| Identifiers | `com.mastersuite.app` is a **placeholder**; label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
+| Identifiers | iOS bundle id `com.youhan.one`; Android `com.mastersuite.app` is still a **placeholder**; label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
 
 ## Android: build the development APK
 
@@ -70,38 +70,46 @@ project does not have.
 
 ### TestFlight from GitHub Actions (no Mac needed locally)
 
-`.github/workflows/ios-testflight.yml` archives with automatic signing on a
-GitHub-hosted `macos-26` runner (Xcode 26 or newer) and uploads to App Store
-Connect. It is manual only: push a tag `ios-testflight-<anything>` that points at
-a commit on `dev/mobile-app`. macOS runner minutes are billed on private
-repositories — check the account's Actions usage and budget first.
+`.github/workflows/ios-testflight.yml` has one trigger, `workflow_dispatch`, and its
+job runs only for the `dev/mobile-app` ref. It archives unsigned on a GitHub-hosted
+`macos-26` runner (Xcode 26 or newer), then `xcodebuild -exportArchive` signs for
+App Store Connect with automatic signing and uploads to TestFlight. macOS runner
+minutes are billed on private repositories.
 
-Before the first run:
+GitHub offers dispatch only for workflows whose file is on the default branch. The
+smallest change is a pull request to `main` containing only this workflow file; the
+dispatched run still uses the file and code from `dev/mobile-app`
+(`gh workflow run ios-testflight.yml --ref dev/mobile-app`).
 
-1. **Apple Developer Program** — an active membership (individual or organisation)
-   and its 10-character Team ID (developer.apple.com → Account → Membership details).
-2. **Bundle identifier** — decide the final one (it cannot change after the first
-   upload to an app record). Register it under Certificates, Identifiers & Profiles
-   → Identifiers, or let automatic signing register it.
-3. **App Store Connect app record** — My Apps → + → New App: platform iOS, name
-   (e.g. "YOUHAN ONE"), primary language, the bundle identifier above, a SKU.
-4. **App Store Connect API key** — Users and Access → Integrations → App Store
-   Connect API → Team Keys → generate with the **App Manager** (or Admin) role.
-   Note the Key ID and Issuer ID; download `AuthKey_<KeyID>.p8` once.
-5. **GitHub environment** — repository Settings → Environments → New environment
-   `ios-testflight`:
-   - Variables: `APPLE_TEAM_ID`, `IOS_BUNDLE_ID`, `IOS_STAGING_URL` (the staging https origin).
-   - Secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64` — the .p8 file
-     base64-encoded, e.g. PowerShell
-     `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8")) | Set-Clipboard`,
-     pasted into the secret field. Never paste key contents anywhere else.
-6. **TestFlight testers** — App Store Connect → the app → TestFlight → Internal
-   Testing → add yourself (a user on the team with a role). Internal testers need
-   no beta review; install the TestFlight app on the iPhone and accept the invite.
+Upload authentication and signing are separate:
 
-The workflow refuses to run with any of these missing, with the placeholder
-bundle id, or on a commit outside `dev/mobile-app`, and prints only names, never
-values.
+- **Upload** to App Store Connect needs an API key whose role can upload builds
+  (Account Holder, Admin, App Manager).
+- **Provisioning** — registering `com.youhan.one`, the distribution certificate
+  (cloud-managed) and the App Store profile — is limited to Account Holder and Admin
+  in Apple's roles matrix, and individual API keys cannot use provisioning. So the
+  workflow needs a **Team API key with the Admin role**.
+
+Owner setup, once:
+
+1. Apple Developer Program membership active; the Account Holder has accepted the
+   current Program License Agreement; note the Team ID.
+2. App Store Connect → Users and Access → Integrations → App Store Connect API:
+   the Account Holder requests API access if not yet enabled, then an Admin
+   generates a **Team key** with the **Admin** role; note Key ID and Issuer ID; download
+   the .p8 once and keep it offline.
+3. App Store Connect → My Apps → + → New App: iOS, name, primary language, bundle ID
+   `com.youhan.one` (register it under Identifiers first if it is not offered), SKU.
+4. GitHub → Settings → Environments → `ios-testflight`: variables `APPLE_TEAM_ID`,
+   `IOS_STAGING_URL` (an https origin that loads without an interstitial page — not a
+   dev tunnel); secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`.
+5. TestFlight → Internal Testing: add yourself as an App Store Connect user; install
+   TestFlight on the iPhone with the same Apple Account.
+
+The preflight refuses to continue with missing names, a dev-tunnel URL, or a project
+bundle id other than `com.youhan.one`; it prints names only, never values.
+
+Export compliance: see [EXPORT-COMPLIANCE.md](EXPORT-COMPLIANCE.md).
 
 ## Brand assets
 
@@ -132,7 +140,7 @@ shipped in a build that has no credentials.
 ## Before any release build
 
 - **Architecture** — `server.url` is not production-supported (see top).
-- **`appId`** — `com.mastersuite.app` is a placeholder; neither store allows a change after a published upload.
+- **Android `applicationId`** — `com.mastersuite.app` is a placeholder; neither store allows a change after a published upload. iOS uses `com.youhan.one`.
 - **A stable, approved HTTPS origin** — dev tunnels show Microsoft's one-time "developer tunnel" warning page to browsers and WebViews.
 - **Release signing** — upload key ownership (Android), Apple team, certificates and provisioning (iOS).
 - **App Store guideline 4.2** — apps that are only a website are rejected.

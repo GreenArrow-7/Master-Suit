@@ -1,37 +1,40 @@
-# iOS development build → signed App Store Connect archive → TestFlight.
+# iOS development build → signed App Store Connect export → TestFlight upload.
 #
-# MANUAL ONLY. Nothing here runs on an ordinary push or pull request.
-#   - Push a tag named ios-testflight-<anything> that points at a commit on the
-#     dev/mobile-app branch, e.g.  git tag ios-testflight-0.1.0-1 && git push origin ios-testflight-0.1.0-1
-#   - or, once this file exists on the default branch, use "Run workflow".
+# MANUAL ONLY: the single trigger is workflow_dispatch. Nothing runs on push, tag or
+# pull request. GitHub only offers dispatch for a workflow whose file exists on the
+# default branch; the run then uses the file and code of the ref you choose, and this
+# job refuses any ref other than dev/mobile-app.
+#   gh workflow run ios-testflight.yml --ref dev/mobile-app
 #
-# COST: GitHub-hosted macOS runners bill minutes on private repositories. Check the
-# account's Actions usage and budget before running.
+# COST: GitHub-hosted macOS runners bill minutes on private repositories.
 #
-# The build is the DEVELOPMENT PROOF OF CONCEPT shell: it loads the staging origin in
-# IOS_STAGING_URL. It never targets production and never submits for App Store review.
+# The app is the DEVELOPMENT PROOF OF CONCEPT shell (bundle id com.youhan.one). It
+# loads IOS_STAGING_URL. It never targets production and never submits for review.
 #
-# Required configuration (Settings → Environments → ios-testflight). No value is ever
-# printed; the preflight step only reports which names are missing.
+# Configuration (Settings → Environments → ios-testflight). Values are never printed;
+# the preflight reports only which names are missing.
 #   Variables:
 #     APPLE_TEAM_ID          10-character Apple Developer Team ID
-#     IOS_BUNDLE_ID          the confirmed bundle identifier, registered for the team and
-#                            used by the App Store Connect app record
-#     IOS_STAGING_URL        https origin of the isolated staging server
-#   Secrets:
-#     ASC_KEY_ID             App Store Connect API key ID
-#     ASC_ISSUER_ID          App Store Connect API issuer ID
-#     ASC_KEY_P8_BASE64      the downloaded AuthKey_XXXX.p8, base64-encoded
-#   The API key needs the App Manager role (or Admin) with access to certificates,
-#   identifiers and profiles, so Xcode can create the distribution certificate and
-#   App Store profile under automatic signing.
+#     IOS_STAGING_URL        https origin of the isolated staging server. Must load
+#                            without an interstitial page (dev tunnels are refused).
+#   Secrets (an App Store Connect **Team** API key with the **Admin** role — the
+#   Developer-program roles matrix gives certificate, identifier and profile
+#   management, including the cloud-managed distribution certificate, to Account
+#   Holder and Admin only; an App Manager key can upload but cannot provision):
+#     ASC_KEY_ID             key ID
+#     ASC_ISSUER_ID          issuer ID
+#     ASC_KEY_P8_BASE64      the downloaded AuthKey_<KeyID>.p8, base64-encoded
+#
+# Signing approach: archive without code signing, then let `xcodebuild -exportArchive`
+# sign for App Store Connect with automatic signing (-allowProvisioningUpdates and the
+# API key). Distribution signing then uses the team's cloud-managed distribution
+# certificate and an App Store profile Xcode creates, so no development certificate or
+# registered test device is needed on the runner. Not yet proven on a runner: the first
+# run's logs are the evidence.
 
 name: iOS TestFlight (manual)
 
 on:
-  push:
-    tags:
-      - 'ios-testflight-*'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +46,8 @@ concurrency:
 
 jobs:
   testflight:
-    name: Signed archive and TestFlight upload
+    name: Signed export and TestFlight upload
+    if: github.ref == 'refs/heads/dev/mobile-app'
     runs-on: macos-26
     timeout-minutes: 60
     environment: ios-testflight
@@ -52,23 +56,10 @@ jobs:
         working-directory: apps/mobile
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Only commits on dev/mobile-app
-        working-directory: .
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin +refs/heads/dev/mobile-app:refs/remotes/origin/dev/mobile-app
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/dev/mobile-app; then
-            echo "::error::$GITHUB_SHA is not on dev/mobile-app; refusing to build."
-            exit 1
-          fi
-
-      - name: Preflight — required configuration present
+      - name: Preflight — configuration present and acceptable
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
           IOS_STAGING_URL: ${{ vars.IOS_STAGING_URL }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -76,26 +67,30 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_TEAM_ID IOS_BUNDLE_ID IOS_STAGING_URL ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
+          for name in APPLE_TEAM_ID IOS_STAGING_URL ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
             [ -n "${!name:-}" ] || missing+=("$name")
           done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing configuration in the ios-testflight environment: ${missing[*]}"
+            echo "::error::Missing in the ios-testflight environment: ${missing[*]}"
             exit 1
           fi
-          case "$IOS_STAGING_URL" in https://*) ;; *) echo "::error::IOS_STAGING_URL must be https"; exit 1;; esac
-          if [ "$IOS_BUNDLE_ID" = "com.mastersuite.app" ]; then
-            echo "::error::IOS_BUNDLE_ID is still the placeholder; confirm the final identifier first."
-            exit 1
-          fi
+          case "$IOS_STAGING_URL" in
+            https://*.devtunnels.ms|https://*.devtunnels.ms/) echo "::error::IOS_STAGING_URL is a dev tunnel; its anti-phishing page would appear inside the app."; exit 1;;
+            https://*) ;;
+            *) echo "::error::IOS_STAGING_URL must be https"; exit 1;;
+          esac
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.youhan.one;' ios/App/App.xcodeproj/project.pbxproj \
+            || { echo "::error::The Xcode project bundle id is not com.youhan.one"; exit 1; }
 
       - name: Select Xcode 26 or newer
         run: |
           set -euo pipefail
           xcode=$(ls -d /Applications/Xcode_2[6-9]*.app 2>/dev/null | sort -V | tail -1 || true)
-          [ -n "$xcode" ] || { echo "::error::No Xcode 26+ on this runner image"; ls /Applications | grep -i xcode; exit 1; }
+          [ -n "$xcode" ] || { echo "::error::No Xcode 26+ on this runner image"; ls /Applications | grep -i xcode || true; exit 1; }
           sudo xcode-select -s "$xcode"
           xcodebuild -version
+          xcodebuild -help 2>&1 | grep -q -- '-authenticationKeyIssuerID' \
+            || { echo "::error::This xcodebuild does not accept App Store Connect API key authentication"; exit 1; }
 
       - uses: actions/setup-node@v4
         with:
@@ -110,21 +105,7 @@ jobs:
           npx cap sync ios
           node scripts/fix-ios-spm-paths.mjs
 
-      - name: App Store Connect API key (temporary file)
-        env:
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-        run: |
-          set -euo pipefail
-          umask 077
-          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
-          test -s "$RUNNER_TEMP/AuthKey.p8"
-
-      - name: Archive (automatic signing)
-        env:
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      - name: Archive (unsigned)
         run: |
           set -uo pipefail
           xcodebuild archive \
@@ -133,23 +114,27 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/YouhanOne.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
             > "$RUNNER_TEMP/archive.log" 2>&1
           status=$?
-          grep -E '^(\*\*|error:)|[Ss]igning|[Pp]rovisioning' "$RUNNER_TEMP/archive.log" | tail -40 || true
+          grep -E '^(\*\*|error:)' "$RUNNER_TEMP/archive.log" | tail -40 || true
           if [ "$status" -ne 0 ] || [ ! -d "$RUNNER_TEMP/YouhanOne.xcarchive" ]; then
             echo "::error::Archive failed (exit $status); see the archive.log artifact."
             exit 1
           fi
 
-      - name: Export and upload to App Store Connect (TestFlight)
+      - name: App Store Connect API key (temporary file)
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey.p8" \
+            || { echo "::error::ASC_KEY_P8_BASE64 does not decode to a .p8 private key"; exit 1; }
+
+      - name: Sign for App Store Connect and upload to TestFlight
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -182,12 +167,12 @@ jobs:
             > "$RUNNER_TEMP/export.log" 2>&1
           status=$?
           set -e
-          grep -E '^(\*\*|error:)|[Uu]pload' "$RUNNER_TEMP/export.log" | tail -40 || true
+          grep -E '^(\*\*|error:)|[Uu]pload|[Ss]igning|[Pp]rofile|[Cc]ertificate' "$RUNNER_TEMP/export.log" | tail -40 || true
           if [ "$status" -ne 0 ]; then
-            echo "::error::Export/upload failed (exit $status); see the export.log artifact."
+            echo "::error::Signing/upload failed (exit $status); see the export.log artifact."
             exit 1
           fi
-          echo "Uploaded build ${GITHUB_RUN_NUMBER} for bundle ${{ vars.IOS_BUNDLE_ID }}. App Store Connect processing follows; TestFlight shows it when processing finishes."
+          echo "Uploaded build ${GITHUB_RUN_NUMBER} (com.youhan.one). App Store Connect processing follows."
 
       - name: Keep the build logs
         if: always()
