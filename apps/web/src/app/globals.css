@@ -13,6 +13,18 @@ body {
   min-height: 100%;
 }
 
+/*
+ * Keep WebKit from resizing text on its own. Mobile Safari and WKWebView inflate
+ * the text of anything they judge to be a non-responsive page, which changes type
+ * scale independently of the layout and makes a correct design look wrong. The
+ * layout here is responsive, so the automatic adjustment is not wanted; pinch zoom
+ * is untouched and still works.
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: var(--lf-canvas);
   color: var(--lf-ink);
@@ -6567,4 +6579,53 @@ a.lf-kpi:hover {
 .lf-tab:focus-visible {
   outline: 2px solid var(--lf-wine-700);
   outline-offset: -2px;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Touch input
+ *
+ * iOS zooms the page in when a focused form control renders text below 16px, and
+ * it does not zoom back out afterwards. The page is then wider than the screen,
+ * every subsequent tap lands off-target and the whole interface reads as
+ * oversized and broken. The controls here are 14px (--lf-text-sm), so every text
+ * field triggered it: searching a list, filtering a grid, signing in.
+ *
+ * The cause is the control's own font size on a touch device, not the viewport
+ * width, so the gate is `pointer: coarse` rather than a phone breakpoint — a
+ * touch tablet has the same problem and a narrow desktop window does not.
+ * Keyboard-driven layouts keep the tighter 14px.
+ *
+ * Deliberately not fixed by disabling zoom: `maximum-scale=1` or `user-scalable=no`
+ * would also stop a person magnifying the screen, which is an accessibility
+ * control and not ours to remove.
+ * ───────────────────────────────────────────────────────────────────────────*/
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea,
+  .lf-input,
+  .lf-select,
+  .lf-textarea {
+    /* 16px is the threshold, not a preference: at 15.99px iOS still zooms. */
+    font-size: max(16px, var(--lf-text-sm));
+  }
+
+  /* Apple's minimum comfortable target is 44pt. The 36px controls are reachable
+     but easy to miss next to each other in a row of filters. */
+  .lf-input,
+  .lf-select {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .lf-btn {
+    min-height: 44px;
+  }
+
+  /* A small icon button keeps its visual size; the touch area grows around it so
+     neighbouring controls in an action row stop competing for the same tap. */
+  .lf-btn--icon,
+  .lf-btn--sm {
+    min-height: 40px;
+  }
 }
