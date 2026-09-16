@@ -297,13 +297,18 @@ test.describe('Workspace Summary sample', () => {
       const tabs = page.getByRole('navigation', { name: 'My Workspace screens' });
       await expect(tabs.locator('[aria-current="page"]')).toHaveText('Workspace Summary');
       await tabs.getByRole('link', { name: 'Sales Overview' }).click();
-      await expect(page).toHaveURL(new RegExp(`${at('/sales')}$`));
+      // These are whole route changes, not client-side tab swaps: the target renders on
+      // the server against the database, so the URL only commits once that has answered.
+      // Under a loaded runner that outran the 20s default while the navigation was still
+      // in flight — the document had already taken the target module. The rest of this
+      // file waits 30-60s on the same kind of transition.
+      await expect(page).toHaveURL(new RegExp(`${at('/sales')}$`), { timeout: 60_000 });
       await page.goBack();
 
       await page.getByRole('button', { name: 'Search and jump to any page' }).click();
       await page.getByRole('combobox', { name: 'Jump to a page or search' }).fill('recovery cases');
       await page.keyboard.press('Enter');
-      await expect(page).toHaveURL(/\/sales\/collections\/recovery$/);
+      await expect(page).toHaveURL(/\/sales\/collections\/recovery$/, { timeout: 60_000 });
       await page.goBack();
 
       await page.getByRole('button', { name: /^Notifications/ }).click();
