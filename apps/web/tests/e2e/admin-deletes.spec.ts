@@ -201,9 +201,8 @@ test.describe('Deletes from lists and detail pages', () => {
       await createWorkspaceViaWizard(page, other);
       await page.close();
     }
-    const otherTenantId = (
-      await prisma.tenant.findUniqueOrThrow({ where: { slug: other.slug }, select: { id: true } })
-    ).id;
+    const otherTenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: other.slug }, select: { id: true } }))
+      .id;
 
     // Records belonging to the other tenant, created by that tenant's own admin.
     const owner = await signedIn(browser, other.adminEmail, other.adminPassword);
