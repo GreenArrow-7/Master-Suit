@@ -119,11 +119,7 @@ export default async function ListingsPage({
           />
         </div>
       ) : (
-        <ConfigurableGrid
-          object="LISTING"
-          columns={columns}
-          rows={maskListingOwners(ctx, rows) as never}
-        />
+        <ConfigurableGrid object="LISTING" columns={columns} rows={maskListingOwners(ctx, rows) as never} />
       )}
     </>
   );
