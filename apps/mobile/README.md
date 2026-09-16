@@ -71,41 +71,45 @@ project does not have.
 ### TestFlight from GitHub Actions (no Mac needed locally)
 
 `.github/workflows/ios-testflight.yml` has one trigger, `workflow_dispatch`, and its
-job runs only for the `dev/mobile-app` ref. It archives unsigned on a GitHub-hosted
-`macos-26` runner (Xcode 26 or newer), then `xcodebuild -exportArchive` signs for
-App Store Connect with automatic signing and uploads to TestFlight. macOS runner
-minutes are billed on private repositories.
+job runs only for the `dev/mobile-app` ref. On a GitHub-hosted `macos-26` runner it
+archives the Release configuration signed **manually** (Apple Distribution certificate,
+App Store profile "YOUHAN ONE App Store", team 3SHW6AX727), exports for App Store
+Connect and uploads to TestFlight. The build number is the workflow run number.
+macOS runner minutes are billed on private repositories.
 
 GitHub offers dispatch only for workflows whose file is on the default branch. The
 smallest change is a pull request to `main` containing only this workflow file; the
 dispatched run still uses the file and code from `dev/mobile-app`
 (`gh workflow run ios-testflight.yml --ref dev/mobile-app`).
 
-Upload authentication and signing are separate:
+Least privilege — signing material and upload authentication are separate
+(developer.apple.com/support/roles):
 
-- **Upload** to App Store Connect needs an API key whose role can upload builds
-  (Account Holder, Admin, App Manager).
-- **Provisioning** — registering `com.youhan.one`, the distribution certificate
-  (cloud-managed) and the App Store profile — is limited to Account Holder and Admin
-  in Apple's roles matrix, and individual API keys cannot use provisioning. So the
-  workflow needs a **Team API key with the Admin role**.
+- **Creating** the distribution certificate and the App Store profile is limited to
+  the Account Holder or an Admin. It is done once, by hand, from a CSR generated
+  locally; the private key never leaves the owner's machine except as the encrypted
+  `.p12` repository secret.
+- **Uploading** builds is allowed for Account Holder, Admin, App Manager and Developer.
+  CI uses a Team API key with the **Developer** role and never provisions
+  (no `-allowProvisioningUpdates`).
 
 Owner setup, once:
 
-1. Apple Developer Program membership active; the Account Holder has accepted the
-   current Program License Agreement; note the Team ID.
-2. App Store Connect → Users and Access → Integrations → App Store Connect API:
-   the Account Holder requests API access if not yet enabled, then an Admin
-   generates a **Team key** with the **Admin** role; note Key ID and Issuer ID; download
-   the .p8 once and keep it offline.
-3. App Store Connect → My Apps → + → New App: iOS, name, primary language, bundle ID
-   `com.youhan.one` (register it under Identifiers first if it is not offered), SKU.
-4. GitHub → repository Settings → Secrets and variables → Actions (repository level;
-   GitHub Free cannot use environments on private repositories): variables `APPLE_TEAM_ID`,
-   `IOS_STAGING_URL` (an https origin that loads without an interstitial page — not a
-   dev tunnel); secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`.
-5. TestFlight → Internal Testing: add yourself as an App Store Connect user; install
-   TestFlight on the iPhone with the same Apple Account.
+1. Certificates, Identifiers & Profiles → Certificates → + → Apple Distribution;
+   upload the CSR generated locally; download the `.cer`.
+2. Profiles → + → App Store Connect (Distribution); App ID `com.youhan.one`; select
+   that certificate; name it exactly `YOUHAN ONE App Store`; download it.
+3. App Store Connect → Users and Access → Integrations → Team Keys → +, role
+   **Developer**; download `AuthKey_<KEYID>.p8` (offered once) and note the Issuer ID.
+4. Put the three files and `issuer-id.txt` beside the CSR and run the local helper
+   `node scripts/set-ios-secrets.mjs <folder>`: it verifies certificate, key, profile and team, builds the
+   `.p12`, and stores repository secrets `IOS_DIST_CERT_P12_BASE64`,
+   `IOS_DIST_CERT_PASSWORD`, `IOS_APPSTORE_PROFILE_BASE64`, `ASC_KEY_ID`,
+   `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64` and variable `APPLE_TEAM_ID`, printing names only.
+5. Variable `IOS_STAGING_URL`: an https origin that loads without an interstitial
+   page — not a dev tunnel.
+6. TestFlight → Internal Testing: a group containing the tester's App Store Connect
+   user; TestFlight installed on the iPhone with the same Apple Account.
 
 The preflight refuses to continue with missing names, a dev-tunnel URL, or a project
 bundle id other than `com.youhan.one`; it prints names only, never values.
