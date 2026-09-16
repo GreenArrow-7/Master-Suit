@@ -100,7 +100,8 @@ Owner setup, once:
    the .p8 once and keep it offline.
 3. App Store Connect → My Apps → + → New App: iOS, name, primary language, bundle ID
    `com.youhan.one` (register it under Identifiers first if it is not offered), SKU.
-4. GitHub → Settings → Environments → `ios-testflight`: variables `APPLE_TEAM_ID`,
+4. GitHub → repository Settings → Secrets and variables → Actions (repository level;
+   GitHub Free cannot use environments on private repositories): variables `APPLE_TEAM_ID`,
    `IOS_STAGING_URL` (an https origin that loads without an interstitial page — not a
    dev tunnel); secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_BASE64`.
 5. TestFlight → Internal Testing: add yourself as an App Store Connect user; install
