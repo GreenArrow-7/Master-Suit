@@ -1,37 +1,28 @@
-# iOS development build → signed App Store Connect export → TestFlight upload.
+# iOS development build → signed App Store archive → TestFlight upload.
 #
-# MANUAL ONLY: the single trigger is workflow_dispatch. Nothing runs on push, tag or
-# pull request. GitHub only offers dispatch for a workflow whose file exists on the
-# default branch; the run then uses the file and code of the ref you choose, and this
-# job refuses any ref other than dev/mobile-app.
+# MANUAL ONLY: the single trigger is workflow_dispatch, and the job runs only for
+# refs/heads/dev/mobile-app. GitHub offers dispatch only for a workflow whose file is on
+# the default branch; the run uses the file and code of the chosen ref.
 #   gh workflow run ios-testflight.yml --ref dev/mobile-app
 #
-# COST: GitHub-hosted macOS runners bill minutes on private repositories.
+# COST: GitHub-hosted macOS runner minutes are billed on private repositories.
 #
-# The app is the DEVELOPMENT PROOF OF CONCEPT shell (bundle id com.youhan.one). It
-# loads IOS_STAGING_URL. It never targets production and never submits for review.
+# The app is the DEVELOPMENT PROOF OF CONCEPT shell (bundle id com.youhan.one) loading
+# IOS_STAGING_URL. It never targets production and never submits for App Store review.
+#
+# LEAST PRIVILEGE. Signing is manual, so CI holds no provisioning rights:
+#   - An Apple Distribution certificate and an App Store profile named
+#     "YOUHAN ONE App Store" are created once by the Account Holder in Certificates,
+#     Identifiers & Profiles (the only roles that can create them are Account Holder and
+#     Admin). The Xcode project's App target Release configuration names them.
+#   - Upload uses an App Store Connect Team API key with the Developer role — the least
+#     role Apple's matrix allows to upload builds; it cannot create certificates or profiles.
 #
 # Configuration: repository Settings → Secrets and variables → Actions (repository-level;
-# GitHub Free cannot use environments on private repositories). Values are never printed;
-# the preflight reports only which names are missing.
-#   Variables:
-#     APPLE_TEAM_ID          10-character Apple Developer Team ID
-#     IOS_STAGING_URL        https origin of the isolated staging server. Must load
-#                            without an interstitial page (dev tunnels are refused).
-#   Secrets (an App Store Connect **Team** API key with the **Admin** role — the
-#   Developer-program roles matrix gives certificate, identifier and profile
-#   management, including the cloud-managed distribution certificate, to Account
-#   Holder and Admin only; an App Manager key can upload but cannot provision):
-#     ASC_KEY_ID             key ID
-#     ASC_ISSUER_ID          issuer ID
-#     ASC_KEY_P8_BASE64      the downloaded AuthKey_<KeyID>.p8, base64-encoded
-#
-# Signing approach: archive without code signing, then let `xcodebuild -exportArchive`
-# sign for App Store Connect with automatic signing (-allowProvisioningUpdates and the
-# API key). Distribution signing then uses the team's cloud-managed distribution
-# certificate and an App Store profile Xcode creates, so no development certificate or
-# registered test device is needed on the runner. Not yet proven on a runner: the first
-# run's logs are the evidence.
+# GitHub Free cannot use environments on private repositories). Values are never printed.
+#   Variables: APPLE_TEAM_ID (3SHW6AX727), IOS_STAGING_URL (https, no interstitial page)
+#   Secrets:   IOS_DIST_CERT_P12_BASE64, IOS_DIST_CERT_PASSWORD, IOS_APPSTORE_PROFILE_BASE64,
+#              ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64
 
 name: iOS TestFlight (manual)
 
@@ -45,9 +36,13 @@ concurrency:
   group: ios-testflight
   cancel-in-progress: false
 
+env:
+  BUNDLE_ID: com.youhan.one
+  PROFILE_NAME: YOUHAN ONE App Store
+
 jobs:
   testflight:
-    name: Signed export and TestFlight upload
+    name: Signed archive and TestFlight upload
     if: github.ref == 'refs/heads/dev/mobile-app'
     runs-on: macos-26
     timeout-minutes: 60
@@ -61,13 +56,17 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           IOS_STAGING_URL: ${{ vars.IOS_STAGING_URL }}
+          IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
         run: |
           set -euo pipefail
           missing=()
-          for name in APPLE_TEAM_ID IOS_STAGING_URL ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
+          for name in APPLE_TEAM_ID IOS_STAGING_URL IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD \
+                      IOS_APPSTORE_PROFILE_BASE64 ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
             [ -n "${!name:-}" ] || missing+=("$name")
           done
           if [ ${#missing[@]} -gt 0 ]; then
@@ -79,8 +78,10 @@ jobs:
             https://*) ;;
             *) echo "::error::IOS_STAGING_URL must be https"; exit 1;;
           esac
-          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.youhan.one;' ios/App/App.xcodeproj/project.pbxproj \
-            || { echo "::error::The Xcode project bundle id is not com.youhan.one"; exit 1; }
+          pbx=ios/App/App.xcodeproj/project.pbxproj
+          grep -q "PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;" "$pbx" || { echo "::error::Project bundle id is not $BUNDLE_ID"; exit 1; }
+          grep -q "DEVELOPMENT_TEAM = $APPLE_TEAM_ID;" "$pbx" || { echo "::error::Project team does not match APPLE_TEAM_ID"; exit 1; }
+          grep -q "PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_NAME\";" "$pbx" || { echo "::error::Project does not name the $PROFILE_NAME profile"; exit 1; }
 
       - name: Select Xcode 26 or newer
         run: |
@@ -89,8 +90,6 @@ jobs:
           [ -n "$xcode" ] || { echo "::error::No Xcode 26+ on this runner image"; ls /Applications | grep -i xcode || true; exit 1; }
           sudo xcode-select -s "$xcode"
           xcodebuild -version
-          xcodebuild -help 2>&1 | grep -q -- '-authenticationKeyIssuerID' \
-            || { echo "::error::This xcodebuild does not accept App Store Connect API key authentication"; exit 1; }
 
       - uses: actions/setup-node@v4
         with:
@@ -105,7 +104,48 @@ jobs:
           npx cap sync ios
           node scripts/fix-ios-spm-paths.mjs
 
-      - name: Archive (unsigned)
+      - name: Install the distribution certificate and App Store profile (temporary keychain)
+        env:
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          printf '%s' "$IOS_DIST_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
+          printf '%s' "$IOS_APPSTORE_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$keychain" -P "$IOS_DIST_CERT_PASSWORD" -f pkcs12 \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          echo "KEYCHAIN_PATH=$keychain" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$keychain" | grep -q "Apple Distribution: .*($APPLE_TEAM_ID)" \
+            || { echo "::error::The certificate is not an Apple Distribution identity for team APPLE_TEAM_ID"; exit 1; }
+
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          pb() { /usr/libexec/PlistBuddy -c "Print :$1" "$RUNNER_TEMP/profile.plist" 2>/dev/null || true; }
+          [ "$(pb Name)" = "$PROFILE_NAME" ] || { echo "::error::Profile name is not '$PROFILE_NAME'"; exit 1; }
+          [ "$(pb TeamIdentifier:0)" = "$APPLE_TEAM_ID" ] || { echo "::error::Profile team does not match APPLE_TEAM_ID"; exit 1; }
+          [ "$(pb Entitlements:application-identifier)" = "$APPLE_TEAM_ID.$BUNDLE_ID" ] || { echo "::error::Profile is not for $BUNDLE_ID"; exit 1; }
+          [ -z "$(pb ProvisionedDevices)" ] || { echo "::error::Profile lists devices; an App Store profile is required"; exit 1; }
+          [ "$(pb Entitlements:get-task-allow)" != "true" ] || { echo "::error::Profile is a development profile"; exit 1; }
+          expires=$(pb ExpirationDate)
+          echo "Profile OK: $PROFILE_NAME, team $APPLE_TEAM_ID, $BUNDLE_ID, expires $expires"
+          uuid=$(pb UUID)
+          for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            cp "$RUNNER_TEMP/profile.mobileprovision" "$dir/$uuid.mobileprovision"
+          done
+          rm -f "$RUNNER_TEMP/distribution.p12"
+
+      - name: Archive (manual signing from the project's Release configuration)
         run: |
           set -uo pipefail
           xcodebuild archive \
@@ -114,15 +154,18 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/YouhanOne.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
             > "$RUNNER_TEMP/archive.log" 2>&1
           status=$?
-          grep -E '^(\*\*|error:)' "$RUNNER_TEMP/archive.log" | tail -40 || true
+          grep -E '^(\*\*|error:)|[Ss]igning|[Pp]rovisioning' "$RUNNER_TEMP/archive.log" | tail -40 || true
           if [ "$status" -ne 0 ] || [ ! -d "$RUNNER_TEMP/YouhanOne.xcarchive" ]; then
             echo "::error::Archive failed (exit $status); see the archive.log artifact."
             exit 1
           fi
+          app="$RUNNER_TEMP/YouhanOne.xcarchive/Products/Applications/App.app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|Authority|TeamIdentifier)=' || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' -c 'Print :CFBundleVersion' "$app/Info.plist"
 
       - name: App Store Connect API key (temporary file)
         env:
@@ -134,7 +177,7 @@ jobs:
           grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey.p8" \
             || { echo "::error::ASC_KEY_P8_BASE64 does not decode to a .p8 private key"; exit 1; }
 
-      - name: Sign for App Store Connect and upload to TestFlight
+      - name: Export for App Store Connect and upload to TestFlight
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -149,7 +192,10 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>destination</key><string>upload</string>
             <key>teamID</key><string>${APPLE_TEAM_ID}</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict><key>${BUNDLE_ID}</key><string>${PROFILE_NAME}</string></dict>
             <key>uploadSymbols</key><true/>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict>
@@ -160,19 +206,18 @@ jobs:
             -archivePath "$RUNNER_TEMP/YouhanOne.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             > "$RUNNER_TEMP/export.log" 2>&1
           status=$?
           set -e
-          grep -E '^(\*\*|error:)|[Uu]pload|[Ss]igning|[Pp]rofile|[Cc]ertificate' "$RUNNER_TEMP/export.log" | tail -40 || true
+          grep -E '^(\*\*|error:)|[Uu]pload|[Ss]igning|[Pp]rofile' "$RUNNER_TEMP/export.log" | tail -40 || true
           if [ "$status" -ne 0 ]; then
-            echo "::error::Signing/upload failed (exit $status); see the export.log artifact."
+            echo "::error::Export/upload failed (exit $status); see the export.log artifact."
             exit 1
           fi
-          echo "Uploaded build ${GITHUB_RUN_NUMBER} (com.youhan.one). App Store Connect processing follows."
+          echo "Uploaded $BUNDLE_ID build ${GITHUB_RUN_NUMBER} from ${GITHUB_SHA}. Apple processing follows."
 
       - name: Keep the build logs
         if: always()
@@ -185,6 +230,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Remove the API key
+      - name: Remove signing material
         if: always()
-        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.plist"
+          [ -n "${KEYCHAIN_PATH:-}" ] && security delete-keychain "$KEYCHAIN_PATH" || true
