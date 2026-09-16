@@ -99,7 +99,9 @@ export default async function CoachingPage({
       <form
         method="get"
         action={base}
+        className="lf-card"
         style={{
+          padding: 'var(--lf-space-4)',
           display: 'flex',
           gap: 'var(--lf-space-3)',
           flexWrap: 'wrap',

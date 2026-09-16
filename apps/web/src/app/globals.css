@@ -936,10 +936,9 @@ body {
    ──────────────────────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
   .lf-tabs {
-    /* Cancel the page gutter so the strip runs edge to edge, then restore it
-       as padding so the first and last tab still line up with the content. */
-    margin-inline: calc(-1 * var(--lf-page-gutter));
-    padding-inline: var(--lf-page-gutter);
+    /* The strip stays inside the page gutter and scrolls within itself. Bled
+       to the screen edges it overhung the panels beneath it and misaligned
+       with the work-area strip above; the trailing fade still says "more". */
     scroll-snap-type: x proximity;
     /* The fade is the affordance: content continues past the edge. */
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
@@ -957,16 +956,10 @@ body {
     gap: var(--lf-space-3);
   }
   .lf-list-header__actions {
-    /* One scrolling row instead of two or three wrapped ones. The primary
-       action is burgundy and sits last, where the thumb already is. */
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-inline: calc(-1 * var(--lf-page-gutter));
-    padding-inline: var(--lf-page-gutter);
-  }
-  .lf-list-header__actions::-webkit-scrollbar {
-    display: none;
+    /* Wraps inside the content column, starting at the title's edge. A
+       scrolling row bled to the screen edges put search and buttons out of
+       line with the content and hid actions past the right edge. */
+    flex-wrap: wrap;
   }
   .lf-list-header__actions > * {
     flex: none;
@@ -1035,6 +1028,8 @@ body {
     backdrop-filter: blur(14px);
     /* Home-indicator safe area on iOS, zero elsewhere. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* The assistant button's slot (.lf-ai-fab docks here on a phone). */
+    padding-right: 60px;
   }
   .lf-tabbar__item {
     display: grid;
@@ -1087,7 +1082,8 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font: 600 var(--lf-text-base)/1 var(--lf-font-ui);
+    /* 1.3, not 1: with overflow hidden a line-height of 1 clips descenders ("g", "y"). */
+    font: 600 var(--lf-text-base)/1.3 var(--lf-font-ui);
     color: var(--lf-ink);
   }
 
@@ -3206,12 +3202,20 @@ a:hover {
   box-shadow: var(--lf-shadow-3);
   transition: background 150ms ease;
 }
-/* Clears the bottom tab bar. Declared after the base rule rather than with the
-   other phone rules, because both are single-class selectors and the later one
-   wins — order is the whole mechanism here. */
+/* On a phone the button docks into the bottom tab bar, in a slot the bar keeps
+   free for it (see .lf-tabbar), instead of floating over the page. Floating 76px
+   up, it sat on top of whatever scrolled beneath it — View all links, date
+   fields, Remove buttons. In the bar it covers nothing: the page already ends
+   above the bar, sheets and dialogs stack above it (z-index 60+), and the
+   on-screen keyboard overlays the bar rather than the field being typed in.
+   Declared after the base rule: both are single-class selectors, so order wins. */
 @media (max-width: 760px) {
   .lf-ai-fab {
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    right: 8px;
+    bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+    width: 44px;
+    height: 44px;
+    box-shadow: none;
   }
 }
 
@@ -5689,6 +5693,16 @@ a.lf-kpi:hover {
   align-items: flex-end;
   margin-bottom: var(--lf-space-4);
 }
+@media (max-width: 760px) {
+  /* The phone header is a column (see the 760px block above); flex-end there
+     pushed a short title and its count line to the right edge. Stretch, not
+     flex-start: the actions row must stay screen-wide so it scrolls inside
+     itself instead of widening the page. */
+  .lf-list-header,
+  .lf-page-header {
+    align-items: stretch;
+  }
+}
 /* Eyebrow + breadcrumb + title was three lines saying one thing. */
 .lf-page-header .lf-eyebrow,
 .lf-list-header .lf-eyebrow {
@@ -6494,9 +6508,13 @@ a.lf-kpi:hover {
   }
 }
 
-/* Login: brand 40, form 60. */
-.lf-auth {
-  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+/* Login: brand 40, form 60 — above the phone tier only. Unconditional, this rule
+   came after the 820px phone rule and won, so a phone kept two columns: the form
+   squeezed into the left 40% and the right 60% empty. */
+@media (min-width: 821px) {
+  .lf-auth {
+    grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+  }
 }
 
 /* Fields inside a toolbar: compact on a desktop (the placeholder is the
