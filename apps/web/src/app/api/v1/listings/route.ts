@@ -14,6 +14,7 @@ import {
   RENT_FREQUENCIES,
   listingFilters,
   listingWhere,
+  maskListingOwners,
   maskOwner,
 } from '@/lib/inventory/listings';
 
@@ -44,7 +45,10 @@ export const GET = route(
       take: query.limit + 1,
     });
 
-    return toPage(rows as never, query.limit);
+    // The select now carries the owner's phone, so this list has to mask it the
+    // way the detail route does. Without this the number the screens hide would
+    // still come back to anyone who called the API directly.
+    return toPage(maskListingOwners(ctx, rows) as never, query.limit);
   },
 );
 

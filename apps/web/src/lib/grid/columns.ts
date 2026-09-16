@@ -238,6 +238,7 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'mandate', label: 'Mandate', byDefault: true, hideMobile: true },
     { key: 'areaSqft', label: 'Area', align: 'right', hideMobile: true },
     { key: 'propertyOwner', label: 'Owner', hideMobile: true },
+    { key: 'propertyOwnerPhone', label: 'Owner phone', hideMobile: true },
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
 };
