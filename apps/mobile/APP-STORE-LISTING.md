@@ -136,7 +136,65 @@ All of the following are **collected, linked to identity, App Functionality only
 **Not collected:** Health & Fitness, Browsing History, Search History, Purchases,
 Advertising Data, Other Data.
 
-### Third parties that can receive data **[corrected — absent from the first draft]**
+### Third parties that can receive data **[corrected again — the AI flows were missing]**
+
+Checked against the running production deployment, not only the source. Provider selectors
+and secret **names** were read; no secret value was read or recorded.
+
+**Google Gemini — the significant omission from both earlier drafts.** `GEMINI_API_KEY` is
+set on production and `GEMINI_MODEL=gemini-flash-latest`. Five code paths send content to
+Google, and they do not all protect it the same way:
+
+| Path | What is sent | Protection |
+|---|---|---|
+| Live call assist (`calls/[id]/live-audio`) | **Raw call audio**, up to 5 MB per chunk, `audio/webm` | **Consent-gated** — the route throws `Forbidden('Record consent before streaming call audio.')`. A text redactor cannot filter audio, so what the customer said reaches Google as spoken. |
+| Call analysis (`lib/ai/analysis.ts`) | Transcript | **Redacted** |
+| AI call audits (`lib/ai/audit.ts`) | Transcript, first 30 000 chars | **Redacted** |
+| Follow-up email drafting (`lib/ai/followUpEmail.ts`) | Transcript | **Redacted** |
+| AI assistant (`lib/ai/assistant/service.ts`) | The question, plus **tool results read from CRM data** | **No redaction** — see the note below |
+
+The redaction layer (`lib/ai/redact.ts`) is good: it strips `SECRET`, `EMAIL`, `CARD`
+(Luhn-checked, so an order reference or a price survives while a real card number does not),
+`PHONE` and `NUMBER`, replaces them with typed placeholders so the model still knows a card
+was discussed, logs only counts and never values, and is deliberately irreversible — the
+original stays in the access-controlled `Transcript` row. The prompts also tell the model not
+to follow instructions found in user-supplied text, which is a prompt-injection guard.
+
+**The assistant is the exception, and it should be a decision rather than an oversight.**
+`assistant/service.ts` imports `gemini`, `provider`, `usage` and `rbac` but not `redact`,
+and it runs `generateWithTools`, so tool results are fed back to the model. Customer names,
+emails and phone numbers can therefore reach Google through the assistant while the same
+data is redacted on every other AI path. It may well be intentional — an assistant that
+cannot see a customer's name is not much of an assistant — but the privacy policy has to
+describe it accurately either way. **OWNER** to confirm intended.
+
+The key is the workspace's own where one is connected, otherwise the deployment's, so on the
+current configuration these requests are billed to and made with the operator's key.
+
+**Email — Google.** `EMAIL_PROVIDER=smtp` with `SMTP_HOST=smtp.gmail.com`, so invitations,
+password resets and notifications leave through Gmail: recipient address and message body.
+
+**Configured but connected by nobody.** `WHATSAPP_PROVIDER=meta` is selected at deployment
+level, and Google Calendar OAuth is supported in code — but `IntegrationConnection` holds
+**0 rows** across the **1** production tenant. Neither provider is receiving anything today.
+This is the distinction between a capability and a live data flow, and the policy should not
+describe a provider as active when nothing is connected to it.
+
+### Internal services — data that stays on the host
+
+`clamav` (uploads), `face:8000` with `FACE_SERVICE_TOKEN` (biometric templates never leave
+the operator's infrastructure), `minio:9000` for documents at rest, Postgres and Redis. None
+of these is a third-party disclosure; they are the operator's own processing.
+
+### Observed versus configured
+
+One active `RecordingConsent` row exists in production, which is what permits the audio path
+— it is not evidence that audio was sent. A key being set and a consent existing establish
+capability, not use. Proving requests occurred would need provider-side logs, which have not
+been inspected.
+
+### Superseded note
+
 
 These are per-tenant integrations a customer enables; they are off unless configured. The
 privacy policy must name them, and App Privacy answers should reflect that data may be
