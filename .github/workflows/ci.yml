@@ -23,7 +23,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     # E2E below may take 25; the gates before it take ~10 and Build/Audit ~5.
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     services:
       postgres:
@@ -378,7 +378,7 @@ jobs:
         # closeout's runs timed out at 53 and 69 of 86 with nothing failing
         # (34974531433, 34977699059). A limit, not an assertion: every test
         # still has to pass.
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: npx playwright test
 
       # Not a gate — the diagnosis for the one above.
