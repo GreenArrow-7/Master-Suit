@@ -1,61 +1,233 @@
 # App Store listing — YOUHAN ONE
 
-Everything App Store Connect asks for before version 1.0 can be submitted, filled in
-where the answer is a fact about this codebase and marked **OWNER** where it is a
-business decision that must not be invented.
+Everything App Store Connect asks for before version 1.0 can be submitted. Fields that are
+a fact about this codebase are filled in and say how they were checked. Business decisions
+are marked **OWNER** and are not guessed.
 
 - **App:** YOUHAN ONE · **Bundle ID:** com.youhan.one · **Apple ID:** 6812716422
 - **Team:** 3SHW6AX727 · **Primary language:** English (U.K.) · **SKU:** YOUHAN-ONE-IOS-001
 - **Current state:** version 1.0, `PREPARE_FOR_SUBMISSION`, age rating unset, no
   screenshots, no privacy disclosures.
 
-## Blockers that stand between this listing and a submission
+This file was rewritten after review. Four claims in the first draft were wrong or
+overstated; each is corrected below and flagged **[corrected]** so the earlier version is
+not quoted by mistake.
 
-These are not metadata gaps. None of them is fixed by filling in a form.
+## 1. Guideline 4.2 — a real risk, not an automatic rejection **[corrected]**
 
-1. **The app is a WebView over a hosted site, and guideline 4.2 rejects apps that are
-   only a website.** `apps/mobile/capacitor.config.js` loads `server.url`; Capacitor's own
-   configuration reference says that setting "is not intended for use in production", and
-   `apps/mobile/README.md` lists both facts under *Before any release build*. A reviewer
-   opening this build sees the same pages Safari shows. This needs an owner decision:
-   submit and accept the rejection risk, or invest in a production-supported architecture
-   first. It is the single largest release blocker and it is an engineering decision, not
-   a listing field.
-2. **No privacy manifest.** `PrivacyInfo.xcprivacy` does not exist anywhere under
-   `apps/mobile/ios`. Apple requires one for apps that use required-reason APIs, and
-   App Store Connect rejects uploads that omit it where it is required. This has to be
-   added to the Xcode target before a submission candidate is built.
-3. **The upload API key cannot submit.** It is Developer role by deliberate design, so CI
-   can ship builds without holding submission rights. `POST /v1/appStoreVersionSubmissions`
-   returns `403 FORBIDDEN_ERROR`. Submission needs Account Holder, Admin or App Manager —
-   either a person in App Store Connect, or a new key at that role.
-4. **Uploads depend on a virus scanner.** Document and receipt attachments fail closed when
-   ClamAV is unreachable. Production must have a reachable scanner before a build pointed at
-   `one.youhan.in` is reviewed, or a reviewer testing an attachment sees an error.
+The first draft said 4.2 rejects apps that are "only a website" and treated that as
+disqualifying. That overstates it. 4.2 asks for "features, content, and UI that elevate it
+beyond a repackaged website", and 4.2.2 targets web clippings, content aggregators and link
+collections. A substantial authenticated business platform is not a web clipping, and
+WebView-based enterprise apps ship on the App Store routinely.
 
-## App Information
+What actually drives the outcome for this build:
 
-| Field | Value |
+| Raises the risk | Lowers the risk |
 |---|---|
-| Name | `YOUHAN ONE` (10 chars; limit 30) |
-| Subtitle | `Your business. Working as one.` (30 chars; limit 30) — from `PRODUCT_TAGLINE` |
-| Category, primary | **Business** |
-| Category, secondary | **Productivity** |
-| Content rights | Contains no third-party content |
-| Age rating | **4+** — see questionnaire below |
-| Privacy policy URL | **OWNER** — required; none exists in the codebase |
-| Support URL | **OWNER** — required; the only address in the repo is the placeholder `support@example.com` |
-| Marketing URL | **OWNER** — optional |
-| Copyright | **OWNER** — e.g. `2026 <registered entity name>` |
+| Every screen is the website; there is no native UI | Substantial product behind a login, not marketing content |
+| The same content is fully usable in Safari | Native document downloads into Quick Look with Share / Save to Files |
+| No offline behaviour | Camera capture and precise location wired to real workflows |
+| No push, widgets, Face ID lock or share extension | Dialler and external links handed to the system |
 
-## Version 1.0
+Honest assessment: this is a **moderate** risk, concentrated in "what does the app do that
+Safari does not". It is not decided by the fact that a WKWebView renders the UI.
 
-**Promotional text** (170 max, editable without review):
+Cheapest credible mitigations, in order of value per effort, none of which is an
+architecture rewrite:
+
+1. **Biometric app lock** (Face ID / Touch ID to reopen). Small, native, visibly
+   app-only, and a natural fit for a tool holding payroll and customer data.
+2. **Native share sheet** for a document already downloaded — the Quick Look path exists.
+3. **Offline read of the last-loaded screen**, or an honest offline screen instead of a
+   WebKit error page.
+4. **Push notifications** for follow-ups and approvals. Highest value to a reviewer, but
+   needs APNs and server work; do not attempt before the first submission.
+
+**OWNER decision:** submit as-is and accept a moderate rejection risk, or spend the effort
+on 1–3 first. Rejection under 4.2 is not fatal — Apple states the reason and a resubmission
+with added native functionality is normal.
+
+## 2. Capacitor production suitability — smallest supported change **[corrected]**
+
+The first draft said `server.url` is "not production-supported" and left it there, implying
+a rewrite. The quote is accurate — Capacitor's configuration reference describes `server.url`
+as intended for live-reload servers — but the smallest fix is far short of a rewrite.
+
+Why the obvious fix does not apply: the web app cannot be bundled into the binary. It is
+`output: 'standalone'` and renders on the server against a session and a tenant, with 95 of
+115 workspace pages reading the database directly. There is no static export to ship.
+
+Two supported shapes, both small:
+
+**Option A — keep Capacitor, stop using `server.url`.** Ship a minimal real `webDir` bundle
+so the config is ordinary, and have the existing `YouhanBridgeViewController` load the
+production URL into the same WKWebView. Session cookies, downloads and permissions behave
+exactly as today.
+*Scope:* a stub `index.html`, remove `server` from `capacitor.config.js`, one `load()` call.
+*Catch:* Capacitor's `WebViewDelegationHandler` decides navigation against
+`bridge.config.serverURL`; with that gone, in-app links would be treated as external and
+opened in Safari. The navigation delegate is already wrapped by `DownloadCoordinator`, so
+this is where the work actually lands.
+*Estimate:* half a day plus a signed build to verify.
+
+**Option B — drop Capacitor on iOS.** A plain `WKWebView` app: app delegate, one view
+controller, the `DownloadCoordinator` that already exists, and the Info.plist entries that
+already exist. Removes the unsupported config entirely and shrinks the binary.
+*Needs reimplementing, all small:* media-capture permission grant
+(`requestMediaCapturePermissionFor`), JavaScript alert/confirm/prompt handlers, and external
+URL opening — roughly 60 lines that Capacitor currently provides.
+*Estimate:* about a day including signing and a device check.
+
+**Recommendation:** Option B. It is barely larger than A, it removes the unsupported setting
+rather than working around it, and most of the native code it needs is already written. Both
+are reversible and neither touches the backend. **OWNER** to choose, or to defer both and
+submit on the current configuration — which is a supportability and 4.2 argument, not a
+functional defect.
+
+## 3. Privacy manifest — recommended, not an upload blocker **[corrected]**
+
+The first draft called a missing `PrivacyInfo.xcprivacy` a blocker that gets uploads
+rejected. Checked properly:
+
+- **Capacitor already ships manifests** at
+  `@capacitor/ios/Capacitor/Capacitor/PrivacyInfo.xcprivacy` and the CapacitorCordova
+  framework. Both declare empty `NSPrivacyAccessedAPITypes`, empty
+  `NSPrivacyCollectedDataTypes` and `NSPrivacyTracking false`.
+- **No required-reason API is used.** Searched Capacitor's iOS source and our own Swift for
+  `UserDefaults`, file creation/modification timestamps, `systemUptime` /
+  `mach_absolute_time`, free-disk-space APIs and `activeInputModes`. Zero hits in both.
+- The app target itself references no manifest (`PrivacyInfo` appears 0 times in
+  `project.pbxproj`).
+
+So an app-level manifest is **not required** by required-reason API usage, and its absence
+is not an automatic rejection. It is still worth adding a small one declaring
+`NSPrivacyTracking false` and the collected data types, so Apple's generated privacy report
+matches the App Privacy answers below. Treat it as a recommended tidy-up, not a gate.
+
+## 4. App Privacy
+
+Derived from what the code sends. **No third-party analytics, advertising or tracking SDK
+is present in the app**: the iOS dependencies are only `@capacitor/core`, `@capacitor/ios`
+and `@capacitor/android`, and the web app contains no Google Analytics, Meta pixel, Segment,
+Mixpanel, Amplitude, Sentry, Hotjar or Clarity code.
+
+**Tracking: No.** No advertising identifier, no data broker, nothing shared for cross-app
+tracking.
+
+> Note, separate from the app: the marketing site `youhan.in` loads event reporting from
+> `readdy.ai`. That is the website, not the app, so it does not change these labels — but
+> the privacy policy covering the site must disclose it.
+
+All of the following are **collected, linked to identity, App Functionality only**:
+
+| Data type | What it is here | Evidence |
+|---|---|---|
+| **Contact Info** | The user's name, email, phone; and those of leads, customers and property owners they record | CRM and identity models |
+| **Contacts** | Contact details about third parties the user enters. The device address book is never read | No contacts plugin |
+| **Precise Location** | Attendance check-in and site-visit punches send latitude, longitude, accuracy | `enableHighAccuracy: true` in check-in, site visits and face capture — so **Precise**, not Coarse |
+| **Sensitive Info** | Face check-in stores a biometric template and matches against it | `Float32Array` embedding, cosine similarity |
+| **Financial Info** | Collections, receipts, commissions, payroll, payslips | Finance modules |
+| **User Content** | Photos, uploaded documents, receipt evidence, free-text notes | Upload routes |
+| **Identifiers** | User ID and session identifier | `lf_session` cookie |
+| **Usage Data** | Audit records of what was opened and changed | Audit log |
+| **Diagnostics** | Server request and error logs keyed to a request ID | Structured logs |
+
+**Not collected:** Health & Fitness, Browsing History, Search History, Purchases,
+Advertising Data, Other Data.
+
+### Third parties that can receive data **[corrected — absent from the first draft]**
+
+These are per-tenant integrations a customer enables; they are off unless configured. The
+privacy policy must name them, and App Privacy answers should reflect that data may be
+shared when enabled:
+
+| Provider | What leaves | Configured by |
+|---|---|---|
+| SMTP relay | Invitations, resets, notifications — recipient address and message | Customer |
+| **Meta WhatsApp Business** | Message content and recipient phone number | Customer |
+| **Google Calendar** (OAuth) | Event details and attendees | Customer |
+| Telephony (caller number, country) | Numbers dialled and call metadata | Customer |
+| ClamAV | Uploaded file bytes, scanned in the operator's own infrastructure | Operator |
+| Object storage (S3/MinIO) | Uploaded documents at rest | Operator |
+| Face sidecar | Face frames and embeddings, in the operator's own infrastructure | Operator |
+
+**OWNER:** confirm which of these are live for the customers this release serves. A provider
+that is configured for nobody should not be described as active, and one that is must be in
+the policy.
+
+## 5. Rules that need a specific answer, not a blanket one **[corrected]**
+
+| Rule | Answer here | Basis |
+|---|---|---|
+| **Account deletion (5.1.1(v))** | **Does not apply** | The requirement is triggered by apps that offer account *creation*. There is no sign-up route: `(auth)` contains only accept-invite, login, forgot-password, reset-password, enroll-2fa and service-login. Accounts arrive by administrator invitation. The privacy policy must still state how a person's data is deleted and by whom. |
+| **Payments / IAP (3.1.1, 3.1.3)** | No in-app purchase | Nothing is sold inside the app. Business software sold to organisations outside the app is permitted; the subscription screen links to `mailto:` rather than taking payment. **OWNER** to confirm no in-app purchase path is planned for 1.0. |
+| **Content rights** | Contains no third-party content | The app shows only the customer's own data and YOUHAN branding. |
+| **Age rating** | **4+** | Per question, not by assumption: no violence, sexual content, profanity, horror, alcohol/drugs, gambling or contests. **Unrestricted web access: No** — the WebView loads only the app's own origin and hands external links to Safari. **User-generated content: not public** — content is visible only inside the customer's workspace. |
+| **Sign in with Apple (4.8)** | Not triggered | Applies where a third-party social login is offered. This app has none — credentials are issued by the customer's administrator. |
+| **Data deletion / retention** | **OWNER** | Retention periods for audit records, recordings and documents are an operator policy, not a code fact, and the policy cannot be written without them. |
+
+## 6. Reviewer access — without weakening anyone's security **[corrected]**
+
+The first draft said MFA "must be disabled for the reviewer account". That was wrong, and it
+would have meant changing a security control for a review.
+
+**MFA here is per-user opt-in, not organisation-enforced.** Login demands a code only when
+that user's `mfaEnabled` is set. So the correct instruction is simply: **create the reviewer
+account and do not enrol it in two-factor.** Nothing is disabled, no policy changes, and no
+other account is affected.
+
+If a workspace ever does require MFA for everyone, the fallback is the existing recovery
+codes rather than turning the control off.
+
+- **Sign-in required:** Yes
+- **Demo account:** **OWNER** — a dedicated reviewer account on a synthetic-data workspace.
+  Never a real customer workspace.
+- **Contact:** first name, surname, phone, email — **OWNER**
+
+**Notes for the reviewer** (draft):
+
+> YOUHAN ONE is a workspace application for organisations that already subscribe. Sign in
+> with the account above; it opens a demonstration workspace containing synthetic data, not
+> real customers.
+>
+> What to try: open Leads and select any record to see its activity and follow-ups; open
+> Collections to see a receipt and the second-person verification it requires; open People
+> for attendance and leave. Access is decided by the role on the account, so some areas are
+> intentionally unavailable to some users.
+>
+> The app asks for camera access only when attaching a photo to a record or using face
+> check-in, and location only when checking in for attendance or recording a site visit.
+> Both are optional and the app explains the refusal if they are declined.
+
+## 7. Listing text, counts verified mechanically **[corrected]**
+
+The first draft asserted counts by hand and got the app name wrong. These were measured:
+
+| Field | Count | Limit |
+|---|---|---|
+| Name — `YOUHAN ONE` | 10 | 30 |
+| Subtitle — `Your business. Working as one.` | 30 | 30 |
+| Keywords | 89 | 100 |
+| Promotional text | 133 | 170 |
+| Description | 1294 | 4000 |
+| What's New | 14 | 4000 |
+
+Keywords also checked: no space after a comma, no duplicate term, and no word repeated from
+the app name or category.
+
+**Keywords:**
+
+```
+CRM,sales,pipeline,leads,HR,attendance,payroll,collections,commission,property,field,team
+```
+
+**Promotional text:**
 
 > Sales, people and money in one place. Work your pipeline, log calls, check in for
 > attendance and approve collections from your phone.
 
-**Description** (4000 max):
+**Description:**
 
 > YOUHAN ONE brings sales, people, operations and finance into a single workspace, so the
 > work your team does in the field is the same work the office sees.
@@ -86,148 +258,63 @@ These are not metadata gaps. None of them is fixed by filling in a form.
 > YOUHAN ONE is a workspace for organisations that already use it. You will need an account
 > from your administrator to sign in.
 
-**Keywords** (100 chars, comma separated, no spaces after commas):
+**App Information:** primary category **Business**, secondary **Productivity**.
 
-```
-CRM,sales,pipeline,leads,HR,attendance,payroll,collections,commission,property,field,team
-```
+## 8. Support and privacy pages — neither exists yet **[new]**
 
-*(89 characters. Do not repeat words from the app name or category.)*
+`youhan.in` is a single-page site that answers **200 with the same `<title>YOUHAN</title>`
+for every path**, including one invented for the test. So `youhan.in/privacy` and
+`youhan.in/support` are soft 404s, not pages. Apple checks the privacy policy URL, and a URL
+that renders the marketing home page instead of a policy is a routine rejection.
 
-**What's New in 1.0:**
+Both pages have to be real before submission. They live on the marketing site, which is
+outside this repository — **OWNER** to say who edits it and whether `/privacy` and
+`/support` are the right paths for that platform.
 
-> First release.
+A privacy policy can be drafted from sections 4 and 5 once the **OWNER** facts in section 9
+are known. It should not be published before then: retention periods, the legal operator and
+the live provider list are factual and legal declarations, and guessing them is worse than
+having no page.
 
-## App Privacy
+## 9. What is needed from the owner
 
-Derived from what this codebase actually sends to the server. **No third-party analytics,
-advertising or tracking SDK is present** — the iOS app's only dependencies are
-`@capacitor/core`, `@capacitor/ios` and `@capacitor/android`, and the web app contains no
-Google Analytics, Meta, Segment, Mixpanel, Amplitude, Sentry, Hotjar or Clarity code.
+One compact list. Nothing here can be derived from the code.
 
-**Tracking: No.** Nothing is shared with data brokers, no advertising identifier is read,
-and no data is used to track across apps or websites owned by other companies. Answer
-"No" to every tracking question.
+1. **Rights holder** — the name to put in the copyright line and the privacy policy as the
+   operator. An individual's name is fine; a registered company is not required.
+2. **Public support email** — the repo contains only the placeholder `support@example.com`.
+3. **App Review contact** — first name, surname, phone, email.
+4. **Pricing and country availability** — free or a tier, and all countries or a named list.
+5. **Retention and deletion** — how long audit records, call recordings and uploaded
+   documents are kept, and how a person's data is deleted on request.
+6. **Live providers** — which of the section-4 integrations are actually in use for the
+   customers this release serves.
+7. **Who edits `youhan.in`**, so `/privacy` and `/support` can be published.
+8. **The 4.2 decision** (section 1) and **the Capacitor option** (section 2).
 
-Everything below is **collected, linked to the user's identity, and used for App
-Functionality only** — never for advertising, marketing, analytics for third parties, or
-personalisation beyond the product's own function.
+Submission itself needs Account Holder, Admin or App Manager. The upload key is Developer
+role by design and returns `403 FORBIDDEN_ERROR` on
+`POST /v1/appStoreVersionSubmissions`; the Account Holder submitting by hand is the right
+answer rather than broadening that key.
 
-| Data type | What it is here | Why |
-|---|---|---|
-| **Contact Info** | Name, email address, phone number — the signed-in user's, and the customers, leads and property owners they record | App Functionality |
-| **Contacts** | Customer and lead records are contact details about other people. See the note below | App Functionality |
-| **Precise Location** | Attendance check-in and site-visit punches send latitude, longitude and accuracy. `enableHighAccuracy: true`, so this is **Precise**, not Coarse | App Functionality |
-| **Sensitive Info** | Face check-in stores a biometric face template (a numeric embedding) and matches against it | App Functionality |
-| **Financial Info** | Collections, receipts, commissions, payroll and payslip records | App Functionality |
-| **User Content** | Photos taken or chosen for records, uploaded documents and receipt evidence, and free-text notes | App Functionality |
-| **Identifiers** | User ID and session identifier | App Functionality |
-| **Usage Data** | Audit records of what was opened and changed, which the product exists to keep | App Functionality |
-| **Diagnostics** | Server-side request and error logs keyed to a request ID | App Functionality |
+## 10. Screenshots
 
-**Not collected:** Health & Fitness, Browsing History, Search History, Purchases,
-Advertising Data, Other Data.
+Required for 1.0: at least one set at **6.9"** (1320 × 2868). A 6.5" set is recommended.
 
-Three judgement calls for the owner, all of which affect whether the label is accurate:
+**iPad:** the target is `TARGETED_DEVICE_FAMILY = "1,2"`, so iPad screenshots are required
+unless iPad is dropped. iPad layout has not been tested at all. Proposed scope reduction,
+stated plainly: **set the target to iPhone only for 1.0**, which removes the iPad screenshot
+requirement and the obligation to support a layout nobody has verified. iPad can be added in
+a later version once it is tested. **OWNER** to accept or reject.
 
-- **Contacts.** The app never reads the device address book. It does store contact details
-  about third parties that the user types in. Apple's "Contacts" type covers contact
-  information about other individuals, so declaring it is the conservative and, in my
-  reading, correct answer. **OWNER** to confirm.
-- **Sensitive Info / biometrics.** Face check-in is optional per workspace, but the app
-  binary supports it, so it should be declared. If face check-in will be disabled for every
-  customer at launch, say so and it can come off. **OWNER**.
-- **Data deletion.** Apple asks whether the app offers account deletion. This product's
-  accounts are created and removed by a workspace administrator, not self-service. That is
-  an acceptable answer for a business app but must be described accurately in the review
-  notes. **OWNER** to confirm the intended answer.
+Six proposed shots, all capturable from the demo workspace:
 
-## Age rating questionnaire
+1. Workspace Summary — pipeline value, open opportunities, what needs attention
+2. Leads — the list on a phone with follow-up state
+3. Lead detail — activity, notes, call and follow-up on one record
+4. Collections — a receipt and its verification state
+5. Attendance check-in — People on a phone
+6. Reports — a report rendering on a phone
 
-Every content question: **None**. Specifically —
-
-| Question | Answer |
-|---|---|
-| Cartoon or fantasy violence, realistic violence, sexual content, nudity, profanity, horror, alcohol/tobacco/drugs, simulated gambling, contests | None |
-| Unrestricted web access | **No** — the app loads only its own origin; external links open in Safari |
-| Gambling | No |
-| User-generated content shared publicly | **No** — content is visible only inside the customer's own workspace |
-| Age assurance / medical / health | No |
-
-Result: **4+**.
-
-## Screenshots
-
-Required for 1.0: at least one set at **6.9"** (1320 × 2868 or 2868 × 1320). A 6.5" set is
-recommended for older devices. iPad screenshots are only needed if the app stays
-iPad-compatible — the target is currently `TARGETED_DEVICE_FAMILY = "1,2"`, so **either
-supply iPad screenshots or drop iPad from the target before submitting.** **OWNER decision.**
-
-Proposed six, all capturable from the running app on demo data:
-
-1. **Workspace Summary** — pipeline value, open opportunities, what needs attention
-2. **Leads** — the list on a phone, with follow-up state
-3. **Lead detail** — activity, notes, call and follow-up against one record
-4. **Collections** — a receipt with its verification state
-5. **Attendance check-in** — the People area on a phone
-6. **Reports** — a report rendering on a phone
-
-**These must be captured from demo data only.** Screenshots of real customer, employee or
-financial records would publish personal data to the App Store. The `manath-homes` demo
-workspace on staging is the correct source.
-
-## Reviewer access (App Review Information)
-
-App Review cannot see anything without an account, and a reviewer who cannot sign in gets
-rejected as "unable to review".
-
-- **Sign-in required:** Yes
-- **Demo account:** **OWNER** — a dedicated reviewer account on a demo workspace containing
-  synthetic data only. Do not give App Review access to a real customer workspace.
-- **Two-factor:** MFA must be **disabled for the reviewer account**, or review will stall at
-  the code prompt. If workspace policy forces MFA, that policy has to exempt this account.
-- **Contact:** first name, surname, phone, email — **OWNER**
-
-**Notes for the reviewer** (draft):
-
-> YOUHAN ONE is a workspace application for organisations that already subscribe. Sign in
-> with the account above; it opens a demonstration workspace containing synthetic data, not
-> real customers.
->
-> What to try: open Leads and select any record to see its activity and follow-ups; open
-> Collections to see a receipt and the second-person verification it requires; open People
-> for attendance and leave. Access is decided by the role on the account, so some areas are
-> intentionally unavailable to some users.
->
-> The app requests camera access only when attaching a photo to a record or using face
-> check-in, and location only when checking in for attendance or recording a site visit.
-> Both are optional and the app explains the refusal if they are declined.
-
-## Pricing and availability — OWNER
-
-- **Price:** free, or a tier. The product is sold by subscription outside the App Store; if
-  no purchase happens inside the app, it is free with no in-app purchases.
-- **Countries:** all, or a named list. UAE-first content suggests a narrower list may be wanted.
-- **Release:** manual, or automatic on approval. Version 1.0 currently has
-  `releaseType = AFTER_APPROVAL`.
-- **Business model note.** Apple may ask how the app makes money. A B2B tool whose customers
-  pay outside the App Store is acceptable, but the answer must be stated consistently.
-
-## What is needed from the owner, in order
-
-1. **Guideline 4.2 decision** — submit the WebView build and accept the rejection risk, or
-   change the architecture first.
-2. **Privacy policy URL** and **support URL** — both mandatory, neither exists.
-3. **Reviewer demo account** on a synthetic workspace, with MFA disabled.
-4. **App Review contact** — name, phone, email.
-5. **Copyright holder** — the registered entity name.
-6. **Pricing and country availability.**
-7. **iPad** — supply iPad screenshots or drop iPad from the target.
-8. **An Account Holder, Admin or App Manager** to submit, or a key at that role.
-
-## What can be completed without the owner
-
-- `PrivacyInfo.xcprivacy` added to the Xcode target.
-- Screenshots captured from the demo workspace at 6.9" and 6.5".
-- Description, keywords, promotional text and reviewer notes entered as drafted above.
-- Age rating questionnaire answered as above.
+**Synthetic data only.** Screenshots of real customer, employee or payroll records would
+publish personal data on a public listing.
