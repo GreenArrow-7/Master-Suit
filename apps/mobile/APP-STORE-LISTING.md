@@ -37,7 +37,7 @@ These are not metadata gaps. None of them is fixed by filling in a form.
 
 | Field | Value |
 |---|---|
-| Name | `YOUHAN ONE` (11 chars; limit 30) |
+| Name | `YOUHAN ONE` (10 chars; limit 30) |
 | Subtitle | `Your business. Working as one.` (30 chars; limit 30) — from `PRODUCT_TAGLINE` |
 | Category, primary | **Business** |
 | Category, secondary | **Productivity** |
