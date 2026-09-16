@@ -24,9 +24,9 @@ WHITE = (255, 255, 255)
 NAVY  = (2, 8, 23)          # #020817, the mark's established dark backdrop in apps/web/src/app/icon.svg
 
 # App Store / app icon: 1024, brand's own 73.3% width ratio from youhan.in's apple-touch-icon
-compose(1024, 0.733, WHITE).save(os.path.join(APP, 'Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png'))
+compose(1024, 0.733, NAVY).save(os.path.join(APP, 'Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png'))
 # Launch screen: same mark, calmer 28% so it reads as a splash not an icon
-splash = compose(2732, 0.28, WHITE)
+splash = compose(2732, 0.28, NAVY)
 for n in ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']:
     splash.save(os.path.join(APP, 'Assets.xcassets/Splash.imageset/' + n))
 
