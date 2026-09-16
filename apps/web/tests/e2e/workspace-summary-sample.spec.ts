@@ -752,24 +752,36 @@ test.describe('Workspace on a phone', () => {
           const views = page.getByRole('navigation', { name: strip });
           await expect(views).toBeVisible({ timeout: 60_000 });
           await fitsScreen(page, `${width}px ${path}`);
-          const edges = await page.evaluate(() => {
-            const h1 = document.querySelector('main h1')!.getBoundingClientRect();
-            const tabs = document.querySelector('.lf-area-tabs')?.getBoundingClientRect();
+          // Every box from one layout pass. The sidebar is rendered at its full width and
+          // collapses to the icon rail once the client has measured the viewport, moving the
+          // whole content column 176px left. Reading the column edges in one round-trip and
+          // the boxes in another straddled that shift on a slow runner, so the two numbers
+          // came from two different layouts: the column at 264, the strip already at 88.
+          const measured = await page.evaluate((name) => {
+            const rect = (el: Element | null) => {
+              if (!el) return null;
+              const r = el.getBoundingClientRect();
+              return { left: r.left, right: r.right, width: r.width };
+            };
+            const h1 = rect(document.querySelector('main h1'))!;
+            const tabs = rect(document.querySelector('.lf-area-tabs'));
             return {
               left: h1.left,
-              right: tabs ? tabs.right : document.querySelector('main')!.getBoundingClientRect().right,
+              right: tabs ? tabs.right : rect(document.querySelector('main'))!.right,
+              strip: rect(document.querySelector(`nav[aria-label="${name}"]`))!,
+              actions: Array.from(document.querySelectorAll('.lf-list-header__actions > *')).map(rect),
             };
-          });
+          }, strip);
+          const edges = { left: measured.left, right: measured.right };
           // The strip scrolls inside itself; its box stays within the content column.
-          const box = (await views.boundingBox())!;
-          expect(box.x, `${width}px ${path}: view tabs left edge`).toBeGreaterThanOrEqual(edges.left - 1);
-          expect(box.x + box.width, `${width}px ${path}: view tabs right edge`).toBeLessThanOrEqual(edges.right + 1);
+          const box = measured.strip;
+          expect(box.left, `${width}px ${path}: view tabs left edge`).toBeGreaterThanOrEqual(edges.left - 1);
+          expect(box.right, `${width}px ${path}: view tabs right edge`).toBeLessThanOrEqual(edges.right + 1);
           // Header actions line up with the title and wrap inside the column.
-          for (const action of await page.locator('.lf-list-header__actions > *').all()) {
-            const a = await action.boundingBox();
+          for (const a of measured.actions) {
             if (!a || a.width === 0) continue;
-            expect(a.x, `${width}px ${path}: action left`).toBeGreaterThanOrEqual(edges.left - 1);
-            expect(a.x + a.width, `${width}px ${path}: action right`).toBeLessThanOrEqual(edges.right + 1);
+            expect(a.left, `${width}px ${path}: action left`).toBeGreaterThanOrEqual(edges.left - 1);
+            expect(a.right, `${width}px ${path}: action right`).toBeLessThanOrEqual(edges.right + 1);
           }
           // Work-area tabs and view tabs look different: a filled active tab against an underlined one.
           const [primary, secondary] = await page.evaluate(
