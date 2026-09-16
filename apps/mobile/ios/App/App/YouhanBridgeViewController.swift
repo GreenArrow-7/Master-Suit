@@ -62,6 +62,23 @@ final class DownloadCoordinator: NSObject, WKNavigationDelegate, WKDownloadDeleg
 
     // MARK: Turning attachments and undisplayable responses into downloads
 
+    /// `<a download>` — the CSV exports build a `blob:` URL. Capacitor would hand a blob URL
+    /// to `UIApplication.open` (it is not the server URL), which cannot open it, so the export
+    /// did nothing. Every other navigation is still decided by Capacitor.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        if navigationAction.shouldPerformDownload {
+            decisionHandler(.download)
+            return
+        }
+        if forwardTarget.webView?(webView, decidePolicyFor: navigationAction, decisionHandler: decisionHandler) == nil {
+            decisionHandler(.allow)
+        }
+    }
+
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
