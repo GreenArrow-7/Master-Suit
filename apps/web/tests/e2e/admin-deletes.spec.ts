@@ -115,8 +115,10 @@ test.describe('Deletes from lists and detail pages', () => {
     admin.page.once('dialog', (dialog) => void dialog.accept());
     await admin.page.getByRole('button', { name: 'Delete', exact: true }).click();
     for (const name of names) await expect(admin.page.getByText(name)).toHaveCount(0, { timeout: 30_000 });
-    const rows = await prisma.lead.findMany({ where: { tenantId, id: { in: ids } }, select: { deletedAt: true } });
-    expect(rows.every((row) => row.deletedAt !== null)).toBe(true);
+    // The client hides soft-deleted rows unless a query names deletedAt, so ask for them explicitly.
+    expect(await prisma.lead.count({ where: { tenantId, id: { in: ids }, deletedAt: { not: null } } })).toBe(
+      ids.length,
+    );
     expect((await admin.page.request.delete(`/api/v1/leads/${ids[0]}`)).status()).toBe(404);
     await admin.context.close();
   });
@@ -141,7 +143,7 @@ test.describe('Deletes from lists and detail pages', () => {
     admin.page.once('dialog', (dialog) => void dialog.accept());
     await row.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(admin.page.getByText(title)).toHaveCount(0, { timeout: 30_000 });
-    expect((await prisma.task.findFirstOrThrow({ where: { tenantId, id: taskId } })).deletedAt).not.toBeNull();
+    expect(await prisma.task.count({ where: { tenantId, id: taskId, deletedAt: { not: null } } })).toBe(1);
     expect((await admin.page.request.delete(`/api/v1/tasks/${taskId}`)).status()).toBe(404);
     await admin.context.close();
   });
@@ -167,7 +169,7 @@ test.describe('Deletes from lists and detail pages', () => {
     await admin.page.getByRole('button', { name: 'Delete', exact: true }).click();
     await admin.page.getByRole('button', { name: 'Delete call' }).click();
     await expect(admin.page).not.toHaveURL(new RegExp(callId), { timeout: 30_000 });
-    expect((await prisma.call.findFirstOrThrow({ where: { tenantId, id: callId } })).deletedAt).not.toBeNull();
+    expect(await prisma.call.count({ where: { tenantId, id: callId, deletedAt: { not: null } } })).toBe(1);
     expect((await admin.page.request.delete(`/api/v1/calls/${callId}`)).status()).toBe(404);
     // Refused at the call, not merely because no recording exists.
     const media = await admin.page.request.get(`/api/v1/calls/${callId}/recording/media`);
