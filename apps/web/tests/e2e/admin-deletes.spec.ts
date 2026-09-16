@@ -23,6 +23,16 @@ const workspace = {
 };
 const repEmail = `del-rep-${RUN_TAG}@masterapp.local`;
 const repPassword = strongPassword(`delr${RUN_TAG}`);
+
+/** A second tenant, so "another tenant's record" is a real record and not a made-up id. */
+const other = {
+  displayName: `Deletes Other ${RUN_TAG}`,
+  slug: `delo${RUN_TAG}`.toLowerCase(),
+  adminName: 'Deletes Other Admin',
+  adminEmail: `delo-admin-${RUN_TAG}@masterapp.local`,
+  adminPassword: strongPassword(`delo${RUN_TAG}`),
+  modules: ['SALES'] as 'SALES'[],
+};
 const at = (path: string) => `/${workspace.slug}${path}`;
 
 async function signedIn(browser: Browser, email: string, password: string) {
@@ -177,5 +187,72 @@ test.describe('Deletes from lists and detail pages', () => {
     expect(JSON.stringify(await media.json())).toMatch(/Call/);
     expect(JSON.stringify(await media.json())).not.toMatch(/Recording/);
     await admin.context.close();
+  });
+
+  test("another tenant's lead, task and call are a 404 and are left untouched", async ({ browser }) => {
+    // The header of this file has always claimed this and nothing asserted it.
+    // 404 rather than 403 is the expected shape: the actor genuinely holds
+    // leads:DELETE, so the permission check passes and the record is simply not
+    // in their tenant — telling them "forbidden" would confirm the id exists.
+    if (!(await prisma.tenant.findUnique({ where: { slug: other.slug } }))) {
+      const page = await browser.newPage();
+      await resetLoginThrottle();
+      await loginPlatformOwner(page);
+      await createWorkspaceViaWizard(page, other);
+      await page.close();
+    }
+    const otherTenantId = (
+      await prisma.tenant.findUniqueOrThrow({ where: { slug: other.slug }, select: { id: true } })
+    ).id;
+
+    // Records belonging to the other tenant, created by that tenant's own admin.
+    const owner = await signedIn(browser, other.adminEmail, other.adminPassword);
+    const type = await prisma.taskType.findFirstOrThrow({ where: { tenantId: otherTenantId }, select: { id: true } });
+    const made = async (path: string, data: Record<string, unknown>) => {
+      const res = await owner.page.request.post(path, { data });
+      expect(res.status(), await res.text()).toBeLessThan(300);
+      return (await res.json()).id as string;
+    };
+    const foreignLeadId = await made('/api/v1/leads', {
+      fullName: `Other Tenant Lead ${RUN_TAG}`,
+      phone: `+97152${String(Date.now()).slice(-7)}`,
+    });
+    const foreignTaskId = await made('/api/v1/tasks', {
+      typeId: type.id,
+      title: `Other tenant task ${RUN_TAG}`,
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const foreignCallId = await made('/api/v1/calls', {
+      recipientNumber: `+97153${String(Date.now()).slice(-7)}`,
+      notes: `Other tenant call ${RUN_TAG}`,
+    });
+    await owner.context.close();
+
+    // The first tenant's administrator — a real DELETE holder — aimed at them.
+    const admin = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
+    for (const [label, path] of [
+      ['lead', `/api/v1/leads/${foreignLeadId}`],
+      ['task', `/api/v1/tasks/${foreignTaskId}`],
+      ['call', `/api/v1/calls/${foreignCallId}`],
+    ] as const) {
+      const res = await admin.page.request.delete(path);
+      expect(res.status(), `${label}: ${await res.text()}`).toBe(404);
+    }
+    await admin.context.close();
+
+    // "Stays untouched" is the half that matters: a 404 returned while the row
+    // was quietly soft-deleted would satisfy a status-only check.
+    expect(
+      await prisma.lead.count({ where: { tenantId: otherTenantId, id: foreignLeadId, deletedAt: null } }),
+      'the other tenant keeps its lead',
+    ).toBe(1);
+    expect(
+      await prisma.task.count({ where: { tenantId: otherTenantId, id: foreignTaskId, deletedAt: null } }),
+      'the other tenant keeps its task',
+    ).toBe(1);
+    expect(
+      await prisma.call.count({ where: { tenantId: otherTenantId, id: foreignCallId, deletedAt: null } }),
+      'the other tenant keeps its call',
+    ).toBe(1);
   });
 });
