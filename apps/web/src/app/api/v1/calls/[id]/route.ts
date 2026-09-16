@@ -94,3 +94,25 @@ export const PATCH = route(
     return updated;
   },
 );
+
+/**
+ * Soft delete (ported from the BUG-011 fix, 74b4616).
+ *
+ * `Call.deletedAt` exists and the list page, list API, transcript, analysis and
+ * recording routes filter on it; the endpoint answered 405. The recording, its
+ * stored object, transcript, analysis, consent record and audits are left alone:
+ * recording lifetime belongs to the retention sweep, and consent and audit evidence
+ * is kept on purpose. A second delete, or another tenant's call, is a 404.
+ */
+export const DELETE = route(
+  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params }) => {
+    const call = await prisma.call.findFirst({
+      where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!call) throw NotFound('Call');
+    await prisma.call.update({ where: { id: params.id, tenantId: ctx.tenantId }, data: { deletedAt: new Date() } });
+    return { ok: true };
+  },
+);
