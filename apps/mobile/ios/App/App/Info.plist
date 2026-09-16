@@ -32,8 +32,10 @@
 	  routes the page's getUserMedia and navigator.geolocation calls through
 	  them. App Review also reads the strings, and rejects the generic ones.
 	-->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to confirm where you are when you check in for attendance or record a site visit.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Used to take photos you attach to records, such as lead documents.</string>
+	<string>Used to take photos you attach to records, such as lead documents and receipt evidence, and for face check-in.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
