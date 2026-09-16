@@ -1066,6 +1066,19 @@ body {
     gap: 4px;
     padding: 0 8px 0 52px;
   }
+  /*
+   * Below the status bar and notch. The page sets viewport-fit=cover, so in the iOS
+   * app (and an installed web app) content starts at the very top of the screen and
+   * env(safe-area-inset-top) is the status-bar height; in a phone browser it is 0 and
+   * nothing changes. The bar grows by the inset rather than losing height to it.
+   */
+  .lf-shell-topbar {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .lf-workspace-sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
   .lf-shell-actions {
     flex-wrap: nowrap;
     gap: 2px;
@@ -1094,7 +1107,7 @@ body {
   .lf-mobile-nav-button {
     width: 44px;
     height: 44px;
-    top: 8px;
+    top: calc(8px + env(safe-area-inset-top, 0px));
     left: 8px;
     border-radius: var(--lf-radius);
   }
@@ -1195,7 +1208,7 @@ body {
     position: fixed;
     z-index: 45;
     left: 8px;
-    top: 6px;
+    top: calc(6px + env(safe-area-inset-top, 0px));
     width: 44px;
     height: 44px;
     border: 1px solid var(--lf-line);
@@ -3433,6 +3446,9 @@ a:hover {
     height: auto;
     border-radius: 0;
     border: 0;
+    /* Full screen on a phone: its header clears the status bar and its composer the home indicator. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
