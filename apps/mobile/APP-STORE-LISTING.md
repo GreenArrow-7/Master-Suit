@@ -160,12 +160,63 @@ the policy.
 
 | Rule | Answer here | Basis |
 |---|---|---|
-| **Account deletion (5.1.1(v))** | **Does not apply** | The requirement is triggered by apps that offer account *creation*. There is no sign-up route: `(auth)` contains only accept-invite, login, forgot-password, reset-password, enroll-2fa and service-login. Accounts arrive by administrator invitation. The privacy policy must still state how a person's data is deleted and by whom. |
+| **Account deletion (5.1.1(v))** | **Applies — treat as an open item** | See section 5a. The earlier "does not apply" was wrong. |
 | **Payments / IAP (3.1.1, 3.1.3)** | No in-app purchase | Nothing is sold inside the app. Business software sold to organisations outside the app is permitted; the subscription screen links to `mailto:` rather than taking payment. **OWNER** to confirm no in-app purchase path is planned for 1.0. |
 | **Content rights** | Contains no third-party content | The app shows only the customer's own data and YOUHAN branding. |
 | **Age rating** | **4+** | Per question, not by assumption: no violence, sexual content, profanity, horror, alcohol/drugs, gambling or contests. **Unrestricted web access: No** — the WebView loads only the app's own origin and hands external links to Safari. **User-generated content: not public** — content is visible only inside the customer's workspace. |
 | **Sign in with Apple (4.8)** | Not triggered | Applies where a third-party social login is offered. This app has none — credentials are issued by the customer's administrator. |
 | **Data deletion / retention** | **OWNER** | Retention periods for audit records, recordings and documents are an operator policy, not a code fact, and the policy cannot be written without them. |
+
+### 5a. Account creation and deletion, rechecked **[corrected twice]**
+
+The first draft claimed 5.1.1(v) does not apply because there is no sign-up route. That
+reasoning was wrong: absence of a public sign-up form is not absence of account creation.
+Three code paths create accounts, and one of them is driven by the end user.
+
+| Path | Who performs it | What is created |
+|---|---|---|
+| `acceptInvitation(token, { password, fullName })` | **The invited person, unauthenticated, holding only a token** | `tx.platformUser.create({ passwordHash, ... })` — the credential record itself |
+| `createStaffAccount(ctx, input)` | An administrator inside the app | A staff account, rank-guarded: a role at or above the actor's own is refused |
+| `POST /api/v1/platform/workspaces` | A platform operator | A workspace and its first administrator |
+
+The middle path alone would be arguable. The first is not: a person who is not signed in
+chooses a password and ends up with a credential record. By any ordinary reading the app
+supports account creation.
+
+**Deletion exists, but only an administrator can perform it.** `deleteUser(ctx, userId,
+reason?)` soft-deletes the user, sets `status: 'DEACTIVATED'` — deliberately both, because
+the login path reads `status`, so a half-applied delete still refuses the sign-in — marks
+the workspace membership `REMOVED`, revokes every session and writes an audit record. It
+refuses to remove you, anyone at or above your rank, the workspace's primary administrator,
+and the last active administrator.
+
+**What is missing is self-service.** `profile/` contains `appearance`, `role` and
+`security`, and nothing anywhere offers "delete my account". A person who created their own
+credential by accepting an invitation cannot remove it from inside the app.
+
+So the position is: **the app supports account creation and does not let the account holder
+delete their own account.** That is the gap 5.1.1(v) is aimed at. Apple does recognise that
+accounts belonging to an organisation are managed differently, and this is a workspace
+product where the employer owns the account — but that is an argument to be made explicitly
+to App Review, not an exemption to assume. I am not going to state Apple's exception wording
+from memory as though it settles it.
+
+Two ways to close it, for **OWNER** to choose:
+
+1. **Add a deletion request affordance** — a clear item under Profile → Security explaining
+   that the account belongs to the workspace, naming the administrator who can remove it,
+   and offering a one-tap route to the support address. Small, self-contained, and removes
+   the ambiguity. Needs the public support email from section 9.
+2. **Argue the organisation-managed case in review notes** — state that accounts are
+   provisioned and removed by the customer's administrator, that the app exposes removal to
+   that administrator, and describe how an individual requests deletion. Cheaper, but it is
+   a judgement call that App Review can decline.
+
+Recommended: (1), with (2) in the review notes as well. It is a small amount of work against
+a rejection reason that is entirely avoidable.
+
+The privacy policy must in either case state how a person's data is deleted, by whom, and
+what is retained afterwards — the audit record of a removal is kept by design.
 
 ## 6. Reviewer access — without weakening anyone's security **[corrected]**
 
