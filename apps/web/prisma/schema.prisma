@@ -1220,6 +1220,11 @@ model PlatformUser {
   mfaEnabled                Boolean      @default(false)
   mfaSecret                 String?
   mfaRecoveryCodes          String[]     @default([])
+  /// The last authenticator time step this identity had accepted (RFC 6238 §5.2).
+  /// A code is accepted only by an atomic update that moves this forward, so the
+  /// same code — or an earlier one — cannot be used twice, even by two requests
+  /// racing each other. See lib/auth/totp-consume.ts.
+  mfaLastUsedStep           Int?
   failedLoginCount          Int          @default(0)
   lockedUntil               DateTime?
   lastLoginAt               DateTime?

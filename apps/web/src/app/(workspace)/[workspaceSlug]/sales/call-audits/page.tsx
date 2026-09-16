@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -10,6 +11,19 @@ export const metadata = { title: 'Call Audits' };
 
 export default async function CallAuditsPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  // Derived from what was said on each call: served to a monitoring grant only
+  // when it is marked sensitive (lib/auth/sensitive-access.ts). Customer users are
+  // unaffected — the check passes for a workspace's own people.
+  if (!(await hasSensitiveAccess(ctx))) {
+    return (
+      <div className="lf-page-stack">
+        <EmptyState
+          title="Not included in this access"
+          description="Call audit scores and findings are conversation content. Monitoring access to this workspace does not include them unless it was granted with sensitive scope."
+        />
+      </div>
+    );
+  }
 
   const scope = scopeFor(ctx, 'calls', 'VIEW');
   const callWhere: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };

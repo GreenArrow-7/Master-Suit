@@ -23,6 +23,7 @@
     "verify": "node scripts/verify.mjs",
     "check:rls": "node scripts/check-rls.mjs",
     "check:raw-sql": "node scripts/check-raw-sql-scope.mjs",
+    "check:permissions": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs scripts/check-permission-catalogue.ts",
     "check:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
     "test:e2e": "playwright test",
     "secrets": "node scripts/generate-secrets.mjs",

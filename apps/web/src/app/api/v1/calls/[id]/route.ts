@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { recordTargetProgress } from '@/services/targets/progress';
 
@@ -19,7 +20,8 @@ export const GET = route(
       },
     });
     if (!call) throw NotFound('Call');
-    return call;
+    // Free-text notes about the conversation follow the sensitive authorisation.
+    return (await hasSensitiveAccess(ctx)) ? call : { ...call, notes: null };
   },
 );
 

@@ -34,8 +34,10 @@ async function loadVisible(ctx: Ctx, id: string) {
   return session;
 }
 
-export const GET = route({ module: 'calls', productModule: 'SALES', action: 'VIEW', params }, async ({ ctx, params }) =>
-  loadVisible(ctx, params.id),
+// The whole rehearsal dialogue and its AI feedback: sensitive, as a transcript is.
+export const GET = route(
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'practice sessions and scores' },
+  async ({ ctx, params }) => loadVisible(ctx, params.id),
 );
 
 const turnBody = z.object({ text: z.string().min(1).max(2000) }).strict();
