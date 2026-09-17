@@ -82,4 +82,19 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.location.network" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!--
+      Package visibility (Android 11+). Capacitor's file chooser checks that a camera
+      app resolves ACTION_IMAGE_CAPTURE before launching it. Without this, no camera
+      app is visible to the app, so a `capture` file input ("Take photo") silently
+      fell back to the gallery picker. Verified on an API 36 emulator.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>
