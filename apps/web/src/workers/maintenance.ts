@@ -6,6 +6,7 @@ import { runReminderSweep } from '@/services/crm/reminders';
 import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
+import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -106,6 +107,19 @@ export async function handleMaintenanceJob(job: { name: string }): Promise<unkno
     logger.info(result, 'next-follow-up drift canary complete');
     return result;
   }
+  if (job.name === 'account-deletions') {
+    /**
+     * Erasure of accounts whose owner asked for it.
+     *
+     * Every fifteen minutes rather than daily: this is a person exercising a deletion
+     * right, and the timeframe the product states to them is what this interval has to
+     * honour. The executor claims each row by conditional UPDATE, so two overlapping runs
+     * process each request once between them rather than once each.
+     */
+    const result = await sweepAccountDeletions();
+    logger.info(result, 'account deletion sweep complete');
+    return result;
+  }
   logger.warn({ jobName: job.name }, 'unknown maintenance job');
 }
 
@@ -141,6 +155,11 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
   );
   // 03:20, after retention has settled: the canary reads what the night left.
   await queue.upsertJobScheduler('follow-up-drift-daily', { pattern: '20 3 * * *' }, { name: 'follow-up-drift' });
+  await queue.upsertJobScheduler(
+    'account-deletions-quarter-hourly',
+    { pattern: QUARTER_HOURLY_PATTERN },
+    { name: 'account-deletions' },
+  );
   await queue.close();
   return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely', 'follow-up-drift-daily'];
 }

@@ -11,6 +11,13 @@ import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fi
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
+ * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
+ * table for every suite running in parallel, so a sibling's request vanished mid-test and
+ * the executor reported SKIPPED against a row that had been deleted underneath it.
+ */
+const ownedPlatformUserIds = new Set<string>();
+
+/**
  * What the executor actually erases.
  *
  * The request tests prove a row was written. These prove the data is gone — which is
@@ -76,6 +83,7 @@ async function makePerson(name: string) {
   await prisma.passwordHistory.create({
     data: { platformUserId: membership.platformUserId, passwordHash: await hashPassword('old-password-1') },
   });
+  ownedPlatformUserIds.add(membership.platformUserId);
   return { user, ...membership };
 }
 
@@ -84,7 +92,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.accountDeletionRequest.deleteMany({});
+  await prisma.accountDeletionRequest.deleteMany({
+    where: { platformUserId: { in: [...ownedPlatformUserIds] } },
+  });
   await fixture.cleanup();
 });
 
@@ -255,7 +265,7 @@ describe('erasure', () => {
     await prisma.workspaceMembership.update({ where: { id: person.id }, data: { isPrimaryAdmin: true } });
 
     const result = await processAccountDeletion(request.id);
-    expect(result.status).toBe('BLOCKED');
+    expect(result.status, JSON.stringify(result)).toBe('BLOCKED');
 
     // Nothing erased: erasing them would have locked the workspace out of its own data.
     const after = await prisma.platformUser.findUniqueOrThrow({

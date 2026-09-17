@@ -44,6 +44,13 @@ export const GET = route(
   { module: 'identity_self', action: 'VIEW', selfService: true, params: paramsSchema },
   async ({ ctx, params }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
+    /**
+     * The same refusal the POST arm makes, and for the same reason. It used to sit only on
+     * POST, so an API key could not change its creator's credentials but could still read
+     * whether they had asked to be erased, why, and which other workspaces were blocking
+     * it. Reading that is not a machine's business either.
+     */
+    if (ctx.apiKeyId) throw Forbidden('This endpoint requires a signed-in session.');
     switch (params.action) {
       case 'password-status':
         return { mustChangePassword: await mustChangePassword(ctx) };

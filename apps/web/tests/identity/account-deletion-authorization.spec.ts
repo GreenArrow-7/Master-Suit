@@ -6,6 +6,13 @@ import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fi
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
+ * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
+ * table for every suite running in parallel, so a sibling's request vanished mid-test and
+ * the executor reported SKIPPED against a row that had been deleted underneath it.
+ */
+const ownedPlatformUserIds = new Set<string>();
+
+/**
  * Whose request is it.
  *
  * AccountDeletionRequest sits in GLOBAL_MODELS, which exempts it from the tenant guard
@@ -51,6 +58,7 @@ async function makeRep(tenantId: string, label: string) {
     where: { id: membership.platformUserId },
     data: { passwordHash: await hashPassword(PASSWORD) },
   });
+  ownedPlatformUserIds.add(membership.platformUserId);
   return { user, platformUserId: membership.platformUserId, ctx: ctxFor(tenantId, user.id) };
 }
 
@@ -59,7 +67,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.accountDeletionRequest.deleteMany({});
+  await prisma.accountDeletionRequest.deleteMany({
+    where: { platformUserId: { in: [...ownedPlatformUserIds] } },
+  });
   await fixture.cleanup();
 });
 

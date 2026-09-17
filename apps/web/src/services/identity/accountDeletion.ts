@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
+import { logger } from '@/lib/logger';
+import { consume, limits } from '@/lib/security/ratelimit';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
 import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
@@ -142,6 +144,10 @@ export async function myDeletionRequest(ctx: Ctx) {
  */
 export async function requestAccountDeletion(ctx: Ctx, input: { password: string; mfaCode?: string; reason?: string }) {
   const { identity, tenantId } = await identityOf(ctx);
+  // Reauthentication is a password check reachable with nothing but a live session, so it
+  // is an oracle unless it is throttled - a borrowed unlocked laptop should not get
+  // unlimited guesses. Same bucket the platform credential reauthentication uses.
+  await consume(limits.mfaConfirm(identity.id));
   if (!identity.passwordHash) throw Forbidden('This account has no password set, so it cannot be verified here.');
   if (!(await verifyPassword(identity.passwordHash, input.password))) {
     throw Forbidden('That is not your current password.');
@@ -174,7 +180,11 @@ export async function requestAccountDeletion(ctx: Ctx, input: { password: string
       event: 'RECORD_CREATED',
       objectType: 'account_deletion_request',
       recordId: request.id,
-      newValue: { status, blockers: blockers.map((b) => `${b.workspace}:${b.reason}`) },
+      // Reasons and a count, never the workspace names. The blocker list spans every
+      // workspace the person belongs to, and this row lands in one tenant's audit log, so
+      // writing slugs would tell this customer's administrator which other customers
+      // employ the same person. The full text still goes back to the person.
+      newValue: { status, blockerReasons: blockers.map((b) => b.reason), blockerCount: blockers.length },
       metadata: { action: 'account.deletion.requested' },
     });
     return { ...request, blockers };
@@ -236,6 +246,30 @@ export async function cancelAccountDeletion(ctx: Ctx) {
  * before anything slower runs, so no authenticated request can race the erasure.
  */
 
+/**
+ * The erasure's own audit record.
+ *
+ * It is the one act in this feature that cannot be reconstructed from the data afterwards,
+ * and it was the only one writing no audit row at all. PlatformAuditEvent rather than
+ * AuditLog because the erasure spans every workspace the person belonged to and therefore
+ * belongs to none of them: tenantId stays null rather than naming one. Counts only - never
+ * a workspace name, never anything the person wrote.
+ */
+async function recordErasure(platformUserId: string, requestId: string, outcome: ErasureOutcome) {
+  await prisma.platformAuditEvent
+    .create({
+      data: {
+        tenantId: null,
+        actorUserId: null,
+        event: 'ACCOUNT_ERASED',
+        objectType: 'account_deletion_request',
+        objectId: requestId,
+        metadata: { platformUserId, ...outcome } as object,
+      },
+    })
+    .catch((err) => logger.error({ err, requestId }, 'could not record the erasure audit event'));
+}
+
 /** A request left IN_PROGRESS longer than this is treated as interrupted, and resumable. */
 const STALE_AFTER_MS = 15 * 60 * 1000;
 
@@ -247,6 +281,9 @@ export interface ErasureOutcome {
   biometricConsentsDeleted: number;
   passwordHistoryDeleted: number;
   resetTokensDeleted: number;
+  authenticationFactorsDeleted: number;
+  mfaChallengesDeleted: number;
+  workspaceUsersAnonymised: number;
   apiKeysRevoked: number;
   deviceTokensDeleted: number;
   credentialsCleared: boolean;
@@ -335,6 +372,9 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     biometricConsentsDeleted: 0,
     passwordHistoryDeleted: 0,
     resetTokensDeleted: 0,
+    authenticationFactorsDeleted: 0,
+    mfaChallengesDeleted: 0,
+    workspaceUsersAnonymised: 0,
     apiKeysRevoked: 0,
     deviceTokensDeleted: 0,
     credentialsCleared: false,
@@ -367,6 +407,21 @@ export async function processAccountDeletion(requestId: string): Promise<Process
           await prisma.user.updateMany({
             where: { tenantId: membership.tenantId, id: membership.salesUserId, deletedAt: null },
             data: { deletedAt: new Date(), status: 'DEACTIVATED' },
+          })
+        ).count;
+
+        // Attribution needs a name and an id. It does not need a working email address, a
+        // mobile number or a photograph, and the CRM renders all three. Keeping the row is
+        // deliberate; keeping the contact details was not, and a status of COMPLETED while
+        // they sat there was the soft-deactivation this feature must not report as erasure.
+        outcome.workspaceUsersAnonymised += (
+          await prisma.user.updateMany({
+            where: { tenantId: membership.tenantId, id: membership.salesUserId },
+            data: {
+              email: `deleted-${membership.salesUserId}@deleted.invalid`,
+              phone: null,
+              avatarUrl: null,
+            },
           })
         ).count;
       }
@@ -424,6 +479,15 @@ export async function processAccountDeletion(requestId: string): Promise<Process
 
     // ── 4. The identity itself ──────────────────────────────────────────────
     outcome.passwordHistoryDeleted = (await prisma.passwordHistory.deleteMany({ where: { platformUserId } })).count;
+    // Clearing mfaSecret on PlatformUser is a third of the job. clearFactors in
+    // twoFactor.ts has removed all three since TOTP was added: the factor rows carry their
+    // own secret, and an unconsumed challenge is a sign-in already part-way through.
+    // Leaving the factor rows also makes the platform console report a second factor on an
+    // account that no longer exists.
+    outcome.authenticationFactorsDeleted = (
+      await prisma.authenticationFactor.deleteMany({ where: { platformUserId } })
+    ).count;
+    outcome.mfaChallengesDeleted = (await prisma.platformMfaChallenge.deleteMany({ where: { platformUserId } })).count;
 
     // email is unique and not nullable, so it becomes a tombstone rather than being
     // cleared: unique per account, obviously not a real address, and it keeps the row
@@ -474,6 +538,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       },
     });
     const sessionsLeft = await prisma.platformSession.count({ where: { platformUserId } });
+    const factorsLeft = await prisma.authenticationFactor.count({ where: { platformUserId } });
+    const challengesLeft = await prisma.platformMfaChallenge.count({ where: { platformUserId } });
     // Scoped by the tenants this account actually belonged to: the guard covers
     // HrFaceTemplate, and a verification query is not exempt from it just because it
     // only reads.
@@ -497,6 +563,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     if (after.email !== tombstone) unfinished.push('email');
     if (after.deletedAt === null) unfinished.push('deletedAt');
     if (sessionsLeft !== 0) unfinished.push(`sessions(${sessionsLeft})`);
+    if (factorsLeft !== 0) unfinished.push(`authenticationFactors(${factorsLeft})`);
+    if (challengesLeft !== 0) unfinished.push(`mfaChallenges(${challengesLeft})`);
     if (facesLeft !== 0) unfinished.push(`faceTemplates(${facesLeft})`);
 
     if (unfinished.length > 0) {
@@ -509,14 +577,59 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       where: { id: requestId },
       data: { status: 'COMPLETED', completedAt: new Date(), outcome: { ...outcome } },
     });
+    await recordErasure(platformUserId, requestId, outcome);
     return { status: 'COMPLETED', requestId, outcome };
   } catch (err) {
     // Left IN_PROGRESS deliberately. Flipping back to REQUESTED would hide that erasure
     // had already started; writing COMPLETED would claim a deletion that did not finish.
-    outcome.error = (err as Error).message;
+    // A Prisma failure message embeds the data payload it was called with, and a
+    // connection error can embed the DSN. This column is read by an operator surface and
+    // handed back to the caller, so it carries a code; the detail goes to the log, where
+    // the existing redaction applies.
+    const code = (err as { code?: string }).code ?? (err as Error).name ?? 'UNKNOWN';
+    outcome.error = `step failed: ${code}`;
+    logger.error({ err, requestId, platformUserId }, 'account deletion erasure failed');
     await prisma.accountDeletionRequest
       .update({ where: { id: requestId }, data: { outcome: { ...outcome } } })
       .catch(() => {});
     return { status: 'FAILED', requestId, outcome };
   }
+}
+
+/**
+ * The consumer the request row was always waiting for.
+ *
+ * Without this the feature is a receipt for work that never happens: a person exercises a
+ * deletion right, the row says REQUESTED, and nothing ever reads it. Driven by the existing
+ * maintenance worker rather than a new queue - the `[status, requestedAt]` index exists for
+ * exactly this query.
+ *
+ * Each request is processed independently and a failure is recorded on its own row, so one
+ * account that cannot be erased does not stop the others. BLOCKED rows are picked up too:
+ * the executor re-checks and re-blocks them, which is how a request becomes processable
+ * again once somebody transfers workspace ownership.
+ */
+export async function sweepAccountDeletions(limit = 20) {
+  const due = await prisma.accountDeletionRequest.findMany({
+    where: { status: { in: ['REQUESTED', 'BLOCKED'] } },
+    orderBy: { requestedAt: 'asc' },
+    take: limit,
+    select: { id: true },
+  });
+
+  const tally = { considered: due.length, completed: 0, blocked: 0, failed: 0, skipped: 0 };
+  for (const { id } of due) {
+    try {
+      const result = await processAccountDeletion(id);
+      if (result.status === 'COMPLETED') tally.completed += 1;
+      else if (result.status === 'BLOCKED') tally.blocked += 1;
+      else if (result.status === 'FAILED') tally.failed += 1;
+      else tally.skipped += 1;
+    } catch (err) {
+      // One unerasable account must not stop the sweep for everybody else.
+      tally.failed += 1;
+      logger.error({ err, requestId: id }, 'account deletion sweep: request threw');
+    }
+  }
+  return tally;
 }

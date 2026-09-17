@@ -13,6 +13,13 @@ import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fi
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
+ * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
+ * table for every suite running in parallel, so a sibling's request vanished mid-test and
+ * the executor reported SKIPPED against a row that had been deleted underneath it.
+ */
+const ownedPlatformUserIds = new Set<string>();
+
+/**
  * Deleting your own account, from the request end.
  *
  * The cases here are the ones where getting it wrong costs somebody else something:
@@ -45,6 +52,7 @@ async function withPassword(salesUserId: string, password = PASSWORD) {
     where: { id: membership.platformUserId },
     data: { passwordHash: await hashPassword(password) },
   });
+  ownedPlatformUserIds.add(membership.platformUserId);
   return membership.platformUserId;
 }
 
@@ -55,7 +63,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.accountDeletionRequest.deleteMany({});
+  await prisma.accountDeletionRequest.deleteMany({
+    where: { platformUserId: { in: [...ownedPlatformUserIds] } },
+  });
   await fixture.cleanup();
 });
 
@@ -120,8 +130,8 @@ describe('requesting deletion of your own account', () => {
       /already have a deletion request/i,
     );
 
-    // Two taps on a slow connection: both in flight at once, still one row. This is the
-    // partial unique index doing the work — a check-then-insert would let both through.
+    // Sequential, so this proves the refusal and its message; the concurrent case below
+    // is the one that proves the index rather than a check-then-insert.
     expect(await prisma.accountDeletionRequest.count({ where: { platformUserId } })).toBe(1);
   });
 
@@ -176,7 +186,11 @@ describe('the second factor', () => {
     // Same code again, after cancelling, must not work: consumeTotp burned the step, so a
     // code captured over someone's shoulder cannot confirm a second destructive action.
     await cancelAccountDeletion(ctx);
-    await expect(requestAccountDeletion(ctx, { password: PASSWORD, mfaCode: code })).rejects.toThrow();
+    // Specifically the replay refusal. A bare toThrow() here passed on any rejection at
+    // all, including a mistyped password, so it proved nothing about the burned step.
+    await expect(requestAccountDeletion(ctx, { password: PASSWORD, mfaCode: code })).rejects.toThrow(
+      /already been used|did not match/i,
+    );
   });
 });
 
