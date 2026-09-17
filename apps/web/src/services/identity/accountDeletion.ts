@@ -123,15 +123,12 @@ export async function myDeletionRequest(ctx: Ctx) {
   return prisma.accountDeletionRequest.findFirst({
     where: { platformUserId: identity.id, status: { in: [...OPEN] } },
     orderBy: { requestedAt: 'desc' },
-    select: {
-      id: true,
-      status: true,
-      reason: true,
-      blockedReason: true,
-      requestedAt: true,
-      startedAt: true,
-      completedAt: true,
-    },
+    // Exactly what the card renders. `reason`, `startedAt` and `completedAt` were in here
+    // and in nothing that read them: a server component serialises whatever it is handed,
+    // so the person's free-text reason was crossing to the client for no purpose. It is
+    // their own text, not a leak — but an unread field on the wire is one nobody is
+    // checking, and the prop type said it was not there.
+    select: { id: true, status: true, blockedReason: true, requestedAt: true },
   });
 }
 
@@ -198,16 +195,25 @@ export async function requestAccountDeletion(ctx: Ctx, input: { password: string
   }
 }
 
+/** What a person is told when the executor already holds their request. */
+export const ALREADY_PROCESSING = 'That request is already being processed and can no longer be cancelled.';
+
 /** Withdraws a request that has not started being processed. */
 export async function cancelAccountDeletion(ctx: Ctx) {
   const { identity } = await identityOf(ctx);
+  // Read the row whatever its status, then decide. Filtering this read to REQUESTED and
+  // BLOCKED meant a row the sweep was holding as IN_PROGRESS matched nothing, so the
+  // person was told their request did not exist — the one message that is certainly
+  // false — instead of that it had started. That window is not rare: the sweep re-claims
+  // BLOCKED rows to re-check them, so a blocked person pressing Withdraw could hit it.
   const open = await prisma.accountDeletionRequest.findFirst({
-    where: { platformUserId: identity.id, status: { in: ['REQUESTED', 'BLOCKED'] } },
-    select: { id: true },
+    where: { platformUserId: identity.id, status: { in: [...OPEN] } },
+    select: { id: true, status: true },
   });
+  if (!open) throw NotFound('Deletion request');
   // IN_PROGRESS is deliberately not cancellable: erasure has begun and a half-erased
   // account cannot be restored by flipping a status back.
-  if (!open) throw NotFound('Deletion request');
+  if (open.status === 'IN_PROGRESS') throw Conflict(ALREADY_PROCESSING);
   // Conditional on the status the read saw, because the read and the write are two
   // statements and the executor can claim the row between them. An unconditional update
   // here would write CANCELLED over IN_PROGRESS and tell somebody their erasure was
@@ -216,7 +222,7 @@ export async function cancelAccountDeletion(ctx: Ctx) {
     where: { id: open.id, status: { in: ['REQUESTED', 'BLOCKED'] } },
     data: { status: 'CANCELLED', cancelledAt: new Date() },
   });
-  if (count === 0) throw Conflict('That request is already being processed and can no longer be cancelled.');
+  if (count === 0) throw Conflict(ALREADY_PROCESSING);
   const cancelled = { id: open.id, status: 'CANCELLED' as const };
   await audit(ctx, {
     event: 'RECORD_UPDATED',
@@ -256,22 +262,150 @@ export async function cancelAccountDeletion(ctx: Ctx) {
  * a workspace name, never anything the person wrote.
  */
 async function recordErasure(platformUserId: string, requestId: string, outcome: ErasureOutcome) {
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: null,
-        actorUserId: null,
-        event: 'ACCOUNT_ERASED',
-        objectType: 'account_deletion_request',
-        objectId: requestId,
-        metadata: { platformUserId, ...outcome } as object,
-      },
-    })
-    .catch((err) => logger.error({ err, requestId }, 'could not record the erasure audit event'));
+  await prisma.platformAuditEvent.create({
+    data: {
+      tenantId: null,
+      actorUserId: null,
+      event: 'ACCOUNT_ERASED',
+      objectType: 'account_deletion_request',
+      objectId: requestId,
+      metadata: { platformUserId, ...outcome } as object,
+    },
+  });
 }
 
-/** A request left IN_PROGRESS longer than this is treated as interrupted, and resumable. */
-const STALE_AFTER_MS = 15 * 60 * 1000;
+/**
+ * A request left IN_PROGRESS longer than this is treated as interrupted, and resumable.
+ *
+ * Must comfortably exceed the sweep cadence in `workers/maintenance.ts`. At exactly the
+ * cadence (both were fifteen minutes) a run that overran its interval would have the next
+ * run reclaim the row it was still erasing, and two executors would walk the same account.
+ */
+const STALE_AFTER_MS = 45 * 60 * 1000;
+
+/**
+ * How long a BLOCKED request waits before the sweep re-checks it.
+ *
+ * Without this the sweep starves. It takes the twenty oldest open rows, and a request
+ * blocked by a sole founder who never transfers ownership keeps the oldest `requestedAt`
+ * in the table for ever — twenty of those fill every batch on every run and no newer
+ * request is ever reached. Re-checking a blocker that changes about as often as a
+ * company's ownership does not need to happen every fifteen minutes. Somebody who has
+ * just transferred ownership does not wait for it either: withdrawing and asking again
+ * creates a REQUESTED row that the next sweep picks up.
+ */
+const BLOCKED_RECHECK_MS = 6 * 60 * 60 * 1000;
+
+/** Reads that must see rows HR has already offboarded; the guard hides them otherwise. */
+const INCLUDE_DELETED: object = { __includeDeleted: true };
+
+export interface RetainedCategory {
+  category: string;
+  count: number;
+  reason: string;
+}
+
+/**
+ * What is still here after the erasure, counted from the database rather than described.
+ *
+ * A completion notice that says "your data has been deleted" while an employment record
+ * holds an IBAN, a WPS person id and a scanned passport is not a true statement, and this
+ * feature's whole premise is that only a verified erasure may be reported as one. So the
+ * executor states the remainder in the same breath as the result: category, actual count,
+ * and the reason it is still there.
+ *
+ * Nothing here is erased by this request. Which of these categories should move from
+ * retained to erased is a policy decision for the operator, and the counts are what make
+ * that decision an informed one instead of a guess.
+ */
+async function retentionManifest(
+  memberships: { id: string; tenantId: string; salesUserId: string | null }[],
+): Promise<RetainedCategory[]> {
+  let attributedNames = 0;
+  let auditEntries = 0;
+  let hrProfiles = 0;
+  let hrFinancialIdentifiers = 0;
+  let hrDocuments = 0;
+  let hrStoredFiles = 0;
+
+  for (const membership of memberships) {
+    if (membership.salesUserId) {
+      attributedNames += 1;
+      auditEntries += await prisma.auditLog.count({
+        where: { tenantId: membership.tenantId, actorUserId: membership.salesUserId },
+      });
+    }
+    // Offboarded employees included deliberately: they are the people most likely to be
+    // asking, and the guard's soft-delete filter would otherwise report zero for exactly
+    // the accounts whose HR record is most complete.
+    const profile = await prisma.employeeProfile.findFirst({
+      where: { tenantId: membership.tenantId, membershipId: membership.id },
+      select: { id: true, iban: true, bankAgentId: true, wpsPersonId: true, reraBrn: true },
+      ...INCLUDE_DELETED,
+    });
+    if (!profile) continue;
+    hrProfiles += 1;
+    if (profile.iban || profile.bankAgentId || profile.wpsPersonId || profile.reraBrn) {
+      hrFinancialIdentifiers += 1;
+    }
+    const documents = await prisma.hrEmployeeDocument.findMany({
+      where: { tenantId: membership.tenantId, employeeId: profile.id },
+      select: { storageKey: true },
+    });
+    hrDocuments += documents.length;
+    hrStoredFiles += documents.filter((d) => d.storageKey).length;
+  }
+
+  const retained: RetainedCategory[] = [];
+  if (attributedNames > 0) {
+    retained.push({
+      category: 'workspace_attribution',
+      count: attributedNames,
+      reason:
+        'Name and user id kept on the workspace record so the leads, calls, receipts and approvals this person entered stay attributable.',
+    });
+  }
+  if (auditEntries > 0) {
+    retained.push({
+      category: 'audit_trail',
+      count: auditEntries,
+      reason:
+        'Audit entries keep the acting user id, and their lifetime follows the workspace audit policy rather than this request.',
+    });
+  }
+  if (hrProfiles > 0) {
+    retained.push({
+      category: 'hr_employment_record',
+      count: hrProfiles,
+      reason:
+        'Employment record retained: payroll runs, payslips and settlement snapshots reference it. Not erased by this request.',
+    });
+  }
+  if (hrFinancialIdentifiers > 0) {
+    retained.push({
+      category: 'hr_financial_identifiers',
+      count: hrFinancialIdentifiers,
+      reason:
+        'IBAN, bank agent id, WPS person id and RERA BRN are still on the employment record. Not erased by this request.',
+    });
+  }
+  if (hrDocuments > 0) {
+    retained.push({
+      category: 'hr_identity_documents',
+      count: hrDocuments,
+      reason: `Identity and visa documents retained, ${hrStoredFiles} of them with a stored file. Not erased by this request.`,
+    });
+  }
+  // Always stated. It is never zero and it is never erasable in place, so leaving it out
+  // when nothing else remains would read as "nothing is left", which is not true.
+  retained.push({
+    category: 'backups',
+    count: 0,
+    reason:
+      'Encrypted backups still contain this account until they age out of their retention window; a backup cannot be edited selectively.',
+  });
+  return retained;
+}
 
 export interface ErasureOutcome {
   sessionsRevoked: number;
@@ -288,6 +422,8 @@ export interface ErasureOutcome {
   deviceTokensDeleted: number;
   credentialsCleared: boolean;
   identityAnonymised: boolean;
+  /** Counted, not claimed: what this erasure did not remove, and why. */
+  retained?: RetainedCategory[];
   /** Set when a step threw. The row stays IN_PROGRESS and can be run again. */
   error?: string;
 }
@@ -445,7 +581,9 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       // to that list — which silently skips anyone HR has offboarded, the very person
       // most likely to be asking for erasure. Their templates would survive, and the
       // verification below (a relation filter the guard does not touch) would then count
-      // them and fail the request for ever. One predicate, used by both.
+      // them and fail the request for ever. Step 5 counts through the same
+      // `employee: { membershipId }` predicate, so what is deleted and what is
+      // verified cannot drift apart.
       outcome.faceTemplatesDeleted += (
         await prisma.hrFaceTemplate.deleteMany({
           where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
@@ -540,16 +678,55 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     const sessionsLeft = await prisma.platformSession.count({ where: { platformUserId } });
     const factorsLeft = await prisma.authenticationFactor.count({ where: { platformUserId } });
     const challengesLeft = await prisma.platformMfaChallenge.count({ where: { platformUserId } });
-    // Scoped by the tenants this account actually belonged to: the guard covers
-    // HrFaceTemplate, and a verification query is not exempt from it just because it
-    // only reads.
+    // Scoped by the tenants this account actually belonged to: the guard covers these
+    // models, and a verification query is not exempt from it just because it only reads.
     // One pinned count per tenant. `tenantId: { in: [...] }` is not a literal, so the
     // client pins no app.tenant_id, RLS fails closed, and the count comes back 0 whatever
     // the table holds — a verification that could never fail and therefore proved nothing.
+    //
+    // Every write in steps 2 and 3 is counted here. Steps were added to this executor
+    // twice without a matching check, and an `updateMany` that quietly matched zero rows
+    // still let COMPLETED be written: the tombstoning added precisely because a COMPLETED
+    // row had kept the person's phone number was itself going unverified.
     let facesLeft = 0;
-    for (const tenantId of memberships.map((m) => m.tenantId)) {
+    let consentsLeft = 0;
+    let resetTokensLeft = 0;
+    let apiKeysLeft = 0;
+    let deviceTokensLeft = 0;
+    let contactableLeft = 0;
+    let membershipsLeft = 0;
+    for (const membership of memberships) {
       facesLeft += await prisma.hrFaceTemplate.count({
-        where: { tenantId, employee: { membership: { platformUserId } } },
+        where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
+      });
+      consentsLeft += await prisma.biometricConsent.count({
+        where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
+      });
+      resetTokensLeft += await prisma.passwordResetToken.count({
+        where: { tenantId: membership.tenantId, platformUserId },
+      });
+      membershipsLeft += await prisma.workspaceMembership.count({
+        where: { tenantId: membership.tenantId, id: membership.id, status: { not: 'REMOVED' } },
+      });
+      if (!membership.salesUserId) continue;
+      apiKeysLeft += await prisma.aPIKey.count({
+        where: { tenantId: membership.tenantId, createdById: membership.salesUserId, revokedAt: null },
+      });
+      deviceTokensLeft += await prisma.deviceToken.count({ where: { userId: membership.salesUserId } });
+      // `deletedAt: { not: null }` explicitly, because the guard injects `deletedAt: null`
+      // into a read that does not mention it — and step 2 has just soft-deleted this very
+      // row, so the default filter would match nothing and this check would be vacuous.
+      contactableLeft += await prisma.user.count({
+        where: {
+          tenantId: membership.tenantId,
+          id: membership.salesUserId,
+          deletedAt: { not: null },
+          OR: [
+            { phone: { not: null } },
+            { avatarUrl: { not: null } },
+            { email: { not: `deleted-${membership.salesUserId}@deleted.invalid` } },
+          ],
+        },
       });
     }
 
@@ -566,6 +743,12 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     if (factorsLeft !== 0) unfinished.push(`authenticationFactors(${factorsLeft})`);
     if (challengesLeft !== 0) unfinished.push(`mfaChallenges(${challengesLeft})`);
     if (facesLeft !== 0) unfinished.push(`faceTemplates(${facesLeft})`);
+    if (consentsLeft !== 0) unfinished.push(`biometricConsents(${consentsLeft})`);
+    if (resetTokensLeft !== 0) unfinished.push(`passwordResetTokens(${resetTokensLeft})`);
+    if (apiKeysLeft !== 0) unfinished.push(`activeApiKeys(${apiKeysLeft})`);
+    if (deviceTokensLeft !== 0) unfinished.push(`deviceTokens(${deviceTokensLeft})`);
+    if (contactableLeft !== 0) unfinished.push(`workspaceContactDetails(${contactableLeft})`);
+    if (membershipsLeft !== 0) unfinished.push(`activeMemberships(${membershipsLeft})`);
 
     if (unfinished.length > 0) {
       outcome.error = `verification failed: ${unfinished.join(', ')}`;
@@ -573,11 +756,21 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       return { status: 'FAILED', requestId, outcome };
     }
 
+    // Counted before COMPLETED is written, so the row that says the request was honoured
+    // carries, in the same record, the categories it did not remove.
+    outcome.retained = await retentionManifest(memberships);
+
+    // Before COMPLETED, and no longer swallowing its own failure. It used to run after,
+    // catching its error, so the one act this feature cannot reconstruct from the data
+    // could leave no record at all while the row claimed success. If it throws now, the
+    // catch below leaves the request IN_PROGRESS and the sweep runs it again; a duplicate
+    // erasure event on a retry is a far smaller problem than a missing one.
+    await recordErasure(platformUserId, requestId, outcome);
+
     await prisma.accountDeletionRequest.update({
       where: { id: requestId },
       data: { status: 'COMPLETED', completedAt: new Date(), outcome: { ...outcome } },
     });
-    await recordErasure(platformUserId, requestId, outcome);
     return { status: 'COMPLETED', requestId, outcome };
   } catch (err) {
     // Left IN_PROGRESS deliberately. Flipping back to REQUESTED would hide that erasure
@@ -605,13 +798,35 @@ export async function processAccountDeletion(requestId: string): Promise<Process
  * exactly this query.
  *
  * Each request is processed independently and a failure is recorded on its own row, so one
- * account that cannot be erased does not stop the others. BLOCKED rows are picked up too:
- * the executor re-checks and re-blocks them, which is how a request becomes processable
- * again once somebody transfers workspace ownership.
+ * account that cannot be erased does not stop the others.
+ *
+ * The three arms below are the queue, and they have to match what `claim` accepts —
+ * they did not, and the mismatch was the worst defect this feature has had. A failed
+ * erasure leaves the row IN_PROGRESS on purpose, because by then the account has already
+ * been deactivated and its sessions killed; if nothing ever selects IN_PROGRESS then that
+ * account is half-erased, cannot be finished, cannot be withdrawn, and cannot be asked
+ * for again because the partial unique index counts the row as open. The executor's
+ * retry logic existed and was unreachable outside its own tests.
+ *
+ * `platformUserIds` narrows the sweep to named accounts. Tests need it: the suites run in
+ * parallel against one database, and an unscoped sweep erases a sibling suite's fixtures
+ * mid-assertion.
  */
-export async function sweepAccountDeletions(limit = 20) {
+export async function sweepAccountDeletions(limit = 20, platformUserIds?: string[]) {
+  const now = Date.now();
   const due = await prisma.accountDeletionRequest.findMany({
-    where: { status: { in: ['REQUESTED', 'BLOCKED'] } },
+    where: {
+      ...(platformUserIds ? { platformUserId: { in: platformUserIds } } : {}),
+      OR: [
+        { status: 'REQUESTED' },
+        // Re-checked on a cooldown rather than every tick, so a permanently blocked
+        // request cannot hold a batch slot for ever and starve everyone behind it.
+        { status: 'BLOCKED', updatedAt: { lt: new Date(now - BLOCKED_RECHECK_MS) } },
+        // Interrupted or failed. Resumed, because the alternative is an account left
+        // half-erased with nobody coming back for it.
+        { status: 'IN_PROGRESS', startedAt: { lt: new Date(now - STALE_AFTER_MS) } },
+      ],
+    },
     orderBy: { requestedAt: 'asc' },
     take: limit,
     select: { id: true },

@@ -22,6 +22,18 @@ import type { Ctx } from '@/lib/security/rbac';
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
 const ownedPlatformUserIds = new Set<string>();
+
+/**
+ * Only this file's accounts.
+ *
+ * An unscoped sweep erases every open request in the database, and vitest runs these
+ * files in parallel against one schema — so this suite was completing the authorization
+ * suite's fixtures while that suite was asserting they were still REQUESTED. Scoped
+ * teardown fixed the cleanup; this is the read the sweep itself performs mid-test.
+ */
+function mine() {
+  return [...ownedPlatformUserIds];
+}
 let seq = 0;
 
 function ctxFor(tenantId: string, userId: string): Ctx {
@@ -80,7 +92,7 @@ describe('the sweep that drives the executor', () => {
     const person = await makePerson('Swept Away');
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
 
-    const tally = await sweepAccountDeletions();
+    const tally = await sweepAccountDeletions(20, mine());
     expect(tally.completed).toBeGreaterThanOrEqual(1);
 
     const row = await prisma.accountDeletionRequest.findUniqueOrThrow({
@@ -101,7 +113,10 @@ describe('the sweep that drives the executor', () => {
     // The job name the scheduler registers. A handler that silently does not recognise it
     // would log "unknown maintenance job" and return undefined, which is the failure this
     // asserts against.
-    const result = (await handleMaintenanceJob({ name: 'account-deletions' })) as {
+    const result = (await handleMaintenanceJob({
+      name: 'account-deletions',
+      data: { platformUserIds: mine() },
+    })) as {
       considered: number;
       completed: number;
     };
@@ -128,7 +143,7 @@ describe('the sweep that drives the executor', () => {
     // Becomes the workspace's named owner after asking, so the executor must re-block it.
     await prisma.workspaceMembership.update({ where: { id: blocked.id }, data: { isPrimaryAdmin: true } });
 
-    const tally = await sweepAccountDeletions();
+    const tally = await sweepAccountDeletions(20, mine());
     expect(tally.blocked).toBeGreaterThanOrEqual(1);
     expect(tally.completed).toBeGreaterThanOrEqual(1);
 
@@ -147,7 +162,7 @@ describe('the sweep that drives the executor', () => {
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
     await prisma.workspaceMembership.update({ where: { id: person.id }, data: { isPrimaryAdmin: true } });
 
-    await sweepAccountDeletions();
+    await sweepAccountDeletions(20, mine());
     expect(
       (
         await prisma.accountDeletionRequest.findUniqueOrThrow({
@@ -161,7 +176,14 @@ describe('the sweep that drives the executor', () => {
     // request, because the partial index still counted the blocked row as open.
     await prisma.workspaceMembership.update({ where: { id: person.id }, data: { isPrimaryAdmin: false } });
 
-    await sweepAccountDeletions();
+    // A blocked row is re-examined on a cooldown rather than every quarter hour, so the
+    // next sweep is not the next tick. Backdating updatedAt is this test standing in for
+    // those hours; the impatient path — withdraw and ask again — is a REQUESTED row and
+    // needs no wait at all.
+    const longAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await prisma.$executeRaw`UPDATE "AccountDeletionRequest" SET "updatedAt" = ${longAgo} WHERE "id" = ${request.id}`;
+
+    await sweepAccountDeletions(20, mine());
     expect(
       (
         await prisma.accountDeletionRequest.findUniqueOrThrow({

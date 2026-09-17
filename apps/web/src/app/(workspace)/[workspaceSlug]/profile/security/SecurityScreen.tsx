@@ -151,7 +151,15 @@ export default function SecurityScreen({
       if (mfaEnabled) body.mfaCode = delCode;
       if (delReason.trim()) body.reason = delReason.trim();
       const created = await call(selfBase, 'account-deletion-request', body);
-      setRequest(created);
+      // Only the declared fields. The response also carries `blockers`, which names the
+      // internal id of every workspace this person belongs to; it is their own data, but
+      // there is no reason to park it in client state for a card that never reads it.
+      setRequest({
+        id: created.id,
+        status: created.status,
+        blockedReason: created.blockedReason ?? null,
+        requestedAt: created.requestedAt,
+      });
       setDelPassword('');
       setDelCode('');
       setDelConfirm('');
@@ -375,10 +383,18 @@ export default function SecurityScreen({
 
         {request ? (
           <>
+            {/*
+              Three states, because there are three. This branched on BLOCKED versus
+              everything-else, so a request the worker had already started read as
+              "waiting to be processed" and offered a Withdraw button the server always
+              refuses — telling somebody their erasure had not begun when it had.
+            */}
             <p className="lf-security__copy">
               {request.status === 'BLOCKED'
                 ? 'Your request is recorded but cannot go ahead yet.'
-                : 'Your request is recorded and is waiting to be processed.'}
+                : request.status === 'IN_PROGRESS'
+                  ? 'Your request is being processed now. It can no longer be withdrawn.'
+                  : 'Your request is recorded and is queued for processing.'}
             </p>
             {request.status === 'BLOCKED' && request.blockedReason && (
               <p className="lf-security__note" data-bad role="status">
@@ -386,17 +402,23 @@ export default function SecurityScreen({
               </p>
             )}
             <p className="lf-security__helper">
-              Requested {new Date(request.requestedAt).toLocaleString('en-GB')}. You can withdraw it until processing
-              starts.
+              Requested {new Date(request.requestedAt).toLocaleString('en-GB')}.{' '}
+              {request.status === 'BLOCKED'
+                ? 'Once that is resolved, withdraw this request and ask again to start straight away — otherwise it is re-checked automatically every few hours. If you cannot resolve it yourself, ask your workspace administrator or your usual support contact.'
+                : request.status === 'IN_PROGRESS'
+                  ? 'Processing has started, so this can no longer be withdrawn.'
+                  : 'We aim to complete eligible requests within 24 hours. You can withdraw it until processing starts.'}
             </p>
             {delNote && (
               <p className="lf-security__note" data-bad={delNote.bad} role="status">
                 {delNote.text}
               </p>
             )}
-            <button className="lf-btn lf-btn--secondary" type="button" onClick={cancelDeletion} disabled={delBusy}>
-              {delBusy ? 'Withdrawing…' : 'Withdraw my request'}
-            </button>
+            {request.status !== 'IN_PROGRESS' && (
+              <button className="lf-btn lf-btn--secondary" type="button" onClick={cancelDeletion} disabled={delBusy}>
+                {delBusy ? 'Withdrawing…' : 'Withdraw my request'}
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -411,10 +433,25 @@ export default function SecurityScreen({
               from every workspace you belong to.
             </p>
             <p className="lf-security__helper">
-              The work you recorded — leads, calls, receipts and approvals — belongs to the workspace and stays, with
-              your name against it so the records still make sense. Your face check-in data is deleted. It usually
-              completes within a few hours, and you can withdraw the request until it starts. It cannot be undone
-              afterwards, and this does not close your organisation&rsquo;s workspace.
+              Your face check-in data is deleted, and any API keys you created are revoked — integrations still using
+              one will stop working.
+            </p>
+            {/*
+              Named, not implied. The previous version said the work stays and left the
+              reader to assume everything else goes; an employment record holding an IBAN
+              and a scanned passport is not something to discover afterwards. These are the
+              categories the executor counts and reports on the completed request.
+            */}
+            <p className="lf-security__helper">
+              Some things are kept and are not removed by this request: the work you recorded — leads, calls, receipts
+              and approvals — stays with the workspace, with your name against it so the records still make sense; the
+              audit trail keeps your name; your employment record and any identity or visa documents held by HR stay,
+              because payroll and settlement records depend on them; and encrypted backups still hold your account until
+              they age out.
+            </p>
+            <p className="lf-security__helper">
+              We aim to complete eligible requests within 24 hours, and you can withdraw yours until processing starts.
+              It cannot be undone afterwards, and this does not close your organisation&rsquo;s workspace.
             </p>
             <form onSubmit={requestDeletion} className="lf-security__form">
               <label className="lf-label" htmlFor="del-password">

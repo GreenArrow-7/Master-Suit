@@ -254,7 +254,10 @@ describe('erasure', () => {
     expect(after.deletedAt).toBeNull();
   });
 
-  it('stops and stays retryable when the person became the last administrator', async () => {
+  // Named for what it does. It sets isPrimaryAdmin, so it proves the PRIMARY_ADMIN
+  // blocker; LAST_ADMIN is a different rule with its own case in account-deletion.spec.ts,
+  // and "stays retryable" is proved by the sweep, not here.
+  it('stops when the person became the workspace owner between asking and being processed', async () => {
     const person = await makePerson('Promoted Meanwhile');
     await prisma.platformUser.update({ where: { id: person.platformUserId }, data: { mfaEnabled: false } });
     const ctx = ctxFor(fixture.a.tenantId, person.user.id);
