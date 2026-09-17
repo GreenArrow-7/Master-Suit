@@ -24,7 +24,7 @@ export const legalFacts = {
 } as const;
 
 export function missingLegalFacts(): string[] {
-  return Object.entries(legalFacts)
+  return Object.entries(legalFacts as Record<string, string>)
     .filter(([, value]) => value === OWNER_TODO)
     .map(([key]) => key);
 }
