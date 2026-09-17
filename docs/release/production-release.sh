@@ -105,8 +105,10 @@ const { Client } = require("pg");
 }
 
 phase_backup() {
-  "$WEB/scripts/backup.sh" "$BACKUPS"
-  "$WEB/scripts/backup-status.sh" "$BACKUPS"
+  # backup.sh resolves ../.env.production and the compose files relative to apps/web/infra;
+  # run from anywhere else and it looks for /<parent>/.env.production and stops.
+  ( cd "$INFRA" && ../scripts/backup.sh "$BACKUPS" )
+  ( cd "$INFRA" && ../scripts/backup-status.sh "$BACKUPS" )
   local latest stamp; latest=$(readlink -f "$BACKUPS/latest")
   stamp=$(sed -n 's/^taken_at=//p' "$latest/manifest.txt")
   [ -n "$stamp" ] || die "manifest has no taken_at"
