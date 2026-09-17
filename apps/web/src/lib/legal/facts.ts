@@ -17,7 +17,7 @@ export const legalFacts = {
   supportEmail: 'youhan3023@gmail.com', // F7
   supportHours: 'by email; monitored until 21:00 Gulf Standard Time (UTC+4)', // owner 17/09: days/start not specified
   hostingProvider: 'Hetzner Online GmbH, Helsinki, Finland (EU)', // F7: hosting provider and region
-  backupRetentionDays: OWNER_TODO, // F5: confirmed from backup-status.sh by root
+  backupRetentionDays: '30', // verified 17/09 from /etc/master-suite/backup.env (BACKUP_RETENTION_DAYS=30, keep-min 3)
   deletionTargetHours: '24', // approved: operational target for eligible, unblocked requests
   geminiEnabledAtLaunch: 'none', // F6: "none" or the enabled providers
   lastUpdated: '17 September 2026', // the date the owner approves the text
