@@ -4,8 +4,10 @@ import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import {
   ALREADY_PROCESSING,
+  MAX_ATTEMPTS,
   cancelAccountDeletion,
   requestAccountDeletion,
+  stuckAccountDeletions,
   sweepAccountDeletions,
   type RetainedCategory,
 } from '@/services/identity/accountDeletion';
@@ -158,6 +160,25 @@ describe('an erasure that was interrupted', () => {
     expect(
       (await prisma.platformUser.findUniqueOrThrow({ where: { id: person.platformUserId } })).passwordHash,
     ).toBeNull();
+  });
+
+  it('is not retried past the cap, and is reported instead', async () => {
+    const person = await makePerson('Fails Every Time');
+    const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
+    await prisma.accountDeletionRequest.update({
+      where: { id: request.id },
+      data: { status: 'IN_PROGRESS', startedAt: new Date(Date.now() - 60 * 60 * 1000), attempts: MAX_ATTEMPTS },
+    });
+
+    // Stale and eligible in every other respect. Without the cap this row would be
+    // re-claimed on every sweep for ever, and being oldest it would always be in the batch.
+    const tally = await sweepAccountDeletions(20, [person.platformUserId]);
+    expect(tally.considered).toBe(0);
+    expect(tally.stuck).toBeGreaterThanOrEqual(1);
+    expect((await stuckAccountDeletions()).some((r) => r.id === request.id)).toBe(true);
+    expect((await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id: request.id } })).status).toBe(
+      'IN_PROGRESS',
+    );
   });
 
   it('is left alone while it is still running', async () => {

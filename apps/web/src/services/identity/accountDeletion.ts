@@ -304,6 +304,17 @@ const STALE_AFTER_MS = 45 * 60 * 1000;
  */
 const BLOCKED_RECHECK_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * Claims after which the sweep stops retrying an IN_PROGRESS row.
+ *
+ * Resuming an interrupted erasure is right; resuming one that fails the same way every
+ * time, every 45 minutes, for the life of the deployment is not — and because the sweep
+ * is oldest-first with a batch of twenty, such rows would eventually be the whole batch.
+ * Past the cap the row stays IN_PROGRESS (never COMPLETED, never quietly CANCELLED), is
+ * reported by `stuckAccountDeletions`, and needs a person.
+ */
+export const MAX_ATTEMPTS = 5;
+
 /** Reads that must see rows HR has already offboarded; the guard hides them otherwise. */
 const INCLUDE_DELETED: object = { __includeDeleted: true };
 
@@ -428,6 +439,12 @@ export interface ErasureOutcome {
   workspaceUsersAnonymised: number;
   apiKeysRevoked: number;
   deviceTokensDeleted: number;
+  /** Platform-staff credentials and grants keyed on this identity. */
+  serviceCredentialsRevoked: number;
+  accessGrantsRevoked: number;
+  coverageGrantsRevoked: number;
+  /** Open invitations to this address in the person's own workspaces. */
+  invitationsRevoked: number;
   credentialsCleared: boolean;
   identityAnonymised: boolean;
   /** Counted, not claimed: what this erasure did not remove, and why. */
@@ -467,7 +484,7 @@ async function claim(requestId: string): Promise<'CLAIMED' | 'NOT_CLAIMABLE'> {
         { status: 'IN_PROGRESS', startedAt: { lt: stale } },
       ],
     },
-    data: { status: 'IN_PROGRESS', startedAt: new Date() },
+    data: { status: 'IN_PROGRESS', startedAt: new Date(), attempts: { increment: 1 } },
   });
   return count === 1 ? 'CLAIMED' : 'NOT_CLAIMABLE';
 }
@@ -525,11 +542,21 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     workspaceUsersAnonymised: 0,
     apiKeysRevoked: 0,
     deviceTokensDeleted: 0,
+    serviceCredentialsRevoked: 0,
+    accessGrantsRevoked: 0,
+    coverageGrantsRevoked: 0,
+    invitationsRevoked: 0,
     credentialsCleared: false,
     identityAnonymised: false,
   };
 
   try {
+    // Read before step 4 tombstones it: open invitations are keyed on this address.
+    const { normalizedEmail } = await prisma.platformUser.findUniqueOrThrow({
+      where: { id: platformUserId },
+      select: { normalizedEmail: true },
+    });
+
     // ── 1. End access before anything slower runs ───────────────────────────
     await prisma.platformUser.update({ where: { id: platformUserId }, data: { status: 'DEACTIVATED' } });
     outcome.sessionsRevoked = (await prisma.platformSession.deleteMany({ where: { platformUserId } })).count;
@@ -625,7 +652,44 @@ export async function processAccountDeletion(requestId: string): Promise<Process
           await prisma.deviceToken.deleteMany({ where: { userId: membership.salesUserId } })
         ).count;
       }
+
+      // An open invitation to this address in a workspace the person belongs to is both
+      // their personal data sitting in a pending row and, once the identity is tombstoned,
+      // a way to mint a fresh account under the same address without anyone deciding to.
+      // Revoked here, per workspace, because the table is tenant-guarded; invitations sent
+      // by other workspaces are that inviter's record and stay theirs.
+      outcome.invitationsRevoked += (
+        await prisma.workspaceInvitation.updateMany({
+          where: { tenantId: membership.tenantId, email: normalizedEmail, pendingKey: { not: null } },
+          data: { revokedAt: new Date(), revokedReason: 'account deleted', pendingKey: null },
+        })
+      ).count;
     }
+
+    // ── 3c. Platform-side credentials and grants ─────────────────────────
+    // Platform staff authenticate with a service credential and act on tenants through
+    // access and coverage grants, all keyed on the platform identity. None of them is
+    // reached by the per-workspace loop, and the PlatformUser row survives as a tombstone,
+    // so `onDelete: Cascade` never fires for them. Revoked, never deleted: the grant is the
+    // audit record of who was allowed to see what.
+    outcome.serviceCredentialsRevoked = (
+      await prisma.platformServiceCredential.updateMany({
+        where: { platformUserId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'account deleted' },
+      })
+    ).count;
+    outcome.accessGrantsRevoked = (
+      await prisma.platformAccessGrant.updateMany({
+        where: { platformUserId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+    ).count;
+    outcome.coverageGrantsRevoked = (
+      await prisma.platformCoverageGrant.updateMany({
+        where: { platformUserId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'account deleted' },
+      })
+    ).count;
 
     // ── 4. The identity itself ──────────────────────────────────────────────
     // tenantId is nullable on this table: an account that has no workspace yet still
@@ -757,6 +821,19 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     const membershipsLeft = await prisma.workspaceMembership.count({
       where: { platformUserId, status: { not: 'REMOVED' } },
     });
+    const serviceCredentialsLeft = await prisma.platformServiceCredential.count({
+      where: { platformUserId, revokedAt: null },
+    });
+    const accessGrantsLeft = await prisma.platformAccessGrant.count({ where: { platformUserId, revokedAt: null } });
+    const coverageGrantsLeft = await prisma.platformCoverageGrant.count({
+      where: { platformUserId, revokedAt: null },
+    });
+    let invitationsLeft = 0;
+    for (const membership of memberships) {
+      invitationsLeft += await prisma.workspaceInvitation.count({
+        where: { tenantId: membership.tenantId, email: normalizedEmail, pendingKey: { not: null } },
+      });
+    }
 
     const unfinished: string[] = [];
     if (after.passwordHash !== null) unfinished.push('passwordHash');
@@ -777,6 +854,10 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     if (deviceTokensLeft !== 0) unfinished.push(`deviceTokens(${deviceTokensLeft})`);
     if (contactableLeft !== 0) unfinished.push(`workspaceContactDetails(${contactableLeft})`);
     if (membershipsLeft !== 0) unfinished.push(`activeMemberships(${membershipsLeft})`);
+    if (serviceCredentialsLeft !== 0) unfinished.push(`serviceCredentials(${serviceCredentialsLeft})`);
+    if (accessGrantsLeft !== 0) unfinished.push(`accessGrants(${accessGrantsLeft})`);
+    if (coverageGrantsLeft !== 0) unfinished.push(`coverageGrants(${coverageGrantsLeft})`);
+    if (invitationsLeft !== 0) unfinished.push(`openInvitations(${invitationsLeft})`);
 
     if (unfinished.length > 0) {
       outcome.error = `verification failed: ${unfinished.join(', ')}`;
@@ -840,10 +921,19 @@ export async function processAccountDeletion(requestId: string): Promise<Process
  * parallel against one database, and an unscoped sweep erases a sibling suite's fixtures
  * mid-assertion.
  */
+/** Rows the sweep has given up on. Surfaced so "held indefinitely" is never silent. */
+export function stuckAccountDeletions() {
+  return prisma.accountDeletionRequest.findMany({
+    where: { status: 'IN_PROGRESS', attempts: { gte: MAX_ATTEMPTS } },
+    select: { id: true, platformUserId: true, attempts: true, startedAt: true, outcome: true },
+    orderBy: { requestedAt: 'asc' },
+  });
+}
+
 export async function sweepAccountDeletions(limit = 20, platformUserIds?: string[]) {
   if (!executionEnabled()) {
     logger.info('account deletion sweep: execution disabled, requests left queued');
-    return { considered: 0, completed: 0, blocked: 0, failed: 0, skipped: 0, disabled: true };
+    return { considered: 0, completed: 0, blocked: 0, failed: 0, skipped: 0, stuck: 0, disabled: true };
   }
   const now = Date.now();
   const due = await prisma.accountDeletionRequest.findMany({
@@ -855,8 +945,9 @@ export async function sweepAccountDeletions(limit = 20, platformUserIds?: string
         // request cannot hold a batch slot for ever and starve everyone behind it.
         { status: 'BLOCKED', updatedAt: { lt: new Date(now - BLOCKED_RECHECK_MS) } },
         // Interrupted or failed. Resumed, because the alternative is an account left
-        // half-erased with nobody coming back for it.
-        { status: 'IN_PROGRESS', startedAt: { lt: new Date(now - STALE_AFTER_MS) } },
+        // half-erased with nobody coming back for it — up to the cap, after which it is
+        // an operator's problem rather than a permanent occupant of the batch.
+        { status: 'IN_PROGRESS', startedAt: { lt: new Date(now - STALE_AFTER_MS) }, attempts: { lt: MAX_ATTEMPTS } },
       ],
     },
     orderBy: { requestedAt: 'asc' },
@@ -864,7 +955,9 @@ export async function sweepAccountDeletions(limit = 20, platformUserIds?: string
     select: { id: true },
   });
 
-  const tally = { considered: due.length, completed: 0, blocked: 0, failed: 0, skipped: 0, disabled: false };
+  const stuck = (await stuckAccountDeletions()).length;
+  if (stuck > 0) logger.error({ stuck }, 'account deletion sweep: requests past the retry cap need an operator');
+  const tally = { considered: due.length, completed: 0, blocked: 0, failed: 0, skipped: 0, stuck, disabled: false };
   for (const { id } of due) {
     try {
       const result = await processAccountDeletion(id);

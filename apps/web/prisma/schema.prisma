@@ -2929,28 +2929,32 @@ model PasswordHistory {
 /// is never left unable to ask; `blockedReason` names the workspaces that need an
 /// ownership transfer first.
 model AccountDeletionRequest {
-  id             String                @id @default(cuid())
-  platformUserId String
+  id                  String                @id @default(cuid())
+  platformUserId      String
   /// The workspace the person was in when they asked. Context for whoever processes it,
   /// never a limit on scope: the account spans every workspace they belong to.
   requestedInTenantId String?
-  status         AccountDeletionStatus @default(REQUESTED)
+  status              AccountDeletionStatus @default(REQUESTED)
   /// Free text from the person. Optional, never required to delete.
-  reason         String?
+  reason              String?
   /// Which workspaces block this, and why, when status is BLOCKED.
-  blockedReason  String?
+  blockedReason       String?
   /// What was actually erased or anonymised, written by the executor. The evidence that
   /// a COMPLETED row means erased rather than merely deactivated.
-  outcome        Json?
-  requestedAt    DateTime              @default(now())
+  outcome             Json?
+  requestedAt         DateTime              @default(now())
   /// Set when an operator or the job picks it up, so an interrupted run is visible.
-  startedAt      DateTime?
-  completedAt    DateTime?
-  cancelledAt    DateTime?
+  startedAt           DateTime?
+  /// Times the executor has claimed this row. Past the cap the sweep leaves it alone and
+  /// an operator has to look: retrying a persistently failing erasure every three quarters
+  /// of an hour for ever is how the oldest rows starve every newer request.
+  attempts            Int                   @default(0)
+  completedAt         DateTime?
+  cancelledAt         DateTime?
   /// The platform user who processed it, when a person did.
-  processedById  String?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  processedById       String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
