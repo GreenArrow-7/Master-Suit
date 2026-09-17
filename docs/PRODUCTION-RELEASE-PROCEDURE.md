@@ -330,7 +330,7 @@ IMAGE_SHA=<CANDIDATE_SHA> docker compose --env-file .env.ios-staging up -d web w
 Only a candidate whose previous image ran clean on its schema is **image-rollback-safe**; else
 **roll-forward only**. The account-deletion candidate adds one table, one enum, three indexes,
 one partial unique index and one integer column (`attempts`), all read by new code only —
-screen: rollback-safe; rehearsal: **not yet run** (owner's round).
+screen: rollback-safe; rehearsal: **run and passed — §9.7**.
 
 ### Quantifying what a restore would discard — audit counts are a lower bound **[C5] [C13]**
 
@@ -354,8 +354,8 @@ Staging's previous images are not production's. The rehearsal that answers "can 
 running now serve the candidate's schema?" uses `master-suite/web:c879c6c7f7e8` and
 `master-suite/worker:c879c6c7f7e8` — the exact IDs in service — against a throwaway database
 migrated to the candidate, on a throwaway network, touching neither stack. As `deploy` (docker
-group) it needs no root and reads no production secret. Its actual run is recorded in §9.7 once
-executed; until then the candidate is **not** labelled rollback-safe.
+group) it needs no root and reads no production secret. Its actual run is recorded in §9.7: **passed**, so the candidate is labelled
+**image-rollback-safe**.
 
 Outline: throwaway `postgres:16-alpine` on a throwaway network → candidate migrations applied
 from the candidate's own image → `master-suite/web:c879c6c7f7e8` and `worker:c879c6c7f7e8`
@@ -390,6 +390,8 @@ plus **read-only** SSH as `deploy` to the host — no values printed, nothing ch
 - **9.5 (host, read-only)** Containers, images and tags of both stacks; both Postgres containers' database name and applied-migration count (`youhan_ios_demo`/78, `leadflow`/65); distinct volumes; **no published Postgres port on either**; staging compose/env file names and env-var **names**; `outage-test.sh` / `upload-tests.sh` present; staging `BUILD_COMMIT=c43b06f…`.
 
 - **9.6** Staging-gate overlay (PR #62): `docker compose --profile tools config` over the full production file list plus the overlay, with a throwaway external network: `migrate` networks `default` + `staging_gate`; `staging_gate` resolves to the external network by name; no other service references it. (A first run without `--profile tools` showed nothing — profile-only services are omitted — and was corrected on the PR.)
+
+- **9.7 Rollback rehearsal, current production images on the candidate schema (§7b) — RUN, PASSED.** On the host as `deploy`, 2026-09-17 ~08:50 UTC, throwaway network `rb-rehearsal`, throwaway `postgres:16-alpine` + `redis:7-alpine`, neither stack touched. Candidate migrations from `feat/account-deletion` `a04b6007e5d4` applied with the Prisma 7 CLI: **80 migrations**, `AccountDeletionRequest.attempts` present. Then `master-suite/web:c879c6c7f7e8` (`04f21d2ffe83`) and `master-suite/worker:c879c6c7f7e8` (`36b35cad02bb`) — the images in production now — started against it **as the RLS app role `master_saas_app`** with placeholder secrets (`APP_ENV=staging`, non-mock SMTP placeholder, `TRUSTED_PROXY_CIDRS` set; the images' own startup checks enforced each of these and refused until satisfied): web `running`, `/api/health` → `200 {"status":"ok","checks":{"database":"up","redis":"up"}}`, `/login` → 200, `/api/metrics` served DB-backed gauges; worker `running`, all nine queues and schedulers armed. **Prisma/schema errors in either log: 0.** Verdict: the candidate's schema is **image-rollback-safe** for the currently deployed images. Caveat: boot + health + query paths, not the full §6b smoke (no seeded data in the throwaway DB).
 
 **Not run — and why:** §1 pull/tag/compare (needs the candidate built by `build-images.yml`);
 §2a reachability + gate (needs the root decision A/B and `.env.production`); §3 backup +
