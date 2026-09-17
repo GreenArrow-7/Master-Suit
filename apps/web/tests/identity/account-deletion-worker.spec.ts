@@ -9,7 +9,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * back and tries to sign in. It runs on its own Redis database index so it can neither
  * consume nor disturb the shared queue's scheduled jobs.
  */
-process.env.REDIS_URL = (process.env.REDIS_URL ?? 'redis://127.0.0.1:6379/0').replace(/(\/\d+)?$/, '/13');
+// Parsed, not regexed: a URL with a query string (`/0?family=4`) or a trailing slash defeated
+// the end-anchored replace and left the worker on the shared database — where its flushdb
+// would have wiped every sibling suite's keys and its Worker consumed the shared queue.
+const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379/0');
+redisUrl.pathname = '/13';
+process.env.REDIS_URL = redisUrl.toString();
 process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = 'true';
 
 const { Queue, QueueEvents } = await import('bullmq');

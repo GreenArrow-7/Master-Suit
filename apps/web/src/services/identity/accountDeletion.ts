@@ -523,7 +523,11 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     const blockedReason = describe(blockers);
     await prisma.accountDeletionRequest.update({
       where: { id: requestId },
-      data: { status: 'BLOCKED', blockedReason, startedAt: null },
+      // attempts back to zero: a blocked re-check is not an erasure attempt, and without
+      // this every six-hourly re-check burned one, so a person blocked for a day or so who
+      // then transferred ownership was claimed already at the cap and stuck on the first
+      // genuine failure.
+      data: { status: 'BLOCKED', blockedReason, startedAt: null, attempts: 0 },
     });
     return { status: 'BLOCKED', requestId, blockedReason };
   }
