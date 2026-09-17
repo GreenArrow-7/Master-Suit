@@ -3,6 +3,7 @@ import { audit } from '@/lib/security/audit';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
 import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
+import { ADMIN_ROLE_RANK, otherActiveAdmins } from './accounts';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -37,9 +38,6 @@ import type { Ctx } from '@/lib/security/rbac';
 
 /** Statuses that mean "this request is still going somewhere". */
 const OPEN = ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] as const;
-
-/** Ranks at or above this are administrators for the last-admin check. */
-const ADMIN_ROLE_RANK = 20;
 
 export interface DeletionBlocker {
   tenantId: string;
@@ -95,16 +93,14 @@ export async function deletionBlockers(platformUserId: string): Promise<Deletion
       select: { id: true, role: { select: { rank: true } } },
     });
     if (!self || self.role.rank > ADMIN_ROLE_RANK) continue;
-    const others = await prisma.user.count({
-      where: {
-        tenantId: membership.tenantId,
-        deletedAt: null,
-        status: 'ACTIVE',
-        id: { not: self.id },
-        role: { rank: { lte: ADMIN_ROLE_RANK } },
-      },
-    });
-    if (others === 0) blockers.push({ tenantId: membership.tenantId, workspace, reason: 'LAST_ADMIN' });
+    // The shared helper, not a second copy of the query. The copy that used to live here
+    // carried its own threshold of 20, which is sales_director and hr_admin — neither
+    // administers a workspace — so a workspace's only org_admin (rank 10) was not blocked
+    // as long as any director existed. Importing both the constant and the count is what
+    // stops the two definitions drifting again.
+    if ((await otherActiveAdmins(membership.tenantId, self.id)) === 0) {
+      blockers.push({ tenantId: membership.tenantId, workspace, reason: 'LAST_ADMIN' });
+    }
   }
   return blockers;
 }
@@ -202,11 +198,16 @@ export async function cancelAccountDeletion(ctx: Ctx) {
   // IN_PROGRESS is deliberately not cancellable: erasure has begun and a half-erased
   // account cannot be restored by flipping a status back.
   if (!open) throw NotFound('Deletion request');
-  const cancelled = await prisma.accountDeletionRequest.update({
-    where: { id: open.id },
+  // Conditional on the status the read saw, because the read and the write are two
+  // statements and the executor can claim the row between them. An unconditional update
+  // here would write CANCELLED over IN_PROGRESS and tell somebody their erasure was
+  // called off while it was running.
+  const { count } = await prisma.accountDeletionRequest.updateMany({
+    where: { id: open.id, status: { in: ['REQUESTED', 'BLOCKED'] } },
     data: { status: 'CANCELLED', cancelledAt: new Date() },
-    select: { id: true, status: true },
   });
+  if (count === 0) throw Conflict('That request is already being processed and can no longer be cancelled.');
+  const cancelled = { id: open.id, status: 'CANCELLED' as const };
   await audit(ctx, {
     event: 'RECORD_UPDATED',
     objectType: 'account_deletion_request',
@@ -246,6 +247,8 @@ export interface ErasureOutcome {
   biometricConsentsDeleted: number;
   passwordHistoryDeleted: number;
   resetTokensDeleted: number;
+  apiKeysRevoked: number;
+  deviceTokensDeleted: number;
   credentialsCleared: boolean;
   identityAnonymised: boolean;
   /** Set when a step threw. The row stays IN_PROGRESS and can be run again. */
@@ -274,6 +277,10 @@ async function claim(requestId: string): Promise<'CLAIMED' | 'NOT_CLAIMABLE'> {
       id: requestId,
       OR: [
         { status: 'REQUESTED' },
+        // BLOCKED is reclaimable: the blocker re-check below re-blocks it immediately if
+        // the blocker still stands, so a person who transfers ownership is not stranded
+        // with a row the partial index also stops them replacing.
+        { status: 'BLOCKED' },
         // Interrupted: started, never finished, long enough ago that whoever held it
         // is not coming back.
         { status: 'IN_PROGRESS', startedAt: { lt: stale } },
@@ -328,6 +335,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     biometricConsentsDeleted: 0,
     passwordHistoryDeleted: 0,
     resetTokensDeleted: 0,
+    apiKeysRevoked: 0,
+    deviceTokensDeleted: 0,
     credentialsCleared: false,
     identityAnonymised: false,
   };
@@ -375,20 +384,40 @@ export async function processAccountDeletion(requestId: string): Promise<Process
 
       // ── 3. Biometrics ─────────────────────────────────────────────────────
       // A face template is the person's body, not the workspace's business record.
-      const employees = await prisma.employeeProfile.findMany({
-        where: { tenantId: membership.tenantId, membershipId: membership.id },
-        select: { id: true },
-      });
-      for (const employee of employees) {
-        outcome.faceTemplatesDeleted += (
-          await prisma.hrFaceTemplate.deleteMany({
-            where: { tenantId: membership.tenantId, employeeId: employee.id },
+      //
+      // Deleted through the relation rather than by first listing employee profiles.
+      // EmployeeProfile is in SOFT_DELETE_MODELS, so the guard adds `deletedAt: null`
+      // to that list — which silently skips anyone HR has offboarded, the very person
+      // most likely to be asking for erasure. Their templates would survive, and the
+      // verification below (a relation filter the guard does not touch) would then count
+      // them and fail the request for ever. One predicate, used by both.
+      outcome.faceTemplatesDeleted += (
+        await prisma.hrFaceTemplate.deleteMany({
+          where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
+        })
+      ).count;
+      outcome.biometricConsentsDeleted += (
+        await prisma.biometricConsent.deleteMany({
+          where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
+        })
+      ).count;
+
+      // ── 3b. Credentials that outlive the session ──────────────────────────
+      // An API key authenticates as the person who created it and carries its role's
+      // permissions; nothing in the key path re-reads the creating user, so a key minted
+      // by this person keeps working after the account is gone.
+      if (membership.salesUserId) {
+        outcome.apiKeysRevoked += (
+          await prisma.aPIKey.updateMany({
+            where: { tenantId: membership.tenantId, createdById: membership.salesUserId, revokedAt: null },
+            data: { revokedAt: new Date() },
           })
         ).count;
-        outcome.biometricConsentsDeleted += (
-          await prisma.biometricConsent.deleteMany({
-            where: { tenantId: membership.tenantId, employeeId: employee.id },
-          })
+        // Push registrations are keyed on the tenant User, which is soft-deleted rather
+        // than removed, so the cascade never fires and the handset keeps receiving
+        // notification titles.
+        outcome.deviceTokensDeleted += (
+          await prisma.deviceToken.deleteMany({ where: { userId: membership.salesUserId } })
         ).count;
       }
     }
@@ -404,9 +433,11 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       where: { id: platformUserId },
       data: {
         passwordHash: null,
-        passwordVersion: 0,
+        // Forward, never back: these counters are what credential and challenge checks
+        // compare against, so resetting them to 0 would re-admit anything minted at 0.
+        passwordVersion: { increment: 1 },
         monitoringPasswordHash: null,
-        monitoringPasswordVersion: 0,
+        monitoringPasswordVersion: { increment: 1 },
         monitoringPasswordSetAt: null,
         mfaEnabled: false,
         mfaSecret: null,
@@ -434,6 +465,7 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       where: { id: platformUserId },
       select: {
         passwordHash: true,
+        monitoringPasswordHash: true,
         mfaSecret: true,
         mfaRecoveryCodes: true,
         email: true,
@@ -445,16 +477,20 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     // Scoped by the tenants this account actually belonged to: the guard covers
     // HrFaceTemplate, and a verification query is not exempt from it just because it
     // only reads.
-    const tenantIds = memberships.map((m) => m.tenantId);
-    const facesLeft =
-      tenantIds.length === 0
-        ? 0
-        : await prisma.hrFaceTemplate.count({
-            where: { tenantId: { in: tenantIds }, employee: { membership: { platformUserId } } },
-          });
+    // One pinned count per tenant. `tenantId: { in: [...] }` is not a literal, so the
+    // client pins no app.tenant_id, RLS fails closed, and the count comes back 0 whatever
+    // the table holds — a verification that could never fail and therefore proved nothing.
+    let facesLeft = 0;
+    for (const tenantId of memberships.map((m) => m.tenantId)) {
+      facesLeft += await prisma.hrFaceTemplate.count({
+        where: { tenantId, employee: { membership: { platformUserId } } },
+      });
+    }
 
     const unfinished: string[] = [];
     if (after.passwordHash !== null) unfinished.push('passwordHash');
+    // The step exists to prove the credentials are gone, so it has to check both of them.
+    if (after.monitoringPasswordHash !== null) unfinished.push('monitoringPasswordHash');
     if (after.mfaSecret !== null) unfinished.push('mfaSecret');
     if (after.mfaRecoveryCodes.length !== 0) unfinished.push('mfaRecoveryCodes');
     if (after.phone !== null) unfinished.push('phone');

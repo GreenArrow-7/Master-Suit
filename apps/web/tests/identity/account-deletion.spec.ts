@@ -203,6 +203,58 @@ describe('administrators who cannot simply leave', () => {
     await prisma.workspaceMembership.update({ where: { id: membership.id }, data: { isPrimaryAdmin: false } });
   });
 
+  it('blocks the only org_admin even when non-administrator directors remain', async () => {
+    // The case that a threshold of 20 silently let through. sales_director is rank 20 and
+    // administers nothing, so a workspace whose only rank-10 org_admin leaves is left with
+    // nobody who can administer it. The blocker must fire on the org_admin regardless of
+    // how many directors exist beside them.
+    const orgAdminRole = await prisma.role.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        key: `oa-${Date.now()}`,
+        name: 'Org Admin',
+        rank: 10,
+        defaultScope: 'ORGANIZATION',
+      },
+    });
+    const directorRole = await prisma.role.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        key: `sd-${Date.now()}`,
+        name: 'Sales Director',
+        rank: 20,
+        defaultScope: 'ORGANIZATION',
+      },
+    });
+
+    // Demote the fixture's own admin so this workspace has exactly one rank-10 account.
+    await prisma.user.update({
+      where: { tenantId: fixture.a.tenantId, id: fixture.a.userId },
+      data: { roleId: directorRole.id },
+    });
+
+    const onlyAdmin = await createWorkspaceUser({
+      tenantId: fixture.a.tenantId,
+      roleId: orgAdminRole.id,
+      email: `only-admin-${Date.now()}@example.com`,
+      fullName: 'Only Administrator',
+    });
+    await createWorkspaceUser({
+      tenantId: fixture.a.tenantId,
+      roleId: directorRole.id,
+      email: `director-${Date.now()}@example.com`,
+      fullName: 'A Director Who Cannot Administer',
+    });
+    const platformUserId = await withPassword(onlyAdmin.id);
+
+    const blockers = await deletionBlockers(platformUserId);
+    expect(blockers.map((b) => b.reason)).toContain('LAST_ADMIN');
+
+    const request = await requestAccountDeletion(ctxFor(fixture.a.tenantId, onlyAdmin.id), { password: PASSWORD });
+    expect(request.status).toBe('BLOCKED');
+    expect(request.blockedReason).toMatch(/last active administrator/i);
+  });
+
   it('looks across every workspace, not only the one being used', async () => {
     // An ordinary member of A who is also the primary administrator of B. Asking from A
     // must still find B, or erasing the credential would lock B out of its own workspace.
