@@ -72,7 +72,10 @@ const row = {
   mandateType: 'EXCLUSIVE',
   mandateExpires: new Date('2026-11-30T00:00:00Z'),
   areaSqft: 1_240,
-  propertyOwner: { id: 'c000000000000000000000006', fullName: 'Yusuf Rahman' },
+  // Carries a phone because LISTING_LIST_SELECT now does: the Owner phone cell renders
+  // a dial link from it, and a row without one falls back to the same shared dash the
+  // default arm returns, which this suite reads as an unhandled column.
+  propertyOwner: { id: 'c000000000000000000000006', fullName: 'Yusuf Rahman', phone: '+971501234567' },
   stage: { key: 'qualified', name: 'Qualified', color: '#000' },
   type: { key: 'call', name: 'Call' },
   lead: { id: 'c000000000000000000000002', fullName: 'Priya Karim' },
