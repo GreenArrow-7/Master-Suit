@@ -338,7 +338,7 @@ describe('what the completed request admits it did not remove', () => {
 
     const documents = outcome.retained.find((entry) => entry.category === 'hr_identity_documents');
     expect(documents?.count).toBe(1);
-    expect(documents?.reason).toMatch(/Not erased by this request/);
+    expect(documents?.reason).toMatch(/scheduled for purge 15 days/);
 
     // Owner retention decisions (2026-09-17): identifiers cleared and audit client details
     // cleared at completion; documents scheduled for purge, not yet gone.
