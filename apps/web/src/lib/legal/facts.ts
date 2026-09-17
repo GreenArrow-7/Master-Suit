@@ -15,7 +15,7 @@ export const legalFacts = {
   country: 'United Arab Emirates', // F7
   privacyEmail: 'youan3023@gmail.com', // F7
   supportEmail: 'youan3023@gmail.com', // F7
-  supportHours: OWNER_TODO, // F7
+  supportHours: 'Sunday to Thursday, 09:00 to 18:00 Gulf Standard Time (UTC+4); email replies within two business days', // F7
   hostingProvider: 'Hetzner Online GmbH, Helsinki, Finland (EU)', // F7: hosting provider and region
   backupRetentionDays: OWNER_TODO, // F5: confirmed from backup-status.sh by root
   deletionTargetHours: '24', // approved: operational target for eligible, unblocked requests
