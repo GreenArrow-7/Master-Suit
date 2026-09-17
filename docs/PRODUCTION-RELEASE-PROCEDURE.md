@@ -116,20 +116,29 @@ never reached.
 (fallback `DATABASE_URL`) and `PRISMA_MIGRATIONS_DIR`. For every migration in the repo not yet
 applied in production, staging's ledger must carry it finished, not rolled back, checksum-matched.
 
-**Reachability decision (root, before the release window) [C18].** Staging's Postgres has no
-published port, so the value production's `.env.production` holds for `STAGING_DATABASE_URL`
-cannot work. Two supported resolutions; pick one and record it:
+**Reachability — the private-network overlay, nothing published [C18, superseding A/B].**
+Neither option A (publishing a port) nor B (an ad-hoc `--network` flag that `release.sh`'s own
+gate run would not use) is executed. PR #62 adds `infra/docker-compose.staging-gate.yml`, which
+joins **only the one-off `migrate` container** to the staging project's network (`external`,
+named by `STAGING_NETWORK`), and `release.sh` includes it for production whenever
+`.env.production` carries `STAGING_NETWORK` — so the standalone preflight and `release.sh`'s
+internal gate use the **same** Compose configuration. Rehearsed locally with the tools profile
+active (§9.6). The self-contained root script `docs/release/production-release.sh` builds this
+file list itself and refuses to run without `STAGING_NETWORK`.
 
-- **A.** Publish staging's Postgres on loopback only — in `/home/deploy/ios-staging/docker-compose.yml`
-  add `ports: ["127.0.0.1:5433:5432"]` to `postgres` and `docker compose --env-file .env.ios-staging up -d postgres`
-  — **only after the owner's test round ends**, since it restarts staging's database. Then
-  `STAGING_DATABASE_URL=postgresql://<staging user>:<pw>@host.docker.internal:5433/youhan_ios_demo`
-  in `.env.production` (root edits the file; nothing here prints it).
-- **B.** Attach production's `migrate` one-off to staging's network for the gate run:
-  `"${DC[@]}" --profile tools run --rm --no-deps --network youhan-ios-staging_default …` with
-  `STAGING_DATABASE_URL` pointing at `postgres:5432` on that network. No change to staging.
+Root sets, in `.env.production` (never echoed):
 
-Either way, **prove it before trusting it**, by name only:
+```
+STAGING_NETWORK=youhan-ios-staging_default
+STAGING_DATABASE_URL=postgresql://<staging user>:<pw>@youhan-ios-staging-postgres-1:5432/youhan_ios_demo
+```
+
+The endpoint is the staging **container name**. Both projects give their Postgres the alias
+`postgres`; once `migrate` is on both networks that alias is ambiguous, and the script refuses
+it. The check runs inside the real `migrate` container with the real overlay and proves
+**both** connections by database name and applied-migration count.
+
+**Prove it before trusting it**, by name only:
 
 ```bash
 #!/usr/bin/env bash
@@ -339,6 +348,21 @@ objects** — list the bucket for the window. State the loss as *at least* the a
 
 ---
 
+### 7b. Rollback rehearsal with the **current production** image identities, in isolation **[C17, as required]**
+
+Staging's previous images are not production's. The rehearsal that answers "can what is
+running now serve the candidate's schema?" uses `master-suite/web:c879c6c7f7e8` and
+`master-suite/worker:c879c6c7f7e8` — the exact IDs in service — against a throwaway database
+migrated to the candidate, on a throwaway network, touching neither stack. As `deploy` (docker
+group) it needs no root and reads no production secret. Its actual run is recorded in §9.7 once
+executed; until then the candidate is **not** labelled rollback-safe.
+
+Outline: throwaway `postgres:16-alpine` on a throwaway network → candidate migrations applied
+from the candidate's own image → `master-suite/web:c879c6c7f7e8` and `worker:c879c6c7f7e8`
+started against it with a minimal boot env (placeholders, never real values) → `/api/health`
+answers and neither log contains a Prisma/schema error → result recorded with both image IDs
+and the candidate SHA.
+
 ## 8. The candidate **[corrected]**
 
 The candidate is `main` containing every accepted release change. **Backend identity**: the
@@ -364,6 +388,8 @@ plus **read-only** SSH as `deploy` to the host — no values printed, nothing ch
 - **9.3** Mutation coverage: 187 tables scanned; boundary with no activity → 0; earlier boundary → per-table counts (`PlatformUser.updatedAt 269`, …).
 - **9.4** Array Compose invocation: 14 argv words; Compose refused on each missing required variable in turn (`POSTGRES_PASSWORD`, `ALERT_EMAIL_TO`, `APP_DOMAIN`, `ACME_EMAIL`), then on the deliberately absent `.env.production`.
 - **9.5 (host, read-only)** Containers, images and tags of both stacks; both Postgres containers' database name and applied-migration count (`youhan_ios_demo`/78, `leadflow`/65); distinct volumes; **no published Postgres port on either**; staging compose/env file names and env-var **names**; `outage-test.sh` / `upload-tests.sh` present; staging `BUILD_COMMIT=c43b06f…`.
+
+- **9.6** Staging-gate overlay (PR #62): `docker compose --profile tools config` over the full production file list plus the overlay, with a throwaway external network: `migrate` networks `default` + `staging_gate`; `staging_gate` resolves to the external network by name; no other service references it. (A first run without `--profile tools` showed nothing — profile-only services are omitted — and was corrected on the PR.)
 
 **Not run — and why:** §1 pull/tag/compare (needs the candidate built by `build-images.yml`);
 §2a reachability + gate (needs the root decision A/B and `.env.production`); §3 backup +
