@@ -38,6 +38,7 @@ export default function LeadGrid({
   taskTypes,
   canAssign,
   canEdit,
+  canDelete,
   emptyLabel,
 }: {
   rows: LeadRow[];
@@ -47,6 +48,8 @@ export default function LeadGrid({
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
   canEdit: boolean;
+  /** `leads:DELETE`; the endpoint asserts it again whatever this renders. */
+  canDelete: boolean;
   /** What an empty follow-up cell says for this viewer. */
   emptyLabel: string;
 }) {
@@ -104,7 +107,7 @@ export default function LeadGrid({
     const failed = results.filter((res) => !res || !res.ok).length;
     setBusy(false);
     if (failed > 0) {
-      setError(`${failed} of ${ids.length} could not be updated.`);
+      setError(`${failed} of ${ids.length} could not be completed.`);
       return;
     }
     setAction(null);
@@ -143,6 +146,16 @@ export default function LeadGrid({
         priority: String(form.get('priority')),
       }),
     );
+
+  /**
+   * Delete from the list (ported from the BUG-006 fix, 21705d7). The only delete a
+   * lead had was one at a time behind "More" on the detail page. Soft delete: the row
+   * keeps its history and leaves every list.
+   */
+  const deleteSelected = () => {
+    if (!window.confirm(`Delete ${selected.size} lead(s)? They will no longer appear in any list.`)) return;
+    void run((leadId) => fetch(`/api/v1/leads/${leadId}`, { method: 'DELETE' }));
+  };
 
   function header(column: ColumnDef) {
     const sortable = SORTABLE.has(column.key);
@@ -199,6 +212,16 @@ export default function LeadGrid({
                 onClick={() => setAction(action === 'task' ? null : 'task')}
               >
                 Add task
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className="lf-btn lf-btn--sm lf-btn--secondary"
+                style={{ color: 'var(--lf-vermillion)' }}
+                disabled={busy}
+                onClick={deleteSelected}
+              >
+                Delete
               </button>
             )}
             <button

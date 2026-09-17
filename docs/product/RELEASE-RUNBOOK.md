@@ -56,8 +56,17 @@ by the author of this document.
 > that commit; later commits on the branch change tests and documentation only.
 > **76 migrations** on a fresh database; a database at the restructure candidate
 > (73) receives the monitoring migrations and #11. Evidence:
-> `docs/product/RELEASE-CHECKPOINT-DUAL-CREDENTIAL-INTEGRATION.md`. **Open blocker
-> before any install or upgrade: the permission catalogue (§3.1b).**
+> `docs/product/RELEASE-CHECKPOINT-DUAL-CREDENTIAL-INTEGRATION.md`. That candidate
+> was assessed **NO-GO** and must not be deployed.
+>
+> **Release closeout — the same branch, later commits.** Adds two migrations —
+> #12 MFA replay guard (§3.1c) and #13 permission catalogue definitions (§3.1b) —
+> withholds conversation content from ordinary monitoring grants (§3.1d), and
+> replaces the rollback assessment (§9.1). **78 migrations** on a fresh database.
+> The exact commit, image digests, CI run and gate results are in the closeout
+> review package attached to the review pull request; the SHA to deploy is the one
+> recorded there and nowhere else. It is not approved until the security review
+> named there has signed off.
 
 Both images carry the commit as `BUILD_COMMIT` and surface it as
 `masterapp_build_info` on the metrics endpoint. Confirm after deploying:
@@ -258,7 +267,45 @@ SELECT count(*) FROM "PlatformMfaChallenge";                                    
 -- PlatformAccessGrant and PlatformCoverageGrant row counts unchanged from §2.
 ```
 
-### 3.1b Permission catalogue — BLOCKER on a fresh install (VERIFIED, isolated)
+### 3.1b Permission catalogue (#13) — definitions only, no grants
+
+| # | Migration | What it does | Lock |
+| --- | --- | --- | --- |
+| 13 | `20260915140000_permission_catalogue_definitions` | Inserts the 478 `Permission` definitions in `src/lib/security/permissionCatalogue.ts` with `ON CONFLICT ("module","action") DO NOTHING`. **Inserts no `RolePermission` row, updates and deletes nothing**; existing rows and their ids are untouched. | Row locks on `Permission` only — a small table nothing writes during traffic. **Cannot fail on data.** |
+
+A `Permission` row is a *definition* a role can be granted; authority exists only
+in `RolePermission`. So after #13 every existing role is exactly as it was: new
+definitions appear in the role editor as *None* until an administrator grants them.
+**Do not run `scripts/backfill-admin-permissions.mjs` or
+`scripts/seed-role-defaults.ts` afterwards** — both grant every catalogue row and
+would widen existing roles. A workspace created after #13 gives its
+`company_admin` every catalogue permission, as provisioning always has.
+
+Verify, read-only, before and after (from `apps/web`, owner role URL in
+`MIGRATION_DATABASE_URL`):
+
+```bash
+npm run check:permissions      # exit 0: "all 478 definitions present"; exit 1 lists what is missing
+```
+
+```sql
+-- Grants unchanged: run before and after, the two results must be identical.
+-- The owner role reads every tenant's rows (RolePermission is under RLS).
+SELECT count(*), md5(string_agg(id || ':' || "tenantId" || ':' || "roleId" || ':' || "permissionId" || ':' || granted::text
+                                || ':' || scope::text || ':' || coalesce(conditions::text, ''), ',' ORDER BY id))
+  FROM "RolePermission";
+```
+
+CI runs the same check immediately after `prisma migrate deploy` and before the
+demo seed, so a seeded database cannot hide a missing definition.
+`tests/unit/permission-catalogue.spec.ts` keeps the migration equal to the list and
+proves the list covers the navigation, the monitoring allowlist and every literal
+permission check in `src`.
+
+**Adding a module later:** add it to the catalogue list and write a migration that
+inserts only the new definitions; the unit test fails until both agree.
+
+#### Why (history, kept for the record)
 
 A role can only be granted a permission whose `Permission` row exists. On a clean
 database taken through the supported path — `prisma migrate deploy`,
@@ -275,10 +322,51 @@ and without `ALLOW_DEMO_SEED=yes` — it is demo data, not an install step.
 This is not introduced by the dual-credential work: the provisioning code and the
 migrations are unchanged from `7cf5828`. The test suites pass because CI seeds.
 
-**Before an install or upgrade:** read the catalogue on the target (owner role):
-`SELECT module, action FROM "Permission" WHERE (module, action) IN (('tickets','VIEW'),('documents','VIEW'),('products','VIEW'),('forms','VIEW'),('landingpages','VIEW'),('automation','VIEW'),('communications','VIEW'),('smartviews','VIEW'),('fieldsales','VIEW'));`
-— nine rows expected. Missing rows need a reviewed catalogue migration (a code
-change, not a manual insert), which is not part of this candidate.
+Migration #13 above is that reviewed catalogue migration. Do not insert
+`Permission` rows by hand.
+
+### 3.1c MFA replay guard (#12)
+
+| # | Migration | What it does | Lock |
+| --- | --- | --- | --- |
+| 12 | `20260915130000_mfa_replay_guard` | Nullable column `PlatformUser.mfaLastUsedStep` | `ACCESS EXCLUSIVE` on `PlatformUser` for a metadata-only column add — milliseconds. **Cannot fail on data.** |
+
+An authenticator code is now accepted once: the step it belongs to is recorded in
+the same conditional `UPDATE` that accepts it, so two requests racing with one code
+cannot both succeed, and neither can a later request with that code or an older
+one. This applies to sign-in (workspace and platform), service sign-in, enrolment
+confirmation, recovery-code regeneration, disabling two-factor, credential
+re-authentication and monitoring-password removal. Recovery codes are consumed by
+one statement that removes the code only if present. Nothing to migrate: the
+column starts empty and the first accepted code fills it.
+
+What people notice: a code that was just used — including by a sign-in a moment
+ago — is refused with "already used"; they wait for the next code (≤ 30 s). A
+refused replay on sign-in is audited as `MFA_CODE_REPLAYED`.
+
+### 3.1d Monitoring scope — conversation content needs a sensitive grant
+
+An ordinary (non-sensitive) READ monitoring grant gives `VIEW` on leads, calls,
+activities, tasks, visits and tickets. `calls:VIEW` no longer carries conversation
+content with it. Without a grant issued with `sensitive: true`, monitoring gets:
+
+| Surface | Ordinary monitoring grant | Sensitive grant |
+| --- | --- | --- |
+| Call list and call record (who, when, duration, status, outcome) | yes | yes |
+| Call notes (`notes`, API and screens) | withheld (`null`) | yes |
+| Transcript, recording, AI analysis, AI audit (unchanged) | 403 | yes |
+| Coaching notes (`/calls/[id]/coaching`, call page) | 403 / not rendered | yes |
+| Objection matches (quoted transcript snippets) | not rendered | yes |
+| Coaching metrics — per-call sentiment, talk ratio, audit and practice scores (`/coaching`, Coaching and Call audits screens) | 403 / notice, no data | yes |
+| Practice sessions and scores (`/practice`, `/practice/[id]`) | 403 | yes |
+| Dashboard (average audit score) and event pages (AI meeting summaries) | refused to monitoring entirely | refused to monitoring |
+
+**Aggregate call metrics are withheld pending an owner decision** — the review
+package lists it. Customer users and machine credentials are unaffected.
+
+**Before an install or upgrade:** nothing to do for #12 and #13 beyond
+`prisma migrate deploy`; verify with `npm run check:permissions` and the digest
+query in §3.1b.
 
 ### 3.2 Provisioning the designated monitoring identity — separate authorised step
 
@@ -480,45 +568,80 @@ Stop immediately, and do not proceed to the next step, if:
 
 ### 9.1 Application rollback
 
-> **Integration candidate: application rollback is NOT a normal operation.**
-> Every release this candidate can roll back to — `main` (`f16ed67`), the incident
-> RC (`f585e48`) and the restructuring release (`d5eef50`) — has the same platform
-> staff code, and it cannot hold the monitoring boundary:
+> **Closeout candidate: no earlier release is a safe rollback target.**
 >
-> - its enter route admits **any OWNER to any workspace, with no grant**;
-> - a staff session inside a workspace gets **every `VIEW` permission, HR and
->   payroll included**, with no grant checked on the request;
-> - it ignores grant `kind`, so **any live grant an OWNER holds is full write
->   control** — including a monitoring READ grant issued by a second owner.
+> Every earlier release lacks access boundaries this candidate enforces, and two
+> of them protect **customers**, not only platform staff:
 >
-> Each of these was **demonstrated** against the previous release in the isolated
-> rehearsal. Revoking grants does not fix the first two. The only boundary that
-> release still enforces for staff is **account status**, checked at sign-in and
-> on every session.
+> | Boundary the candidate enforces | Earlier releases | Closed by suspending staff (§9.1.1)? |
+> | --- | --- | --- |
+> | An OWNER enters only workspaces it holds a grant for; staff sessions get only granted `VIEW` | admit **any OWNER to any workspace, with no grant**, HR and payroll included; a grant's `kind` is ignored | **Yes** — the old release still checks account status at sign-in and on every request |
+> | A monitoring session is read-only (`credentialPurpose`) | a live monitoring session of an OWNER **is the owner** | **Yes** — every staff session is revoked |
+> | Conversation content needs a sensitive grant (§3.1d) | coaching notes, scores and call notes on `calls:VIEW` | **Yes** — no staff session can exist |
+> | An authenticator code is accepted once (§3.1c) | the same code is accepted again within its ±30 s window, including by concurrent requests | **No** — this is every customer with two-factor |
+> | `employee:VIEW` below organisation scope sees only the viewer's record (`2ac9407`) | an OWN-scope employee reads the whole directory and the expiring-documents list with document numbers | **No** — customer roles |
 >
-> **Preferred: roll forward.** Fix the defect on the candidate line and release
-> again. **Only if roll-forward is impossible** (for example, the release cannot
-> serve customers at all), use the emergency procedure in §9.1.1, which rolls the
-> application back with **all platform staff workspace access suspended**. Customer
-> accounts are unaffected; platform administration is unavailable until §9.1.2.
+> The first three were demonstrated against `7cf5828` in the isolated rehearsal;
+> the last two are established by the commits (neither `2ac9407` nor the replay
+> guard is an ancestor of any earlier release) and by the regression tests that fail
+> without them. **So an image swap to an earlier release is unsafe, and even
+> §9.1.1 does not preserve the required access boundaries — it narrows the exposure
+> to the two customer-side regressions.**
+
+**Recovery, in order of preference:**
+
+1. **Roll forward.** Fix on the candidate line, build the image for the exact
+   commit (`build-images.yml`), gate it, deploy it by digest. Migrations #12 and #13
+   are additive and need no reversal; there is no down-migration and none is needed.
+2. **A compatible recovery target** — an earlier image of _this_ line that passed
+   the gate and was accepted. **None exists yet**: this candidate is the first. Once
+   it is accepted and deployed, its digest is the recovery target for the next
+   release, and a rollback to it is an ordinary image swap (same boundaries, same
+   schema). Record it in the release ticket.
+3. **Bounded maintenance (boundary-preserving, customer outage)** — §9.1.0, when the
+   candidate cannot serve and roll-forward will take time.
+4. **Emergency rollback to an earlier release with staff access suspended** —
+   §9.1.1, **only** with a written, time-boxed acceptance of the two customer-side
+   regressions above by the client owner **and** the security reviewer. It is not
+   "safe"; it is an accepted risk.
+
+#### 9.1.0 Bounded maintenance — nothing serves, every boundary holds
+
+Use when the candidate must stop serving and no accepted recovery target exists.
+
+- **Web instances:** stop every web instance of the candidate; start none of any
+  other version. The proxy returns its static maintenance response. No application
+  code serves, so **no session is issued**, no sign-in or code is accepted, no grant
+  can be issued and no workspace entered.
+- **Workers:** stop every worker. Jobs stay queued in Redis and scheduled jobs
+  (retention, reminders, triage, drift canary) run at their next schedule after
+  restart; nothing is lost.
+- **Grants and sessions:** untouched. Grant and session expiry are evaluated per
+  request, so anything that expires during the window is simply expired when service
+  resumes.
+- **Audit:** open a change ticket before stopping; the stop and start are recorded
+  in the ticket and in the deployment log. Nothing is suppressed.
+- **End:** start the fixed candidate (roll forward) — web first, then workers (§4) —
+  and run §7.
+
+_Not rehearsed as a separate run: it is the "all instances stopped" state that
+§9.1.1 step 1 and the rehearsal's maintenance phase already start from._
 
 #### 9.1.1 Emergency rollback with staff access suspended — VERIFIED (isolated)
 
-**Authorisation, before anything is touched:** a change ticket naming the reason
-roll-forward is not possible; approval by the client owner **and** the designated
-security reviewer; two operators, one executing and one reading back each step
-into the ticket. Record the ticket id — it goes into every audit row (`<CHG>`
-below). **`<CHG>` must be unique to this rollback.** §9.1.2 restores accounts by
-selecting on it; a reused id restores accounts suspended by an earlier change too
-(the rehearsal reproduced exactly that before the id was made unique).
+**Authorisation, before anything is touched:** a change ticket naming why roll
+forward and §9.1.0 are not acceptable; **written acceptance of the customer-side
+regressions** in the table above, with an end time; approval by the client owner
+**and** the designated security reviewer; two operators, one executing and one
+reading back each step into the ticket. **`<CHG>` must be unique** — the procedure
+refuses an id already in the audit trail, because §9.1.2 restores by it.
 
-1. **Freeze.** Announce it. Stop the **web** tier and the **workers** of the
-   candidate. With the web tier stopped nothing can issue a grant, open a session
-   or enter a workspace. *(Rehearsed: the grant route is unreachable.)*
+1. **Freeze.** Announce it. Stop **every web instance and every worker** of the
+   candidate. Never run old and new web instances side by side. With the web tier
+   stopped nothing can issue a grant, open a session or enter a workspace.
 2. **Back up** (§9.2) and verify it restores. Do not skip.
-3. **Identify** every live item the old release would honour, with the owner role,
-   read-only, and paste the output into the ticket. This includes anything issued
-   during the deployment window — there is no time filter:
+3. **Identify**, read-only, owner role, and paste the output into the ticket. No
+   time filter: anything issued during the deployment window is included.
 
    ```sql
    SELECT g.id, u."platformRole", g.kind, g.sensitive, g."tenantId", g."grantedAt"
@@ -526,7 +649,7 @@ selecting on it; a reused id restores accounts suspended by an earlier change to
     WHERE g."revokedAt" IS NULL AND g."expiresAt" > now();
    SELECT id, "platformUserId", sensitive, "grantedAt", "grantedById"
      FROM "PlatformCoverageGrant" WHERE "revokedAt" IS NULL AND "expiresAt" > now();
-   SELECT s.id, u."platformRole", s."activeTenantId"
+   SELECT s.id, u."platformRole", s."credentialPurpose", s."activeTenantId"
      FROM "PlatformSession" s JOIN "PlatformUser" u ON u.id = s."platformUserId"
     WHERE s."revokedAt" IS NULL AND s."expiresAt" > now()
       AND u."platformRole" IN ('OWNER', 'SUPPORT', 'SECURITY_AUDITOR');
@@ -535,31 +658,67 @@ selecting on it; a reused id restores accounts suspended by an earlier change to
       AND status = 'ACTIVE' AND "deletedAt" IS NULL;
    ```
 
-4. **Remediate in one transaction, scoped to exactly the ids from step 3** — revoke
-   those grants, coverage and sessions; set those identities to `SUSPENDED`; write
-   one `ROLLBACK_STAFF_ACCESS_SUSPENDED` audit row per identity
-   (`metadata: {"change": "<CHG>", "priorStatus": "ACTIVE", "role": …}`) and one
-   `ROLLBACK_ACCESS_REMEDIATION` summary row listing every id. Each `UPDATE` keeps
-   its state predicate (`"revokedAt" IS NULL`, `status = 'ACTIVE'`), and the
-   affected-row counts must equal the step-3 counts — if not, `ROLLBACK` and
-   return to step 3. The rehearsed statements are in
-   `docs/product/RELEASE-CHECKPOINT-MONITORING-INTEGRATION.md` §6.
-   **`USER` and `AI_SERVICE` identities are not touched** (service credentials
-   behave on the old release as they did before this candidate).
-5. **Roll back the application:** `scripts/release.sh rollback production`.
-6. **Verify on the rolled-back release** (rehearsed): every staff identity is
-   refused at sign-in; the pre-rollback staff sessions are refused (no workspace
-   read, no HR, no write); a real customer account signs in and reads its leads
-   and HR normally.
+4. **Suspend, with the reviewed procedure** — one transaction, from `apps/web`:
+
+   ```bash
+   psql "$OWNER_URL" -X -v ON_ERROR_STOP=1 \
+     -v change='<CHG>' -v operator='<executing operator>' \
+     -v expect='<grants>,<coverage>,<sessions>,<identities>' \
+     -f scripts/rollback/suspend-staff-access.sql
+   ```
+
+   It refuses and changes nothing if the counts differ from step 3, the change id
+   was used before, or no operator is named. It revokes every live grant and
+   coverage grant and every live staff session (administration and monitoring),
+   suspends the staff identities, deletes unfinished MFA challenges, and writes one
+   `ROLLBACK_ACCESS_GRANT_REVOKED` row per grant **in that workspace's audit trail**,
+   one `ROLLBACK_STAFF_ACCESS_SUSPENDED` row per identity and one
+   `ROLLBACK_ACCESS_REMEDIATION` summary listing every id — each carrying the change
+   id and the operator. The three post-condition lines must read `0`; paste the
+   counts line into the ticket. **`USER` and `AI_SERVICE` identities and their
+   sessions are not touched.** Monitoring password hashes are kept: they sign in
+   nowhere on the old release and let roll-forward restore monitoring without
+   re-provisioning.
+
+5. **Roll back the application:** `scripts/release.sh rollback production` — web
+   first, then its worker.
+6. **Verify on the rolled-back release** (rehearsed): the pre-rollback monitoring and
+   administration sessions are refused at the console, at workspace entry and on HR;
+   every staff identity is refused at sign-in; a customer signs in and reads their
+   workspaces; no staff session is created during the window.
+
+**What runs during the window (rehearsed):**
+
+- _Web:_ the old release issues **customer** sessions only. They carry no credential
+  purpose and remain valid after roll-forward (customer sessions never did).
+- _Worker:_ the old worker attaches every queue and arms its schedules. It issues no
+  session or grant and changes no identity. Its retention job deletes
+  `PlatformSession` rows revoked more than 30 days ago and `PlatformAuditEvent` rows
+  older than `PLATFORM_AUDIT_RETENTION_DAYS` — **never the rollback rows written
+  minutes earlier**; the rehearsal runs it inside the window and re-counts them.
+  The worker entry point and retention job are identical in `7cf5828` and the
+  candidate, and the migrated schema only adds a nullable column and rows.
+- _Grants:_ none can be issued (no staff can sign in).
 
 #### 9.1.2 Returning staff access — VERIFIED (isolated)
 
-After the candidate line is released again (roll forward): restore **only** the
-identities the change suspended — the `objectId`s of its
-`ROLLBACK_STAFF_ACCESS_SUSPENDED` rows — back to `ACTIVE`, in one transaction,
-writing a `ROLLBACK_STAFF_ACCESS_RESTORED` row. Grants stay revoked: each one is
-re-issued deliberately by a second person. *(Rehearsed: staff sign in again and see
-no workspace until re-granted.)*
+After the candidate line serves again (roll forward, §7 passed):
+
+```bash
+psql "$OWNER_URL" -X -v ON_ERROR_STOP=1 \
+  -v change='<CHG>' -v operator='<executing operator>' \
+  -f scripts/rollback/restore-staff-access.sql
+```
+
+It reactivates **only** the identities that change suspended, refuses a second
+restore of the same change, and writes `ROLLBACK_STAFF_ACCESS_RESTORED` with the
+operator and the ids. **Grants and coverage stay revoked:** each one is re-issued
+deliberately by a second owner through the application, which audits it like any
+grant. _(Rehearsed: legacy and pre-rollback staff sessions stay refused; staff sign
+in again with MFA; password B still yields monitoring and A administration; no
+workspace until re-granted; a re-issued READ grant admits monitoring; neither session
+enters a workspace with no grant or reads HR.)_
+
 
 #### 9.1.3 Schema compatibility of the old application — restructuring release
 
@@ -604,57 +763,35 @@ client's, not the operator's.
 Application rollback still needs no database recovery, and is the first thing
 to try.
 
-**For the integrated candidate the schema is otherwise equally compatible** — the monitoring migrations (5–6) and the dual-credential migration (#11) add columns with defaults and a table the old application never queries — **but §9.1's staff-access procedure and §9.1.4's monitoring-session revocation are mandatory**.
+**For the integrated candidate the schema is otherwise equally compatible** — the monitoring migrations (5–6) and the dual-credential migration (#11) add columns with defaults and a table the old application never queries — **but that makes the schema compatible, not the release safe: see §9.1 and §9.1.4**.
 
-#### 9.1.4 Dual-credential release — rollback targets and session safety — VERIFIED (isolated)
-
-**No earlier release is a safe rollback target by image swap alone.** Every release
-before this candidate — `05a7b90` / `9df91d8`, the restructuring release, the incident RC
-and `main` — ignores `PlatformSession.credentialPurpose`. It resolves a session by
-role, so **a live monitoring session of an OWNER becomes a full owner session** on
-the old release: console, workspace creation, grants and (for those releases)
-everything §9.1 lists. Demonstrated against `05a7b90` and, for the integrated
-candidate, against `7cf5828`, on isolated systems, with the remediation and
-roll-forward below — checkpoints §5 and (integration) §6. The monitoring *password*
-itself is harmless there: the old sign-in reads only `passwordHash`, so password B
-signs in nowhere.
+#### 9.1.4 Rollback targets for the closeout candidate
 
 | Target | Schema | Verdict |
 | --- | --- | --- |
-| `05a7b90` / `9df91d8` (integration candidate) | compatible — #7 adds nullable/defaulted columns and a table the old code never reads | **Unsafe by image swap.** Allowed only through §9.1.1, whose step 3–4 revoke every staff session (monitoring sessions included) and suspend staff. |
-| `7cf5828` (`dev/workspace-restructure`, the integrated candidate's base) | compatible — it booted and served on the migrated database | **Unsafe by image swap, demonstrated:** a live monitoring session is the owner (console 200, every workspace listed), is admitted to a break-glass-only workspace and to a workspace with **no grant**, and receives that workspace's **HR employee records**; an administration session enters an ungranted workspace. It also holds the employee-directory scope defect this candidate fixes. Allowed only through §9.1.1 plus the monitoring-session revocation below. |
-| restructuring release, incident RC, `main` | as §9.1.3 | Unsafe — §9.1 already applies; this release adds the monitoring-session case to it. |
-| No down-migration is provided or needed | — | Do not drop the new columns: roll-forward relies on them. |
+| An accepted, deployed image of this candidate line | identical | **Compatible recovery target** — ordinary image swap by digest. None exists until this release is accepted. |
+| `7cf5828` (`dev/workspace-restructure`) | compatible — booted and served on the migrated database, its worker ran | **Unsafe.** Demonstrated: a live monitoring session is the owner, enters a break-glass-only and a no-grant workspace and reads its HR; a fresh OWNER session enters a no-grant workspace and reads HR even after monitoring sessions are revoked. §9.1.1 closes those; the customer-side MFA replay and employee-directory regressions remain. |
+| `main` before `507cdac`, the incident RC, the restructuring release, `05a7b90` / `9df91d8` | as §9.1.3 | **Unsafe**, for the same reasons; §9.1.1 applies with the same residual customer-side risk. |
+| `507cdac` (current `main`: the integration candidate merged, assessed NO-GO) | compatible | **Not a target.** It was never accepted for release, accepts replayed authenticator codes and serves conversation content to monitoring. |
+| Down-migration | — | None provided or needed. Do not drop the columns or rows of #11–#13: roll-forward relies on them. |
 
-**If rollback is authorised (inside §9.1.1, after step 1 has stopped the web tier)**,
-additionally, in the same transaction as step 4, and paste the counts into the ticket:
-
-```sql
-UPDATE "PlatformSession" SET "revokedAt" = now(), "revokedReason" = 'ROLLBACK_MONITORING_SESSION'
- WHERE "credentialPurpose" = 'MONITORING' AND "revokedAt" IS NULL;
-DELETE FROM "PlatformMfaChallenge" WHERE "consumedAt" IS NULL;
--- expect afterwards:
-SELECT count(*) FROM "PlatformSession"
- WHERE "credentialPurpose" = 'MONITORING' AND "revokedAt" IS NULL AND "expiresAt" > now();   -- 0
-```
-
-Keep the monitoring password hashes and versions: they grant nothing on the old
-release and let roll-forward restore monitoring without re-provisioning.
-
-**Roll-forward to this release** needs no data step for sessions: every session the
-old release issued carries no credential purpose and is refused (and revoked as
-`LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE`) — staff sign in again with MFA. Two
-things to check first, owner role:
+**Roll-forward from an earlier release** needs no data step for sessions: every staff
+session the old release issued carries no credential purpose and is refused (and
+revoked as `LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE`). Before restoring access
+(§9.1.2), owner role:
 
 - A password changed or reset **by the old release** did not advance
-  `passwordVersion`. The old release revoked that identity's sessions itself, so no
-  stale session survives; nothing to do.
+  `passwordVersion`. The old release revoked that identity's sessions itself; nothing
+  to do.
 - If the old release set an administration password equal to that person's
   monitoring password, sign-in refuses both and records `LOGIN_CREDENTIAL_AMBIGUOUS`.
   Clear the monitoring password for that identity under the ticket
   (`monitoringPasswordHash = NULL, monitoringPasswordSetAt = NULL,
   monitoringPasswordVersion = monitoringPasswordVersion + 1`), and the person sets a
   new one (§3.2).
+- `mfaLastUsedStep` was not maintained by the old release; the first code accepted
+  after roll-forward fills it. Nothing to do.
+
 
 ### 9.2 Database backup and recovery
 

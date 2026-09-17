@@ -37,10 +37,18 @@ export const GET = route(
     sensitive: 'call recordings',
   },
   async ({ ctx, params }) => {
-    const [recording, consent] = await Promise.all([
+    const [call, recording, consent] = await Promise.all([
+      // The parent call's own state. Every sibling route filters `deletedAt: null`;
+      // this one did not, so once a call can be deleted its audio would still stream
+      // to anyone holding calls:VIEW (ported with the BUG-011 fix, 74b4616).
+      prisma.call.findFirst({
+        where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
+        select: { id: true },
+      }),
       prisma.recording.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
       prisma.recordingConsent.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId } }),
     ]);
+    if (!call) throw NotFound('Call');
     if (!recording) throw NotFound('Recording');
     if (!consent?.consentGiven || consent.withdrawnAt) {
       throw Forbidden('This recording is not available: consent was declined or withdrawn.');

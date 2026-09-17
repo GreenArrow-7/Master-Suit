@@ -96,3 +96,44 @@ export const PATCH = route(
       return updated;
     }),
 );
+
+/**
+ * Soft delete (ported from the incident fix for BUG-009, 10c1000).
+ *
+ * `Task.deletedAt` exists and every read path filters on it, but the endpoint
+ * answered 405. Gated on `tasks:DELETE`, as every other delete route gates on its
+ * own module's DELETE; cancelling (`status: 'CANCELLED'`) is not this — it keeps the
+ * task on the board as a decision taken.
+ *
+ * Unlike the original, a deleted task must stop counting towards its lead's next
+ * follow-up, so the lead is locked and recomputed in the same transaction, in the
+ * same order PATCH uses. A second delete is a 404, not a silent success.
+ */
+export const DELETE = route(
+  { module: 'tasks', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  async ({ ctx, params }) =>
+    withTx(ctx.tenantId, async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
+        select: { id: true, leadId: true },
+      });
+      if (!task) throw NotFound('Task');
+
+      const locked = await lockLeads(tx, ctx.tenantId, [task.leadId]);
+      const current = await tx.task.findFirst({
+        where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
+        select: { leadId: true },
+      });
+      if (!current) throw NotFound('Task');
+      if ((current.leadId ?? null) !== (task.leadId ?? null)) {
+        throw Conflict('That task was moved to another lead while you were deleting it. Reload and try again.');
+      }
+
+      await tx.task.update({
+        where: { tenantId: ctx.tenantId, id: params.id },
+        data: { deletedAt: new Date(), updatedById: ctx.actor.id },
+      });
+      for (const leadId of locked) await recomputeNextFollowUp(tx, ctx.tenantId, leadId);
+      return { ok: true };
+    }),
+);

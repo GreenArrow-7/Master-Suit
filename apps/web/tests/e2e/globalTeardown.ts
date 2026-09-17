@@ -46,6 +46,8 @@ async function restoreOwnerAuthenticator(prisma: PrismaClient) {
       data: {
         mfaSecret: saved.mfaSecret,
         mfaEnabled: saved.mfaEnabled,
+        // The suite's spent step belonged to its own secret, not the operator's.
+        mfaLastUsedStep: null,
         passwordChangedAt: saved.passwordChangedAt ? new Date(saved.passwordChangedAt) : null,
       },
     });

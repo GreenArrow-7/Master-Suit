@@ -29,8 +29,10 @@ async function assertCallVisible(ctx: Ctx, callId: string) {
   return call;
 }
 
+// A manager's note on how a conversation went is conversation content, not call
+// metadata: a monitoring grant reads it only when it is marked sensitive.
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'coaching notes' },
   async ({ ctx, params }) => {
     await assertCallVisible(ctx, params.id);
     const data = await prisma.coachingNote.findMany({

@@ -7,6 +7,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallActions from './CallActions';
 import AuditDelete from './AuditDelete';
+import EntityDelete from '@/components/sales/EntityDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
 import WhatsAppFollowUp from './WhatsAppFollowUp';
@@ -76,18 +77,25 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
       orderBy: { dueAt: 'asc' },
       take: 10,
     }),
-    prisma.objectionMatch.findMany({
-      where: { tenantId: ctx.tenantId, callId: params.id },
-      include: { objection: { select: { name: true, recommendedResponses: true } } },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
-    }),
-    prisma.coachingNote.findMany({
-      where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      include: { author: { select: { id: true, fullName: true } } },
-      take: 50,
-    }),
+    // Objection matches quote the line of the transcript they fired on, and
+    // coaching notes are a manager's account of the conversation: both follow
+    // the sensitive authorisation, like the transcript itself.
+    sensitive
+      ? prisma.objectionMatch.findMany({
+          where: { tenantId: ctx.tenantId, callId: params.id },
+          include: { objection: { select: { name: true, recommendedResponses: true } } },
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+        })
+      : [],
+    sensitive
+      ? prisma.coachingNote.findMany({
+          where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          include: { author: { select: { id: true, fullName: true } } },
+          take: 50,
+        })
+      : [],
   ]);
 
   if (!call) notFound();
@@ -125,6 +133,8 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
   const hasConsent = call.consent?.consentGiven && !call.consent.withdrawnAt;
   // Wildcard-granted to administrator roles only; QA reviews, admins erase.
   const canDeleteAudits = can(ctx, 'calls', 'DELETE');
+  // The same authority removes the call itself (ported from the BUG-011 fix, 74b4616).
+  const canDeleteCall = canDeleteAudits;
 
   return (
     <>
@@ -165,6 +175,9 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           <Badge tone={call.outcome ? OUTCOME_TONE[call.outcome] : 'slate'}>
             {call.outcome?.toLowerCase().replace(/_/g, ' ') ?? call.status.toLowerCase()}
           </Badge>
+          {/* Same component and placement as accounts, contacts and opportunities. It arms
+              before it fires, and the endpoint asserts calls:DELETE regardless. */}
+          {canDeleteCall && <EntityDelete endpoint={`/api/v1/calls/${call.id}`} backHref="/calls" label="call" />}
         </div>
       </div>
 
@@ -386,7 +399,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               Notes
             </div>
             <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)', whiteSpace: 'pre-wrap' }}>
-              {call.notes || 'No notes recorded.'}
+              {sensitive ? call.notes || 'No notes recorded.' : 'Not included in this access.'}
             </p>
           </section>
         </div>

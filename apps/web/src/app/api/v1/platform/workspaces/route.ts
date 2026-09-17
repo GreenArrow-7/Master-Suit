@@ -452,15 +452,33 @@ export async function POST(req: Request) {
 }
 
 function problem(error: unknown, requestId: string) {
+  /**
+   * Rejections are logged too, not only crashes.
+   *
+   * This route does not go through the API kernel, so nothing recorded a 403,
+   * a 409 or a 422 anywhere — a customer reporting "workspace creation fails"
+   * left no trace at all to correlate against, and the only honest answer was
+   * that we could not tell what had happened. Codes and field names only; no
+   * values, so nothing the operator typed reaches the log.
+   */
   if (error instanceof AppError) {
+    logger.warn(
+      { requestId, status: error.status, code: error.code, route: '/api/v1/platform/workspaces' },
+      'workspace provisioning rejected',
+    );
     return NextResponse.json(error.toProblem(requestId), {
       status: error.status,
       headers: { 'x-request-id': requestId },
     });
   }
   if (error instanceof z.ZodError) {
+    const flattened = error.flatten();
+    logger.warn(
+      { requestId, status: 422, fields: Object.keys(flattened.fieldErrors), route: '/api/v1/platform/workspaces' },
+      'workspace provisioning rejected',
+    );
     return NextResponse.json(
-      { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
+      { status: 422, title: 'Validation failed', requestId, errors: flattened },
       { status: 422 },
     );
   }

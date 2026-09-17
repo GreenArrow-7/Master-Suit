@@ -21,11 +21,12 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
-import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
+import { generateSecret, otpauthUrl } from '@/lib/auth/mfa';
+import { consumeTotp, type TotpOutcome, REPLAYED_CODE } from '@/lib/auth/totp-consume';
 import { audit } from '@/lib/security/audit';
 import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import type { Ctx } from '@/lib/security/rbac';
-import { decryptSecret, encryptSecret } from './secrets';
+import { encryptSecret } from './secrets';
 
 const RECOVERY_CODE_COUNT = 10;
 
@@ -163,9 +164,10 @@ export async function confirmTotpEnrolment(ctx: Ctx, code: string) {
   const user = await platformUserFor(ctx);
   if (user.mfaEnabled) throw Conflict('Two-factor authentication is already enabled.');
   if (!user.mfaSecret) throw Conflict('Start enrolment before confirming a code.');
-  if (!verifyTotp(decryptSecret(user.mfaSecret), code)) {
-    throw Forbidden('That code did not match. Check your authenticator clock and try the current code.');
-  }
+  refuseCode(
+    await consumeTotp(user.id, user.mfaSecret, code),
+    'That code did not match. Check your authenticator clock and try the current code.',
+  );
 
   const codes = generateRecoveryCodes();
   await prisma.platformUser.update({
@@ -193,7 +195,7 @@ export async function confirmTotpEnrolment(ctx: Ctx, code: string) {
 export async function regenerateRecoveryCodes(ctx: Ctx, code: string) {
   const user = await platformUserFor(ctx);
   if (!user.mfaEnabled || !user.mfaSecret) throw Conflict('Two-factor authentication is not enabled on this account.');
-  if (!verifyTotp(decryptSecret(user.mfaSecret), code)) throw Forbidden('That code did not match.');
+  refuseCode(await consumeTotp(user.id, user.mfaSecret, code), 'That code did not match.');
 
   const codes = generateRecoveryCodes();
   await prisma.platformUser.update({ where: { id: user.id }, data: { mfaRecoveryCodes: codes.map(hashCode) } });
@@ -222,7 +224,7 @@ export async function disableTotp(ctx: Ctx, password: string, code: string) {
   if (!user.mfaEnabled || !user.mfaSecret) throw Conflict('Two-factor authentication is not enabled on this account.');
   if (!user.passwordHash || !(await verifyPassword(user.passwordHash, password)))
     throw Forbidden('That password is not correct.');
-  if (!verifyTotp(decryptSecret(user.mfaSecret), code)) throw Forbidden('That code did not match.');
+  refuseCode(await consumeTotp(user.id, user.mfaSecret, code), 'That code did not match.');
 
   await clearFactors(ctx, user.id);
   await audit(ctx, {
@@ -279,6 +281,12 @@ async function clearFactors(ctx: Ctx, platformUserId: string) {
   });
 }
 
+/** Throws unless the code was accepted; a replayed code says so, a wrong one does not. */
+function refuseCode(outcome: TotpOutcome, mismatch: string) {
+  if (outcome === 'REPLAYED') throw Forbidden(REPLAYED_CODE);
+  if (outcome !== 'ACCEPTED') throw Forbidden(mismatch);
+}
+
 /**
  * Spends one recovery code. Called from the login path when the user cannot
  * produce a TOTP code; comparison is constant-time and the code is removed on
@@ -298,11 +306,14 @@ export async function consumeRecoveryCode(platformUserId: string, submitted: str
   });
   if (!match) return false;
 
-  await prisma.platformUser.update({
-    where: { id: platformUserId },
-    data: { mfaRecoveryCodes: user.mfaRecoveryCodes.filter((stored) => stored !== match) },
-  });
-  return true;
+  // Removed in the same statement that checks it is still there, so two requests
+  // spending one code cannot both succeed, and two spending different codes
+  // cannot put back the one the other removed. PlatformUser is not under
+  // row-level security.
+  const removed = await prisma.$executeRaw`
+    UPDATE "PlatformUser" SET "mfaRecoveryCodes" = array_remove("mfaRecoveryCodes", ${match})
+     WHERE id = ${platformUserId} AND ${match} = ANY("mfaRecoveryCodes")`;
+  return removed === 1;
 }
 
 export async function twoFactorStatus(ctx: Ctx) {

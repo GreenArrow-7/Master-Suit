@@ -21,7 +21,9 @@ export default function ExportCsv({
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    // WebKit (Safari, the iOS app) reads the blob after the click returns; revoking at once
+    // leaves it nothing to download.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
   return (
     <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm" onClick={download} disabled={!csv}>
