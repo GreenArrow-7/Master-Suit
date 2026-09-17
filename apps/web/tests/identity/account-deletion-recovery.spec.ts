@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import {
@@ -8,6 +9,7 @@ import {
   sweepAccountDeletions,
   type RetainedCategory,
 } from '@/services/identity/accountDeletion';
+import { acceptInvitation } from '@/services/identity/invitations';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -324,5 +326,70 @@ describe('what the completed request admits it did not remove', () => {
         where: { tenantId: fixture.a.tenantId, employee: { membershipId: person.id } },
       }),
     ).toBe(1);
+  });
+});
+
+describe('the ways back into an account being erased', () => {
+  it('refuses a workspace invitation while a deletion request is open', async () => {
+    const person = await makePerson('Invited Elsewhere');
+    await requestAccountDeletion(person.ctx, { password: PASSWORD });
+
+    // A second workspace invites the same address. Acceptance reactivates an existing
+    // identity, and it refused only on deletedAt - which the executor writes last - so
+    // throughout REQUESTED, BLOCKED and IN_PROGRESS this path set the account back to
+    // ACTIVE and attached a membership the erasure never saw.
+    const { normalizedEmail } = await prisma.platformUser.findUniqueOrThrow({
+      where: { id: person.platformUserId },
+      select: { normalizedEmail: true },
+    });
+    const { roleId } = await prisma.user.findFirstOrThrow({
+      where: { tenantId: fixture.b.tenantId, id: fixture.b.userId },
+      select: { roleId: true },
+    });
+    const token = randomBytes(32).toString('base64url');
+    await prisma.workspaceInvitation.create({
+      data: {
+        tenantId: fixture.b.tenantId,
+        email: normalizedEmail,
+        pendingKey: normalizedEmail,
+        fullName: 'Invited Elsewhere',
+        roleId,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+        expiresAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+
+    await expect(acceptInvitation(token, { password: 'ChosenByMeAlone1!' })).rejects.toThrow(/being deleted/);
+    expect(
+      await prisma.workspaceMembership.count({
+        where: { platformUserId: person.platformUserId, tenantId: fixture.b.tenantId },
+      }),
+    ).toBe(0);
+  });
+
+  it('removes reset links that belong to no workspace', async () => {
+    const person = await makePerson('Orphan Reset Link');
+    // tenantId is nullable on this table, and the per-workspace deletes match on the
+    // membership's tenant, so a link minted before the person had a workspace survived
+    // erasure - a live way to set a new password on a deleted account.
+    await prisma.passwordResetToken.create({
+      data: {
+        platformUserId: person.platformUserId,
+        tenantId: null,
+        tokenHash: `orphan-${Math.random().toString(36).slice(2)}`,
+        expiresAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+
+    const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
+    expect((await sweepAccountDeletions(20, [person.platformUserId])).completed).toBe(1);
+
+    expect(
+      await prisma.passwordResetToken.count({ where: { tenantId: null, platformUserId: person.platformUserId } }),
+    ).toBe(0);
+    const outcome = (
+      await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id: request.id }, select: { outcome: true } })
+    ).outcome as unknown as { resetTokensDeleted: number };
+    expect(outcome.resetTokensDeleted).toBeGreaterThanOrEqual(1);
   });
 });

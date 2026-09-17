@@ -616,6 +616,14 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     }
 
     // ── 4. The identity itself ──────────────────────────────────────────────
+    // tenantId is nullable on this table: an account that has no workspace yet still
+    // gets reset links, and those rows match no membership, so the per-workspace deletes
+    // above walk straight past them. A live reset link is a way back into the account.
+    // PasswordResetToken is on the RLS bootstrap list — it has to be readable before a
+    // tenant is known — so this delete genuinely reaches them rather than failing closed.
+    outcome.resetTokensDeleted += (
+      await prisma.passwordResetToken.deleteMany({ where: { tenantId: null, platformUserId } })
+    ).count;
     outcome.passwordHistoryDeleted = (await prisma.passwordHistory.deleteMany({ where: { platformUserId } })).count;
     // Clearing mfaSecret on PlatformUser is a third of the job. clearFactors in
     // twoFactor.ts has removed all three since TOTP was added: the factor rows carry their
@@ -694,7 +702,6 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     let apiKeysLeft = 0;
     let deviceTokensLeft = 0;
     let contactableLeft = 0;
-    let membershipsLeft = 0;
     for (const membership of memberships) {
       facesLeft += await prisma.hrFaceTemplate.count({
         where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
@@ -704,9 +711,6 @@ export async function processAccountDeletion(requestId: string): Promise<Process
       });
       resetTokensLeft += await prisma.passwordResetToken.count({
         where: { tenantId: membership.tenantId, platformUserId },
-      });
-      membershipsLeft += await prisma.workspaceMembership.count({
-        where: { tenantId: membership.tenantId, id: membership.id, status: { not: 'REMOVED' } },
       });
       if (!membership.salesUserId) continue;
       apiKeysLeft += await prisma.aPIKey.count({
@@ -729,6 +733,18 @@ export async function processAccountDeletion(requestId: string): Promise<Process
         },
       });
     }
+
+    resetTokensLeft += await prisma.passwordResetToken.count({ where: { tenantId: null, platformUserId } });
+
+    // Counted for the account, not for the snapshot taken back in step 2. Accepting a
+    // workspace invitation reactivates an existing identity, and it refuses only on
+    // `deletedAt`, which is not written until step 4 — so a membership created while this
+    // erasure was running was invisible to the loop above and COMPLETED would still have
+    // been written over it. `acceptInvitation` now refuses outright; this is the check
+    // that does not depend on that one holding.
+    const membershipsLeft = await prisma.workspaceMembership.count({
+      where: { platformUserId, status: { not: 'REMOVED' } },
+    });
 
     const unfinished: string[] = [];
     if (after.passwordHash !== null) unfinished.push('passwordHash');

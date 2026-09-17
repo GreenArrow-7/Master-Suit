@@ -231,6 +231,20 @@ export async function acceptInvitation(token: string, input: { password: string;
       select: { id: true, deletedAt: true },
     });
     if (existing?.deletedAt) throw invalid();
+    // An erasure in flight is not visible as `deletedAt`: that is written in the last
+    // step, so throughout REQUESTED, BLOCKED and IN_PROGRESS the identity is merely
+    // DEACTIVATED. Accepting here would set it back to ACTIVE and attach a fresh
+    // membership the executor's snapshot never saw, and the request would still be
+    // recorded as COMPLETED — an account erased and signed into at the same time.
+    if (existing) {
+      const pending = await tx.accountDeletionRequest.findFirst({
+        where: { platformUserId: existing.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
+        select: { id: true },
+      });
+      if (pending) {
+        throw Conflict('This account is being deleted. Withdraw that request before accepting an invitation.');
+      }
+    }
 
     const platformUser = existing
       ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
