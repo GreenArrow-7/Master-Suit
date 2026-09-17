@@ -13,7 +13,7 @@ export const legalFacts = {
   legalEntity: 'Youhan', // F7: registered legal name
   address: 'Dubai', // F7
   country: 'United Arab Emirates', // F7
-  privacyEmail: 'youan3023@gmail.com', // F7
+  privacyEmail: OWNER_TODO, // F7: owner to confirm whether youhan3023@gmail.com is reused // F7
   supportEmail: 'youhan3023@gmail.com', // F7
   supportHours: 'by email; monitored until 21:00 Gulf Standard Time (UTC+4)', // owner 17/09: days/start not specified
   hostingProvider: 'Hetzner Online GmbH, Helsinki, Finland (EU)', // F7: hosting provider and region
