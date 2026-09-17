@@ -13,7 +13,7 @@ def kv(path):
         for line in open(path, encoding='utf-8', errors='replace'):
             m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line.rstrip('\n'))
             if m: d[m.group(1)] = m.group(2).strip().strip('"').strip("'")
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         return None
     return d
 env = kv('.env.production') or {}
@@ -27,8 +27,11 @@ else:
         print(f'{k}: {bk[k] if k in bk and bk[k] else "UNSET (script default applies)"}')
     for k in ('BACKUP_PASSPHRASE', 'BACKUP_REMOTE'):
         print(f'{k}: {"SET" if bk.get(k) else "UNSET in backup.env -> NOT VERIFIED"}')
-runs = sorted(d for d in os.listdir('/var/backups/master-suite') if re.match(r'^\d{8}T\d{6}Z$', d)) if os.path.isdir('/var/backups/master-suite') else []
-print(f'backup runs on disk: {len(runs)}; newest: {runs[-1] if runs else "NONE"}')
+try:
+    runs = sorted(d for d in os.listdir('/var/backups/master-suite') if re.match(r'^\d{8}T\d{6}Z$', d))
+    print(f'backup runs on disk: {len(runs)}; newest: {runs[-1] if runs else "NONE"}')
+except (FileNotFoundError, PermissionError):
+    print('backup runs on disk: NOT VERIFIED (directory not readable by this account)')
 sched = subprocess.run("(crontab -l 2>/dev/null; cat /etc/cron.d/* /etc/crontab 2>/dev/null; systemctl list-timers --all 2>/dev/null) | grep -qi backup && echo PRESENT || echo ABSENT", shell=True, capture_output=True, text=True).stdout.strip()
 print(f'backup schedule entry: {sched}')
 
