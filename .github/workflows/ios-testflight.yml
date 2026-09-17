@@ -28,6 +28,16 @@ name: iOS TestFlight (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: >-
+          Backend the app is compiled against. `staging` uses IOS_STAGING_URL (the test
+          rounds); `production` uses IOS_PRODUCTION_URL and produces the App Store candidate.
+          Neither submits for review.
+        type: choice
+        required: true
+        default: staging
+        options: [staging, production]
 
 permissions:
   contents: read
@@ -55,7 +65,7 @@ jobs:
       - name: Preflight — configuration present and acceptable
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          IOS_STAGING_URL: ${{ vars.IOS_STAGING_URL }}
+          IOS_STAGING_URL: ${{ inputs.target == 'production' && vars.IOS_PRODUCTION_URL || vars.IOS_STAGING_URL }}
           IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
           IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
@@ -97,7 +107,8 @@ jobs:
 
       - name: Install Capacitor and sync iOS
         env:
-          MOBILE_SERVER_URL: ${{ vars.IOS_STAGING_URL }}
+          # The same variable the preflight validated: https, no dev tunnel, no path.
+          MOBILE_SERVER_URL: ${{ inputs.target == 'production' && vars.IOS_PRODUCTION_URL || vars.IOS_STAGING_URL }}
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
