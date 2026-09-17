@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma, withPlatformTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
@@ -678,12 +678,24 @@ export async function processAccountDeletion(requestId: string): Promise<Process
         data: { revokedAt: new Date(), revokedReason: 'account deleted' },
       })
     ).count;
-    outcome.accessGrantsRevoked = (
-      await prisma.platformAccessGrant.updateMany({
-        where: { platformUserId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      })
-    ).count;
+    // PlatformAccessGrant carries a tenantId and is under row-level security
+    // (20260826120000): without a pinned tenant or `app.platform_admin` the update
+    // matches nothing and the count below reads zero — which is precisely what CI, running
+    // as the RLS role, reported while a local run as the table owner passed. A person's
+    // grants span whichever tenants they were granted, so no single tenant can be pinned;
+    // this is the same cross-tenant read `liveGrantCount` makes, and it is narrowed to one
+    // platformUserId and to revocation. withPlatformTx's contract names requirePlatformOwner;
+    // the executor has no request actor — it acts on a reauthenticated, recorded request —
+    // and that departure is deliberate and confined to these two statements.
+    outcome.accessGrantsRevoked = await withPlatformTx(
+      async (tx) =>
+        (
+          await tx.platformAccessGrant.updateMany({
+            where: { platformUserId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          })
+        ).count,
+    );
     outcome.coverageGrantsRevoked = (
       await prisma.platformCoverageGrant.updateMany({
         where: { platformUserId, revokedAt: null },
@@ -824,7 +836,9 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     const serviceCredentialsLeft = await prisma.platformServiceCredential.count({
       where: { platformUserId, revokedAt: null },
     });
-    const accessGrantsLeft = await prisma.platformAccessGrant.count({ where: { platformUserId, revokedAt: null } });
+    const accessGrantsLeft = await withPlatformTx((tx) =>
+      tx.platformAccessGrant.count({ where: { platformUserId, revokedAt: null } }),
+    );
     const coverageGrantsLeft = await prisma.platformCoverageGrant.count({
       where: { platformUserId, revokedAt: null },
     });
