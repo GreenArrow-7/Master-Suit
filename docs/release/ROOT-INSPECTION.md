@@ -36,7 +36,7 @@ print('== 2. production env keys (presence only)')
 for k in ('DATABASE_URL','MIGRATION_DATABASE_URL','STAGING_NETWORK','STAGING_DATABASE_URL','ALLOW_UNSTAGED_MIGRATION','ACCOUNT_DELETION_EXECUTION_ENABLED','GEMINI_API_KEY','EMAIL_PROVIDER','S3_ENDPOINT','APP_ENV'):
     print(f'{k}: {"SET" if env.get(k) else "UNSET"}')
 print('EMAIL_PROVIDER value:', env.get('EMAIL_PROVIDER') or 'UNSET')
-print('S3_ENDPOINT host:', re.sub(r'//[^@/]*@', '//', env.get('S3_ENDPOINT','')) or 'UNSET')
+print('S3_ENDPOINT host:', (up.urlsplit(env.get('S3_ENDPOINT','')).hostname or 'UNSET'))
 
 print('== 3. committed-default DB password equality')
 def pw_from_url(u):
@@ -58,11 +58,15 @@ for user in ('master_saas_app','leadflow'):
 
 print('== 4. AI / transcription connections in production (provider, status, count)')
 q = subprocess.run(['docker','exec','infra-postgres-1','sh','-c','psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select provider, status, count(*) from \\"IntegrationConnection\\" group by 1,2 order by 1"'], capture_output=True, text=True)
-print(q.stdout.strip() or '(none configured)')
+if q.returncode != 0: print(f'NOT VERIFIED (query failed, exit {q.returncode})')
+else: print(q.stdout.strip() or 'NONE CONFIGURED (query succeeded, 0 rows)')
 
 print('== 5. running release identity')
-print(subprocess.run(['docker','exec','infra-web-1','sh','-c','env | grep ^BUILD_COMMIT='], capture_output=True, text=True).stdout.strip())
+def show(label, cmd):
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    print(f'{label}: ' + (r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else f'NOT VERIFIED (exit {r.returncode})'))
+show('BUILD_COMMIT', ['docker','exec','infra-web-1','sh','-c','env | grep ^BUILD_COMMIT='])
 for c in ('infra-web-1','infra-worker-1'):
-    print(subprocess.run(['docker','inspect',c,'--format','{{.Name}} {{.Config.Image}} {{.Image}}'], capture_output=True, text=True).stdout.strip())
+    show(c, ['docker','inspect',c,'--format','{{.Config.Image}} {{.Image}}'])
 PY
 ```
