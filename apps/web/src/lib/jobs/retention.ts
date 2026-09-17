@@ -330,6 +330,9 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
       }
       // A row whose object survived is kept so the next run retries it: deleting the row
       // would orphan the file where nothing can find it again.
+      // ponytail: if a full batch of rows at the head of the order fails persistently, the
+      // same batch is retried up to MAX_BATCHES and everything behind it waits until
+      // storage recovers; bounded and logged. Upgrade path: per-row backoff column.
       const ids = due.filter((row) => !failed.has(row.id)).map((row) => row.id);
       deleted -= failed.size;
       if (ids.length === 0) {
