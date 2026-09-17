@@ -1,4 +1,4 @@
-package com.mastersuite.app;
+package com.youhan.one;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">YOUHAN ONE Dev</string>
     <string name="title_activity_main">YOUHAN ONE Dev</string>
-    <string name="package_name">com.mastersuite.app</string>
-    <string name="custom_url_scheme">com.mastersuite.app</string>
+    <string name="package_name">com.youhan.one</string>
+    <string name="custom_url_scheme">com.youhan.one</string>
 </resources>
