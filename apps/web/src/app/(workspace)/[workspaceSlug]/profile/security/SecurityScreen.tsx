@@ -166,11 +166,16 @@ export default function SecurityScreen({
       setDelPassword('');
       setDelCode('');
       setDelConfirm('');
+      // The toast has to agree with the card under it. It said "will be deleted shortly"
+      // regardless of the switch, which the browser journey caught sitting directly above a
+      // paragraph saying processing was not switched on.
       setDelNote({
         text:
           created.status === 'BLOCKED'
             ? 'Recorded, but it cannot go ahead yet — see below.'
-            : 'Recorded. Your account will be deleted shortly.',
+            : deletionExecutionEnabled
+              ? 'Recorded. Your account will be deleted shortly.'
+              : 'Recorded and held. Nothing is deleted until processing is switched on.',
       });
       router.refresh();
     } catch (err) {
