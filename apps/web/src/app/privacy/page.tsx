@@ -18,8 +18,8 @@ export default function PrivacyPage() {
       <h1>Privacy policy</h1>
       <p>
         <strong>Who we are.</strong> YOUHAN ONE is business software provided by {f.legalEntity}, {f.address},{' '}
-        {f.country}. Organisations (&ldquo;workspaces&rdquo;) use it to manage sales, customers, staff and payroll.
-        Your organisation, not YOUHAN, decides what is recorded in it.
+        {f.country}. Organisations (&ldquo;workspaces&rdquo;) use it to manage sales, customers, staff and payroll. Your
+        organisation, not YOUHAN, decides what is recorded in it.
       </p>
       <p>
         <strong>Accounts.</strong> There is no public sign-up. An administrator in your organisation invites you, and
@@ -29,7 +29,9 @@ export default function PrivacyPage() {
       <p>All of the following are used only to provide the service; none is used for advertising or tracking.</p>
       <ul>
         <li>Your identity and contact details — name, email, phone, photo — to sign you in and show who did what.</li>
-        <li>Contact details of the people you record — leads, customers, property owners — entered by you or colleagues.</li>
+        <li>
+          Contact details of the people you record — leads, customers, property owners — entered by you or colleagues.
+        </li>
         <li>Precise location — only when you check in for attendance or record a site visit, at that moment.</li>
         <li>
           Face templates — only if you give consent on the Security screen; a mathematical template, not a photograph.
@@ -37,7 +39,9 @@ export default function PrivacyPage() {
         </li>
         <li>Financial and payroll information recorded by your organisation.</li>
         <li>Documents and photos you upload, including identity documents held by your HR team.</li>
-        <li>Call recordings and transcripts — only where your organisation has enabled recording and consent is recorded.</li>
+        <li>
+          Call recordings and transcripts — only where your organisation has enabled recording and consent is recorded.
+        </li>
         <li>Usage and audit records — what was opened and changed, with your user id, IP address and browser.</li>
         <li>Diagnostics — server request and error logs keyed to a request id.</li>
       </ul>
@@ -58,11 +62,11 @@ export default function PrivacyPage() {
       <p>
         Profile → Security → <em>Delete my account</em>. You confirm with your password (and authenticator code if
         enabled). Your sign-in, password, two-factor setup, sessions, face templates, personal contact details and API
-        keys are removed and your membership of every workspace ends. Records you created for your organisation —
-        leads, calls, receipts, approvals — stay with the organisation with your name against them, as do the audit
-        trail and your employment record. The completed request records exactly what was kept and why. Eligible
-        requests are processed within {f.deletionTargetHours} hours as an operational target; if you are your
-        organisation&rsquo;s owner or last administrator you are asked to hand that over first.
+        keys are removed and your membership of every workspace ends. Records you created for your organisation — leads,
+        calls, receipts, approvals — stay with the organisation with your name against them, as do the audit trail and
+        your employment record. The completed request records exactly what was kept and why. Eligible requests are
+        processed within {f.deletionTargetHours} hours as an operational target; if you are your organisation&rsquo;s
+        owner or last administrator you are asked to hand that over first.
       </p>
       <h2>Your rights and contact</h2>
       <p>
