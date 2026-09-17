@@ -428,6 +428,12 @@ jobs:
         # line a clean build never produces). A production build takes no input from dev
         # output, so none is left for it to read.
         run: |
+          # Playwright's webServer stops `next dev` when the suite ends. Wait for that to
+          # be true before touching its output, bounded, and say so if it is not.
+          for i in $(seq 1 30); do pgrep -f 'next dev' >/dev/null || break; sleep 1; done
+          if pgrep -f 'next dev' >/dev/null; then echo "::error::a next dev process is still running after E2E"; exit 1; fi
+          # Only the dev server's own output. Test traces and the Playwright report live in
+          # test-results/ and playwright-report/, which this does not touch.
           rm -rf .next/dev
           npm run build
 
