@@ -7,6 +7,36 @@ adds no client-side checks and hiding a menu item never replaces them.
 
 **Run.** Staging build of f3386b2 (web code identical to the TestFlight source apart from the CSV-export revoke delay); 16 September 2026: 78 passed, 1 hr-modules and 3 email-link failures explained below, all caused by the dev-tunnel origin in emailed links.
 
+## Current test round — device testing in progress
+
+**Status: Physical-iPhone testing in progress by the owner; structured results pending.**
+No row below may be marked passed until the owner confirms a result. The seven preliminary
+checks sent with the retest checklist are prompts for the tester, not evidence, and do not
+close any of the untested rows.
+
+| | |
+|---|---|
+| TestFlight build | **1.0 (3)** — uploaded 2026-09-16, `processingState=VALID` |
+| Build source SHA | `afb53bd` (native shell; nothing since has touched `apps/mobile/ios` or the Capacitor config) |
+| Backend under test | `https://ios-staging.youhan.in` |
+| Backend revision | **`c43b06f496a878869c4aa3064fa491766d3e518b`** |
+| Device / iOS version | *to be recorded from the owner's report* |
+
+**Correction — there is no build 2.** PR #56's description says "TestFlight build 1.0 (2)".
+That is wrong. Build numbers come from the workflow run number, and run #2 was a duplicate
+dispatch that was cancelled before it produced an artifact, so it uploaded nothing. The
+builds that exist are **1** (run #1, source `8eba37b`) and **3** (run #3, source `afb53bd`).
+
+**Why build 3 is the right thing to test even though its source predates the iPhone fixes.**
+The hydration fix (`3a3a1f6`) and the iOS zoom fix (`c43b06f`) are changes to `apps/web`,
+which the app loads from the backend rather than carrying in the binary. The backend above
+is at `c43b06f`, which contains both, and is missing nothing in `apps/web/src` relative to
+`main`. The native shell in build 3 is current.
+
+**Staging is held stable for the duration of this round.** Nothing will be deployed to
+`ios-staging` while testing is in progress; any change will be announced first, with the new
+revision recorded here.
+
 **Evidence columns.** *Staging* = Playwright on the isolated mobile staging build
 (Chromium; phone viewport where the spec says so). *iPhone* = the installed TestFlight
 build on a physical device, recorded only from results the tester reports. No row is
