@@ -1,7 +1,7 @@
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { mustChangePassword } from '@/services/identity/accounts';
 import { twoFactorStatus } from '@/services/identity/twoFactor';
-import { myDeletionRequest } from '@/services/identity/accountDeletion';
+import { executionEnabled, myDeletionRequest } from '@/services/identity/accountDeletion';
 import { activeConsent } from '@/services/hr/attendance';
 import { myEmployee } from '@/services/hr/leave';
 import SecurityScreen from './SecurityScreen';
@@ -49,6 +49,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         mfaEnabled={!!status.enabled}
         consentGiven={!!consent}
         deletionRequest={deletionRequest}
+        deletionExecutionEnabled={executionEnabled()}
       />
     </div>
   );

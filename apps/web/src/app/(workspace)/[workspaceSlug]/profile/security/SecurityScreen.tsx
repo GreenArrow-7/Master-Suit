@@ -17,6 +17,7 @@ export default function SecurityScreen({
   mfaEnabled,
   consentGiven,
   deletionRequest,
+  deletionExecutionEnabled,
 }: {
   selfBase: string;
   hrBase: string;
@@ -29,6 +30,8 @@ export default function SecurityScreen({
     blockedReason: string | null;
     requestedAt: string | Date;
   } | null;
+  /** Whether the worker erases at all right now. Off: requests queue and nothing runs. */
+  deletionExecutionEnabled: boolean;
 }) {
   const router = useRouter();
 
@@ -407,7 +410,9 @@ export default function SecurityScreen({
                 ? 'Once that is resolved, withdraw this request and ask again to start straight away — otherwise it is re-checked automatically every few hours. If you cannot resolve it yourself, ask your workspace administrator or your usual support contact.'
                 : request.status === 'IN_PROGRESS'
                   ? 'Processing has started, so this can no longer be withdrawn.'
-                  : 'We aim to complete eligible requests within 24 hours. You can withdraw it until processing starts.'}
+                  : deletionExecutionEnabled
+                    ? 'We aim to complete eligible requests within 24 hours. You can withdraw it until processing starts.'
+                    : 'Account deletion processing is not yet switched on, so nothing has been deleted and no time has been scheduled. Your request stays recorded and you can withdraw it at any time.'}
             </p>
             {delNote && (
               <p className="lf-security__note" data-bad={delNote.bad} role="status">
@@ -450,8 +455,10 @@ export default function SecurityScreen({
               they age out.
             </p>
             <p className="lf-security__helper">
-              We aim to complete eligible requests within 24 hours, and you can withdraw yours until processing starts.
-              It cannot be undone afterwards, and this does not close your organisation&rsquo;s workspace.
+              {deletionExecutionEnabled
+                ? 'We aim to complete eligible requests within 24 hours, and you can withdraw yours until processing starts.'
+                : 'Account deletion processing is not yet switched on: your request will be recorded and held, nothing will be deleted until it is, and you can withdraw it at any time.'}{' '}
+              It cannot be undone once processed, and this does not close your organisation&rsquo;s workspace.
             </p>
             <form onSubmit={requestDeletion} className="lf-security__form">
               <label className="lf-label" htmlFor="del-password">

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { env } from '@/lib/env';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -40,6 +41,13 @@ import type { Ctx } from '@/lib/security/rbac';
 
 /** Statuses that mean "this request is still going somewhere". */
 const OPEN = ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] as const;
+
+/**
+ * Whether the worker may erase. Off by default: requests queue as REQUESTED or BLOCKED,
+ * remain visible and withdrawable, and nothing irreversible happens until the operator
+ * turns this on deliberately — see ACCOUNT_DELETION_EXECUTION_ENABLED in env.ts.
+ */
+export const executionEnabled = () => env.ACCOUNT_DELETION_EXECUTION_ENABLED;
 
 export interface DeletionBlocker {
   tenantId: string;
@@ -482,6 +490,10 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     return { status: 'SKIPPED', requestId, reason: 'cancelled by the account holder' };
   }
 
+  // Before the claim, so a disabled executor changes no state at all: the row is not
+  // moved to IN_PROGRESS, no startedAt is written, and cancel still works.
+  if (!executionEnabled()) return { status: 'SKIPPED', requestId, reason: 'execution disabled' };
+
   if ((await claim(requestId)) === 'NOT_CLAIMABLE') {
     return { status: 'SKIPPED', requestId, reason: `not claimable from status ${request.status}` };
   }
@@ -829,6 +841,10 @@ export async function processAccountDeletion(requestId: string): Promise<Process
  * mid-assertion.
  */
 export async function sweepAccountDeletions(limit = 20, platformUserIds?: string[]) {
+  if (!executionEnabled()) {
+    logger.info('account deletion sweep: execution disabled, requests left queued');
+    return { considered: 0, completed: 0, blocked: 0, failed: 0, skipped: 0, disabled: true };
+  }
   const now = Date.now();
   const due = await prisma.accountDeletionRequest.findMany({
     where: {
@@ -848,7 +864,7 @@ export async function sweepAccountDeletions(limit = 20, platformUserIds?: string
     select: { id: true },
   });
 
-  const tally = { considered: due.length, completed: 0, blocked: 0, failed: 0, skipped: 0 };
+  const tally = { considered: due.length, completed: 0, blocked: 0, failed: 0, skipped: 0, disabled: false };
   for (const { id } of due) {
     try {
       const result = await processAccountDeletion(id);
