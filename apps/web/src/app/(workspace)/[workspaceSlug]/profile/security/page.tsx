@@ -1,6 +1,7 @@
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { mustChangePassword } from '@/services/identity/accounts';
 import { twoFactorStatus } from '@/services/identity/twoFactor';
+import { myDeletionRequest } from '@/services/identity/accountDeletion';
 import { activeConsent } from '@/services/hr/attendance';
 import { myEmployee } from '@/services/hr/leave';
 import SecurityScreen from './SecurityScreen';
@@ -17,10 +18,11 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
   const employee = await myEmployee(ctx);
-  const [status, forced, consent] = await Promise.all([
+  const [status, forced, consent, deletionRequest] = await Promise.all([
     twoFactorStatus(ctx),
     mustChangePassword(ctx),
     employee ? activeConsent(ctx, employee.id) : Promise.resolve(null),
+    myDeletionRequest(ctx),
   ]);
 
   return (
@@ -46,6 +48,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         hrBase={`/api/v1/workspaces/${workspaceSlug}/hr/actions`}
         mfaEnabled={!!status.enabled}
         consentGiven={!!consent}
+        deletionRequest={deletionRequest}
       />
     </div>
   );

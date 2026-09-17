@@ -16,11 +16,19 @@ export default function SecurityScreen({
   hrBase,
   mfaEnabled,
   consentGiven,
+  deletionRequest,
 }: {
   selfBase: string;
   hrBase: string;
   mfaEnabled: boolean;
   consentGiven: boolean;
+  /** The viewer's own open deletion request, if they have one. */
+  deletionRequest: {
+    id: string;
+    status: string;
+    blockedReason: string | null;
+    requestedAt: string | Date;
+  } | null;
 }) {
   const router = useRouter();
 
@@ -37,6 +45,15 @@ export default function SecurityScreen({
   // ── Consent ───────────────────────────────────────────────────────────────
   const [consentBusy, setConsentBusy] = useState(false);
   const [consentNote, setConsentNote] = useState<{ text: string; bad?: boolean } | null>(null);
+
+  // ── Deleting this account ─────────────────────────────────────────────────
+  const [request, setRequest] = useState(deletionRequest);
+  const [delPassword, setDelPassword] = useState('');
+  const [delCode, setDelCode] = useState('');
+  const [delReason, setDelReason] = useState('');
+  const [delConfirm, setDelConfirm] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delNote, setDelNote] = useState<{ text: string; bad?: boolean } | null>(null);
 
   // ── Password ──────────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('');
@@ -123,6 +140,46 @@ export default function SecurityScreen({
     } finally {
       setConsentBusy(false);
     }
+  }
+
+  async function requestDeletion(event: React.FormEvent) {
+    event.preventDefault();
+    setDelBusy(true);
+    setDelNote(null);
+    try {
+      const body: Record<string, unknown> = { password: delPassword };
+      if (mfaEnabled) body.mfaCode = delCode;
+      if (delReason.trim()) body.reason = delReason.trim();
+      const created = await call(selfBase, 'account-deletion-request', body);
+      setRequest(created);
+      setDelPassword('');
+      setDelCode('');
+      setDelConfirm('');
+      setDelNote({
+        text:
+          created.status === 'BLOCKED'
+            ? 'Recorded, but it cannot go ahead yet — see below.'
+            : 'Recorded. Your account will be deleted shortly.',
+      });
+      router.refresh();
+    } catch (err) {
+      setDelNote({ text: (err as Error).message, bad: true });
+    }
+    setDelBusy(false);
+  }
+
+  async function cancelDeletion() {
+    setDelBusy(true);
+    setDelNote(null);
+    try {
+      await call(selfBase, 'account-deletion-cancel');
+      setRequest(null);
+      setDelNote({ text: 'Withdrawn. Nothing has been deleted.' });
+      router.refresh();
+    } catch (err) {
+      setDelNote({ text: (err as Error).message, bad: true });
+    }
+    setDelBusy(false);
   }
 
   async function changePassword(event: React.FormEvent) {
@@ -309,6 +366,122 @@ export default function SecurityScreen({
             {pwBusy ? 'Changing…' : 'Change password'}
           </button>
         </form>
+      </section>
+
+      <section className="lf-card lf-security__card">
+        <header className="lf-security__head">
+          <h2>Delete my account</h2>
+        </header>
+
+        {request ? (
+          <>
+            <p className="lf-security__copy">
+              {request.status === 'BLOCKED'
+                ? 'Your request is recorded but cannot go ahead yet.'
+                : 'Your request is recorded and is waiting to be processed.'}
+            </p>
+            {request.status === 'BLOCKED' && request.blockedReason && (
+              <p className="lf-security__note" data-bad role="status">
+                {request.blockedReason}
+              </p>
+            )}
+            <p className="lf-security__helper">
+              Requested {new Date(request.requestedAt).toLocaleString('en-GB')}. You can withdraw it until processing
+              starts.
+            </p>
+            {delNote && (
+              <p className="lf-security__note" data-bad={delNote.bad} role="status">
+                {delNote.text}
+              </p>
+            )}
+            <button className="lf-btn lf-btn--secondary" type="button" onClick={cancelDeletion} disabled={delBusy}>
+              {delBusy ? 'Withdrawing…' : 'Withdraw my request'}
+            </button>
+          </>
+        ) : (
+          <>
+            {/*
+              Said plainly, and before the form rather than after it. What goes is this
+              person's identity; what stays belongs to the workspace and is not theirs to
+              remove, and saying so here is the difference between an informed choice and
+              a surprise.
+            */}
+            <p className="lf-security__copy">
+              This deletes your sign-in, your password, your two-factor setup and your personal details, and removes you
+              from every workspace you belong to.
+            </p>
+            <p className="lf-security__helper">
+              The work you recorded — leads, calls, receipts and approvals — belongs to the workspace and stays, with
+              your name against it so the records still make sense. Your face check-in data is deleted. It usually
+              completes within a few hours, and you can withdraw the request until it starts. It cannot be undone
+              afterwards, and this does not close your organisation&rsquo;s workspace.
+            </p>
+            <form onSubmit={requestDeletion} className="lf-security__form">
+              <label className="lf-label" htmlFor="del-password">
+                Your password
+              </label>
+              <input
+                id="del-password"
+                className="lf-input"
+                type="password"
+                autoComplete="current-password"
+                value={delPassword}
+                onChange={(event) => setDelPassword(event.target.value)}
+                required
+              />
+              {mfaEnabled && (
+                <>
+                  <label className="lf-label" htmlFor="del-code">
+                    Authenticator code
+                  </label>
+                  <input
+                    id="del-code"
+                    className="lf-input"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={delCode}
+                    onChange={(event) => setDelCode(event.target.value)}
+                    required
+                  />
+                </>
+              )}
+              <label className="lf-label" htmlFor="del-reason">
+                Reason (optional)
+              </label>
+              <input
+                id="del-reason"
+                className="lf-input"
+                value={delReason}
+                onChange={(event) => setDelReason(event.target.value)}
+                maxLength={2000}
+              />
+              <label className="lf-label" htmlFor="del-confirm">
+                Type DELETE to confirm
+              </label>
+              <input
+                id="del-confirm"
+                className="lf-input"
+                value={delConfirm}
+                onChange={(event) => setDelConfirm(event.target.value)}
+                required
+              />
+              {delNote && (
+                <p className="lf-security__note" data-bad={delNote.bad} role="status">
+                  {delNote.text}
+                </p>
+              )}
+              <button
+                className="lf-btn"
+                style={{ background: 'var(--lf-vermillion)' }}
+                type="submit"
+                disabled={delBusy || delConfirm !== 'DELETE'}
+              >
+                {delBusy ? 'Recording…' : 'Delete my account'}
+              </button>
+            </form>
+          </>
+        )}
       </section>
     </div>
   );
