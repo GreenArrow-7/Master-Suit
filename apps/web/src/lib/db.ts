@@ -49,6 +49,12 @@ export const GLOBAL_MODELS = new Set([
   // services/identity/passwordHistory.ts, which is always already scoped to a
   // single platformUserId.
   'PasswordHistory',
+  // A person's request to erase their own platform account. It carries no tenantId to
+  // filter on: the account spans every workspace the person belongs to, which is the
+  // whole reason the request exists at one level above them. `requestedInTenantId` is
+  // context for whoever processes it, never a scope — filtering by it would hide a
+  // request made from a workspace the processor is not looking at.
+  'AccountDeletionRequest',
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
