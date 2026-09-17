@@ -3,6 +3,7 @@ import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import MetricCard from '@/components/ui/MetricCard';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -84,8 +85,12 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         })
       : [];
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
+  // Notes are free text about the conversation; a monitoring grant without
+  // sensitive scope gets the call without them (they are otherwise in the payload).
+  const sensitive = await hasSensitiveAccess(ctx);
   const gridRows = calls.map((call) => ({
     ...call,
+    notes: sensitive ? call.notes : null,
     lead: call.leadId ? (leadById.get(call.leadId) ?? null) : null,
   }));
 

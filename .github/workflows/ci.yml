@@ -148,6 +148,13 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # Before the demo seed, which would create the same rows and hide a gap. A
+      # role can only be granted a permission whose definition exists; this fails
+      # when migrations alone leave one the navigation, the monitoring allowlist or
+      # a permission check needs (src/lib/security/permissionCatalogue.ts).
+      - name: Permission catalogue
+        run: npm run check:permissions
+
       # ── Gate 0a — schema/migration drift ──────────────────────────────────
       #
       # `schema.prisma` and `prisma/migrations` are two descriptions of one

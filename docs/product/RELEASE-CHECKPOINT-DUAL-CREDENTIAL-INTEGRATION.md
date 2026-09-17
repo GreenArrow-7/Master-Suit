@@ -246,6 +246,19 @@ preview database `master_suite_val`: **not present in any of them.** Production
 was **not** inspected. Nothing created or promoted it, and nothing in code or
 configuration names it.
 
+**Production (reported, not verified here):** the account owner states the identity
+exists in the production environment. This checkpoint has no production access and
+has not confirmed it, nor its role, status or MFA state. Two consequences once this
+release is deployed there:
+
+- If its `platformRole` is OWNER, SUPPORT or SECURITY_AUDITOR, migration #11 signs
+  its current sessions out; it signs in again with its existing (administration)
+  password and MFA. Nothing else about the account changes, and no monitoring
+  password exists until the person sets one (step 3 below).
+- If its `platformRole` is `USER` (a customer account), **stop at step 1**: a
+  monitoring password cannot be set on it, and promotion to platform staff is a
+  separate owner decision, never automatic.
+
 **Provisioning after acceptance** (runbook §3.2), under its own change ticket, with
 no password or MFA secret in chat, tickets, email, scripts or configuration:
 

@@ -4,6 +4,7 @@ import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { coachingCallList, coachingAnalytics, coachingCounts } from '@/services/shared/coachingInsights';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import PageHeader from '@/components/ui/PageHeader';
 import SalesLink from '@/components/workspace/SalesLink';
 
@@ -29,6 +30,19 @@ export default async function CoachingPage({
 }) {
   const [{ workspaceSlug }, searchParams] = await Promise.all([paramsPromise, searchParamsPromise]);
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  // Derived from what was said on each call: served to a monitoring grant only
+  // when it is marked sensitive (lib/auth/sensitive-access.ts). Customer users are
+  // unaffected — the check passes for a workspace's own people.
+  if (!(await hasSensitiveAccess(ctx))) {
+    return (
+      <div className="lf-page-stack">
+        <EmptyState
+          title="Not included in this access"
+          description="Coaching metrics, talk ratios, audit scores and objection handling are conversation content. Monitoring access to this workspace does not include them unless it was granted with sensitive scope."
+        />
+      </div>
+    );
+  }
 
   /**
    * Analysed-only is the default. The screen is called Coaching and promises

@@ -59,7 +59,15 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(data.detail ?? data.title ?? 'The workspace could not be created. Check the fields and try again.');
+        // A 422 carries Zod's flattened fieldErrors and no `detail`, so the
+        // wizard used to answer five steps of typing with the bare words
+        // "Validation failed" — which field, on which step, it did not say.
+        const fields = Object.keys(data.errors?.fieldErrors ?? {});
+        setError(
+          fields.length
+            ? `${data.title ?? 'Validation failed'}: check ${fields.join(', ')}.`
+            : (data.detail ?? data.title ?? 'The workspace could not be created. Check the fields and try again.'),
+        );
         return;
       }
       setCreated(data.workspace);

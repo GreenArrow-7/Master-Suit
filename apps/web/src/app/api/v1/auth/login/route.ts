@@ -410,21 +410,27 @@ async function completeChallenge(challengeId: string, body: Body, info: RequestI
     throw Invalid([{ field: 'mfaCode', code: 'required', message: 'Enter the code from your authenticator.' }]);
   }
 
-  const { verifyTotp } = await import('@/lib/auth/mfa');
-  const { decryptSecret } = await import('@/services/identity/secrets');
+  const { consumeTotp } = await import('@/lib/auth/totp-consume');
   const { consumeRecoveryCode } = await import('@/services/identity/twoFactor');
 
   // The secret is stored encrypted; values enrolled before that change are
   // passed through unchanged by decryptSecret.
-  const byTotp = Boolean(body.mfaCode && user.mfaSecret && verifyTotp(decryptSecret(user.mfaSecret), body.mfaCode));
+  // Accepting a code records its step, so the same code cannot sign in twice.
+  const totpOutcome = body.mfaCode ? await consumeTotp(user.id, user.mfaSecret, body.mfaCode) : 'INVALID';
+  const byTotp = totpOutcome === 'ACCEPTED';
   // A recovery code is spent here, so a captured one is worthless twice.
   const byRecovery = !byTotp && Boolean(body.recoveryCode) && (await consumeRecoveryCode(user.id, body.recoveryCode!));
 
   if (!byTotp && !byRecovery) {
     await recordMfaChallengeFailure(challenge.id);
-    await recordFailure(activeMembership?.tenantId ?? null, user.id, info, 'BAD_MFA', {
-      credentialPurpose: challenge.credentialPurpose,
-    });
+    // Same answer to the caller; the trail says which it was.
+    await recordFailure(
+      activeMembership?.tenantId ?? null,
+      user.id,
+      info,
+      totpOutcome === 'REPLAYED' ? 'MFA_CODE_REPLAYED' : 'BAD_MFA',
+      { credentialPurpose: challenge.credentialPurpose },
+    );
     throw Unauthorized(GENERIC);
   }
 

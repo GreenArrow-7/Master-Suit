@@ -2,17 +2,16 @@
   "name": "master-app-mobile",
   "version": "0.1.0",
   "private": true,
-  "description": "Capacitor shell that ships apps/web to the Play Store and the App Store.",
+  "description": "Capacitor shell for apps/web — development proof of concept (server.url is not production-supported).",
   "scripts": {
-    "sync": "cap sync",
+    "sync": "cap sync && node scripts/fix-ios-spm-paths.mjs",
     "open:android": "cap open android",
     "open:ios": "cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
-    "@capacitor/ios": "^8.5.0",
-    "@capacitor/push-notifications": "^8.1.2"
+    "@capacitor/ios": "^8.5.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0"

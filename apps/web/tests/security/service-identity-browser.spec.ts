@@ -21,7 +21,6 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { totp } from '@/lib/auth/mfa';
 import { encryptSecret } from '@/services/identity/secrets';
 import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
 import { SESSION_COOKIE, SERVICE_SESSION_COOKIE } from '@/lib/auth/session';
@@ -30,6 +29,7 @@ import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { POST as serviceLogin, PATCH as selectWorkspace } from '@/app/api/v1/auth/service-login/route';
 import { POST as humanLogin } from '@/app/api/v1/auth/login/route';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
+import { freshTotp } from '../helpers/totp';
 
 const suffix = randomBytes(4).toString('hex');
 const username = `ai.browser.${suffix}`;
@@ -43,8 +43,6 @@ const ORIGIN = 'http://localhost:3000';
 let fx: Fixture;
 let identityId = '';
 let ownerId = '';
-
-const code = () => totp(SECRET, Math.floor(Date.now() / 1000 / 30));
 
 async function post(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,7 +119,7 @@ describe('two identities in one browser', () => {
     const res = await post(
       serviceLogin,
       '/api/v1/auth/service-login',
-      { username, password: PASSWORD, mfaCode: code() },
+      { username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) },
       { cookie: ownerCookie },
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -235,7 +233,7 @@ describe('identifiers', () => {
       const res = await post(serviceLogin, '/api/v1/auth/service-login', {
         username,
         password: PASSWORD,
-        mfaCode: code(),
+        mfaCode: await freshTotp({ username }, SECRET),
       });
       // The two-step flow costs two requests per sign-in; at the old limit of
       // three the second sign-in was refused having got nothing wrong.

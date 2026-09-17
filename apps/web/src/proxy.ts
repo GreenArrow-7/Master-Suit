@@ -58,6 +58,9 @@ export default function proxy(request: NextRequest) {
   // it to know whether the viewer is already on the screen it would send them
   // to, so stamp it here where the URL is still in hand.
   headers.set('x-pathname', request.nextUrl.pathname);
+  // The query too, so a signed-out visitor sent to sign-in can come back to the
+  // same filtered screen, not just the same path.
+  headers.set('x-search', request.nextUrl.search);
 
   const response = NextResponse.next({ request: { headers } });
   response.headers.set('Content-Security-Policy', csp);

@@ -25,14 +25,24 @@ const query = z
   })
   .strict();
 
-export const GET = route({ module: 'calls', productModule: 'SALES', action: 'VIEW', query }, async ({ ctx, query }) => {
-  const filters = {
-    callerId: query.callerId,
-    stageId: query.stageId,
-    from: query.from,
-    to: query.to,
-    analysedOnly: query.analysed === 'true',
-  };
-  if (query.view === 'analytics') return coachingAnalytics(ctx, filters);
-  return { data: await coachingCallList(ctx, filters, query.limit) };
-});
+/**
+ * Per-call and team coaching metrics — sentiment, talk ratio, audit scores,
+ * objection handling — are derived from what was said on each call. They are
+ * served to a monitoring grant only when it is marked sensitive; whether some
+ * aggregate subset should be ordinary monitoring is an open owner decision, and
+ * until it is made none of it is.
+ */
+export const GET = route(
+  { module: 'calls', productModule: 'SALES', action: 'VIEW', query, sensitive: 'call coaching metrics' },
+  async ({ ctx, query }) => {
+    const filters = {
+      callerId: query.callerId,
+      stageId: query.stageId,
+      from: query.from,
+      to: query.to,
+      analysedOnly: query.analysed === 'true',
+    };
+    if (query.view === 'analytics') return coachingAnalytics(ctx, filters);
+    return { data: await coachingCallList(ctx, filters, query.limit) };
+  },
+);

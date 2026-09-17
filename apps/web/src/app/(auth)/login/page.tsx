@@ -8,11 +8,15 @@ export const metadata = { title: 'Sign in' };
  * shared with enrolment and recovery so the whole outside-a-session flow reads
  * as one place. Headings live inside the form, which retitles itself for the
  * second-factor step.
+ *
+ * `next` is the screen a signed-out visitor was sent away from. It is only a
+ * request: the form checks it against the server's answer (see `signInLanding`).
  */
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
+  const { next } = await searchParams;
   return (
     <AuthShell>
-      <LoginForm />
+      <LoginForm next={typeof next === 'string' ? next : null} />
     </AuthShell>
   );
 }
