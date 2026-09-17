@@ -421,7 +421,15 @@ jobs:
 
       # ── Gate 7 ────────────────────────────────────────────────────────────
       - name: Build
-        run: npm run build
+        # The E2E step's dev server writes `.next/dev/types/validator.ts`, which tsconfig
+        # includes for typegen, and Playwright's teardown can stop the server mid-write.
+        # `next build`'s TypeScript pass then fails on a truncated file that has nothing
+        # to do with the code (seen on PR #59: TS1002 "Unterminated string literal" at a
+        # line a clean build never produces). A production build takes no input from dev
+        # output, so none is left for it to read.
+        run: |
+          rm -rf .next/dev
+          npm run build
 
       # ── Gate 8 ────────────────────────────────────────────────────────────
       #
