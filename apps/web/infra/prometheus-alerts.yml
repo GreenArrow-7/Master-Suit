@@ -48,6 +48,26 @@ groups:
             data was exposed — but that query was one policy mistake away from crossing a
             tenant boundary. Find the call site and pass ctx.tenantId.
 
+  - name: master-suite-account-deletions
+    rules:
+      # ── A person asked to be erased and nothing will finish it ─────────────
+      #
+      # A request past the retry cap stays IN_PROGRESS on purpose: never quietly
+      # COMPLETED, never quietly CANCELLED. The person can neither withdraw it nor ask
+      # again, so it is a stuck obligation to a specific individual, not a queue depth.
+      # Recovery is a person's job — docs/OPERATIONS-ACCOUNT-DELETION.md.
+      - alert: AccountDeletionStuck
+        expr: masterapp_account_deletions_stuck > 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: '{{ $value }} account deletion request(s) past the retry cap'
+          description: >-
+            An erasure failed MAX_ATTEMPTS times and the sweep has stopped retrying it.
+            The account is deactivated and partly erased. Follow the operator procedure
+            in docs/OPERATIONS-ACCOUNT-DELETION.md: read the request's outcome.error,
+            fix the cause, then reset attempts so the next sweep resumes it.
+
   - name: master-suite-queues
     rules:
       # ── The signal that would have caught the dead worker ─────────────────
