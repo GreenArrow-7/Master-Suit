@@ -55,8 +55,12 @@ export default function PrivacyPage() {
       </p>
       <h2>Retention and backups</h2>
       <p>
-        Encrypted backups are kept for {f.backupRetentionDays} days and cannot be edited selectively. Retention of
-        employment records, documents and audit records follows your organisation&rsquo;s policy.
+        Encrypted backups are kept for {f.backupRetentionDays} days and cannot be edited selectively. Call recordings
+        are kept until the retention date your organisation sets on each recording (recordings with no date are kept
+        until deleted by your organisation); deleting your account does not change that. Retention of employment
+        records, documents and audit records follows your organisation&rsquo;s policy, except that deleting your account
+        clears your bank and payroll identifiers, removes your identity documents 15 days later, and clears the IP
+        address and browser details from your audit entries.
       </p>
       <h2>Deleting your account</h2>
       <p>
