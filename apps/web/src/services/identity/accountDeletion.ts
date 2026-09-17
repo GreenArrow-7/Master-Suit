@@ -317,8 +317,6 @@ export const MAX_ATTEMPTS = 5;
 
 /** Owner decision 7 (2026-09-17): identity documents purged 15 days after completion. */
 export const DOCUMENT_PURGE_MS = 15 * 24 * 60 * 60 * 1000;
-/** Owner decision 9 (2026-09-17): recordings of the person's calls expire one hour after completion. */
-export const RECORDING_RETAIN_MS = 60 * 60 * 1000;
 
 /** Reads that must see rows HR has already offboarded; the guard hides them otherwise. */
 const INCLUDE_DELETED: object = { __includeDeleted: true };
@@ -453,7 +451,6 @@ export interface ErasureOutcome {
   hrIdentifiersCleared: number;
   hrDocumentsScheduled: number;
   auditClientDetailsCleared: number;
-  recordingsScheduled: number;
   credentialsCleared: boolean;
   identityAnonymised: boolean;
   /** Counted, not claimed: what this erasure did not remove, and why. */
@@ -562,7 +559,6 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     hrIdentifiersCleared: 0,
     hrDocumentsScheduled: 0,
     auditClientDetailsCleared: 0,
-    recordingsScheduled: 0,
     credentialsCleared: false,
     identityAnonymised: false,
   };
@@ -689,8 +685,7 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     //    retention job removes file and row (HrEmployeeDocument.purgeAt).
     // 8: audit IP address and user agent cleared at completion (decision: within 1 day);
     //    the actor id and the event stay.
-    // 9: call recordings of calls this person made expire one hour after completion
-    //    (Recording.retainUntil; the retention job deletes object and row).
+    // 9: recordings — pending owner clarification; nothing scheduled.
     for (const membership of memberships) {
       if (!membership.salesUserId) continue;
       const profile = await prisma.employeeProfile.findFirst({
@@ -722,12 +717,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
           data: { ipAddress: null, userAgent: null },
         })
       ).count;
-      outcome.recordingsScheduled += (
-        await prisma.recording.updateMany({
-          where: { tenantId: membership.tenantId, call: { callerId: membership.salesUserId } },
-          data: { retainUntil: new Date(Date.now() + RECORDING_RETAIN_MS) },
-        })
-      ).count;
+      // Decision 9 (recordings) is NOT applied: the owner's answer "10 minutes to 1 hour"
+      // is ambiguous (length? processing? retention?) and is awaiting clarification.
     }
 
     // ── 3c. Platform-side credentials and grants ─────────────────────────

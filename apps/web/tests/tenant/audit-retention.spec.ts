@@ -174,7 +174,9 @@ describe('with no policy set', () => {
 
     expect(await auditRows()).toBe(before);
     expect(await platformRows()).toBe(4);
-    expect(result.auditSummary).toEqual({});
+    // HrEmployeeDocument has a fixed policy (purge when purgeAt passes), so it is
+    // always reported; with no policy elsewhere nothing else appears and it deleted nothing.
+    expect(result.auditSummary).toEqual({ HrEmployeeDocument: 0 });
   });
 });
 
