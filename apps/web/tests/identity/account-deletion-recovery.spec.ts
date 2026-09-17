@@ -334,10 +334,10 @@ describe('the ways back into an account being erased', () => {
     const person = await makePerson('Invited Elsewhere');
     await requestAccountDeletion(person.ctx, { password: PASSWORD });
 
-    // A second workspace invites the same address. Acceptance reactivates an existing
-    // identity, and it refused only on deletedAt - which the executor writes last - so
-    // throughout REQUESTED, BLOCKED and IN_PROGRESS this path set the account back to
-    // ACTIVE and attached a membership the erasure never saw.
+    // A second workspace invites the same address. Acceptance refused only on deletedAt,
+    // which the executor writes last, so while a request was open this path attached a
+    // membership the erasure never saw - and during processing it set the identity back
+    // to ACTIVE as well.
     const { normalizedEmail } = await prisma.platformUser.findUniqueOrThrow({
       where: { id: person.platformUserId },
       select: { normalizedEmail: true },

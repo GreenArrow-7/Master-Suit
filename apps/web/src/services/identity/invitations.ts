@@ -232,10 +232,12 @@ export async function acceptInvitation(token: string, input: { password: string;
     });
     if (existing?.deletedAt) throw invalid();
     // An erasure in flight is not visible as `deletedAt`: that is written in the last
-    // step, so throughout REQUESTED, BLOCKED and IN_PROGRESS the identity is merely
-    // DEACTIVATED. Accepting here would set it back to ACTIVE and attach a fresh
-    // membership the executor's snapshot never saw, and the request would still be
-    // recorded as COMPLETED — an account erased and signed into at the same time.
+    // step. While a request is REQUESTED or BLOCKED the identity is still fully ACTIVE
+    // (that is the withdrawal window); once processing starts it is DEACTIVATED. In
+    // neither state should acceptance go through — it would attach a fresh membership
+    // the executor's snapshot never saw, and during processing it would also set the
+    // identity back to ACTIVE with the request still recorded as COMPLETED. The check
+    // is on the request row, not on status, so it holds across all three.
     if (existing) {
       const pending = await tx.accountDeletionRequest.findFirst({
         where: { platformUserId: existing.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
