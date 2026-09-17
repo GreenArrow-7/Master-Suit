@@ -144,10 +144,7 @@ export async function myDeletionRequest(ctx: Ctx) {
  * a request left on an unattended phone would otherwise be enough to erase somebody's
  * identity. The proof is checked before anything is written.
  */
-export async function requestAccountDeletion(
-  ctx: Ctx,
-  input: { password: string; mfaCode?: string; reason?: string },
-) {
+export async function requestAccountDeletion(ctx: Ctx, input: { password: string; mfaCode?: string; reason?: string }) {
   const { identity, tenantId } = await identityOf(ctx);
   if (!identity.passwordHash) throw Forbidden('This account has no password set, so it cannot be verified here.');
   if (!(await verifyPassword(identity.passwordHash, input.password))) {
@@ -218,4 +215,272 @@ export async function cancelAccountDeletion(ctx: Ctx) {
     metadata: { action: 'account.deletion.cancelled' },
   });
   return cancelled;
+}
+
+/**
+ * ── The executor ────────────────────────────────────────────────────────────
+ *
+ * Erasure as a sequence of steps that can each run twice without harm and that report
+ * what they actually did. Three properties matter more than tidiness:
+ *
+ *   idempotent    a crash halfway leaves a row IN_PROGRESS, and running again must
+ *                 finish the job rather than fail on the half already done.
+ *   visible       a failure leaves the row IN_PROGRESS with the error recorded — never
+ *                 COMPLETED, never silently CANCELLED. It stays retryable.
+ *   verified      COMPLETED is written only after re-reading the account and checking
+ *                 that the credential, the second factor, the sessions and the
+ *                 biometric templates are gone. "The update ran" is not evidence.
+ *
+ * Access ends first, deliberately: the account is deactivated and its sessions revoked
+ * before anything slower runs, so no authenticated request can race the erasure.
+ */
+
+/** A request left IN_PROGRESS longer than this is treated as interrupted, and resumable. */
+const STALE_AFTER_MS = 15 * 60 * 1000;
+
+export interface ErasureOutcome {
+  sessionsRevoked: number;
+  membershipsRemoved: number;
+  workspaceUsersSoftDeleted: number;
+  faceTemplatesDeleted: number;
+  biometricConsentsDeleted: number;
+  passwordHistoryDeleted: number;
+  resetTokensDeleted: number;
+  credentialsCleared: boolean;
+  identityAnonymised: boolean;
+  /** Set when a step threw. The row stays IN_PROGRESS and can be run again. */
+  error?: string;
+}
+
+export type ProcessResult =
+  | { status: 'COMPLETED'; requestId: string; outcome: ErasureOutcome }
+  | { status: 'BLOCKED'; requestId: string; blockedReason: string }
+  | { status: 'FAILED'; requestId: string; outcome: ErasureOutcome }
+  | { status: 'SKIPPED'; requestId: string; reason: string };
+
+/**
+ * Claims a request for processing, or reports that it cannot be claimed.
+ *
+ * This is where cancellation and processing are decided against each other, and the
+ * database decides rather than a read-then-write. `updateMany` matching only the
+ * claimable statuses is atomic: a cancel landing first leaves nothing to claim, and a
+ * claim landing first leaves cancelAccountDeletion with no REQUESTED row. Exactly one
+ * wins, in either arrival order.
+ */
+async function claim(requestId: string): Promise<'CLAIMED' | 'NOT_CLAIMABLE'> {
+  const stale = new Date(Date.now() - STALE_AFTER_MS);
+  const { count } = await prisma.accountDeletionRequest.updateMany({
+    where: {
+      id: requestId,
+      OR: [
+        { status: 'REQUESTED' },
+        // Interrupted: started, never finished, long enough ago that whoever held it
+        // is not coming back.
+        { status: 'IN_PROGRESS', startedAt: { lt: stale } },
+      ],
+    },
+    data: { status: 'IN_PROGRESS', startedAt: new Date() },
+  });
+  return count === 1 ? 'CLAIMED' : 'NOT_CLAIMABLE';
+}
+
+/**
+ * Erases the account behind a request. Safe to call repeatedly.
+ *
+ * Shaped to be driven by the existing worker rather than a new queue: it takes an id,
+ * does the work, and records the result on the row.
+ */
+export async function processAccountDeletion(requestId: string): Promise<ProcessResult> {
+  const request = await prisma.accountDeletionRequest.findUnique({
+    where: { id: requestId },
+    select: { id: true, platformUserId: true, status: true },
+  });
+  if (!request) throw NotFound('Deletion request');
+  // Idempotent at the top: a second delivery of the same job is not an error.
+  if (request.status === 'COMPLETED') return { status: 'SKIPPED', requestId, reason: 'already completed' };
+  if (request.status === 'CANCELLED') {
+    return { status: 'SKIPPED', requestId, reason: 'cancelled by the account holder' };
+  }
+
+  if ((await claim(requestId)) === 'NOT_CLAIMABLE') {
+    return { status: 'SKIPPED', requestId, reason: `not claimable from status ${request.status}` };
+  }
+
+  // Re-checked after claiming, not only when it was asked for: somebody can become a
+  // workspace's last administrator in between, and erasing them then would lock that
+  // workspace out of its own data.
+  const blockers = await deletionBlockers(request.platformUserId);
+  if (blockers.length > 0) {
+    const blockedReason = describe(blockers);
+    await prisma.accountDeletionRequest.update({
+      where: { id: requestId },
+      data: { status: 'BLOCKED', blockedReason, startedAt: null },
+    });
+    return { status: 'BLOCKED', requestId, blockedReason };
+  }
+
+  const platformUserId = request.platformUserId;
+  const outcome: ErasureOutcome = {
+    sessionsRevoked: 0,
+    membershipsRemoved: 0,
+    workspaceUsersSoftDeleted: 0,
+    faceTemplatesDeleted: 0,
+    biometricConsentsDeleted: 0,
+    passwordHistoryDeleted: 0,
+    resetTokensDeleted: 0,
+    credentialsCleared: false,
+    identityAnonymised: false,
+  };
+
+  try {
+    // ── 1. End access before anything slower runs ───────────────────────────
+    await prisma.platformUser.update({ where: { id: platformUserId }, data: { status: 'DEACTIVATED' } });
+    outcome.sessionsRevoked = (await prisma.platformSession.deleteMany({ where: { platformUserId } })).count;
+
+    // ── 2. Leave every workspace ────────────────────────────────────────────
+    const memberships = await prisma.workspaceMembership.findMany({
+      where: { platformUserId },
+      select: { id: true, tenantId: true, salesUserId: true },
+    });
+    for (const membership of memberships) {
+      outcome.membershipsRemoved += (
+        await prisma.workspaceMembership.updateMany({
+          where: { id: membership.id, status: { not: 'REMOVED' } },
+          data: { status: 'REMOVED', removedAt: new Date() },
+        })
+      ).count;
+
+      if (membership.salesUserId) {
+        // Soft-deleted, not erased: the lead this user created and the receipt they
+        // verified belong to the customer's workspace. Identity erasure happens once,
+        // on the platform account, in step 4.
+        outcome.workspaceUsersSoftDeleted += (
+          await prisma.user.updateMany({
+            where: { tenantId: membership.tenantId, id: membership.salesUserId, deletedAt: null },
+            data: { deletedAt: new Date(), status: 'DEACTIVATED' },
+          })
+        ).count;
+      }
+
+      // Reset tokens carry a tenantId and are covered by the tenant guard, so they are
+      // deleted here where the workspace is known rather than in one platform-wide
+      // sweep. withPlatformTx would reach them, but its contract says every caller is
+      // already behind requirePlatformOwner, and a worker acting on a recorded request
+      // is not that — satisfying the guard honestly is better than bending the escape.
+      outcome.resetTokensDeleted += (
+        await prisma.passwordResetToken.deleteMany({
+          where: { tenantId: membership.tenantId, platformUserId },
+        })
+      ).count;
+
+      // ── 3. Biometrics ─────────────────────────────────────────────────────
+      // A face template is the person's body, not the workspace's business record.
+      const employees = await prisma.employeeProfile.findMany({
+        where: { tenantId: membership.tenantId, membershipId: membership.id },
+        select: { id: true },
+      });
+      for (const employee of employees) {
+        outcome.faceTemplatesDeleted += (
+          await prisma.hrFaceTemplate.deleteMany({
+            where: { tenantId: membership.tenantId, employeeId: employee.id },
+          })
+        ).count;
+        outcome.biometricConsentsDeleted += (
+          await prisma.biometricConsent.deleteMany({
+            where: { tenantId: membership.tenantId, employeeId: employee.id },
+          })
+        ).count;
+      }
+    }
+
+    // ── 4. The identity itself ──────────────────────────────────────────────
+    outcome.passwordHistoryDeleted = (await prisma.passwordHistory.deleteMany({ where: { platformUserId } })).count;
+
+    // email is unique and not nullable, so it becomes a tombstone rather than being
+    // cleared: unique per account, obviously not a real address, and it keeps the row
+    // intact for the audit trail that still points at it.
+    const tombstone = `deleted-${platformUserId}@deleted.invalid`;
+    await prisma.platformUser.update({
+      where: { id: platformUserId },
+      data: {
+        passwordHash: null,
+        passwordVersion: 0,
+        monitoringPasswordHash: null,
+        monitoringPasswordVersion: 0,
+        monitoringPasswordSetAt: null,
+        mfaEnabled: false,
+        mfaSecret: null,
+        mfaRecoveryCodes: [],
+        mfaLastUsedStep: null,
+        email: tombstone,
+        normalizedEmail: tombstone,
+        username: null,
+        fullName: 'Deleted account',
+        phone: null,
+        avatarUrl: null,
+        emailVerifiedAt: null,
+        lastLoginAt: null,
+        failedLoginCount: 0,
+        lockedUntil: null,
+        status: 'DEACTIVATED',
+        deletedAt: new Date(),
+      },
+    });
+    outcome.credentialsCleared = true;
+    outcome.identityAnonymised = true;
+
+    // ── 5. Verify before claiming it happened ───────────────────────────────
+    const after = await prisma.platformUser.findUniqueOrThrow({
+      where: { id: platformUserId },
+      select: {
+        passwordHash: true,
+        mfaSecret: true,
+        mfaRecoveryCodes: true,
+        email: true,
+        phone: true,
+        deletedAt: true,
+      },
+    });
+    const sessionsLeft = await prisma.platformSession.count({ where: { platformUserId } });
+    // Scoped by the tenants this account actually belonged to: the guard covers
+    // HrFaceTemplate, and a verification query is not exempt from it just because it
+    // only reads.
+    const tenantIds = memberships.map((m) => m.tenantId);
+    const facesLeft =
+      tenantIds.length === 0
+        ? 0
+        : await prisma.hrFaceTemplate.count({
+            where: { tenantId: { in: tenantIds }, employee: { membership: { platformUserId } } },
+          });
+
+    const unfinished: string[] = [];
+    if (after.passwordHash !== null) unfinished.push('passwordHash');
+    if (after.mfaSecret !== null) unfinished.push('mfaSecret');
+    if (after.mfaRecoveryCodes.length !== 0) unfinished.push('mfaRecoveryCodes');
+    if (after.phone !== null) unfinished.push('phone');
+    if (after.email !== tombstone) unfinished.push('email');
+    if (after.deletedAt === null) unfinished.push('deletedAt');
+    if (sessionsLeft !== 0) unfinished.push(`sessions(${sessionsLeft})`);
+    if (facesLeft !== 0) unfinished.push(`faceTemplates(${facesLeft})`);
+
+    if (unfinished.length > 0) {
+      outcome.error = `verification failed: ${unfinished.join(', ')}`;
+      await prisma.accountDeletionRequest.update({ where: { id: requestId }, data: { outcome: { ...outcome } } });
+      return { status: 'FAILED', requestId, outcome };
+    }
+
+    await prisma.accountDeletionRequest.update({
+      where: { id: requestId },
+      data: { status: 'COMPLETED', completedAt: new Date(), outcome: { ...outcome } },
+    });
+    return { status: 'COMPLETED', requestId, outcome };
+  } catch (err) {
+    // Left IN_PROGRESS deliberately. Flipping back to REQUESTED would hide that erasure
+    // had already started; writing COMPLETED would claim a deletion that did not finish.
+    outcome.error = (err as Error).message;
+    await prisma.accountDeletionRequest
+      .update({ where: { id: requestId }, data: { outcome: { ...outcome } } })
+      .catch(() => {});
+    return { status: 'FAILED', requestId, outcome };
+  }
 }

@@ -116,7 +116,9 @@ describe('requesting deletion of your own account', () => {
     const ctx = ctxFor(fixture.a.tenantId, rep.id);
 
     await requestAccountDeletion(ctx, { password: PASSWORD });
-    await expect(requestAccountDeletion(ctx, { password: PASSWORD })).rejects.toThrow(/already have a deletion request/i);
+    await expect(requestAccountDeletion(ctx, { password: PASSWORD })).rejects.toThrow(
+      /already have a deletion request/i,
+    );
 
     // Two taps on a slow connection: both in flight at once, still one row. This is the
     // partial unique index doing the work — a check-then-insert would let both through.
@@ -248,7 +250,13 @@ describe('administrators who cannot simply leave', () => {
 describe('cancelling', () => {
   it('withdraws a request that has not started, and refuses one that has', async () => {
     const role = await prisma.role.create({
-      data: { tenantId: fixture.a.tenantId, key: `cancel-${Date.now()}`, name: 'Canceller', rank: 60, defaultScope: 'OWN' },
+      data: {
+        tenantId: fixture.a.tenantId,
+        key: `cancel-${Date.now()}`,
+        name: 'Canceller',
+        rank: 60,
+        defaultScope: 'OWN',
+      },
     });
     const rep = await createWorkspaceUser({
       tenantId: fixture.a.tenantId,
