@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { stuckAccountDeletions } from '@/services/identity/accountDeletion';
 import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/lib/db';
@@ -52,6 +53,21 @@ function authorised(req: Request): boolean {
   // Length is compared first because timingSafeEqual throws on a mismatch; that
   // leaks the length and nothing else, which the header already does.
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Erasure requests nobody is coming back for. A request past the retry cap stays
+ * IN_PROGRESS on purpose — never quietly COMPLETED or CANCELLED — and the person can
+ * neither withdraw it nor ask again, so it has to be visible somewhere a person looks.
+ * The sweep logs it; this is the number the alert fires on.
+ */
+async function collectAccountDeletions(): Promise<void> {
+  const [stuck, open] = await Promise.all([
+    stuckAccountDeletions(),
+    prisma.accountDeletionRequest.count({ where: { status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } } }),
+  ]);
+  setGauge('masterapp_account_deletions_stuck', stuck.length);
+  setGauge('masterapp_account_deletions_open', open);
 }
 
 async function collectQueues(): Promise<void> {
@@ -232,7 +248,7 @@ export async function GET(req: Request) {
   // what was gathered rather than failing the whole response.
   try {
     await Promise.race([
-      Promise.all([collectQueues(), collectTableSizes(), collectConnections()]),
+      Promise.all([collectQueues(), collectTableSizes(), collectConnections(), collectAccountDeletions()]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('collect timed out')), COLLECT_TIMEOUT_MS)),
     ]);
   } catch (err) {

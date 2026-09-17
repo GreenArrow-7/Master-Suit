@@ -123,6 +123,8 @@ const HELP: Record<string, string> = {
     'Queries refused by the Prisma tenant guard. Any value above zero is a repository missing a tenant filter — alert on this.',
   masterapp_queue_depth: 'Jobs waiting in a BullMQ queue.',
   masterapp_queue_active: 'Jobs currently being processed in a BullMQ queue.',
+  masterapp_account_deletions_stuck: 'Account deletion requests past the retry cap, waiting for an operator.',
+  masterapp_account_deletions_open: 'Account deletion requests recorded and not yet completed or cancelled.',
   masterapp_queue_failed: 'Jobs in a queue’s failed set.',
   masterapp_queue_oldest_waiting_seconds:
     'Age of the oldest waiting job. Rising steadily means the queue has no consumer — this is the signal the dead worker would have shown.',

@@ -160,7 +160,7 @@ function assertMayAdminister(ctx: Ctx, target: { id: string; role: { rank: numbe
  * therefore themselves an administrator. Kept deliberately: it is the check that
  * would catch a future relaxation of the rank rule before it stranded a workspace.
  */
-async function otherActiveAdmins(tenantId: string, excludeUserId: string) {
+export async function otherActiveAdmins(tenantId: string, excludeUserId: string) {
   return prisma.user.count({
     where: {
       tenantId,

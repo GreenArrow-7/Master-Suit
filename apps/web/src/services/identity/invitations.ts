@@ -231,6 +231,22 @@ export async function acceptInvitation(token: string, input: { password: string;
       select: { id: true, deletedAt: true },
     });
     if (existing?.deletedAt) throw invalid();
+    // An erasure in flight is not visible as `deletedAt`: that is written in the last
+    // step. While a request is REQUESTED or BLOCKED the identity is still fully ACTIVE
+    // (that is the withdrawal window); once processing starts it is DEACTIVATED. In
+    // neither state should acceptance go through — it would attach a fresh membership
+    // the executor's snapshot never saw, and during processing it would also set the
+    // identity back to ACTIVE with the request still recorded as COMPLETED. The check
+    // is on the request row, not on status, so it holds across all three.
+    if (existing) {
+      const pending = await tx.accountDeletionRequest.findFirst({
+        where: { platformUserId: existing.id, status: { in: ['REQUESTED', 'BLOCKED', 'IN_PROGRESS'] } },
+        select: { id: true },
+      });
+      if (pending) {
+        throw Conflict('This account is being deleted. Withdraw that request before accepting an invitation.');
+      }
+    }
 
     const platformUser = existing
       ? await tx.platformUser.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } })
