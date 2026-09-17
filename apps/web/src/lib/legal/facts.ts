@@ -10,17 +10,17 @@
 export const OWNER_TODO = 'OWNER_TODO';
 
 export const legalFacts = {
-  legalEntity: OWNER_TODO, // F7: registered legal name
-  address: OWNER_TODO, // F7
-  country: OWNER_TODO, // F7
-  privacyEmail: OWNER_TODO, // F7
-  supportEmail: OWNER_TODO, // F7
+  legalEntity: 'Youhan', // F7: registered legal name
+  address: 'Dubai', // F7
+  country: 'United Arab Emirates', // F7
+  privacyEmail: 'youan3023@gmail.com', // F7
+  supportEmail: 'youan3023@gmail.com', // F7
   supportHours: OWNER_TODO, // F7
-  hostingProvider: OWNER_TODO, // F7: hosting provider and region
+  hostingProvider: 'Hetzner Online GmbH, Helsinki, Finland (EU)', // F7: hosting provider and region
   backupRetentionDays: OWNER_TODO, // F5: confirmed from backup-status.sh by root
   deletionTargetHours: '24', // approved: operational target for eligible, unblocked requests
-  geminiEnabledAtLaunch: OWNER_TODO, // F6: "none" or the enabled providers
-  lastUpdated: OWNER_TODO, // the date the owner approves the text
+  geminiEnabledAtLaunch: 'none', // F6: "none" or the enabled providers
+  lastUpdated: '17 September 2026', // the date the owner approves the text
 } as const;
 
 export function missingLegalFacts(): string[] {
