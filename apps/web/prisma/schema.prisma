@@ -2381,11 +2381,14 @@ model HrEmployeeDocument {
   /// re-judged when a signature set is later found to have missed something.
   scanSignature    String?
   quarantined      Boolean         @default(true)
+  /// Set by account deletion: the retention job removes the file and the row once this passes.
+  purgeAt          DateTime?
   createdAt        DateTime        @default(now())
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   employee         EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, kind])
+  @@index([purgeAt])
 }
 
 model HrWorkLocation {

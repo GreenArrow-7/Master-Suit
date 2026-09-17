@@ -332,7 +332,6 @@ describe('what the completed request admits it did not remove', () => {
     // WPS person id and the scanned passport still sitting on the employment record, which
     // made "your account has been deleted" a claim the data did not support.
     expect(categories).toContain('hr_employment_record');
-    expect(categories).toContain('hr_financial_identifiers');
     expect(categories).toContain('hr_identity_documents');
     expect(categories).toContain('workspace_attribution');
     expect(categories).toContain('backups');
@@ -341,12 +340,30 @@ describe('what the completed request admits it did not remove', () => {
     expect(documents?.count).toBe(1);
     expect(documents?.reason).toMatch(/Not erased by this request/);
 
-    // Counted from the database, so it has to still be true of the database.
+    // Owner retention decisions (2026-09-17): identifiers cleared and audit client details
+    // cleared at completion; documents scheduled for purge, not yet gone.
+    const profile = await prisma.employeeProfile.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, membershipId: person.id },
+      select: { iban: true, bankAgentId: true, wpsPersonId: true, reraBrn: true },
+      ...({ __includeDeleted: true } as object),
+    });
+    expect([profile.iban, profile.bankAgentId, profile.wpsPersonId, profile.reraBrn]).toEqual([null, null, null, null]);
+    const doc = await prisma.hrEmployeeDocument.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, employee: { membershipId: person.id } },
+      select: { purgeAt: true, storageKey: true },
+    });
+    expect(doc.storageKey).not.toBeNull();
+    expect(doc.purgeAt!.getTime()).toBeGreaterThan(Date.now() + 14 * 24 * 60 * 60 * 1000);
     expect(
-      await prisma.hrEmployeeDocument.count({
-        where: { tenantId: fixture.a.tenantId, employee: { membershipId: person.id } },
+      await prisma.auditLog.count({
+        where: {
+          tenantId: fixture.a.tenantId,
+          actorUserId: person.user.id,
+          OR: [{ ipAddress: { not: null } }, { userAgent: { not: null } }],
+        },
       }),
-    ).toBe(1);
+    ).toBe(0);
+    expect(categories).not.toContain('hr_financial_identifiers');
   });
 });
 

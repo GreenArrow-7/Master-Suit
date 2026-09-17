@@ -315,6 +315,11 @@ const BLOCKED_RECHECK_MS = 6 * 60 * 60 * 1000;
  */
 export const MAX_ATTEMPTS = 5;
 
+/** Owner decision 7 (2026-09-17): identity documents purged 15 days after completion. */
+export const DOCUMENT_PURGE_MS = 15 * 24 * 60 * 60 * 1000;
+/** Owner decision 9 (2026-09-17): recordings of the person's calls expire one hour after completion. */
+export const RECORDING_RETAIN_MS = 60 * 60 * 1000;
+
 /** Reads that must see rows HR has already offboarded; the guard hides them otherwise. */
 const INCLUDE_DELETED: object = { __includeDeleted: true };
 
@@ -388,8 +393,7 @@ async function retentionManifest(
     retained.push({
       category: 'audit_trail',
       count: auditEntries,
-      reason:
-        'Audit entries keep the acting user id, and their lifetime follows the workspace audit policy rather than this request.',
+      reason: 'Audit entries keep the acting user id and event; IP address and user agent were cleared at completion.',
     });
   }
   if (hrProfiles > 0) {
@@ -405,14 +409,14 @@ async function retentionManifest(
       category: 'hr_financial_identifiers',
       count: hrFinancialIdentifiers,
       reason:
-        'IBAN, bank agent id, WPS person id and RERA BRN are still on the employment record. Not erased by this request.',
+        'IBAN, bank agent id, WPS person id and RERA BRN still on the employment record (expected 0: cleared at completion).',
     });
   }
   if (hrDocuments > 0) {
     retained.push({
       category: 'hr_identity_documents',
       count: hrDocuments,
-      reason: `Identity and visa documents retained, ${hrStoredFiles} of them with a stored file. Not erased by this request.`,
+      reason: `Identity and visa documents: ${hrStoredFiles} stored file(s), scheduled for purge 15 days after completion by the retention job.`,
     });
   }
   // Always stated. It is never zero and it is never erasable in place, so leaving it out
@@ -445,6 +449,11 @@ export interface ErasureOutcome {
   coverageGrantsRevoked: number;
   /** Open invitations to this address in the person's own workspaces. */
   invitationsRevoked: number;
+  /** Owner retention decisions (2026-09-17): applied at completion. */
+  hrIdentifiersCleared: number;
+  hrDocumentsScheduled: number;
+  auditClientDetailsCleared: number;
+  recordingsScheduled: number;
   credentialsCleared: boolean;
   identityAnonymised: boolean;
   /** Counted, not claimed: what this erasure did not remove, and why. */
@@ -550,6 +559,10 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     accessGrantsRevoked: 0,
     coverageGrantsRevoked: 0,
     invitationsRevoked: 0,
+    hrIdentifiersCleared: 0,
+    hrDocumentsScheduled: 0,
+    auditClientDetailsCleared: 0,
+    recordingsScheduled: 0,
     credentialsCleared: false,
     identityAnonymised: false,
   };
@@ -666,6 +679,53 @@ export async function processAccountDeletion(requestId: string): Promise<Process
         await prisma.workspaceInvitation.updateMany({
           where: { tenantId: membership.tenantId, email: normalizedEmail, pendingKey: { not: null } },
           data: { revokedAt: new Date(), revokedReason: 'account deleted', pendingKey: null },
+        })
+      ).count;
+    }
+
+    // ── 3d. Owner retention decisions (recorded 2026-09-17) ──────────────
+    // 6: HR financial identifiers cleared at completion (decision: within 1 day).
+    // 7: identity/visa documents scheduled for purge 15 days after completion; the
+    //    retention job removes file and row (HrEmployeeDocument.purgeAt).
+    // 8: audit IP address and user agent cleared at completion (decision: within 1 day);
+    //    the actor id and the event stay.
+    // 9: call recordings of calls this person made expire one hour after completion
+    //    (Recording.retainUntil; the retention job deletes object and row).
+    for (const membership of memberships) {
+      if (!membership.salesUserId) continue;
+      const profile = await prisma.employeeProfile.findFirst({
+        where: { tenantId: membership.tenantId, membershipId: membership.id },
+        select: { id: true },
+        ...INCLUDE_DELETED,
+      });
+      if (profile) {
+        outcome.hrIdentifiersCleared += (
+          await prisma.employeeProfile.updateMany({
+            where: { tenantId: membership.tenantId, id: profile.id },
+            data: { iban: null, bankName: null, bankAgentId: null, wpsPersonId: null, reraBrn: null },
+          })
+        ).count;
+        outcome.hrDocumentsScheduled += (
+          await prisma.hrEmployeeDocument.updateMany({
+            where: { tenantId: membership.tenantId, employeeId: profile.id, purgeAt: null },
+            data: { purgeAt: new Date(Date.now() + DOCUMENT_PURGE_MS) },
+          })
+        ).count;
+      }
+      outcome.auditClientDetailsCleared += (
+        await prisma.auditLog.updateMany({
+          where: {
+            tenantId: membership.tenantId,
+            actorUserId: membership.salesUserId,
+            OR: [{ ipAddress: { not: null } }, { userAgent: { not: null } }],
+          },
+          data: { ipAddress: null, userAgent: null },
+        })
+      ).count;
+      outcome.recordingsScheduled += (
+        await prisma.recording.updateMany({
+          where: { tenantId: membership.tenantId, call: { callerId: membership.salesUserId } },
+          data: { retainUntil: new Date(Date.now() + RECORDING_RETAIN_MS) },
         })
       ).count;
     }

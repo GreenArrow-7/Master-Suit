@@ -70,6 +70,9 @@ const AUDIT_TABLES: {
     days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
   },
   { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
+  // Identity documents of a deleted person: the executor sets purgeAt (owner decision: 15
+  // days after completion); rows with purgeAt NULL never match `< now`.
+  { name: 'HrEmployeeDocument', column: 'purgeAt', objectColumn: 'storageKey', days: () => 0 },
 ];
 
 export interface RetentionResult {
