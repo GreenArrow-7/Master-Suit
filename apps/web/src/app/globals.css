@@ -6631,6 +6631,16 @@ a.lf-kpi:hover {
 }
 
 /* Public legal pages: a readable column, no app chrome. */
-.lf-public { max-width: 72ch; margin: 0 auto; padding: 32px 16px 64px; line-height: 1.6; }
-.lf-public h1 { margin: 0 0 16px; }
-.lf-public h2 { margin: 28px 0 8px; font-size: 1.15rem; }
+.lf-public {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  line-height: 1.6;
+}
+.lf-public h1 {
+  margin: 0 0 16px;
+}
+.lf-public h2 {
+  margin: 28px 0 8px;
+  font-size: 1.15rem;
+}
