@@ -941,7 +941,10 @@ test.describe('Workspace on a phone', () => {
 
 /** The shell's computed look: equal on two screens means no visual switch between them. */
 function shell(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    // The nav link fades its background in over 100ms: sample once every transition has settled,
+    // or the just-activated item reads a fraction short of its resting colour.
+    await Promise.allSettled(document.getAnimations().map((a) => a.finished));
     const style = (selector: string) => {
       const el = document.querySelector(selector);
       return el ? getComputedStyle(el) : null;
