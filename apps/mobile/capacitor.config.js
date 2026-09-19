@@ -50,7 +50,7 @@ const config = {
    * both refuse to change a published bundle id. Kept for development builds; set
    * the real reverse domain before any release signing.
    */
-  appId: 'com.mastersuite.app',
+  appId: 'com.youhan.one',
   // The home-screen label. Mirrors PRODUCT_NAME in apps/web/src/lib/branding.ts.
   appName: 'YOUHAN ONE',
   webDir: 'www',
