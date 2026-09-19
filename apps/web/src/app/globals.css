@@ -3580,6 +3580,30 @@ a:hover {
   text-transform: uppercase;
   color: rgb(219 229 242 / 0.5);
 }
+.lf-auth-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-6);
+  margin: 0 0 var(--lf-space-5);
+}
+.lf-auth-value > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.lf-auth-value dt {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgb(219 229 242 / 0.5);
+}
+.lf-auth-value dd {
+  margin: 0;
+  font-size: var(--lf-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgb(219 229 242 / 0.92);
+}
 .lf-auth-parent {
   margin: var(--lf-space-4) 0 0;
   font-size: var(--lf-text-2xs);
