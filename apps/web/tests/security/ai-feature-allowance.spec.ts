@@ -78,3 +78,29 @@ describe('per-user AI allowance', () => {
     await expect(assertAiBudget(tenantId, deployment, 'assistant')).resolves.toBeUndefined();
   });
 });
+
+describe('token direction and cost estimate', () => {
+  it('records input and output tokens separately and prices them only when rates are stated', async () => {
+    const { inputUsageMetric, outputUsageMetric, estimateCostUsd } = await import('@/lib/ai/usage');
+    await recordAiUsage(
+      tenantId,
+      deployment,
+      { promptTokens: 700, completionTokens: 300, totalTokens: 1000 },
+      { feature: 'call-audit', model: 'm' },
+    );
+    const rows = await prisma.workspaceUsage.findMany({
+      where: { tenantId, metric: { in: [inputUsageMetric('deployment'), outputUsageMetric('deployment')] } },
+      select: { metric: true, used: true },
+    });
+    const by = Object.fromEntries(rows.map((r) => [r.metric, r.used]));
+    expect(by[inputUsageMetric('deployment')]).toBe(700);
+    expect(by[outputUsageMetric('deployment')]).toBe(300);
+
+    delete process.env.AI_COST_USD_PER_MILLION_INPUT;
+    delete process.env.AI_COST_USD_PER_MILLION_OUTPUT;
+    expect(estimateCostUsd(700, 300)).toBeNull();
+    process.env.AI_COST_USD_PER_MILLION_INPUT = '0.30';
+    process.env.AI_COST_USD_PER_MILLION_OUTPUT = '2.50';
+    expect(estimateCostUsd(1_000_000, 1_000_000)).toBe(2.8);
+  });
+});

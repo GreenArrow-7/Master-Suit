@@ -77,6 +77,26 @@ export function legacyUsageMetric(at: Date = new Date()): string {
 /** Matches every ai_tokens row, in any of the three shapes. */
 export const AI_METRIC_PREFIX = 'ai_tokens:';
 
+/** §13: the month's spend split into what was sent and what came back — `ai_in:<payer>:<month>`, `ai_out:…`. */
+export const AI_IN_METRIC_PREFIX = 'ai_in:';
+export const AI_OUT_METRIC_PREFIX = 'ai_out:';
+export const inputUsageMetric = (paidBy: PaidBy, at: Date = new Date()) =>
+  `${AI_IN_METRIC_PREFIX}${paidBy}:${period(at)}`;
+export const outputUsageMetric = (paidBy: PaidBy, at: Date = new Date()) =>
+  `${AI_OUT_METRIC_PREFIX}${paidBy}:${period(at)}`;
+
+/**
+ * Estimated cost in USD from the deployment's stated list prices per million tokens
+ * (`AI_COST_USD_PER_MILLION_INPUT` / `_OUTPUT`). Null when the prices are not set —
+ * the console then shows tokens only, never a guessed price.
+ */
+export function estimateCostUsd(inputTokens: number, outputTokens: number): number | null {
+  const inRate = Number(process.env.AI_COST_USD_PER_MILLION_INPUT);
+  const outRate = Number(process.env.AI_COST_USD_PER_MILLION_OUTPUT);
+  if (!Number.isFinite(inRate) || !Number.isFinite(outRate) || (inRate <= 0 && outRate <= 0)) return null;
+  return Math.round(((inputTokens * inRate + outputTokens * outRate) / 1_000_000) * 10_000) / 10_000;
+}
+
 /**
  * §18: the same month's spend split by feature — `ai_feature:deployment:call-analysis:2026-09` —
  * so a plan can cap one feature (say, live coaching) without capping the rest.
@@ -339,6 +359,28 @@ export async function recordAiUsage(
     });
   } catch (err) {
     logger.warn({ err, tenantId, model: context.model }, 'could not record ai model usage');
+  }
+
+  // Sent and received, separately: a summary that reads 40k tokens is a different
+  // bill from one that writes them, and the estimate needs both.
+  const promptTokens = usage?.promptTokens ?? 0;
+  const completionTokens = usage?.completionTokens ?? 0;
+  if (promptTokens || completionTokens) {
+    for (const [metric, amount] of [
+      [inputUsageMetric(credential.source), promptTokens],
+      [outputUsageMetric(credential.source), completionTokens],
+    ] as const) {
+      if (!amount) continue;
+      try {
+        await prisma.workspaceUsage.upsert({
+          where: { tenantId_metric: { tenantId, metric } },
+          create: { tenantId, metric, used: amount, limit: null, measuredAt: new Date() },
+          update: { used: { increment: amount }, measuredAt: new Date() },
+        });
+      } catch (err) {
+        logger.warn({ err, tenantId, metric }, 'could not record ai token direction');
+      }
+    }
   }
 
   // By person, where there is one: what the per-user ceiling reads.
