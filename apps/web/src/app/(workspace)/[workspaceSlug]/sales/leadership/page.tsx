@@ -183,6 +183,13 @@ export default async function LeadershipPage({
         select: { id: true, fullName: true },
       })
     : [];
+  // A seller with nothing in the range is noise on a list meant to be read top to
+  // bottom (and 40 of them made the phone view a screen-height per person).
+  const activeRows = productivityRows.filter((r) =>
+    Object.entries(r).some(([k, v]) => k !== 'userId' && k !== 'name' && typeof v === 'number' && v > 0),
+  );
+  const quietCount = productivityRows.length - activeRows.length;
+
   const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
 
   /** Filters travel with the tab, so switching view never silently resets them. */
@@ -461,7 +468,7 @@ export default async function LeadershipPage({
       )}
 
       {view === 'productivity' &&
-        (productivityRows.length === 0 ? (
+        (activeRows.length === 0 ? (
           <div className="lf-card" style={CARD}>
             <EmptyState title="Nobody in scope" description="Assign leads to a seller and their numbers appear here." />
           </div>
@@ -481,7 +488,7 @@ export default async function LeadershipPage({
                 </tr>
               </thead>
               <tbody>
-                {productivityRows.map((r) => (
+                {activeRows.map((r) => (
                   <tr key={r.userId}>
                     <td data-label="Who">
                       <a href={`?view=productivity&rep=${r.userId}${params.period ? `&period=${params.period}` : ''}`}>
@@ -497,6 +504,12 @@ export default async function LeadershipPage({
                 ))}
               </tbody>
             </table>
+            {quietCount > 0 && (
+              <p className="lf-muted" style={{ margin: 'var(--lf-space-3) var(--lf-space-4)' }}>
+                {quietCount} {quietCount === 1 ? 'person' : 'people'} with no leads, calls, tasks or deals in this range
+                not shown.
+              </p>
+            )}
           </div>
         ))}
       {view === 'compliance' &&
