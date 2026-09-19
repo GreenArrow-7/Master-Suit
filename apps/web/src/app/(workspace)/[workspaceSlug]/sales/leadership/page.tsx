@@ -8,6 +8,8 @@ import {
   interactionFeed,
   performerBoard,
   subtree,
+  productivity,
+  type ProductivityRow,
 } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
 import Badge from '@/components/ui/Badge';
@@ -20,6 +22,7 @@ export const metadata = { title: 'Leadership' };
 
 const TABS = [
   ['Overview', ''],
+  ['Productivity', 'productivity'],
   ['Compliance', 'compliance'],
   ['Chasing', 'chasing'],
   ['Feed', 'feed'],
@@ -28,6 +31,18 @@ const TABS = [
 
 /** Every card on this page needs it: `.lf-card` itself carries no padding. */
 const CARD = { padding: 'var(--lf-space-5)' } as const;
+
+const PRODUCTIVITY_COLUMNS = [
+  ['Assigned', 'assigned'],
+  ['Contacted', 'contacted'],
+  ['Calls', 'callsCompleted'],
+  ['Follow-ups done', 'followUpsCompleted'],
+  ['Interested', 'interested'],
+  ['Not interested', 'notInterested'],
+  ['Meetings', 'meetingsScheduled'],
+  ['Deals won', 'dealsWon'],
+  ['Untouched', 'pending'],
+] as const satisfies readonly (readonly [string, keyof ProductivityRow])[];
 
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
@@ -138,7 +153,7 @@ export default async function LeadershipPage({
     }
   }
 
-  const [stages, rates, board, chasing, compliance, feed, pl, reps] = await Promise.all([
+  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows] = await Promise.all([
     funnel(ctx.tenantId, userIds, range),
     conversion(ctx.tenantId, userIds, range),
     performerBoard(ctx.tenantId, userIds, range, 'revenue'),
@@ -156,6 +171,7 @@ export default async function LeadershipPage({
       orderBy: { fullName: 'asc' },
       take: 200,
     }),
+    view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
   ]);
 
   // Only when there is something to name — an `in: []` lookup is a wasted round
@@ -444,6 +460,45 @@ export default async function LeadershipPage({
         </>
       )}
 
+      {view === 'productivity' &&
+        (productivityRows.length === 0 ? (
+          <div className="lf-card" style={CARD}>
+            <EmptyState title="Nobody in scope" description="Assign leads to a seller and their numbers appear here." />
+          </div>
+        ) : (
+          <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
+            {/* Assigned → contacted → outcomes → deals, then what is still untouched.
+                Each cell is a count the manager can ask for the rows of. */}
+            <table className="lf-grid">
+              <thead>
+                <tr>
+                  <th>Who</th>
+                  {PRODUCTIVITY_COLUMNS.map(([label]) => (
+                    <th key={label} style={{ textAlign: 'right' }}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {productivityRows.map((r) => (
+                  <tr key={r.userId}>
+                    <td data-label="Who">
+                      <a href={`?view=productivity&rep=${r.userId}${params.period ? `&period=${params.period}` : ''}`}>
+                        {r.name ?? r.userId}
+                      </a>
+                    </td>
+                    {PRODUCTIVITY_COLUMNS.map(([label, key]) => (
+                      <td key={label} data-label={label} style={{ textAlign: 'right' }} className="lf-num">
+                        {r[key]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       {view === 'compliance' &&
         (compliance.length === 0 ? (
           <div className="lf-card" style={CARD}>

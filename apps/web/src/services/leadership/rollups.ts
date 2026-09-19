@@ -437,3 +437,125 @@ export async function chasingQueue(
     })
     .slice(0, limit);
 }
+
+export interface ProductivityRow {
+  userId: string;
+  name: string | null;
+  /** Leads handed to this person in the range. */
+  assigned: number;
+  /** Distinct leads this person called or logged an activity against in the range. */
+  contacted: number;
+  callsCompleted: number;
+  followUpsCompleted: number;
+  interested: number;
+  notInterested: number;
+  meetingsScheduled: number;
+  dealsWon: number;
+  /** Leads this person owns that nobody has ever touched. */
+  pending: number;
+}
+
+/**
+ * What each seller did with what they were given: assigned → contacted →
+ * outcomes → deals, and how much is still untouched. Every number is a count
+ * the person can be shown the rows for; nothing here is a score.
+ */
+export async function productivity(tenantId: string, userIds: string[], range: Range): Promise<ProductivityRow[]> {
+  const within = { gte: range.from, lte: range.to };
+  const owner = ownerFilter(userIds);
+  const caller = userIds.length === 0 ? {} : { callerId: { in: userIds } };
+
+  const [assigned, calls, touchedByActivity, touchedByCall, tasks, meetings, deals, pending, users] = await Promise.all(
+    [
+      prisma.lead.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, assignedAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      prisma.call.groupBy({
+        by: ['callerId', 'outcome'],
+        where: { tenantId, deletedAt: null, status: 'COMPLETED', createdAt: within, ...caller },
+        _count: { _all: true },
+      }),
+      prisma.activity.findMany({
+        where: { tenantId, occurredAt: within, leadId: { not: null }, ...owner },
+        select: { ownerId: true, leadId: true },
+        distinct: ['ownerId', 'leadId'],
+      }),
+      prisma.call.findMany({
+        where: { tenantId, deletedAt: null, createdAt: within, leadId: { not: null }, ...caller },
+        select: { callerId: true, leadId: true },
+        distinct: ['callerId', 'leadId'],
+      }),
+      prisma.task.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, status: 'COMPLETED', completedAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      prisma.task.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, createdAt: within, type: { key: 'meeting' }, ...owner },
+        _count: { _all: true },
+      }),
+      prisma.opportunity.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within, ...owner },
+        _count: { _all: true },
+      }),
+      prisma.lead.groupBy({
+        by: ['ownerId'],
+        where: { tenantId, deletedAt: null, lastActivityAt: null, status: null, ...owner },
+        _count: { _all: true },
+      }),
+      prisma.user.findMany({
+        where: { tenantId, deletedAt: null, ...(userIds.length === 0 ? {} : { id: { in: userIds } }) },
+        select: { id: true, fullName: true },
+      }),
+    ],
+  );
+
+  const rows = new Map<string, ProductivityRow>();
+  const row = (userId: string) => {
+    let r = rows.get(userId);
+    if (!r) {
+      r = {
+        userId,
+        name: null,
+        assigned: 0,
+        contacted: 0,
+        callsCompleted: 0,
+        followUpsCompleted: 0,
+        interested: 0,
+        notInterested: 0,
+        meetingsScheduled: 0,
+        dealsWon: 0,
+        pending: 0,
+      };
+      rows.set(userId, r);
+    }
+    return r;
+  };
+  for (const u of users) row(u.id).name = u.fullName;
+  for (const g of assigned) if (g.ownerId) row(g.ownerId).assigned += g._count._all;
+  for (const g of calls) {
+    const r = row(g.callerId);
+    r.callsCompleted += g._count._all;
+    if (g.outcome === 'INTERESTED' || g.outcome === 'QUALIFIED' || g.outcome === 'CONVERTED')
+      r.interested += g._count._all;
+    if (g.outcome === 'NOT_INTERESTED' || g.outcome === 'WRONG_NUMBER') r.notInterested += g._count._all;
+  }
+  const touched = new Map<string, Set<string>>();
+  for (const t of [...touchedByActivity, ...touchedByCall]) {
+    const userId = 'ownerId' in t ? t.ownerId : t.callerId;
+    if (!userId || !t.leadId) continue;
+    if (!touched.has(userId)) touched.set(userId, new Set());
+    touched.get(userId)!.add(t.leadId);
+  }
+  for (const [userId, leads] of touched) row(userId).contacted = leads.size;
+  for (const g of tasks) if (g.ownerId) row(g.ownerId).followUpsCompleted += g._count._all;
+  for (const g of meetings) if (g.ownerId) row(g.ownerId).meetingsScheduled += g._count._all;
+  for (const g of deals) if (g.ownerId) row(g.ownerId).dealsWon += g._count._all;
+  for (const g of pending) if (g.ownerId) row(g.ownerId).pending += g._count._all;
+
+  return [...rows.values()].sort((a, b) => b.assigned - a.assigned || (a.name ?? '').localeCompare(b.name ?? ''));
+}

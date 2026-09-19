@@ -17,7 +17,10 @@ beforeAll(async () => {
   h = await seedHierarchy();
   // The hierarchy fixture hands every leads action to every role; reps in the
   // seeded product roles have no leads:DELETE, and that is the case under test.
-  const rep = await prisma.user.findFirstOrThrow({ where: { tenantId: h.tenantId, id: h.repA1.id }, select: { roleId: true } });
+  const rep = await prisma.user.findFirstOrThrow({
+    where: { tenantId: h.tenantId, id: h.repA1.id },
+    select: { roleId: true },
+  });
   await prisma.rolePermission.deleteMany({
     where: { tenantId: h.tenantId, roleId: rep.roleId, permission: { module: 'leads', action: 'DELETE' } },
   });
