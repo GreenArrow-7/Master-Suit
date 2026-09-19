@@ -228,6 +228,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                     complianceFlags: analysis.complianceFlags as string[],
                     uncertainItems: analysis.uncertainItems as string[],
                     humanCorrected: analysis.humanCorrected,
+                    modelId: analysis.modelId,
                     errorMessage: analysis.errorMessage,
                   }
                 : null
@@ -388,6 +389,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                       </div>
                     )}
 
+                    {a.modelId === 'demo-simulation' && <Badge tone="brass">keyword pass — not AI</Badge>}
                     {a.humanReviewed && <Badge tone="viridian">reviewed</Badge>}
                   </div>
                 );

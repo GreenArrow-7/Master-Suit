@@ -512,6 +512,14 @@ function definitions(slug: string): SectionDef[] {
           icon: 'report',
           tabs: [
             { label: 'Sales', href: s('/reports'), permission: 'reports', module: S, keywords: 'analytics export' },
+            {
+              label: 'Value',
+              href: s('/leadership?view=value'),
+              permission: 'reports',
+              module: S,
+              keywords: 'hours saved automation',
+            },
+            { label: 'Productivity', href: s('/leadership?view=productivity'), permission: 'reports', module: S },
             { label: 'Team Activity', href: s('/leadership?view=compliance'), permission: 'reports', module: S },
             { label: 'Activity Feed', href: s('/leadership?view=feed'), permission: 'reports', module: S },
             { label: 'HR', href: p('/reports'), permission: 'employee', module: H, audience: 'oversight' },

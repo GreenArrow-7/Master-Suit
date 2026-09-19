@@ -20,7 +20,7 @@ requires rewriting history and coordinating every clone — and cannot recall th
 copies already distributed. **The only reliable control is not committing it.**
 
 For biometric data specifically, a face photograph is personal data under the UAE
-PDPL, and a face template derived from one is *sensitive* personal data. Neither
+PDPL, and a face template derived from one is _sensitive_ personal data. Neither
 belongs in a source repository, whose access-control model is "everyone with a
 clone, forever".
 
@@ -62,9 +62,9 @@ Acceptable sources, in order of preference:
 
 Record provenance for anything you use:
 
-| Fixture | Source | Licence / consent | Obtained by | Date | Expires |
-|---|---|---|---|---|---|
-| | | | | | |
+| Fixture                                                                                        | Source                                                                                                                                   | Licence / consent                                                                                                                     | Obtained by                 | Date       | Expires                                                          |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------- | ---------------------------------------------------------------- |
+| Face e2e frames (`apps/web/scripts/face-test-frames.mjs` derives them into `FACE_TEST_IMAGES`) | Wikimedia Commons `File:Ellen Ochoa.jpg`, `File:Ellen Ochoa, official portrait (cropped).jpg`, `File:Mae Jemison.jpg` (NASA photographs) | Public domain (US federal government works); owner authorised public-domain test data on 19 Sep 2026 for development and testing only | Claude Code session, PR #69 | 2026-09-19 | Delete the local directory when the face tests are no longer run |
 
 ## UAT evidence
 

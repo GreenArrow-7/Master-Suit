@@ -45,7 +45,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
       <SecurityScreen
         selfBase={`/api/v1/workspaces/${workspaceSlug}/identity/self`}
-        hrBase={`/api/v1/workspaces/${workspaceSlug}/hr/actions`}
+        hrBase={`/api/v1/workspaces/${workspaceSlug}/hr/self`}
         mfaEnabled={!!status.enabled}
         consentGiven={!!consent}
         deletionRequest={deletionRequest}

@@ -19,6 +19,8 @@ interface AnalysisData {
   complianceFlags: string[];
   uncertainItems: string[];
   humanCorrected: boolean;
+  /** Which model answered; `demo-simulation` is the keyword stand-in used when no AI provider is configured. */
+  modelId?: string | null;
   errorMessage: string | null;
 }
 
@@ -110,6 +112,15 @@ export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | n
       >
         <div className="lf-ai-label">AI analysis</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {analysis.modelId === 'demo-simulation' && (
+            <span
+              className="lf-badge"
+              data-tone="brass"
+              title="No AI provider is configured for this workspace; these fields were filled by keyword rules, not a model."
+            >
+              Demo simulation — not AI
+            </span>
+          )}
           {analysis.humanCorrected && (
             <span style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-viridian)', fontWeight: 500 }}>
               Human-corrected

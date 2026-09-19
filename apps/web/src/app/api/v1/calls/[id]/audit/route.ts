@@ -57,6 +57,13 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call audits' },
   async ({ ctx, params }) => {
+    // 404 for a call this tenant does not have, not an empty list: an empty list
+    // reads as "not audited yet" and would let a caller probe ids across tenants.
+    const call = await prisma.call.findFirst({
+      where: { id: params.id, tenantId: ctx.tenantId },
+      select: { id: true },
+    });
+    if (!call) throw NotFound('Call');
     const data = await prisma.callAudit.findMany({
       where: { callId: params.id, tenantId: ctx.tenantId },
       orderBy: { createdAt: 'desc' },

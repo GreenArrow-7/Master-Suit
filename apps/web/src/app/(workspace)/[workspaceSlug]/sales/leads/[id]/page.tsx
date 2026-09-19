@@ -96,6 +96,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     source: lead.source,
     consentStatus: lead.consentStatus,
     priority: lead.priority,
+    status: lead.status,
     slaState: lead.slaState,
     score: lead.score,
     grade: lead.grade,

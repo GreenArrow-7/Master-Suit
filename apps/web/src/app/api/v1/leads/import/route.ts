@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { prisma } from '@/lib/db';
 import { loadFieldRules, stripUneditableFields } from '@/lib/security/fieldSecurity';
 import { createLead } from '@/services/leads/createLead';
 
@@ -13,7 +14,6 @@ const importRow = z
     jobTitle: z.string().max(120).optional(),
     city: z.string().max(80).optional(),
     country: z.string().max(80).optional(),
-    source: z.string().max(60).optional(),
     notes: z.string().max(5000).optional(),
   })
   .strict();
@@ -25,6 +25,10 @@ const body = z
       .array(z.object({ line: z.number().int().positive(), values: z.record(z.string(), z.unknown()) }))
       .min(1)
       .max(1000),
+    /** Shown as the lead's source detail, e.g. the spreadsheet's file name. */
+    fileName: z.string().max(160).optional(),
+    /** BLOCK skips a row that matches an existing lead; WARN imports it anyway. */
+    onDuplicate: z.enum(['BLOCK', 'WARN']).default('BLOCK'),
   })
   .strict();
 
@@ -42,6 +46,7 @@ export const POST = route(
     const rules = await loadFieldRules(ctx, 'LEAD');
     const failed: { line: number; reason: string }[] = [];
     let created = 0;
+    let noteType: { id: string } | null = null;
 
     for (const { line, values } of body.rows) {
       const parsed = importRow.safeParse(values);
@@ -52,10 +57,37 @@ export const POST = route(
       }
 
       try {
-        await createLead(ctx, stripUneditableFields(rules, parsed.data) as typeof parsed.data);
+        const { notes, ...fields } = parsed.data;
+        const lead = await createLead(ctx, {
+          ...(stripUneditableFields(rules, fields) as typeof fields),
+          source: 'IMPORT',
+          sourceDetail: body.fileName,
+          onDuplicate: body.onDuplicate,
+        });
+        // Lead has no notes column; the spreadsheet's remarks and unmapped columns
+        // become the lead's first activity so they show in the timeline.
+        if (notes) {
+          noteType ??= await prisma.activityType.upsert({
+            where: { tenantId_key: { tenantId: ctx.tenantId, key: 'note' } },
+            update: {},
+            create: { tenantId: ctx.tenantId, key: 'note', name: 'Note', icon: 'note' },
+            select: { id: true },
+          });
+          await prisma.activity.create({
+            data: {
+              tenantId: ctx.tenantId,
+              typeId: noteType.id,
+              leadId: lead.id,
+              ownerId: ctx.actor.id,
+              createdById: ctx.actor.id,
+              source: 'IMPORT',
+              notes,
+            },
+          });
+        }
         created += 1;
-      } catch (err: any) {
-        failed.push({ line, reason: String(err?.message ?? 'could not be created').slice(0, 200) });
+      } catch (err) {
+        failed.push({ line, reason: String((err as Error)?.message ?? 'could not be created').slice(0, 200) });
       }
     }
 

@@ -54,7 +54,12 @@ export function telephonySettings(metadata: unknown): TelephonySettings {
 /** Connected telephony vendors for a tenant, newest first. Never returns secrets. */
 export async function telephonyConnections(tenantId: string) {
   return prisma.integrationConnection.findMany({
-    where: { tenantId, provider: { in: [...TELEPHONY_VENDORS] } },
+    // The development mock counts as a vendor only in development; the provider
+    // factory refuses it everywhere else, so it can never resolve in production.
+    where: {
+      tenantId,
+      provider: { in: [...TELEPHONY_VENDORS, ...(process.env.NODE_ENV === 'development' ? ['mock'] : [])] },
+    },
     select: {
       id: true,
       provider: true,

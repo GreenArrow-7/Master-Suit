@@ -20,3 +20,4 @@ playwright-report
 # too; this keeps a local run after the probe from failing the format gate.
 mobile-audit.json
 all-findings.json
+docs/ROLES.md

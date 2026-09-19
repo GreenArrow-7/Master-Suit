@@ -225,6 +225,8 @@ export const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   // A rolling alias: numbered ids retire and take every AI feature with them.
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),
+  // §19: a cheaper model tried once the primary keeps failing transiently. Unset = no cascade.
+  GEMINI_FALLBACK_MODEL: z.string().optional(),
 
   /**
    * The Meta app the platform itself is registered as, so one App Review covers

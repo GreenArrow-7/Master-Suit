@@ -114,6 +114,30 @@
 .lf-auth-foot {
   margin-top: auto;
 }
+/* Measured counts of automated work (platformValue); absent when there are none. */
+.lf-auth-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-6);
+  margin: 0 0 var(--lf-space-5);
+}
+.lf-auth-value > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.lf-auth-value dt {
+  font-size: var(--lf-text-xs);
+  color: var(--auth-ink-soft);
+}
+.lf-auth-value dd {
+  margin: 0;
+  font-family: var(--yh-font-brand);
+  font-size: var(--lf-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--yh-on-midnight);
+}
 .lf-auth-trust {
   display: flex;
   flex-wrap: wrap;

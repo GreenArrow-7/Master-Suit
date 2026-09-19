@@ -1,5 +1,6 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { mergeWhere } from '@/lib/api/where';
+import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { ulid } from 'ulid';
@@ -35,6 +36,7 @@ const FILTERS: Record<string, (now: Date) => Record<string, unknown>> = {
   unassigned: () => ({ ownerId: null }),
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
+  closed_out: () => CLOSED_OUT_WHERE,
 };
 
 /** RFC 4180: quote every field, double any embedded quote. Also blunts the
@@ -102,7 +104,7 @@ async function handle(req: Request, requestId: string) {
         : {};
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
 
-  const where = mergeWhere(scope, extra, search);
+  const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
   const [setting, rules] = await Promise.all([
     prismaRead.organizationSetting.findUnique({ where: { tenantId: ctx.tenantId }, select: { gridColumns: true } }),
     loadFieldRules(ctx, 'LEAD'),

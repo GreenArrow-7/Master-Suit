@@ -1,5 +1,13 @@
 import { withPlatformTx } from '@/lib/db';
-import { AI_METRIC_PREFIX, AI_MODEL_METRIC_PREFIX, AI_TOKEN_LIMIT_KEY, usageMetric } from '@/lib/ai/usage';
+import {
+  AI_IN_METRIC_PREFIX,
+  AI_METRIC_PREFIX,
+  AI_MODEL_METRIC_PREFIX,
+  AI_OUT_METRIC_PREFIX,
+  AI_TOKEN_LIMIT_KEY,
+  estimateCostUsd,
+  usageMetric,
+} from '@/lib/ai/usage';
 import { aggregate, aggregateModels } from './aggregate';
 
 /**
@@ -68,7 +76,17 @@ export async function loadAiUsage() {
         plan: { select: { name: true, planLimits: { where: { key: AI_TOKEN_LIMIT_KEY }, select: { value: true } } } },
       },
     });
-    return { rows: { usage, modelUsage, tenants }, plans: subs };
+    const direction = await tx.workspaceUsage.findMany({
+      where: {
+        tenantId: { not: '' },
+        OR: [
+          { metric: { startsWith: AI_IN_METRIC_PREFIX, endsWith: month } },
+          { metric: { startsWith: AI_OUT_METRIC_PREFIX, endsWith: month } },
+        ],
+      },
+      select: { metric: true, used: true },
+    });
+    return { rows: { usage, modelUsage, tenants, direction }, plans: subs };
   });
   // Deliberately not wrapped in a catch. A read that fails here and falls back
   // to an empty result renders as "nobody used the AI this month", which is the
@@ -86,7 +104,12 @@ export async function loadAiUsage() {
   const { table, totals, nearLimit } = aggregate(rows.usage, allowanceOf);
   const models = aggregateModels(rows.modelUsage);
 
-  return { table, totals, nearLimit, models, month, nameOf };
+  // Sent vs received on the shared key, and the estimate the stated prices give.
+  const sum = (prefix: string) =>
+    rows.direction.filter((r) => r.metric.startsWith(`${prefix}deployment:`)).reduce((n, r) => n + r.used, 0);
+  const split = { input: sum(AI_IN_METRIC_PREFIX), output: sum(AI_OUT_METRIC_PREFIX) };
+  const estimatedCostUsd = estimateCostUsd(split.input, split.output);
+  return { table, totals, nearLimit, models, month, nameOf, split, estimatedCostUsd };
 }
 
 export type AiUsageData = Awaited<ReturnType<typeof loadAiUsage>>;

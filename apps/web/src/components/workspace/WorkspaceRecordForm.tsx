@@ -10,6 +10,11 @@ export type FormField = {
   type?: 'text' | 'email' | 'password' | 'date' | 'time' | 'datetime-local' | 'number' | 'select' | 'multiselect';
   required?: boolean;
   placeholder?: string;
+  /** Numeric lower bound, enforced by the browser before the server's own rule. */
+  min?: number;
+  defaultValue?: string;
+  /** One line under the control explaining what the value means. */
+  hint?: string;
   options?: { value: string; label: string }[];
 };
 
@@ -109,8 +114,11 @@ export default function WorkspaceRecordForm({
                 type={field.type ?? 'text'}
                 required={field.required}
                 placeholder={field.placeholder}
+                min={field.min}
+                defaultValue={field.defaultValue}
               />
             )}
+            {field.hint && <span className="lf-field__hint">{field.hint}</span>}
           </label>
         ))}
       </div>

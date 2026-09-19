@@ -1,8 +1,8 @@
 import { logger } from '../logger';
-import { geminiCredential, geminiModel } from './gemini';
+import { geminiCredential } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
 import { generateStructured } from './provider';
-import { withRetry, isTransient } from '../integrations/retry';
+import { modelCascade, runCascade } from './cascade';
 import { redact } from './redact';
 
 /**
@@ -186,29 +186,28 @@ export async function analyzeTranscript(
     return degraded(input, 'no AI provider is connected for this workspace');
   }
 
-  const model = await geminiModel(input.tenantId);
-
   const prompt = buildPrompt(input);
   const started = Date.now();
 
+  const models = await modelCascade(input.tenantId);
+  let model = models[0]!;
   try {
     // Before the billed call, which is the only place a ceiling can act.
-    await assertAiBudget(input.tenantId, credential);
+    await assertAiBudget(input.tenantId, credential, 'call-analysis');
 
-    const response = await withRetry(
-      'gemini-analysis',
-      () =>
-        generateStructured({
-          credential: { key: apiKey, provider: credential.provider },
-          model,
-          prompt,
-          schema: RESPONSE_SCHEMA,
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-          timeoutMs: AI_TIMEOUT_MS,
-        }),
-      { maxAttempts: 3, retryOn: isTransient },
+    const res = await runCascade('gemini-analysis', models, (m) =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model: m,
+        prompt,
+        schema: RESPONSE_SCHEMA,
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     );
+    const response = res.value;
+    model = res.model;
 
     const processingMs = Date.now() - started;
 

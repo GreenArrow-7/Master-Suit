@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { touchLead } from '@/services/leads/touch';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
@@ -36,6 +37,7 @@ export const POST = route(
     // Reaches the lead's owner when somebody else booked the call for them; the
     // actor is filtered out, so scheduling your own call is silent.
     await notifyAboutCall(ctx, call, 'call.scheduled', `Call scheduled with ${call.recipientNumber}`);
+    await touchLead(ctx.tenantId, call.leadId);
 
     return call;
   },

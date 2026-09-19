@@ -215,8 +215,9 @@ export default function FaceEnrolmentConsole({
 
       {!consented && (
         <p className="lf-face__warn" role="status">
-          {employeeName} has not given biometric consent. They must record it themselves on their own Security screen —
-          you cannot give it on their behalf, and the server refuses an enrolment without it.
+          {employeeName} has not given biometric consent. They record it on their own Security screen, or — with them at
+          your desk — through the consent form above, where they sign by typing their name. The server refuses an
+          enrolment without it.
         </p>
       )}
 

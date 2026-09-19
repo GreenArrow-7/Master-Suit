@@ -62,6 +62,8 @@ interface LeadData {
   id: string;
   reference: string;
   fullName: string;
+  /** null while open; INVALID, DUPLICATE or ARCHIVED once closed out. */
+  status?: string | null;
   email: string | null;
   phone: string | null;
   company: string | null;
@@ -170,6 +172,24 @@ export default function LeadDetail({
     router.push(base + '/leads');
   });
 
+  /** Close-out is the non-administrator's alternative to delete: the lead leaves working lists, history kept. */
+  const handleCloseOut = (status: 'INVALID' | 'DUPLICATE' | 'ARCHIVED' | 'OPEN') => {
+    setShowMore(false);
+    void withBusy(async () => {
+      let duplicateOfId: string | null = null;
+      if (status === 'DUPLICATE') {
+        const ref = window.prompt('Reference or id of the lead this one duplicates (optional):', '');
+        if (ref === null) return;
+        duplicateOfId = /^c[a-z0-9]{20,}$/.test(ref.trim()) ? ref.trim() : null;
+      }
+      await api(`/api/v1/leads/${lead.id}/close-out`, {
+        method: 'POST',
+        body: JSON.stringify({ status, duplicateOfId }),
+      });
+      router.refresh();
+    })();
+  };
+
   const handleAssign = (userId: string | null) => {
     setShowAssign(false);
     void withBusy(async () => {
@@ -253,16 +273,27 @@ export default function LeadDetail({
 
         <aside className="lf-detail__side">
           <section className="lf-panel lf-panel--tight">
-            {/* Call is the one primary action on a lead; everything else is
-                secondary, and Edit / Delete stay behind More. */}
+            {/* The assisted call is the one primary action on a lead: placed through
+                the workspace's provider with guidance on screen. A plain handset
+                dial stays beside it, and says it carries no assistance. */}
             <div className="lf-actionrow">
               <button
                 className="lf-btn lf-btn--sm"
                 disabled={!lead.phone}
-                title={lead.phone ? `Call ${lead.phone}` : 'No phone number'}
+                title={
+                  lead.phone ? 'Place the call through the workspace provider with live guidance' : 'No phone number'
+                }
+                onClick={() => lead.phone && router.push(`${base}/calls/new?leadId=${lead.id}`)}
+              >
+                Call with AI assistance
+              </button>
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                disabled={!lead.phone}
+                title={lead.phone ? `Phone ${lead.phone} from this device — no AI assistance` : 'No phone number'}
                 onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
               >
-                Call
+                Phone
               </button>
               <button
                 className="lf-btn lf-btn--secondary lf-btn--sm"
@@ -302,6 +333,24 @@ export default function LeadDetail({
                           }}
                         >
                           {editing ? 'Cancel edit' : 'Edit details'}
+                        </button>
+                      )}
+                      {canEdit && !lead.status && (
+                        <>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('INVALID')}>
+                            Mark invalid
+                          </button>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('DUPLICATE')}>
+                            Mark duplicate…
+                          </button>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('ARCHIVED')}>
+                            Archive
+                          </button>
+                        </>
+                      )}
+                      {canEdit && lead.status && (
+                        <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('OPEN')}>
+                          Reopen lead
                         </button>
                       )}
                       {canDelete && (
@@ -398,6 +447,7 @@ export default function LeadDetail({
                 <dt>Priority</dt>
                 <dd>
                   <Badge value={lead.priority} />
+                  {lead.status && <Badge value={lead.status} tone="slate" />}
                 </dd>
               </div>
               <div>

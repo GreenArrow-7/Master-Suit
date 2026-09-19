@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AI_TOKEN_LIMIT_KEY } from '@/lib/ai/usage';
+import { AI_TOKEN_LIMIT_KEY, USER_TOKEN_LIMIT_KEY, featureLimitKey } from '@/lib/ai/usage';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
@@ -26,6 +26,10 @@ const planSchema = z.object({
    * is why the floor is 1.
    */
   maxAiTokensMonthly: z.number().int().positive().max(1_000_000_000).optional(),
+  /** §18: per-feature monthly ceilings on the shared key, keyed by the feature name the usage ledger records. */
+  /** §18: a ceiling per person per month on the shared key. */
+  maxAiTokensMonthlyPerUser: z.number().int().positive().optional(),
+  aiTokensMonthlyByFeature: z.record(z.string().regex(/^[a-z0-9-]{2,40}$/), z.number().int().positive()).optional(),
 });
 
 export async function GET(req: Request) {
@@ -71,6 +75,13 @@ export async function POST(req: Request) {
               ...(body.maxAiTokensMonthly === undefined
                 ? []
                 : [{ key: AI_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthly }]),
+              ...(body.maxAiTokensMonthlyPerUser === undefined
+                ? []
+                : [{ key: USER_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthlyPerUser }]),
+              ...Object.entries(body.aiTokensMonthlyByFeature ?? {}).map(([feature, value]) => ({
+                key: featureLimitKey(feature),
+                value,
+              })),
             ],
           },
         },

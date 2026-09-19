@@ -34,6 +34,9 @@ export const EXCEPTION_REASONS = [
   'temporary_assignment',
   'business_travel',
   'remote_work_authorised',
+  // The work-gated check-out (settings: checkoutRequiresLeadWork): a manager lets a
+  // seller leave with assigned leads still untouched for today.
+  'work_pending',
 ] as const;
 
 export type ExceptionReason = (typeof EXCEPTION_REASONS)[number];

@@ -36,6 +36,8 @@ interface Preflight {
   ok: boolean;
   code: string;
   message: string;
+  /** Leads assigned today and still untouched; only counted for check-out when the workspace gates on it. */
+  pendingWork: number;
   candidates: {
     name: string;
     distanceM: number;
@@ -188,7 +190,13 @@ export default function CheckInConsole({
           setDiagnosticBad(true);
           setOnSite('FAIL');
         }
-        setHint(pre.ok ? 'Location confirmed' : pre.message);
+        setHint(
+          pre.pendingWork > 0
+            ? `${pre.pendingWork} assigned lead${pre.pendingWork === 1 ? '' : 's'} still untouched today — check-out will be refused until ${pre.pendingWork === 1 ? 'it is' : 'they are'} worked.`
+            : pre.ok
+              ? 'Location confirmed'
+              : pre.message,
+        );
         return pre;
       } catch (error) {
         setDiagnostic((error as Error).message);
@@ -242,7 +250,7 @@ export default function CheckInConsole({
 
   async function refreshRecent() {
     try {
-      const res = await fetch(`${endpointBase.replace('/actions', '')}/attendance-punches?limit=8`);
+      const res = await fetch(`${endpointBase.replace(/\/(actions|self)$/, '')}/attendance-punches?limit=8`);
       const rows = await res.json().catch(() => []);
       if (Array.isArray(rows)) {
         setRecent(

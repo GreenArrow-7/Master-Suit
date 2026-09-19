@@ -4,6 +4,9 @@ import { notFound, redirect } from 'next/navigation';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { leadCallContext } from '@/services/leads/callContext';
 import { geminiCredential } from '@/lib/ai/gemini';
+import { env } from '@/lib/env';
+import { resolveTelephony } from '@/lib/integrations/telephony/resolve';
+import { liveAudioMode } from '@/lib/integrations/telephony/liveAudio';
 import LiveCallWorkspace from './LiveCallWorkspace';
 
 export const metadata = { title: 'Live Call' };
@@ -18,7 +21,7 @@ export default async function LiveCallPage({
 
   const call = await prisma.call.findFirst({
     where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
-    include: { caller: { select: { id: true, fullName: true } } },
+    include: { caller: { select: { id: true, fullName: true } }, consent: true },
   });
   if (!call) notFound();
 
@@ -36,6 +39,12 @@ export default async function LiveCallPage({
   // The workspace's own key when it has one, the deployment's otherwise — the
   // same resolution the coach itself uses, so the banner cannot contradict it.
   const credential = await geminiCredential(ctx.tenantId).catch(() => null);
+  // The workspace's calling provider, if one is connected: whether it can fork
+  // live audio decides what this screen promises. Not connected is a state,
+  // not an error, here.
+  const telephony = await resolveTelephony(ctx.tenantId).catch(() => null);
+  const liveAudio = liveAudioMode(telephony?.provider.capabilities, env.LIVE_STREAM_WS_URL || undefined);
+  const consented = Boolean(call.consent?.consentGiven && !call.consent.withdrawnAt);
 
   // A call placed through a real vendor is displayed, not simulated: the
   // realtime engine produces its events and this page only shows them.
@@ -55,6 +64,10 @@ export default async function LiveCallPage({
         agentName: call.caller.fullName,
       }}
       transport={transport}
+      liveAudio={liveAudio}
+      vendor={telephony?.vendor ?? null}
+      placed={Boolean(call.externalCallId)}
+      consented={consented}
       context={context}
       hasGemini={Boolean(credential?.key)}
     />

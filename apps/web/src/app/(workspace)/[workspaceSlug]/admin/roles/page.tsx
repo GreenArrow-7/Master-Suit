@@ -207,7 +207,11 @@ export default async function Page({
                 label: 'Rank',
                 type: 'number',
                 required: true,
-                placeholder: String(ctx.actor.roleRank + 10),
+                // The server refuses a rank at or above the creator's own; make that the
+                // field's constraint rather than a 403 after submit.
+                min: ctx.actor.roleRank + 1,
+                defaultValue: String(ctx.actor.roleRank + 10),
+                hint: `Lower is more senior. Your rank is ${ctx.actor.roleRank}; new roles must be ${ctx.actor.roleRank + 1} or higher.`,
               },
               {
                 name: 'defaultScope',

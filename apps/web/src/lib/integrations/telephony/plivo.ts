@@ -145,6 +145,9 @@ export class PlivoProvider implements TelephonyProvider {
       durationSecs: num(p.get('Duration')),
       talkSecs: num(p.get('BillDuration')),
       deliveryId: `${requestUuid}:${p.get('CallUUID') ?? ''}:${raw}`,
+      from: p.get('From') ?? undefined,
+      to: p.get('To') ?? undefined,
+      direction: (p.get('Direction') ?? '').toLowerCase() === 'inbound' ? 'INBOUND' : undefined,
     };
   }
   /** Plivo serves recording media from its API host and its media CDN. */

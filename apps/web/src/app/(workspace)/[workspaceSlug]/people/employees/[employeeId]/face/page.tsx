@@ -5,6 +5,7 @@ import { isHrAdmin } from '@/services/hr/access';
 import { getHrPolicy } from '@/services/hr/settings';
 import { Forbidden } from '@/lib/errors';
 import FaceEnrolmentConsole from './FaceEnrolmentConsole';
+import SupervisedConsentForm from './SupervisedConsentForm';
 
 export const metadata = { title: 'Face enrolment' };
 
@@ -111,6 +112,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         </dl>
       </div>
 
+      {!consent?.grantedAt && (
+        <SupervisedConsentForm
+          actionsBase={`/api/v1/workspaces/${workspaceSlug}/hr/actions`}
+          employeeId={employee.id}
+          employeeName={person.fullName}
+          policyVersion="PDPL-2026-01"
+        />
+      )}
       <FaceEnrolmentConsole
         actionsBase={`/api/v1/workspaces/${workspaceSlug}/hr/actions`}
         employeeId={employee.id}

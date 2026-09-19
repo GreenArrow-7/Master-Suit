@@ -17,6 +17,7 @@ import {
 import {
   enrolFace,
   grantConsent,
+  grantConsentSupervised,
   preflight,
   punch,
   requestChallenge,
@@ -110,6 +111,7 @@ const paramsSchema = z.object({
     'offboarding-start',
     'employee-exit',
     'consent-grant',
+    'consent-grant-supervised',
     'consent-withdraw',
     'face-enrol',
     'face-reset',
@@ -220,6 +222,7 @@ const ACTION_PERMISSION: Record<HrAction, ActionPermission | typeof SELF> = {
   'offboarding-start': ['employee', 'EDIT'],
   'employee-exit': ['employee', 'EDIT'],
   'consent-grant': SELF,
+  'consent-grant-supervised': ['employee', 'EDIT'],
   'consent-withdraw': SELF,
   'face-enrol': ['employee', 'EDIT'],
   'face-reset': ['employee', 'EDIT'],
@@ -877,6 +880,17 @@ export const POST = route(
       case 'consent-grant': {
         const input = z.object({ policyVersion: z.string().max(40).optional() }).parse(body);
         return grantConsent(ctx, input.policyVersion);
+      }
+
+      case 'consent-grant-supervised': {
+        const input = z
+          .object({
+            employeeId: id,
+            signature: z.string().min(2).max(160),
+            policyVersion: z.string().max(40).optional(),
+          })
+          .parse(body);
+        return grantConsentSupervised(ctx, input.employeeId, input);
       }
 
       case 'consent-withdraw': {

@@ -80,7 +80,7 @@ export interface Fixture {
   cleanup: () => Promise<void>;
 }
 
-const ALL_ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'EXPORT'] as const;
+const ALL_ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'ASSIGN', 'EXPORT', 'IMPORT'] as const;
 const MODULES = ['leads', 'calls', 'events', 'campaigns', 'accounts', 'contacts', 'opportunities', 'tasks'] as const;
 
 /** An admin role holding every permission at ORGANIZATION scope. */

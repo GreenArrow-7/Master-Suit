@@ -1,5 +1,6 @@
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from '@/lib/branding';
 import { MODULES } from '@/components/brand/ecosystem/modules';
+import { platformValue } from '@/lib/value/platformValue';
 import BrandHero from './BrandHero';
 
 /**
@@ -18,14 +19,16 @@ import BrandHero from './BrandHero';
  * The graphic is decorative to assistive technology; one visually hidden
  * sentence says in words what it draws.
  */
-export default function AuthShell({ children }: { children: React.ReactNode }) {
+export default async function AuthShell({ children }: { children: React.ReactNode }) {
+  // Measured, not claimed: counts of work the platform did (lib/value/platformValue.ts).
+  const value = await platformValue();
   return (
     <main className="lf-auth">
       <p className="lf-sr-only">
         {PRODUCT_NAME}: {PRODUCT_DESCRIPTION} Modules: {MODULES.map((m) => m.label).join(', ')}.
       </p>
       <section className="lf-auth-story" aria-hidden="true">
-        <BrandHero />
+        <BrandHero value={value} />
       </section>
 
       <section className="lf-auth-pane">

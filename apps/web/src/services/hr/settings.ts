@@ -241,6 +241,15 @@ export const HR_SETTINGS: Definition[] = [
     help: 'How long the encrypted capture frame from each punch is kept as evidence before the retention job deletes it. Biometric images should not accumulate forever; keep this as short as your dispute process allows.',
   },
 
+  {
+    key: 'checkoutRequiresLeadWork',
+    group: 'attendance',
+    type: 'boolean',
+    default: false,
+    label: "Check-out waits for the day's assigned leads",
+    help: 'A seller who was handed leads today cannot check out while any of them is still untouched. The check-in screen warns as the day goes on; an approved attendance exception (reason work_pending) lets a manager override for that day.',
+  },
+
   // ── Leave ────────────────────────────────────────────────────────────────
   {
     key: 'weekendDays',
@@ -664,6 +673,7 @@ export type HrPolicy = {
   minPunchIntervalSeconds: number;
   maxOfflineSyncHours: number;
   captureRetentionDays: number;
+  checkoutRequiresLeadWork: boolean;
   weekendDays: number[];
   leaveMaxBackdateDays: number;
   accrualMinMonthsService: number;
