@@ -28,7 +28,7 @@ export interface LeadRow {
 type SortKey = 'fullName' | 'score' | 'updatedAt' | 'nextFollowUpAt';
 const SORTABLE = new Set<string>(['fullName', 'score', 'updatedAt', 'nextFollowUpAt']);
 
-type BulkAction = 'assign' | 'stage' | 'task';
+type BulkAction = 'assign' | 'stage' | 'task' | 'closeout';
 
 export default function LeadGrid({
   rows,
@@ -214,6 +214,14 @@ export default function LeadGrid({
                 Add task
               </button>
             )}
+            {canEdit && (
+              <button
+                className="lf-btn lf-btn--sm lf-btn--secondary"
+                onClick={() => setAction(action === 'closeout' ? null : 'closeout')}
+              >
+                Close out
+              </button>
+            )}
             {canDelete && (
               <button
                 className="lf-btn lf-btn--sm lf-btn--secondary"
@@ -281,6 +289,29 @@ export default function LeadGrid({
                         {stage.name}
                       </option>
                     ))}
+                  </select>
+                </label>
+              )}
+
+              {action === 'closeout' && (
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+                  Mark selected as
+                  <select
+                    className="lf-input"
+                    defaultValue=""
+                    disabled={busy}
+                    onChange={(event) =>
+                      event.target.value &&
+                      void run((leadId) => post(`/api/v1/leads/${leadId}/close-out`, { status: event.target.value }))
+                    }
+                  >
+                    <option value="" disabled>
+                      Choose…
+                    </option>
+                    <option value="INVALID">Invalid</option>
+                    <option value="DUPLICATE">Duplicate</option>
+                    <option value="ARCHIVED">Archived</option>
+                    <option value="OPEN">Reopened</option>
                   </select>
                 </label>
               )}

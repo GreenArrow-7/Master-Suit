@@ -5,6 +5,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -38,6 +39,7 @@ const FILTERS: Record<string, (now: Date, actorId: string) => Record<string, unk
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
   mine: (_now, actorId) => ({ ownerId: actorId }),
+  closed_out: () => CLOSED_OUT_WHERE,
 };
 
 /**
@@ -110,7 +112,9 @@ export default async function LeadsPage({
         ],
       }
     : {};
-  const where = mergeWhere(scope, extra, search);
+  // Closed-out leads (invalid, duplicate, archived) leave every working list and
+  // are reached only through their own chip.
+  const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
@@ -266,6 +270,7 @@ export default async function LeadsPage({
             ['No next action', 'no_next_action'],
             ['SLA breached', 'breached'],
             ['High score', 'high_score'],
+            ['Closed out', 'closed_out'],
           ].map(([label, key]) => {
             const query = new URLSearchParams({
               ...(key ? { filter: key } : {}),

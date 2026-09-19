@@ -62,6 +62,8 @@ interface LeadData {
   id: string;
   reference: string;
   fullName: string;
+  /** null while open; INVALID, DUPLICATE or ARCHIVED once closed out. */
+  status?: string | null;
   email: string | null;
   phone: string | null;
   company: string | null;
@@ -169,6 +171,24 @@ export default function LeadDetail({
     await api(`/api/v1/leads/${lead.id}`, { method: 'DELETE' });
     router.push(base + '/leads');
   });
+
+  /** Close-out is the non-administrator's alternative to delete: the lead leaves working lists, history kept. */
+  const handleCloseOut = (status: 'INVALID' | 'DUPLICATE' | 'ARCHIVED' | 'OPEN') => {
+    setShowMore(false);
+    void withBusy(async () => {
+      let duplicateOfId: string | null = null;
+      if (status === 'DUPLICATE') {
+        const ref = window.prompt('Reference or id of the lead this one duplicates (optional):', '');
+        if (ref === null) return;
+        duplicateOfId = /^c[a-z0-9]{20,}$/.test(ref.trim()) ? ref.trim() : null;
+      }
+      await api(`/api/v1/leads/${lead.id}/close-out`, {
+        method: 'POST',
+        body: JSON.stringify({ status, duplicateOfId }),
+      });
+      router.refresh();
+    })();
+  };
 
   const handleAssign = (userId: string | null) => {
     setShowAssign(false);
@@ -304,6 +324,24 @@ export default function LeadDetail({
                           {editing ? 'Cancel edit' : 'Edit details'}
                         </button>
                       )}
+                      {canEdit && !lead.status && (
+                        <>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('INVALID')}>
+                            Mark invalid
+                          </button>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('DUPLICATE')}>
+                            Mark duplicate…
+                          </button>
+                          <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('ARCHIVED')}>
+                            Archive
+                          </button>
+                        </>
+                      )}
+                      {canEdit && lead.status && (
+                        <button className="lf-menu__item" disabled={busy} onClick={() => handleCloseOut('OPEN')}>
+                          Reopen lead
+                        </button>
+                      )}
                       {canDelete && (
                         <button
                           className="lf-menu__item"
@@ -398,6 +436,7 @@ export default function LeadDetail({
                 <dt>Priority</dt>
                 <dd>
                   <Badge value={lead.priority} />
+                  {lead.status && <Badge value={lead.status} tone="slate" />}
                 </dd>
               </div>
               <div>
