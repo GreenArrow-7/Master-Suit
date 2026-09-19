@@ -9,6 +9,7 @@ import { decryptCredentials } from '@/lib/integrations/connection';
 import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
 import { normalizePhone } from '@/services/leads/normalizePhone';
+import { touchLead } from '@/services/leads/touch';
 
 /**
  * Every vendor's callbacks land here, keyed by the connection's `webhookKey` in
@@ -154,6 +155,7 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
   }
 
   await applyCallEvent(call, event);
+  if (event.event === 'CALL_COMPLETED') await touchLead(call.tenantId, call.leadId, event.occurredAt);
 
   if (event.event === 'RECORDING_AVAILABLE' && event.recordingUrl) {
     await storeRecording(connection, call, event);
