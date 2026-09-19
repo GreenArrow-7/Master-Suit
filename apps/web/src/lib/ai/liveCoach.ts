@@ -227,7 +227,7 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
    * keyword hints are what an unconfigured workspace gets anyway.
    */
   try {
-    await assertAiBudget(tenantId, credential);
+    await assertAiBudget(tenantId, credential, 'live-coach');
   } catch {
     return heuristicHints(windowText);
   }
@@ -358,7 +358,7 @@ export async function coachAction(
   const credential = await geminiCredential(tenantId);
   if (!credential.key) return actionFallback(action, context);
   try {
-    await assertAiBudget(tenantId, credential);
+    await assertAiBudget(tenantId, credential, 'live-coach-action');
     const model = await geminiModel(tenantId);
     const response = await generateStructured({
       credential: { key: credential.key, provider: credential.provider },

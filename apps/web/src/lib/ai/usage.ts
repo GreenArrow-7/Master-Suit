@@ -78,6 +78,22 @@ export function legacyUsageMetric(at: Date = new Date()): string {
 export const AI_METRIC_PREFIX = 'ai_tokens:';
 
 /**
+ * §18: the same month's spend split by feature — `ai_feature:deployment:call-analysis:2026-09` —
+ * so a plan can cap one feature (say, live coaching) without capping the rest.
+ */
+export const AI_FEATURE_METRIC_PREFIX = 'ai_feature:';
+export function featureUsageMetric(paidBy: PaidBy, feature: string, at: Date = new Date()): string {
+  const safe =
+    feature
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .slice(0, 40) || 'unknown';
+  return `${AI_FEATURE_METRIC_PREFIX}${paidBy}:${safe}:${period(at)}`;
+}
+/** Plan-limit key for one feature's monthly tokens, e.g. `ai_tokens_monthly:live-coach`. */
+export const featureLimitKey = (feature: string) => `${AI_TOKEN_LIMIT_KEY}:${feature}`;
+
+/**
  * `ai_model:deployment:gemini-2.5-flash:2026-08` — the same spend, split by the
  * model that produced it.
  *
@@ -152,6 +168,23 @@ async function monthlyLimit(tenantId: string): Promise<number | null> {
  * the bug: it charged a tenant against an allowance for a bill they were
  * already paying themselves.
  */
+async function featureLimit(tenantId: string, feature: string): Promise<number | null> {
+  const subscription = await prisma.tenantSubscription.findUnique({
+    where: { tenantId },
+    select: { plan: { select: { planLimits: { where: { key: featureLimitKey(feature) }, select: { value: true } } } } },
+  });
+  const value = subscription?.plan?.planLimits[0]?.value;
+  return typeof value === 'number' && value > 0 ? value : null;
+}
+
+async function featureUsedThisMonth(tenantId: string, feature: string): Promise<number> {
+  const row = await prisma.workspaceUsage.findUnique({
+    where: { tenantId_metric: { tenantId, metric: featureUsageMetric('deployment', feature) } },
+    select: { used: true },
+  });
+  return row?.used ?? 0;
+}
+
 async function deploymentUsedThisMonth(tenantId: string): Promise<number> {
   const row = await prisma.workspaceUsage.findUnique({
     where: { tenantId_metric: { tenantId, metric: usageMetric('deployment') } },
@@ -173,9 +206,25 @@ async function deploymentUsedThisMonth(tenantId: string): Promise<number> {
  * knowable in advance. A ceiling that stops a runaway within one batch is the
  * control that was wanted; a quota system that bills to the token is not.
  */
-export async function assertAiBudget(tenantId: string | null | undefined, credential: GeminiCredential): Promise<void> {
+export async function assertAiBudget(
+  tenantId: string | null | undefined,
+  credential: GeminiCredential,
+  feature?: string,
+): Promise<void> {
   // Their key, their bill. And simulation costs nothing to anybody.
   if (!tenantId || credential.source !== 'deployment') return;
+
+  // A feature's own ceiling first: it is the narrower rule, and the message names it.
+  if (feature) {
+    const cap = await featureLimit(tenantId, feature);
+    if (cap !== null && (await featureUsedThisMonth(tenantId, feature)) >= cap) {
+      logger.warn({ tenantId, feature, cap }, 'ai feature budget exhausted for the month');
+      throw Forbidden(
+        `This workspace has used its monthly AI allowance for ${feature} (${cap.toLocaleString()} tokens). ` +
+          'It resets at the start of next month, or connect your own Gemini key in Settings → Integrations for your own quota.',
+      );
+    }
+  }
 
   const limit = await monthlyLimit(tenantId);
   if (limit === null) return;
@@ -254,5 +303,17 @@ export async function recordAiUsage(
     });
   } catch (err) {
     logger.warn({ err, tenantId, model: context.model }, 'could not record ai model usage');
+  }
+
+  // And once more by feature, which is what a per-feature ceiling reads.
+  try {
+    const metric = featureUsageMetric(credential.source, context.feature);
+    await prisma.workspaceUsage.upsert({
+      where: { tenantId_metric: { tenantId, metric } },
+      create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
+      update: { used: { increment: tokens }, measuredAt: new Date() },
+    });
+  } catch (err) {
+    logger.warn({ err, tenantId, feature: context.feature }, 'could not record ai feature usage');
   }
 }

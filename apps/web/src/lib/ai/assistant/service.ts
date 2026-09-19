@@ -149,7 +149,7 @@ export async function* runAssistant(
     const model = key ? await geminiModel(ctx.tenantId) : '';
     // Once per query rather than per round: a conversation already under way
     // should finish rather than stop half-answered at round four.
-    if (key) await assertAiBudget(ctx.tenantId, credential);
+    if (key) await assertAiBudget(ctx.tenantId, credential, 'assistant');
 
     if (key) {
       /**

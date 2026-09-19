@@ -61,7 +61,7 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
   const feature = request.feature ?? request.label;
 
   // Before the request that would be billed, which is the only useful place.
-  await assertAiBudget(request.tenantId, credential);
+  await assertAiBudget(request.tenantId, credential, feature);
 
   const { value: response, model } = await runCascade(request.label, await modelCascade(request.tenantId), (m) =>
     generateStructured({

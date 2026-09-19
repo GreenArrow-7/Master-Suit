@@ -31,6 +31,18 @@ export default function PlanForm() {
           ...(String(values.maxAiTokensMonthly ?? '').trim()
             ? { maxAiTokensMonthly: Number(values.maxAiTokensMonthly) }
             : {}),
+          // "live-coach=200000, call-analysis=500000" → per-feature ceilings; blank = none.
+          ...(String(values.aiTokensByFeature ?? '').trim()
+            ? {
+                aiTokensMonthlyByFeature: Object.fromEntries(
+                  String(values.aiTokensByFeature)
+                    .split(',')
+                    .map((pair) => pair.split('=').map((part) => part.trim()))
+                    .filter(([feature, value]) => feature && Number(value) > 0)
+                    .map(([feature, value]) => [feature, Number(value)]),
+                ),
+              }
+            : {}),
         }),
       });
       const data = await response.json();
@@ -88,6 +100,11 @@ export default function PlanForm() {
           name="maxAiTokensMonthly"
           type="number"
           placeholder="leave blank for no limit"
+        />
+        <Field
+          label="Per-feature monthly tokens (optional)"
+          name="aiTokensByFeature"
+          placeholder="live-coach=200000, call-analysis=500000"
         />
         <p style={{ margin: 0, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
           Caps what a workspace on this plan may spend each month <strong>on the shared deployment key</strong> — the

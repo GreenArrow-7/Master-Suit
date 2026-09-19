@@ -193,7 +193,7 @@ export async function analyzeTranscript(
   let model = models[0]!;
   try {
     // Before the billed call, which is the only place a ceiling can act.
-    await assertAiBudget(input.tenantId, credential);
+    await assertAiBudget(input.tenantId, credential, 'call-analysis');
 
     const res = await runCascade('gemini-analysis', models, (m) =>
       generateStructured({

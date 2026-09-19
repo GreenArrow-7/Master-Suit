@@ -111,7 +111,7 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   const models = await modelCascade(input.tenantId);
   let model = models[0]!;
   try {
-    await assertAiBudget(input.tenantId, credential);
+    await assertAiBudget(input.tenantId, credential, 'call-audit');
 
     const res = await runCascade('gemini-audit', models, (m) =>
       generateStructured({
