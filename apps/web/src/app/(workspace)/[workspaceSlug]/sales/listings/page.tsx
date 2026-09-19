@@ -9,6 +9,7 @@ import ConfigurableGrid from '@/components/workspace/ConfigurableGrid';
 import ColumnEditor from '@/components/workspace/ColumnEditor';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
+import { maskListingOwners } from '@/lib/inventory/listings';
 import ListingFilters from './ListingFilters';
 
 export const metadata = { title: 'Listings' };
@@ -118,7 +119,7 @@ export default async function ListingsPage({
           />
         </div>
       ) : (
-        <ConfigurableGrid object="LISTING" columns={columns} rows={rows as never} />
+        <ConfigurableGrid object="LISTING" columns={columns} rows={maskListingOwners(ctx, rows) as never} />
       )}
     </>
   );

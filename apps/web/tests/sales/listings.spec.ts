@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { listingWhere, listingFilters, maskOwner } from '@/lib/inventory/listings';
+import { listingWhere, listingFilters, maskListingOwners, maskOwner } from '@/lib/inventory/listings';
 import { listingsMatching, matchesForRequirement, requirementsWanting } from '@/services/inventory/demand';
 import { canTransition, createMandate, decideMandate, expireLapsedMandates } from '@/services/inventory/mandates';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
@@ -411,5 +411,35 @@ describe('the listing book', () => {
     expect(masked.fullName).toBe('Yusuf Rahman');
 
     expect(maskOwner(withPermission, owner)!.phone).toBe(owner.phone);
+  });
+
+  it('masks every row of a listing page, so the Owner phone column cannot leak the book', () => {
+    // The guard that matters for LISTING_LIST_SELECT: it now carries the phone so a
+    // column can show it, and both the screen and GET /api/v1/listings hand their rows
+    // to this one function. If a reader ever stops calling it, this fails.
+    const rows = [
+      { id: 'a', propertyOwner: { fullName: 'Yusuf Rahman', phone: '+971501234567' } },
+      { id: 'b', propertyOwner: { fullName: 'Nadia Haddad', phone: '+971555555555' } },
+      { id: 'c', propertyOwner: null },
+    ];
+    const withoutPermission = { actor: { permissions: new Map() } } as unknown as Ctx;
+    const withPermission = {
+      actor: { permissions: new Map([['listings:VIEW_SENSITIVE_FIELDS', 'ORGANIZATION']]) },
+    } as unknown as Ctx;
+
+    const masked = maskListingOwners(withoutPermission, rows as never) as typeof rows;
+    expect(masked.map((row) => row.propertyOwner?.phone ?? null)).toEqual([
+      expect.stringContaining('•'),
+      expect.stringContaining('•'),
+      null,
+    ]);
+    // No row keeps a dialable number, and the names still come through.
+    expect(masked.some((row) => row.propertyOwner?.phone === '+971501234567')).toBe(false);
+    expect(masked[0].propertyOwner?.fullName).toBe('Yusuf Rahman');
+    // A listing without an owner stays without one rather than becoming an empty object.
+    expect(masked[2].propertyOwner).toBeNull();
+
+    const unmasked = maskListingOwners(withPermission, rows as never) as typeof rows;
+    expect(unmasked[0].propertyOwner?.phone).toBe('+971501234567');
   });
 });

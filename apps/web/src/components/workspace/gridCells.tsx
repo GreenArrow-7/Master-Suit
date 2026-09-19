@@ -537,6 +537,16 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           );
         case 'propertyOwner':
           return row.propertyOwner ? row.propertyOwner.fullName : dash;
+        case 'propertyOwnerPhone': {
+          const owner = row.propertyOwner?.phone;
+          if (!owner) return dash;
+          // A masked number is not a number. dialLink strips everything that is not
+          // a digit, so the bullets would collapse into the handful that survive and
+          // the button would offer to ring a stranger. Show the mask as text instead:
+          // it still says "there is a number on file", which is the point of masking
+          // rather than omitting, and whoever needs to dial holds the permission.
+          return String(owner).includes('•') ? muted(owner) : dialLink(owner);
+        }
         case 'updatedAt':
           return dateTime(row.updatedAt);
         default:

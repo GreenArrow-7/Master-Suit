@@ -116,7 +116,9 @@ export const LISTING_LIST_SELECT = {
   availableFrom: true,
   updatedAt: true,
   micromarket: { select: { id: true, name: true, city: true } },
-  propertyOwner: { select: { id: true, fullName: true } },
+  // The number rides along masked: every read of this select passes through
+  // maskOwner, so a role without listings:VIEW_SENSITIVE_FIELDS gets bullets.
+  propertyOwner: { select: { id: true, fullName: true, phone: true } },
 } satisfies Prisma.ListingSelect;
 
 /**
@@ -144,6 +146,21 @@ export function maskOwner<T extends { phone?: string | null; email?: string | nu
     email: owner.email ? maskEmail(owner.email) : owner.email,
     whatsappNumber: owner.whatsappNumber ? maskTail(owner.whatsappNumber) : owner.whatsappNumber,
   };
+}
+
+/**
+ * The same masking for a page of listings.
+ *
+ * LISTING_LIST_SELECT carries the owner's phone so a column can show it, which means
+ * every list read is one forgotten `.map` away from handing every landlord's mobile to
+ * anyone who calls the API. Both readers — the screen and GET /api/v1/listings — go
+ * through here rather than repeating the mapping, so there is one place to get right.
+ */
+export function maskListingOwners<T extends { propertyOwner: Parameters<typeof maskOwner>[1] }>(
+  ctx: Ctx,
+  rows: T[],
+): T[] {
+  return rows.map((row) => ({ ...row, propertyOwner: maskOwner(ctx, row.propertyOwner) }));
 }
 
 /** Keeps the country code and the last two digits: enough to recognise, not to dial. */
