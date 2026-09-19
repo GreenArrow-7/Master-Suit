@@ -434,8 +434,10 @@ export async function assertRuntimeIsolation(targets: Targets): Promise<void> {
     // the environment, so no amount of env inspection would find them. A
     // connected telephony or Meta row makes outbound calls reachable.
     const { rows: live } = await client.query<{ provider: string; n: string }>(
+      // `mock` is the development vendor: it dials nothing and posts nowhere, and the
+      // journey suite needs it connected to exercise the calling path.
       `SELECT provider, count(*)::text AS n FROM "IntegrationConnection"
-        WHERE status = 'CONNECTED' GROUP BY provider`,
+        WHERE status = 'CONNECTED' AND provider <> 'mock' GROUP BY provider`,
     );
     if (live.length > 0) {
       throw new UnsafeTestEnvironment(
