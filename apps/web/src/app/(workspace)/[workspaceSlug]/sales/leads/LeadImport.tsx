@@ -61,7 +61,9 @@ function parseCsv(text: string): string[][] {
 async function readFile(file: File): Promise<string[][]> {
   if (/\.xlsx?$/i.test(file.name)) {
     const { default: readXlsx } = await import('read-excel-file/browser');
-    const rows = (await readXlsx(file)) as unknown as unknown[][];
+    // v9 returns every sheet as { sheet, data }; the first sheet is the import.
+    const result = (await readXlsx(file)) as unknown as { data: unknown[][] }[] | unknown[][];
+    const rows = (Array.isArray(result[0]) ? result : ((result[0] as { data: unknown[][] } | undefined)?.data ?? [])) as unknown[][];
     return rows.map((cells) => cells.map((cell) => (cell == null ? '' : cell instanceof Date ? cell.toISOString().slice(0, 10) : String(cell))));
   }
   return parseCsv(await file.text());
@@ -115,7 +117,8 @@ export default function LeadImport() {
       const headers = rows[0].map((h) => String(h ?? '').trim().replace(/^\uFEFF/, ''));
       setFile({ name: picked.name, headers, rows: rows.slice(1) });
       setMapping(detectColumns(headers));
-    } catch {
+    } catch (err) {
+      console.error('lead import: file could not be read', err);
       setError('That file could not be read. Save it as .xlsx or .csv and try again.');
     } finally {
       setBusy(false);

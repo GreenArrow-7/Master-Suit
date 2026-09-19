@@ -192,11 +192,13 @@ export default async function LeadsPage({
         count={pageRows.length}
         noun="lead"
         capped={hasMore}
-        // Adding a lead is what someone came here to do; import, export and
-        // column choice are housekeeping and fold behind the disclosure.
+        // Adding a lead is what someone came here to do; export and column
+        // choice are housekeeping and fold behind the disclosure. Import sits
+        // beside "Add lead": it is how most leads arrive, and its panel cannot
+        // live inside the disclosure — the top bar closes a <details> on any
+        // click within it, which dismissed the import panel as it opened.
         secondaryActions={
           <>
-            {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
             {can(ctx, 'leads', 'EXPORT') && (
               <a
                 className="lf-btn lf-btn--secondary lf-btn--sm"
@@ -211,11 +213,18 @@ export default async function LeadsPage({
           </>
         }
         actions={
-          can(ctx, 'leads', 'CREATE') ? (
-            <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
-              Add lead
-            </SalesLink>
-          ) : undefined
+          <>
+            {can(ctx, 'leads', 'IMPORT') && (
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <LeadImport />
+              </span>
+            )}
+            {can(ctx, 'leads', 'CREATE') && (
+              <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
+                Add lead
+              </SalesLink>
+            )}
+          </>
         }
       />
 
