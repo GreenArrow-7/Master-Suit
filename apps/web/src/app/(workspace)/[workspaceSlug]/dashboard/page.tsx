@@ -314,6 +314,9 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
             where: { tenantId: ctx.tenantId, status: 'COMPLETED' },
             _avg: { overallScore: true, maxScore: true },
           }),
+          prisma.callAudit.count({
+            where: { tenantId: ctx.tenantId, status: 'COMPLETED', humanReviewed: false, modelId: 'demo-simulation' },
+          }),
         ])
       : null;
 
@@ -565,7 +568,8 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         >
           {calls[1] > 0 && (
             <p style={{ margin: 0 }}>
-              <strong>{calls[1]}</strong> call {calls[1] === 1 ? 'audit has' : 'audits have'} been scored by AI and{' '}
+              <strong>{calls[1]}</strong> call {calls[1] === 1 ? 'audit has' : 'audits have'} been scored
+              {calls[4] > 0 ? ` (${calls[4]} by keyword rules, not a model)` : ' by AI'} and{' '}
               {calls[1] === 1 ? 'is' : 'are'} waiting for a human review.
             </p>
           )}

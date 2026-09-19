@@ -1,9 +1,9 @@
 import { logger } from '../logger';
-import { geminiCredential, geminiModel } from './gemini';
+import { geminiCredential } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
 import { generateStructured } from './provider';
 import { redact } from './redact';
-import { withRetry, isTransient } from '../integrations/retry';
+import { modelCascade, runCascade } from './cascade';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -37,6 +37,8 @@ export interface AuditResult {
   nextAction: string | null;
   overallScore: number;
   maxScore: number;
+  /** Which model answered; `demo-simulation` for the keyword pass. */
+  modelId?: string;
 }
 
 function buildAuditPrompt(input: AuditInput): string {
@@ -103,45 +105,45 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   const apiKey = credential.key;
   if (!apiKey) {
     // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
-    const { simulateAudit } = await import('./simulated');
+    const { simulateAudit, SIMULATED_MODEL_ID } = await import('./simulated');
     logger.info('no Gemini key for this workspace — returning simulated audit');
-    return simulateAudit(input);
+    return { ...simulateAudit(input), modelId: SIMULATED_MODEL_ID };
   }
 
-  const model = await geminiModel(input.tenantId);
-
+  const models = await modelCascade(input.tenantId);
+  let model = models[0]!;
   try {
-    await assertAiBudget(input.tenantId, credential);
+    await assertAiBudget(input.tenantId, credential, 'call-audit');
 
-    const response = await withRetry(
-      'gemini-audit',
-      () =>
-        generateStructured({
-          credential: { key: apiKey, provider: credential.provider },
-          model,
-          prompt: buildAuditPrompt(input),
-          schema: AUDIT_SCHEMA,
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-          timeoutMs: AI_TIMEOUT_MS,
-        }),
-      { maxAttempts: 3, retryOn: isTransient },
+    const res = await runCascade('gemini-audit', models, (m) =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model: m,
+        prompt: buildAuditPrompt(input),
+        schema: AUDIT_SCHEMA,
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     );
+    const response = res.value;
+    model = res.model;
     await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
 
     const parsed = JSON.parse(response.text);
     const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
     const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
 
-    return { ...parsed, overallScore, maxScore };
+    return { ...parsed, overallScore, maxScore, modelId: model };
   } catch (err) {
     // Same trade as analyzeTranscript: a refused provider leaves the rep a
     // keyword scorecard that says it is one, not an empty audit panel.
-    const { simulateAudit } = await import('./simulated');
+    const { simulateAudit, SIMULATED_MODEL_ID } = await import('./simulated');
     logger.warn({ err: (err as Error).message, model }, 'audit provider refused — degrading to the keyword pass');
     const result = simulateAudit(input);
     return {
       ...result,
+      modelId: SIMULATED_MODEL_ID,
       suggestions: ['Scored without the model — re-run once the AI provider is available.', ...result.suggestions],
     };
   }

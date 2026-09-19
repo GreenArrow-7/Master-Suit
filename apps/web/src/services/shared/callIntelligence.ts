@@ -410,6 +410,7 @@ export async function runCallAudit(job: AuditJob): Promise<Outcome> {
         risks: result.risks,
         suggestions: result.suggestions,
         nextAction: result.nextAction,
+        modelId: result.modelId ?? null,
       },
     });
 

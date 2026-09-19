@@ -5,6 +5,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -38,6 +39,7 @@ const FILTERS: Record<string, (now: Date, actorId: string) => Record<string, unk
   breached: () => ({ slaState: 'BREACHED' }),
   high_score: () => ({ score: { gte: 70 } }),
   mine: (_now, actorId) => ({ ownerId: actorId }),
+  closed_out: () => CLOSED_OUT_WHERE,
 };
 
 /**
@@ -110,7 +112,9 @@ export default async function LeadsPage({
         ],
       }
     : {};
-  const where = mergeWhere(scope, extra, search);
+  // Closed-out leads (invalid, duplicate, archived) leave every working list and
+  // are reached only through their own chip.
+  const where = mergeWhere(scope, extra, search, params.filter === 'closed_out' ? null : OPEN_LEADS_WHERE);
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
@@ -192,11 +196,13 @@ export default async function LeadsPage({
         count={pageRows.length}
         noun="lead"
         capped={hasMore}
-        // Adding a lead is what someone came here to do; import, export and
-        // column choice are housekeeping and fold behind the disclosure.
+        // Adding a lead is what someone came here to do; export and column
+        // choice are housekeeping and fold behind the disclosure. Import sits
+        // beside "Add lead": it is how most leads arrive, and its panel cannot
+        // live inside the disclosure — the top bar closes a <details> on any
+        // click within it, which dismissed the import panel as it opened.
         secondaryActions={
           <>
-            {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
             {can(ctx, 'leads', 'EXPORT') && (
               <a
                 className="lf-btn lf-btn--secondary lf-btn--sm"
@@ -211,11 +217,18 @@ export default async function LeadsPage({
           </>
         }
         actions={
-          can(ctx, 'leads', 'CREATE') ? (
-            <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
-              Add lead
-            </SalesLink>
-          ) : undefined
+          <>
+            {can(ctx, 'leads', 'IMPORT') && (
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <LeadImport />
+              </span>
+            )}
+            {can(ctx, 'leads', 'CREATE') && (
+              <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
+                Add lead
+              </SalesLink>
+            )}
+          </>
         }
       />
 
@@ -257,6 +270,7 @@ export default async function LeadsPage({
             ['No next action', 'no_next_action'],
             ['SLA breached', 'breached'],
             ['High score', 'high_score'],
+            ['Closed out', 'closed_out'],
           ].map(([label, key]) => {
             const query = new URLSearchParams({
               ...(key ? { filter: key } : {}),

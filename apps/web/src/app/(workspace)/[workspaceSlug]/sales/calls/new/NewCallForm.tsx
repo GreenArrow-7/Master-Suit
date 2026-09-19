@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import { useFormErrors } from '@/components/forms/useFormErrors';
 
@@ -26,6 +26,24 @@ export default function NewCallForm() {
   const [lead, setLead] = useState<LeadOption | null>(null);
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Arriving from a lead's "Call with AI assistance": the lead is already the
+  // one; the seller should not have to find it again.
+  const presetLeadId = useSearchParams().get('leadId');
+  useEffect(() => {
+    if (!presetLeadId) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(`/api/v1/leads/${encodeURIComponent(presetLeadId)}`);
+      if (!res.ok || cancelled) return;
+      const data = await res.json();
+      const row = (data.data ?? data) as LeadOption;
+      if (row?.id)
+        setLead({ id: row.id, fullName: row.fullName, company: row.company ?? null, phone: row.phone ?? null });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetLeadId]);
 
   /**
    * Which results the dropdown may show, computed rather than stored.

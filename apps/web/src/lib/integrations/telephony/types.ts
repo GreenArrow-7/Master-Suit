@@ -102,6 +102,11 @@ export interface CallEvent {
    * then deduplicated, and two distinct events never collide.
    */
   deliveryId: string;
+  /** Caller and callee as the vendor reports them, so an inbound call can be created and matched to a lead. */
+  from?: string;
+  to?: string;
+  /** Set only when the vendor says the call came in; absent means the platform placed it. */
+  direction?: 'INBOUND';
 }
 
 /** The raw request as it arrived, because signatures cover the URL, not just the body. */

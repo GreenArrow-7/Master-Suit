@@ -136,6 +136,9 @@ export class ExotelProvider implements TelephonyProvider {
       // failure. Keying on the call and its status makes a genuine re-send a
       // no-op while still letting the call progress through its states.
       deliveryId: `${externalCallId}:${status}`,
+      from: p.from || undefined,
+      to: p.to || undefined,
+      direction: String(p.direction ?? '').toLowerCase() === 'incoming' ? 'INBOUND' : undefined,
     };
   }
   /**

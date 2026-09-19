@@ -193,6 +193,9 @@ export class TwilioProvider implements TelephonyProvider {
       // SequenceNumber is per-call and monotonic, so it is the delivery identity
       // Twilio does not otherwise provide.
       deliveryId: `${callSid}:${p.get('SequenceNumber') ?? status}`,
+      from: p.get('From') ?? undefined,
+      to: p.get('To') ?? undefined,
+      direction: (p.get('Direction') ?? '').startsWith('inbound') ? 'INBOUND' : undefined,
     };
   }
   /** Twilio serves recording media from its API host and its media CDN. */

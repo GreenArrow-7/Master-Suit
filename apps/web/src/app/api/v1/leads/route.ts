@@ -13,6 +13,7 @@ import {
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 
 /**
  * Reference implementation. Every list endpoint in the platform follows this exact
@@ -25,6 +26,8 @@ const listQuery = pageQuery.extend({
   filter: z.string().optional(),
   fields: z.string().optional(),
   includeUnassigned: z.coerce.boolean().default(true),
+  /** Closed-out leads (invalid, duplicate, archived) are left out unless asked for. */
+  includeClosedOut: z.coerce.boolean().default(false),
 });
 
 const GRID_COLUMNS = {
@@ -72,6 +75,7 @@ export const GET = route(
       tree ? compileFilterTree('LEAD', tree, ctx) : null,
       query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : null,
       cursorWhere(cursor),
+      query.includeClosedOut ? null : OPEN_LEADS_WHERE,
     );
 
     // limit + 1 tells us whether another page exists without a second query.

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { touchLead } from '@/services/leads/touch';
 import { NotFound } from '@/lib/errors';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
@@ -60,6 +61,7 @@ export const PATCH = route(
     if (!existing) throw NotFound('Call');
 
     const updated = await prisma.call.update({ where: { id: params.id, tenantId: ctx.tenantId }, data: body });
+    if (body.status || body.outcome || body.notes) await touchLead(ctx.tenantId, updated.leadId);
 
     /**
      * Only on the transition, not on every save of an already-missed call.

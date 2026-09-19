@@ -4,7 +4,7 @@ const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=()' },
+  { key: 'Permissions-Policy', value: 'geolocation=(self), camera=(self), microphone=(self)' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   // Content-Security-Policy is NOT here, and the reason is not the one this
   // comment used to give. It claimed a per-request nonce set by a

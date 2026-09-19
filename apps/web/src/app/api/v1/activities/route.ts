@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { touchLead } from '@/services/leads/touch';
 
 const createBody = z
   .object({
@@ -15,7 +16,7 @@ const createBody = z
 export const POST = route(
   { module: 'leads', productModule: 'SALES', action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
-    return prisma.activity.create({
+    const activity = await prisma.activity.create({
       data: {
         tenantId: ctx.tenantId,
         ownerId: ctx.actor.id,
@@ -23,5 +24,7 @@ export const POST = route(
       },
       include: { type: { select: { name: true, key: true } } },
     });
+    await touchLead(ctx.tenantId, body.leadId, activity.occurredAt);
+    return activity;
   },
 );

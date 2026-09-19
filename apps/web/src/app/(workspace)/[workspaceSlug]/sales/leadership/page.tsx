@@ -8,6 +8,9 @@ import {
   interactionFeed,
   performerBoard,
   subtree,
+  productivity,
+  type ProductivityRow,
+  workspaceValue,
 } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
 import Badge from '@/components/ui/Badge';
@@ -20,6 +23,8 @@ export const metadata = { title: 'Leadership' };
 
 const TABS = [
   ['Overview', ''],
+  ['Value', 'value'],
+  ['Productivity', 'productivity'],
   ['Compliance', 'compliance'],
   ['Chasing', 'chasing'],
   ['Feed', 'feed'],
@@ -28,6 +33,18 @@ const TABS = [
 
 /** Every card on this page needs it: `.lf-card` itself carries no padding. */
 const CARD = { padding: 'var(--lf-space-5)' } as const;
+
+const PRODUCTIVITY_COLUMNS = [
+  ['Assigned', 'assigned'],
+  ['Contacted', 'contacted'],
+  ['Calls', 'callsCompleted'],
+  ['Follow-ups done', 'followUpsCompleted'],
+  ['Interested', 'interested'],
+  ['Not interested', 'notInterested'],
+  ['Meetings', 'meetingsScheduled'],
+  ['Deals won', 'dealsWon'],
+  ['Untouched', 'pending'],
+] as const satisfies readonly (readonly [string, keyof ProductivityRow])[];
 
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 
@@ -138,7 +155,7 @@ export default async function LeadershipPage({
     }
   }
 
-  const [stages, rates, board, chasing, compliance, feed, pl, reps] = await Promise.all([
+  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows, value] = await Promise.all([
     funnel(ctx.tenantId, userIds, range),
     conversion(ctx.tenantId, userIds, range),
     performerBoard(ctx.tenantId, userIds, range, 'revenue'),
@@ -156,6 +173,8 @@ export default async function LeadershipPage({
       orderBy: { fullName: 'asc' },
       take: 200,
     }),
+    view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
+    view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
   ]);
 
   // Only when there is something to name — an `in: []` lookup is a wasted round
@@ -167,6 +186,13 @@ export default async function LeadershipPage({
         select: { id: true, fullName: true },
       })
     : [];
+  // A seller with nothing in the range is noise on a list meant to be read top to
+  // bottom (and 40 of them made the phone view a screen-height per person).
+  const activeRows = productivityRows.filter((r) =>
+    Object.entries(r).some(([k, v]) => k !== 'userId' && k !== 'name' && typeof v === 'number' && v > 0),
+  );
+  const quietCount = productivityRows.length - activeRows.length;
+
   const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
 
   /** Filters travel with the tab, so switching view never silently resets them. */
@@ -444,6 +470,110 @@ export default async function LeadershipPage({
         </>
       )}
 
+      {view === 'value' && value && (
+        <>
+          {/* §16: what the platform did for this workspace in the range, counted, and
+              the outcomes beside it. Rates say "—" when there is no denominator. */}
+          <div className="lf-kpi-grid">
+            {[
+              [
+                'Hours of manual work saved',
+                `${value.hoursSaved.toLocaleString('en')}`,
+                'from leads imported, calls analysed, automation steps and auto-assignments, at stated minutes per action',
+              ],
+              ['Leads imported', value.leadsImported.toLocaleString('en'), 'from spreadsheets instead of typed in'],
+              [
+                'Calls analysed by AI',
+                value.callsAnalysed.toLocaleString('en'),
+                value.humanInterventionRate === null
+                  ? 'no model analyses in this range'
+                  : `${value.humanInterventionRate}% corrected by a person`,
+              ],
+              [
+                'Automation steps',
+                `${value.automationSucceeded.toLocaleString('en')}`,
+                value.automationSucceeded + value.automationFailed
+                  ? `${Math.round((value.automationSucceeded / (value.automationSucceeded + value.automationFailed)) * 100)}% succeeded`
+                  : 'none ran',
+              ],
+              ['Leads auto-assigned', value.leadsAutoAssigned.toLocaleString('en'), 'by distribution rules'],
+              [
+                'Deals won',
+                value.dealsWon.toLocaleString('en'),
+                value.dealTurnaroundDays === null
+                  ? 'no deals won in this range'
+                  : `${value.dealTurnaroundDays} days from opportunity to won, on average`,
+              ],
+              [
+                'Lead → opportunity',
+                pct(rates.leadToOpportunity),
+                `${rates.opportunities} opportunities from ${rates.leads} leads`,
+              ],
+              ['Opportunity → booking', pct(rates.opportunityToBooking), `${rates.bookings} bookings`],
+              [
+                'AI tokens this month',
+                `${(value.aiTokensThisMonth.deployment + value.aiTokensThisMonth.workspace).toLocaleString('en')}`,
+                value.aiTokensThisMonth.workspace
+                  ? `${value.aiTokensThisMonth.workspace.toLocaleString('en')} on your own key`
+                  : 'on the shared key',
+              ],
+            ].map(([label, figure, note]) => (
+              <div className="lf-kpi" key={label}>
+                <div className="lf-kpi__label">{label}</div>
+                <div className="lf-kpi__value lf-num">{figure}</div>
+                <p className="lf-hint" style={{ margin: 'var(--lf-space-2) 0 0' }}>
+                  {note}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {view === 'productivity' &&
+        (activeRows.length === 0 ? (
+          <div className="lf-card" style={CARD}>
+            <EmptyState title="Nobody in scope" description="Assign leads to a seller and their numbers appear here." />
+          </div>
+        ) : (
+          <div className="lf-grid-wrap" style={{ overflowX: 'auto' }}>
+            {/* Assigned → contacted → outcomes → deals, then what is still untouched.
+                Each cell is a count the manager can ask for the rows of. */}
+            <table className="lf-grid">
+              <thead>
+                <tr>
+                  <th>Who</th>
+                  {PRODUCTIVITY_COLUMNS.map(([label]) => (
+                    <th key={label} style={{ textAlign: 'right' }}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {activeRows.map((r) => (
+                  <tr key={r.userId}>
+                    <td data-label="Who">
+                      <a href={`?view=productivity&rep=${r.userId}${params.period ? `&period=${params.period}` : ''}`}>
+                        {r.name ?? r.userId}
+                      </a>
+                    </td>
+                    {PRODUCTIVITY_COLUMNS.map(([label, key]) => (
+                      <td key={label} data-label={label} style={{ textAlign: 'right' }} className="lf-num">
+                        {r[key]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {quietCount > 0 && (
+              <p className="lf-muted" style={{ margin: 'var(--lf-space-3) var(--lf-space-4)' }}>
+                {quietCount} {quietCount === 1 ? 'person' : 'people'} with no leads, calls, tasks or deals in this range
+                not shown.
+              </p>
+            )}
+          </div>
+        ))}
       {view === 'compliance' &&
         (compliance.length === 0 ? (
           <div className="lf-card" style={CARD}>

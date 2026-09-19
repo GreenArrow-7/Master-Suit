@@ -178,6 +178,16 @@ export async function validatePunch(
   }
 
   const [assignments, timeZone] = await Promise.all([loadAssignments(ctx, employee.id), workspaceTimezone(ctx)]);
+  if (action === 'CHECK_OUT' && effective.checkoutRequiresLeadWork) {
+    const pending = await pendingLeadWork(ctx, timeZone);
+    if (pending > 0 && !(await workGateOverridden(ctx, employee.id, timeZone))) {
+      throw new PunchRejected(
+        'WORK_PENDING',
+        `${pending} lead${pending === 1 ? '' : 's'} assigned to you today ${pending === 1 ? 'has' : 'have'} not been worked yet. Log a call or activity on each, or ask your manager for an attendance exception.`,
+        'FLAGGED_REVIEW',
+      );
+    }
+  }
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
   if (!candidates.length) {
     throw new PunchRejected(
@@ -291,6 +301,9 @@ export async function preflight(
     getHrPolicy(ctx),
   ]);
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
+  // Told before the punch, not only at it: the number falls as the day is worked.
+  const pendingWork =
+    action === 'CHECK_OUT' && policy.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0;
 
   if (!candidates.length) {
     return {
@@ -298,6 +311,7 @@ export async function preflight(
       code: 'NO_ACTIVE_ASSIGNMENT',
       message: 'You have no active work-location assignment for this action right now. Contact HR.',
       candidates: [],
+      pendingWork,
     };
   }
   if (action === 'CHECK_OUT' && open?.locationId) {
@@ -335,6 +349,7 @@ export async function preflight(
       code: 'LOCATION_ACCURACY_TOO_LOW',
       message: `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m. This location requires ${nearest.maxAccuracyM} m or better. Move to an open area and retry.`,
       candidates: rows,
+      pendingWork,
     };
   }
   const ready = rows.find((row) => row.inside);
@@ -344,6 +359,7 @@ export async function preflight(
       code: 'OUTSIDE_APPROVED_LOCATION',
       message: `You are ${Math.round(nearest.distanceM)} metres away from ${nearest.name}. The permitted radius is ${nearest.radiusM} metres.`,
       candidates: rows,
+      pendingWork,
     };
   }
   return {
@@ -351,7 +367,67 @@ export async function preflight(
     code: 'READY',
     message: `Inside ${ready.name} — ${Math.round(ready.distanceM)} m from centre, radius ${ready.radiusM} m.`,
     candidates: rows,
+    pendingWork,
   };
+}
+
+// ── Work-gated check-out ───────────────────────────────────────────────────
+
+/** Midnight today in the workspace's zone, as an instant. */
+export function startOfLocalDay(now: Date, timeZone: string): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const local = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = local - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offsetMs);
+}
+
+/**
+ * Leads handed to this person today that nobody has worked since: no call, no
+ * activity after the hand-over. The count the check-out gate and the warning use.
+ */
+export async function pendingLeadWork(ctx: Ctx, timeZone: string, now = new Date()): Promise<number> {
+  const dayStart = startOfLocalDay(now, timeZone);
+  const leads = await prisma.lead.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      ownerId: ctx.actor.id,
+      deletedAt: null,
+      status: null,
+      assignedAt: { gte: dayStart },
+    },
+    select: { assignedAt: true, lastActivityAt: true },
+  });
+  return leads.filter((l) => !l.lastActivityAt || (l.assignedAt && l.lastActivityAt < l.assignedAt)).length;
+}
+
+/** An approved attendance exception for today's check-out with reason work_pending lifts the gate. */
+async function workGateOverridden(ctx: Ctx, employeeId: string, timeZone: string, now = new Date()): Promise<boolean> {
+  const dayStart = startOfLocalDay(now, timeZone);
+  const approved = await prisma.hrAttendanceExceptionRequest.findFirst({
+    where: {
+      tenantId: ctx.tenantId,
+      employeeId,
+      requestedAction: 'CHECK_OUT',
+      status: 'APPROVED',
+      reasonCode: 'work_pending',
+      requestedFor: { gte: dayStart, lt: new Date(dayStart.getTime() + 24 * 3600 * 1000) },
+    },
+    select: { id: true },
+  });
+  return Boolean(approved);
 }
 
 // ── Consent and enrolment ──────────────────────────────────────────────────
@@ -361,6 +437,55 @@ export async function activeConsent(ctx: Ctx, employeeId: string) {
     where: { tenantId: ctx.tenantId, employeeId, grantedAt: { not: null }, withdrawnAt: null },
     orderBy: { createdAt: 'desc' },
   });
+}
+
+/**
+ * Consent recorded in a supervised session: HR opens the enrolment screen with the
+ * employee at the desk, shows the policy, and the employee signs by typing their
+ * full name. Still the employee's act — the signature must be theirs and is kept —
+ * but recorded on HR's device, which is how a workforce without company accounts
+ * on their phones can be enrolled. Who recorded it is kept beside the signature.
+ */
+export async function grantConsentSupervised(
+  ctx: Ctx,
+  employeeId: string,
+  input: { signature: string; policyVersion?: string },
+) {
+  if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can record a supervised consent.');
+  const employee = await prisma.employeeProfile.findFirst({
+    where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
+    select: { id: true, membership: { select: { platformUser: { select: { fullName: true } } } } },
+  });
+  if (!employee) throw NotFound('Employee');
+  const expected = employee.membership.platformUser.fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+  const given = input.signature.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!given || given !== expected) {
+    throw Conflict("The signature must be the employee's full name exactly as it appears on their record.");
+  }
+  const existing = await activeConsent(ctx, employee.id);
+  if (existing) return existing;
+  const consent = await prisma.biometricConsent.create({
+    data: {
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      grantedAt: new Date(),
+      policyVersion: input.policyVersion ?? 'PDPL-2026-01',
+      recordedById: ctx.actor.id,
+      attestation: input.signature.trim(),
+    },
+  });
+  await audit(ctx, {
+    event: 'CONSENT_RECORDED',
+    objectType: 'biometric_consent',
+    recordId: consent.id,
+    metadata: {
+      action: 'biometric.consent.granted',
+      supervised: true,
+      employeeId: employee.id,
+      policyVersion: consent.policyVersion,
+    },
+  });
+  return consent;
 }
 
 /** Consent is the employee's own to give. Nobody grants it on their behalf. */

@@ -250,3 +250,37 @@ describe('deactivation instead of deletion', () => {
     expect(copied).toBe(1);
   });
 });
+
+describe('creating a role', () => {
+  // The New-role form used to leave rank blank with only a placeholder, so the
+  // intuitive values (0, 1, own rank) all hit this guard as a bare 403.
+  it('refuses a rank at or above the creator, accepts one below', async () => {
+    const atOwn = await post(
+      rolesPost,
+      at('create').path,
+      { key: `own-${suffix}`, name: 'Own Level', rank: 10 },
+      midCookie,
+      at('create').params,
+    );
+    expect(atOwn.status).toBe(403);
+    const above = await post(
+      rolesPost,
+      at('create').path,
+      { key: `above-${suffix}`, name: 'Above', rank: 0 },
+      midCookie,
+      at('create').params,
+    );
+    expect(above.status).toBe(403);
+
+    const below = await post(
+      rolesPost,
+      at('create').path,
+      { key: `below-${suffix}`, name: 'Below', rank: 11 },
+      midCookie,
+      at('create').params,
+    );
+    expect(below.status).toBe(200);
+    // The key is normalised to [a-z0-9_], so look the row up by id.
+    expect(await prisma.role.count({ where: { tenantId, id: below.body.id } })).toBe(1);
+  });
+});

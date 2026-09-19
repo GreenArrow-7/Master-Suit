@@ -101,7 +101,7 @@ export async function draftReply(context: DraftContext): Promise<Draft> {
     // Before the billed call, as everywhere else. Over budget this throws and
     // the catch below serves the template, which is the right degradation for a
     // customer waiting on an answer.
-    await assertAiBudget(context.tenantId, credential);
+    await assertAiBudget(context.tenantId, credential, 'social-draft');
 
     const response = await withRetry(
       'gemini-draft',
