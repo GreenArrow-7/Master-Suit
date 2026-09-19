@@ -316,6 +316,18 @@ describe('what the completed request admits it did not remove', () => {
   it('names the employment record, the identity documents and the backups, with counts', async () => {
     const person = await makePerson('Has An HR File');
     await giveEmployeeRecord(person.id);
+    // An audit entry carrying the client details decision 8 clears — seeded, so the
+    // count below is of a row that existed rather than of nothing.
+    await prisma.auditLog.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        actorUserId: person.user.id,
+        event: 'RECORD_DELETED',
+        objectType: 'lead',
+        ipAddress: '203.0.113.7',
+        userAgent: 'vitest/1.0',
+      },
+    });
 
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
     expect((await sweepAccountDeletions(20, [person.platformUserId])).completed).toBe(1);
@@ -364,6 +376,23 @@ describe('what the completed request admits it did not remove', () => {
       }),
     ).toBe(0);
     expect(categories).not.toContain('hr_financial_identifiers');
+    // Executed and counted, and — since the gate learned to check them — verified before
+    // COMPLETED: a step that quietly matched zero rows would now fail verification.
+    const counted = outcome as unknown as {
+      hrIdentifiersCleared: number;
+      hrDocumentsScheduled: number;
+      auditClientDetailsCleared: number;
+      error?: string;
+    };
+    expect(counted.error).toBeUndefined();
+    expect(counted.hrIdentifiersCleared).toBe(1);
+    expect(counted.hrDocumentsScheduled).toBe(1);
+    expect(counted.auditClientDetailsCleared).toBeGreaterThanOrEqual(1);
+    const identity = await prisma.platformUser.findUniqueOrThrow({
+      where: { id: person.platformUserId },
+      select: { fullName: true, username: true },
+    });
+    expect(identity).toEqual({ fullName: 'Deleted account', username: null });
   });
 });
 

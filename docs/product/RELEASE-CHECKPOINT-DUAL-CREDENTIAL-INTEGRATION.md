@@ -225,6 +225,16 @@ data step; staff sign in again with MFA.
 
 ## 7. Dual-password blockers — current status (not assumed resolved)
 
+> **Status on `main` since PR #54 (2026-09-17).** The table below is the state at `ae7ce2a` and is kept
+> as the record of that build. On `main`: MFA replay is closed (`eda48c2`, conditional update on
+> `mfaLastUsedStep` at every TOTP call site, `tests/security/mfa-replay.spec.ts`); the permission
+> catalogue is installed idempotently by migration (`448224c`, `tests/unit/permission-catalogue.spec.ts`,
+> `check:permissions` in CI); the monitoring-scope decision is implemented (sensitive grants,
+> `tests/security/monitoring-conversation-scope.spec.ts`); CI runs on every pull request and the
+> deployable image is built by `build-images.yml` per SHA; the `request-budget` spec runs in CI.
+> Still open, and owner decisions rather than engineering: independent security sign-off and the
+> items in PR #54 §9.
+
 | Item | Status |
 | --- | --- |
 | MFA replay | **Open.** A TOTP code is accepted again within its window (e.g. for re-authentication right after sign-in); bounded by the confirmation rate limit (10 per 5 minutes). No last-used time step is recorded. Decision and change required. |
