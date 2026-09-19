@@ -242,7 +242,7 @@ export default function CheckInConsole({
 
   async function refreshRecent() {
     try {
-      const res = await fetch(`${endpointBase.replace('/actions', '')}/attendance-punches?limit=8`);
+      const res = await fetch(`${endpointBase.replace(/\/(actions|self)$/, '')}/attendance-punches?limit=8`);
       const rows = await res.json().catch(() => []);
       if (Array.isArray(rows)) {
         setRecent(

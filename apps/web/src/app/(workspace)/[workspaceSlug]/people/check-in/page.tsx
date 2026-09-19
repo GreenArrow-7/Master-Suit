@@ -20,7 +20,9 @@ export const metadata = { title: 'Check in' };
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: SELF_SERVICE });
-  const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
+  // Self-service verbs live on `hr/self` (no HR directory permission); `hr/actions` gates
+  // them on `employee:VIEW`, which an ordinary employee does not hold.
+  const actions = `/api/v1/workspaces/${workspaceSlug}/hr/self`;
 
   const employee = await myEmployee(ctx);
   if (!employee) {
