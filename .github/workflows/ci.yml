@@ -417,9 +417,12 @@ jobs:
         if: github.event_name == 'push' || github.base_ref == 'main'
         run: |
           npm run worker > worker.log 2>&1 &
+          WORKER=$!
+          # Liveness by npm's own pid, not by pattern: on the first tick npm has
+          # not yet spawned tsx, and a pattern match would read that as "died".
           for i in $(seq 1 90); do
             if grep -q 'workers started' worker.log; then echo "worker ready after ${i}s"; exit 0; fi
-            pgrep -f 'src/workers/index.ts' >/dev/null || break
+            kill -0 "$WORKER" 2>/dev/null || break
             sleep 1
           done
           echo "::error::the worker did not start"; tail -n 40 worker.log; exit 1
