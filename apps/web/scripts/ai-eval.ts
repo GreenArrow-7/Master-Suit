@@ -5,6 +5,7 @@
  *
  *   npx tsx scripts/ai-eval.ts [--tenant <tenantId>]
  */
+import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { coachTick, detectStage } from '../src/lib/ai/liveCoach';
