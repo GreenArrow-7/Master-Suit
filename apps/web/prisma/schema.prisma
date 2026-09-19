@@ -2529,6 +2529,11 @@ model BiometricConsent {
   grantedAt     DateTime?
   withdrawnAt   DateTime?
   policyVersion String
+  /// Set when HR recorded the consent in a supervised session with the employee present;
+  /// null when the employee recorded it on their own Security screen.
+  recordedById  String?
+  /// The employee's typed full name as their signature in that session.
+  attestation   String?
   createdAt     DateTime        @default(now())
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)

@@ -76,6 +76,7 @@ async function modelTurn(
   model: string,
   tenantId: string,
   credential: GeminiCredential,
+  userId?: string | null,
 ) {
   const response = await generateWithTools({
     credential: { key, provider: credential.provider },
@@ -89,7 +90,7 @@ async function modelTurn(
   });
   // Per round, not per query: the loop below can call the model six times, and
   // metering only the last one would under-count a multi-step answer fivefold.
-  await recordAiUsage(tenantId, credential, response.usage, { feature: 'assistant', model });
+  await recordAiUsage(tenantId, credential, response.usage, { feature: 'assistant', model, userId });
   return response;
 }
 
@@ -149,7 +150,7 @@ export async function* runAssistant(
     const model = key ? await geminiModel(ctx.tenantId) : '';
     // Once per query rather than per round: a conversation already under way
     // should finish rather than stop half-answered at round four.
-    if (key) await assertAiBudget(ctx.tenantId, credential, 'assistant');
+    if (key) await assertAiBudget(ctx.tenantId, credential, 'assistant', ctx.actor.id);
 
     if (key) {
       /**
@@ -171,7 +172,7 @@ export async function* runAssistant(
       const system = SYSTEM(ctx, page, today);
 
       for (let round = 0; round < 6; round++) {
-        const response = await modelTurn(turns, system, key, model, ctx.tenantId, credential);
+        const response = await modelTurn(turns, system, key, model, ctx.tenantId, credential, ctx.actor.id);
         if (response.calls.length === 0) {
           yield { type: 'delta', text: response.text || "I couldn't find that information in the CRM." };
           break;

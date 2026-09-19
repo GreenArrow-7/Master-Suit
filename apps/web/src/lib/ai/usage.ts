@@ -90,6 +90,13 @@ export function featureUsageMetric(paidBy: PaidBy, feature: string, at: Date = n
       .slice(0, 40) || 'unknown';
   return `${AI_FEATURE_METRIC_PREFIX}${paidBy}:${safe}:${period(at)}`;
 }
+/** The same month's spend by the person who asked — `ai_user:deployment:<userId>:2026-09`. */
+export const AI_USER_METRIC_PREFIX = 'ai_user:';
+export function userUsageMetric(paidBy: PaidBy, userId: string, at: Date = new Date()): string {
+  return `${AI_USER_METRIC_PREFIX}${paidBy}:${userId}:${period(at)}`;
+}
+/** Plan-limit key for the per-person monthly ceiling. */
+export const USER_TOKEN_LIMIT_KEY = 'ai_tokens_monthly:user';
 /** Plan-limit key for one feature's monthly tokens, e.g. `ai_tokens_monthly:live-coach`. */
 export const featureLimitKey = (feature: string) => `${AI_TOKEN_LIMIT_KEY}:${feature}`;
 
@@ -177,6 +184,23 @@ async function featureLimit(tenantId: string, feature: string): Promise<number |
   return typeof value === 'number' && value > 0 ? value : null;
 }
 
+async function userLimit(tenantId: string): Promise<number | null> {
+  const subscription = await prisma.tenantSubscription.findUnique({
+    where: { tenantId },
+    select: { plan: { select: { planLimits: { where: { key: USER_TOKEN_LIMIT_KEY }, select: { value: true } } } } },
+  });
+  const value = subscription?.plan?.planLimits[0]?.value;
+  return typeof value === 'number' && value > 0 ? value : null;
+}
+
+async function userUsedThisMonth(tenantId: string, userId: string): Promise<number> {
+  const row = await prisma.workspaceUsage.findUnique({
+    where: { tenantId_metric: { tenantId, metric: userUsageMetric('deployment', userId) } },
+    select: { used: true },
+  });
+  return row?.used ?? 0;
+}
+
 async function featureUsedThisMonth(tenantId: string, feature: string): Promise<number> {
   const row = await prisma.workspaceUsage.findUnique({
     where: { tenantId_metric: { tenantId, metric: featureUsageMetric('deployment', feature) } },
@@ -210,9 +234,21 @@ export async function assertAiBudget(
   tenantId: string | null | undefined,
   credential: GeminiCredential,
   feature?: string,
+  userId?: string | null,
 ): Promise<void> {
   // Their key, their bill. And simulation costs nothing to anybody.
   if (!tenantId || credential.source !== 'deployment') return;
+
+  // One person's ceiling, where the request has a person behind it (worker jobs do not).
+  if (userId) {
+    const cap = await userLimit(tenantId);
+    if (cap !== null && (await userUsedThisMonth(tenantId, userId)) >= cap) {
+      logger.warn({ tenantId, userId, cap }, 'ai per-user budget exhausted for the month');
+      throw Forbidden(
+        `You have used your monthly AI allowance (${cap.toLocaleString()} tokens). It resets at the start of next month.`,
+      );
+    }
+  }
 
   // A feature's own ceiling first: it is the narrower rule, and the message names it.
   if (feature) {
@@ -255,7 +291,7 @@ export async function recordAiUsage(
   tenantId: string | null | undefined,
   credential: GeminiCredential,
   usage: Partial<ModelUsage> | undefined,
-  context: { feature: string; model: string },
+  context: { feature: string; model: string; userId?: string | null },
 ): Promise<void> {
   if (!tenantId || credential.source === 'simulated') return;
 
@@ -303,6 +339,20 @@ export async function recordAiUsage(
     });
   } catch (err) {
     logger.warn({ err, tenantId, model: context.model }, 'could not record ai model usage');
+  }
+
+  // By person, where there is one: what the per-user ceiling reads.
+  if (context.userId) {
+    try {
+      const metric = userUsageMetric(credential.source, context.userId);
+      await prisma.workspaceUsage.upsert({
+        where: { tenantId_metric: { tenantId, metric } },
+        create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
+        update: { used: { increment: tokens }, measuredAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ err, tenantId, userId: context.userId }, 'could not record ai user usage');
+    }
   }
 
   // And once more by feature, which is what a per-feature ceiling reads.

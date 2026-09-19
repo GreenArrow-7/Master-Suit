@@ -31,6 +31,9 @@ export default function PlanForm() {
           ...(String(values.maxAiTokensMonthly ?? '').trim()
             ? { maxAiTokensMonthly: Number(values.maxAiTokensMonthly) }
             : {}),
+          ...(String(values.maxAiTokensMonthlyPerUser ?? '').trim()
+            ? { maxAiTokensMonthlyPerUser: Number(values.maxAiTokensMonthlyPerUser) }
+            : {}),
           // "live-coach=200000, call-analysis=500000" → per-feature ceilings; blank = none.
           ...(String(values.aiTokensByFeature ?? '').trim()
             ? {
@@ -98,6 +101,12 @@ export default function PlanForm() {
         <Field
           label="Monthly AI tokens (optional)"
           name="maxAiTokensMonthly"
+          type="number"
+          placeholder="leave blank for no limit"
+        />
+        <Field
+          label="Monthly AI tokens per person (optional)"
+          name="maxAiTokensMonthlyPerUser"
           type="number"
           placeholder="leave blank for no limit"
         />

@@ -213,7 +213,12 @@ function buildCoachPrompt(instruction: string, windowText: string, contextBlock?
   ].join('\n');
 }
 
-export async function coachTick(windowText: string, tenantId?: string, contextBlock?: string): Promise<CoachHint[]> {
+export async function coachTick(
+  windowText: string,
+  tenantId?: string,
+  contextBlock?: string,
+  userId?: string | null,
+): Promise<CoachHint[]> {
   const credential = await geminiCredential(tenantId);
   const apiKey = credential.key;
   if (!apiKey) return heuristicHints(windowText);
@@ -227,7 +232,7 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
    * keyword hints are what an unconfigured workspace gets anyway.
    */
   try {
-    await assertAiBudget(tenantId, credential, 'live-coach');
+    await assertAiBudget(tenantId, credential, 'live-coach', userId);
   } catch {
     return heuristicHints(windowText);
   }
@@ -257,7 +262,7 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
         }),
       { maxAttempts: 1 },
     );
-    await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach', model });
+    await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach', model, userId });
     const parsed = JSON.parse(response.text) as {
       hints: { kind: CoachHint['kind']; text: string; say?: string; why?: string }[];
     };

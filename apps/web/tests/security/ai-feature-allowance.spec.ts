@@ -54,3 +54,27 @@ describe('per-feature AI allowance', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe('per-user AI allowance', () => {
+  it('caps one person on the shared key without touching another', async () => {
+    const { USER_TOKEN_LIMIT_KEY, userUsageMetric } = await import('@/lib/ai/usage');
+    const sub = await prisma.tenantSubscription.findUniqueOrThrow({ where: { tenantId }, select: { planId: true } });
+    await prisma.planLimit.create({ data: { planId: sub.planId, key: USER_TOKEN_LIMIT_KEY, value: 500 } });
+
+    await recordAiUsage(
+      tenantId,
+      deployment,
+      { totalTokens: 500 },
+      { feature: 'assistant', model: 'm', userId: 'user-a' },
+    );
+    const row = await prisma.workspaceUsage.findUnique({
+      where: { tenantId_metric: { tenantId, metric: userUsageMetric('deployment', 'user-a') } },
+    });
+    expect(row?.used).toBe(500);
+
+    await expect(assertAiBudget(tenantId, deployment, 'assistant', 'user-a')).rejects.toMatchObject({ status: 403 });
+    await expect(assertAiBudget(tenantId, deployment, 'assistant', 'user-b')).resolves.toBeUndefined();
+    // No person behind the request (a worker job): the per-user ceiling does not apply.
+    await expect(assertAiBudget(tenantId, deployment, 'assistant')).resolves.toBeUndefined();
+  });
+});

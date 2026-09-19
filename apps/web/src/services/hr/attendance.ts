@@ -439,6 +439,55 @@ export async function activeConsent(ctx: Ctx, employeeId: string) {
   });
 }
 
+/**
+ * Consent recorded in a supervised session: HR opens the enrolment screen with the
+ * employee at the desk, shows the policy, and the employee signs by typing their
+ * full name. Still the employee's act — the signature must be theirs and is kept —
+ * but recorded on HR's device, which is how a workforce without company accounts
+ * on their phones can be enrolled. Who recorded it is kept beside the signature.
+ */
+export async function grantConsentSupervised(
+  ctx: Ctx,
+  employeeId: string,
+  input: { signature: string; policyVersion?: string },
+) {
+  if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can record a supervised consent.');
+  const employee = await prisma.employeeProfile.findFirst({
+    where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
+    select: { id: true, membership: { select: { platformUser: { select: { fullName: true } } } } },
+  });
+  if (!employee) throw NotFound('Employee');
+  const expected = employee.membership.platformUser.fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+  const given = input.signature.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!given || given !== expected) {
+    throw Conflict("The signature must be the employee's full name exactly as it appears on their record.");
+  }
+  const existing = await activeConsent(ctx, employee.id);
+  if (existing) return existing;
+  const consent = await prisma.biometricConsent.create({
+    data: {
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      grantedAt: new Date(),
+      policyVersion: input.policyVersion ?? 'PDPL-2026-01',
+      recordedById: ctx.actor.id,
+      attestation: input.signature.trim(),
+    },
+  });
+  await audit(ctx, {
+    event: 'CONSENT_RECORDED',
+    objectType: 'biometric_consent',
+    recordId: consent.id,
+    metadata: {
+      action: 'biometric.consent.granted',
+      supervised: true,
+      employeeId: employee.id,
+      policyVersion: consent.policyVersion,
+    },
+  });
+  return consent;
+}
+
 /** Consent is the employee's own to give. Nobody grants it on their behalf. */
 export async function grantConsent(ctx: Ctx, policyVersion = 'PDPL-2026-01') {
   const employee = await myEmployee(ctx);

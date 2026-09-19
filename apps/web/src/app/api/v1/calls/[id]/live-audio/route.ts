@@ -201,7 +201,12 @@ export const POST = route(
     }
     if (query.tick && windowText) {
       const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null;
-      const modelHints = await coachTick(windowText, ctx.tenantId, context ? contextPromptBlock(context) : undefined);
+      const modelHints = await coachTick(
+        windowText,
+        ctx.tenantId,
+        context ? contextPromptBlock(context) : undefined,
+        ctx.actor.id,
+      );
       hints = [...hints, ...modelHints.filter((h) => h.source === 'gemini')].slice(0, 3);
     }
 

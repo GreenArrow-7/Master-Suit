@@ -249,7 +249,7 @@ export const GET = route(
               // The workspace's own key when it has one, the deployment's
               // otherwise — `coachTick` degrades to heuristics with neither.
               if (i % 4 === 3) {
-                const hints = await coachTick(window, ctx.tenantId, contextBlock);
+                const hints = await coachTick(window, ctx.tenantId, contextBlock, ctx.actor.id);
                 for (const hint of hints.filter((h) => h.source === 'gemini')) send({ type: 'coach', ...hint, at });
               }
             }

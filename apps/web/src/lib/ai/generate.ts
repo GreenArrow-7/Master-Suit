@@ -36,6 +36,8 @@ export interface GenerateRequest {
   label: string;
   /** Metering label, e.g. `follow-up-email`. Defaults to `label`. */
   feature?: string;
+  /** The person asking, when there is one; enables the per-user ceiling and attribution. */
+  userId?: string | null;
   prompt: string;
   /** Gemini `responseSchema` (the OpenAPI subset). */
   schema: object;
@@ -61,7 +63,7 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
   const feature = request.feature ?? request.label;
 
   // Before the request that would be billed, which is the only useful place.
-  await assertAiBudget(request.tenantId, credential, feature);
+  await assertAiBudget(request.tenantId, credential, feature, request.userId);
 
   const { value: response, model } = await runCascade(request.label, await modelCascade(request.tenantId), (m) =>
     generateStructured({
@@ -78,7 +80,7 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
   // Recorded before the parse: the tokens were spent whether or not the model
   // returned JSON we can read, and a malformed answer is exactly the case where
   // a workspace burning its allowance most needs to show up in the ledger.
-  await recordAiUsage(request.tenantId, credential, response.usage, { feature, model });
+  await recordAiUsage(request.tenantId, credential, response.usage, { feature, model, userId: request.userId });
 
   return { result: JSON.parse(response.text) as T, modelId: model, processingMs: Date.now() - started };
 }
