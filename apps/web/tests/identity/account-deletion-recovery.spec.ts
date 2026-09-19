@@ -316,6 +316,18 @@ describe('what the completed request admits it did not remove', () => {
   it('names the employment record, the identity documents and the backups, with counts', async () => {
     const person = await makePerson('Has An HR File');
     await giveEmployeeRecord(person.id);
+    // An audit entry carrying the client details decision 8 clears — seeded, so the
+    // count below is of a row that existed rather than of nothing.
+    await prisma.auditLog.create({
+      data: {
+        tenantId: fixture.a.tenantId,
+        actorUserId: person.user.id,
+        event: 'RECORD_DELETED',
+        objectType: 'lead',
+        ipAddress: '203.0.113.7',
+        userAgent: 'vitest/1.0',
+      },
+    });
 
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
     expect((await sweepAccountDeletions(20, [person.platformUserId])).completed).toBe(1);
@@ -364,6 +376,65 @@ describe('what the completed request admits it did not remove', () => {
       }),
     ).toBe(0);
     expect(categories).not.toContain('hr_financial_identifiers');
+    // Executed and counted, and — since the gate learned to check them — verified before
+    // COMPLETED: a step that quietly matched zero rows would now fail verification.
+    const counted = outcome as unknown as {
+      hrIdentifiersCleared: number;
+      hrDocumentsScheduled: number;
+      auditClientDetailsCleared: number;
+      error?: string;
+    };
+    expect(counted.error).toBeUndefined();
+    expect(counted.hrIdentifiersCleared).toBe(1);
+    expect(counted.hrDocumentsScheduled).toBe(1);
+    expect(counted.auditClientDetailsCleared).toBeGreaterThanOrEqual(1);
+    const identity = await prisma.platformUser.findUniqueOrThrow({
+      where: { id: person.platformUserId },
+      select: { fullName: true, username: true },
+    });
+    expect(identity).toEqual({ fullName: 'Deleted account', username: null });
+  });
+
+  it('clears the employment record of a membership whose sales user is gone, and verifies it', async () => {
+    // HR rows are keyed on the membership. Step 3 used to skip a membership with no sales
+    // user before touching them, while step 5 counted them regardless — so an offboarded
+    // membership with an employment record parked the request at the attempt cap.
+    const person = await makePerson('Offboarded Elsewhere');
+    const membership = await prisma.workspaceMembership.create({
+      data: {
+        tenantId: fixture.b.tenantId,
+        platformUserId: person.platformUserId,
+        salesUserId: null,
+        status: 'ACTIVE',
+        joinedAt: new Date(),
+      },
+      select: { id: true },
+    });
+    await prisma.employeeProfile.create({
+      data: {
+        tenantId: fixture.b.tenantId,
+        membershipId: membership.id,
+        employeeNumber: `EMP-GONE-${seq++}-${Date.now()}`,
+        iban: 'AE070331234567890123456',
+        wpsPersonId: '784198000000001',
+      },
+    });
+    const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
+    expect((await sweepAccountDeletions(20, [person.platformUserId])).completed).toBe(1);
+    const row = await prisma.accountDeletionRequest.findUniqueOrThrow({
+      where: { id: request.id },
+      select: { status: true, outcome: true },
+    });
+    expect(row.status).toBe('COMPLETED');
+    const outcome = row.outcome as unknown as { hrIdentifiersCleared: number; error?: string };
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.hrIdentifiersCleared).toBe(1);
+    const profile = await prisma.employeeProfile.findFirstOrThrow({
+      where: { tenantId: fixture.b.tenantId, membershipId: membership.id },
+      select: { iban: true, wpsPersonId: true },
+      ...({ __includeDeleted: true } as object),
+    });
+    expect(profile).toEqual({ iban: null, wpsPersonId: null });
   });
 });
 

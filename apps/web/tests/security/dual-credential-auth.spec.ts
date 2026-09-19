@@ -309,6 +309,36 @@ describe('setting the monitoring password', () => {
     expect(res.status).toBe(409);
   });
 
+  it('refuses a retired administration password as the monitoring password', async () => {
+    // The reuse window the administration password keeps applies to this one too: a
+    // password the person has already retired is a known secret, not a second one.
+    const retired = `Retired-${suffix}-Pass7`;
+    await prisma.passwordHistory.create({
+      data: { platformUserId: ownerId, passwordHash: await hashPassword(retired) },
+    });
+    const admin = await signIn(ownerEmail, PASSWORD_A);
+    await clearLimit(limits.mfaConfirm(ownerId));
+    const res = await credentialsPost(
+      request(
+        'http://localhost/api/v1/platform/credentials',
+        'POST',
+        {
+          action: 'set-monitoring',
+          currentPassword: PASSWORD_A,
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
+          newPassword: retired,
+        },
+        admin.cookie,
+      ),
+    );
+    expect(res.status, await res.clone().text()).toBe(409);
+    const row = await prisma.platformUser.findUnique({
+      where: { id: ownerId },
+      select: { monitoringPasswordHash: true },
+    });
+    expect(row!.monitoringPasswordHash).toBeNull();
+  });
+
   it('sets it, stores only an independent salted hash, and audits without any secret', async () => {
     const admin = await signIn(ownerEmail, PASSWORD_A);
     await clearLimit(limits.mfaConfirm(ownerId));

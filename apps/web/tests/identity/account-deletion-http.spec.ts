@@ -231,6 +231,14 @@ describe('reauthentication at the boundary', () => {
     // The limit is ten in five minutes, consumed before the password is checked, so a
     // borrowed unlocked laptop gets ten guesses and then a 429 — not unlimited tries.
     const rep = await makeRep('Guesser');
+    // The limiter counts in fixed five-minute windows (ratelimit.ts: floor(now / 300 s)).
+    // Eleven password verifications under a parallel run take several seconds, and a
+    // window boundary inside that loop hands the eleventh attempt a fresh bucket — a 403
+    // where a 429 is expected, with nothing wrong in the product. Start only when a full
+    // minute of the current window remains; the assertions below are unchanged.
+    const windowMs = 300_000;
+    const left = windowMs - (Date.now() % windowMs);
+    if (left < 60_000) await new Promise((resolve) => setTimeout(resolve, left + 50));
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 11; attempt++) {
       const res = await post(
@@ -245,5 +253,5 @@ describe('reauthentication at the boundary', () => {
     expect(statuses.slice(0, 10).every((s) => s === 403)).toBe(true);
     expect(statuses[10]).toBe(429);
     expect(await openRequestsFor(rep.platformUserId)).toBe(0);
-  });
+  }, 120_000); // the wait above, in the worst case, plus eleven password verifications under load
 });
