@@ -25,8 +25,8 @@ Verified against vendor documentation on 19 Sep 2026 (URLs at the end).
   Since Android 9 a background app cannot open the microphone at all, and during a call
   "the call always receives audio"; only a pre-installed privileged app or an
   accessibility service can capture it. Google Play policy forbids using the
-  Accessibility API for "remote call audio recording" (policy update of April 2022,
-  enforced from May 2022). Being the default dialer (`InCallService`, `ROLE_DIALER`)
+  Accessibility API for "remote call audio recording" (policy update announced
+  April 2022). Being the default dialer (`InCallService`, `ROLE_DIALER`)
   gives call management and audio _routing_, not capture. A self-managed
   `ConnectionService` app (WebRTC, a CPaaS SDK) owns its own media.
 
