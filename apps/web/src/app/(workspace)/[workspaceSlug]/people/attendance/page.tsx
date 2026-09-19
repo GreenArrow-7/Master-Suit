@@ -3,6 +3,7 @@ import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access';
 import { myEmployee } from '@/services/hr/leave';
+import { productivity, type ProductivityRow } from '@/services/leadership/rollups';
 import ExportCsv from '@/components/workspace/ExportCsv';
 import TableSearch from '@/components/workspace/TableSearch';
 import PageHeader from '@/components/ui/PageHeader';
@@ -63,7 +64,9 @@ export default async function Page({
       ...(seesAll ? {} : { employeeId: self?.id ?? '__none__' }),
     },
     include: {
-      employee: { include: { membership: { include: { platformUser: { select: { fullName: true } } } } } },
+      employee: {
+        include: { membership: { select: { salesUserId: true, platformUser: { select: { fullName: true } } } } },
+      },
       location: { select: { name: true } },
     },
     orderBy: [{ workDate: 'desc' }],
@@ -81,6 +84,17 @@ export default async function Page({
       ...(seesAll ? {} : { employeeId: self?.id ?? '__none__' }),
     },
   });
+
+  // §3: beside the hours, what the person did with the day — leads handed over,
+  // leads worked, calls completed — from the same rollup Reports → Productivity uses.
+  const sellerIds = [
+    ...new Set(rows.map((row) => row.employee.membership.salesUserId).filter((id): id is string => !!id)),
+  ];
+  const work = new Map<string, ProductivityRow>();
+  if (seesAll && sellerIds.length) {
+    for (const r of await productivity(ctx.tenantId, sellerIds, { from, to: toEnd })) work.set(r.userId, r);
+  }
+  const workOf = (row: (typeof rows)[number]) => work.get(row.employee.membership.salesUserId ?? '');
 
   const totalMinutes = rows.reduce((sum, row) => sum + (row.workMinutes ?? 0), 0);
   const completed = rows.filter((row) => row.checkOutAt !== null).length;
@@ -153,6 +167,9 @@ export default async function Page({
                   <th>Last out</th>
                   <th>Hours</th>
                   <th>Location</th>
+                  {seesAll && <th style={{ textAlign: 'right' }}>Leads assigned</th>}
+                  {seesAll && <th style={{ textAlign: 'right' }}>Worked</th>}
+                  {seesAll && <th style={{ textAlign: 'right' }}>Calls</th>}
                   <th>Status</th>
                 </tr>
               </thead>
@@ -165,6 +182,21 @@ export default async function Page({
                     <td data-label="Last out">{timeLabel(row.checkOutAt)}</td>
                     <td data-label="Hours">{hhmm(row.workMinutes ?? 0)}</td>
                     <td data-label="Location">{row.location?.name ?? '—'}</td>
+                    {seesAll && (
+                      <td data-label="Leads assigned" style={{ textAlign: 'right' }} className="lf-num">
+                        {workOf(row)?.assigned ?? 0}
+                      </td>
+                    )}
+                    {seesAll && (
+                      <td data-label="Worked" style={{ textAlign: 'right' }} className="lf-num">
+                        {workOf(row)?.contacted ?? 0}
+                      </td>
+                    )}
+                    {seesAll && (
+                      <td data-label="Calls" style={{ textAlign: 'right' }} className="lf-num">
+                        {workOf(row)?.callsCompleted ?? 0}
+                      </td>
+                    )}
                     <td data-label="Status">
                       <Badge
                         tone={

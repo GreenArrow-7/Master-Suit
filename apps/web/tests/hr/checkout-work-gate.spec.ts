@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { PunchRejected, pendingLeadWork, startOfLocalDay, validatePunch } from '@/services/hr/attendance';
+import { pendingLeadWork, startOfLocalDay, validatePunch } from '@/services/hr/attendance';
 import { DEFAULT_POLICY } from '@/services/hr/settings';
 import { buildActor, buildCtx } from '../helpers/ctx';
 
@@ -15,7 +15,6 @@ const HQ = { latitude: 25.2048, longitude: 55.2708 };
 let tenantId = '';
 let userId = '';
 let employee: { id: string; employmentStatus: string };
-let hqId = '';
 
 const ctx = () => buildCtx(buildActor({ id: userId, tenantId }));
 const position = { ...HQ, gpsAccuracyM: 8 };
@@ -51,7 +50,7 @@ beforeAll(async () => {
   const hq = await prisma.hrWorkLocation.create({
     data: { tenantId, name: `HQ ${suffix}`, ...HQ, radiusMeters: 150, status: 'ACTIVE' },
   });
-  hqId = hq.id;
+
   await prisma.hrEmployeeLocationAssignment.create({
     data: { tenantId, employeeId: profile.id, locationId: hq.id, status: 'ACTIVE', checkInAllowed: true },
   });
