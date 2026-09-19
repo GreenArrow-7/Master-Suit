@@ -150,11 +150,11 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
           </div>
 
           <div className="lf-field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div className="lf-auth-fieldhead">
               <label className="lf-label" data-required htmlFor="password">
                 Password
               </label>
-              <Link href="/forgot-password" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-wine-700)' }}>
+              <Link href="/forgot-password" className="lf-auth-link">
                 Forgot password?
               </Link>
             </div>
@@ -214,7 +214,7 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
               <span className="lf-hint">Each saved code works once.</span>
               <button
                 type="button"
-                style={LINK_BUTTON}
+                className="lf-auth-linkbtn"
                 onClick={() => {
                   setUseRecoveryCode(false);
                   setError(null);
@@ -242,7 +242,7 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
               />
               <button
                 type="button"
-                style={LINK_BUTTON}
+                className="lf-auth-linkbtn"
                 onClick={() => {
                   setUseRecoveryCode(true);
                   setError(null);
@@ -264,6 +264,9 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
         {busy && <span className="lf-auth-spin" aria-hidden="true" />}
         {busy ? 'Signing in…' : mfaNeeded ? 'Verify and sign in' : 'Sign in'}
       </button>
+      {/* There is no public sign-up; saying so here answers the one question a
+          new visitor has on this screen. */}
+      {!mfaNeeded && <p className="lf-auth-note">Access is by invitation from your workspace administrator.</p>}
     </form>
   );
 }
@@ -285,16 +288,3 @@ function EyeIcon({ off }: { off: boolean }) {
     </svg>
   );
 }
-
-const LINK_BUTTON: React.CSSProperties = {
-  marginTop: 'var(--lf-space-2)',
-  background: 'none',
-  border: 0,
-  padding: 0,
-  color: 'var(--lf-wine-700)',
-  font: 'inherit',
-  fontSize: 'var(--lf-text-sm)',
-  textAlign: 'left',
-  textDecoration: 'underline',
-  cursor: 'pointer',
-};
