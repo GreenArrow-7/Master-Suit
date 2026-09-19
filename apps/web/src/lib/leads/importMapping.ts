@@ -23,8 +23,31 @@ export const FIELD_LABELS: Record<LeadField, string> = {
 
 /** Header spellings seen in customer files, already normalised (lowercase, alphanumeric only). */
 const SYNONYMS: Record<LeadField, string[]> = {
-  fullName: ['fullname', 'name', 'leadname', 'customername', 'clientname', 'contactname', 'contact', 'customer', 'client', 'firstname'],
-  phone: ['phone', 'mobile', 'mobilenumber', 'mobileno', 'phonenumber', 'contactnumber', 'contactno', 'tel', 'telephone', 'whatsapp', 'cell'],
+  fullName: [
+    'fullname',
+    'name',
+    'leadname',
+    'customername',
+    'clientname',
+    'contactname',
+    'contact',
+    'customer',
+    'client',
+    'firstname',
+  ],
+  phone: [
+    'phone',
+    'mobile',
+    'mobilenumber',
+    'mobileno',
+    'phonenumber',
+    'contactnumber',
+    'contactno',
+    'tel',
+    'telephone',
+    'whatsapp',
+    'cell',
+  ],
   email: ['email', 'emailaddress', 'emailid', 'mail'],
   company: ['company', 'companyname', 'organisation', 'organization', 'employer', 'business'],
   jobTitle: ['jobtitle', 'title', 'designation', 'position', 'role'],
@@ -33,7 +56,11 @@ const SYNONYMS: Record<LeadField, string[]> = {
   notes: ['notes', 'note', 'remarks', 'remark', 'comment', 'comments', 'description'],
 };
 
-const normalise = (header: string) => header.replace(/^\uFEFF/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normalise = (header: string) =>
+  header
+    .replace(/^\uFEFF/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 
 /** Best-effort target for each header; a field is claimed at most once, first column wins. */
 export function detectColumns(headers: string[]): ColumnTarget[] {
@@ -94,9 +121,10 @@ export function prepareRows(rows: string[][], headers: string[], mapping: Column
     else if (values.notes && values.notes.length > 5000) row.problem = 'Notes longer than 5000 characters';
 
     if (!row.problem) {
-      const keys = [values.phone && `p:${normalizePhone(values.phone)}`, values.email && `e:${values.email.toLowerCase()}`].filter(
-        Boolean,
-      ) as string[];
+      const keys = [
+        values.phone && `p:${normalizePhone(values.phone)}`,
+        values.email && `e:${values.email.toLowerCase()}`,
+      ].filter(Boolean) as string[];
       const earlier = keys.map((k) => seen.get(k)).find((v) => v !== undefined);
       if (earlier !== undefined) row.duplicateOf = earlier;
       else keys.forEach((k) => seen.set(k, line));

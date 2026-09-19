@@ -27,7 +27,10 @@ describe('lead import row preparation', () => {
     ];
     const prepared = prepareRows(rows, headers, mapping);
     expect(prepared.map((r) => r.line)).toEqual([2, 4, 5, 6, 7]);
-    expect(prepared[0]).toEqual({ line: 2, values: { fullName: 'Ayesha Khan', phone: '050 123 4567', email: 'ayesha@example.com', notes: 'Budget: 1.2M' } });
+    expect(prepared[0]).toEqual({
+      line: 2,
+      values: { fullName: 'Ayesha Khan', phone: '050 123 4567', email: 'ayesha@example.com', notes: 'Budget: 1.2M' },
+    });
     expect(prepared[1].problem).toBe('Full name is missing');
     expect(prepared[2].problem).toMatch(/Invalid phone/);
     expect(prepared[3].problem).toMatch(/Invalid email/);

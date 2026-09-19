@@ -20,7 +20,9 @@ let cookie: string;
 
 beforeAll(async () => {
   slug = `self-${suffix}`;
-  const tenant = await prisma.tenant.create({ data: { slug, legalName: 'Self Service Co', displayName: 'Self Service', status: 'ACTIVE' } });
+  const tenant = await prisma.tenant.create({
+    data: { slug, legalName: 'Self Service Co', displayName: 'Self Service', status: 'ACTIVE' },
+  });
   tenantId = tenant.id;
   await prisma.moduleEntitlement.create({ data: { tenantId, module: 'HRMS', state: 'ACTIVE' } });
   const role = await prisma.role.create({
@@ -50,7 +52,13 @@ const at = (base: 'self' | 'actions', action: string) => ({
 
 describe('self-service attendance for an employee without employee:VIEW', () => {
   it('records consent and answers preflight on hr/self', async () => {
-    const consent = await post(selfPost, at('self', 'consent-grant').path, {}, cookie, at('self', 'consent-grant').params);
+    const consent = await post(
+      selfPost,
+      at('self', 'consent-grant').path,
+      {},
+      cookie,
+      at('self', 'consent-grant').params,
+    );
     expect(consent.status).toBe(200);
 
     const preflight = await post(

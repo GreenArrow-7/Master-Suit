@@ -27,7 +27,10 @@ describe('POST /api/v1/leads/import', () => {
       {
         fileName: 'leads.xlsx',
         rows: [
-          { line: 2, values: { fullName: `Import One ${stamp}`, phone: '0501234567', notes: 'Budget: 1.2M\nProperty: Villa' } },
+          {
+            line: 2,
+            values: { fullName: `Import One ${stamp}`, phone: '0501234567', notes: 'Budget: 1.2M\nProperty: Villa' },
+          },
           { line: 3, values: { fullName: `Import Two ${stamp}`, email: 'not-an-email' } },
           { line: 4, values: { fullName: `Import Three ${stamp}`, source: 'Facebook' } },
         ],
@@ -45,7 +48,10 @@ describe('POST /api/v1/leads/import', () => {
     expect(lead.source).toBe('IMPORT');
     expect(lead.sourceDetail).toBe('leads.xlsx');
     expect(lead.phoneNormalized).toBe('+971501234567');
-    const note = await prisma.activity.findFirst({ where: { tenantId: fixture.a.tenantId, leadId: lead.id }, select: { notes: true, source: true } });
+    const note = await prisma.activity.findFirst({
+      where: { tenantId: fixture.a.tenantId, leadId: lead.id },
+      select: { notes: true, source: true },
+    });
     expect(note?.notes).toContain('Budget: 1.2M');
     expect(note?.source).toBe('IMPORT');
   });
@@ -57,7 +63,12 @@ describe('POST /api/v1/leads/import', () => {
     expect(blocked.body.created).toBe(0);
     expect(blocked.body.failed[0].reason).toMatch(/already exists/);
 
-    const warned = await post(importPost, '/api/v1/leads/import', { rows: [row], onDuplicate: 'WARN' }, fixture.a.cookie);
+    const warned = await post(
+      importPost,
+      '/api/v1/leads/import',
+      { rows: [row], onDuplicate: 'WARN' },
+      fixture.a.cookie,
+    );
     expect(warned.body.created).toBe(1);
   });
 });
