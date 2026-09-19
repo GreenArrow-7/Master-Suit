@@ -149,6 +149,12 @@ export async function setOwnMonitoringCredential(
   if (identity.monitoringPasswordHash && (await verifyPassword(identity.monitoringPasswordHash, input.newPassword))) {
     throw Conflict('That is already your monitoring password. Choose a different one.');
   }
+  // A retired administration password is a known secret, not a second one: without
+  // this, a password rotated away under the reuse window came straight back as the
+  // monitoring password. The history consulted is the administration password's; the
+  // monitoring password keeps none of its own (a policy decision not yet taken), so
+  // only the current-value check above applies to it.
+  await assertNotReused(identity.id, input.newPassword, DEFAULT_POLICY);
 
   const replacing = identity.monitoringPasswordHash !== null;
   const hash = await hashPassword(input.newPassword);
