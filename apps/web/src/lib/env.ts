@@ -286,6 +286,18 @@ export const envSchema = z.object({
     .or(z.literal(''))
     .transform((value) => value === 'true'),
 
+  // Account erasure. Requests are always recorded, shown and withdrawable; whether the
+  // worker actually erases anything is this switch, and it is off unless set to 'true'.
+  // The retention and scope decisions that define what a completed erasure may remove
+  // are the owner's, and an executor that runs before they are recorded is irreversible
+  // work done to a policy nobody has approved. Same shape as APNS_SANDBOX, for the same
+  // .env.example reason.
+  ACCOUNT_DELETION_EXECUTION_ENABLED: z
+    .enum(['true', 'false'])
+    .optional()
+    .or(z.literal(''))
+    .transform((value) => value === 'true'),
+
   // Face check-in. FACE_SERVICE_URL unset means the engine is unavailable and
   // attendance fails closed with a 503 that says so — never a wave-through.
   FACE_SERVICE_URL: z.string().url().optional().or(z.literal('')),

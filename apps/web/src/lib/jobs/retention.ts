@@ -60,6 +60,10 @@ const AUDIT_TABLES: {
   name: string;
   column: string;
   objectColumn?: string;
+  /** How the object named by objectColumn is removed; attendance captures by default. */
+  removeObject?: (key: string) => Promise<void>;
+  /** Keep the row when its object could not be removed, so the next run retries it. */
+  keepRowOnObjectFailure?: boolean;
   days: () => number | undefined;
 }[] = [
   { name: 'AuditLog', column: 'occurredAt', days: () => env.AUDIT_LOG_RETENTION_DAYS },
@@ -70,6 +74,16 @@ const AUDIT_TABLES: {
     days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
   },
   { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
+  // Identity documents of a deleted person: the executor sets purgeAt (owner decision: 15
+  // days after completion); rows with purgeAt NULL never match `< now`.
+  {
+    name: 'HrEmployeeDocument',
+    column: 'purgeAt',
+    objectColumn: 'storageKey',
+    removeObject: deleteObject,
+    keepRowOnObjectFailure: true,
+    days: () => 0,
+  },
 ];
 
 export interface RetentionResult {
@@ -279,8 +293,8 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
       // millions of rows on the first run after a policy is set.
       const due = await withPlatformTx(
         (tx) =>
-          tx.$queryRawUnsafe<{ id: string; capturePath: string | null }[]>(
-            `SELECT id${table.objectColumn ? `, "${table.objectColumn}"` : ''} FROM "${table.name}"
+          tx.$queryRawUnsafe<{ id: string; object: string | null }[]>(
+            `SELECT id${table.objectColumn ? `, "${table.objectColumn}" AS object` : ''} FROM "${table.name}"
               WHERE "${table.column}" < $1
               ORDER BY "${table.column}" ASC
               LIMIT ${BATCH}`,
@@ -301,18 +315,30 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
       // recordings sweep above. A punch carries the encrypted frame that is the
       // evidence for it; deleting the row first leaves the capture in the bucket
       // with nothing pointing at it.
+      const failed = new Set<string>();
       if (table.objectColumn) {
+        const remove = table.removeObject ?? deleteCapture;
         for (const row of due) {
-          if (!row.capturePath) continue;
+          if (!row.object) continue;
           try {
-            await deleteCapture(row.capturePath);
+            await remove(row.object);
           } catch (err) {
-            logger.error({ err, table: table.name, id: row.id }, 'retention: could not delete capture object');
+            logger.error({ err, table: table.name, id: row.id }, 'retention: could not delete object');
+            if (table.keepRowOnObjectFailure) failed.add(row.id);
           }
         }
       }
-
-      const ids = due.map((row) => row.id);
+      // A row whose object survived is kept so the next run retries it: deleting the row
+      // would orphan the file where nothing can find it again.
+      // ponytail: if a full batch of rows at the head of the order fails persistently, the
+      // same batch is retried up to MAX_BATCHES and everything behind it waits until
+      // storage recovers; bounded and logged. Upgrade path: per-row backoff column.
+      const ids = due.filter((row) => !failed.has(row.id)).map((row) => row.id);
+      deleted -= failed.size;
+      if (ids.length === 0) {
+        if (due.length < BATCH) break;
+        continue;
+      }
       await withPlatformTx(
         (tx) => tx.$executeRawUnsafe(`DELETE FROM "${table.name}" WHERE id = ANY($1::text[])`, ids),
         { timeoutMs: TX_TIMEOUT_MS },

@@ -66,6 +66,16 @@ host_overlay() {
   fi
 }
 
+# The staging-first gate needs a private route to staging's database (no host port is
+# published, deliberately). The overlay joins only the one-off migrate container to the
+# staging project's network, and only when production's env file names that network —
+# read as a presence test, never echoed. `.` after `=` so an empty value does not count.
+gate_overlay() {
+  if grep -qs '^STAGING_NETWORK=.' "${APP_DIR}/.env.production"; then
+    printf ' -f %s' "${INFRA}/docker-compose.staging-gate.yml"
+  fi
+}
+
 dc_for() {
   case "$1" in
     staging)
@@ -74,7 +84,7 @@ dc_for() {
       # Staging deliberately does not take the host overlay: it names production's
       # caddy/worker/postgres services, and docker-compose.staging.yml has already
       # made its own choices for all three.
-      echo "docker compose --env-file ${APP_DIR}/.env.production -f ${INFRA}/docker-compose.yml -f ${INFRA}/docker-compose.prod.yml -f ${INFRA}/docker-compose.azure.yml$(host_overlay)" ;;
+      echo "docker compose --env-file ${APP_DIR}/.env.production -f ${INFRA}/docker-compose.yml -f ${INFRA}/docker-compose.prod.yml -f ${INFRA}/docker-compose.azure.yml$(host_overlay)$(gate_overlay)" ;;
     *) fail "Unknown environment '$1'. Use staging or production." ;;
   esac
 }

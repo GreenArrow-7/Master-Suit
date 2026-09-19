@@ -49,6 +49,12 @@ export const GLOBAL_MODELS = new Set([
   // services/identity/passwordHistory.ts, which is always already scoped to a
   // single platformUserId.
   'PasswordHistory',
+  // A person's request to erase their own platform account. It carries no tenantId to
+  // filter on: the account spans every workspace the person belongs to, which is the
+  // whole reason the request exists at one level above them. `requestedInTenantId` is
+  // context for whoever processes it, never a scope — filtering by it would hide a
+  // request made from a workspace the processor is not looking at.
+  'AccountDeletionRequest',
   'PlanModule',
   'PlanLimit',
   'SubscriptionModule',
@@ -656,7 +662,12 @@ export function withTx<T>(tenantId: string, fn: (tx: TxClient) => Promise<T>): P
  * silently mean something different if a policy ever changed), this asserts a
  * distinct `app.platform_admin` flag that the RLS policies name explicitly.
  *
- * Every caller must already be behind `requirePlatformOwner`.
+ * Every request-handling caller must already be behind `requirePlatformOwner`. Two
+ * callers have no request actor and are admitted on a narrower rule instead — the
+ * callback is a single statement keyed on a platformUserId read from a server-created
+ * row, never from request or job input: `authorizedTenantIds` (staff sign-in, reading
+ * that person's own grants) and `processAccountDeletion` (revoking and counting the
+ * erased person's grants). Anything wider than that goes back behind the owner check.
  */
 export function withPlatformTx<T>(fn: (tx: TxClient) => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
   return inTenantTx.run(
