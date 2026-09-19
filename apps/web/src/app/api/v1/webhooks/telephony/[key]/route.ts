@@ -8,6 +8,7 @@ import { consume, limits } from '@/lib/security/ratelimit';
 import { decryptCredentials } from '@/lib/integrations/connection';
 import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
+import { normalizePhone } from '@/services/leads/normalizePhone';
 
 /**
  * Every vendor's callbacks land here, keyed by the connection's `webhookKey` in
@@ -128,7 +129,7 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
       data: { processed: true, processedAt: new Date(), errorMessage },
     });
 
-  const call = await prisma.call.findFirst({
+  let call = await prisma.call.findFirst({
     where: {
       tenantId: connection.tenantId,
       providerName: connection.provider,
@@ -136,9 +137,17 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
     },
   });
 
+  // An inbound call: no row exists because nobody here placed it. Create it,
+  // matched to the lead (or contact) whose number is calling, owned by that
+  // record's owner — so the call lands in the right history from its first ring.
+  if (!call && event.direction === 'INBOUND' && event.from && !event.event.startsWith('RECORDING')) {
+    call = await createInboundCall(connection, event);
+  }
+
   if (!call) {
-    // Not an error: an inbound call, or a callback that overtook the response to
-    // the create request. Recorded and dropped rather than retried forever.
+    // A callback that overtook the response to the create request, or an inbound
+    // call from a vendor whose payload names no caller. Recorded and dropped
+    // rather than retried forever.
     logger.warn({ vendor: connection.provider }, 'telephony webhook for unknown call');
     await finish('call not found');
     return NextResponse.json({ ok: true, ignored: true });
@@ -152,6 +161,68 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
 
   await finish();
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Who answers an inbound call in the CRM: the owner of the lead or contact with
+ * that number; otherwise the most senior active user, so the call is still
+ * recorded and can be re-linked by hand. Nothing is created when the workspace
+ * has no active user at all.
+ */
+async function createInboundCall(connection: { id: string; tenantId: string; provider: string }, event: CallEvent) {
+  const tenantId = connection.tenantId;
+  const phoneNormalized = normalizePhone(event.from!);
+  const [lead, contact] = await Promise.all([
+    phoneNormalized
+      ? prisma.lead.findFirst({
+          where: { tenantId, phoneNormalized, deletedAt: null },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, ownerId: true },
+        })
+      : null,
+    phoneNormalized
+      ? prisma.contact.findFirst({
+          where: { tenantId, phoneNormalized, deletedAt: null },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, ownerId: true, accountId: true },
+        })
+      : null,
+  ]);
+  const ownerId = lead?.ownerId ?? contact?.ownerId ?? null;
+  const callerId =
+    ownerId ??
+    (
+      await prisma.user.findFirst({
+        where: { tenantId, status: 'ACTIVE', deletedAt: null },
+        orderBy: { role: { rank: 'asc' } },
+        select: { id: true },
+      })
+    )?.id;
+  if (!callerId) {
+    logger.warn({ vendor: connection.provider, tenantId }, 'inbound call with no user to record it against');
+    return null;
+  }
+  const created = await prisma.call.create({
+    data: {
+      tenantId,
+      callerId,
+      leadId: lead?.id ?? null,
+      contactId: contact?.id ?? null,
+      accountId: contact?.accountId ?? null,
+      direction: 'INBOUND',
+      status: 'RINGING',
+      externalCallId: event.externalCallId,
+      providerName: connection.provider,
+      callerNumber: event.from,
+      recipientNumber: event.to ?? null,
+      startedAt: event.occurredAt,
+    },
+  });
+  logger.info(
+    { vendor: connection.provider, callId: created.id, matched: lead ? 'lead' : contact ? 'contact' : 'none' },
+    'inbound call created',
+  );
+  return created;
 }
 
 async function applyCallEvent(

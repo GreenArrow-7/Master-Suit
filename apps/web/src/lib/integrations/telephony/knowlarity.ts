@@ -120,6 +120,18 @@ export class KnowlarityProvider implements TelephonyProvider {
       durationSecs: num(p.call_duration),
       recordingUrl: recordingUrl && /^https:\/\//i.test(recordingUrl) ? recordingUrl : undefined,
       deliveryId: `${externalCallId}:${status}`,
+      from: typeof p.caller_id === 'string' ? p.caller_id : undefined,
+      to:
+        typeof p.destination === 'string'
+          ? p.destination
+          : typeof p.called_number === 'string'
+            ? p.called_number
+            : undefined,
+      direction: String(p.direction ?? p.call_type ?? '')
+        .toLowerCase()
+        .includes('in')
+        ? 'INBOUND'
+        : undefined,
     };
   }
   /** Knowlarity serves recording media from its own domain. */

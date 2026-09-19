@@ -253,3 +253,86 @@ describe('a call progresses through its vendor callbacks', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('inbound calls', () => {
+  const INBOUND_ID = 'CAinboundtest000000000000000001';
+
+  it('creates an INBOUND call matched to the lead whose number is calling, owned by its owner', async () => {
+    const leadId = fixture.a.leadIds[1];
+    await prisma.lead.update({
+      where: { tenantId: fixture.a.tenantId, id: leadId },
+      data: { phone: '+971 50 777 8899', phoneNormalized: '+971507778899', ownerId: fixture.a.userId },
+    });
+    const res = await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, {
+        CallSid: INBOUND_ID,
+        CallStatus: 'ringing',
+        Direction: 'inbound',
+        From: '+971507778899',
+        To: '+971500000000',
+        SequenceNumber: '1',
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+
+    const call = await prisma.call.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, externalCallId: INBOUND_ID, providerName: 'twilio' },
+    });
+    expect(call.direction).toBe('INBOUND');
+    expect(call.leadId).toBe(leadId);
+    expect(call.callerId).toBe(fixture.a.userId);
+    expect(call.callerNumber).toBe('+971507778899');
+    expect(call.status).toBe('RINGING');
+
+    // The next callback finds the row it just created and moves it on.
+    await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, {
+        CallSid: INBOUND_ID,
+        CallStatus: 'completed',
+        Direction: 'inbound',
+        From: '+971507778899',
+        SequenceNumber: '2',
+        CallDuration: '45',
+      }),
+    );
+    const done = await prisma.call.findFirstOrThrow({ where: { tenantId: fixture.a.tenantId, id: call.id } });
+    expect(done.status).toBe('COMPLETED');
+    expect(done.durationSecs).toBe(45);
+  });
+
+  it('still records an inbound call from an unknown number, against the most senior active user', async () => {
+    const res = await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, {
+        CallSid: `${INBOUND_ID}x`,
+        CallStatus: 'ringing',
+        Direction: 'inbound',
+        From: '+971500001234',
+        SequenceNumber: '1',
+      }),
+    );
+    expect(await res.json()).toMatchObject({ ok: true });
+    const call = await prisma.call.findFirstOrThrow({
+      where: { tenantId: fixture.a.tenantId, externalCallId: `${INBOUND_ID}x` },
+    });
+    expect(call.leadId).toBeNull();
+    expect(call.direction).toBe('INBOUND');
+  });
+
+  it('does not create a call for an outbound callback it cannot find', async () => {
+    const res = await deliver(
+      webhookKey,
+      twilioRequest(webhookKey, {
+        CallSid: `${INBOUND_ID}y`,
+        CallStatus: 'ringing',
+        Direction: 'outbound-api',
+        From: '+971500000000',
+        SequenceNumber: '1',
+      }),
+    );
+    expect(await res.json()).toMatchObject({ ok: true, ignored: true });
+  });
+});
