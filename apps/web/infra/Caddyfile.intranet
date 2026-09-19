@@ -39,3 +39,15 @@
 	tls internal
 	import app
 }
+
+ios-staging.youhan.in {
+	encode zstd gzip
+	reverse_proxy 172.18.0.1:8090 {
+		header_up X-Real-IP {remote_host}
+	}
+	request_body {
+		max_size 32MB
+	}
+	@metrics path /api/metrics
+	respond @metrics 404
+}

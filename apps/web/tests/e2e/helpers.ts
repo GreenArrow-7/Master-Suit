@@ -253,6 +253,11 @@ async function ensureOwnerAuthenticator(email: string): Promise<string> {
     data: {
       mfaSecret: encryptSecret(secret),
       mfaEnabled: true,
+      // Spec files sign the shared owner in back to back, often inside one
+      // thirty-second step, and an accepted code is spent (lib/auth/totp-consume.ts).
+      // Test setup clears the spent step; replay itself is covered by
+      // tests/security/mfa-replay.spec.ts and the dual-credential browser spec.
+      mfaLastUsedStep: null,
       failedLoginCount: 0,
       lockedUntil: null,
       // bootstrap-owner.mjs leaves passwordChangedAt null on purpose, and the

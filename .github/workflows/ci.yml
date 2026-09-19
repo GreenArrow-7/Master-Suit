@@ -148,6 +148,13 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # Before the demo seed, which would create the same rows and hide a gap. A
+      # role can only be granted a permission whose definition exists; this fails
+      # when migrations alone leave one the navigation, the monitoring allowlist or
+      # a permission check needs (src/lib/security/permissionCatalogue.ts).
+      - name: Permission catalogue
+        run: npm run check:permissions
+
       # ── Gate 0a — schema/migration drift ──────────────────────────────────
       #
       # `schema.prisma` and `prisma/migrations` are two descriptions of one
@@ -414,7 +421,21 @@ jobs:
 
       # ── Gate 7 ────────────────────────────────────────────────────────────
       - name: Build
-        run: npm run build
+        # The E2E step's dev server writes `.next/dev/types/validator.ts`, which tsconfig
+        # includes for typegen, and Playwright's teardown can stop the server mid-write.
+        # `next build`'s TypeScript pass then fails on a truncated file that has nothing
+        # to do with the code (seen on PR #59: TS1002 "Unterminated string literal" at a
+        # line a clean build never produces). A production build takes no input from dev
+        # output, so none is left for it to read.
+        run: |
+          # Playwright's webServer stops `next dev` when the suite ends. Wait for that to
+          # be true before touching its output, bounded, and say so if it is not.
+          for i in $(seq 1 30); do pgrep -f 'next dev' >/dev/null || break; sleep 1; done
+          if pgrep -f 'next dev' >/dev/null; then echo "::error::a next dev process is still running after E2E"; exit 1; fi
+          # Only the dev server's own output. Test traces and the Playwright report live in
+          # test-results/ and playwright-report/, which this does not touch.
+          rm -rf .next/dev
+          npm run build
 
       # ── Gate 8 ────────────────────────────────────────────────────────────
       #

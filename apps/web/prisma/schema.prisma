@@ -1220,6 +1220,11 @@ model PlatformUser {
   mfaEnabled                Boolean      @default(false)
   mfaSecret                 String?
   mfaRecoveryCodes          String[]     @default([])
+  /// The last authenticator time step this identity had accepted (RFC 6238 §5.2).
+  /// A code is accepted only by an atomic update that moves this forward, so the
+  /// same code — or an earlier one — cannot be used twice, even by two requests
+  /// racing each other. See lib/auth/totp-consume.ts.
+  mfaLastUsedStep           Int?
   failedLoginCount          Int          @default(0)
   lockedUntil               DateTime?
   lastLoginAt               DateTime?
@@ -1246,6 +1251,7 @@ model PlatformUser {
   passwordHistory       PasswordHistory[]
   passwordResetTokens   PasswordResetToken[]
   sessions              PlatformSession[]
+  deletionRequests      AccountDeletionRequest[]
   platformAuditEvents   PlatformAuditEvent[]        @relation("PlatformAuditActor")
   authenticationFactors AuthenticationFactor[]
   accessGrants          PlatformAccessGrant[]
@@ -2375,11 +2381,14 @@ model HrEmployeeDocument {
   /// re-judged when a signature set is later found to have missed something.
   scanSignature    String?
   quarantined      Boolean         @default(true)
+  /// Set by account deletion: the retention job removes the file and the row once this passes.
+  purgeAt          DateTime?
   createdAt        DateTime        @default(now())
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   employee         EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, employeeId, kind])
+  @@index([purgeAt])
 }
 
 model HrWorkLocation {
@@ -2902,6 +2911,73 @@ model PasswordHistory {
   platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
 
   @@index([platformUserId, createdAt(sort: Desc)])
+}
+
+/// Where a person's request to delete their own platform account is recorded and
+/// tracked to an outcome.
+///
+/// The request is deliberately a row rather than an email. Apple's 5.1.1(v) asks that a
+/// person who can create an account can also delete it, and an address in a support
+/// mailbox is not something anyone can audit, resume after a crash, or prove was
+/// honoured. This table is the record, the queue and the evidence.
+///
+/// Scope is the **platform account**: the login identity, its credential, its sessions
+/// and the personal profile attached to it, plus the person's membership of every
+/// workspace they belong to. It is deliberately NOT a workspace deletion and NOT a
+/// deletion of the records that person created — a lead they entered belongs to the
+/// customer's workspace, not to them, and erasing it would destroy somebody else's data.
+///
+/// BLOCKED exists because a workspace's primary or last administrator cannot simply
+/// vanish without locking the workspace out. The request is still recorded so the person
+/// is never left unable to ask; `blockedReason` names the workspaces that need an
+/// ownership transfer first.
+model AccountDeletionRequest {
+  id                  String                @id @default(cuid())
+  platformUserId      String
+  /// The workspace the person was in when they asked. Context for whoever processes it,
+  /// never a limit on scope: the account spans every workspace they belong to.
+  requestedInTenantId String?
+  status              AccountDeletionStatus @default(REQUESTED)
+  /// Free text from the person. Optional, never required to delete.
+  reason              String?
+  /// Which workspaces block this, and why, when status is BLOCKED.
+  blockedReason       String?
+  /// What was actually erased or anonymised, written by the executor. The evidence that
+  /// a COMPLETED row means erased rather than merely deactivated.
+  outcome             Json?
+  requestedAt         DateTime              @default(now())
+  /// Set when an operator or the job picks it up, so an interrupted run is visible.
+  startedAt           DateTime?
+  /// Times the executor has claimed this row. Past the cap the sweep leaves it alone and
+  /// an operator has to look: retrying a persistently failing erasure every three quarters
+  /// of an hour for ever is how the oldest rows starve every newer request.
+  attempts            Int                   @default(0)
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  /// The platform user who processed it, when a person did.
+  processedById       String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  platformUser PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+
+  /// One open request per person. Partial unique index in the migration rather than here,
+  /// because Prisma cannot express "unique where status is still open".
+  @@index([platformUserId, status])
+  @@index([status, requestedAt])
+}
+
+enum AccountDeletionStatus {
+  /// Recorded, waiting to be processed.
+  REQUESTED
+  /// Recorded, but cannot proceed until the named workspaces have a new owner.
+  BLOCKED
+  /// The executor has started. A row left here is an interrupted run, not a finished one.
+  IN_PROGRESS
+  /// Erasure ran. Only this status may be described as deleted.
+  COMPLETED
+  /// Withdrawn by the person before it was processed.
+  CANCELLED
 }
 
 model PlatformSession {

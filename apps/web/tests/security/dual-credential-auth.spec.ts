@@ -54,6 +54,7 @@ import { GET as readTranscript } from '@/app/api/v1/calls/[id]/transcript/route'
 import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { POST as selfService } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { grantPermissions } from '../helpers/fixtures';
+import { freshTotp } from '../helpers/totp';
 import { buildCtx, buildActor } from '../helpers/ctx';
 
 const suffix = randomBytes(4).toString('hex');
@@ -116,7 +117,7 @@ async function signIn(email: string, password: string, secret = SECRET) {
   expect(first.status, JSON.stringify(first.json)).toBe(200);
   expect(first.token).toBeNull();
   expect(first.json.mfaRequired).toBe(true);
-  const second = await callLogin({ challenge: first.json.challenge, mfaCode: code(secret) });
+  const second = await callLogin({ challenge: first.json.challenge, mfaCode: await freshTotp({ email }, secret) });
   expect(second.status, JSON.stringify(second.json)).toBe(200);
   expect(second.token).toBeTruthy();
   return { token: second.token!, cookie: cookieOf(second.token!), body: second.json };
@@ -276,7 +277,7 @@ describe('setting the monitoring password', () => {
         {
           action: 'set-monitoring',
           currentPassword: 'not-the-password-9A',
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_B,
         },
         admin.cookie,
@@ -299,7 +300,7 @@ describe('setting the monitoring password', () => {
         {
           action: 'set-monitoring',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_A,
         },
         admin.cookie,
@@ -318,7 +319,7 @@ describe('setting the monitoring password', () => {
         {
           action: 'set-monitoring',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_B,
         },
         admin.cookie,
@@ -434,7 +435,11 @@ describe('same email, two passwords', () => {
 
   it('the one-request form reaches the same result through the same challenge', async () => {
     await freshLimits(ownerEmail);
-    const res = await callLogin({ email: ownerEmail, password: PASSWORD_B, mfaCode: code() });
+    const res = await callLogin({
+      email: ownerEmail,
+      password: PASSWORD_B,
+      mfaCode: await freshTotp({ id: ownerId }, SECRET),
+    });
     expect(res.status).toBe(200);
     expect((await sessionRow(res.token!))!.credentialPurpose).toBe('MONITORING');
   });
@@ -442,7 +447,7 @@ describe('same email, two passwords', () => {
   it('a challenge is single use', async () => {
     await freshLimits(ownerEmail);
     const first = await callLogin({ email: ownerEmail, password: PASSWORD_A });
-    const ok = await callLogin({ challenge: first.json.challenge, mfaCode: code() });
+    const ok = await callLogin({ challenge: first.json.challenge, mfaCode: await freshTotp({ id: ownerId }, SECRET) });
     expect(ok.status).toBe(200);
     await freshLimits(ownerEmail);
     const replay = await callLogin({ challenge: first.json.challenge, mfaCode: code() });
@@ -524,7 +529,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
         {
           action: 'change-admin-password',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_B,
         },
         admin.cookie,
@@ -965,7 +970,7 @@ describe('changing and revoking credentials', () => {
         {
           action: 'set-monitoring',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: NEW_B,
         },
         admin.cookie,
@@ -1002,7 +1007,7 @@ describe('changing and revoking credentials', () => {
         {
           action: 'set-monitoring',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_B,
         },
         admin.cookie,
@@ -1028,7 +1033,7 @@ describe('changing and revoking credentials', () => {
         'POST',
         {
           action: 'revoke-monitoring-credential',
-          mfaCode: code(OWNER2_SECRET),
+          mfaCode: await freshTotp({ id: owner2Id }, OWNER2_SECRET),
         },
         owner2.cookie,
       ),
@@ -1060,7 +1065,7 @@ describe('changing and revoking credentials', () => {
         {
           action: 'set-monitoring',
           currentPassword: PASSWORD_A,
-          mfaCode: code(),
+          mfaCode: await freshTotp({ id: ownerId }, SECRET),
           newPassword: PASSWORD_B,
         },
         admin.cookie,

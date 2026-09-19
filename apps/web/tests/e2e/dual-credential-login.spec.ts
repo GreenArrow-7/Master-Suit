@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { generateSecret, totp } from '@/lib/auth/mfa';
+import { currentTotpStep, generateSecret, totp } from '@/lib/auth/mfa';
 import { encryptSecret } from '@/services/identity/secrets';
 import { resetLoginThrottle, uniq } from './helpers';
 
@@ -37,7 +37,32 @@ test.describe('Dual-credential sign-in', () => {
   let callId = '';
   let planCode = '';
 
-  const code = () => totp(secret, Math.floor(Date.now() / 1000 / 30));
+  const code = () => totp(secret, currentTotpStep());
+  /**
+   * The next code this identity has not spent. Every accepted code spends its
+   * step, so a re-authentication right after a sign-in waits for the
+   * authenticator's next code — as a person would. The two credential-change
+   * tests use it: the evidence that those flows stay usable with replay
+   * prevention on.
+   */
+  let spentStep = -1;
+  const nextCode = async () => {
+    while (currentTotpStep() <= spentStep) await new Promise((resolve) => setTimeout(resolve, 250));
+    spentStep = currentTotpStep();
+    return code();
+  };
+  /**
+   * A code for a fresh sign-in. Each test starts a new sign-in, often within the
+   * same 30 seconds as the previous test's; waiting out the step every time cost
+   * the suite minutes. Clearing this synthetic identity's last-used step is test
+   * setup, like the fixtures above — replay refusal itself is proven in
+   * tests/security/mfa-replay.spec.ts.
+   */
+  const signInCode = async () => {
+    await prisma.platformUser.update({ where: { normalizedEmail: email }, data: { mfaLastUsedStep: null } });
+    spentStep = currentTotpStep();
+    return code();
+  };
 
   async function signIn(page: Page, password: string) {
     await resetLoginThrottle();
@@ -49,7 +74,7 @@ test.describe('Dual-credential sign-in', () => {
     await expect(field).toBeVisible({ timeout: 60_000 });
     // The password is not kept on the page once the server has issued a challenge.
     await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
-    await field.fill(code());
+    await field.fill(await signInCode());
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
   }
 
@@ -170,7 +195,7 @@ test.describe('Dual-credential sign-in', () => {
     await expect(page.getByTestId('monitoring-credential-state')).toHaveText('Not set.');
     await page.getByRole('button', { name: 'Set monitoring password' }).click();
     await page.getByLabel('Current administration password').fill(passwordA);
-    await page.getByLabel('Authentication code').fill(code());
+    await page.getByLabel('Authentication code').fill(await nextCode());
     await page.getByLabel('New monitoring password').fill(passwordB);
     await page.getByLabel('Repeat the new password').fill(passwordB);
     await page.getByRole('button', { name: 'Save' }).click();
@@ -229,7 +254,7 @@ test.describe('Dual-credential sign-in', () => {
     await page.goto('/platform/security');
     await page.getByRole('button', { name: 'Change monitoring password' }).click();
     await page.getByLabel('Current administration password').fill(passwordA);
-    await page.getByLabel('Authentication code').fill(code());
+    await page.getByLabel('Authentication code').fill(await nextCode());
     await page.getByLabel('New monitoring password').fill(passwordA);
     await page.getByLabel('Repeat the new password').fill(passwordA);
     await page.getByRole('button', { name: 'Save' }).click();

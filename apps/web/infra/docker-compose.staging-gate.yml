@@ -1,0 +1,25 @@
+# The staging-first gate's private path to the staging database.
+#
+# Production's `migrate` service refuses to apply a migration that has not already
+# finished in staging (scripts/check-staging-first.mjs). On this host staging is a
+# separate Compose project whose Postgres publishes no port — correctly, since neither
+# database belongs on a host interface — so the only way to reach it is to join the
+# staging project's network for the one-off migrate container, and nothing else.
+#
+# release.sh includes this file for production only when .env.production carries
+# STAGING_NETWORK, so a production without staging is unaffected. The database
+# endpoint is the staging container's own name, never the shared alias `postgres`,
+# which exists on both networks and would be ambiguous the moment both were joined.
+#
+#   STAGING_NETWORK=youhan-ios-staging_default
+#   STAGING_DATABASE_URL=postgresql://<user>:<pw>@youhan-ios-staging-postgres-1:5432/youhan_ios_demo
+networks:
+  staging_gate:
+    external: true
+    name: ${STAGING_NETWORK:?set STAGING_NETWORK in .env.production to the staging project's network}
+
+services:
+  migrate:
+    networks:
+      - default
+      - staging_gate

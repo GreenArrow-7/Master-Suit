@@ -435,6 +435,11 @@ html:not([data-theme='dark']):not([data-theme='glass'])
 
 /* ── Phones: full-width strip, two cards a row, comfortable targets ────────── */
 @media (max-width: 760px) {
+  /* The surface's taller bar, also below the status bar in the iOS app (see globals.css). */
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
+    height: calc(60px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
   html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-page-main {
     padding-top: 12px;
   }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
 
 const createBody = z
@@ -92,6 +93,9 @@ export const GET = route(
       },
     });
 
+    // Call notes are free text about the conversation. The call itself — who,
+    // when, how long, the outcome — is monitoring metadata; the notes are not.
+    if (!(await hasSensitiveAccess(ctx))) return { data: data.map((call) => ({ ...call, notes: null })) };
     return { data };
   },
 );

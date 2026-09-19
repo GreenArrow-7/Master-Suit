@@ -6,6 +6,7 @@ import { runReminderSweep } from '@/services/crm/reminders';
 import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
+import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -55,7 +56,11 @@ const FIVE_MINUTE_PATTERN = '*/5 * * * *';
  * original is broken — a job name nobody handles, a payload unpacked wrongly —
  * which is exactly the class of failure a worker test exists to catch.
  */
-export async function handleMaintenanceJob(job: { name: string }): Promise<unknown> {
+export async function handleMaintenanceJob(job: {
+  name: string;
+  /** Carried by a caller that wants a narrower run; the schedules below send none. */
+  data?: { platformUserIds?: string[] };
+}): Promise<unknown> {
   if (job.name === 'retention') {
     // Never a dry run from the scheduler. The dry run exists so an operator
     // can see what a sweep *would* remove before authorising it; a
@@ -106,6 +111,23 @@ export async function handleMaintenanceJob(job: { name: string }): Promise<unkno
     logger.info(result, 'next-follow-up drift canary complete');
     return result;
   }
+  if (job.name === 'account-deletions') {
+    /**
+     * Erasure of accounts whose owner asked for it.
+     *
+     * Every fifteen minutes rather than daily: this is a person exercising a deletion
+     * right, and the timeframe the product states to them is what this interval has to
+     * honour. The executor claims each row by conditional UPDATE, so two overlapping runs
+     * process each request once between them rather than once each.
+     */
+    // The scheduled job carries no data, so production sweeps everything due. A caller
+    // that names accounts gets only those: the reachability test drives this handler for
+    // real, and an unscoped sweep from inside a parallel test run erases the fixtures of
+    // whichever sibling suite happens to be mid-assertion.
+    const result = await sweepAccountDeletions(20, job.data?.platformUserIds);
+    logger.info(result, 'account deletion sweep complete');
+    return result;
+  }
   logger.warn({ jobName: job.name }, 'unknown maintenance job');
 }
 
@@ -127,20 +149,22 @@ export function startMaintenanceWorker() {
  * running. That line used to be a hard-coded pair and had already gone stale.
  */
 export async function armMaintenanceScheduler(): Promise<string[]> {
+  // Armed and reported from the same rows. The return value used to be a second, hand-typed
+  // copy of these ids, which the comment above says had already gone stale once — and it
+  // went stale again the moment the account-deletion schedule was added below it. A list
+  // that cannot disagree with itself is the fix; another careful edit is not.
+  const schedules: { id: string; pattern: string; name: string }[] = [
+    { id: 'retention-daily', pattern: DAILY_PATTERN, name: 'retention' },
+    { id: 'reminders-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'reminders' },
+    { id: 'lead-triage-five-minutely', pattern: FIVE_MINUTE_PATTERN, name: 'triage-sweep' },
+    // 03:20, after retention has settled: the canary reads what the night left.
+    { id: 'follow-up-drift-daily', pattern: '20 3 * * *', name: 'follow-up-drift' },
+    { id: 'account-deletions-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'account-deletions' },
+  ];
   const queue = new Queue('maintenance', { connection: redis });
-  await queue.upsertJobScheduler('retention-daily', { pattern: DAILY_PATTERN }, { name: 'retention' });
-  await queue.upsertJobScheduler(
-    'reminders-quarter-hourly',
-    { pattern: QUARTER_HOURLY_PATTERN },
-    { name: 'reminders' },
-  );
-  await queue.upsertJobScheduler(
-    'lead-triage-five-minutely',
-    { pattern: FIVE_MINUTE_PATTERN },
-    { name: 'triage-sweep' },
-  );
-  // 03:20, after retention has settled: the canary reads what the night left.
-  await queue.upsertJobScheduler('follow-up-drift-daily', { pattern: '20 3 * * *' }, { name: 'follow-up-drift' });
+  for (const schedule of schedules) {
+    await queue.upsertJobScheduler(schedule.id, { pattern: schedule.pattern }, { name: schedule.name });
+  }
   await queue.close();
-  return ['retention-daily', 'reminders-quarter-hourly', 'lead-triage-five-minutely', 'follow-up-drift-daily'];
+  return schedules.map((schedule) => schedule.id);
 }

@@ -104,23 +104,18 @@ test.describe('Follow-up work on a phone', () => {
       // Complete it, and confirm it leaves the open list. The PATCH is watched
       // so a refusal is reported as a refusal rather than as "the row is still
       // there", which is the same symptom with a completely different cause.
-      // The click is retried because a visible button is not necessarily a hydrated
-      // one: straight after a reload on a slow runner the first click can land
-      // before React has attached its handler, which sends nothing at all and is
-      // indistinguishable from a request that was never answered.
-      const completeButton = page.getByRole('button', { name: 'Complete' }).first();
-      let patchRes: Awaited<ReturnType<typeof page.waitForResponse>> | null = null;
-      for (let attempt = 0; attempt < 3 && patchRes === null; attempt++) {
-        const completed = page
-          .waitForResponse((r) => r.url().includes('/api/v1/follow-ups/') && r.request().method() === 'PATCH', {
-            timeout: 15_000,
-          })
-          .catch(() => null);
-        await completeButton.click();
-        patchRes = await completed;
-      }
-      expect(patchRes, 'clicking Complete sent a PATCH').not.toBeNull();
-      expect(patchRes!.status(), `complete: ${await patchRes!.text()}`).toBeLessThan(300);
+      // Clicked once, deliberately. The flake this used to have was the button
+      // accepting a click before React had attached — and that is fixed in the
+      // component now (useHydrated keeps the control disabled until it can act),
+      // so Playwright's own wait-for-enabled does the waiting. Retrying a click
+      // that performs a mutation is the thing to avoid: a slow response would
+      // send a second PATCH rather than reveal the problem.
+      const completed = page.waitForResponse(
+        (r) => r.url().includes('/api/v1/follow-ups/') && r.request().method() === 'PATCH',
+      );
+      await page.getByRole('button', { name: 'Complete' }).first().click();
+      const patchRes = await completed;
+      expect(patchRes.status(), `complete: ${await patchRes.text()}`).toBeLessThan(300);
       await page.reload();
       await expect(page.getByText(`Call back ${run}`)).toHaveCount(0, { timeout: 30_000 });
     } finally {

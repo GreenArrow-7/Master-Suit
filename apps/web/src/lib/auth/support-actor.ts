@@ -62,7 +62,7 @@ export const platformUserIdOf = (actorId: string): string | null =>
  * `VIEW_REPORTS` is deliberately absent from the action list below as well, so
  * this grants reading records and not the roll-ups built from them.
  */
-const MONITORING_MODULES = new Set(['leads', 'calls', 'activities', 'tasks', 'visits', 'tickets']);
+export const MONITORING_MODULES = new Set(['leads', 'calls', 'activities', 'tasks', 'visits', 'tickets']);
 
 /**
  * And the actions, which is the other half of "read-only".
@@ -71,7 +71,7 @@ const MONITORING_MODULES = new Set(['leads', 'calls', 'activities', 'tasks', 'vi
  * a different capability (aggregate views across a workspace) and nothing in the
  * monitoring journey needs it.
  */
-const MONITORING_ACTIONS = ['VIEW'] as const;
+export const MONITORING_ACTIONS = ['VIEW'] as const;
 
 /**
  * The actor platform staff get inside a customer workspace.

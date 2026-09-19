@@ -55,6 +55,12 @@ async function signedIn(
 async function openSummary(page: Page) {
   await page.goto(at('/dashboard'));
   await expect(page.locator('main h1').first()).toBeVisible({ timeout: 60_000 });
+  // The heading is the shell, not the summary. Snapshotting on the heading alone
+  // can read a page whose cards have not been placed yet and report "no KPIs",
+  // which is the same symptom as a summary that genuinely rendered nothing. Wait
+  // for the first card the way the rest of this file waits for the rows it asserts
+  // on; if the summary really is empty this still fails, just with a clearer reason.
+  await expect(page.locator('main .lf-kpi').first()).toBeAttached({ timeout: 60_000 });
 }
 
 /** Everything the page reports, minus the time-of-day greeting. */

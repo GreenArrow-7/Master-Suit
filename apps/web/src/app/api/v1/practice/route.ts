@@ -88,8 +88,15 @@ const listQuery = z
  * already covers, resolved through the same helper the lead lists use rather
  * than a second interpretation of the hierarchy.
  */
+// Practice scores are an evaluation of a person; monitoring reads them only with a sensitive grant.
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  {
+    module: 'calls',
+    productModule: 'SALES',
+    action: 'VIEW',
+    query: listQuery,
+    sensitive: 'practice sessions and scores',
+  },
   async ({ ctx, query }) => {
     const scope = scopeFor(ctx, 'calls', 'VIEW');
     const where: Record<string, unknown> = { tenantId: ctx.tenantId };

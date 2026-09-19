@@ -13,6 +13,18 @@ body {
   min-height: 100%;
 }
 
+/*
+ * Keep WebKit from resizing text on its own. Mobile Safari and WKWebView inflate
+ * the text of anything they judge to be a non-responsive page, which changes type
+ * scale independently of the layout and makes a correct design look wrong. The
+ * layout here is responsive, so the automatic adjustment is not wanted; pinch zoom
+ * is untouched and still works.
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: var(--lf-canvas);
   color: var(--lf-ink);
@@ -1066,6 +1078,19 @@ body {
     gap: 4px;
     padding: 0 8px 0 52px;
   }
+  /*
+   * Below the status bar and notch. The page sets viewport-fit=cover, so in the iOS
+   * app (and an installed web app) content starts at the very top of the screen and
+   * env(safe-area-inset-top) is the status-bar height; in a phone browser it is 0 and
+   * nothing changes. The bar grows by the inset rather than losing height to it.
+   */
+  .lf-shell-topbar {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .lf-workspace-sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
   .lf-shell-actions {
     flex-wrap: nowrap;
     gap: 2px;
@@ -1094,7 +1119,7 @@ body {
   .lf-mobile-nav-button {
     width: 44px;
     height: 44px;
-    top: 8px;
+    top: calc(8px + env(safe-area-inset-top, 0px));
     left: 8px;
     border-radius: var(--lf-radius);
   }
@@ -1195,7 +1220,7 @@ body {
     position: fixed;
     z-index: 45;
     left: 8px;
-    top: 6px;
+    top: calc(6px + env(safe-area-inset-top, 0px));
     width: 44px;
     height: 44px;
     border: 1px solid var(--lf-line);
@@ -3433,6 +3458,9 @@ a:hover {
     height: auto;
     border-radius: 0;
     border: 0;
+    /* Full screen on a phone: its header clears the status bar and its composer the home indicator. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
@@ -6551,4 +6579,68 @@ a.lf-kpi:hover {
 .lf-tab:focus-visible {
   outline: 2px solid var(--lf-wine-700);
   outline-offset: -2px;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Touch input
+ *
+ * iOS zooms the page in when a focused form control renders text below 16px, and
+ * it does not zoom back out afterwards. The page is then wider than the screen,
+ * every subsequent tap lands off-target and the whole interface reads as
+ * oversized and broken. The controls here are 14px (--lf-text-sm), so every text
+ * field triggered it: searching a list, filtering a grid, signing in.
+ *
+ * The cause is the control's own font size on a touch device, not the viewport
+ * width, so the gate is `pointer: coarse` rather than a phone breakpoint — a
+ * touch tablet has the same problem and a narrow desktop window does not.
+ * Keyboard-driven layouts keep the tighter 14px.
+ *
+ * Deliberately not fixed by disabling zoom: `maximum-scale=1` or `user-scalable=no`
+ * would also stop a person magnifying the screen, which is an accessibility
+ * control and not ours to remove.
+ * ───────────────────────────────────────────────────────────────────────────*/
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea,
+  .lf-input,
+  .lf-select,
+  .lf-textarea {
+    /* 16px is the threshold, not a preference: at 15.99px iOS still zooms. */
+    font-size: max(16px, var(--lf-text-sm));
+  }
+
+  /* Apple's minimum comfortable target is 44pt. The 36px controls are reachable
+     but easy to miss next to each other in a row of filters. */
+  .lf-input,
+  .lf-select {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .lf-btn {
+    min-height: 44px;
+  }
+
+  /* A small icon button keeps its visual size; the touch area grows around it so
+     neighbouring controls in an action row stop competing for the same tap. */
+  .lf-btn--icon,
+  .lf-btn--sm {
+    min-height: 40px;
+  }
+}
+
+/* Public legal pages: a readable column, no app chrome. */
+.lf-public {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  line-height: 1.6;
+}
+.lf-public h1 {
+  margin: 0 0 16px;
+}
+.lf-public h2 {
+  margin: 28px 0 8px;
+  font-size: 1.15rem;
 }

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Master Suite</string>
+        <string>YOUHAN ONE Dev</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,6 +22,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<!--
@@ -30,10 +32,10 @@
 	  routes the page's getUserMedia and navigator.geolocation calls through
 	  them. App Review also reads the strings, and rejects the generic ones.
 	-->
-	<key>NSCameraUsageDescription</key>
-	<string>Used to take the photo that confirms your attendance check-in.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to confirm you are at the site when you check in or log a visit.</string>
+	<string>Used to confirm where you are when you check in for attendance or record a site visit.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Used to take photos you attach to records, such as lead documents and receipt evidence, and for face check-in.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -59,7 +61,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

@@ -73,3 +73,13 @@ apps/web/infra/tls-local/
 # happened to be in flight. Useful locally, never in a shared artifact.
 validation-evidence/e2e-artifacts/
 **/trace.zip
+
+# Apple signing material never enters the repository (see apps/mobile/README.md).
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
+distribution.key
+issuer-id.txt
+p12-password.txt

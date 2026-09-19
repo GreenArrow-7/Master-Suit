@@ -10,8 +10,7 @@ import { clientIp, createPlatformSession, SERVICE_SESSION_COOKIE } from '@/lib/a
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { clear as clearLimit, consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
-import { verifyTotp } from '@/lib/auth/mfa';
-import { decryptSecret } from '@/services/identity/secrets';
+import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { assertSameOrigin } from '@/lib/security/origin';
 
@@ -36,7 +35,7 @@ import { assertSameOrigin } from '@/lib/security/origin';
  *
  * Every primitive: `verifyPassword` (Argon2id) and `burnTiming` for the constant
  * -work failure path, `consume`/`limits` for throttling, `env.MAX_FAILED_LOGINS`
- * and `env.LOCKOUT_MINUTES` for lockout, `verifyTotp` against the envelope
+ * and `env.LOCKOUT_MINUTES` for lockout, `consumeTotp` against the envelope
  * -encrypted secret, `consumeRecoveryCode` for single-use recovery codes, and
  * `createPlatformSession` for the cookie. No new cryptography exists here.
  *
@@ -198,7 +197,8 @@ export async function POST(req: Request) {
     // Brute-forcing six digits must not be free even with a correct password.
     await consume(limits.mfaConfirm(user.id));
 
-    const byTotp = Boolean(body.mfaCode && verifyTotp(decryptSecret(user.mfaSecret), body.mfaCode));
+    const totpOutcome = body.mfaCode ? await consumeTotp(user.id, user.mfaSecret, body.mfaCode) : 'INVALID';
+    const byTotp = totpOutcome === 'ACCEPTED';
     const byRecovery =
       !byTotp && Boolean(body.recoveryCode) && (await consumeRecoveryCode(user.id, body.recoveryCode!));
 
@@ -221,7 +221,8 @@ export async function POST(req: Request) {
           lockedUntil: locked ? new Date(now.getTime() + env.LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
         },
       });
-      await recordFailure(user.id, ip, ua, requestId, locked ? 'LOCKED_NOW_BAD_MFA' : 'BAD_MFA', username);
+      const reason = totpOutcome === 'REPLAYED' ? 'MFA_CODE_REPLAYED' : 'BAD_MFA';
+      await recordFailure(user.id, ip, ua, requestId, locked ? `LOCKED_NOW_${reason}` : reason, username);
       if (locked) await record(user.id, 'ACCOUNT_LOCKED', ip, ua, requestId, { after: failures, cause: 'mfa' });
       throw Unauthorized(GENERIC);
     }

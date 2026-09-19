@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
@@ -103,7 +103,14 @@ interface Props {
 }
 
 async function api(url: string, opts: RequestInit = {}) {
-  const res = await fetch(url, { ...opts, headers: { 'content-type': 'application/json', ...opts.headers } });
+  // A dropped connection rejects with a bare TypeError ("Failed to fetch"). Say what
+  // it means for the person holding the phone: nothing was saved, and trying again
+  // is safe — every write here sets a value rather than adding one.
+  const res = await fetch(url, { ...opts, headers: { 'content-type': 'application/json', ...opts.headers } }).catch(
+    () => {
+      throw new Error('Could not reach the server. Nothing was saved — check the connection and try again.');
+    },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Request failed (${res.status})`);
@@ -1035,12 +1042,32 @@ function DocumentsTab({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const camera = useRef<HTMLInputElement>(null);
+
+  /**
+   * "Take photo" opens the camera where the device has one (a phone, or the app's
+   * WebView) and a picker elsewhere. When the camera permission is refused, or the
+   * person backs out, no file arrives and no change event fires — only `cancel` —
+   * so that is where the way forward is explained instead of doing nothing.
+   */
+  useEffect(() => {
+    const input = camera.current;
+    if (!input) return;
+    const cancelled = () =>
+      setHint(
+        'No photo was added. If the camera is blocked, allow it for this app in the phone’s Settings, or use Upload document to choose a file.',
+      );
+    input.addEventListener('cancel', cancelled);
+    return () => input.removeEventListener('cancel', cancelled);
+  }, []);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setBusy(true);
     setError(null);
+    setHint(null);
     try {
       const form = new FormData();
       form.set('file', file);
@@ -1053,7 +1080,7 @@ function DocumentsTab({
       }
       router.refresh();
     } catch {
-      setError('Could not reach the server. Try again.');
+      setError('Could not reach the server. The file was not uploaded — check the connection and try again.');
     } finally {
       setBusy(false);
       e.target.value = '';
@@ -1098,10 +1125,24 @@ function DocumentsTab({
       >
         <div className="lf-eyebrow">Documents</div>
         {canEdit && (
-          <label className="lf-btn lf-btn--sm" style={{ cursor: busy ? 'progress' : 'pointer' }}>
-            {busy ? 'Uploading…' : 'Upload document'}
-            <input type="file" onChange={upload} disabled={busy} style={{ display: 'none' }} />
-          </label>
+          <div style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap' }}>
+            <label className="lf-btn lf-btn--secondary lf-btn--sm" style={{ cursor: busy ? 'progress' : 'pointer' }}>
+              Take photo
+              <input
+                ref={camera}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={upload}
+                disabled={busy}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <label className="lf-btn lf-btn--sm" style={{ cursor: busy ? 'progress' : 'pointer' }}>
+              {busy ? 'Uploading…' : 'Upload document'}
+              <input type="file" onChange={upload} disabled={busy} style={{ display: 'none' }} />
+            </label>
+          </div>
         )}
       </div>
 
@@ -1109,6 +1150,14 @@ function DocumentsTab({
         <div className="lf-alert" role="alert" style={{ marginBottom: 'var(--lf-space-3)' }}>
           {error}
         </div>
+      )}
+      {hint && !error && (
+        <p
+          role="status"
+          style={{ margin: '0 0 var(--lf-space-3)', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}
+        >
+          {hint}
+        </p>
       )}
 
       {documents.length === 0 ? (

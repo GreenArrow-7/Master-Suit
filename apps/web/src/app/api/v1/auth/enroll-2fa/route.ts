@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { AppError, Conflict, Forbidden, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { generateSecret, otpauthUrl, verifyTotp } from '@/lib/auth/mfa';
+import { generateSecret, otpauthUrl } from '@/lib/auth/mfa';
+import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
 import { verifyPassword } from '@/lib/auth/password';
-import { encryptSecret, decryptSecret } from '@/services/identity/secrets';
+import { encryptSecret } from '@/services/identity/secrets';
 import { resolvePlatformCtx, createPlatformSession, clientIp } from '@/lib/auth/session';
 import { issueRecoveryCodes } from '@/services/identity/twoFactor';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
@@ -104,7 +105,9 @@ export async function POST(req: Request) {
     await consume(limits.mfaConfirm(user.id));
     if (!body.code) throw Forbidden('Enter the six-digit code from your authenticator.');
     if (!user.mfaSecret) throw Conflict('Start enrolment before confirming a code.');
-    if (!verifyTotp(decryptSecret(user.mfaSecret), body.code)) {
+    const outcome = await consumeTotp(user.id, user.mfaSecret, body.code);
+    if (outcome === 'REPLAYED') throw Forbidden(REPLAYED_CODE);
+    if (outcome !== 'ACCEPTED') {
       throw Forbidden('That code did not match. Check your authenticator clock and try the current code.');
     }
 

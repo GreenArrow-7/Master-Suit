@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { Forbidden, MethodNotAllowed } from '@/lib/errors';
 import { route } from '@/lib/api/handler';
+import { currentSessionToken } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { changeOwnPassword, mustChangePassword } from '@/services/identity/accounts';
+import { cancelAccountDeletion, myDeletionRequest, requestAccountDeletion } from '@/services/identity/accountDeletion';
 import {
   beginTotpEnrolment,
   confirmTotpEnrolment,
@@ -32,6 +34,9 @@ const paramsSchema = z.object({
     'two-factor-confirm',
     'two-factor-disable',
     'two-factor-recovery-regenerate',
+    'account-deletion-status',
+    'account-deletion-request',
+    'account-deletion-cancel',
   ]),
 });
 
@@ -39,11 +44,20 @@ export const GET = route(
   { module: 'identity_self', action: 'VIEW', selfService: true, params: paramsSchema },
   async ({ ctx, params }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
+    /**
+     * The same refusal the POST arm makes, and for the same reason. It used to sit only on
+     * POST, so an API key could not change its creator's credentials but could still read
+     * whether they had asked to be erased, why, and which other workspaces were blocking
+     * it. Reading that is not a machine's business either.
+     */
+    if (ctx.apiKeyId) throw Forbidden('This endpoint requires a signed-in session.');
     switch (params.action) {
       case 'password-status':
         return { mustChangePassword: await mustChangePassword(ctx) };
       case 'two-factor-status':
         return twoFactorStatus(ctx);
+      case 'account-deletion-status':
+        return { request: await myDeletionRequest(ctx) };
       default:
         throw MethodNotAllowed('POST');
     }
@@ -58,7 +72,7 @@ export const POST = route(
     params: paramsSchema,
     body: z.record(z.string(), z.unknown()),
   },
-  async ({ ctx, params, body }) => {
+  async ({ ctx, params, body, req }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
 
     /**
@@ -75,7 +89,8 @@ export const POST = route(
         const input = z
           .object({ currentPassword: z.string().min(1).max(512), newPassword: z.string().min(8).max(512) })
           .parse(body);
-        return changeOwnPassword(ctx, input.currentPassword, input.newPassword);
+        // The device making the change stays signed in; every other session ends.
+        return changeOwnPassword(ctx, input.currentPassword, input.newPassword, await currentSessionToken(req));
       }
       case 'two-factor-begin': {
         // Re-authentication: see beginTotpEnrolment for why enrolment is not a
@@ -91,6 +106,28 @@ export const POST = route(
         const input = z.object({ password: z.string().min(1).max(512), code: z.string().length(6) }).parse(body);
         return disableTotp(ctx, input.password, input.code);
       }
+      case 'account-deletion-request': {
+        /**
+         * Deleting your own account. Like the password change above, the account is
+         * `ctx.actor` and there is no parameter naming a target — a body carrying a user
+         * id would be a way to ask for somebody else's identity to be erased.
+         *
+         * Reauthentication happens inside the service: the password, and the
+         * authenticator code when the account has one.
+         */
+        const input = z
+          .object({
+            password: z.string().min(1).max(512),
+            mfaCode: z.string().length(6).optional(),
+            reason: z.string().max(2000).optional(),
+          })
+          .parse(body);
+        return requestAccountDeletion(ctx, input);
+      }
+      case 'account-deletion-cancel':
+        // No body: you can only withdraw your own request, and only while it is still
+        // waiting. Once erasure has started the service refuses.
+        return cancelAccountDeletion(ctx);
       case 'two-factor-recovery-regenerate': {
         const input = z.object({ code: z.string().length(6) }).parse(body);
         return regenerateRecoveryCodes(ctx, input.code);

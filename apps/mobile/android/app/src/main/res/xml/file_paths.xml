@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one directory the camera writes into when the page asks for a photo:
+  Capacitor's BridgeWebChromeClient creates the capture file with
+  getExternalFilesDir(DIRECTORY_PICTURES) and shares it through this provider.
+  The template shared the whole of external storage and the cache ("."), which
+  let any granted URI reach far more than a photo.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <external-files-path name="captures" path="Pictures/" />
 </paths>

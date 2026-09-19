@@ -31,6 +31,7 @@ import { POST as serviceLogin, DELETE as serviceLogout } from '@/app/api/v1/auth
 import { POST as humanLogin } from '@/app/api/v1/auth/login/route';
 import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { GET as listAccounts } from '@/app/api/v1/accounts/route';
+import { freshTotp } from '../helpers/totp';
 
 const suffix = randomBytes(4).toString('hex');
 const username = `ai.reader.${suffix}`;
@@ -166,7 +167,7 @@ afterAll(async () => {
 
 describe('username + password + MFA', () => {
   it('correct password and correct MFA signs in', async () => {
-    const res = await login({ username, password: PASSWORD, mfaCode: currentCode() });
+    const res = await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.identity.username).toBe(username);
     expect(res.body.identity.platformRole).toBe('AI_SERVICE');
@@ -180,6 +181,20 @@ describe('username + password + MFA', () => {
     expect(session?.mfaSatisfied).toBe(true);
   });
 
+  it('a code that signed in cannot sign in a second session, and the trail says replay', async () => {
+    const code = await freshTotp({ username }, SECRET);
+    expect((await login({ username, password: PASSWORD, mfaCode: code })).status).toBe(200);
+    const replay = await login({ username, password: PASSWORD, mfaCode: code });
+    expect(replay.status).toBe(401);
+    const failure = await prisma.platformAuditEvent.findFirst({
+      where: { actorUserId: identityId, event: 'LOGIN_FAILED' },
+      orderBy: { occurredAt: 'desc' },
+      select: { metadata: true },
+    });
+    expect((failure!.metadata as { reason?: string }).reason).toBe('MFA_CODE_REPLAYED');
+    await prisma.platformUser.update({ where: { id: identityId }, data: { failedLoginCount: 0, lockedUntil: null } });
+  });
+
   it('correct password and WRONG MFA fails', async () => {
     const wrong = currentCode() === '000000' ? '111111' : '000000';
     const res = await login({ username, password: PASSWORD, mfaCode: wrong });
@@ -188,7 +203,11 @@ describe('username + password + MFA', () => {
   });
 
   it('wrong password fails, and says nothing a correct one would not', async () => {
-    const wrong = await login({ username, password: 'not-the-password', mfaCode: currentCode() });
+    const wrong = await login({
+      username,
+      password: 'not-the-password',
+      mfaCode: await freshTotp({ username }, SECRET),
+    });
     expect(wrong.status).toBe(401);
     const unknown = await login({ username: `nobody.${suffix}`, password: PASSWORD });
     expect(unknown.status).toBe(401);
@@ -263,11 +282,15 @@ describe('username + password + MFA', () => {
 describe('account standing', () => {
   it('a deactivated account cannot sign in', async () => {
     await prisma.platformUser.update({ where: { id: identityId }, data: { status: 'DEACTIVATED' } });
-    expect((await login({ username, password: PASSWORD, mfaCode: currentCode() })).status).toBe(401);
+    expect((await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) })).status).toBe(
+      401,
+    );
 
     await prisma.platformUser.update({ where: { id: identityId }, data: { status: 'ACTIVE' } });
     await clearLimit(limits.mfaConfirm(identityId));
-    expect((await login({ username, password: PASSWORD, mfaCode: currentCode() })).status).toBe(200);
+    expect((await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) })).status).toBe(
+      200,
+    );
   });
 
   it('a locked account cannot sign in even with the right credentials', async () => {
@@ -275,7 +298,9 @@ describe('account standing', () => {
       where: { id: identityId },
       data: { lockedUntil: new Date(Date.now() + 3_600_000) },
     });
-    expect((await login({ username, password: PASSWORD, mfaCode: currentCode() })).status).toBe(401);
+    expect((await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) })).status).toBe(
+      401,
+    );
   });
 
   it('repeated wrong passwords lock the account, and the lockout is audited', async () => {
@@ -311,7 +336,7 @@ describe('account standing', () => {
       new Request('http://localhost/api/v1/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password: PASSWORD, mfaCode: currentCode() }),
+        body: JSON.stringify({ email, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) }),
       }),
     );
     // Even if it mints one, resolvePlatformCtx refuses a FULL session for this
@@ -407,7 +432,7 @@ describe('the session buys no authority', () => {
 
 describe('session security', () => {
   it('the interactive session is short-lived', async () => {
-    await login({ username, password: PASSWORD, mfaCode: currentCode() });
+    await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) });
     const session = await prisma.platformSession.findFirst({
       where: { platformUserId: identityId, purpose: 'AI_SERVICE' },
       orderBy: { createdAt: 'desc' },
@@ -485,7 +510,10 @@ describe('session security', () => {
   });
 
   it('refuses a cross-origin sign-in attempt', async () => {
-    const res = await login({ username, password: PASSWORD, mfaCode: currentCode() }, 'https://evil.example.com');
+    const res = await login(
+      { username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) },
+      'https://evil.example.com',
+    );
     expect(res.status).toBe(403);
   });
 });
@@ -494,7 +522,7 @@ describe('session security', () => {
 
 describe('platform-level, and audited', () => {
   it('signing in creates no WorkspaceMembership and no workspace user', async () => {
-    await login({ username, password: PASSWORD, mfaCode: currentCode() });
+    await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) });
     expect(await prisma.workspaceMembership.count({ where: { platformUserId: identityId } })).toBe(0);
     for (const tenantId of [fx.a.tenantId, fx.b.tenantId]) {
       expect(await prisma.user.count({ where: { tenantId, email } })).toBe(0);
@@ -504,7 +532,7 @@ describe('platform-level, and audited', () => {
   it('writes successes and failures to the protected platform log', async () => {
     await login({ username, password: 'wrong-on-purpose' });
     await prisma.platformUser.update({ where: { id: identityId }, data: { failedLoginCount: 0, lockedUntil: null } });
-    await login({ username, password: PASSWORD, mfaCode: currentCode() });
+    await login({ username, password: PASSWORD, mfaCode: await freshTotp({ username }, SECRET) });
 
     const events = await prisma.platformAuditEvent.findMany({ where: { actorUserId: identityId } });
     const names = new Set(events.map((row) => row.event));

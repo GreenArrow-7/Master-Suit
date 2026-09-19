@@ -2,11 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useHydrated } from '@/lib/useHydrated';
 
 /** Complete / reschedule a follow-up in place, against PATCH /api/v1/follow-ups/[id]. */
 export default function FollowUpRowActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  // Until React has attached, these buttons are painted but inert; a tap would be
+  // dropped silently. Treat "not hydrated yet" exactly like "already working".
+  const hydrated = useHydrated();
+  const blocked = busy || !hydrated;
   const [rescheduling, setRescheduling] = useState(false);
   const [dueAt, setDueAt] = useState('');
 
@@ -32,7 +37,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
       <button
         type="button"
         className="lf-btn lf-btn--secondary lf-btn--sm"
-        disabled={busy}
+        disabled={blocked}
         onClick={() => patch({ status: 'OPEN' })}
       >
         Reopen
@@ -54,7 +59,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         <button
           type="button"
           className="lf-btn lf-btn--sm"
-          disabled={busy || !dueAt}
+          disabled={blocked || !dueAt}
           onClick={() => patch({ dueAt: new Date(dueAt).toISOString() })}
         >
           Save
@@ -62,7 +67,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
         <button
           type="button"
           className="lf-btn lf-btn--secondary lf-btn--sm"
-          disabled={busy}
+          disabled={blocked}
           onClick={() => setRescheduling(false)}
         >
           Back
@@ -76,7 +81,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
       <button
         type="button"
         className="lf-btn lf-btn--sm"
-        disabled={busy}
+        disabled={blocked}
         onClick={() => patch({ status: 'COMPLETED' })}
       >
         Complete
@@ -84,7 +89,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
       <button
         type="button"
         className="lf-btn lf-btn--secondary lf-btn--sm"
-        disabled={busy}
+        disabled={blocked}
         onClick={() => setRescheduling(true)}
       >
         Reschedule
@@ -92,7 +97,7 @@ export default function FollowUpRowActions({ id, status }: { id: string; status:
       <button
         type="button"
         className="lf-btn lf-btn--secondary lf-btn--sm"
-        disabled={busy}
+        disabled={blocked}
         onClick={() => patch({ status: 'CANCELLED' })}
       >
         Cancel

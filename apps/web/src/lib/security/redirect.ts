@@ -23,3 +23,44 @@ export function safeReturnTo(value: string | null | undefined, fallback = '/'): 
   if (!value) return fallback;
   return SAME_SITE_PATH.test(value) ? value : fallback;
 }
+
+/** Long enough for any screen with its filters; short enough not to be a payload. */
+const MAX_RETURN_TO = 2048;
+
+/**
+ * The sign-in page for someone who was sent away from `path` (plus its query):
+ * `/login?next=…`, so signing in can bring them back to the record they opened
+ * — a notification, a shared link, an app deep link. Plain `/login` when there is
+ * nothing worth returning to.
+ */
+export function loginPathFor(path: string | null | undefined, search = ''): string {
+  const target = `${path ?? ''}${search}`;
+  if (!path || safeReturnTo(target, '') === '' || target.length > MAX_RETURN_TO) return '/login';
+  if (path === '/login' || path.startsWith('/login/')) return '/login';
+  return `/login?next=${encodeURIComponent(target)}`;
+}
+
+/**
+ * Where a completed sign-in goes: the page the person asked for, or the server's
+ * destination.
+ *
+ * The requested page wins only when all of these hold, so it can never skip a step
+ * the server requires or leave the person's own workspaces:
+ *  - the server's destination is an ordinary workspace landing (`/{slug}/dashboard`)
+ *    — not a forced password change, enrolment, monitoring or the platform console;
+ *  - the requested path is same-site (see `safeReturnTo`) and not the sign-in page;
+ *  - its first segment is a workspace this account belongs to.
+ * The page itself still enforces access; this only decides where to try.
+ */
+export function signInLanding(
+  next: string | null | undefined,
+  destination: string,
+  workspaceSlugs: readonly string[],
+): string {
+  if (!next || next.length > MAX_RETURN_TO || /[\r\n]/.test(next)) return destination;
+  if (!/^\/[^/?#]+\/dashboard$/.test(destination)) return destination;
+  if (safeReturnTo(next, '') === '') return destination;
+  const slug = next.slice(1).split(/[/?#]/)[0];
+  if (!slug || slug === 'login' || !workspaceSlugs.includes(slug)) return destination;
+  return next;
+}

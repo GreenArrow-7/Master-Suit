@@ -27,6 +27,10 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       globals: true,
+      // The erasure executor is off unless this is 'true'. The suites that prove erasure
+      // need it on; the default-off behaviour has its own spec that sets the variable
+      // itself before importing anything.
+      env: { ACCOUNT_DELETION_EXECUTION_ENABLED: 'true' },
       testTimeout: 30_000,
       hookTimeout: 60_000,
       // Rate-limit buckets outlive a run and are shared by every spec that signs
