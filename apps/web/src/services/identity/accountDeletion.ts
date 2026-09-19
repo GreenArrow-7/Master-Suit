@@ -687,7 +687,9 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     //    the actor id and the event stay.
     // 9: recordings — pending owner clarification; nothing scheduled.
     for (const membership of memberships) {
-      if (!membership.salesUserId) continue;
+      // HR rows hang off the membership, not the sales user: a membership whose sales
+      // user is gone still has to have its employment record cleared, or step 5 counts
+      // what this step never touched and the request parks at the attempt cap.
       const profile = await prisma.employeeProfile.findFirst({
         where: { tenantId: membership.tenantId, membershipId: membership.id },
         select: { id: true },
@@ -707,6 +709,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
           })
         ).count;
       }
+      // Only the audit clear is keyed on the sales user.
+      if (!membership.salesUserId) continue;
       outcome.auditClientDetailsCleared += (
         await prisma.auditLog.updateMany({
           where: {

@@ -53,7 +53,9 @@ const flag = (name) => {
   return index === -1 ? undefined : argv[index + 1];
 };
 const from = (flag('from') ?? '').trim();
-const to = (flag('to') ?? '').trim();
+// Lowercased: every writer of PlatformUser.email stores it that way, and the workspace
+// user match in accounts.ts is exact, so a mixed-case address would never resolve.
+const to = (flag('to') ?? '').trim().toLowerCase();
 const expectId = flag('expect-id');
 const reason = flag('reason') ?? '';
 const apply = argv.includes('--apply');
@@ -170,6 +172,11 @@ async function main() {
         const pendingInvitesToNew = await tx.workspaceInvitation.count({
           where: { email: { equals: to, mode: 'insensitive' }, pendingKey: { not: null } },
         });
+        // Reported, not touched: an invitation still addressed to the old mailbox would,
+        // if accepted later, mint a new identity under that address.
+        const pendingInvitesToOld = await tx.workspaceInvitation.count({
+          where: { email: { equals: from, mode: 'insensitive' }, pendingKey: { not: null } },
+        });
         const workspaceRows = memberships.map((m) => ({
           workspace: m.tenant?.slug ?? m.tenantId,
           membership: m.status,
@@ -181,7 +188,7 @@ async function main() {
         console.log(`source identity: ${JSON.stringify(before)}`);
         console.log(`memberships: ${JSON.stringify(workspaceRows)}`);
         console.log(
-          `live: sessions=${liveSessions} mfaChallenges=${pendingChallenges} unusedResetTokens=${unusedResetTokens} accessGrants=${liveGrants} pendingInvitationsToNewAddress=${pendingInvitesToNew}`,
+          `live: sessions=${liveSessions} mfaChallenges=${pendingChallenges} unusedResetTokens=${unusedResetTokens} accessGrants=${liveGrants} pendingInvitationsToNewAddress=${pendingInvitesToNew} pendingInvitationsToOldAddress=${pendingInvitesToOld}`,
         );
         console.log(
           `plan: PlatformUser ${source.id} email ${from} → ${to} (emailVerifiedAt cleared); ` +
@@ -199,7 +206,7 @@ async function main() {
         let workspaceUsersUpdated = 0;
         for (const m of memberships) {
           if (!m.salesUser || lower(m.salesUser.email) !== lower(from)) continue;
-          await tx.user.update({ where: { id: m.salesUser.id }, data: { email: to } });
+          await tx.user.update({ where: { id: m.salesUser.id }, data: { email: to, emailVerifiedAt: null } });
           workspaceUsersUpdated += 1;
         }
 
@@ -222,6 +229,9 @@ async function main() {
           data: {
             tenantId: null,
             actorUserId: null,
+            // Named as the object, so the identity's own history page lists it.
+            objectType: 'platform_user',
+            objectId: source.id,
             event: 'IDENTITY_EMAIL_CHANGED',
             metadata: {
               platformUserId: source.id,
