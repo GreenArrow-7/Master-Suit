@@ -273,16 +273,27 @@ export default function LeadDetail({
 
         <aside className="lf-detail__side">
           <section className="lf-panel lf-panel--tight">
-            {/* Call is the one primary action on a lead; everything else is
-                secondary, and Edit / Delete stay behind More. */}
+            {/* The assisted call is the one primary action on a lead: placed through
+                the workspace's provider with guidance on screen. A plain handset
+                dial stays beside it, and says it carries no assistance. */}
             <div className="lf-actionrow">
               <button
                 className="lf-btn lf-btn--sm"
                 disabled={!lead.phone}
-                title={lead.phone ? `Call ${lead.phone}` : 'No phone number'}
+                title={
+                  lead.phone ? 'Place the call through the workspace provider with live guidance' : 'No phone number'
+                }
+                onClick={() => lead.phone && router.push(`${base}/calls/new?leadId=${lead.id}`)}
+              >
+                Call with AI assistance
+              </button>
+              <button
+                className="lf-btn lf-btn--secondary lf-btn--sm"
+                disabled={!lead.phone}
+                title={lead.phone ? `Phone ${lead.phone} from this device — no AI assistance` : 'No phone number'}
                 onClick={() => lead.phone && window.open(`tel:${lead.phone}`)}
               >
-                Call
+                Phone
               </button>
               <button
                 className="lf-btn lf-btn--secondary lf-btn--sm"
