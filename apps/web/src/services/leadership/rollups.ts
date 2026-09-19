@@ -559,3 +559,90 @@ export async function productivity(tenantId: string, userIds: string[], range: R
 
   return [...rows.values()].sort((a, b) => b.assigned - a.assigned || (a.name ?? '').localeCompare(b.name ?? ''));
 }
+
+export interface WorkspaceValue {
+  /** Work the platform did for this workspace in the range, and the hours it stands in for. */
+  leadsImported: number;
+  callsAnalysed: number;
+  automationSucceeded: number;
+  automationFailed: number;
+  leadsAutoAssigned: number;
+  hoursSaved: number;
+  /** Analyses a person corrected, over analyses produced by a model. */
+  humanInterventionRate: number | null;
+  /** Average days from an opportunity's creation to it being won, for deals won in the range. */
+  dealTurnaroundDays: number | null;
+  dealsWon: number;
+  /** Tokens spent this month on the shared key and on the workspace's own key. */
+  aiTokensThisMonth: { deployment: number; workspace: number };
+}
+
+/**
+ * §16: what the platform saved and delivered for one workspace. Every figure is a
+ * count of rows in the range; the hours use the same stated per-action minutes as
+ * the front door (lib/value/platformValue.ts), so the two never disagree.
+ */
+export async function workspaceValue(tenantId: string, range: Range): Promise<WorkspaceValue> {
+  const within = { gte: range.from, lte: range.to };
+  const { valueSummary } = await import('@/lib/value/platformValue');
+  const { usageMetric } = await import('@/lib/ai/usage');
+  const [
+    leadsImported,
+    callsAnalysed,
+    corrected,
+    automationSucceeded,
+    automationFailed,
+    leadsAutoAssigned,
+    won,
+    usage,
+  ] = await Promise.all([
+    prisma.lead.count({ where: { tenantId, source: 'IMPORT', createdAt: within } }),
+    prisma.aIAnalysis.count({
+      where: { tenantId, status: 'COMPLETED', modelId: { not: 'demo-simulation' }, createdAt: within },
+    }),
+    prisma.aIAnalysis.count({
+      where: {
+        tenantId,
+        status: 'COMPLETED',
+        modelId: { not: 'demo-simulation' },
+        humanCorrected: true,
+        createdAt: within,
+      },
+    }),
+    prisma.automationExecution.count({ where: { tenantId, status: 'SUCCEEDED', startedAt: within } }),
+    prisma.automationExecution.count({ where: { tenantId, status: 'FAILED', startedAt: within } }),
+    prisma.leadAssignmentHistory.count({ where: { tenantId, method: { not: null }, createdAt: within } }),
+    prisma.opportunity.findMany({
+      where: { tenantId, deletedAt: null, status: 'WON', updatedAt: within },
+      select: { createdAt: true, updatedAt: true },
+    }),
+    prisma.workspaceUsage.findMany({
+      where: { tenantId, metric: { in: [usageMetric('deployment'), usageMetric('workspace')] } },
+      select: { metric: true, used: true },
+    }),
+  ]);
+  const summary = valueSummary({
+    leadsImported,
+    callsAnalysed,
+    automationSteps: automationSucceeded,
+    leadsAutoAssigned,
+  });
+  const turnaround = won.length
+    ? won.reduce((sum, o) => sum + (o.updatedAt.getTime() - o.createdAt.getTime()), 0) / won.length / 86_400_000
+    : null;
+  return {
+    leadsImported,
+    callsAnalysed,
+    automationSucceeded,
+    automationFailed,
+    leadsAutoAssigned,
+    hoursSaved: summary.hoursSaved,
+    humanInterventionRate: callsAnalysed ? Math.round((corrected / callsAnalysed) * 1000) / 10 : null,
+    dealTurnaroundDays: turnaround === null ? null : Math.round(turnaround * 10) / 10,
+    dealsWon: won.length,
+    aiTokensThisMonth: {
+      deployment: usage.find((u) => u.metric === usageMetric('deployment'))?.used ?? 0,
+      workspace: usage.find((u) => u.metric === usageMetric('workspace'))?.used ?? 0,
+    },
+  };
+}

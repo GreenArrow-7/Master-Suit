@@ -10,6 +10,7 @@ import {
   subtree,
   productivity,
   type ProductivityRow,
+  workspaceValue,
 } from '@/services/leadership/rollups';
 import { profitAndLoss } from '@/services/leadership/pl';
 import Badge from '@/components/ui/Badge';
@@ -22,6 +23,7 @@ export const metadata = { title: 'Leadership' };
 
 const TABS = [
   ['Overview', ''],
+  ['Value', 'value'],
   ['Productivity', 'productivity'],
   ['Compliance', 'compliance'],
   ['Chasing', 'chasing'],
@@ -153,7 +155,7 @@ export default async function LeadershipPage({
     }
   }
 
-  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows] = await Promise.all([
+  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows, value] = await Promise.all([
     funnel(ctx.tenantId, userIds, range),
     conversion(ctx.tenantId, userIds, range),
     performerBoard(ctx.tenantId, userIds, range, 'revenue'),
@@ -172,6 +174,7 @@ export default async function LeadershipPage({
       take: 200,
     }),
     view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
+    view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
   ]);
 
   // Only when there is something to name — an `in: []` lookup is a wasted round
@@ -467,6 +470,65 @@ export default async function LeadershipPage({
         </>
       )}
 
+      {view === 'value' && value && (
+        <>
+          {/* §16: what the platform did for this workspace in the range, counted, and
+              the outcomes beside it. Rates say "—" when there is no denominator. */}
+          <div className="lf-kpi-grid">
+            {[
+              [
+                'Hours of manual work saved',
+                `${value.hoursSaved.toLocaleString('en')}`,
+                'from leads imported, calls analysed, automation steps and auto-assignments, at stated minutes per action',
+              ],
+              ['Leads imported', value.leadsImported.toLocaleString('en'), 'from spreadsheets instead of typed in'],
+              [
+                'Calls analysed by AI',
+                value.callsAnalysed.toLocaleString('en'),
+                value.humanInterventionRate === null
+                  ? 'no model analyses in this range'
+                  : `${value.humanInterventionRate}% corrected by a person`,
+              ],
+              [
+                'Automation steps',
+                `${value.automationSucceeded.toLocaleString('en')}`,
+                value.automationSucceeded + value.automationFailed
+                  ? `${Math.round((value.automationSucceeded / (value.automationSucceeded + value.automationFailed)) * 100)}% succeeded`
+                  : 'none ran',
+              ],
+              ['Leads auto-assigned', value.leadsAutoAssigned.toLocaleString('en'), 'by distribution rules'],
+              [
+                'Deals won',
+                value.dealsWon.toLocaleString('en'),
+                value.dealTurnaroundDays === null
+                  ? 'no deals won in this range'
+                  : `${value.dealTurnaroundDays} days from opportunity to won, on average`,
+              ],
+              [
+                'Lead → opportunity',
+                pct(rates.leadToOpportunity),
+                `${rates.opportunities} opportunities from ${rates.leads} leads`,
+              ],
+              ['Opportunity → booking', pct(rates.opportunityToBooking), `${rates.bookings} bookings`],
+              [
+                'AI tokens this month',
+                `${(value.aiTokensThisMonth.deployment + value.aiTokensThisMonth.workspace).toLocaleString('en')}`,
+                value.aiTokensThisMonth.workspace
+                  ? `${value.aiTokensThisMonth.workspace.toLocaleString('en')} on your own key`
+                  : 'on the shared key',
+              ],
+            ].map(([label, figure, note]) => (
+              <div className="lf-kpi" key={label}>
+                <div className="lf-kpi__label">{label}</div>
+                <div className="lf-kpi__value lf-num">{figure}</div>
+                <p className="lf-hint" style={{ margin: 'var(--lf-space-2) 0 0' }}>
+                  {note}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {view === 'productivity' &&
         (activeRows.length === 0 ? (
           <div className="lf-card" style={CARD}>
