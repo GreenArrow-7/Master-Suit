@@ -53,8 +53,50 @@ test.describe('YOUHAN ONE business journey', () => {
 
     // Clone the seeded sales rep role: it already holds the working permissions.
     const roles = await ok(await admin.get(api(`/api/v1/workspaces/${slug}/roles/roles`)), 'roles');
-    const source = ((roles.data ?? roles) as { id: string; key: string }[]).find((r) => r.key === 'sales_rep');
-    expect(source, 'seeded sales_rep role').toBeTruthy();
+    // The seeded sales_rep where the demo seed ran; otherwise the lowest-ranked working role
+    // of a wizard-created workspace (production's controlled tenant has no seed).
+    const roleRows = (roles.data ?? roles) as { id: string; key: string; rank?: number }[];
+    let source: { id: string; key: string } | undefined =
+      roleRows.find((r) => r.key === 'sales_rep') ??
+      roleRows.filter((r) => !/admin|owner/i.test(r.key)).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))[0];
+    if (!source) {
+      // A workspace with only its administrator: build the seller role the way an
+      // administrator would — create it, then grant the selling permissions on the matrix,
+      // never delete.
+      const created = await ok(
+        await admin.post(api(`/api/v1/workspaces/${slug}/roles/create`), {
+          data: { key: `seller_${run}`, name: `Seller ${run}`, rank: 60 },
+        }),
+        'create seller role',
+      );
+      const matrix = await ok(
+        await admin.get(api(`/api/v1/workspaces/${slug}/roles/matrix?roleId=${created.id}`)),
+        'matrix',
+      );
+      const selling = new Set([
+        'leads',
+        'calls',
+        'activities',
+        'opportunities',
+        'contacts',
+        'tasks',
+        'documents',
+        'notifications',
+        'dashboard',
+        'employee',
+      ]);
+      const changes = (matrix.permissions as { permissionId: string; module: string; action: string }[])
+        .filter((perm) => selling.has(perm.module) && perm.action !== 'DELETE')
+        .map((perm) => ({ permissionId: perm.permissionId, granted: true, scope: 'OWN' }));
+      await ok(
+        await admin.post(api(`/api/v1/workspaces/${slug}/roles/matrix-update`), {
+          data: { roleId: created.id, changes },
+        }),
+        'grant selling permissions',
+      );
+      source = { id: created.id, key: created.key };
+    }
+    expect(source, 'a working role to clone').toBeTruthy();
     const role = await ok(
       await admin.post(api(`/api/v1/workspaces/${slug}/roles/clone`), {
         data: { sourceRoleId: source!.id, key: `journey_rep_${run}`, name: `Journey Rep ${run}`, rank: 60 },
@@ -128,6 +170,18 @@ test.describe('YOUHAN ONE business journey', () => {
     const more = await ok(await admin.get(api('/api/v1/leads?limit=10')), 'more leads');
     for (const l of more.data as { id: string }[])
       if (!leadIds.includes(l.id) && leadIds.length < 5) leadIds.push(l.id);
+    // A workspace that has seen this journey before holds the spreadsheet's people already
+    // (leads are unique by phone) and may have closed the rest out: top up with fresh leads
+    // the way a seller would enter them, so the gate below always has a full hand.
+    for (let i = leadIds.length; i < 5; i += 1) {
+      const fresh = await ok(
+        await admin.post(api('/api/v1/leads'), {
+          data: { fullName: `Journey Lead ${run}-${i}`, phone: `+9715${(Date.now() + i).toString().slice(-8)}` },
+        }),
+        'create lead',
+      );
+      leadIds.push(fresh.id);
+    }
     expect(leadIds.length).toBeGreaterThanOrEqual(3);
     await ok(
       await admin.post(api('/api/v1/leads/assign'), { data: { leadIds, ownerId: account.userId } }),
@@ -165,6 +219,27 @@ test.describe('YOUHAN ONE business journey', () => {
       'preflight before work',
     );
     expect(pre1.pendingWork).toBe(leadIds.length);
+
+    // §11: an audit needs the company to have said what "good" means. The seeded
+    // workspace carries a scorecard; a fresh company defines one first, as its
+    // administrator would.
+    const cards = await ok(await admin.get(api('/api/v1/scorecards?active=true')), 'scorecards');
+    if (((cards.data ?? cards) as unknown[]).length === 0) {
+      await ok(
+        await admin.post(api('/api/v1/scorecards'), {
+          data: {
+            name: `Discovery call ${run}`,
+            criteria: [
+              { label: 'Opened with a permission check', weight: 1 },
+              { label: 'Established budget and requirement', weight: 2, isRequired: true },
+              { label: 'Handled the objection', weight: 2 },
+              { label: 'Closed on a next step', weight: 1, isRequired: true },
+            ],
+          },
+        }),
+        'create scorecard',
+      );
+    }
 
     // §10: a call against the first lead — through the mock vendor on the rig; where no
     // vendor is connected (staging, production) E2E_CALL_TRANSPORT=demo skips the dial
@@ -219,7 +294,7 @@ test.describe('YOUHAN ONE business journey', () => {
       },
       'audit',
       120_000,
-    ).catch(() => null);
+    );
 
     // §5 again: one lead worked, the count falls by one.
     const pre2 = await ok(
