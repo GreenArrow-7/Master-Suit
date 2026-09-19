@@ -199,10 +199,35 @@ jobs:
       - name: Raw SQL scope
         run: node scripts/check-raw-sql-scope.mjs
 
+      # The demo admin's password. The seed generates one per run and prints it
+      # once, which is right for an operator and useless for the E2E step, which
+      # needs the same value the seed used. So it is generated here, pinned into
+      # the seed through DEMO_PASSWORD (the seed's own override for that), and
+      # handed to the browser suite as E2E_DEMO_PASSWORD.
+      #
+      # Masked before anything else touches it: the seed's summary line prints
+      # the password, and the mask turns that — and any later echo — into `***`.
+      # $GITHUB_ENV is a file the runner reads, not a line in the log.
+      - name: Demo credentials
+        run: |
+          PASSWORD="$(openssl rand -hex 12)-$(openssl rand -hex 3 | tr a-f A-F)"
+          echo "::add-mask::$PASSWORD"
+          {
+            echo "E2E_DEMO_SLUG=manath-homes"
+            echo "E2E_DEMO_EMAIL=amina.alrashid@example.com"
+            echo "E2E_DEMO_PASSWORD=$PASSWORD"
+          } >> "$GITHUB_ENV"
+
       # The server integration specs sign in as a member of the `manath-homes`
       # workspace, which only exists once the demo data is seeded. The seed
       # refuses to run against NODE_ENV=production, so it cannot touch a real
       # deployment from here.
+      #
+      # Under NODE_ENV=development the seed also connects the development mock
+      # telephony vendor and gates check-out on lead work for that workspace —
+      # the state tests/e2e/business-journey.spec.ts and assisted-call.spec.ts
+      # drive. The mock resolves only in development and the isolation guard
+      # (tests/helpers/isolation.ts) exempts exactly that provider.
       - name: Seed demo data
         # ALLOW_DEMO_SEED is the seed's own guard: it creates dozens of active
         # logins and refuses to run until the operator confirms the target is
@@ -211,6 +236,7 @@ jobs:
           ALLOW_DEMO_SEED: 'yes'
           # The seed refuses to run against production, and says so.
           NODE_ENV: development
+          DEMO_PASSWORD: ${{ env.E2E_DEMO_PASSWORD }}
         run: npm run db:seed
 
       # ── Gate 1 ────────────────────────────────────────────────────────────
@@ -377,6 +403,30 @@ jobs:
           # that turns out to be false is apt worth the risk.
           node -e "require('@playwright/test').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
 
+      # The BullMQ worker, which the dev server does not start. The business
+      # journey waits on call analysis and audit, and both run here; without it
+      # the spec sits at "analysis did not complete" for ninety seconds and then
+      # fails on something that is not a defect.
+      #
+      # Backgrounded, and gated on its own "workers started" line so a worker
+      # that cannot attach to its queues fails this step by name rather than
+      # the suite two minutes later. Output goes to a file, not the job log,
+      # and the file rides along with the E2E report when the suite fails.
+      # Stopped in its own step below, whether E2E passed or not.
+      - name: Worker
+        if: github.event_name == 'push' || github.base_ref == 'main'
+        run: |
+          npm run worker > worker.log 2>&1 &
+          WORKER=$!
+          # Liveness by npm's own pid, not by pattern: on the first tick npm has
+          # not yet spawned tsx, and a pattern match would read that as "died".
+          for i in $(seq 1 90); do
+            if grep -q 'workers started' worker.log; then echo "worker ready after ${i}s"; exit 0; fi
+            kill -0 "$WORKER" 2>/dev/null || break
+            sleep 1
+          done
+          echo "::error::the worker did not start"; tail -n 40 worker.log; exit 1
+
       - name: E2E
         id: e2e
         if: github.event_name == 'push' || github.base_ref == 'main'
@@ -385,8 +435,22 @@ jobs:
         # closeout's runs timed out at 53 and 69 of 86 with nothing failing
         # (34974531433, 34977699059). A limit, not an assertion: every test
         # still has to pass.
+        #
+        # The demo-workspace specs (E2E_DEMO_*, exported by "Demo credentials")
+        # add about a minute on a warm server; face-attendance still skips,
+        # because its frames are never committed and the face sidecar is not
+        # here.
         timeout-minutes: 35
         run: npx playwright test
+
+      # The worker must not outlive the suite: Build below refuses to run with
+      # any E2E process still alive, and this is the counterpart of Playwright
+      # stopping its own dev server. SIGTERM, so it drains rather than dies.
+      - name: Stop worker
+        if: always() && (github.event_name == 'push' || github.base_ref == 'main')
+        run: |
+          pkill -TERM -f 'src/workers/index.ts' || true
+          for i in $(seq 1 30); do pgrep -f 'src/workers/index.ts' >/dev/null || break; sleep 1; done
 
       # Not a gate — the diagnosis for the one above.
       #
@@ -413,7 +477,11 @@ jobs:
           # Repo-relative. `defaults.run.working-directory` applies to `run:`
           # steps and not to an action's inputs, so `playwright-report/` on its
           # own would resolve at the repository root and quietly upload nothing.
-          path: apps/web/playwright-report/
+          # The worker's log rides along: a journey that stalls on analysis is
+          # diagnosed there, not in a screenshot.
+          path: |
+            apps/web/playwright-report/
+            apps/web/worker.log
           # Long enough to diagnose a red build, short enough that screenshots
           # of a seeded workspace do not sit in the account for a quarter.
           retention-days: 7
@@ -432,6 +500,8 @@ jobs:
           # be true before touching its output, bounded, and say so if it is not.
           for i in $(seq 1 30); do pgrep -f 'next dev' >/dev/null || break; sleep 1; done
           if pgrep -f 'next dev' >/dev/null; then echo "::error::a next dev process is still running after E2E"; exit 1; fi
+          # Its sibling: "Stop worker" sent SIGTERM and waited; a worker still here did not drain.
+          if pgrep -f 'src/workers/index.ts' >/dev/null; then echo "::error::the worker is still running after E2E"; exit 1; fi
           # Only the dev server's own output. Test traces and the Playwright report live in
           # test-results/ and playwright-report/, which this does not touch.
           rm -rf .next/dev
