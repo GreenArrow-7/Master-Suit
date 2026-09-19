@@ -178,20 +178,7 @@ export default function LeadImport() {
   const previewFields = mapping.filter((t): t is (typeof LEAD_FIELDS)[number] => LEAD_FIELDS.includes(t as never));
 
   return (
-    <div
-      className="lf-card"
-      style={{
-        position: 'absolute',
-        right: 0,
-        top: '100%',
-        marginTop: 6,
-        zIndex: 20,
-        width: file ? 'min(860px, calc(100vw - 32px))' : 340,
-        padding: 'var(--lf-space-4)',
-        boxShadow: 'var(--lf-shadow-2)',
-        textAlign: 'left',
-      }}
-    >
+    <div className="lf-card lf-import-panel" data-wide={file ? '' : undefined}>
       <div
         style={{
           display: 'flex',
