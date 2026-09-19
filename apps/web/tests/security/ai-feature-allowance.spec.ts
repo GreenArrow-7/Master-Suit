@@ -104,3 +104,32 @@ describe('token direction and cost estimate', () => {
     expect(estimateCostUsd(1_000_000, 1_000_000)).toBe(2.8);
   });
 });
+
+describe('concurrent metering', () => {
+  it('twenty simultaneous recordings add up exactly — the increments are atomic', async () => {
+    const { usageMetric } = await import('@/lib/ai/usage');
+    const before =
+      (
+        await prisma.workspaceUsage.findUnique({
+          where: { tenantId_metric: { tenantId, metric: usageMetric('deployment') } },
+          select: { used: true },
+        })
+      )?.used ?? 0;
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        recordAiUsage(
+          tenantId,
+          deployment,
+          { totalTokens: 10 + i },
+          { feature: 'assistant', model: 'm', userId: `u${i % 3}` },
+        ),
+      ),
+    );
+    const after = await prisma.workspaceUsage.findUniqueOrThrow({
+      where: { tenantId_metric: { tenantId, metric: usageMetric('deployment') } },
+      select: { used: true },
+    });
+    const expected = Array.from({ length: 20 }, (_, i) => 10 + i).reduce((a, b) => a + b, 0);
+    expect(after.used - before).toBe(expected);
+  });
+});
