@@ -1640,6 +1640,11 @@ a:hover {
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
   overflow: hidden;
+  /* Measured 19 Sep 2026: a 1309px table inside this scroll wrapper still widened
+     the document (scrollWidth = table right − 96px) at 1440 and 768, so the page
+     itself scrolled sideways. Neither overflow on the ancestors nor un-sticking the
+     first column changed it; paint containment does, and the wrapper already clips. */
+  contain: paint;
 }
 .lf-grid {
   width: 100%;
