@@ -49,21 +49,52 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-      Only what the implemented journey uses. CAMERA backs "Take photo" on lead
-      documents: the WebView cannot hand the page a camera the app does not hold,
-      and Capacitor asks for it at the moment of capture.
+      What the implemented web features ask the WebView for. A page can only get
+      what the app holds. Capacitor's BridgeWebChromeClient requests each one at
+      runtime, at the moment the page asks, and hands a refusal back to the page:
+      getUserMedia rejects, and geolocation fails with PERMISSION_DENIED. Each
+      screen already explains a refusal. Nothing is requested at launch.
 
-      Not declared in this development build, on purpose: location (face check-in
-      and the site-visit GPS punch are not part of the verified journey, so those
-      screens cannot read a position in the app), microphone, and notifications
-      (push is not configured). Add each with the feature that is verified to need it.
+      CAMERA:   "Take photo" on lead documents, face enrolment, face check-in.
+      LOCATION: attendance check-in/out and the site-visit GPS punch. Coarse is
+                declared with fine so a user may grant only approximate location
+                (Android 12+); the server decides whether that accuracy is enough.
+      RECORD_AUDIO + MODIFY_AUDIO_SETTINGS: the live-call workspace's microphone
+                mode and practice recordings. That is this phone's microphone only;
+                it is not cellular call capture, and nothing here records a phone call.
+
+      Not declared: background location (nothing tracks position after a punch) and
+      notifications (push is not configured).
     -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!--
-      Declaring CAMERA otherwise makes Play treat a camera as a hardware
-      requirement and hides the app from devices without one. Office staff on a
-      cameraless tablet still need the CRM.
+      Declaring a permission otherwise makes Play treat that hardware as required,
+      and hides the app from devices without it. Office staff on a tablet with no
+      camera still need the CRM.
     -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!--
+      Package visibility (Android 11+). Capacitor's file chooser checks that a camera
+      app resolves ACTION_IMAGE_CAPTURE before launching it. Without this, no camera
+      app is visible to the app, so a `capture` file input ("Take photo") silently
+      fell back to the gallery picker. Verified on an API 36 emulator.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>
