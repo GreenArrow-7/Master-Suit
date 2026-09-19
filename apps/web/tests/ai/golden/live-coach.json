@@ -1,0 +1,72 @@
+[
+  {
+    "id": "intro-greeting",
+    "lines": 2,
+    "transcript": "Agent: Good morning, this is Sara from Manath Homes. Customer: Hi Sara, thanks for calling back.",
+    "expectedStage": "INTRODUCTION",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "discovery-need",
+    "lines": 6,
+    "transcript": "Customer: We are looking for a two bedroom apartment, ideally to live in, somewhere near the marina.",
+    "expectedStage": "DISCOVERY",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "qualification-budget",
+    "lines": 8,
+    "transcript": "Agent: What budget are you comfortable with? Customer: Around one point two million, and we would need a mortgage.",
+    "expectedStage": "QUALIFICATION",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "matching-shortlist",
+    "lines": 10,
+    "transcript": "Agent: Based on that I can recommend two options for you, both in the marina with sea views.",
+    "expectedStage": "PROPERTY_MATCHING",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "presentation-payment-plan",
+    "lines": 12,
+    "transcript": "Customer: Is there a payment plan on the off-plan tower, and when is handover?",
+    "expectedStage": "PRESENTATION",
+    "expectedHintKinds": ["BUYING_SIGNAL"]
+  },
+  {
+    "id": "objection-price",
+    "lines": 14,
+    "transcript": "Customer: Honestly that is too expensive for us, it is over budget.",
+    "expectedStage": "OBJECTION_HANDLING",
+    "expectedHintKinds": ["OBJECTION"]
+  },
+  {
+    "id": "objection-decision-maker",
+    "lines": 14,
+    "transcript": "Customer: I like it but I need to ask my wife before anything.",
+    "expectedStage": "OBJECTION_HANDLING",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "negotiation-discount",
+    "lines": 16,
+    "transcript": "Customer: What is the best price you can do on that unit, any discount for cash?",
+    "expectedStage": "NEGOTIATION",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "closing-viewing",
+    "lines": 18,
+    "transcript": "Agent: Shall we book a viewing this week? Customer: Yes, Thursday or Saturday works.",
+    "expectedStage": "CLOSING",
+    "expectedHintKinds": []
+  },
+  {
+    "id": "closing-booking-amount",
+    "lines": 20,
+    "transcript": "Customer: What is the booking amount and can we reserve the unit today?",
+    "expectedStage": "CLOSING",
+    "expectedHintKinds": ["BUYING_SIGNAL"]
+  }
+]

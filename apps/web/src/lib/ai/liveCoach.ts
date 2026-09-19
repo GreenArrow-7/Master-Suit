@@ -3,6 +3,7 @@ import { redact } from './redact';
 import { geminiCredential, geminiModel } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
 import { generateStructured } from './provider';
+import { modelCascade, runCascade } from './cascade';
 import { LIVE_COACH_SYSTEM_PROMPT } from './liveCoachPrompt';
 import type { LeadCallContext } from '@/services/leads/callContext';
 
@@ -217,7 +218,6 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
   const apiKey = credential.key;
   if (!apiKey) return heuristicHints(windowText);
 
-  const model = await geminiModel(tenantId);
   /**
    * Over budget falls back to the heuristic hints rather than throwing.
    *
@@ -238,17 +238,25 @@ export async function coachTick(windowText: string, tenantId?: string, contextBl
   );
 
   try {
-    const response = await generateStructured({
-      credential: { key: apiKey, provider: credential.provider },
-      model,
-      prompt,
-      schema: HINT_SCHEMA,
-      temperature: 0.3,
-      // 2048, not 512: reasoning models spend thinking tokens from this same
-      // budget and a truncated JSON reply silently degrades to heuristics.
-      maxOutputTokens: 2048,
-      timeoutMs: AI_TIMEOUT_MS,
-    });
+    // One attempt per model: a live tick cannot wait for retries, but a fallback
+    // model answering late beats heuristics answering now.
+    const { value: response, model } = await runCascade(
+      'live-coach',
+      await modelCascade(tenantId),
+      (m) =>
+        generateStructured({
+          credential: { key: apiKey, provider: credential.provider },
+          model: m,
+          prompt,
+          schema: HINT_SCHEMA,
+          temperature: 0.3,
+          // 2048, not 512: reasoning models spend thinking tokens from this same
+          // budget and a truncated JSON reply silently degrades to heuristics.
+          maxOutputTokens: 2048,
+          timeoutMs: AI_TIMEOUT_MS,
+        }),
+      { maxAttempts: 1 },
+    );
     await recordAiUsage(tenantId, credential, response.usage, { feature: 'live-coach', model });
     const parsed = JSON.parse(response.text) as {
       hints: { kind: CoachHint['kind']; text: string; say?: string; why?: string }[];

@@ -1,9 +1,9 @@
 import { logger } from '../logger';
-import { geminiCredential, geminiModel } from './gemini';
+import { geminiCredential } from './gemini';
 import { assertAiBudget, recordAiUsage } from './usage';
 import { generateStructured } from './provider';
 import { redact } from './redact';
-import { withRetry, isTransient } from '../integrations/retry';
+import { modelCascade, runCascade } from './cascade';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -108,25 +108,24 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
     return simulateAudit(input);
   }
 
-  const model = await geminiModel(input.tenantId);
-
+  const models = await modelCascade(input.tenantId);
+  let model = models[0]!;
   try {
     await assertAiBudget(input.tenantId, credential);
 
-    const response = await withRetry(
-      'gemini-audit',
-      () =>
-        generateStructured({
-          credential: { key: apiKey, provider: credential.provider },
-          model,
-          prompt: buildAuditPrompt(input),
-          schema: AUDIT_SCHEMA,
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-          timeoutMs: AI_TIMEOUT_MS,
-        }),
-      { maxAttempts: 3, retryOn: isTransient },
+    const res = await runCascade('gemini-audit', models, (m) =>
+      generateStructured({
+        credential: { key: apiKey, provider: credential.provider },
+        model: m,
+        prompt: buildAuditPrompt(input),
+        schema: AUDIT_SCHEMA,
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+        timeoutMs: AI_TIMEOUT_MS,
+      }),
     );
+    const response = res.value;
+    model = res.model;
     await recordAiUsage(input.tenantId, credential, response.usage, { feature: 'call-audit', model });
 
     const parsed = JSON.parse(response.text);

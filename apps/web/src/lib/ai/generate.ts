@@ -1,7 +1,7 @@
-import { geminiCredential, geminiModel } from './gemini';
+import { geminiCredential } from './gemini';
 import { generateStructured } from './provider';
 import { assertAiBudget, recordAiUsage } from './usage';
-import { withRetry, isTransient } from '../integrations/retry';
+import { modelCascade, runCascade } from './cascade';
 
 /**
  * One structured model call.
@@ -57,26 +57,22 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
   const credential = await geminiCredential(request.tenantId);
   if (!credential.key) return null;
 
-  const model = await geminiModel(request.tenantId);
   const started = Date.now();
   const feature = request.feature ?? request.label;
 
   // Before the request that would be billed, which is the only useful place.
   await assertAiBudget(request.tenantId, credential);
 
-  const response = await withRetry(
-    request.label,
-    () =>
-      generateStructured({
-        credential: { key: credential.key!, provider: credential.provider },
-        model,
-        prompt: request.prompt,
-        schema: request.schema,
-        temperature: request.temperature,
-        maxOutputTokens: request.maxOutputTokens,
-        timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      }),
-    { maxAttempts: 3, retryOn: isTransient },
+  const { value: response, model } = await runCascade(request.label, await modelCascade(request.tenantId), (m) =>
+    generateStructured({
+      credential: { key: credential.key!, provider: credential.provider },
+      model: m,
+      prompt: request.prompt,
+      schema: request.schema,
+      temperature: request.temperature,
+      maxOutputTokens: request.maxOutputTokens,
+      timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    }),
   );
 
   // Recorded before the parse: the tokens were spent whether or not the model
