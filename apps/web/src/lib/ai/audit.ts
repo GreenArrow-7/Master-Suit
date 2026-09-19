@@ -37,6 +37,8 @@ export interface AuditResult {
   nextAction: string | null;
   overallScore: number;
   maxScore: number;
+  /** Which model answered; `demo-simulation` for the keyword pass. */
+  modelId?: string;
 }
 
 function buildAuditPrompt(input: AuditInput): string {
@@ -103,9 +105,9 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
   const apiKey = credential.key;
   if (!apiKey) {
     // Demo fallback — see analyzeTranscript. Deterministic, clearly labelled.
-    const { simulateAudit } = await import('./simulated');
+    const { simulateAudit, SIMULATED_MODEL_ID } = await import('./simulated');
     logger.info('no Gemini key for this workspace — returning simulated audit');
-    return simulateAudit(input);
+    return { ...simulateAudit(input), modelId: SIMULATED_MODEL_ID };
   }
 
   const models = await modelCascade(input.tenantId);
@@ -132,15 +134,16 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
     const overallScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.score, 0);
     const maxScore = (parsed.criteriaScores as CriterionScore[]).reduce((s, c) => s + c.maxScore, 0);
 
-    return { ...parsed, overallScore, maxScore };
+    return { ...parsed, overallScore, maxScore, modelId: model };
   } catch (err) {
     // Same trade as analyzeTranscript: a refused provider leaves the rep a
     // keyword scorecard that says it is one, not an empty audit panel.
-    const { simulateAudit } = await import('./simulated');
+    const { simulateAudit, SIMULATED_MODEL_ID } = await import('./simulated');
     logger.warn({ err: (err as Error).message, model }, 'audit provider refused — degrading to the keyword pass');
     const result = simulateAudit(input);
     return {
       ...result,
+      modelId: SIMULATED_MODEL_ID,
       suggestions: ['Scored without the model — re-run once the AI provider is available.', ...result.suggestions],
     };
   }

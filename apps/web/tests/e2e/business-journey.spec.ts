@@ -201,8 +201,9 @@ test.describe('YOUHAN ONE business journey', () => {
       async () => {
         const r = await rep.get(api(`/api/v1/calls/${call.id}/audit`));
         if (!r.ok()) return null;
-        const a = (await r.json()) as { data?: { status?: string } | null };
-        return a.data && a.data.status === 'COMPLETED' ? a.data : null;
+        const a = (await r.json()) as { data?: { status?: string; modelId?: string | null }[] | null };
+        const latest = a.data?.[0];
+        return latest && latest.status === 'COMPLETED' ? latest : null;
       },
       'audit',
       120_000,
@@ -250,9 +251,8 @@ test.describe('YOUHAN ONE business journey', () => {
     ).toContainText(/[1-9]/);
 
     await repCtx.close();
-    test.info().annotations.push({
-      type: 'audit',
-      description: audit ? 'audit completed' : 'audit not completed in time (see log)',
-    });
+    // §11/§15: an audit says what scored it — a keyword pass is never presented as a model.
+    expect(audit!.modelId).toBeTruthy();
+    test.info().annotations.push({ type: 'audit', description: `audit scored by ${audit!.modelId}` });
   });
 });

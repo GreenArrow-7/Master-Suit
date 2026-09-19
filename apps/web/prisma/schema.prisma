@@ -5961,6 +5961,8 @@ model CallAudit {
   risks          Json           @default("[]")
   suggestions    Json           @default("[]")
   nextAction     String?
+  /// Which model scored it; `demo-simulation` when the keyword pass did. Null on rows from before 19 Sep 2026.
+  modelId        String?
   errorMessage   String?
   humanReviewed  Boolean        @default(false)
   reviewedById   String?

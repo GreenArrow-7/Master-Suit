@@ -389,6 +389,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                       </div>
                     )}
 
+                    {a.modelId === 'demo-simulation' && <Badge tone="brass">keyword pass — not AI</Badge>}
                     {a.humanReviewed && <Badge tone="viridian">reviewed</Badge>}
                   </div>
                 );
