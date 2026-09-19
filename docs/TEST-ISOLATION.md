@@ -88,6 +88,13 @@ Telephony, push (FCM/APNs), Meta and AI need no separate check: each requires
 credentials that a test environment does not hold, and each returns without
 calling out when they are absent.
 
+Credentials held as rows are checked too: `assertRuntimeIsolation` refuses any
+`IntegrationConnection` in status `CONNECTED`, with one named exception — the
+development `mock` telephony vendor, which dials nothing and posts nowhere. The
+demo seed connects it under `NODE_ENV=development` so the business-journey and
+assisted-call specs can exercise the calling path, and the provider factory
+refuses it in production regardless of what the row says.
+
 ## Credentials never appear in output
 
 Every message from the guard reduces a connection string to `host:port/database`
