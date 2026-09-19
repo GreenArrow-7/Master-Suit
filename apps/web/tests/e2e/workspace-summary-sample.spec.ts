@@ -942,9 +942,18 @@ test.describe('Workspace on a phone', () => {
 /** The shell's computed look: equal on two screens means no visual switch between them. */
 function shell(page: Page) {
   return page.evaluate(async () => {
-    // The nav link fades its background in over 100ms: sample once every transition has settled,
-    // or the just-activated item reads a fraction short of its resting colour.
-    await Promise.allSettled(document.getAnimations().map((a) => a.finished));
+    // The nav link fades its background in over 100ms: sample once the transitions have settled,
+    // or the just-activated item reads a fraction short of its resting colour. Transitions only,
+    // and bounded: a looping CSS animation elsewhere on the page would never finish.
+    await Promise.race([
+      Promise.allSettled(
+        document
+          .getAnimations()
+          .filter((a) => a instanceof CSSTransition)
+          .map((a) => a.finished),
+      ),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
     const style = (selector: string) => {
       const el = document.querySelector(selector);
       return el ? getComputedStyle(el) : null;
