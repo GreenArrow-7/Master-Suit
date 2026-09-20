@@ -37,8 +37,19 @@
     .lf-area-tabs::after {
     content: '';
     width: 18px;
-    margin-left: -18px;
+  }
+  /* Net zero width, as before: each marker overlaps only its own side. */
+  html:not([data-theme='dark']):not([data-theme='glass'])
+    .lf-app-frame[data-lf-surface='workspace']
+    .lf-area-tabs::before {
+    margin-left: 0;
     margin-right: -18px;
+  }
+  html:not([data-theme='dark']):not([data-theme='glass'])
+    .lf-app-frame[data-lf-surface='workspace']
+    .lf-area-tabs::after {
+    margin-right: 0;
+    margin-left: -18px;
   }
   .lf-area-tabs {
     scroll-padding-inline: 24px;
