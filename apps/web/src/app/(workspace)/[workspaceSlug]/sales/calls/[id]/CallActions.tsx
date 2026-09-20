@@ -252,7 +252,7 @@ export default function CallActions({
       {hasConsent && (
         <label
           className="lf-btn lf-btn--secondary"
-          style={{ marginBottom: 8, display: 'block', textAlign: 'center', cursor: 'pointer' }}
+          style={{ marginBottom: 8, cursor: 'pointer' }}
         >
           {busy === 'recording' ? 'Uploading…' : hasRecording ? 'Replace Recording' : 'Upload Recording'}
           <input

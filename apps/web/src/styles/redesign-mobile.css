@@ -647,3 +647,34 @@
   font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
   color: var(--lf-ink-2);
 }
+
+/* ── Bare grids cannot outgrow their column ───────────────────────────────
+   A `display: grid` with no template gets an implicit auto track that sizes
+   to its widest child's min-content, and every grid item defaults to
+   `min-width: auto`; one flex row or long number inside pushed the call
+   page's Lead temperature panel to 417px on a 390px screen. The same
+   constraint globals.css gives `.lf-stack`, applied to the detail columns and
+   to every inline bare grid inside a page. */
+.lf-detail__main,
+.lf-detail__side,
+.lf-page-main [style*='display: grid']:not([style*='grid-template-columns']),
+.lf-page-main [style*='display:grid']:not([style*='grid-template-columns']) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lf-detail__main > *,
+.lf-detail__side > *,
+.lf-page-main [style*='display: grid'] > *,
+.lf-page-main [style*='display:grid'] > * {
+  min-width: 0;
+}
+
+/* ── Inline flex rows may wrap on a phone ─────────────────────────────────
+   Header rows built inline (`display: flex` with no wrap) hold a title, a
+   pill and two figures; at 390px the row runs off the edge rather than
+   wrapping. Wrapping changes nothing while the row fits. */
+@media (max-width: 600px) {
+  .lf-page-main [style*='display: flex']:not([style*='flex-wrap']):not([style*='flex-direction']),
+  .lf-page-main [style*='display:flex']:not([style*='flex-wrap']):not([style*='flex-direction']) {
+    flex-wrap: wrap;
+  }
+}
