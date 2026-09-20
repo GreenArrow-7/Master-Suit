@@ -95,7 +95,7 @@ export default function PrivacyPage() {
           account is linked to that workspace.
         </p>
         <p>
-          Your organisation's administrator can access and manage your account, reset your password, and view your
+          Your organisation&apos;s administrator can access and manage your account, reset your password, and view your
           activity, subject to their role and permissions.
         </p>
       </section>
@@ -140,7 +140,7 @@ export default function PrivacyPage() {
         <h2>Camera, location and face verification</h2>
 
         <h3>When we ask for these permissions</h3>
-        <p>YOUHAN ONE asks permission to use your device's camera, location or both when you:</p>
+        <p>YOUHAN ONE asks permission to use your device&apos;s camera, location or both when you:</p>
         <ul>
           <li>Check in for attendance</li>
           <li>Record a site visit</li>
@@ -151,7 +151,7 @@ export default function PrivacyPage() {
         <p>
           You decide on each screen whether to grant permission. You can refuse and still use the feature — for example,
           you can check in without taking a photo, or record a site visit without sharing your location. You can withdraw
-          permission at any time in your device's settings.
+          permission at any time in your device&apos;s settings.
         </p>
 
         <h3>What we store</h3>
@@ -161,7 +161,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Location:</strong> Recorded at the moment you check in. Stored with that check-in record. Your
-            organisation's administrator can see your location history.
+            organisation&apos;s administrator can see your location history.
           </li>
           <li>
             <strong>Face verification:</strong> A mathematical template (not a photo), stored in an encrypted field. You
@@ -188,7 +188,7 @@ export default function PrivacyPage() {
           screen. Recordings are kept according to the retention date your organisation sets on each recording.
         </p>
         <p>
-          If you delete your account, call recordings are not automatically deleted — they stay with your organisation's
+          If you delete your account, call recordings are not automatically deleted — they stay with your organisation&apos;s
           records at the retention date they set.
         </p>
 
@@ -245,7 +245,7 @@ export default function PrivacyPage() {
 
         <h3>Payroll and employment records</h3>
         <p>
-          Your salary, bank details, payroll records and employment history are kept according to your organisation's
+          Your salary, bank details, payroll records and employment history are kept according to your organisation&apos;s
           policy and local law. If you delete your account:
         </p>
         <ul>
@@ -266,8 +266,8 @@ export default function PrivacyPage() {
 
         <h3>How to request deletion</h3>
         <p>
-          In YOUHAN ONE, go to <strong>Profile → Security</strong> and select <em>Delete my account</em>. You'll confirm
-          with your password (and authenticator code if you've set one up).
+          In YOUHAN ONE, go to <strong>Profile → Security</strong> and select <em>Delete my account</em>. You&apos;ll confirm
+          with your password (and authenticator code if you&apos;ve set one up).
         </p>
 
         <h3>What happens</h3>
@@ -290,12 +290,12 @@ export default function PrivacyPage() {
         <h3>Processing time</h3>
         <p>
           Eligible requests are processed within {f.deletionTargetHours} hours as an operational target. If you are your
-          organisation's owner or the last administrator, you'll be asked to transfer that responsibility first.
+          organisation&apos;s owner or the last administrator, you&apos;ll be asked to transfer that responsibility first.
         </p>
 
-        <h3>What you'll receive</h3>
+        <h3>What you&apos;ll receive</h3>
         <p>
-          You'll receive a record of what was deleted and what was kept, and why. If you need more details, you can
+          You&apos;ll receive a record of what was deleted and what was kept, and why. If you need more details, you can
           contact {f.privacyEmail}.
         </p>
       </section>
@@ -308,7 +308,7 @@ export default function PrivacyPage() {
           <li>Payroll and identity information is encrypted in the database</li>
           <li>All data in transit is encrypted (HTTPS/TLS)</li>
           <li>Two-factor authentication is available and recommended</li>
-          <li>Access is controlled by role and permissions set by your organisation's administrator</li>
+          <li>Access is controlled by role and permissions set by your organisation&apos;s administrator</li>
         </ul>
         <p>
           No system is completely secure. If you discover a security issue, please contact {f.privacyEmail} instead of
@@ -330,11 +330,11 @@ export default function PrivacyPage() {
           <a href={`mailto:${f.privacyEmail}`}>{f.privacyEmail}</a>. Support is available by email and monitored until
           21:00 Gulf Standard Time (UTC+4).
         </p>
-        <p>Your organisation's administrator may also be able to help with data access and correction requests.</p>
+        <p>Your organisation&apos;s administrator may also be able to help with data access and correction requests.</p>
 
         <h3>Changes to this policy</h3>
         <p>
-          We may update this policy if our practices change. We'll notify you of significant changes via email or by
+          We may update this policy if our practices change. We&apos;ll notify you of significant changes via email or by
           posting a notice in the app. Your continued use of YOUHAN ONE means you accept the updated policy.
         </p>
 
