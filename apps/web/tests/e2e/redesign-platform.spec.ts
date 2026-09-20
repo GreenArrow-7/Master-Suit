@@ -47,9 +47,19 @@ for (const width of [390, 1440]) {
             )
               overlaps.push(`${controls[i]!.tagName} x ${controls[j]!.tagName}`);
           }
-        return { docWidth: document.documentElement.scrollWidth, overlaps };
+        const beyond = [...document.querySelectorAll('body *')]
+          .filter((e) => vis(e) && e.getBoundingClientRect().right > vw + 1)
+          .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width)
+          .slice(0, 6)
+          .map(
+            (e) => `${e.tagName}.${String(e.className).slice(0, 30)} w=${Math.round(e.getBoundingClientRect().width)}`,
+          );
+        return { docWidth: document.documentElement.scrollWidth, overlaps, beyond };
       }, width);
-      expect(probe.docWidth, `${route}: no page-wide horizontal scroll`).toBeLessThanOrEqual(width);
+      expect(
+        probe.docWidth,
+        `${route}: no page-wide horizontal scroll (${probe.beyond.join('; ')})`,
+      ).toBeLessThanOrEqual(width);
       expect(probe.overlaps, `${route}: controls apart`).toEqual([]);
     }
   });

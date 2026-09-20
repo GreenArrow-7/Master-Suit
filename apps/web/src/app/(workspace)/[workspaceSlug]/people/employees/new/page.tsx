@@ -23,7 +23,10 @@ export default async function NewEmployeePage({ params }: { params: Promise<{ wo
           only ever comes into existence through a token its owner redeems, and
           the person sending the invitation never sees the password.
         */}
-        <p className="lf-page-description">They receive an email invitation and choose their own password.</p>
+        <p className="lf-page-description">
+          They receive an email invitation and choose their own password. Records are created in workspace{' '}
+          <code>{ctx.tenantId}</code>.
+        </p>
       </div>
       <WorkspaceRecordForm
         endpoint={`/api/v1/workspaces/${workspaceSlug}/hr/employees`}
