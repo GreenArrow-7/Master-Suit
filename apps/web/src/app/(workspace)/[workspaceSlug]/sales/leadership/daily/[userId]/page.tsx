@@ -6,7 +6,7 @@ import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import PageIntro from '@/components/workspace/PageIntro';
 import LiveRefresh from '../../LiveRefresh';
-import { BOARD_COLUMNS, rowTone } from '../../DailyBoardView';
+import { BOARD_COLUMNS, rowTone, targetStatus } from '../../DailyBoardView';
 
 export const metadata = { title: 'Daily target' };
 
@@ -49,7 +49,7 @@ export default async function DailyTargetDetailPage({
         eyebrow="Daily target"
         title={row.name ?? 'Seller'}
         summary={`${board.date} · ${row.leadsCalled} of ${row.target ?? '—'} leads called${
-          row.completion !== null ? ` · ${row.completion}%` : ''
+          row.completion !== null ? ` · ${row.completion}% · ${targetStatus(row).label}` : ''
         }`}
         actions={
           <SalesLink href={`/leadership?view=daily&date=${board.date}`} className="lf-btn lf-btn--secondary lf-btn--sm">
