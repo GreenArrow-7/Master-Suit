@@ -4,6 +4,7 @@ import { PRODUCT_NAME } from '@/lib/branding';
 import { buildId } from '@/lib/build';
 import { platformSecuritySnapshot } from '@/services/platform/identity';
 import { requirePlatformPage } from '@/lib/platform-page';
+import { usableEntitlementWhere } from '@/lib/security/entitlements';
 
 /**
  * The owner's control room.
@@ -40,10 +41,10 @@ export default async function PlatformOverviewPage() {
         tx.platformUser.count({ where: { deletedAt: null } }),
         tx.employeeProfile.count({ where: { tenantId: { not: '' }, deletedAt: null } }),
         tx.moduleEntitlement.count({
-          where: { tenantId: { not: '' }, module: 'HRMS', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+          where: { tenantId: { not: '' }, module: 'HRMS', ...usableEntitlementWhere() },
         }),
         tx.moduleEntitlement.count({
-          where: { tenantId: { not: '' }, module: 'SALES', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+          where: { tenantId: { not: '' }, module: 'SALES', ...usableEntitlementWhere() },
         }),
         tx.platformAuditEvent.findMany({
           take: 9,

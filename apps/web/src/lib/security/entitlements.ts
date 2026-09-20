@@ -76,3 +76,30 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
 export async function invalidateEntitlements(tenantId: string) {
   await redis.del(...PRODUCT_MODULES.map((module) => key(tenantId, module)));
 }
+
+/** The states an entitlement can be usable in. Expiry is decided separately. */
+export const USABLE_ENTITLEMENT_STATES = ['TRIAL', 'ACTIVE', 'GRACE'] as const;
+
+/**
+ * One rule for "is this entitlement usable", for the readers outside the API
+ * gate above: the workspace dashboard's module cards, the platform console's
+ * entitled-workspace counts and the P&L's payroll margin each carried their own
+ * copy that tested the state and forgot `endsAt`, so an entitlement that had
+ * expired was still advertised and still used while this gate refused it.
+ */
+export function isEntitlementUsable(
+  entitlement: { state: string; endsAt?: Date | string | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!entitlement) return false;
+  if (!(USABLE_ENTITLEMENT_STATES as readonly string[]).includes(entitlement.state)) return false;
+  return !entitlement.endsAt || new Date(entitlement.endsAt) > now;
+}
+
+/** The same rule as a Prisma `where` fragment, for queries that count or filter. */
+export function usableEntitlementWhere(now: Date = new Date()) {
+  return {
+    state: { in: [...USABLE_ENTITLEMENT_STATES] },
+    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+  };
+}
