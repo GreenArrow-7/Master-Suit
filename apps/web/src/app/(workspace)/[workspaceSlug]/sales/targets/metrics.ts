@@ -5,6 +5,7 @@
  * rather than the array.
  */
 export const METRICS = [
+  ['LEADS_CALLED', 'Leads to call today'],
   ['CALLS_ATTEMPTED', 'Client calls to attempt'],
   ['CALLS_CONNECTED', 'Calls to connect'],
   ['LEADS_ASSIGNED', 'Leads to contact'],

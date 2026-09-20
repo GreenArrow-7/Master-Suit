@@ -5650,6 +5650,8 @@ enum TargetPeriod {
 
 enum TargetMetric {
   LEADS_ASSIGNED
+  /// Distinct leads the seller called in the day — the daily cold-calling target.
+  LEADS_CALLED
   CALLS_ATTEMPTED
   CALLS_CONNECTED
   FOLLOWUPS_COMPLETED

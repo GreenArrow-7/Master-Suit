@@ -22,6 +22,7 @@ import '@/styles/shell-mobile.css';
 import '@/styles/pages-copy.css';
 import '@/styles/lists-mobile.css';
 import '@/styles/forms-mobile.css';
+import '@/styles/daily-board.css';
 
 export const dynamic = 'force-dynamic';
 
