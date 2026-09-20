@@ -678,3 +678,18 @@
     flex-wrap: wrap;
   }
 }
+
+/* ── Desktop tables: a date is one line ───────────────────────────────────
+   Auto-sized columns gave "20 Sept, 08:57" three lines while Detail took the
+   room; a date cell never wraps on a screen wide enough for a table. */
+@media (min-width: 761px) {
+  .lf-grid td[data-label='When'],
+  .lf-grid td[data-label='Date'],
+  .lf-grid td[data-label='Created'],
+  .lf-grid td[data-label='Due date'],
+  .lf-grid td[data-label='Started'],
+  .lf-grid td[data-label='Updated'],
+  .lf-grid td[data-label='Window'] {
+    white-space: nowrap;
+  }
+}
