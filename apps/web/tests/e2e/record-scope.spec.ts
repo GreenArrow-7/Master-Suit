@@ -52,9 +52,12 @@ test.describe('record scope: a call or event belongs to someone', () => {
       await admin.get(api(`/api/v1/workspaces/${slug}/roles/matrix?roleId=${created.id}`)),
       'matrix',
     );
-    const modules = new Set(['leads', 'calls', 'events', 'activities', 'tasks', 'dashboard', 'employee']);
+    // Only what this spec exercises: a broader grant can name a permission the
+    // demo administrator does not hold, and the matrix refuses that with a 403.
+    const wanted = new Set(['leads', 'calls', 'events']);
+    const actions = new Set(['VIEW', 'CREATE', 'EDIT']);
     const changes = (matrix.permissions as { permissionId: string; module: string; action: string }[])
-      .filter((perm) => modules.has(perm.module) && perm.action !== 'DELETE')
+      .filter((perm) => wanted.has(perm.module) && actions.has(perm.action))
       .map((perm) => ({ permissionId: perm.permissionId, granted: true, scope: 'OWN' }));
     await ok(
       await admin.post(api(`/api/v1/workspaces/${slug}/roles/matrix-update`), {
