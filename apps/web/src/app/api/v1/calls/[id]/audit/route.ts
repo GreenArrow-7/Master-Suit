@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
 import { enqueue } from '@/lib/queue';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -30,6 +31,7 @@ export const POST = route(
     auditEvent: 'CALL_AUDIT_COMPLETED',
   },
   async ({ ctx, params, body }) => {
+    await assertCallInScope(ctx, params.id);
     const [call, analysis, scorecard, existing] = await Promise.all([
       prisma.call.findFirst({ where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null } }),
       prisma.aIAnalysis.findFirst({ where: { callId: params.id, tenantId: ctx.tenantId, status: 'COMPLETED' } }),
@@ -57,6 +59,7 @@ export const POST = route(
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call audits' },
   async ({ ctx, params }) => {
+    await assertCallInScope(ctx, params.id);
     // 404 for a call this tenant does not have, not an empty list: an empty list
     // reads as "not audited yet" and would let a caller probe ids across tenants.
     const call = await prisma.call.findFirst({
@@ -81,6 +84,7 @@ const reviewBody = z
 export const PATCH = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: reviewBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
+    await assertCallInScope(ctx, params.id);
     const audit = await prisma.callAudit.findFirst({
       where: { id: body.auditId, callId: params.id, tenantId: ctx.tenantId },
     });
@@ -111,6 +115,7 @@ export const DELETE = route(
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
+    await assertCallInScope(ctx, params.id);
     const audit = await prisma.callAudit.findFirst({
       where: { id: query.auditId, callId: params.id, tenantId: ctx.tenantId },
       select: { id: true },

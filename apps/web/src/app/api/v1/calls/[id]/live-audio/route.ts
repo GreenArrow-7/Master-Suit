@@ -10,6 +10,7 @@ import { coachTick, heuristicHints, detectStage, type CoachHint } from '@/lib/ai
 import { parseAmounts } from '@/lib/ai/simulated';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -61,6 +62,7 @@ const query = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, query },
   async ({ ctx, params, query, req }) => {
+    await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });

@@ -13,6 +13,7 @@ import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
 import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -37,6 +38,7 @@ export const GET = route(
     sensitive: 'call recordings',
   },
   async ({ ctx, params }) => {
+    await assertCallInScope(ctx, params.id);
     const [call, recording, consent] = await Promise.all([
       // The parent call's own state. Every sibling route filters `deletedAt: null`;
       // this one did not, so once a call can be deleted its audio would still stream

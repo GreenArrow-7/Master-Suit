@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
+import { assertEventInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -26,6 +27,7 @@ const BATCH_LIMIT = 200;
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
+    await assertEventInScope(ctx, params.id);
     const event = await prisma.event.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
