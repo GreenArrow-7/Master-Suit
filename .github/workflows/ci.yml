@@ -32,7 +32,7 @@ jobs:
           POSTGRES_USER: leadflow
           POSTGRES_PASSWORD: leadflow
           POSTGRES_DB: leadflow
-        ports: ['5432:5432']
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U leadflow"
           --health-interval 5s
@@ -48,19 +48,19 @@ jobs:
       # server render. Each step gets what it needs instead: vitest sets `test`,
       # the seed reads the default `development` from lib/env.ts, and the build
       # gets production from Next itself.
-      CI: 'true'
+      CI: "true"
       # tsc over this codebase (a 6 800-line Prisma schema and its generated
       # client types) needs ~3 GB of heap; Node's default on the runner is ~2 GB
       # and the typecheck gate died OOM-killed mid-mark-compact. Job-wide, so
       # the vitest and next-build steps — the next-largest heaps — get it too.
-      NODE_OPTIONS: '--max-old-space-size=6144'
+      NODE_OPTIONS: "--max-old-space-size=6144"
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
@@ -233,7 +233,7 @@ jobs:
         # logins and refuses to run until the operator confirms the target is
         # disposable. A CI database is created and destroyed with the job.
         env:
-          ALLOW_DEMO_SEED: 'yes'
+          ALLOW_DEMO_SEED: "yes"
           # The seed refuses to run against production, and says so.
           NODE_ENV: development
           DEMO_PASSWORD: ${{ env.E2E_DEMO_PASSWORD }}
@@ -413,8 +413,15 @@ jobs:
       # the suite two minutes later. Output goes to a file, not the job log,
       # and the file rides along with the E2E report when the suite fails.
       # Stopped in its own step below, whether E2E passed or not.
+      #
+      # Execution on: the account-deletion journey hands this worker a scoped
+      # erasure job and fails loudly if the job comes back `disabled`. The
+      # switch is off by default for a reason (see env.ts); here the database
+      # is disposable and exists for this run only.
       - name: Worker
         if: github.event_name == 'push' || github.base_ref == 'main'
+        env:
+          ACCOUNT_DELETION_EXECUTION_ENABLED: "true"
         run: |
           npm run worker > worker.log 2>&1 &
           WORKER=$!
@@ -441,6 +448,10 @@ jobs:
         # because its frames are never committed and the face sidecar is not
         # here.
         timeout-minutes: 35
+        env:
+          # The account-deletion journey uses the worker started above instead
+          # of an in-process one: two consumers on one queue would race.
+          E2E_DELETION_WORKER: external
         run: npx playwright test
 
       # The worker must not outlive the suite: Build below refuses to run with

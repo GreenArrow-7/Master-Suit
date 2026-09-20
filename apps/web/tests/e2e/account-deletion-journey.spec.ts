@@ -184,17 +184,22 @@ for (const variant of variants) {
       // execution on. A stray consumer (`npm run worker`) cannot be told apart from the
       // server's own producer connections by name; it shows up instead as the job
       // coming back `disabled`, which `erase` reports.
+      //
+      // CI runs `npm run worker` for the whole suite (with execution on) and says so
+      // with E2E_DELETION_WORKER=external: then that worker is the consumer, none is
+      // started here, and the schedulers it armed are its own to run.
       const { Queue: QueueCtor, QueueEvents: QueueEventsCtor } = await import('bullmq');
       const { redis } = await import('@/lib/redis');
-      const { startMaintenanceWorker } = await import('@/workers/maintenance');
       queue = new QueueCtor('maintenance', { connection: redis });
+      const qe = new QueueEventsCtor('maintenance', { connection: redis });
+      await qe.waitUntilReady();
+      events = qe;
+      if (process.env.E2E_DELETION_WORKER === 'external') return;
       expect(
         await queue.getJobSchedulers(),
         'job schedulers are armed on this Redis index; the in-process worker would run them with execution on',
       ).toEqual([]);
-      const qe = new QueueEventsCtor('maintenance', { connection: redis });
-      await qe.waitUntilReady();
-      events = qe;
+      const { startMaintenanceWorker } = await import('@/workers/maintenance');
       const w = startMaintenanceWorker();
       await w.waitUntilReady();
       worker = w;
