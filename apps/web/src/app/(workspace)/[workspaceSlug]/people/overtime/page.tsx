@@ -180,8 +180,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           <div>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Detect from attendance</h2>
             <p className="lf-hint" style={{ margin: '6px 0 0' }}>
-              Raises a claim for time worked over {policy.overtimeMinMinutes} minutes beyond the rostered shift. Safe
-              to re-run.
+              Raises a claim for time worked over {policy.overtimeMinMinutes} minutes beyond the rostered shift. Safe to
+              re-run.
               {!policy.overtimeDetectionEnabled && ' Detection is currently switched off in HR settings.'}
             </p>
           </div>

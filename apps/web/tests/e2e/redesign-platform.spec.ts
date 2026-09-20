@@ -41,7 +41,10 @@ for (const width of [390, 1440]) {
             if (controls[i]!.contains(controls[j]!) || controls[j]!.contains(controls[i]!)) continue;
             const a = controls[i]!.getBoundingClientRect();
             const b = controls[j]!.getBoundingClientRect();
-            if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 4 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 4)
+            if (
+              Math.min(a.right, b.right) - Math.max(a.left, b.left) > 4 &&
+              Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 4
+            )
               overlaps.push(`${controls[i]!.tagName} x ${controls[j]!.tagName}`);
           }
         return { docWidth: document.documentElement.scrollWidth, overlaps };
