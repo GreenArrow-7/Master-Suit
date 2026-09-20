@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { activeModule } from '@/lib/nav/workspaceNav';
 
 /**
  * The phone's primary navigation.
@@ -45,12 +46,19 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export default function MobileTabBar({ slug, module }: { slug: string; module: 'sales' | 'people' }) {
+/**
+ * `modules` is what the company owns; the path is what the viewer is in. The
+ * layout used to pick the tabs from ownership alone, which is always Sales for
+ * a company with both products, so every People screen got the wrong bar.
+ */
+export default function MobileTabBar({ slug, modules }: { slug: string; modules: readonly string[] }) {
   const pathname = usePathname();
+  // Not named `module`: Next reserves that identifier in client bundles.
+  const product = activeModule(pathname, modules);
 
   // The daily loop differs by module; the shape does not.
   const items =
-    module === 'people'
+    product === 'people'
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },

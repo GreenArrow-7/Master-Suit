@@ -5,7 +5,14 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { COMPANY_NAME, PRODUCT_NAME } from '@/lib/branding';
 import YouhanMark from '@/components/brand/YouhanMark';
-import { buildNavigation, findActive, type IconName, type NavSection, type WorkArea } from '@/lib/nav/workspaceNav';
+import {
+  activeModule,
+  buildNavigation,
+  findActive,
+  type IconName,
+  type NavSection,
+  type WorkArea,
+} from '@/lib/nav/workspaceNav';
 
 /**
  * The rail: one entry per work area. The screens inside an area are its tabs,
@@ -71,24 +78,15 @@ export default function WorkspaceSidebar({
     setUserCollapsed(typeof next === 'function' ? next(collapsed) : next);
 
   /**
-   * Which half of the product is open — the third path segment, not a substring.
-   * Nothing in the rail changes with it any more; MobileTabBar and the top bar
-   * still read it, and the navigation tests assert the attribute ModuleTheme
-   * stamps from the same test.
+   * Which half of the product is open. Nothing in the rail changes with it any
+   * more; MobileTabBar reads the same rule, and the navigation tests assert the
+   * attribute ModuleTheme stamps from the same test.
    */
-  const moduleSegment = pathname.split('/')[2];
-  const activeModule: 'people' | 'sales' =
-    moduleSegment === 'people'
-      ? 'people'
-      : moduleSegment === 'sales'
-        ? 'sales'
-        : modules.includes('SALES')
-          ? 'sales'
-          : 'people';
+  const product = activeModule(pathname, modules);
 
   useEffect(() => {
-    window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
-  }, [activeModule, slug]);
+    window.localStorage.setItem(`master-suite:${slug}:module`, product);
+  }, [product, slug]);
 
   // The bottom tab bar's Menu button asks for the drawer. An event rather than
   // lifted state: one button does not justify a context provider.

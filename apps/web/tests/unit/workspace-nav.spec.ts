@@ -2,6 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  activeModule,
   buildNavigation,
   findActive,
   NAV_PERMISSIONS,
@@ -33,6 +34,32 @@ const tabsOf = (sections: NavSection[], key: string) =>
     .flatMap((s) => s.areas)
     .find((a) => a.key === key)
     ?.tabs.map((t) => t.label) ?? [];
+
+describe('activeModule: the product the phone tab bar is for', () => {
+  const both = ['SALES', 'HRMS'];
+
+  it('follows the URL when the company owns both products', () => {
+    // The regression: ownership alone answered 'sales' for every one of these.
+    expect(activeModule(`/${SLUG}/people`, both)).toBe('people');
+    expect(activeModule(`/${SLUG}/people/leave`, both)).toBe('people');
+    expect(activeModule(`/${SLUG}/people/employees/42`, both)).toBe('people');
+    expect(activeModule(`/${SLUG}/sales/leads`, both)).toBe('sales');
+  });
+
+  it('reads the segment, not a substring', () => {
+    expect(activeModule(`/${SLUG}/sales/people`, both)).toBe('sales');
+    expect(activeModule('/people-first/sales/leads', both)).toBe('sales');
+    expect(activeModule('/salesforce-co/people/leave', both)).toBe('people');
+  });
+
+  it('falls back to ownership only on shared routes', () => {
+    for (const path of [`/${SLUG}/dashboard`, `/${SLUG}/tasks`, `/${SLUG}/admin/users`]) {
+      expect(activeModule(path, both)).toBe('sales');
+      expect(activeModule(path, ['SALES'])).toBe('sales');
+      expect(activeModule(path, ['HRMS'])).toBe('people');
+    }
+  });
+});
 
 describe('permissions the layout must resolve', () => {
   it('includes the modules the previous list never checked', () => {
