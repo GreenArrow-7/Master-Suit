@@ -24,6 +24,8 @@ const label = (column: Column) => (typeof column === 'string' ? column : column.
 const priority = (column: Column, index: number, headers: Column[]) => {
   if (typeof column !== 'string' && column.priority) return column.priority;
   if (index === 0 && !headers.some((h) => typeof h !== 'string' && h.priority === 'primary')) return 'primary';
+  // Row controls stay reachable on a phone whatever the heading says.
+  if (/action/i.test(typeof column === 'string' ? column : column.label)) return 'secondary';
   return SECONDARY_HINT.test(label(column)) ? 'secondary' : 'detail';
 };
 

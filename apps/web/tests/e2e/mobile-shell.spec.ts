@@ -45,6 +45,8 @@ async function columnsSheetFits(page: Page, path: string) {
   await expect(dialog).toBeVisible();
   // The ••• menu it came from is closed, not stacked under it.
   await expect(page.locator('details.lf-overflow[open]')).toHaveCount(0);
+  // The sheet rises in over 160ms; measure it at rest.
+  await dialog.evaluate((el) => Promise.allSettled(el.getAnimations().map((a) => a.finished)));
   const box = (await dialog.boundingBox())!;
   const viewport = page.viewportSize()!;
   expect(box.x, `${path}: sheet left edge`).toBeGreaterThanOrEqual(0);

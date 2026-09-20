@@ -61,7 +61,8 @@ export interface ColumnDef {
 export type ColumnPriority = 'primary' | 'secondary' | 'detail';
 
 /** Column keys or labels that read as a status or a next action. */
-export const SECONDARY_HINT = /status|stage|state|sla|priorit|score|due|next|follow|when|amount|outcome/i;
+/** Row controls (Complete, Reschedule…) are what a phone user came for: never folded away. */
+export const SECONDARY_HINT = /status|stage|state|sla|priorit|score|due|next|follow|when|amount|outcome|action/i;
 
 /**
  * Default phone priority: the flagged primary (or the first column when none
@@ -71,6 +72,7 @@ export const SECONDARY_HINT = /status|stage|state|sla|priorit|score|due|next|fol
 export function columnPriority(column: ColumnDef, index: number, columns: ColumnDef[]): ColumnPriority {
   if (column.priority) return column.priority;
   if (column.primary || (index === 0 && !columns.some((c) => c.primary || c.priority === 'primary'))) return 'primary';
+  if (/action/i.test(`${column.key} ${column.label}`)) return 'secondary';
   if (!column.hideMobile && SECONDARY_HINT.test(`${column.key} ${column.label}`)) return 'secondary';
   return 'detail';
 }
