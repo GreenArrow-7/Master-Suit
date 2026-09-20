@@ -629,3 +629,21 @@
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+
+/* ── Selected filter links look selected ──────────────────────────────────
+   Several screens build their filters from ghost buttons with aria-current
+   (audit domains, report periods). A chosen one now reads as chosen. */
+.lf-btn--ghost[aria-current='page'],
+.lf-btn--ghost[aria-current='true'] {
+  background: color-mix(in srgb, var(--yh-primary, var(--lf-wine-700)) 10%, transparent);
+  color: var(--yh-primary, var(--lf-wine-700));
+  font-weight: 600;
+}
+/* Definition labels (settings, record summaries) follow the same rule. */
+.lf-page-main .lf-kv dt,
+.lf-page-main dl dt {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+}

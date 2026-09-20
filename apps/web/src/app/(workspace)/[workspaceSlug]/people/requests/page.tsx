@@ -148,10 +148,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {/* ── Temporary work locations ──────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Request a temporary work location</h2>
-        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-          For a site that is not an approved location — a project office, an exhibition stand, a client&apos;s premises.
-          On approval it becomes a real work location with hard start and end dates, and the named staff are assigned to
-          it for that window only.
+        <p className="lf-hint" style={{ margin: '0 0 10px' }}>
+          For a site that is not an approved location, such as a project office or a client&apos;s premises. Once
+          approved, the named staff can check in there between the dates given.
         </p>
         <WorkspaceRecordForm
           endpoint={`${actions}/temporary-request`}
