@@ -88,6 +88,18 @@ export const GLOBAL_MODELS = new Set([
   // The exemption is narrower than it looks: every query names either `userId`,
   // which is a tenant-scoped User, or the unique `token`, which pins one row.
   'DeviceToken',
+  // AI Control Center policy: prices, budgets, guardrail overrides, model
+  // routes and alert rules. None carries a tenantId — a budget for one company
+  // names it in `scopeId`, which is a value the platform owner typed, not a
+  // scope the guard can enforce — and every one of them is reached only through
+  // requirePlatformOwner. The per-attempt record beside them, AiEvent, does
+  // carry a tenantId and is deliberately absent from this list: it is under
+  // FORCE row-level security and read across tenants only by withPlatformTx.
+  'AiModelPrice',
+  'AiBudget',
+  'AiGuardrailPolicy',
+  'AiRoute',
+  'AiAlertRule',
 ]);
 
 /**

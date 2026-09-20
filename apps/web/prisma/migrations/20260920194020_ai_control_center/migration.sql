@@ -170,3 +170,28 @@ CREATE INDEX "AiEvent_kind_occurredAt_idx" ON "AiEvent"("kind", "occurredAt");
 
 -- CreateIndex
 CREATE INDEX "AiAlertRule_kind_enabled_idx" ON "AiAlertRule"("kind", "enabled");
+
+-- ── AiEvent is tenant-owned, so it joins row-level security ──────────────────
+--
+-- The four configuration tables above carry no tenantId: they are platform
+-- policy, reached only through requirePlatformOwner, and a policy on them would
+-- have nothing to match. AiEvent is different — every row names the company
+-- whose request it records, so it is covered by the same sweep as every other
+-- tenant table, with FORCE so the owning role cannot read past it either.
+--
+-- One addition to the standard body: a row with no tenantId is the deployment's
+-- own work (a platform-level refusal, a job with no workspace behind it). Such
+-- a row may be written without a tenant in scope and may be read only by
+-- withPlatformTx, which is what the asymmetry between USING and WITH CHECK says.
+ALTER TABLE "AiEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AiEvent" FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "AiEvent" FOR ALL
+  USING (
+    "tenantId" = nullif(current_setting('app.tenant_id', true), '')
+    OR current_setting('app.platform_admin', true) = 'on'
+  )
+  WITH CHECK (
+    "tenantId" = nullif(current_setting('app.tenant_id', true), '')
+    OR "tenantId" IS NULL
+    OR current_setting('app.platform_admin', true) = 'on'
+  );
