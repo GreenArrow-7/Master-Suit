@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getCalendarProvider } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
+import { eventScopeFilter, seesWholeWorkspace } from '@/lib/security/record-scope';
 
 const createBody = z
   .object({
@@ -79,6 +80,10 @@ export const GET = route(
   { module: 'events', productModule: 'SALES', action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
+    // Below TEAM scope an event is yours when you host it, created it, or were
+    // invited to it. The list used to return every event in the workspace while
+    // the code around it assumed a scope; see lib/security/record-scope.ts.
+    if (!seesWholeWorkspace(ctx, 'events')) Object.assign(where, eventScopeFilter(ctx.actor.id));
     if (query.status) where.status = query.status;
     if (query.upcoming === 'true') where.startAt = { gte: new Date() };
     if (query.campaignId) where.campaignId = query.campaignId;

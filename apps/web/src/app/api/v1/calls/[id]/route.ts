@@ -6,12 +6,14 @@ import { NotFound } from '@/lib/errors';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { notifyAboutCall } from '@/services/crm/notify';
 import { recordTargetProgress } from '@/services/targets/progress';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
   async ({ ctx, params }) => {
+    await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       include: {
@@ -55,6 +57,7 @@ const patchBody = z
 export const PATCH = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'CALL_COMPLETED' },
   async ({ ctx, params, body }) => {
+    await assertCallInScope(ctx, params.id);
     const existing = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -126,6 +129,7 @@ export const PATCH = route(
 export const DELETE = route(
   { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
+    await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },
