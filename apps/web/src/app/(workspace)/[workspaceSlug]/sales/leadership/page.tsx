@@ -19,12 +19,18 @@ import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
 import { obligationAccess } from '@/services/leads/nextFollowUp';
 
+import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import DailyBoardView from './DailyBoardView';
+import LiveRefresh from './LiveRefresh';
+import { dailyBoard } from '@/services/targets/dailyBoard';
+
 export const metadata = { title: 'Leadership' };
 
 const TABS = [
   ['Overview', ''],
   ['Value', 'value'],
   ['Productivity', 'productivity'],
+  ['Daily targets', 'daily'],
   ['Compliance', 'compliance'],
   ['Chasing', 'chasing'],
   ['Feed', 'feed'],
@@ -119,11 +125,13 @@ function resolveRange(period: PeriodKey, fromParam?: string, toParam?: string) {
 export default async function LeadershipPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; period?: string; from?: string; to?: string; rep?: string }>;
+  searchParams: Promise<{ view?: string; period?: string; from?: string; to?: string; rep?: string; date?: string }>;
 }) {
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['reports', 'VIEW'] });
   const view = TABS.some(([, k]) => k === params.view) ? (params.view ?? '') : '';
+  const canAssignTargets =
+    can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
 
   const period = (PERIODS.some(([k]) => k === params.period) ? params.period : 'mtd') as PeriodKey;
   const custom = Boolean(params.from);
@@ -155,27 +163,32 @@ export default async function LeadershipPage({
     }
   }
 
-  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows, value] = await Promise.all([
-    funnel(ctx.tenantId, userIds, range),
-    conversion(ctx.tenantId, userIds, range),
-    performerBoard(ctx.tenantId, userIds, range, 'revenue'),
-    chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), 50),
-    view === 'compliance' ? activityCompliance(ctx.tenantId, userIds, range) : [],
-    view === 'feed' ? interactionFeed(ctx.tenantId, userIds, range, 50) : [],
-    view === 'pl' ? profitAndLoss(ctx.tenantId, userIds, range.from, range.to, 'team') : null,
-    prisma.user.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        status: 'ACTIVE',
-        ...(allowed.length === 0 ? {} : { id: { in: allowed } }),
-      },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: 'asc' },
-      take: 200,
-    }),
-    view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
-    view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
-  ]);
+  const [stages, rates, board, chasing, compliance, feed, pl, reps, productivityRows, daily, value] = await Promise.all(
+    [
+      funnel(ctx.tenantId, userIds, range),
+      conversion(ctx.tenantId, userIds, range),
+      performerBoard(ctx.tenantId, userIds, range, 'revenue'),
+      chasingQueue(ctx.tenantId, userIds, await obligationAccess(ctx, 'scope'), new Date(), 50),
+      view === 'compliance' ? activityCompliance(ctx.tenantId, userIds, range) : [],
+      view === 'feed' ? interactionFeed(ctx.tenantId, userIds, range, 50) : [],
+      view === 'pl' ? profitAndLoss(ctx.tenantId, userIds, range.from, range.to, 'team') : null,
+      prisma.user.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          status: 'ACTIVE',
+          ...(allowed.length === 0 ? {} : { id: { in: allowed } }),
+        },
+        select: { id: true, fullName: true },
+        orderBy: { fullName: 'asc' },
+        take: 200,
+      }),
+      view === 'productivity' ? productivity(ctx.tenantId, userIds, range) : [],
+      view === 'daily'
+        ? dailyBoard(ctx, /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? params.date : undefined)
+        : null,
+      view === 'value' ? workspaceValue(ctx.tenantId, range) : null,
+    ],
+  );
 
   // Only when there is something to name — an `in: []` lookup is a wasted round
   // trip on the four tabs that never render compliance.
@@ -529,6 +542,16 @@ export default async function LeadershipPage({
               </div>
             ))}
           </div>
+        </>
+      )}
+      {view === 'daily' && daily && (
+        <>
+          <LiveRefresh />
+          <DailyBoardView
+            board={daily}
+            canAssign={canAssignTargets}
+            detailHref={(userId) => `/leadership/daily/${userId}?date=${daily.date}`}
+          />
         </>
       )}
       {view === 'productivity' &&

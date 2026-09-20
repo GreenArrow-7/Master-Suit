@@ -11,6 +11,7 @@
  * database row is not redeemable; a leaked *email* is, which is why it expires.
  */
 import { createHash, randomBytes } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
@@ -86,24 +87,34 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
   await assertSeatAvailable(ctx);
 
   const token = randomBytes(32).toString('base64url');
-  const invitation = await prisma.workspaceInvitation.create({
-    data: {
-      tenantId: ctx.tenantId,
-      email,
-      pendingKey: email,
-      fullName: input.fullName.trim(),
-      roleId: role.id,
-      employeeNumber: input.employeeNumber,
-      jobTitle: input.jobTitle,
-      departmentId: input.departmentId || null,
-      candidateId: input.candidateId ?? null,
-      joiningDate: input.joiningDate ?? null,
-      employmentType: input.employmentType ?? null,
-      tokenHash: sha256(token),
-      expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000),
-      invitedById: ctx.actor.id,
-    },
-  });
+  const invitation = await prisma.workspaceInvitation
+    .create({
+      data: {
+        tenantId: ctx.tenantId,
+        email,
+        pendingKey: email,
+        fullName: input.fullName.trim(),
+        roleId: role.id,
+        employeeNumber: input.employeeNumber,
+        jobTitle: input.jobTitle,
+        departmentId: input.departmentId || null,
+        candidateId: input.candidateId ?? null,
+        joiningDate: input.joiningDate ?? null,
+        employmentType: input.employmentType ?? null,
+        tokenHash: sha256(token),
+        expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000),
+        invitedById: ctx.actor.id,
+      },
+    })
+    .catch((error: unknown) => {
+      // The (tenantId, pendingKey) unique index is the real guard against a second
+      // open invitation to the same address; this turns its P2002 into a sentence
+      // instead of a 500. Catching, rather than pre-reading, is also what holds
+      // when two administrators invite the same person at the same moment.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw Conflict('An invitation to that address is already open. Resend or revoke it instead.');
+      throw error;
+    });
 
   await deliver(ctx, invitation.id, email, input.fullName, token);
   await audit(ctx, {

@@ -76,6 +76,23 @@ export const PATCH = route(
        */
       if (['COMPLETED', 'MISSED', 'FAILED'].includes(body.status)) {
         await recordTargetProgress(ctx, updated.callerId, 'CALLS_ATTEMPTED');
+        // The daily cold-calling target counts leads, not dials: the first
+        // finished call to a lead today is the one that counts.
+        if (updated.leadId) {
+          const dayStart = new Date();
+          dayStart.setUTCHours(0, 0, 0, 0);
+          const earlier = await prisma.call.count({
+            where: {
+              tenantId: ctx.tenantId,
+              callerId: updated.callerId,
+              leadId: updated.leadId,
+              id: { not: updated.id },
+              status: { in: ['COMPLETED', 'MISSED', 'FAILED'] },
+              createdAt: { gte: dayStart },
+            },
+          });
+          if (earlier === 0) await recordTargetProgress(ctx, updated.callerId, 'LEADS_CALLED');
+        }
       }
       if (body.status === 'COMPLETED') {
         await recordTargetProgress(ctx, updated.callerId, 'CALLS_CONNECTED');

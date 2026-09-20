@@ -8,6 +8,7 @@ const createBody = z
     userId: z.string().cuid(),
     campaignId: z.string().cuid().optional(),
     metric: z.enum([
+      'LEADS_CALLED',
       'LEADS_ASSIGNED',
       'CALLS_ATTEMPTED',
       'CALLS_CONNECTED',

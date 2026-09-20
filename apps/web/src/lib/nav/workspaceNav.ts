@@ -640,6 +640,25 @@ export const parsePermission = (token: string): [string, string] => {
   return [module!, action ?? 'VIEW'];
 };
 
+/**
+ * Which product the viewer is standing in.
+ *
+ * The URL decides: `/{slug}/people/...` is People and `/{slug}/sales/...` is
+ * Sales, read as the third path segment rather than a substring so that
+ * `/{slug}/sales/people` and a slug containing the word are not misread.
+ * Entitlement is only the tie-break for the shared routes (`/dashboard`,
+ * `/tasks`, `/admin/**`), where the path says nothing.
+ *
+ * The phone tab bar used to skip the URL and answer from entitlement alone, so a
+ * workspace owning both products got the Sales tabs on every People screen.
+ */
+export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' {
+  const segment = pathname.split('/')[2];
+  if (segment === 'people') return 'people';
+  if (segment === 'sales') return 'sales';
+  return modules.includes('SALES') ? 'sales' : 'people';
+}
+
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {
   if (tab.module && !input.modules.includes(tab.module)) return false;
   if (tab.audience === 'self' && input.peopleOversight) return false;

@@ -22,6 +22,7 @@ import '@/styles/shell-mobile.css';
 import '@/styles/pages-copy.css';
 import '@/styles/lists-mobile.css';
 import '@/styles/forms-mobile.css';
+import '@/styles/daily-board.css';
 import '@/styles/redesign-mobile.css';
 
 export const dynamic = 'force-dynamic';
@@ -115,7 +116,7 @@ export default async function WorkspaceLayout({
           {children}
         </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}
-        <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
+        <MobileTabBar slug={shell.slug} modules={shell.modules} />
       </div>
       <AssistantWidget slug={shell.slug} />
       {/* ⌘K. Same navigation model as the rail, so it can only offer what the

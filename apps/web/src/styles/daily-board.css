@@ -1,0 +1,53 @@
+/* daily-board: the manager's daily lead-target board and its per-seller detail. */
+.lf-daily-board {
+  display: grid;
+  gap: var(--lf-space-4);
+}
+.lf-daily-board__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--lf-space-3);
+}
+.lf-daily-board__date .lf-input {
+  min-width: 11em;
+}
+.lf-daily-board__zone {
+  font-size: var(--lf-text-2xs);
+}
+.lf-daily-board__totals .lf-kpi[data-tone='vermillion'] .lf-kpi__value {
+  color: var(--lf-vermillion);
+}
+.lf-daily-board__totals .lf-kpi[data-tone='viridian'] .lf-kpi__value {
+  color: var(--lf-viridian, var(--lf-ink));
+}
+/* Behind target: a left rule in the row's tone, readable in every theme. */
+.lf-daily-board__table tr[data-behind] td:first-child {
+  box-shadow: inset 3px 0 0 var(--lf-vermillion);
+}
+.lf-daily-board__table tr[data-tone='brass'][data-behind] td:first-child {
+  box-shadow: inset 3px 0 0 var(--lf-brass, #b98f4c);
+}
+.lf-daily-target {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lf-space-2);
+}
+.lf-daily-target__input {
+  width: 5.5em;
+  min-height: 36px;
+  text-align: right;
+}
+.lf-daily-target__error {
+  color: var(--lf-vermillion);
+  font-size: var(--lf-text-2xs);
+}
+@media (max-width: 760px) {
+  .lf-daily-target {
+    width: 100%;
+  }
+  .lf-daily-target__input {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}

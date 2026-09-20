@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { metaOAuthConfigured } from '@/services/meta/oauth';
+import { PRODUCT_NAME } from '@/lib/branding';
 
 const GRAPH_VERSION = 'v26.0';
 
@@ -22,12 +23,15 @@ export type MetaMode = 'LIVE' | 'SIMULATED' | 'NOT_CONFIGURED';
  * without a Meta account — every one is labelled SIMULATED in the UI, and they
  * flow through the same MetaLeadFormRouting rows and the same sync endpoint as
  * live assets, so the thing being demonstrated is the real product.
+ *
+ * Named after the product, not a customer: these used to carry the first
+ * customer's company name, which every other tenant then saw as "its" Page.
  */
 export const DEMO_ASSETS = {
-  businessName: 'Manath Homes Demo Business',
-  pageName: 'Manath Homes',
+  businessName: `${PRODUCT_NAME} Demo Business`,
+  pageName: `${PRODUCT_NAME} Demo Page`,
   pageId: 'demo-page-1',
-  instagramHandle: '@manathhomes',
+  instagramHandle: `@${PRODUCT_NAME.replace(/\W+/g, '').toLowerCase()}demo`,
   instagramId: 'demo-ig-1',
   forms: [
     { id: 'demo-form-dubai', name: 'Dubai Property Enquiry', status: 'ACTIVE' },
