@@ -525,7 +525,6 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  padding: 0;
 }
 .lf-card {
   box-shadow: none;
@@ -628,6 +627,12 @@
   .lf-page-main [style*='grid-template-columns'] {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+  /* A `repeat(n, …)` grid is a row of small tiles (event counts, KPI pairs):
+     two per row still fit; one per row wastes the screen. */
+  .lf-page-main [style*='grid-template-columns: repeat('],
+  .lf-page-main [style*='grid-template-columns:repeat('] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
 /* ── Selected filter links look selected ──────────────────────────────────
@@ -692,4 +697,9 @@
   .lf-grid td[data-label='Window'] {
     white-space: nowrap;
   }
+}
+
+/* The face enrolment facts card carried no padding of its own. */
+.lf-face__facts {
+  padding: var(--lf-space-4) var(--lf-space-5);
 }
