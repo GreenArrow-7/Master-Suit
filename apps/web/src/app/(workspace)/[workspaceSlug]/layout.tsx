@@ -23,11 +23,7 @@ import '@/styles/pages-copy.css';
 import '@/styles/lists-mobile.css';
 import '@/styles/forms-mobile.css';
 import '@/styles/daily-board.css';
-<<<<<<< Updated upstream
-=======
-import '@/styles/redesign-mobile.css';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
->>>>>>> Stashed changes
 
 export const dynamic = 'force-dynamic';
 
@@ -145,8 +141,6 @@ async function loadShell(workspaceSlug: string) {
     // per navigation instead of two of each.
     const ctx = await requestCtx();
     const workspace = await requestWorkspace(ctx, workspaceSlug);
-    // One clock for the whole render, so two entitlements expiring in the same
-    // second cannot disagree about which side of it they fell.
     const now = new Date();
     const modules = workspace.moduleEntitlements
       .filter((item) => isEntitlementUsable(item, now))
