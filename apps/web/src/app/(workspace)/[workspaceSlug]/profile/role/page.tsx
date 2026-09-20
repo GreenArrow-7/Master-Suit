@@ -1,4 +1,4 @@
-import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
+import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
@@ -12,13 +12,22 @@ export const metadata = { title: 'My role & access' };
  * server enforces. Raw permission keys stay in the admin area.
  */
 
-const SCOPE_LABEL: Record<string, string> = {
-  OWN: 'records assigned to you',
-  TEAM: 'your team’s records',
-  BRANCH: 'your branch’s records',
-  REGION: 'your region’s records',
-  ORGANIZATION: 'all of Manath Homes',
-};
+/**
+ * The organisation-wide label carries the workspace's own name. It was a
+ * constant naming the first customer, which every other tenant then read as
+ * their own — shared copy takes the name from the workspace record, never a
+ * literal.
+ */
+function scopeLabel(scope: string, organisation: string): string {
+  const labels: Record<string, string> = {
+    OWN: 'records assigned to you',
+    TEAM: 'your team’s records',
+    BRANCH: 'your branch’s records',
+    REGION: 'your region’s records',
+    ORGANIZATION: `all of ${organisation}`,
+  };
+  return labels[scope] ?? scope;
+}
 
 const MODULE_LABEL: Record<string, string> = {
   leads: 'Leads',
@@ -49,7 +58,7 @@ const ROLE_COPY: Record<string, { title: string; responsibilities: string[] }> =
   org_admin: {
     title: 'Organization Administrator',
     responsibilities: [
-      'Run the Manath Homes workspace end to end',
+      'Run the workspace end to end',
       'Manage users, roles and teams',
       'Oversee the full pipeline, targets and SLA health',
       'Review calls, call audits and team performance',
@@ -106,14 +115,17 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
   // checks every other workspace page runs — the structural test in
   // tests/permission/page-access.spec.ts has been failing on exactly that. The
   // page shows the viewer their own role and needs no permission, which is what
-  // SELF_SERVICE is for; going through requirePageAccess is what restores the
-  // invariant that no workspace page reaches ctx by a private door.
-  let ctx;
+  // SELF_SERVICE is for; going through the shared page gate is what restores
+  // the invariant that no workspace page reaches ctx by a private door. The
+  // workspace record rides along (cached from the layout, no extra query) for
+  // the organisation's display name.
+  let page: Awaited<ReturnType<typeof resolveWorkspacePage>>;
   try {
-    ctx = await requirePageAccess({ permission: SELF_SERVICE });
+    page = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
   } catch {
     redirect('/login');
   }
+  const { ctx, workspace } = page;
 
   const [user, role] = await Promise.all([
     prisma.user.findFirst({
@@ -150,7 +162,7 @@ export default async function RolePage({ params }: { params: Promise<{ workspace
     .filter(([, v]) => v.view)
     .map(([module, v]) => ({
       module: MODULE_LABEL[module],
-      scope: SCOPE_LABEL[v.view!] ?? v.view!,
+      scope: scopeLabel(v.view!, workspace.displayName),
       write: v.write,
     }))
     .sort((a, b) => a.module.localeCompare(b.module));
