@@ -20,6 +20,8 @@
   min-height: 100dvh;
   display: grid;
   grid-template-columns: minmax(0, 48fr) minmax(0, 52fr);
+  /* One surface under both columns, so nothing seams where they meet. */
+  background: linear-gradient(168deg, var(--yh-midnight) 0%, var(--yh-navy) 58%, #0a1d3d 100%);
 }
 
 .lf-sr-only {
@@ -41,7 +43,6 @@
   gap: clamp(20px, 3.2vh, 36px);
   padding: clamp(28px, 3.6vw, 52px);
   color: var(--yh-on-midnight);
-  background: var(--yh-midnight);
   overflow: hidden;
 }
 
@@ -53,8 +54,7 @@
   z-index: -1;
   background:
     radial-gradient(70% 55% at 18% 8%, rgb(8 123 245 / 0.28) 0%, rgb(8 123 245 / 0) 62%),
-    radial-gradient(48% 40% at 88% 96%, rgb(0 217 245 / 0.1) 0%, rgb(0 217 245 / 0) 60%),
-    linear-gradient(168deg, var(--yh-midnight) 0%, var(--yh-navy) 58%, #0a1d3d 100%);
+    radial-gradient(48% 40% at 88% 96%, rgb(0 217 245 / 0.1) 0%, rgb(0 217 245 / 0) 60%);
 }
 .lf-brandbg::before {
   content: '';
@@ -402,14 +402,17 @@
 
 /* ── The form side ─────────────────────────────────────────────────────────── */
 
+/* The same midnight surface as the story, continued: the gradient picks up
+   where the story's ends, one soft light sits behind the card, and the dot
+   texture is light on dark. Only the card is light — the page is one surface. */
 .lf-auth-pane {
   position: relative;
   display: grid;
   place-items: center;
   padding: clamp(24px, 4vw, 56px);
   background:
-    radial-gradient(circle at 1px 1px, rgb(17 24 39 / 0.055) 1px, transparent 1.5px) 0 0 / 22px 22px,
-    var(--lf-canvas);
+    radial-gradient(circle at 1px 1px, rgb(219 229 242 / 0.05) 1px, transparent 1.5px) 0 0 / 22px 22px,
+    radial-gradient(60% 50% at 50% 48%, rgb(8 123 245 / 0.16) 0%, rgb(8 123 245 / 0) 70%);
 }
 .lf-auth-column {
   width: 100%;
@@ -422,11 +425,11 @@
   width: 100%;
   padding: clamp(24px, 3vw, 32px);
   background: var(--lf-surface);
-  border: 1px solid var(--lf-line);
+  border: 1px solid rgb(219 229 242 / 0.16);
   border-radius: var(--lf-radius-xl);
   box-shadow:
-    0 1px 2px rgb(17 24 39 / 0.04),
-    0 12px 32px rgb(17 24 39 / 0.07);
+    0 0 0 1px rgb(2 8 23 / 0.6),
+    0 24px 56px rgb(2 8 23 / 0.55);
   animation: lfAuthRise 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 @keyframes lfAuthRise {
@@ -669,7 +672,7 @@
   .lf-auth-pane {
     align-items: start;
     padding: 0 24px 40px;
-    background: var(--lf-canvas);
+    background: none;
   }
   .lf-auth-column {
     max-width: 400px;
@@ -687,9 +690,6 @@
     /* Inner content stays at most 448px wide, centred, whatever the screen. */
     padding: 22px max(24px, calc(50vw - 224px)) 14px;
     color: var(--yh-on-midnight);
-    background: var(--yh-midnight);
-    border-bottom-left-radius: 22px;
-    border-bottom-right-radius: 22px;
   }
   .lf-auth-compact .lf-brandbg::before {
     background-size: 36px 36px;
