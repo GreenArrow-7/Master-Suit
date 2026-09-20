@@ -299,8 +299,9 @@
      long line of pills wraps around it instead of running underneath it. */
   .lf-grid tbody td.lf-row-more,
   .lf-table tbody td.lf-row-more {
+    order: 0;
     margin-left: auto;
-    align-self: flex-end;
+    align-self: center;
   }
 
   /* Metric groups: figures on one surface, hairlines between them. */
