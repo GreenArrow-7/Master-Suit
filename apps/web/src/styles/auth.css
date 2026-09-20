@@ -682,7 +682,10 @@
 /* Phone and small tablet — and any viewport too short for the story (a phone
    held sideways): one column. The desktop story steps aside; the compact brand
    band sits above the card, the form across the screen. */
-@media (max-width: 820px), (max-height: 520px) {
+/* Width alone decides the layout. A wide window that is short (a zoomed browser,
+   a small laptop) keeps the two-column composition and scrolls vertically;
+   switching it to the phone layout hid the whole story pane. */
+@media (max-width: 820px) {
   .lf-auth {
     grid-template-columns: minmax(0, 1fr);
   }
