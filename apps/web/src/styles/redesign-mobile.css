@@ -354,14 +354,14 @@
 /* Report filters: one line saying what is set, the controls behind it. A
    native <details>, so it is keyboard reachable and needs no script; it opens
    by itself when a custom range or person is in force. */
-.lf-filters {
+.lf-report-filters {
   /* globals lays <details> out as a row for other disclosures; this one stacks. */
   display: block;
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
   background: var(--lf-surface);
 }
-.lf-filters > summary {
+.lf-report-filters > summary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -374,14 +374,14 @@
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.lf-filters > summary::-webkit-details-marker {
+.lf-report-filters > summary::-webkit-details-marker {
   display: none;
 }
-.lf-filters__label {
+.lf-report-filters__label {
   flex: none;
   font-weight: 600;
 }
-.lf-filters__current {
+.lf-report-filters__current {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -389,7 +389,7 @@
   white-space: nowrap;
   color: var(--lf-ink-2);
 }
-.lf-filters > summary::after {
+.lf-report-filters > summary::after {
   content: '';
   flex: none;
   width: 7px;
@@ -400,88 +400,88 @@
   transform: translateY(-2px) rotate(45deg);
   transition: transform 120ms ease;
 }
-.lf-filters[open] > summary::after {
+.lf-report-filters[open] > summary::after {
   transform: translateY(1px) rotate(225deg);
 }
-.lf-filters > summary:focus-visible {
+.lf-report-filters > summary:focus-visible {
   outline: 2px solid var(--yh-azure, var(--lf-wine-700));
   outline-offset: -2px;
   border-radius: var(--lf-radius-lg);
 }
-.lf-filters__body {
+.lf-report-filters__body {
   padding: 4px 14px 14px;
   border-top: 1px solid var(--lf-line);
 }
-.lf-filters__periods {
+.lf-report-filters__periods {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 0 4px;
 }
-.lf-filters__form {
+.lf-report-filters__form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px 12px;
   align-items: end;
   margin-top: 8px;
 }
-.lf-filters__form .lf-field {
+.lf-report-filters__form .lf-field {
   min-width: 0;
 }
 /* Field names are words, not headings. */
-.lf-filters__form .lf-eyebrow {
+.lf-report-filters__form .lf-eyebrow {
   text-transform: none;
   letter-spacing: 0;
   font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
   color: var(--lf-ink-2);
 }
 /* A date input's intrinsic width is what collided From with To. */
-.lf-filters__form .lf-input {
+.lf-report-filters__form .lf-input {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
-.lf-filters__actions {
+.lf-report-filters__actions {
   display: flex;
   gap: 8px;
   align-items: center;
 }
-.lf-filters__hint {
+.lf-report-filters__hint {
   grid-column: 1 / -1;
   margin: 0;
 }
 @media (max-width: 760px) {
-  .lf-filters {
+  .lf-report-filters {
     border: 0;
     border-bottom: 1px solid var(--lf-line);
     border-radius: 0;
     background: transparent;
   }
-  .lf-filters > summary {
+  .lf-report-filters > summary {
     padding: 0;
   }
-  .lf-filters__body {
+  .lf-report-filters__body {
     padding: 0 0 14px;
     border-top: 0;
   }
-  .lf-filters__form {
+  .lf-report-filters__form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .lf-filters__form .lf-field:has(select),
-  .lf-filters__actions {
+  .lf-report-filters__form .lf-field:has(select),
+  .lf-report-filters__actions {
     grid-column: 1 / -1;
   }
-  .lf-filters__actions .lf-btn {
+  .lf-report-filters__actions .lf-btn {
     min-height: 44px;
     flex: 1 1 auto;
   }
-  .lf-filters__periods .lf-btn {
+  .lf-report-filters__periods .lf-btn {
     min-height: 36px;
     border-radius: 999px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lf-filters > summary::after {
+  .lf-report-filters > summary::after {
     transition: none;
   }
 }

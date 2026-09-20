@@ -245,15 +245,15 @@ export default async function LeadershipPage({
         nothing. A link carries only the period, which clears the custom range by
         construction, and the two controls can no longer contradict each other.
       */}
-      <details className="lf-filters" open={filtered || undefined}>
+      <details className="lf-report-filters" open={filtered || undefined}>
         <summary>
-          <span className="lf-filters__label">Filters</span>
-          <span className="lf-filters__current">
+          <span className="lf-report-filters__label">Filters</span>
+          <span className="lf-report-filters__current">
             {custom ? 'Custom range' : (PERIODS.find(([k]) => k === period)?.[1] ?? 'This month')} · {scopeLabel}
           </span>
         </summary>
-        <div className="lf-filters__body">
-          <nav aria-label="Period" className="lf-filters__periods">
+        <div className="lf-report-filters__body">
+          <nav aria-label="Period" className="lf-report-filters__periods">
             {PERIODS.map(([key, label]) => {
               const q = new URLSearchParams();
               if (view) q.set('view', view);
@@ -279,7 +279,7 @@ export default async function LeadershipPage({
           </nav>
 
           {/* Custom range and scope. A GET form, so the URL is the state and is shareable. */}
-          <form method="get" className="lf-filters__form">
+          <form method="get" className="lf-report-filters__form">
             {view && <input type="hidden" name="view" value={view} />}
             {/*
           The chosen period rides along with the submit.
@@ -316,7 +316,7 @@ export default async function LeadershipPage({
                 ))}
               </select>
             </label>
-            <div className="lf-filters__actions">
+            <div className="lf-report-filters__actions">
               <button type="submit" className="lf-btn lf-btn--secondary">
                 Apply
               </button>
@@ -326,7 +326,7 @@ export default async function LeadershipPage({
                 </SalesLink>
               )}
             </div>
-            <span id="lf-range-hint" className="lf-hint lf-filters__hint">
+            <span id="lf-range-hint" className="lf-hint lf-report-filters__hint">
               Setting a From date switches to a custom range. Dates are inclusive.
             </span>
           </form>

@@ -57,7 +57,7 @@ test.describe('phone redesign: shell, Leads, Leadership', () => {
   test('leadership: metrics first, filters folded, From/To never collide', async ({ page }) => {
     await login(page, email, password);
     await page.goto(`/${slug}/sales/leadership`);
-    const filters = page.locator('details.lf-filters');
+    const filters = page.locator('details.lf-report-filters');
     await expect(filters).not.toHaveAttribute('open', '');
     await expect(filters.locator('summary')).toContainText('This month');
     // The first figure sits above the fold, before any filter control.
@@ -66,12 +66,12 @@ test.describe('phone redesign: shell, Leads, Leadership', () => {
     expect((await figure.boundingBox())!.y).toBeLessThan(700);
 
     await filters.locator('summary').click();
-    await expect(page.locator('.lf-filters__form input[name=from]')).toBeVisible();
+    await expect(page.locator('.lf-report-filters__form input[name=from]')).toBeVisible();
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       const [from, to] = await Promise.all([
-        page.locator('.lf-filters__form input[name=from]').boundingBox(),
-        page.locator('.lf-filters__form input[name=to]').boundingBox(),
+        page.locator('.lf-report-filters__form input[name=from]').boundingBox(),
+        page.locator('.lf-report-filters__form input[name=to]').boundingBox(),
       ]);
       const apart = from!.x + from!.width <= to!.x || to!.x + to!.width <= from!.x || from!.y + from!.height <= to!.y;
       expect(apart, `From/To apart at ${width}`).toBe(true);
@@ -79,7 +79,7 @@ test.describe('phone redesign: shell, Leads, Leadership', () => {
     }
     // A chosen period opens the panel and is named in its summary.
     await page.goto(`/${slug}/sales/leadership?period=30d`);
-    await expect(page.locator('details.lf-filters')).toHaveAttribute('open', '');
-    await expect(page.locator('details.lf-filters summary')).toContainText('Last 30 days');
+    await expect(page.locator('details.lf-report-filters')).toHaveAttribute('open', '');
+    await expect(page.locator('details.lf-report-filters summary')).toContainText('Last 30 days');
   });
 });

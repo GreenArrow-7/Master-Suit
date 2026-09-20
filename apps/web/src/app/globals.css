@@ -3859,6 +3859,17 @@ a:hover {
 .lf-filters .lf-field {
   margin: 0;
   min-width: 130px;
+  /* A field never outgrows the bar: a <select> sizes itself to its longest
+     option (a long workspace name), and unchecked that pushed the platform
+     Users bar 2px past a 390px screen. */
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 130px;
+}
+.lf-filters select.lf-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 .lf-filters__search {
   flex: 1 1 260px;
