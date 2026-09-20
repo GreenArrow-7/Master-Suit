@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
-import type { ColumnDef } from '@/lib/grid/columns';
+import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
+import RowDetails from '@/components/workspace/RowDetails';
 
 export interface LeadRow {
   id: string;
@@ -394,18 +395,19 @@ export default function LeadGrid({
                     aria-label={`Select ${row.fullName}`}
                   />
                 </td>
-                {columns.map((column) => (
+                {columns.map((column, index) => (
                   <td
                     key={column.key}
                     className={column.key === 'reference' ? 'lf-sticky' : undefined}
                     data-hide-mobile={column.hideMobile ? '' : undefined}
                     data-label={column.label}
-                    data-priority={column.primary ? 'primary' : undefined}
+                    data-priority={columnPriority(column, index, columns)}
                     style={{ textAlign: column.align ?? 'left' }}
                   >
                     {cell(column.key, row, emptyLabel)}
                   </td>
                 ))}
+                <RowDetails />
               </tr>
             ))}
           </tbody>

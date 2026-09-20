@@ -70,11 +70,6 @@ export default function WorkspaceRecordForm({
 
   return (
     <form onSubmit={submit} className="lf-form-section">
-      {error && (
-        <div className="lf-alert" role="alert">
-          {error}
-        </div>
-      )}
       <div className="lf-form-section__heading">
         <div>
           <h2>Record details</h2>
@@ -122,7 +117,15 @@ export default function WorkspaceRecordForm({
           </label>
         ))}
       </div>
-      <div>
+      {/* The message sits beside the button that produced it, which is where
+          the eye is after a submit — at the top of a long form it was off-screen
+          on a phone. */}
+      <div className="lf-form-actions">
+        {error && (
+          <div className="lf-alert" role="alert">
+            {error}
+          </div>
+        )}
         <button className="lf-btn" type="submit" disabled={busy}>
           {busy ? 'Saving…' : submitLabel}
         </button>

@@ -1,0 +1,798 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+   Screens outside a session — sign in, second factor, recovery, invitations.
+
+   Two grounds. The brand side is midnight: the same chrome as the sidebar, so
+   the product a visitor signs in to is the one they saw at the door. The form
+   side is the workspace canvas, with the task on a card. The one thing that
+   moves is the ecosystem graphic's story cycle; everything else answers a
+   person's own action or appears once.
+
+   Colours come from tokens.css. The few values defined here are alphas of
+   those tokens for lines and light on midnight — not new colours.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+.lf-auth {
+  --auth-line: rgb(219 229 242 / 0.1);
+  --auth-line-strong: rgb(219 229 242 / 0.22);
+  --auth-ink-soft: rgb(219 229 242 / 0.62);
+  --auth-glow: rgb(0 217 245 / 0.55);
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 48fr) minmax(0, 52fr);
+  /* One surface under both columns, so nothing seams where they meet. */
+  background: linear-gradient(168deg, var(--yh-midnight) 0%, var(--yh-navy) 58%, #0a1d3d 100%);
+}
+
+.lf-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── The brand side ────────────────────────────────────────────────────────── */
+
+.lf-auth-story {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 3.2vh, 36px);
+  padding: clamp(28px, 3.6vw, 52px);
+  color: var(--yh-on-midnight);
+  overflow: hidden;
+}
+
+/* The ground: a faint engineering grid, and one soft light from the top-left,
+   the corner the mark points from. Behind everything, and still. */
+.lf-brandbg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(70% 55% at 18% 8%, rgb(8 123 245 / 0.28) 0%, rgb(8 123 245 / 0) 62%),
+    radial-gradient(48% 40% at 88% 96%, rgb(0 217 245 / 0.1) 0%, rgb(0 217 245 / 0) 60%);
+}
+.lf-brandbg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(219 229 242 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(219 229 242 / 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(80% 70% at 50% 45%, #000 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 45%, #000 30%, transparent 100%);
+}
+
+.lf-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lf-auth-mark {
+  flex: none;
+}
+.lf-auth-brand .lf-wordmark {
+  color: #fff;
+  font-family: var(--yh-font-brand);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.lf-auth-message {
+  max-width: 520px;
+}
+.lf-auth-headline {
+  margin: 0;
+  font-family: var(--yh-font-brand);
+  font-size: clamp(2rem, 1.35rem + 1.9vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  color: #fff;
+  text-wrap: balance;
+}
+/* The brand's own accent on its own line — cyan is legible on midnight and
+   means "this is the platform" everywhere else in the product. */
+.lf-auth-headline em {
+  font-style: normal;
+  color: var(--yh-cyan);
+}
+.lf-auth-sub {
+  margin: 14px 0 0;
+  max-width: 44ch;
+  color: var(--auth-ink-soft);
+  font-size: var(--lf-text-base);
+  line-height: 1.55;
+}
+
+.lf-auth-foot {
+  margin-top: auto;
+}
+/* Measured counts of automated work (platformValue); absent when there are none. */
+.lf-auth-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-6);
+  margin: 0 0 var(--lf-space-5);
+}
+.lf-auth-value > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+.lf-auth-value dt {
+  font-size: var(--lf-text-xs);
+  color: var(--auth-ink-soft);
+}
+.lf-auth-value dd {
+  margin: 0;
+  font-family: var(--yh-font-brand);
+  font-size: var(--lf-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--yh-on-midnight);
+}
+.lf-auth-trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  font-size: var(--lf-text-xs);
+  color: var(--auth-ink-soft);
+}
+.lf-auth-trust span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.lf-auth-trust span::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--yh-azure);
+}
+.lf-auth-parent {
+  margin: 10px 0 0;
+  font-size: var(--lf-text-xs);
+  color: rgb(219 229 242 / 0.42);
+}
+
+/* ── The ecosystem graphic ─────────────────────────────────────────────────── */
+
+.lf-eco {
+  margin: 0;
+  width: 100%;
+  max-width: 680px;
+  align-self: center;
+}
+/* Takes the room between the message and the foot, and sits in the middle of it. */
+.lf-auth-eco {
+  margin-block: auto;
+  padding-block: clamp(8px, 2vh, 24px);
+}
+.lf-eco__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Never taller than the room a laptop gives it: the foot must stay on screen. */
+  max-height: min(42vh, 430px);
+  overflow: visible;
+}
+/* A short laptop: tighter rhythm so the foot stays above the fold. */
+@media (min-width: 821px) and (max-height: 820px) {
+  .lf-auth-story {
+    gap: 16px;
+    padding-block: 24px;
+  }
+  .lf-auth-eco {
+    padding-block: 0;
+  }
+  .lf-eco__svg {
+    max-height: min(36vh, 430px);
+  }
+  .lf-auth-value {
+    margin-bottom: var(--lf-space-4);
+  }
+}
+
+.lf-eco__path {
+  fill: none;
+  stroke: var(--auth-line-strong);
+  stroke-width: 1.2;
+}
+.lf-eco__orbit {
+  fill: none;
+  stroke: var(--auth-line);
+  stroke-width: 1;
+}
+.lf-eco__halo {
+  animation: lfEcoBreathe 6s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.lf-eco__coreDisc {
+  filter: drop-shadow(0 6px 22px rgb(0 217 245 / 0.28));
+}
+.lf-eco__coreLabel {
+  fill: #fff;
+  font-family: var(--yh-font-brand);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.lf-eco__node {
+  color: var(--yh-on-midnight);
+}
+.lf-eco__nodeDisc {
+  fill: var(--yh-navy);
+  stroke: var(--auth-line-strong);
+  stroke-width: 1.2;
+}
+.lf-eco__nodeRing {
+  fill: none;
+  stroke: var(--yh-cyan);
+  stroke-width: 1.5;
+  opacity: 0;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.lf-eco__nodeLabel {
+  fill: var(--auth-ink-soft);
+  font-family: var(--lf-font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.lf-eco__signal {
+  fill: var(--yh-cyan);
+  opacity: 0;
+  filter: drop-shadow(0 0 6px var(--auth-glow));
+}
+
+/* The story: a module lights as its signal arrives, then settles. The signal's
+   own timing is in the SVG (animateMotion); this is the same clock in CSS —
+   `--eco-cycle`, `--eco-step` and each node's `--eco-i` come from modules.ts. */
+.lf-eco__node[data-story] .lf-eco__nodeDisc,
+.lf-eco__node[data-story] .lf-eco__nodeRing,
+.lf-eco__node[data-story] .lf-eco__nodeIcon,
+.lf-eco__node[data-story] .lf-eco__nodeLabel {
+  animation-duration: var(--eco-cycle);
+  animation-delay: calc(var(--eco-i) * var(--eco-step) + 1s);
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+.lf-eco__node[data-story] .lf-eco__nodeDisc {
+  animation-name: lfEcoDisc;
+}
+.lf-eco__node[data-story] .lf-eco__nodeRing {
+  animation-name: lfEcoRing;
+}
+.lf-eco__node[data-story] .lf-eco__nodeIcon {
+  animation-name: lfEcoInk;
+}
+.lf-eco__node[data-story] .lf-eco__nodeLabel {
+  animation-name: lfEcoLabel;
+}
+/* Fractions of one cycle: a step is 2.4 s of a 14.4 s cycle ≈ 16.7%; the lit
+   state holds for most of the step and fades before the next signal leaves. */
+@keyframes lfEcoDisc {
+  0%,
+  17%,
+  100% {
+    fill: var(--yh-navy);
+    stroke: var(--auth-line-strong);
+  }
+  2%,
+  12% {
+    fill: #0f2f5c;
+    stroke: var(--yh-cyan);
+  }
+}
+@keyframes lfEcoRing {
+  0%,
+  17%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  1% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  10% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+@keyframes lfEcoInk {
+  0%,
+  17%,
+  100% {
+    color: var(--yh-on-midnight);
+  }
+  2%,
+  12% {
+    color: var(--yh-cyan);
+  }
+}
+@keyframes lfEcoLabel {
+  0%,
+  17%,
+  100% {
+    fill: var(--auth-ink-soft);
+  }
+  2%,
+  12% {
+    fill: #fff;
+  }
+}
+@keyframes lfEcoBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+/* The caption under the graphic: one step named at a time, in the same clock. */
+.lf-eco__story {
+  position: relative;
+  height: 1.6em;
+  margin-top: 6px;
+  font-size: var(--lf-text-sm);
+  color: var(--auth-ink-soft);
+  text-align: center;
+}
+.lf-eco__caption {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: lfEcoCaption var(--eco-cycle) ease-out infinite;
+  animation-delay: calc(var(--eco-i) * var(--eco-step) + 1s);
+}
+.lf-eco__caption::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--yh-cyan);
+  box-shadow: 0 0 8px var(--auth-glow);
+}
+@keyframes lfEcoCaption {
+  0%,
+  17%,
+  100% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  2%,
+  14% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Compact: the phone band. Bigger nodes on a shorter canvas (560×280). */
+.lf-eco--compact .lf-eco__svg {
+  max-height: 190px;
+}
+.lf-eco--compact .lf-eco__nodeLabel {
+  font-size: 19px;
+}
+.lf-eco--compact .lf-eco__coreLabel {
+  font-size: 20px;
+}
+.lf-eco--compact .lf-eco__path {
+  stroke-width: 1.6;
+}
+.lf-eco--compact .lf-eco__story {
+  font-size: var(--lf-text-xs);
+  margin-top: 4px;
+}
+
+/* ── The form side ─────────────────────────────────────────────────────────── */
+
+/* The same midnight surface as the story, continued: the gradient picks up
+   where the story's ends, one soft light sits behind the card, and the dot
+   texture is light on dark. Only the card is light — the page is one surface. */
+.lf-auth-pane {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 4vw, 56px);
+  background:
+    radial-gradient(circle at 1px 1px, rgb(219 229 242 / 0.05) 1px, transparent 1.5px) 0 0 / 22px 22px,
+    radial-gradient(60% 50% at 50% 48%, rgb(8 123 245 / 0.16) 0%, rgb(8 123 245 / 0) 70%);
+}
+.lf-auth-column {
+  width: 100%;
+  max-width: 400px;
+}
+.lf-auth-compactWrap {
+  display: none;
+}
+.lf-auth-card {
+  width: 100%;
+  padding: clamp(24px, 3vw, 32px);
+  background: var(--lf-surface);
+  border: 1px solid rgb(219 229 242 / 0.16);
+  border-radius: var(--lf-radius-xl);
+  box-shadow:
+    0 0 0 1px rgb(2 8 23 / 0.6),
+    0 24px 56px rgb(2 8 23 / 0.55);
+  animation: lfAuthRise 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes lfAuthRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lf-auth-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: var(--lf-track-tight);
+  color: var(--lf-ink);
+}
+.lf-auth-lede {
+  margin: 6px 0 var(--lf-space-6);
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-sm);
+}
+
+/* Sentence case, not the workspace's tracked capitals: this is a form a person
+   reads once, and the calmer label is the one they read faster. */
+.lf-auth-card .lf-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--lf-ink);
+}
+.lf-auth-note {
+  margin: var(--lf-space-2) 0 0;
+  text-align: center;
+  font-size: var(--lf-text-xs);
+  color: var(--lf-ink-3);
+}
+.lf-auth-card .lf-input {
+  height: 44px;
+  border-radius: var(--lf-radius);
+  font-size: 16px;
+  background: var(--lf-surface);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+.lf-auth-card .lf-input:hover {
+  border-color: var(--lf-ink-4);
+}
+.lf-auth-card .lf-input:focus {
+  border-color: var(--yh-azure);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--yh-azure) 18%, transparent);
+  outline: none;
+}
+.lf-auth-fieldhead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+.lf-auth-link {
+  /* Inline text on the label's line, with a 44px-tall target: the hit area is a
+     pseudo-element, so the link's own box (and the row's rhythm) stays as is. */
+  position: relative;
+}
+.lf-auth-link::before {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
+}
+.lf-auth-link {
+  font-size: var(--lf-text-xs);
+  font-weight: 500;
+  color: var(--yh-azure);
+  text-decoration: none;
+  border-radius: 3px;
+}
+.lf-auth-link:hover {
+  text-decoration: underline;
+}
+.lf-auth-link:focus-visible {
+  outline: 2px solid var(--yh-azure);
+  outline-offset: 2px;
+}
+.lf-auth-linkbtn {
+  margin-top: var(--lf-space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--yh-azure);
+  font: inherit;
+  font-size: var(--lf-text-sm);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.lf-auth-linkbtn:focus-visible {
+  outline: 2px solid var(--yh-azure);
+  outline-offset: 2px;
+}
+
+.lf-auth-pwwrap {
+  position: relative;
+}
+.lf-auth-pwwrap .lf-input {
+  padding-right: 48px;
+}
+/* 44×44: the whole right end of the field is the target, not just the glyph. */
+.lf-auth-eye {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--lf-radius-sm);
+  background: transparent;
+  color: var(--lf-ink-3);
+  cursor: pointer;
+}
+.lf-auth-eye:hover {
+  background: var(--lf-surface-2);
+  color: var(--lf-ink);
+}
+.lf-auth-eye:focus-visible {
+  outline: 2px solid var(--yh-azure);
+  outline-offset: 1px;
+}
+
+.lf-auth-submit {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--lf-radius);
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 1px 2px rgb(36 85 230 / 0.25);
+  transition:
+    background 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+.lf-auth-submit:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgb(36 85 230 / 0.28);
+}
+.lf-auth-submit:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+.lf-auth-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #fff;
+  animation: lfAuthSpin 700ms linear infinite;
+}
+@keyframes lfAuthSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.lf-auth-alert {
+  border-left: 3px solid var(--yh-danger);
+  background: var(--yh-danger-sub);
+  border-radius: 0 var(--lf-radius) var(--lf-radius) 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--lf-ink);
+}
+.lf-auth-otp {
+  font-family: var(--lf-font-mono);
+  font-size: 22px;
+  letter-spacing: 0.55em;
+  text-align: center;
+  text-indent: 0.55em;
+}
+.lf-auth-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface-2);
+  font-size: 13px;
+  color: var(--lf-ink-2);
+}
+.lf-auth-summary button {
+  border: 0;
+  background: none;
+  color: var(--yh-azure);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.lf-auth-links {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--lf-space-5);
+  font-size: var(--lf-text-sm);
+}
+.lf-auth-links a {
+  color: var(--yh-azure);
+  text-decoration: none;
+}
+.lf-auth-links a:hover {
+  text-decoration: underline;
+}
+
+/* ── Widths ────────────────────────────────────────────────────────────────── */
+
+/* Laptop: the graphic keeps its proportions; the hero gives the form a little. */
+@media (max-width: 1180px) {
+  .lf-auth {
+    grid-template-columns: minmax(0, 46fr) minmax(0, 54fr);
+  }
+  .lf-eco {
+    max-width: 520px;
+  }
+}
+/* Tablet in portrait: the story keeps its column but the foot tightens. */
+@media (max-width: 1023px) and (min-width: 821px) {
+  .lf-auth-story {
+    padding: 28px;
+  }
+  .lf-eco__nodeLabel {
+    font-size: 13.5px;
+  }
+}
+/* Phone and small tablet — and any viewport too short for the story (a phone
+   held sideways): one column. The desktop story steps aside; the compact brand
+   band sits above the card, the form across the screen. */
+@media (max-width: 820px), (max-height: 520px) {
+  .lf-auth {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lf-auth-story {
+    display: none;
+  }
+  .lf-auth-pane {
+    align-items: start;
+    /* Inside the notch and the home indicator: the page sets viewport-fit=cover and
+       the iOS shell draws under both, so env() carries the real insets here and 0
+       in a phone browser. Nothing native pads the WebView; this is the one place. */
+    padding: 0 calc(24px + env(safe-area-inset-right, 0px)) calc(40px + env(safe-area-inset-bottom, 0px))
+      calc(24px + env(safe-area-inset-left, 0px));
+    background: none;
+  }
+  .lf-auth-column {
+    max-width: 400px;
+  }
+  /* Full-bleed from inside the centred column, so a tablet gets the band across
+     the screen rather than a dark card floating over the canvas. */
+  .lf-auth-compactWrap {
+    display: block;
+    margin: 0 calc(50% - 50vw) 22px;
+  }
+  .lf-auth-compact {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    /* Inner content stays at most 448px wide, centred, whatever the screen. */
+    padding: calc(22px + env(safe-area-inset-top, 0px)) max(24px, calc(50vw - 224px)) 14px;
+    color: var(--yh-on-midnight);
+  }
+  .lf-auth-compact .lf-brandbg::before {
+    background-size: 36px 36px;
+  }
+  .lf-auth-headline--compact {
+    margin: 16px 0 6px;
+    font-size: 1.3rem;
+    line-height: 1.2;
+  }
+  .lf-auth-headline--compact br {
+    display: none;
+  }
+  .lf-auth-compact .lf-eco {
+    max-width: 300px;
+    margin-inline: auto;
+  }
+  .lf-auth-card {
+    padding: 22px 20px 24px;
+  }
+}
+@media (max-width: 430px) {
+  .lf-auth-pane {
+    padding: 0 calc(16px + env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px))
+      calc(16px + env(safe-area-inset-left, 0px));
+  }
+  .lf-auth-compactWrap {
+    margin-bottom: 18px;
+  }
+  .lf-auth-compact {
+    padding: calc(18px + env(safe-area-inset-top, 0px)) 20px 12px;
+  }
+}
+/* Short phones (an SE, an older 375×667): the graphic would push the form below
+   the fold. Lockup and headline only; the form is what someone came for. */
+@media (max-width: 820px) and (max-height: 700px) {
+  .lf-auth-compact .lf-eco {
+    display: none;
+  }
+}
+/* Short landscape phones: the band would eat the form; keep the lockup only. */
+@media (max-height: 520px) {
+  .lf-auth-compact .lf-eco,
+  .lf-auth-headline--compact {
+    display: none;
+  }
+}
+
+/* ── Motion off ────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .lf-auth-card,
+  .lf-eco__halo,
+  .lf-eco__node[data-story] * {
+    animation: none !important;
+  }
+  .lf-eco__signals {
+    display: none;
+  }
+  .lf-eco__node[data-story] .lf-eco__nodeDisc {
+    fill: #0f2f5c;
+    stroke: var(--yh-cyan);
+  }
+  .lf-eco__node[data-story] .lf-eco__nodeLabel {
+    fill: #fff;
+  }
+  /* The whole story at once, as one line. */
+  .lf-eco__story {
+    height: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+  }
+  .lf-eco__caption {
+    position: static;
+    opacity: 1;
+    animation: none;
+    transform: none;
+  }
+  .lf-auth-spin {
+    animation-duration: 1.6s;
+  }
+}

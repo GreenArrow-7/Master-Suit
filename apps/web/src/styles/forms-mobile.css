@@ -1,0 +1,274 @@
+/* forms-mobile: phone-first corrections (2026-09-20). Imported by the workspace layout. */
+
+/* ── Forms: every control fills its card, on every browser ──────────────────
+   iOS Safari gives date/time inputs an intrinsic width from their native
+   picker and ignores `width: 100%` on a flex child unless the control is a
+   block with `min-width: 0` and no native appearance; that is what pushed
+   the Period start / Period end fields out of their card on the iPhone. */
+.lf-form-section .lf-input,
+.lf-form-section .lf-select,
+.lf-form-section .lf-textarea,
+.lf-card .lf-input,
+.lf-card .lf-select,
+.lf-card .lf-textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.lf-form-section input[type='date'],
+.lf-form-section input[type='time'],
+.lf-form-section input[type='datetime-local'],
+.lf-card input[type='date'],
+.lf-card input[type='time'],
+.lf-card input[type='datetime-local'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 36px;
+}
+.lf-input::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.2em;
+}
+.lf-form-section .lf-field,
+.lf-card .lf-field {
+  min-width: 0;
+}
+
+/* Actions and the validation message sit together at the end of the form,
+   where the thumb is when the last field is filled. Not a fixed footer: on a
+   phone a `position: fixed` bar inside a form covers the focused field once
+   the keyboard is up. */
+.lf-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-3);
+  align-items: center;
+}
+.lf-form-actions .lf-alert {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .lf-form-section {
+    padding: var(--lf-space-4);
+    gap: var(--lf-space-4);
+  }
+  .lf-form-section__heading {
+    padding-bottom: var(--lf-space-3);
+  }
+  .lf-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--lf-space-4);
+  }
+  /* 16px is the size below which iOS zooms the page on focus; the zoom itself
+     stays enabled. Taller controls are the tap target. */
+  .lf-form-section .lf-input,
+  .lf-form-section .lf-select,
+  .lf-form-section .lf-textarea,
+  .lf-card .lf-input,
+  .lf-card .lf-select,
+  .lf-card .lf-textarea {
+    font-size: var(--lf-text-base);
+    min-height: 44px;
+  }
+  .lf-form-section .lf-input:not(.lf-textarea),
+  .lf-card .lf-input:not(.lf-textarea),
+  .lf-form-section .lf-select,
+  .lf-card .lf-select {
+    height: 44px;
+  }
+  .lf-form-section select[multiple] {
+    height: auto;
+  }
+  .lf-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lf-form-actions .lf-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+  /* A focused field scrolls clear of any sticky chrome above it. */
+  .lf-form-section .lf-input,
+  .lf-form-section .lf-select,
+  .lf-form-section .lf-textarea {
+    scroll-margin: 88px 0 120px;
+  }
+}
+
+/* ── Projects: search in front, facets in the sheet ─────────────────────── */
+.lf-project-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--lf-space-3);
+  align-items: end;
+  margin-bottom: var(--lf-space-4);
+}
+.lf-project-filters__search {
+  min-width: 0;
+}
+/* On a desktop the sheet body is `display: contents`, so the facets flow into
+   this row after the search; the checkboxes and Clear form a second row. */
+.lf-project-filters__facets {
+  display: contents;
+}
+.lf-project-filters__toggles {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-4);
+  align-items: center;
+}
+.lf-project-filters__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--lf-text-sm);
+}
+@media (min-width: 761px) {
+  .lf-project-filters {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  /* globals hides the trigger, then `.lf-btn` (same weight, later) shows it
+     again; the sheet has no meaning on a desktop. */
+  .lf-project-filters .lf-filter-trigger {
+    display: none;
+  }
+  .lf-project-filters__search {
+    grid-column: span 2;
+  }
+}
+@media (max-width: 760px) {
+  .lf-project-filters {
+    padding: var(--lf-space-3);
+  }
+  .lf-project-filters .lf-field {
+    margin: 0;
+  }
+  .lf-project-filters .lf-input,
+  .lf-project-filters .lf-select {
+    min-height: 44px;
+    font-size: var(--lf-text-base);
+  }
+  /* Inside the open sheet the facets are one column of full-width controls. */
+  .lf-filterbox[data-open] .lf-project-filters__facets {
+    display: grid;
+    gap: var(--lf-space-4);
+  }
+  .lf-filterbox[data-open] .lf-project-filters__toggles {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--lf-space-2);
+  }
+  .lf-filterbox[data-open] .lf-project-filters__toggle {
+    min-height: 44px;
+  }
+  .lf-filterbox[data-open] .lf-project-filters__toggle input {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* ── Metric tiles: two per row from 360px, one below ────────────────────────
+   No fixed heights; a value that grows under enlarged text wraps instead of
+   clipping. */
+@media (max-width: 760px) {
+  .lf-kpi-grid,
+  .lf-metric-grid,
+  .lf-statstrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--lf-space-3);
+  }
+  .lf-kpi,
+  .lf-metric-card,
+  .lf-statstrip__item {
+    min-width: 0;
+    padding: var(--lf-space-3) var(--lf-space-4);
+  }
+  .lf-kpi__value,
+  .lf-metric-card__value,
+  .lf-statstrip__item b {
+    font-size: var(--lf-text-xl);
+    overflow-wrap: anywhere;
+  }
+  .lf-kpi__label {
+    overflow-wrap: anywhere;
+  }
+
+  /* Reports: the stat strip stops being one hairline-separated sentence and
+     becomes tiles, so a label, its figure and its percentage stay together. */
+  .lf-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--lf-space-3);
+  }
+  .lf-stat-strip > a,
+  .lf-stat-strip > div,
+  .lf-stat-strip > :first-child {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--lf-space-3) var(--lf-space-4);
+    border: 1px solid var(--lf-line);
+    border-left: 1px solid var(--lf-line);
+    border-radius: var(--lf-radius);
+    background: var(--lf-surface-2);
+  }
+  .lf-stat-strip .lf-figure {
+    font-size: var(--lf-text-xl) !important;
+    overflow-wrap: anywhere;
+  }
+  .lf-stat-strip .lf-eyebrow {
+    margin-top: 0;
+  }
+}
+@media (max-width: 359px) {
+  .lf-kpi-grid,
+  .lf-metric-grid,
+  .lf-statstrip,
+  .lf-stat-strip {
+    /* !important: shell-mobile pins the KPI grid to two columns with a
+       surface-scoped selector; below 360px two columns cannot hold a value. */
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* The funnel is a genuine three-column table; it keeps its rows and scrolls
+   inside its wrap rather than becoming cards whose badge lands under the
+   "Stage" label. */
+@media (max-width: 760px) {
+  .lf-funnel .lf-grid thead {
+    display: table-header-group;
+  }
+  .lf-funnel .lf-grid tbody tr {
+    display: table-row;
+    padding: 0;
+  }
+  .lf-funnel .lf-grid tbody td {
+    display: table-cell;
+    padding: var(--lf-space-2) var(--lf-space-3);
+    border-bottom: 1px solid var(--lf-line);
+    text-align: inherit !important;
+    white-space: normal;
+  }
+  .lf-funnel .lf-grid {
+    min-width: 0;
+  }
+  .lf-funnel .lf-grid thead th {
+    white-space: normal;
+    height: auto;
+    padding: var(--lf-space-2) var(--lf-space-3);
+    line-height: 1.3;
+  }
+  .lf-funnel .lf-grid tbody td::before {
+    display: none;
+  }
+  .lf-funnel .lf-grid tbody td.lf-num {
+    text-align: right !important;
+  }
+}

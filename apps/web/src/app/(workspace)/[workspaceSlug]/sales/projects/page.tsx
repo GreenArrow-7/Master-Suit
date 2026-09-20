@@ -101,12 +101,16 @@ export default async function ProjectsPage({
       {rows.length === 0 ? (
         <div className="lf-card">
           <EmptyState
-            title="No projects match these filters"
+            title={Object.keys(raw).length === 0 ? 'No projects yet' : 'No projects match these filters'}
             description={
-              total === 0 && Object.keys(raw).length === 0
-                ? 'Add a project, or import the catalogue, to start pitching from live inventory.'
-                : 'Widen the price band or clear a facet to see more.'
+              Object.keys(raw).length === 0
+                ? mayCreate
+                  ? 'Add the first project to start pitching from live inventory.'
+                  : 'Projects appear here once someone with catalogue access adds them.'
+                : 'Widen the price band or clear a filter to see more.'
             }
+            actionLabel={Object.keys(raw).length === 0 && mayCreate ? 'Add project' : undefined}
+            actionHref={Object.keys(raw).length === 0 && mayCreate ? '/projects/new' : undefined}
           />
         </div>
       ) : (

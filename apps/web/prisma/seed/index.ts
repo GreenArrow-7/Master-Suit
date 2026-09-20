@@ -1321,6 +1321,39 @@ async function main() {
   });
   console.log(`  tenant ${second.displayName} (${second.id}) — ${SECOND_WORKSPACE.modules.join(', ')} only`);
 
+  // ── development rig ───────────────────────────────────────────────────────
+  //
+  // What the end-to-end journey drives (tests/e2e/business-journey.spec.ts,
+  // assisted-call.spec.ts): the development mock telephony vendor, connected,
+  // and check-out gated on the day's lead work. Development only — the provider
+  // factory refuses `mock` in production and resolve.ts does not count it
+  // anywhere but development, so elsewhere the row would be a dead connection
+  // on a demo install. Idempotent: an upsert, and a merge into the stored policy
+  // that keeps whatever else an admin has set.
+  if (process.env.NODE_ENV === 'development') {
+    await db.integrationConnection.upsert({
+      where: { tenantId_provider: { tenantId, provider: 'mock' } },
+      update: { status: 'CONNECTED' },
+      create: {
+        tenantId,
+        provider: 'mock',
+        status: 'CONNECTED',
+        // The mock dials nothing and holds no secret; connectionCredentials only
+        // needs the row to be CONNECTED with a credentials object present.
+        credentials: {},
+        metadata: { callerNumber: '+971500000000', recordingEnabled: true, consentRequired: true },
+      },
+    });
+    const hr = await db.organizationSetting.findUnique({ where: { tenantId }, select: { hrPolicy: true } });
+    const hrPolicy = { ...((hr?.hrPolicy as Record<string, unknown> | null) ?? {}), checkoutRequiresLeadWork: true };
+    await db.organizationSetting.upsert({
+      where: { tenantId },
+      update: { hrPolicy },
+      create: { tenantId, hrPolicy },
+    });
+    console.log('  mock telephony connected · check-out waits for lead work (development only)');
+  }
+
   // ── credentials ───────────────────────────────────────────────────────────
   console.log('\n─────────────────────────────────────────────');
   console.log(` Workspace:  ${DEMO_WORKSPACE.slug}`);

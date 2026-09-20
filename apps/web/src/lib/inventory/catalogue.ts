@@ -81,9 +81,13 @@ export function catalogueWhere(
 
   if (f.micromarket?.length) where.micromarketId = { in: f.micromarket };
   if (f.developer?.length) where.developerId = { in: f.developer };
-  if (f.status?.length) where.status = { in: f.status as Prisma.ProjectWhereInput['status'] as never };
-  if (f.possession?.length) {
-    where.possessionStatus = { in: f.possession as Prisma.ProjectWhereInput['possessionStatus'] as never };
+  // An unknown value in the URL (?status=ACTIVE) is ignored, not sent to the database: Prisma
+  // rejects a string outside the enum with a 500, and a shared link should never do that.
+  const status = f.status?.filter((value) => (PROJECT_STATUSES as readonly string[]).includes(value));
+  if (status?.length) where.status = { in: status as Prisma.ProjectWhereInput['status'] as never };
+  const possession = f.possession?.filter((value) => (POSSESSION_STATUSES as readonly string[]).includes(value));
+  if (possession?.length) {
+    where.possessionStatus = { in: possession as Prisma.ProjectWhereInput['possessionStatus'] as never };
   }
 
   // `hasSome`, not `hasEvery`: a buyer asking for a 2BHK *or* a 3BHK wants both

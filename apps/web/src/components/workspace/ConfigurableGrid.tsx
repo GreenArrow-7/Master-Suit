@@ -1,5 +1,6 @@
-import type { ColumnDef, GridObject } from '@/lib/grid/columns';
+import { columnPriority, type ColumnDef, type GridObject } from '@/lib/grid/columns';
 import { renderCell, type GridRow } from './gridCells';
+import RowDetails from './RowDetails';
 
 /**
  * A list grid whose columns come from the workspace's configuration rather than
@@ -36,17 +37,18 @@ export default function ConfigurableGrid({
         <tbody>
           {rows.map((row) => (
             <tr key={String(row.id)}>
-              {columns.map((column) => (
+              {columns.map((column, index) => (
                 <td
                   key={column.key}
                   data-hide-mobile={column.hideMobile ? '' : undefined}
                   data-label={column.label}
-                  data-priority={column.primary ? 'primary' : undefined}
+                  data-priority={columnPriority(column, index, columns)}
                   style={{ textAlign: column.align ?? 'left' }}
                 >
                   {renderCell(object, column.key, row) ?? emptyLabel}
                 </td>
               ))}
+              <RowDetails />
             </tr>
           ))}
         </tbody>

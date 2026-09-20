@@ -687,7 +687,9 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     //    the actor id and the event stay.
     // 9: recordings — pending owner clarification; nothing scheduled.
     for (const membership of memberships) {
-      if (!membership.salesUserId) continue;
+      // HR rows hang off the membership, not the sales user: a membership whose sales
+      // user is gone still has to have its employment record cleared, or step 5 counts
+      // what this step never touched and the request parks at the attempt cap.
       const profile = await prisma.employeeProfile.findFirst({
         where: { tenantId: membership.tenantId, membershipId: membership.id },
         select: { id: true },
@@ -707,6 +709,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
           })
         ).count;
       }
+      // Only the audit clear is keyed on the sales user.
+      if (!membership.salesUserId) continue;
       outcome.auditClientDetailsCleared += (
         await prisma.auditLog.updateMany({
           where: {
@@ -823,6 +827,8 @@ export async function processAccountDeletion(requestId: string): Promise<Process
         mfaRecoveryCodes: true,
         email: true,
         phone: true,
+        fullName: true,
+        username: true,
         deletedAt: true,
       },
     });
@@ -845,9 +851,34 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     let apiKeysLeft = 0;
     let deviceTokensLeft = 0;
     let contactableLeft = 0;
+    // Owner retention decisions 6–8 (step 3) were written and counted but never checked
+    // here — the third time a step had been added to this executor without its gate.
+    let hrIdentifiersLeft = 0;
+    let hrDocumentsUnscheduledLeft = 0;
+    let auditClientDetailsLeft = 0;
     for (const membership of memberships) {
       facesLeft += await prisma.hrFaceTemplate.count({
         where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
+      });
+      // The employment record outlives the membership (it is what payroll settles against),
+      // and an offboarded one is soft-deleted — which is exactly the row the guard's default
+      // filter would hide, making this count vacuous for the people most likely to ask.
+      hrIdentifiersLeft += await prisma.employeeProfile.count({
+        where: {
+          tenantId: membership.tenantId,
+          membershipId: membership.id,
+          OR: [
+            { iban: { not: null } },
+            { bankName: { not: null } },
+            { bankAgentId: { not: null } },
+            { wpsPersonId: { not: null } },
+            { reraBrn: { not: null } },
+          ],
+        },
+        ...INCLUDE_DELETED,
+      });
+      hrDocumentsUnscheduledLeft += await prisma.hrEmployeeDocument.count({
+        where: { tenantId: membership.tenantId, employee: { membershipId: membership.id }, purgeAt: null },
       });
       consentsLeft += await prisma.biometricConsent.count({
         where: { tenantId: membership.tenantId, employee: { membershipId: membership.id } },
@@ -860,6 +891,13 @@ export async function processAccountDeletion(requestId: string): Promise<Process
         where: { tenantId: membership.tenantId, createdById: membership.salesUserId, revokedAt: null },
       });
       deviceTokensLeft += await prisma.deviceToken.count({ where: { userId: membership.salesUserId } });
+      auditClientDetailsLeft += await prisma.auditLog.count({
+        where: {
+          tenantId: membership.tenantId,
+          actorUserId: membership.salesUserId,
+          OR: [{ ipAddress: { not: null } }, { userAgent: { not: null } }],
+        },
+      });
       // `deletedAt: { not: null }` explicitly, because the guard injects `deletedAt: null`
       // into a read that does not mention it — and step 2 has just soft-deleted this very
       // row, so the default filter would match nothing and this check would be vacuous.
@@ -912,7 +950,12 @@ export async function processAccountDeletion(requestId: string): Promise<Process
     if (after.mfaRecoveryCodes.length !== 0) unfinished.push('mfaRecoveryCodes');
     if (after.phone !== null) unfinished.push('phone');
     if (after.email !== tombstone) unfinished.push('email');
+    if (after.fullName !== 'Deleted account') unfinished.push('fullName');
+    if (after.username !== null) unfinished.push('username');
     if (after.deletedAt === null) unfinished.push('deletedAt');
+    if (hrIdentifiersLeft !== 0) unfinished.push(`hrIdentifiers(${hrIdentifiersLeft})`);
+    if (hrDocumentsUnscheduledLeft !== 0) unfinished.push(`hrDocumentsUnscheduled(${hrDocumentsUnscheduledLeft})`);
+    if (auditClientDetailsLeft !== 0) unfinished.push(`auditClientDetails(${auditClientDetailsLeft})`);
     if (sessionsLeft !== 0) unfinished.push(`sessions(${sessionsLeft})`);
     if (factorsLeft !== 0) unfinished.push(`authenticationFactors(${factorsLeft})`);
     if (challengesLeft !== 0) unfinished.push(`mfaChallenges(${challengesLeft})`);

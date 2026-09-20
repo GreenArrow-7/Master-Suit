@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PageIntro from '@/components/workspace/PageIntro';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -41,19 +42,25 @@ export default async function Page({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <section>
-        <div className="lf-eyebrow">People</div>
-        <h1 style={{ margin: '8px 0 0' }}>Payroll</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          A run is calculated from approved HR state only — effective-dated pay, approved overtime, approved unpaid
-          leave and entered adjustments. Whoever prepares a run cannot approve it. Locking freezes the overtime claims
-          the run paid, so a payslip keeps reconciling against the hours behind it.
-        </p>
-      </section>
+      <PageIntro
+        eyebrow="People"
+        title="Payroll"
+        summary="Create and manage payroll runs."
+        help={
+          <p>
+            A run is calculated from approved HR state only — effective-dated pay, approved overtime, approved unpaid
+            leave and entered adjustments. Whoever prepares a run cannot approve it. Locking freezes the overtime claims
+            the run paid, so a payslip keeps reconciling against the hours behind it.
+          </p>
+        }
+      />
 
       {officer && (
         <section>
-          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Open a run</h2>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Open a run</h2>
+          <p style={{ margin: '4px 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+            Whoever prepares a run cannot approve it.
+          </p>
           <WorkspaceRecordForm
             endpoint={`${actions}/payroll-run-create`}
             submitLabel="Open run"
