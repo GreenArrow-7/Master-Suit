@@ -55,13 +55,26 @@ for (const width of [390, 1440]) {
             )
               overlaps.push(`${controls[i]!.tagName} x ${controls[j]!.tagName}`);
           }
+        // Only elements outside every horizontal scroller can widen the document;
+        // name each with its ancestry so a failure says where the width comes from.
+        const inScroller = (e: Element) => {
+          for (let p = e.parentElement; p; p = p.parentElement) {
+            const o = getComputedStyle(p).overflowX;
+            if (o === 'auto' || o === 'scroll') return true;
+          }
+          return false;
+        };
+        const cw = document.documentElement.clientWidth;
         const beyond = [...document.querySelectorAll('body *')]
-          .filter((e) => vis(e) && e.getBoundingClientRect().right > vw + 1)
-          .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width)
-          .slice(0, 6)
-          .map(
-            (e) => `${e.tagName}.${String(e.className).slice(0, 30)} w=${Math.round(e.getBoundingClientRect().width)}`,
-          );
+          .filter((e) => vis(e) && e.getBoundingClientRect().right > cw + 1 && !inScroller(e))
+          .slice(0, 8)
+          .map((e) => {
+            const chain: string[] = [];
+            for (let n: Element | null = e; n && chain.length < 4; n = n.parentElement)
+              chain.push(`${n.tagName.toLowerCase()}.${String(n.className).split(' ')[0] ?? ''}`);
+            const r = e.getBoundingClientRect();
+            return `${chain.join('<')} l=${Math.round(r.left)} w=${Math.round(r.width)}`;
+          });
         return {
           docWidth: document.documentElement.scrollWidth,
           clientWidth: document.documentElement.clientWidth,
