@@ -617,3 +617,15 @@
     padding-right: calc(var(--lf-page-gutter) + 56px);
   }
 }
+
+/* ── Inline multi-column grids become one column on a phone ──────────────
+   Dozens of screens lay out detail panels and field pairs with an inline
+   `gridTemplateColumns`. A `1fr 1fr` or `minmax(0, 320px) 1fr` track pair
+   cannot hold two date pickers or a 320px panel beside anything on a 390px
+   screen, so the account page and the event form ran 200px past the edge.
+   One rule, at the shared cause; `!important` because the value is inline. */
+@media (max-width: 600px) {
+  .lf-page-main [style*='grid-template-columns'] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
