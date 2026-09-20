@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Forbidden } from '@/lib/errors';
+import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -19,6 +20,7 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, params, body }) => {
+    await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
@@ -50,6 +52,7 @@ export const GET = route(
     sensitive: 'call recordings',
   },
   async ({ ctx, params }) => {
+    await assertCallInScope(ctx, params.id);
     const recording = await prisma.recording.findFirst({
       where: { callId: params.id, tenantId: ctx.tenantId },
     });

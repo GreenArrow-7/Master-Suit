@@ -24,6 +24,7 @@ import '@/styles/lists-mobile.css';
 import '@/styles/forms-mobile.css';
 import '@/styles/daily-board.css';
 import '@/styles/redesign-mobile.css';
+import { isEntitlementUsable } from '@/lib/security/entitlements';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,7 +144,7 @@ async function loadShell(workspaceSlug: string) {
     const workspace = await requestWorkspace(ctx, workspaceSlug);
     const now = new Date();
     const modules = workspace.moduleEntitlements
-      .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state) && (!item.endsAt || item.endsAt > now))
+      .filter((item) => isEntitlementUsable(item, now))
       .map((item) => item.module);
     const memberships = await prisma.workspaceMembership.findMany({
       where: { salesUserId: ctx.actor.id, status: 'ACTIVE', tenant: { deletedAt: null } },

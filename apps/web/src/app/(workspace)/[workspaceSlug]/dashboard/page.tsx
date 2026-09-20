@@ -5,6 +5,7 @@ import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
+import { isEntitlementUsable } from '@/lib/security/entitlements';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -21,9 +22,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   const { workspaceSlug } = await params;
   const { ctx, workspace } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
   const modules = new Set(
-    workspace.moduleEntitlements
-      .filter((item) => ['TRIAL', 'ACTIVE', 'GRACE'].includes(item.state))
-      .map((item) => item.module),
+    workspace.moduleEntitlements.filter((item) => isEntitlementUsable(item)).map((item) => item.module),
   );
   const today = new Date();
   today.setHours(0, 0, 0, 0);
