@@ -29,17 +29,19 @@ export default async function PlaybookPage() {
 
   return (
     <>
-      <ListHeader title="Objection playbook" count={objections.length} capped={objections.length === 200} />
-      <p
-        style={{
-          margin: 'var(--lf-space-2) 0 var(--lf-space-4)',
-          fontSize: 'var(--lf-text-sm)',
-          color: 'var(--lf-ink-3)',
-        }}
-      >
-        What your prospects push back with, and what a good answer sounds like. Every analysed call is checked against
-        the trigger phrases here, and reps can rehearse any entry in Practice.
-      </p>
+      <ListHeader title="Objection playbook" description="Prepare responses to common customer objections." />
+      <details className="lf-help" style={{ marginBottom: 'var(--lf-space-4)' }}>
+        <summary>How this works</summary>
+        <div className="lf-help__body">
+          <p>
+            What your prospects push back with, and what a good answer sounds like. Every analysed call is checked
+            against the trigger phrases here, and reps can rehearse any entry in Practice.
+            {objections.length === 200
+              ? ' Showing the first 200 objections in your scope.'
+              : ` ${objections.length} objection${objections.length === 1 ? '' : 's'} in your scope.`}
+          </p>
+        </div>
+      </details>
 
       {objections.length === 0 && !canEdit ? (
         <div className="lf-card">

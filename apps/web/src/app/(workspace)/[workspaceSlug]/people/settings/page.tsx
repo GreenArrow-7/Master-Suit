@@ -1,4 +1,5 @@
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import PageIntro from '@/components/workspace/PageIntro';
 import HrPolicyForm from '@/components/workspace/HrPolicyForm';
 import { isHrAdmin } from '@/services/hr/leave';
 import { getHrPolicy, GROUP_LABELS, HR_SETTINGS, type SettingGroup } from '@/services/hr/settings';
@@ -19,46 +20,49 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <section>
-        <div className="lf-eyebrow">People</div>
-        <h1 style={{ margin: '8px 0 0' }}>HR policy</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          Every tunable parameter behind attendance, leave and settlement, editable for this workspace. Anything left at
-          its default follows the product default, including when a release changes it — only values you actually change
-          are stored.
-          {admin
-            ? ' Each change is written to the audit log with its old and new value.'
-            : ' You can see these but only an administrator can change them.'}
-        </p>
-      </section>
+      <PageIntro
+        eyebrow="People"
+        title="HR policy"
+        summary="Manage attendance, leave and payroll policies."
+        help={
+          <p>
+            Every tunable parameter behind attendance, leave and settlement, editable for this workspace. Anything left
+            at its default follows the product default, including when a release changes it — only values you actually
+            change are stored.
+            {admin
+              ? ' Each change is written to the audit log with its old and new value.'
+              : ' You can see these but only an administrator can change them.'}
+          </p>
+        }
+      />
 
       <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Before you change anything</h2>
-        <ul
-          style={{
-            margin: '10px 0 0',
-            paddingLeft: 20,
-            color: 'var(--lf-ink-2)',
-            fontSize: 'var(--lf-text-sm)',
-            display: 'grid',
-            gap: 6,
-          }}
-        >
-          <li>
-            <strong>Face match threshold</strong> is the one to tune first, and the one to tune with evidence. Enrol ten
-            staff, let them check in for a week, then look at the score distribution in the attendance review queue.
-            Lowering it to stop complaints is how you end up accepting the wrong person.
-          </li>
-          <li>
-            Values marked <span className="lf-badge">statutory</span> come from UAE Federal Decree-Law 33/2021. Company
-            policy may be <em>more</em> generous than these figures, never less. Have a UAE labour lawyer confirm
-            anything you change here before it touches a payout.
-          </li>
-          <li>
-            Gratuity and leave figures apply from the moment they are saved. Settlements already recorded keep the
-            policy version they were calculated under, so past payouts are not retrospectively rewritten.
-          </li>
-        </ul>
+        {/* Decision-point warning: stays visible. The detail folds below. */}
+        <p style={{ margin: '8px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
+          Values marked <span className="lf-badge">statutory</span> are legal minimums — company policy may be{' '}
+          <em>more</em> generous, never less. Have a UAE labour lawyer confirm anything you change here before it
+          touches a payout.
+        </p>
+        <details className="lf-help">
+          <summary>More guidance</summary>
+          <ul className="lf-help__body">
+            <li>
+              <strong>Face match threshold</strong> is the one to tune first, and the one to tune with evidence. Enrol
+              ten staff, let them check in for a week, then look at the score distribution in the attendance review
+              queue. Lowering it to stop complaints is how you end up accepting the wrong person.
+            </li>
+            <li>
+              Values marked <span className="lf-badge">statutory</span> come from UAE Federal Decree-Law 33/2021.
+              Company policy may be <em>more</em> generous than these figures, never less. Have a UAE labour lawyer
+              confirm anything you change here before it touches a payout.
+            </li>
+            <li>
+              Gratuity and leave figures apply from the moment they are saved. Settlements already recorded keep the
+              policy version they were calculated under, so past payouts are not retrospectively rewritten.
+            </li>
+          </ul>
+        </details>
       </section>
 
       <HrPolicyForm

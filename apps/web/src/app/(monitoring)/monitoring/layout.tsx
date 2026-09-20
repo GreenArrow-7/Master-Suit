@@ -4,6 +4,7 @@ import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import TopBar from '@/components/nav/TopBar';
+import '@/styles/lists-mobile.css';
 
 export const dynamic = 'force-dynamic';
 

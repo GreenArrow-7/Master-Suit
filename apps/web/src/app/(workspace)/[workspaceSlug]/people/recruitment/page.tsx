@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PageIntro from '@/components/workspace/PageIntro';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -42,23 +43,20 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <section>
-        <div className="lf-eyebrow">People</div>
-        <h1 style={{ margin: '8px 0 0' }}>Recruitment</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          A hire is completed from an accepted offer, not by moving a stage. Doing it issues the joiner an invitation,
-          and the employee record created when they accept points back at this application.
-          {!bands && ' Salary bands and offered compensation are hidden from your role.'}
-        </p>
-      </section>
+      <PageIntro
+        eyebrow="People"
+        title="Recruitment"
+        summary="Manage vacancies, candidates and offers."
+        help={
+          <p>
+            A hire is completed from an accepted offer, not by moving a stage. Doing it issues the joiner an invitation,
+            and the employee record created when they accept points back at this application.
+            {!bands && ' Salary bands and offered compensation are hidden from your role.'}
+          </p>
+        }
+      />
 
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-          gap: 'var(--lf-space-4)',
-        }}
-      >
+      <section className="lf-kpi-grid">
         {[
           ['Open roles', summary.openRequisitions],
           [
@@ -71,9 +69,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           ['Hired', summary.hires],
           ['Avg days to hire', summary.averageDaysToHire ?? '—'],
         ].map(([label, value]) => (
-          <article className="lf-card" key={String(label)} style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow">{label}</div>
-            <div style={{ fontFamily: 'var(--lf-font-display)', fontSize: 32, marginTop: 6 }}>{value}</div>
+          <article className="lf-kpi" key={String(label)}>
+            <span className="lf-kpi__label">{label}</span>
+            <span className="lf-kpi__value">{value}</span>
           </article>
         ))}
       </section>
