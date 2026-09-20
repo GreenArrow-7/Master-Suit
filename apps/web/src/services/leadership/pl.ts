@@ -13,6 +13,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { historicalPlacement, type Placement } from './placement';
+import { usableEntitlementWhere } from '@/lib/security/entitlements';
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -223,7 +224,7 @@ async function payrollByGroup(
   unknown: { payslips: number; amount: Prisma.Decimal },
 ): Promise<Map<string | null, Prisma.Decimal>> {
   const entitled = await prisma.moduleEntitlement.findFirst({
-    where: { tenantId, module: 'HRMS', state: { in: ['TRIAL', 'ACTIVE', 'GRACE'] } },
+    where: { tenantId, module: 'HRMS', ...usableEntitlementWhere() },
     select: { id: true },
   });
   if (!entitled) {
