@@ -9,6 +9,7 @@
  * claim about where it was standing.
  */
 import { prisma } from '@/lib/db';
+import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
@@ -87,7 +88,7 @@ async function loadAssignments(ctx: Ctx, employeeId: string) {
   });
 }
 
-async function workspaceTimezone(ctx: Ctx) {
+export async function workspaceTimezone(ctx: Ctx) {
   const tenant = await prisma.tenant.findFirst({ where: { id: ctx.tenantId }, select: { timezone: true } });
   return tenant?.timezone || 'Asia/Dubai';
 }
@@ -178,12 +179,19 @@ export async function validatePunch(
   }
 
   const [assignments, timeZone] = await Promise.all([loadAssignments(ctx, employee.id), workspaceTimezone(ctx)]);
-  if (action === 'CHECK_OUT' && effective.checkoutRequiresLeadWork) {
-    const pending = await pendingLeadWork(ctx, timeZone);
-    if (pending > 0 && !(await workGateOverridden(ctx, employee.id, timeZone))) {
+  if (action === 'CHECK_OUT' && (effective.checkoutRequiresLeadWork || effective.checkoutRequiresDailyTarget)) {
+    const pending = effective.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0;
+    const shortfall = effective.checkoutRequiresDailyTarget ? await dailyTargetShortfall(ctx, ctx.actor.id) : 0;
+    if ((pending > 0 || shortfall > 0) && !(await workGateOverridden(ctx, employee.id, timeZone))) {
+      const parts = [
+        pending > 0
+          ? `${pending} lead${pending === 1 ? '' : 's'} assigned to you today ${pending === 1 ? 'has' : 'have'} not been worked yet`
+          : null,
+        shortfall > 0 ? `today's calling target is ${shortfall} lead${shortfall === 1 ? '' : 's'} short` : null,
+      ].filter(Boolean);
       throw new PunchRejected(
         'WORK_PENDING',
-        `${pending} lead${pending === 1 ? '' : 's'} assigned to you today ${pending === 1 ? 'has' : 'have'} not been worked yet. Log a call or activity on each, or ask your manager for an attendance exception.`,
+        `${parts.join(', and ')}. Log a call or activity on each, or ask your manager for an attendance exception.`,
         'FLAGGED_REVIEW',
       );
     }
@@ -303,7 +311,10 @@ export async function preflight(
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
   // Told before the punch, not only at it: the number falls as the day is worked.
   const pendingWork =
-    action === 'CHECK_OUT' && policy.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0;
+    action === 'CHECK_OUT'
+      ? (policy.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0) +
+        (policy.checkoutRequiresDailyTarget ? await dailyTargetShortfall(ctx, ctx.actor.id) : 0)
+      : 0;
 
   if (!candidates.length) {
     return {

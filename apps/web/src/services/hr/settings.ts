@@ -242,6 +242,14 @@ export const HR_SETTINGS: Definition[] = [
   },
 
   {
+    key: 'checkoutRequiresDailyTarget',
+    group: 'attendance',
+    type: 'boolean',
+    default: false,
+    label: "Check-out waits for today's lead-calling target",
+    help: 'A seller with a daily target of leads to call cannot check out while it is short. The shortfall counts as pending work on the check-in screen; an approved attendance exception (reason work_pending) lets a manager override for that day.',
+  },
+  {
     key: 'checkoutRequiresLeadWork',
     group: 'attendance',
     type: 'boolean',
@@ -674,6 +682,7 @@ export type HrPolicy = {
   maxOfflineSyncHours: number;
   captureRetentionDays: number;
   checkoutRequiresLeadWork: boolean;
+  checkoutRequiresDailyTarget: boolean;
   weekendDays: number[];
   leaveMaxBackdateDays: number;
   accrualMinMonthsService: number;
