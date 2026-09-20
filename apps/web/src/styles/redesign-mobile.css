@@ -1,0 +1,468 @@
+/* redesign-mobile: the phone-first redesign (2026-09-20), first slice: shell,
+   Leads and Leadership. Imported by the workspace layout after every other
+   stylesheet, so equal-specificity rules here win by order. Where an earlier
+   sheet used a long themed prefix, the same prefix is repeated here.
+
+   Principles: content before containers, one hairline instead of a border box,
+   one search action in the bar, 16px gutters, 44px targets that do not look
+   bulky, nothing hidden behind scaling, overflow tricks or negative margins. */
+
+/* ── Shell (phones) ────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  :root {
+    --lf-page-gutter: 16px;
+  }
+
+  /* Bar: menu · title · search · bell · account · (Create). Grows by the
+     status-bar inset exactly once (shell-mobile.css already declares it for
+     every theme); this only tightens the row. */
+  html .lf-app-frame .lf-shell-topbar,
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
+    gap: 2px;
+    padding-left: 56px;
+    padding-right: 8px;
+    box-shadow: none;
+  }
+  .lf-appbar-title {
+    font: 600 17px/1.3 var(--lf-font-ui);
+    padding-right: 4px;
+  }
+  /* The palette trigger is an icon, not a box pretending to be a text field. */
+  html .lf-app-frame .lf-cmdk-trigger,
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-cmdk-trigger {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    max-width: none;
+    padding: 0;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--lf-radius);
+    background: transparent;
+    box-shadow: none;
+    color: var(--lf-ink);
+  }
+  .lf-cmdk-trigger svg {
+    width: 22px;
+    height: 22px;
+  }
+  .lf-cmdk-trigger span,
+  .lf-cmdk-trigger kbd {
+    display: none;
+  }
+  /* Bell and account: quiet icon buttons. Create keeps its colour. */
+  .lf-shell-actions .lf-btn--ghost,
+  .lf-shell-actions .lf-btn--secondary {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    justify-content: center;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--lf-ink);
+  }
+  .lf-shell-actions .lf-btn--ghost:active,
+  .lf-shell-actions .lf-btn--secondary:active,
+  .lf-cmdk-trigger:active {
+    background: var(--lf-surface-2);
+  }
+  .lf-shell-actions .lf-topbar-create {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+    margin-left: 4px;
+  }
+  .lf-mobile-nav-button {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .lf-page-main,
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-page-main {
+    padding-top: 6px;
+  }
+
+  /* Work-area tabs: an underline strip, not a frame of boxes. `:not(#_)` only
+     outranks the light surface's themed prefix; it changes no layout. */
+  html:not(#_) .lf-app-frame .lf-area-tabs {
+    margin: 0 0 12px;
+    padding: 0 0 0 0;
+    gap: 0;
+    border: 0;
+    border-bottom: 1px solid var(--lf-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    padding-right: 28px;
+  }
+  html:not(#_) .lf-app-frame .lf-area-tabs::before,
+  html:not(#_) .lf-app-frame .lf-area-tabs::after {
+    display: none;
+  }
+  html:not(#_) .lf-app-frame .lf-area-tabs .lf-tab {
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 15px;
+    color: var(--lf-ink-2);
+  }
+  html:not(#_) .lf-app-frame .lf-area-tabs .lf-tab[aria-current='page'] {
+    background: transparent;
+    box-shadow: none;
+    font-weight: 600;
+    color: var(--yh-primary, var(--lf-wine-700));
+  }
+  html:not(#_) .lf-app-frame .lf-area-tabs .lf-tab[aria-current='page']::after {
+    display: block;
+    inset: auto 8px -1px 8px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: currentColor;
+  }
+  .lf-area-tabs .lf-tab:active {
+    background: var(--lf-surface-2);
+  }
+
+  /* Page header: title, one line of context, the actions on their own row. */
+  html:not(#_) .lf-list-header__title,
+  html:not(#_) .lf-page-title,
+  html:not(#_) .lf-page-intro__title {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+  .lf-list-header {
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .lf-list-header__count,
+  .lf-page-intro__summary {
+    margin-top: 2px;
+    font-size: 13px;
+  }
+  .lf-list-header__actions {
+    gap: 8px;
+  }
+  .lf-list-header__actions .lf-btn {
+    min-height: 40px;
+  }
+
+  /* Toolbar: a real search field, view chips as pills. */
+  .lf-toolbar {
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .lf-toolbar__search .lf-input {
+    height: 44px;
+    padding-left: 38px;
+    border-radius: 12px;
+    border-color: transparent;
+    background: var(--lf-surface-2);
+    font-size: 16px;
+  }
+  .lf-toolbar__search .lf-input:focus {
+    border-color: var(--lf-line-2);
+    background: var(--lf-surface);
+  }
+  .lf-toolbar__search svg {
+    left: 14px;
+    width: 16px;
+    height: 16px;
+  }
+  .lf-chips {
+    gap: 6px;
+    padding: 2px 0 6px;
+  }
+  .lf-chip {
+    height: 34px;
+    padding: 0 12px;
+    border-color: transparent;
+    border-radius: 999px;
+    background: var(--lf-surface-2);
+    color: var(--lf-ink-2);
+    font-size: 13px;
+  }
+  .lf-chip[aria-current='page'] {
+    border-color: transparent;
+    background: var(--yh-primary, var(--lf-wine-700));
+    color: #fff;
+  }
+  .lf-chip:active {
+    background: var(--lf-line);
+  }
+
+  /* Records: separated by a hairline, not boxed. */
+  .lf-grid-wrap,
+  html:not(#_) .lf-grid-wrap {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .lf-grid tbody tr,
+  .lf-table tbody tr,
+  .lf-grid tbody tr:last-child,
+  .lf-table tbody tr:last-child {
+    position: relative;
+    padding: 12px 0;
+    margin: 0;
+    column-gap: 8px;
+    row-gap: 4px;
+    border: 0;
+    border-bottom: 1px solid var(--lf-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .lf-grid tbody tr:active {
+    background: var(--lf-surface-2);
+  }
+  .lf-grid tbody tr[aria-selected='true'] {
+    background: color-mix(in srgb, var(--yh-primary, var(--lf-wine-700)) 8%, transparent);
+  }
+  /* Select for bulk actions: a small box in the corner; the name is the way in. */
+  .lf-grid tbody td.lf-grid__select {
+    position: absolute;
+    top: 12px;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+  .lf-grid tbody td.lf-grid__select input {
+    width: 18px;
+    height: 18px;
+  }
+  .lf-grid tbody td[data-priority='primary'] {
+    padding-right: 48px;
+    font-size: 16px;
+  }
+  .lf-grid tbody td[data-priority='primary'] .lf-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+  }
+  /* A status pill says what it is; its column name above it is repetition. */
+  .lf-grid tbody td[data-priority='secondary']:has(> .lf-badge)::before {
+    display: none;
+  }
+  .lf-grid tbody td[data-priority='secondary']::before,
+  .lf-grid tbody td[data-priority='detail']::before {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  /* The next action is a sentence of its own, under the pills. */
+  .lf-grid tbody td[data-label='Follow-up'][data-priority='secondary'] {
+    width: 100%;
+    order: 1;
+    padding-right: 96px;
+    color: var(--lf-ink-2);
+    font-size: 13px;
+  }
+  .lf-grid tbody td[data-label='Follow-up'][data-priority='secondary']::before {
+    content: 'Next';
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .lf-grid tbody td.lf-row-more {
+    position: absolute;
+    right: 0;
+    bottom: 8px;
+  }
+  .lf-grid tbody tr:has(.lf-row-more details[open]) td.lf-row-more {
+    position: static;
+    margin-left: auto;
+  }
+
+  /* Metric groups: figures on one surface, hairlines between them. */
+  .lf-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+  }
+  html:not(#_) .lf-stat-strip > a,
+  html:not(#_) .lf-stat-strip > div {
+    padding: 10px 12px;
+    border: 0;
+    border-top: 1px solid var(--lf-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  html:not(#_) .lf-stat-strip > :nth-child(-n + 2) {
+    border-top: 0;
+  }
+  .lf-stat-strip > :nth-child(odd) {
+    padding-left: 0;
+  }
+  .lf-stat-strip .lf-figure {
+    font-size: 1.6rem;
+  }
+  .lf-card.lf-metric-panel {
+    padding: 12px 16px 14px;
+    box-shadow: none;
+  }
+  .lf-kpi {
+    padding: 10px 12px;
+    box-shadow: none;
+  }
+  .lf-kpi__value {
+    font-size: 20px;
+  }
+}
+
+/* ── Every width ───────────────────────────────────────────────────────── */
+
+/* Metric labels: a word, not a heading. */
+.lf-stat-strip .lf-eyebrow {
+  text-transform: none;
+  letter-spacing: 0;
+  font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+}
+
+/* Report filters: one line saying what is set, the controls behind it. A
+   native <details>, so it is keyboard reachable and needs no script; it opens
+   by itself when a custom range or person is in force. */
+.lf-filters {
+  /* globals lays <details> out as a row for other disclosures; this one stacks. */
+  display: block;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius-lg);
+  background: var(--lf-surface);
+}
+.lf-filters > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  list-style: none;
+  cursor: pointer;
+  font: 500 var(--lf-text-sm) / 1.3 var(--lf-font-ui);
+  color: var(--lf-ink);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.lf-filters > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-filters__label {
+  flex: none;
+  font-weight: 600;
+}
+.lf-filters__current {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lf-ink-2);
+}
+.lf-filters > summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 120ms ease;
+}
+.lf-filters[open] > summary::after {
+  transform: translateY(1px) rotate(225deg);
+}
+.lf-filters > summary:focus-visible {
+  outline: 2px solid var(--yh-azure, var(--lf-wine-700));
+  outline-offset: -2px;
+  border-radius: var(--lf-radius-lg);
+}
+.lf-filters__body {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--lf-line);
+}
+.lf-filters__periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 0 4px;
+}
+.lf-filters__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+  margin-top: 8px;
+}
+.lf-filters__form .lf-field {
+  min-width: 0;
+}
+/* Field names are words, not headings. */
+.lf-filters__form .lf-eyebrow {
+  text-transform: none;
+  letter-spacing: 0;
+  font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+}
+/* A date input's intrinsic width is what collided From with To. */
+.lf-filters__form .lf-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.lf-filters__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lf-filters__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .lf-filters {
+    border: 0;
+    border-bottom: 1px solid var(--lf-line);
+    border-radius: 0;
+    background: transparent;
+  }
+  .lf-filters > summary {
+    padding: 0;
+  }
+  .lf-filters__body {
+    padding: 0 0 14px;
+    border-top: 0;
+  }
+  .lf-filters__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .lf-filters__form .lf-field:has(select),
+  .lf-filters__actions {
+    grid-column: 1 / -1;
+  }
+  .lf-filters__actions .lf-btn {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+  .lf-filters__periods .lf-btn {
+    min-height: 36px;
+    border-radius: 999px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lf-filters > summary::after {
+    transition: none;
+  }
+}

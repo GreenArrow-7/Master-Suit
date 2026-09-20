@@ -83,7 +83,8 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'fullName', label: 'Name', fixed: true, primary: true },
     { key: 'company', label: 'Company', byDefault: true, hideMobile: true },
     { key: 'stage', label: 'Stage', byDefault: true },
-    { key: 'score', label: 'Score', byDefault: true, align: 'right' },
+    // A bar reading 0 on every new lead is noise on a phone; it waits under Details.
+    { key: 'score', label: 'Score', byDefault: true, align: 'right', priority: 'detail' },
     { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
     { key: 'slaState', label: 'SLA', byDefault: true },
     { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
