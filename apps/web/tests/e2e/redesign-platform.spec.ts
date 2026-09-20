@@ -78,7 +78,10 @@ for (const width of [390, 1440]) {
         const thead = document.querySelector('.lf-table thead');
         return {
           docWidth: document.documentElement.scrollWidth,
-          clientWidth: document.documentElement.clientWidth,
+          // CI's Chromium reports innerWidth 392 for a 390px mobile context while
+          // clientWidth stays 390; the document can scroll sideways only when it
+          // is wider than the window, so that is the number to compare against.
+          windowWidth: Math.max(document.documentElement.clientWidth, innerWidth),
           overlaps,
           beyond,
           env: {
@@ -97,7 +100,7 @@ for (const width of [390, 1440]) {
       expect(
         probe.docWidth,
         `${route}: no page-wide horizontal scroll (${probe.beyond.join('; ')}) env=${JSON.stringify(probe.env)}`,
-      ).toBeLessThanOrEqual(probe.clientWidth + 1);
+      ).toBeLessThanOrEqual(probe.windowWidth + 1);
       expect(probe.overlaps, `${route}: controls apart`).toEqual([]);
     }
     await context.close();
