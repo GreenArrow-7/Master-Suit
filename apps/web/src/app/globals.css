@@ -6714,7 +6714,7 @@ a.lf-kpi:hover {
   margin: 8px 0;
 }
 .lf-public a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure, #087bf5);
   text-decoration: none;
   border-bottom: 1px solid currentColor;
 }
@@ -6724,7 +6724,7 @@ a.lf-kpi:hover {
 .lf-privacy-header {
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid var(--lf-surface-3, #e8eaed);
+  border-bottom: 1px solid var(--yh-border, #dde3ea);
 }
 .lf-privacy-header h1 {
   margin: 0 0 8px;
@@ -6734,20 +6734,20 @@ a.lf-kpi:hover {
 .lf-subtitle {
   margin: 4px 0 0;
   font-size: 1.1rem;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--yh-text-secondary, #4d5766);
   font-weight: 500;
 }
 .lf-updated {
   margin: 8px 0 0;
   font-size: 0.95rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
+  color: var(--yh-text-muted, #667085);
 }
 .lf-privacy-summary {
-  background: var(--lf-surface-1, #f8f9fa);
+  background: var(--yh-surface-elevated, #f2f5f8);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
-  border-left: 4px solid var(--lf-blue-500, #4a90e2);
+  border-left: 4px solid var(--yh-azure, #087bf5);
 }
 .lf-privacy-summary h2 {
   margin-top: 0;
@@ -6759,11 +6759,11 @@ a.lf-kpi:hover {
 }
 .lf-summary-list li {
   margin: 8px 0;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--yh-text-secondary, #4d5766);
 }
 .lf-privacy-nav {
-  background: var(--lf-surface-2, #ffffff);
-  border: 1px solid var(--lf-surface-3, #e8eaed);
+  background: var(--yh-surface, #ffffff);
+  border: 1px solid var(--yh-border, #dde3ea);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
@@ -6783,7 +6783,7 @@ a.lf-kpi:hover {
   margin: 6px 0;
 }
 .lf-privacy-nav a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure, #087bf5);
   text-decoration: none;
   border: none;
   font-size: 0.95rem;
@@ -6797,7 +6797,7 @@ a.lf-kpi:hover {
 .lf-privacy-page section > h2 {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
+  border-top: 1px solid var(--yh-border, #dde3ea);
 }
 .lf-privacy-page section > h2:first-child {
   border-top: none;
@@ -6808,39 +6808,39 @@ a.lf-kpi:hover {
   margin-top: 40px;
   padding-top: 20px;
   font-size: 0.9rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
+  color: var(--yh-text-muted, #667085);
+  border-top: 1px solid var(--yh-border, #dde3ea);
 }
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .lf-privacy-header {
-    border-bottom-color: var(--lf-surface-3, #3a3f47);
+    border-bottom-color: var(--yh-border, #1b2c44);
   }
   .lf-privacy-summary {
-    background: var(--lf-surface-1, #27292d);
-    border-left-color: var(--lf-blue-400, #5ba3f5);
+    background: var(--yh-surface-elevated, #0d1c30);
+    border-left-color: var(--yh-cyan, #00d9f5);
   }
   .lf-subtitle,
   .lf-summary-list li {
-    color: var(--lf-ink-secondary, #e0e0e0);
+    color: var(--yh-text-secondary, #9aa7b8);
   }
   .lf-updated {
-    color: var(--lf-ink-tertiary, #9a9a9a);
+    color: var(--yh-text-muted, #768498);
   }
   .lf-privacy-nav {
-    background: var(--lf-surface-2, #2d3137);
-    border-color: var(--lf-surface-3, #3a3f47);
+    background: var(--yh-surface, #0a1729);
+    border-color: var(--yh-border, #1b2c44);
   }
   .lf-privacy-nav a {
-    color: var(--lf-blue-400, #5ba3f5);
+    color: var(--yh-cyan, #00d9f5);
   }
   .lf-privacy-page section > h2 {
-    border-top-color: var(--lf-surface-3, #3a3f47);
+    border-top-color: var(--yh-border, #1b2c44);
   }
   .lf-last-updated {
-    border-top-color: var(--lf-surface-3, #3a3f47);
-    color: var(--lf-ink-tertiary, #9a9a9a);
+    border-top-color: var(--yh-border, #1b2c44);
+    color: var(--yh-text-muted, #768498);
   }
 }
 
