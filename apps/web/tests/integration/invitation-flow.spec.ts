@@ -122,10 +122,16 @@ describe('sending an invitation', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('refuses a second open invitation for the same address', async () => {
+  it('refuses a second open invitation for the same address with a 409, not a 500', async () => {
     const email = address('duplicate');
     await inviteUser(adminCtx(), { email, fullName: 'First', roleId: memberRoleId });
-    await expect(inviteUser(adminCtx(), { email, fullName: 'Second', roleId: memberRoleId })).rejects.toThrow();
+    // `rejects.toThrow()` used to pass while the second invitation escaped as a
+    // raw P2002 from the (tenantId, pendingKey) unique index, which the API
+    // kernel answered as 500. A duplicate is an operator slip and has to say so.
+    await expect(inviteUser(adminCtx(), { email, fullName: 'Second', roleId: memberRoleId })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/already open/i),
+    });
   });
 });
 
