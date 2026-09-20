@@ -75,16 +75,28 @@ for (const width of [390, 1440]) {
             const r = e.getBoundingClientRect();
             return `${chain.join('<')} l=${Math.round(r.left)} w=${Math.round(r.width)}`;
           });
+        const thead = document.querySelector('.lf-table thead');
         return {
           docWidth: document.documentElement.scrollWidth,
           clientWidth: document.documentElement.clientWidth,
           overlaps,
           beyond,
+          env: {
+            innerWidth,
+            phoneMedia: matchMedia('(max-width: 760px)').matches,
+            viewportMeta: document.querySelector('meta[name="viewport"]')?.getAttribute('content') ?? null,
+            theadPosition: thead ? getComputedStyle(thead).position : null,
+            wrapOverflowX: (() => {
+              const w = document.querySelector('.lf-table-wrap');
+              return w ? getComputedStyle(w).overflowX : null;
+            })(),
+            sheets: [...document.styleSheets].map((x) => (x.href ?? 'inline').split('/').pop()).slice(0, 12),
+          },
         };
       }, width);
       expect(
         probe.docWidth,
-        `${route}: no page-wide horizontal scroll (${probe.beyond.join('; ')})`,
+        `${route}: no page-wide horizontal scroll (${probe.beyond.join('; ')}) env=${JSON.stringify(probe.env)}`,
       ).toBeLessThanOrEqual(probe.clientWidth + 1);
       expect(probe.overlaps, `${route}: controls apart`).toEqual([]);
     }
