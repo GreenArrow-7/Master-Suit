@@ -18,6 +18,10 @@ import CommandPalette from '@/components/nav/CommandPalette';
 import { loginPathFor } from '@/lib/security/redirect';
 // The approved workspace look, scoped to this frame's marker; see the file header.
 import './workspace-surface.css';
+import '@/styles/shell-mobile.css';
+import '@/styles/pages-copy.css';
+import '@/styles/lists-mobile.css';
+import '@/styles/forms-mobile.css';
 
 export const dynamic = 'force-dynamic';
 

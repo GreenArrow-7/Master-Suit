@@ -48,7 +48,31 @@ export interface ColumnDef {
    * name. Exactly one per object.
    */
   primary?: boolean;
+  /**
+   * Where the column lands in the phone card: `primary` is the title,
+   * `secondary` the one compact line under it (status, next action),
+   * `detail` folds under the card's "Details" disclosure. Defaults come from
+   * `columnPriority`, so nothing has to set this unless the default is wrong.
+   */
+  priority?: ColumnPriority;
   align?: 'left' | 'right';
+}
+
+export type ColumnPriority = 'primary' | 'secondary' | 'detail';
+
+/** Column keys or labels that read as a status or a next action. */
+export const SECONDARY_HINT = /status|stage|state|sla|priorit|score|due|next|follow|when|amount|outcome/i;
+
+/**
+ * Default phone priority: the flagged primary (or the first column when none
+ * is flagged) is the title; status-like columns make the compact line;
+ * everything else, including `hideMobile`, waits under "Details".
+ */
+export function columnPriority(column: ColumnDef, index: number, columns: ColumnDef[]): ColumnPriority {
+  if (column.priority) return column.priority;
+  if (column.primary || (index === 0 && !columns.some((c) => c.primary || c.priority === 'primary'))) return 'primary';
+  if (!column.hideMobile && SECONDARY_HINT.test(`${column.key} ${column.label}`)) return 'secondary';
+  return 'detail';
 }
 
 export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {

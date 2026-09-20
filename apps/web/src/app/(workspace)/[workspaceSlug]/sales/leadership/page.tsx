@@ -379,7 +379,7 @@ export default async function LeadershipPage({
                 No lead stages configured.
               </p>
             ) : (
-              <div className="lf-grid-wrap" style={{ overflowX: 'auto', marginTop: 'var(--lf-space-3)' }}>
+              <div className="lf-grid-wrap lf-funnel" style={{ overflowX: 'auto', marginTop: 'var(--lf-space-3)' }}>
                 <table className="lf-grid">
                   <thead>
                     <tr>
@@ -392,8 +392,10 @@ export default async function LeadershipPage({
                     {stages.map((s) => (
                       <tr key={s.stageId}>
                         <td data-label="Stage">
-                          {s.name}{' '}
-                          <Badge value={s.category} tone={s.category === 'CONVERSION' ? 'viridian' : 'slate'} />
+                          <span>
+                            {s.name}{' '}
+                            <Badge value={s.category} tone={s.category === 'CONVERSION' ? 'viridian' : 'slate'} />
+                          </span>
                         </td>
                         <td data-label="Open now" style={{ textAlign: 'right' }} className="lf-num">
                           {s.open}

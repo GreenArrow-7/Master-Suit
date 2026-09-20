@@ -122,7 +122,7 @@ export default function BuyerPlaybooks({ playbooks, canEdit }: { playbooks: Play
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)', marginTop: 'var(--lf-space-4)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div className="lf-buyer-playbooks__head">
         <div>
           <div className="lf-eyebrow">Buyer playbooks</div>
           <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>

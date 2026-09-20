@@ -5,6 +5,7 @@ import { AppError } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import PlatformSidebar from '@/components/platform/PlatformSidebar';
 import TopBar from '@/components/nav/TopBar';
+import '@/styles/lists-mobile.css';
 
 export const dynamic = 'force-dynamic';
 

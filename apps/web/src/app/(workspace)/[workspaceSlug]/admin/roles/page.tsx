@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import PageIntro from '@/components/workspace/PageIntro';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
@@ -118,15 +119,18 @@ export default async function Page({
 
   return (
     <div className="lf-page-stack">
-      <section>
-        <div className="lf-eyebrow">Administration</div>
-        <h1 style={{ margin: '8px 0 0' }}>Roles &amp; permissions</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '100ch' }}>
-          Roles are data, not code. Users can hold several roles at once, scoped to a department, location, project or
-          their own team, with optional start and end dates. Every change here is enforced by the server and written to
-          the immutable audit log.
-        </p>
-      </section>
+      <PageIntro
+        eyebrow="Administration"
+        title={<>Roles &amp; permissions</>}
+        summary="Manage what each role can access."
+        help={
+          <p>
+            Roles are data, not code. Users can hold several roles at once, scoped to a department, location, project or
+            their own team, with optional start and end dates. Every change here is enforced by the server and written
+            to the immutable audit log.
+          </p>
+        }
+      />
 
       <div className="lf-roles__split">
         <section className="lf-card lf-roles__list">

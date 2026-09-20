@@ -62,7 +62,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         <div className="lf-card">
           <EmptyState
             title="No products found"
-            description="Adjust the category filter or add a product to get started."
+            description={
+              params.category
+                ? 'No product is in this category. Choose another category or All.'
+                : 'Products are added by an administrator; none has been added yet.'
+            }
           />
         </div>
       ) : (

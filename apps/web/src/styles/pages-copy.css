@@ -1,0 +1,117 @@
+/* pages-copy: phone-first corrections (2026-09-20). Imported by the workspace layout. */
+
+/* ── Page intro: title + one sentence, the rest behind a disclosure ─────── */
+.lf-page-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  flex-wrap: wrap;
+}
+.lf-page-intro__copy {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.lf-page-intro__title {
+  margin: 0;
+}
+.lf-eyebrow + .lf-page-intro__title {
+  margin-top: 8px;
+}
+.lf-page-intro__summary {
+  margin: 6px 0 0;
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-sm);
+  max-width: 60ch;
+}
+.lf-page-intro__actions {
+  display: flex;
+  gap: var(--lf-space-2);
+  flex-wrap: wrap;
+}
+
+/* .lf-help: native <details>, so it is keyboard reachable with no JS. */
+.lf-help {
+  margin-top: 6px;
+  max-width: 72ch;
+  color: var(--lf-ink-2);
+  font-size: var(--lf-text-sm);
+}
+.lf-help > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--lf-space-2);
+  margin-left: calc(-1 * var(--lf-space-2));
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--lf-radius-sm);
+  font: 500 var(--lf-text-sm) / 1 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+  user-select: none;
+}
+.lf-help > summary::-webkit-details-marker {
+  display: none;
+}
+.lf-help > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+.lf-help > summary:hover {
+  color: var(--lf-ink);
+}
+.lf-help > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--lf-focus);
+}
+.lf-help[open] > summary {
+  color: var(--lf-ink);
+}
+.lf-help[open] > summary::before {
+  transform: rotate(45deg);
+}
+.lf-help__body {
+  padding: 4px 0 var(--lf-space-2) var(--lf-space-3);
+  border-left: 2px solid var(--lf-line);
+  line-height: 1.5;
+}
+.lf-help__body > p {
+  margin: 0;
+}
+.lf-help__body > p + p,
+.lf-help__body > ul {
+  margin-top: 8px;
+}
+.lf-help__body > ul {
+  margin-bottom: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+/* Buyer playbooks card: the action sits beside the copy on wide screens and
+   below it on a phone, so the sentence is not squeezed into a thin column. */
+.lf-buyer-playbooks__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .lf-buyer-playbooks__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+ul.lf-help__body {
+  margin: 0;
+  padding-left: calc(var(--lf-space-3) + 20px);
+  display: grid;
+  gap: 6px;
+}

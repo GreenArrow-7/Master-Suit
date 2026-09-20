@@ -4,6 +4,7 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import EmptyState from '@/components/ui/EmptyState';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
+import PageIntro from '@/components/workspace/PageIntro';
 
 export const metadata = { title: 'Audit log' };
 
@@ -215,14 +216,17 @@ export default async function Page({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <section>
-        <div className="lf-eyebrow">Administration</div>
-        <h1 style={{ margin: '8px 0 0' }}>Audit log</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
-          Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one
-          timeline. Nothing here can be edited or deleted from within the product.
-        </p>
-      </section>
+      <PageIntro
+        eyebrow="Administration"
+        title="Audit log"
+        summary="Review account activity and changes."
+        help={
+          <p>
+            Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one
+            timeline. Nothing here can be edited or deleted from within the product.
+          </p>
+        }
+      />
 
       <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} aria-label="Filter by domain">
         <Link className="lf-btn lf-btn--ghost" href="?" aria-current={!selected ? 'page' : undefined}>
@@ -241,21 +245,29 @@ export default async function Page({
       </nav>
 
       <WorkspaceTable
-        headers={['When', 'Who', 'Action', 'Object', 'Detail', 'From']}
+        headers={[
+          { label: 'Who', priority: 'primary' },
+          { label: 'Action', priority: 'secondary' },
+          { label: 'Object', priority: 'secondary' },
+          { label: 'When', priority: 'secondary' },
+          { label: 'Event', priority: 'detail' },
+          { label: 'Detail', priority: 'detail' },
+          { label: 'From', priority: 'detail' },
+        ]}
         empty="Nothing recorded in this domain yet."
         rows={merged.map((row) => [
-          row.at.toLocaleString('en-AE', { timeZone: 'UTC' }),
           row.actor,
-          <span key="a">
-            <strong>{title(row.action)}</strong>
-            {row.action !== row.event && (
-              <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
-                {row.event.toLowerCase().replace(/_/g, ' ')}
-              </div>
-            )}
-          </span>,
-          <code key="o" style={{ fontSize: 'var(--lf-text-xs)' }}>
-            {row.objectType}
+          <strong key="a">{title(row.action)}</strong>,
+          title(row.objectType),
+          row.at.toLocaleString('en-GB', {
+            timeZone: 'UTC',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          <code key="e" style={{ fontSize: 'var(--lf-text-xs)' }}>
+            {row.event.toLowerCase()}
           </code>,
           <span key="d" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-2)' }}>
             {row.detail}

@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { SECONDARY_HINT } from '@/lib/grid/columns';
+import RowDetails from './RowDetails';
 import TableSearch from './TableSearch';
 
 /**
@@ -9,18 +11,21 @@ import TableSearch from './TableSearch';
  * which fields survive that transform:
  *
  *   primary   — the record's identity; becomes the card title.
- *   secondary — worth scanning; renders as a labelled pair (the default).
- *   meta      — desktop-only detail; stays in the DOM, hidden on a phone.
+ *   secondary — the compact line under the title: status, next action.
+ *   detail    — folded under the card's "Details" disclosure.
+ *   meta      — desktop-only; stays in the DOM, hidden on a phone.
  *
- * A bare string is still a valid column, so the forty existing call sites keep
- * working and adopt priority when someone has a reason to.
+ * A bare string is still a valid column: the first is primary, one whose
+ * label reads as a status or date is secondary, the rest are detail.
  */
-export type Column = string | { label: string; priority?: 'primary' | 'secondary' | 'meta' };
+export type Column = string | { label: string; priority?: 'primary' | 'secondary' | 'detail' | 'meta' };
 
 const label = (column: Column) => (typeof column === 'string' ? column : column.label);
-/** First column is the identity unless a screen says otherwise. */
-const priority = (column: Column, index: number) =>
-  typeof column === 'string' ? (index === 0 ? 'primary' : 'secondary') : (column.priority ?? 'secondary');
+const priority = (column: Column, index: number, headers: Column[]) => {
+  if (typeof column !== 'string' && column.priority) return column.priority;
+  if (index === 0 && !headers.some((h) => typeof h !== 'string' && h.priority === 'primary')) return 'primary';
+  return SECONDARY_HINT.test(label(column)) ? 'secondary' : 'detail';
+};
 
 /**
  * Every list that is small enough to arrive in one response gets a search box,
@@ -66,7 +71,7 @@ export default function WorkspaceTable({
         <thead>
           <tr>
             {headers.map((header, index) => (
-              <th key={label(header)} data-priority={priority(header, index)}>
+              <th key={label(header)} data-priority={priority(header, index, headers)}>
                 {label(header)}
               </th>
             ))}
@@ -79,11 +84,12 @@ export default function WorkspaceTable({
                 <td
                   key={cellIndex}
                   data-label={label(headers[cellIndex] ?? '')}
-                  data-priority={priority(headers[cellIndex] ?? '', cellIndex)}
+                  data-priority={priority(headers[cellIndex] ?? '', cellIndex, headers)}
                 >
                   {cell}
                 </td>
               ))}
+              <RowDetails />
             </tr>
           ))}
         </tbody>

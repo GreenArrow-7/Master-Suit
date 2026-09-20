@@ -1,0 +1,186 @@
+/* shell-mobile: phone-first corrections to the shared app shell (2026-09-20).
+   Imported by the workspace layout after globals.css and workspace-surface.css. */
+
+/* ── Status bar and notch, in every theme ────────────────────────────────────
+   The phone block in globals.css lets the top bar grow (`height: auto`) and sets
+   `padding: 8px 12px 8px 54px`, which resets the safe-area padding-top declared
+   a few rules earlier. The light surface stylesheet re-added the inset for light
+   only, so in dark and glass the bar sat under the clock and Dynamic Island in
+   the iOS app. Applied once, here, for all themes; in a phone browser the inset
+   is 0 and nothing changes. */
+@media (max-width: 760px) {
+  html .lf-app-frame .lf-shell-topbar,
+  html:not([data-theme='dark']):not([data-theme='glass']) .lf-app-frame[data-lf-surface='workspace'] .lf-shell-topbar {
+    height: auto;
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    padding-bottom: 8px;
+  }
+  /* Landscape: the notch moves to the sides. */
+  .lf-app-frame,
+  .lf-page-main {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* ── Tab strip edge markers ─────────────────────────────────────────────────
+   The "‹" and "›" glyphs sat on top of the first and last tab labels ("‹ons",
+   "Sales›"). The fade alone says "more this way"; the glyph is gone and the strip
+   keeps its active tab clear of the fade. */
+@media (max-width: 760px) {
+  html:not([data-theme='dark']):not([data-theme='glass'])
+    .lf-app-frame[data-lf-surface='workspace']
+    .lf-area-tabs::before,
+  html:not([data-theme='dark']):not([data-theme='glass'])
+    .lf-app-frame[data-lf-surface='workspace']
+    .lf-area-tabs::after {
+    content: '';
+    width: 18px;
+    margin-left: -18px;
+    margin-right: -18px;
+  }
+  .lf-area-tabs {
+    scroll-padding-inline: 24px;
+  }
+}
+
+/* ── One Create, not two ────────────────────────────────────────────────────
+   A list screen already leads with its own primary action (Add lead, Add
+   project…). On a phone the global "+ Create" in the bar competed with it for
+   the same 390px; it stays on screens that have no primary action of their
+   own, and in the drawer everywhere. */
+@media (max-width: 760px) {
+  .lf-app-frame:has(.lf-list-header__actions > .lf-btn:not(.lf-btn--secondary):not(.lf-btn--ghost)) .lf-topbar-create {
+    display: none;
+  }
+}
+
+/* ── Column editor: popover on desktop, sheet on phones ────────────────────── */
+.lf-colmenu__anchor {
+  position: relative;
+  display: inline-flex;
+}
+.lf-colmenu {
+  position: fixed;
+  z-index: 62;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  padding: var(--lf-space-4);
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface);
+  color: var(--lf-ink);
+  box-shadow: var(--lf-shadow-2);
+  text-align: left;
+}
+.lf-colmenu__scrim {
+  display: none;
+}
+.lf-colmenu__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lf-space-3);
+  margin-bottom: var(--lf-space-3);
+  font-size: var(--lf-text-sm);
+}
+.lf-colmenu__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.lf-colmenu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--lf-space-2);
+  min-height: 44px;
+  padding: 4px 0;
+  font-size: var(--lf-text-sm);
+}
+.lf-colmenu__row[data-muted] {
+  color: var(--lf-ink-3);
+}
+.lf-colmenu__row input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.lf-colmenu__note {
+  margin-left: auto;
+  font-size: var(--lf-text-2xs);
+}
+.lf-colmenu__move {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.lf-colmenu__move .lf-btn--icon {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+.lf-colmenu__error {
+  margin: var(--lf-space-2) 0 0;
+  color: var(--lf-vermillion);
+  font-size: var(--lf-text-2xs);
+}
+.lf-colmenu__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lf-space-2);
+  margin-top: var(--lf-space-3);
+}
+@media (max-width: 760px) {
+  .lf-colmenu__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgb(15 10 12 / 0.45);
+  }
+  .lf-colmenu {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    width: auto;
+    max-height: calc(100dvh - 72px - env(safe-area-inset-top, 0px));
+    padding: var(--lf-space-4) var(--lf-space-4) calc(var(--lf-space-4) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--lf-radius) var(--lf-radius) 0 0;
+    border-bottom: 0;
+    box-shadow: var(--lf-shadow-3);
+  }
+  .lf-colmenu__actions .lf-btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (max-width: 760px) {
+  .lf-colmenu {
+    animation: lf-colmenu-rise 160ms ease-out;
+  }
+  @keyframes lf-colmenu-rise {
+    from {
+      transform: translateY(12px);
+      opacity: 0;
+    }
+  }
+}
+
+/* Glass: the sheet is a surface, not a pane of glass over the list — the rows behind it
+   read through a translucent card. Same treatment the theme gives .lf-sheet. */
+[data-theme='glass'] .lf-colmenu {
+  background: color-mix(in srgb, var(--lf-surface) 88%, rgb(8 10 18));
+  -webkit-backdrop-filter: blur(var(--lf-glass-blur, 16px)) saturate(1.25);
+  backdrop-filter: blur(var(--lf-glass-blur, 16px)) saturate(1.25);
+  border: 1px solid var(--lf-line);
+}
+[data-theme='glass'] .lf-colmenu__scrim {
+  background: rgb(4 6 12 / 0.6);
+}
