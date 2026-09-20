@@ -5,7 +5,6 @@ import { NotFound } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { coachAction } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
-import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 const body = z
@@ -33,7 +32,6 @@ const body = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true, callerId: true, leadId: true },

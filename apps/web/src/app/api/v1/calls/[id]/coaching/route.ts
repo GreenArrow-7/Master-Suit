@@ -4,7 +4,6 @@ import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
-import { assertCallInScope } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -35,7 +34,6 @@ async function assertCallVisible(ctx: Ctx, callId: string) {
 export const GET = route(
   { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'coaching notes' },
   async ({ ctx, params }) => {
-    await assertCallInScope(ctx, params.id);
     await assertCallVisible(ctx, params.id);
     const data = await prisma.coachingNote.findMany({
       where: { tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
@@ -51,7 +49,6 @@ const createBody = z.object({ body: z.string().min(1).max(5000) }).strict();
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
     const call = await assertCallVisible(ctx, params.id);
     // Coaching is a manager writing about someone *else's* call. Whatever the
     // scope, a note on your own call is just notes — the Call has a field for
@@ -86,7 +83,6 @@ const patchBody = z
 export const PATCH = route(
   { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
-    await assertCallInScope(ctx, params.id);
     const call = await assertCallVisible(ctx, params.id);
     const note = await prisma.coachingNote.findFirst({
       where: { id: body.noteId, tenantId: ctx.tenantId, callId: params.id, deletedAt: null },
