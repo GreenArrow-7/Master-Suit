@@ -92,14 +92,21 @@ export const GLOBAL_MODELS = new Set([
   // routes and alert rules. None carries a tenantId — a budget for one company
   // names it in `scopeId`, which is a value the platform owner typed, not a
   // scope the guard can enforce — and every one of them is reached only through
-  // requirePlatformOwner. The per-attempt record beside them, AiEvent, does
-  // carry a tenantId and is deliberately absent from this list: it is under
-  // FORCE row-level security and read across tenants only by withPlatformTx.
+  // requirePlatformOwner.
   'AiModelPrice',
   'AiBudget',
   'AiGuardrailPolicy',
   'AiRoute',
   'AiAlertRule',
+  // The per-attempt record. Same shape as PlatformAccessGrant above and here
+  // for the same reason, not as a concession: the table is under FORCE row-level
+  // security (see the AI Control Center migration), and the queries that span
+  // tenants are genuinely cross-tenant — a platform or plan budget covers every
+  // subscriber, and the console's totals cover everyone. Those run inside
+  // withPlatformTx, which is what makes them visible at all. Every other query
+  // names a tenantId and is pinned by runPinned below, and one that forgot to
+  // would be filtered by the policy rather than widened: it fails closed.
+  'AiEvent',
 ]);
 
 /**

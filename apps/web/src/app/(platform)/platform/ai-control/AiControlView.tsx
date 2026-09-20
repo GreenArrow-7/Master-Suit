@@ -83,9 +83,18 @@ export default function AiControlView(data: AiControlData) {
         </div>
       </section>
 
-      <nav className="lf-area-tabs" aria-label="AI Control Center sections">
+      {/* `lf-btn` rather than the workspace shell's tab strip: that strip is
+          styled inside the workspace surface and arrives here unstyled, which
+          ran the four labels together into one word. */}
+      <nav className="lf-actionrow" aria-label="AI Control Center sections">
         {tabs.map(([key, label]) => (
-          <button key={key} type="button" onClick={() => setTab(key)} data-active={tab === key ? '' : undefined}>
+          <button
+            key={key}
+            type="button"
+            className={tab === key ? 'lf-btn' : 'lf-btn lf-btn--ghost'}
+            aria-current={tab === key ? 'page' : undefined}
+            onClick={() => setTab(key)}
+          >
             {label}
           </button>
         ))}

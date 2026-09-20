@@ -138,20 +138,17 @@ export async function POST(req: Request) {
         enabled: input.enabled,
         note: input.note,
       };
-      const row = input.id
-        ? await prisma.aiBudget.update({ where: { id: input.id }, data })
-        : await prisma.aiBudget.upsert({
-            where: {
-              scope_scopeId_feature_period: {
-                scope: data.scope,
-                scopeId: data.scopeId ?? '',
-                feature: data.feature ?? '',
-                period: data.period,
-              },
-            },
-            update: data,
-            create: { ...data, createdById: ctx.platformUserId },
-          });
+      // Found first, not upserted. The unique index covers (scope, scopeId,
+      // feature, period), and Postgres treats two NULLs as distinct — so the
+      // platform ceiling, whose scopeId and feature are both null, matched
+      // nothing on the second save and the console grew a second identical row.
+      const existing = await prisma.aiBudget.findFirst({
+        where: { scope: data.scope, scopeId: data.scopeId, feature: data.feature, period: data.period },
+      });
+      const target = input.id ?? existing?.id;
+      const row = target
+        ? await prisma.aiBudget.update({ where: { id: target }, data })
+        : await prisma.aiBudget.create({ data: { ...data, createdById: ctx.platformUserId } });
       objectId = row.id;
     }
 
@@ -163,27 +160,29 @@ export async function POST(req: Request) {
       if (definition.locked && !input.enabled) {
         throw new AppError(422, 'guardrail-locked', `${definition.label} is mandatory and cannot be switched off.`);
       }
-      const row = await prisma.aiGuardrailPolicy.upsert({
-        where: {
-          key_scope_scopeId_feature: {
-            key: input.key,
-            scope: input.scope,
-            scopeId: input.scopeId ?? '',
-            feature: input.scope === 'FEATURE' ? (input.scopeId ?? '') : '',
-          },
-        },
-        update: { enabled: input.enabled, config: input.config },
-        create: {
-          key: input.key,
-          scope: input.scope,
-          scopeId: input.scopeId,
-          feature: input.scope === 'FEATURE' ? input.scopeId : null,
-          enabled: input.enabled,
-          locked: definition.locked,
-          config: input.config,
-          createdById: ctx.platformUserId,
-        },
+      // Same NULL-distinct trap as the budget above: the platform-level row has
+      // a null scopeId, so an upsert on the unique key never matches it.
+      const feature = input.scope === 'FEATURE' ? input.scopeId : null;
+      const current = await prisma.aiGuardrailPolicy.findFirst({
+        where: { key: input.key, scope: input.scope, scopeId: input.scopeId, feature },
       });
+      const row = current
+        ? await prisma.aiGuardrailPolicy.update({
+            where: { id: current.id },
+            data: { enabled: input.enabled, config: input.config },
+          })
+        : await prisma.aiGuardrailPolicy.create({
+            data: {
+              key: input.key,
+              scope: input.scope,
+              scopeId: input.scopeId,
+              feature,
+              enabled: input.enabled,
+              locked: definition.locked,
+              config: input.config,
+              createdById: ctx.platformUserId,
+            },
+          });
       objectId = row.id;
     }
 

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { budgetsFor, checkBudget, periodStart } from '@/lib/ai/budgets';
+import { budgetsFor, budgetState, checkBudget, periodStart } from '@/lib/ai/budgets';
 import { effectiveGuardrails, applyGuardrails } from '@/lib/ai/guardrails';
 import { validateSteps, routeFor } from '@/lib/ai/routing';
 import { costMicros, priceFor, resetPriceCache } from '@/lib/ai/pricing';
@@ -110,6 +110,26 @@ describe('budgets', () => {
     expect(blocking.message).toMatch(/budget/i);
 
     await prisma.aiEvent.deleteMany({ where: { tenantId } });
+  });
+
+  it('a platform-wide ceiling, which names no company, can still be read', async () => {
+    // The console's own case, and the one that fails silently: a PLATFORM budget
+    // sums AiEvent across every tenant. AiEvent is under FORCE row-level
+    // security, so the read has to go through withPlatformTx or it comes back
+    // zero — which reads as "no spend" rather than as a query that saw nothing.
+    const platform = await prisma.aiBudget.create({
+      data: { scope: 'PLATFORM', scopeId: null, tokenLimit: BigInt(1_000_000), period: 'MONTHLY' },
+    });
+    try {
+      await prisma.aiEvent.create({
+        data: { tenantId, feature: 'social-draft', inputTokens: 700, outputTokens: 300 },
+      });
+      const state = await budgetState(platform);
+      expect(state.usedTokens, 'the platform ceiling sees another company’s spend').toBeGreaterThanOrEqual(1000);
+    } finally {
+      await prisma.aiBudget.delete({ where: { id: platform.id } });
+      await prisma.aiEvent.deleteMany({ where: { tenantId } });
+    }
   });
 
   it('a request nobody set a ceiling for is allowed', async () => {
