@@ -45,7 +45,6 @@ let identityId = '';
 let ownerId = '';
 
 async function post(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (req: Request, ctx: { params: Promise<any> }) => Promise<Response>,
   path: string,
   body: unknown,
