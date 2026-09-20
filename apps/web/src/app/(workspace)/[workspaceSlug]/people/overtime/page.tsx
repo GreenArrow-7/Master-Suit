@@ -50,10 +50,13 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Overtime</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
-          Detection reads the attendance roll-up and raises a claim; it never pays anything on its own. Every claim
-          needs a decision, and nobody decides their own.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Detection reads the attendance roll-up and raises a claim; it never pays anything on its own. Every claim
+            needs a decision, and nobody decides their own.
+          </div>
+        </details>
       </section>
 
       {pending.length > 0 && (

@@ -42,11 +42,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Work locations</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
-          The geofence attendance is measured against. Coordinates never reach the browser during a punch — the distance
-          is computed on the server, because a client-reported &ldquo;I am inside&rdquo; is exactly what an attacker
-          would forge. A location left in <strong>DRAFT</strong> is not a candidate for any check-in.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            The geofence attendance is measured against. Coordinates never reach the browser during a punch — the
+            distance is computed on the server, because a client-reported &ldquo;I am inside&rdquo; is exactly what an
+            attacker would forge. A location left in <strong>DRAFT</strong> is not a candidate for any check-in.
+          </div>
+        </details>
       </section>
 
       {hr && (

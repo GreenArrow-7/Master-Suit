@@ -67,11 +67,21 @@
   .lf-cmdk-trigger:active {
     background: var(--lf-surface-2);
   }
+  /* Create is a round "+" on a phone; its name is the aria-label and the menu. */
   .lf-shell-actions .lf-topbar-create {
+    width: 40px;
+    min-width: 40px;
     min-height: 40px;
-    padding: 0 14px;
+    padding: 0;
+    justify-content: center;
     border-radius: 999px;
     margin-left: 4px;
+    font-size: 22px;
+    font-weight: 400;
+    line-height: 1;
+  }
+  .lf-topbar-create__label {
+    display: none;
   }
   .lf-mobile-nav-button {
     border-color: transparent;
@@ -114,8 +124,11 @@
     font-size: 15px;
     color: var(--lf-ink-2);
   }
+  /* Tinted as well as underlined, so the area level reads differently from
+     the in-page view tabs one level below it. */
   html:not(#_) .lf-app-frame .lf-area-tabs .lf-tab[aria-current='page'] {
-    background: transparent;
+    background: color-mix(in srgb, var(--yh-primary, var(--lf-wine-700)) 9%, transparent);
+    border-radius: 8px 8px 0 0;
     box-shadow: none;
     font-weight: 600;
     color: var(--yh-primary, var(--lf-wine-700));
@@ -251,6 +264,13 @@
     height: 36px;
     font-size: 12px;
   }
+  /* A card cell that no list ranked stacks full width, label over value,
+     instead of wrapping into a jumble beside its neighbours. */
+  .lf-table tbody td:not([data-priority]):not(.lf-row-more),
+  .lf-grid tbody td:not([data-priority]):not(.lf-row-more):not(.lf-grid__select) {
+    width: 100%;
+    padding: 3px 0;
+  }
   /* A status pill says what it is; its column name above it is repetition. */
   .lf-grid tbody td[data-priority='secondary']:has(> .lf-badge)::before {
     display: none;
@@ -264,7 +284,7 @@
   .lf-grid tbody td[data-label='Follow-up'][data-priority='secondary'] {
     width: 100%;
     order: 1;
-    padding-right: 96px;
+    padding-right: 0;
     color: var(--lf-ink-2);
     font-size: 13px;
   }
@@ -275,14 +295,12 @@
     font-size: 12px;
     font-weight: 500;
   }
-  .lf-grid tbody td.lf-row-more {
-    position: absolute;
-    right: 0;
-    bottom: 8px;
-  }
-  .lf-grid tbody tr:has(.lf-row-more details[open]) td.lf-row-more {
-    position: static;
+  /* The Details toggle stays in the flow at the end of the compact line, so a
+     long line of pills wraps around it instead of running underneath it. */
+  .lf-grid tbody td.lf-row-more,
+  .lf-table tbody td.lf-row-more {
     margin-left: auto;
+    align-self: flex-end;
   }
 
   /* Metric groups: figures on one surface, hairlines between them. */
@@ -464,5 +482,138 @@
 @media (prefers-reduced-motion: reduce) {
   .lf-filters > summary::after {
     transition: none;
+  }
+}
+
+/* ── Shared system: labels, pills, hints, sections (every width) ─────────── */
+
+/* Field and metric labels are words, not headings: sentence case, no tracking. */
+.lf-label,
+.lf-field > .lf-eyebrow,
+.lf-kpi__label,
+.lf-metric-card__label,
+.lf-page-main .lf-eyebrow {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font: 500 var(--lf-text-xs) / 1.4 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+}
+.lf-page-main .lf-eyebrow:not(.lf-field > *) {
+  font-weight: 600;
+  color: var(--lf-ink-3);
+}
+/* Status pills read as words. Tone still carries the meaning. */
+.lf-badge {
+  text-transform: capitalize;
+  letter-spacing: 0;
+  font-size: var(--lf-text-xs);
+  height: 22px;
+  padding: 0 9px;
+}
+.lf-hint,
+.lf-field__hint {
+  color: var(--lf-ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 64ch;
+}
+/* Only the outermost surface is a card. A card inside a card is a section. */
+.lf-page-main .lf-card .lf-card,
+.lf-page-main .lf-card .lf-form-section,
+.lf-page-main .lf-form-section .lf-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.lf-card {
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  /* Phone card labels: same words as the desktop header, smaller, no tracking. */
+  .lf-grid tbody td::before,
+  .lf-table tbody td::before {
+    font: 500 11px/1.4 var(--lf-font-ui);
+    letter-spacing: 0.01em;
+    text-transform: none;
+  }
+  /* The page is the form: sections are separated by space, not boxed. */
+  .lf-page-main .lf-form-section {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    gap: var(--lf-space-4);
+  }
+  .lf-page-main .lf-form-section + .lf-form-section {
+    padding-top: var(--lf-space-5);
+    border-top: 1px solid var(--lf-line);
+  }
+  .lf-form-section__heading h2 {
+    font-size: 17px;
+  }
+  .lf-form-section__heading p {
+    font-size: 13px;
+  }
+  /* Controls: comfortable to tap without looking bulky. */
+  .lf-page-main .lf-btn:not(.lf-btn--sm):not(.lf-btn--icon) {
+    min-height: 44px;
+  }
+  .lf-page-main .lf-btn--sm {
+    min-height: 36px;
+  }
+  .lf-page-main .lf-input,
+  .lf-page-main .lf-select {
+    min-height: 44px;
+    font-size: var(--lf-text-base);
+  }
+  .lf-page-main textarea.lf-input,
+  .lf-page-main .lf-textarea {
+    min-height: 88px;
+  }
+  /* Panels and cards: one hairline, page-coloured, on a phone. */
+  .lf-page-main > .lf-card,
+  .lf-page-stack > .lf-card {
+    border-radius: var(--lf-radius-lg);
+  }
+  .lf-card {
+    box-shadow: none;
+  }
+  /* Tables that stay tables on a phone scroll inside their wrap; the wrap says so. */
+  .lf-grid-wrap[style*='overflow'],
+  .lf-table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Empty states: one line and an action, not a poster ─────────────────── */
+.lf-empty {
+  padding: var(--lf-space-5) var(--lf-space-4);
+}
+.lf-empty__mark {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  margin-bottom: var(--lf-space-2);
+}
+.lf-empty .lf-h2 {
+  font-size: var(--lf-text-base);
+}
+@media (max-width: 760px) {
+  .lf-page-main .lf-card:has(> .lf-empty) {
+    border-style: dashed;
+    background: transparent;
+  }
+}
+
+/* ── Assistant button: never over a control (desktop and tablet) ─────────
+   The page keeps a lane free on the right for the floating button, so a
+   Save button or a date field at the bottom-right of the viewport is never
+   underneath it. Phones dock the button into the tab bar instead. */
+@media (min-width: 761px) {
+  .lf-page-main {
+    padding-right: calc(var(--lf-page-gutter) + 56px);
   }
 }

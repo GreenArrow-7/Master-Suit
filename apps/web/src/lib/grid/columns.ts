@@ -131,9 +131,9 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
   ACTIVITY: [
-    { key: 'occurredAt', label: 'Date', fixed: true, primary: true },
+    { key: 'occurredAt', label: 'Date', fixed: true, priority: 'secondary' },
     { key: 'type', label: 'Type', byDefault: true },
-    { key: 'lead', label: 'Lead', byDefault: true },
+    { key: 'lead', label: 'Lead', byDefault: true, primary: true },
     { key: 'outcome', label: 'Outcome', byDefault: true, hideMobile: true },
     { key: 'durationSecs', label: 'Duration', byDefault: true, align: 'right', hideMobile: true },
     { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
@@ -149,8 +149,10 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'completedAt', label: 'Completed', hideMobile: true },
   ],
   CALL: [
-    { key: 'createdAt', label: 'Date', fixed: true, primary: true },
-    { key: 'lead', label: 'Lead', byDefault: true },
+    // The person called is the identity of a call; when it is on the desk the
+    // phone leads with it and the time becomes the compact line.
+    { key: 'createdAt', label: 'Date', fixed: true, priority: 'secondary' },
+    { key: 'lead', label: 'Lead', byDefault: true, primary: true },
     { key: 'caller', label: 'Owner', byDefault: true, hideMobile: true },
     { key: 'recipientNumber', label: 'Number', byDefault: true, hideMobile: true },
     { key: 'direction', label: 'Direction', byDefault: true, hideMobile: true },
@@ -182,8 +184,10 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'createdAt', label: 'Date', fixed: true },
     { key: 'channel', label: 'Channel', byDefault: true },
     { key: 'direction', label: 'Direction', byDefault: true, hideMobile: true },
-    { key: 'toAddress', label: 'To', byDefault: true },
-    { key: 'subject', label: 'Subject', byDefault: true, hideMobile: true, primary: true },
+    { key: 'toAddress', label: 'To', byDefault: true, priority: 'secondary' },
+    // The subject is the identity of a message; hidden on a phone it left the
+    // card headed by a date.
+    { key: 'subject', label: 'Subject', byDefault: true, primary: true },
     { key: 'status', label: 'Status', byDefault: true },
   ],
   PRODUCT: [

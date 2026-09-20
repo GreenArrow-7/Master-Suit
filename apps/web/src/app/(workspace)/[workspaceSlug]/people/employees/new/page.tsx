@@ -23,10 +23,7 @@ export default async function NewEmployeePage({ params }: { params: Promise<{ wo
           only ever comes into existence through a token its owner redeems, and
           the person sending the invitation never sees the password.
         */}
-        <p>
-          This sends an invitation. When it is accepted, one shared user, workspace membership, employee profile and
-          Sales actor are created under workspace <code>{ctx.tenantId}</code>.
-        </p>
+        <p className="lf-page-description">They receive an email invitation and choose their own password.</p>
       </div>
       <WorkspaceRecordForm
         endpoint={`/api/v1/workspaces/${workspaceSlug}/hr/employees`}

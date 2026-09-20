@@ -61,10 +61,13 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Performance</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          You write your self-assessment first, so your manager&apos;s rating is informed by it. Their assessment stays
-          hidden from you until it has been calibrated and released, and only you can acknowledge the result.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            You write your self-assessment first, so your manager&apos;s rating is informed by it. Their assessment
+            stays hidden from you until it has been calibrated and released, and only you can acknowledge the result.
+          </div>
+        </details>
       </section>
 
       {cycles.length > 1 && (

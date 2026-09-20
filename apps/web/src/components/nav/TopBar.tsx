@@ -780,8 +780,15 @@ export default function TopBar({
         {/* Create dropdown — absent entirely for roles that can create nothing. */}
         {CREATE_ITEMS.length > 0 && (
           <div ref={createRef} style={{ position: 'relative' }}>
-            <button className="lf-btn lf-btn--sm lf-topbar-create" onClick={() => setCreateOpen((o) => !o)}>
-              + Create
+            <button
+              className="lf-btn lf-btn--sm lf-topbar-create"
+              onClick={() => setCreateOpen((o) => !o)}
+              aria-label="Create"
+              aria-haspopup="menu"
+              aria-expanded={createOpen}
+            >
+              <span aria-hidden="true">+</span>
+              <span className="lf-topbar-create__label">Create</span>
             </button>
 
             {createOpen && (

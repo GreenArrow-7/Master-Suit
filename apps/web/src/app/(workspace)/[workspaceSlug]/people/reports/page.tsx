@@ -49,11 +49,14 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Reports</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          Each report carries the permission for the data behind it, not for reporting — so someone who can read
-          headcount cannot export salary cost. You are shown {reports.length} of the reports that exist; the rest need
-          permissions your role does not have.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Each report carries the permission for the data behind it, not for reporting — so someone who can read
+            headcount cannot export salary cost. You are shown {reports.length} of the reports that exist; the rest need
+            permissions your role does not have.
+          </div>
+        </details>
       </section>
 
       {reports.length === 0 ? (

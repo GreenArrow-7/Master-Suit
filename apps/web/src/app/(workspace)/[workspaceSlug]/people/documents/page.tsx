@@ -43,13 +43,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Employee documents</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
-          Passport scans and visas are the highest-value data in this system. Files are stored under generated keys, the
-          format is identified from the file&apos;s own bytes rather than what the browser claimed, and
-          <strong> every download is recorded against the person who made it</strong>. There is no public link to any of
-          them.
-          {hr ? '' : ' You can see your own documents here.'}
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Passport scans and visas are the highest-value data in this system. Files are stored under generated keys,
+            the format is identified from the file&apos;s own bytes rather than what the browser claimed, and
+            <strong> every download is recorded against the person who made it</strong>. There is no public link to any
+            of them.
+            {hr ? '' : ' You can see your own documents here.'}
+          </div>
+        </details>
       </section>
 
       {hr && (
