@@ -757,9 +757,15 @@
     margin-block: 4px;
   }
 }
-/* Short landscape phones: the band would eat the form; keep the lockup only. */
+/* Short viewports (a landscape phone, a zoomed desktop window): the graphic
+   stays but small, so it is always the same front door; the form still leads. */
 @media (max-height: 520px) {
-  .lf-auth-compact .lf-eco,
+  .lf-auth-compact .lf-eco__svg {
+    max-height: min(18vh, 120px);
+  }
+  .lf-auth-compact .lf-eco {
+    margin-block: 0;
+  }
   .lf-auth-headline--compact {
     display: none;
   }
