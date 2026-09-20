@@ -395,15 +395,20 @@ export interface ScriptTurn {
  * The scripted conversation the demo workspace replays. Personalised with the
  * live lead and agent names so the simulation reads like the CRM record it is
  * attached to.
+ *
+ * `companyName` is the workspace the agent is calling from. It was a literal
+ * naming the first customer, so every tenant's demo introduced the agent as a
+ * different company; the caller knows whose workspace this is, this function
+ * does not.
  */
-export function demoScript(agentName: string, customerName: string): ScriptTurn[] {
+export function demoScript(agentName: string, customerName: string, companyName: string): ScriptTurn[] {
   const first = customerName.split(' ')[0] || customerName;
   return [
     { speaker: 'Agent', text: `Good afternoon, am I speaking with ${customerName}?` },
     { speaker: 'Customer', text: 'Yes, speaking. Who is this?' },
     {
       speaker: 'Agent',
-      text: `This is ${agentName} calling from Manath Homes. Quick heads-up — this call is recorded for quality. Is now a good time?`,
+      text: `This is ${agentName} calling from ${companyName}. Quick heads-up — this call is recorded for quality. Is now a good time?`,
     },
     { speaker: 'Customer', text: 'Alright, I have a few minutes. What is this about?' },
     {
