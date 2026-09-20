@@ -502,10 +502,14 @@
   gap: 2px 12px;
 }
 .lf-auth-link {
-  /* Inline text, but a 44px-tall target: padding grows the hit area, the negative
-     margin keeps the row's rhythm. */
-  padding: 12px 0;
-  margin: -12px 0;
+  /* Inline text on the label's line, with a 44px-tall target: the hit area is a
+     pseudo-element, so the link's own box (and the row's rhythm) stays as is. */
+  position: relative;
+}
+.lf-auth-link::before {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
 }
 .lf-auth-link {
   font-size: var(--lf-text-xs);
