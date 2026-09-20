@@ -21,8 +21,16 @@ const ROUTES = [
 ];
 
 for (const width of [390, 1440]) {
-  test(`platform console fits at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: width < 700 ? 844 : 900 });
+  test(`platform console fits at ${width}px`, async ({ browser }) => {
+    // A phone context, not a resized desktop one: a desktop context draws
+    // classic 15px scrollbars, and any 100vw element then "overflows" by that
+    // much without a real defect. Phones draw overlay scrollbars.
+    const context = await browser.newContext({
+      viewport: { width, height: width < 700 ? 844 : 900 },
+      isMobile: width < 700,
+      hasTouch: width < 700,
+    });
+    const page = await context.newPage();
     await loginPlatformOwner(page);
     for (const route of ROUTES) {
       await page.goto(route);
@@ -54,13 +62,19 @@ for (const width of [390, 1440]) {
           .map(
             (e) => `${e.tagName}.${String(e.className).slice(0, 30)} w=${Math.round(e.getBoundingClientRect().width)}`,
           );
-        return { docWidth: document.documentElement.scrollWidth, overlaps, beyond };
+        return {
+          docWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          overlaps,
+          beyond,
+        };
       }, width);
       expect(
         probe.docWidth,
         `${route}: no page-wide horizontal scroll (${probe.beyond.join('; ')})`,
-      ).toBeLessThanOrEqual(width);
+      ).toBeLessThanOrEqual(probe.clientWidth + 1);
       expect(probe.overlaps, `${route}: controls apart`).toEqual([]);
     }
+    await context.close();
   });
 }
