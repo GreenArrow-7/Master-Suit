@@ -79,8 +79,10 @@ export default function PrivacyPage() {
         <h2>Who we are</h2>
         <p>
           YOUHAN ONE is business software provided by <strong>{f.legalEntity}</strong>, based in{' '}
-          <strong>{f.address}, {f.country}</strong>. Organisations use it to manage sales pipelines, customer
-          relationships, team attendance, and payroll.
+          <strong>
+            {f.address}, {f.country}
+          </strong>
+          . Organisations use it to manage sales pipelines, customer relationships, team attendance, and payroll.
         </p>
         <p>
           <strong>Important:</strong> Your organisation owns and controls the information in YOUHAN ONE. We provide the
@@ -91,8 +93,8 @@ export default function PrivacyPage() {
       <section id="how-accounts-work">
         <h2>How accounts work</h2>
         <p>
-          There is no public sign-up for YOUHAN ONE. An administrator in your organisation invites you, and your
-          account is linked to that workspace.
+          There is no public sign-up for YOUHAN ONE. An administrator in your organisation invites you, and your account
+          is linked to that workspace.
         </p>
         <p>
           Your organisation&apos;s administrator can access and manage your account, reset your password, and view your
@@ -102,7 +104,9 @@ export default function PrivacyPage() {
 
       <section id="information-we-collect">
         <h2>Information we collect</h2>
-        <p>All information collected is used only to provide the service. We do not use it for advertising or tracking.</p>
+        <p>
+          All information collected is used only to provide the service. We do not use it for advertising or tracking.
+        </p>
 
         <h3>Your identity and access</h3>
         <ul>
@@ -150,8 +154,8 @@ export default function PrivacyPage() {
         <h3>You are in control</h3>
         <p>
           You decide on each screen whether to grant permission. You can refuse and still use the feature — for example,
-          you can check in without taking a photo, or record a site visit without sharing your location. You can withdraw
-          permission at any time in your device&apos;s settings.
+          you can check in without taking a photo, or record a site visit without sharing your location. You can
+          withdraw permission at any time in your device&apos;s settings.
         </p>
 
         <h3>What we store</h3>
@@ -188,14 +192,12 @@ export default function PrivacyPage() {
           screen. Recordings are kept according to the retention date your organisation sets on each recording.
         </p>
         <p>
-          If you delete your account, call recordings are not automatically deleted — they stay with your organisation&apos;s
-          records at the retention date they set.
+          If you delete your account, call recordings are not automatically deleted — they stay with your
+          organisation&apos;s records at the retention date they set.
         </p>
 
         <h3>How data is sent</h3>
-        <p>
-          When AI features are enabled, your organisation is responsible for:
-        </p>
+        <p>When AI features are enabled, your organisation is responsible for:</p>
         <ul>
           <li>Telling you that call data may be sent to external AI providers</li>
           <li>Getting any necessary consent</li>
@@ -222,8 +224,8 @@ export default function PrivacyPage() {
           Your organisation chooses which services to connect. If a service is not set up, your data does not go there.
         </p>
         <p>
-          <strong id="hosting">Hosting and storage:</strong> All infrastructure is operated by <strong>{f.hostingProvider}</strong>. Files are
-          scanned for viruses and encrypted at rest.
+          <strong id="hosting">Hosting and storage:</strong> All infrastructure is operated by{' '}
+          <strong>{f.hostingProvider}</strong>. Files are scanned for viruses and encrypted at rest.
         </p>
       </section>
 
@@ -245,8 +247,8 @@ export default function PrivacyPage() {
 
         <h3>Payroll and employment records</h3>
         <p>
-          Your salary, bank details, payroll records and employment history are kept according to your organisation&apos;s
-          policy and local law. If you delete your account:
+          Your salary, bank details, payroll records and employment history are kept according to your
+          organisation&apos;s policy and local law. If you delete your account:
         </p>
         <ul>
           <li>Your bank and payroll identifiers are removed immediately</li>
@@ -266,8 +268,8 @@ export default function PrivacyPage() {
 
         <h3>How to request deletion</h3>
         <p>
-          In YOUHAN ONE, go to <strong>Profile → Security</strong> and select <em>Delete my account</em>. You&apos;ll confirm
-          with your password (and authenticator code if you&apos;ve set one up).
+          In YOUHAN ONE, go to <strong>Profile → Security</strong> and select <em>Delete my account</em>. You&apos;ll
+          confirm with your password (and authenticator code if you&apos;ve set one up).
         </p>
 
         <h3>What happens</h3>
@@ -290,7 +292,8 @@ export default function PrivacyPage() {
         <h3>Processing time</h3>
         <p>
           Eligible requests are processed within {f.deletionTargetHours} hours as an operational target. If you are your
-          organisation&apos;s owner or the last administrator, you&apos;ll be asked to transfer that responsibility first.
+          organisation&apos;s owner or the last administrator, you&apos;ll be asked to transfer that responsibility
+          first.
         </p>
 
         <h3>What you&apos;ll receive</h3>
@@ -322,7 +325,9 @@ export default function PrivacyPage() {
         <ul>
           <li>Request access to your personal data</li>
           <li>Ask to correct inaccurate information</li>
-          <li>Request deletion (see <a href="#deleting-your-account">Deleting your account</a>)</li>
+          <li>
+            Request deletion (see <a href="#deleting-your-account">Deleting your account</a>)
+          </li>
           <li>File a complaint about how your data is handled</li>
         </ul>
         <p>
@@ -334,8 +339,8 @@ export default function PrivacyPage() {
 
         <h3>Changes to this policy</h3>
         <p>
-          We may update this policy if our practices change. We&apos;ll notify you of significant changes via email or by
-          posting a notice in the app. Your continued use of YOUHAN ONE means you accept the updated policy.
+          We may update this policy if our practices change. We&apos;ll notify you of significant changes via email or
+          by posting a notice in the app. Your continued use of YOUHAN ONE means you accept the updated policy.
         </p>
 
         <p className="lf-last-updated">Last updated: {f.lastUpdated}</p>
