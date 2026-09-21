@@ -92,17 +92,55 @@ dc_for() {
 # The tag currently deployed to an environment, recorded at deploy time rather
 # than inferred: `docker ps` shows the image a container started with, which is
 # the same answer until somebody retags, and then quietly is not.
-current_file() { echo "${STATE_DIR}/$1.current"; }
-previous_file() { echo "${STATE_DIR}/$1.previous"; }
+# ── Which environment owns the promotion pointer ────────────────────────────
+#
+# Two different things have been called "staging" on this host:
+#
+#   release-staging   the `master-suite-staging` Compose project in
+#                     docker-compose.staging.yml -- what `release.sh staging`
+#                     deploys, 12-character tags, images built locally.
+#   ios-staging       the `youhan-ios-staging` project in /home/deploy/ios-staging
+#                     -- 40-character shas pulled from ghcr, deployed by
+#                     stage-run.sh. docs/PRODUCTION-RELEASE-PROCEDURE.md §0 states
+#                     plainly that release.sh does **not** control that stack.
+#
+# They are not interchangeable, and an unqualified `staging.current` cannot say
+# which one it means. The state files are therefore namespaced, and only
+# release-staging ever writes the pointer production promotes from. ios-staging
+# keeps its own pointer next to its own compose project
+# (/home/deploy/ios-staging/ios-staging.current) and can never become the
+# promotion source by accident.
+state_key() {
+  case "$1" in
+    staging|release-staging) echo 'release-staging' ;;
+    production)             echo 'production' ;;
+    *)                      echo "$1" ;;
+  esac
+}
+
+# The disk gate. `--warn-only` reports and returns 0; it is what rollback uses,
+# because a rollback starts an image that is already on disk and must stay
+# available at any disk level.
+preflight() {
+  [ -x /usr/local/sbin/ms-disk-preflight.sh ] || return 0
+  /usr/local/sbin/ms-disk-preflight.sh "$@"
+}
+
+current_file() { echo "${STATE_DIR}/$(state_key "$1").current"; }
+previous_file() { echo "${STATE_DIR}/$(state_key "$1").previous"; }
 read_tag() { [ -f "$1" ] && cat "$1" || echo ''; }
 
 # ── status ──────────────────────────────────────────────────────────────────
 if [ "${1:-}" = 'status' ]; then
-  for envname in staging production; do
-    printf '  %-11s current=%-14s previous=%-14s\n' \
+  for envname in release-staging production; do
+    printf '  %-15s current=%-14s previous=%-14s\n' \
       "${envname}" "$(read_tag "$(current_file "${envname}")" || echo '-')" \
       "$(read_tag "$(previous_file "${envname}")" || echo '-')"
   done
+  echo
+  ios_cur=/home/deploy/ios-staging/ios-staging.current
+  [ -f "${ios_cur}" ] && printf '  %-15s current=%-14s (not a promotion source)\n' \
+    'ios-staging' "$(cut -c1-12 "${ios_cur}")"
   echo
   say 'images available to roll back to:'
   docker image ls 'master-suite/web' --format '  {{.Tag}}  {{.CreatedSince}}  {{.Size}}' 2>/dev/null || true
@@ -123,6 +161,12 @@ if [ "${1:-}" = 'rollback' ]; then
   [ -n "${PREVIOUS}" ] || fail "No previous tag recorded for ${ENVIRONMENT}. Nothing to roll back to."
   docker image inspect "master-suite/web:${PREVIOUS}" >/dev/null 2>&1 ||
     fail "Image master-suite/web:${PREVIOUS} is no longer on this host. Rebuild that commit: release.sh ${ENVIRONMENT} ${PREVIOUS}"
+
+  # Disk is reported, never enforced, on this path. The image was just proven
+  # present by the inspect above, so the rollback writes essentially nothing --
+  # and refusing an emergency rollback because the disk that caused the
+  # emergency is full would remove the only way out of it.
+  preflight --warn-only || true
 
   CURRENT="$(read_tag "$(current_file "${ENVIRONMENT}")")"
   say "rolling ${ENVIRONMENT} back: ${CURRENT:-unknown} -> ${PREVIOUS}"
@@ -146,11 +190,28 @@ if [ -n "${2:-}" ]; then
   TAG="$(git -C "${APP_DIR}" rev-parse --short=12 "$2")" || fail "Not a commit: $2"
 elif [ "${ENVIRONMENT}" = 'production' ]; then
   # Promotion. Production does not choose its own commit — it takes the one
-  # staging is running, which is what makes "staging first" mean the same
-  # artefact rather than the same branch name.
-  TAG="$(read_tag "$(current_file staging)")"
-  [ -n "${TAG}" ] || fail "Staging has no recorded release. Deploy there first: release.sh staging"
-  say "promoting the tag staging is running: ${TAG}"
+  # release-staging is running, which is what makes "staging first" mean the
+  # same artefact rather than the same branch name.
+  #
+  # Only release-staging may supply this. If it has no recorded release the
+  # promotion stops and asks for an explicit sha rather than reaching for
+  # whatever else on the host happens to be called staging: on the production
+  # VM the only deployed staging stack is ios-staging, whose 40-character ghcr
+  # shas are not this project's 12-character locally-built tags, and promoting
+  # one as if it were the other would deploy an artefact production never built.
+  TAG="$(read_tag "$(current_file release-staging)")"
+  if [ -z "${TAG}" ]; then
+    fail "No release-staging release is recorded, so there is nothing to promote.
+
+        Name the commit you verified, explicitly:
+
+            scripts/release.sh production <verified-sha>
+
+        That sha must be one release-staging has run. ios-staging
+        (/home/deploy/ios-staging) is a separate stack — see
+        docs/PRODUCTION-RELEASE-PROCEDURE.md §0 — and is never promoted from."
+  fi
+  say "promoting the tag release-staging is running: ${TAG}"
 else
   TAG="$(git -C "${APP_DIR}" rev-parse --short=12 HEAD)"
 fi
@@ -183,6 +244,16 @@ if [ "${TAG}" != "${HEAD_TAG}" ]; then
         Going backwards? Use 'release.sh rollback ${ENVIRONMENT}', which starts the previous
         image and deliberately leaves the schema alone."
 fi
+
+# ── Room to build ───────────────────────────────────────────────────────────
+# A deploy writes a ~1.6 GB image pair plus build cache. On 2026-09-21 this host
+# reached 94% on stale release images alone; an ENOSPC part-way through a build
+# leaves a partial layer and fails in the middle of a release. Warns at 75%,
+# refuses at 90% or under 8 GB free. Rollback does not come through here.
+preflight || fail "Not enough disk to deploy safely. Reclaim with
+        /usr/local/sbin/ms-image-retention.sh --apply, or override with
+        ALLOW_LOW_DISK=yes if you know the build fits. A rollback is never blocked:
+            scripts/release.sh rollback ${ENVIRONMENT}"
 
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export IMAGE_TAG="${TAG}" BUILD_TIME
