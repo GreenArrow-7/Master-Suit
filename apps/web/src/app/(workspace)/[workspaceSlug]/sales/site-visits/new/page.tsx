@@ -53,10 +53,13 @@ export default async function NewSiteVisitPage() {
         <h1 className="lf-h1" style={{ fontSize: 'var(--lf-text-2xl)' }}>
           Request a visit
         </h1>
-        <p style={{ margin: '2px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-          A leader approves it before you go. Check in at the property on the day — the location is measured against the
-          property, not taken on trust.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            A leader approves it before you go. Check in at the property on the day — the location is measured against
+            the property, not taken on trust.
+          </div>
+        </details>
       </header>
 
       <WorkspaceRecordForm

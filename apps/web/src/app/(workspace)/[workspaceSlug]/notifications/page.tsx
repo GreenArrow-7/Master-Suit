@@ -23,7 +23,12 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         </section>
       ) : (
         <WorkspaceTable
-          headers={['Title', 'Message', 'Created', 'Read']}
+          headers={[
+            'Title',
+            { label: 'Message', priority: 'secondary' },
+            { label: 'Created', priority: 'secondary' },
+            { label: 'Read', priority: 'detail' },
+          ]}
           rows={rows.map((r) => [r.title, r.body, r.createdAt.toLocaleString('en-AE'), r.readAt ? 'Yes' : 'No'])}
         />
       )}

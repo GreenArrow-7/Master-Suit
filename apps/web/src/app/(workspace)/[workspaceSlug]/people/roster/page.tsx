@@ -75,11 +75,14 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Roster</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '78ch' }}>
-          Every assignment is checked for overlaps, rest between shifts, consecutive days and approved leave — including
-          the ones a bulk fill or a week copy creates. Conflicts are refused rather than flagged, because a roster that
-          saves a conflict in amber is a roster nobody trusts.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Every assignment is checked for overlaps, rest between shifts, consecutive days and approved leave —
+            including the ones a bulk fill or a week copy creates. Conflicts are refused rather than flagged, because a
+            roster that saves a conflict in amber is a roster nobody trusts.
+          </div>
+        </details>
       </section>
 
       <section style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

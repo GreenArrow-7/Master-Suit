@@ -197,41 +197,11 @@
   .lf-kpi__label {
     overflow-wrap: anywhere;
   }
-
-  /* Reports: the stat strip stops being one hairline-separated sentence and
-     becomes tiles, so a label, its figure and its percentage stay together. */
-  .lf-stat-strip {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--lf-space-3);
-  }
-  .lf-stat-strip > a,
-  .lf-stat-strip > div,
-  .lf-stat-strip > :first-child {
-    display: flex;
-    flex-direction: column-reverse;
-    justify-content: flex-end;
-    gap: 2px;
-    min-width: 0;
-    padding: var(--lf-space-3) var(--lf-space-4);
-    border: 1px solid var(--lf-line);
-    border-left: 1px solid var(--lf-line);
-    border-radius: var(--lf-radius);
-    background: var(--lf-surface-2);
-  }
-  .lf-stat-strip .lf-figure {
-    font-size: var(--lf-text-xl) !important;
-    overflow-wrap: anywhere;
-  }
-  .lf-stat-strip .lf-eyebrow {
-    margin-top: 0;
-  }
 }
 @media (max-width: 359px) {
   .lf-kpi-grid,
   .lf-metric-grid,
-  .lf-statstrip,
-  .lf-stat-strip {
+  .lf-statstrip {
     /* !important: shell-mobile pins the KPI grid to two columns with a
        surface-scoped selector; below 360px two columns cannot hold a value. */
     grid-template-columns: minmax(0, 1fr) !important;

@@ -244,9 +244,8 @@ export default async function Page({
 
           <section>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>One-off adjustment</h2>
-            <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-              A bonus, commission, reimbursement or deduction. Picked up by whichever draft run covers its date, and
-              stamped as consumed when that run locks so it cannot be paid twice.
+            <p className="lf-hint" style={{ margin: '0 0 10px' }}>
+              A bonus, commission, reimbursement or deduction, paid once by the run that covers its date.
             </p>
             <WorkspaceRecordForm
               endpoint={`${actions}/payroll-adjustment-add`}

@@ -258,47 +258,43 @@ export default async function LeadershipPage({
         nothing. A link carries only the period, which clears the custom range by
         construction, and the two controls can no longer contradict each other.
       */}
-      <nav
-        aria-label="Period"
-        style={{ display: 'flex', gap: 'var(--lf-space-2)', flexWrap: 'wrap', marginTop: 'var(--lf-space-4)' }}
-      >
-        {PERIODS.map(([key, label]) => {
-          const q = new URLSearchParams();
-          if (view) q.set('view', view);
-          if (params.rep && repName) q.set('rep', params.rep);
-          if (key !== 'mtd') q.set('period', key);
-          const active = !custom && period === key;
-          return (
-            <SalesLink
-              key={key}
-              href={q.toString() ? `/leadership?${q}` : '/leadership'}
-              className={`lf-btn lf-btn--sm ${active ? 'lf-btn--secondary' : 'lf-btn--ghost'}`}
-              aria-current={active ? 'true' : undefined}
-            >
-              {label}
-            </SalesLink>
-          );
-        })}
-        {custom && (
-          <span className="lf-btn lf-btn--sm lf-btn--secondary" aria-current="true">
-            Custom
+      <details className="lf-report-filters" open={filtered || undefined}>
+        <summary>
+          <span className="lf-report-filters__label">Filters</span>
+          <span className="lf-report-filters__current">
+            {custom ? 'Custom range' : (PERIODS.find(([k]) => k === period)?.[1] ?? 'This month')} · {scopeLabel}
           </span>
-        )}
-      </nav>
+        </summary>
+        <div className="lf-report-filters__body">
+          <nav aria-label="Period" className="lf-report-filters__periods">
+            {PERIODS.map(([key, label]) => {
+              const q = new URLSearchParams();
+              if (view) q.set('view', view);
+              if (params.rep && repName) q.set('rep', params.rep);
+              if (key !== 'mtd') q.set('period', key);
+              const active = !custom && period === key;
+              return (
+                <SalesLink
+                  key={key}
+                  href={q.toString() ? `/leadership?${q}` : '/leadership'}
+                  className={`lf-btn lf-btn--sm ${active ? 'lf-btn--secondary' : 'lf-btn--ghost'}`}
+                  aria-current={active ? 'true' : undefined}
+                >
+                  {label}
+                </SalesLink>
+              );
+            })}
+            {custom && (
+              <span className="lf-btn lf-btn--sm lf-btn--secondary" aria-current="true">
+                Custom
+              </span>
+            )}
+          </nav>
 
-      {/* Custom range and scope. A GET form, so the URL is the state and is shareable. */}
-      <form
-        method="get"
-        style={{
-          display: 'flex',
-          gap: 'var(--lf-space-3)',
-          flexWrap: 'wrap',
-          alignItems: 'flex-end',
-          margin: 'var(--lf-space-4) 0',
-        }}
-      >
-        {view && <input type="hidden" name="view" value={view} />}
-        {/*
+          {/* Custom range and scope. A GET form, so the URL is the state and is shareable. */}
+          <form method="get" className="lf-report-filters__form">
+            {view && <input type="hidden" name="view" value={view} />}
+            {/*
           The chosen period rides along with the submit.
 
           Without it, changing the Person reset the window to this month — the
@@ -307,50 +303,54 @@ export default async function LeadershipPage({
           that does nothing. Omitted for a custom range, where From/To are the
           period and `resolveRange` gives them precedence anyway.
         */}
-        {!custom && period !== 'mtd' && <input type="hidden" name="period" value={period} />}
-        <label className="lf-field">
-          <span className="lf-eyebrow">From</span>
-          <input
-            type="date"
-            name="from"
-            defaultValue={params.from ?? ''}
-            className="lf-input"
-            aria-describedby="lf-range-hint"
-          />
-        </label>
-        <label className="lf-field">
-          <span className="lf-eyebrow">To</span>
-          <input type="date" name="to" defaultValue={params.to ?? ''} className="lf-input" />
-        </label>
-        <label className="lf-field">
-          <span className="lf-eyebrow">Person</span>
-          <select name="rep" defaultValue={params.rep ?? ''} className="lf-input">
-            <option value="">{allowed.length === 0 ? 'Whole workspace' : 'Everyone in my scope'}</option>
-            {reps.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.fullName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="lf-btn lf-btn--secondary">
-          Apply
-        </button>
-        {filtered && (
-          <SalesLink href={view ? `/leadership?view=${view}` : '/leadership'} className="lf-btn lf-btn--ghost">
-            Reset
-          </SalesLink>
-        )}
-        <span id="lf-range-hint" className="lf-hint" style={{ flexBasis: '100%', margin: 0 }}>
-          Setting a From date switches to a custom range. Dates are inclusive.
-        </span>
-      </form>
+            {!custom && period !== 'mtd' && <input type="hidden" name="period" value={period} />}
+            <label className="lf-field">
+              <span className="lf-eyebrow">From</span>
+              <input
+                type="date"
+                name="from"
+                defaultValue={params.from ?? ''}
+                className="lf-input"
+                aria-describedby="lf-range-hint"
+              />
+            </label>
+            <label className="lf-field">
+              <span className="lf-eyebrow">To</span>
+              <input type="date" name="to" defaultValue={params.to ?? ''} className="lf-input" />
+            </label>
+            <label className="lf-field">
+              <span className="lf-eyebrow">Person</span>
+              <select name="rep" defaultValue={params.rep ?? ''} className="lf-input">
+                <option value="">{allowed.length === 0 ? 'Whole workspace' : 'Everyone in my scope'}</option>
+                {reps.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="lf-report-filters__actions">
+              <button type="submit" className="lf-btn lf-btn--secondary">
+                Apply
+              </button>
+              {filtered && (
+                <SalesLink href={view ? `/leadership?view=${view}` : '/leadership'} className="lf-btn lf-btn--ghost">
+                  Reset
+                </SalesLink>
+              )}
+            </div>
+            <span id="lf-range-hint" className="lf-hint lf-report-filters__hint">
+              Setting a From date switches to a custom range. Dates are inclusive.
+            </span>
+          </form>
+        </div>
+      </details>
 
       {/* Its views are the tabs of this work area (lib/nav/workspaceNav.ts), rendered above the page. */}
 
       {view === '' && (
         <>
-          <div className="lf-card" style={{ ...CARD, marginBottom: 'var(--lf-space-4)' }}>
+          <div className="lf-card lf-metric-panel" style={{ ...CARD, marginBottom: 'var(--lf-space-4)' }}>
             <div className="lf-stat-strip lf-stat-strip--light">
               {(
                 [

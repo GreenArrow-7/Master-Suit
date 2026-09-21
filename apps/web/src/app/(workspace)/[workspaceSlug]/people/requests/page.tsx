@@ -43,12 +43,16 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Requests</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '80ch' }}>
-          The two authorised routes around the geofence. A geofence that can only say no is one people work around — an
-          agent at a client site, or someone whose phone died at the door, needs a path that ends in a human decision.
-          Neither route weakens the fence: an approved temporary site becomes a real, date-bounded location, and an
-          approved exception writes a corrected punch while leaving the original refusal in the log as evidence.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            The two authorised routes around the geofence. A geofence that can only say no is one people work around —
+            an agent at a client site, or someone whose phone died at the door, needs a path that ends in a human
+            decision. Neither route weakens the fence: an approved temporary site becomes a real, date-bounded location,
+            and an approved exception writes a corrected punch while leaving the original refusal in the log as
+            evidence.
+          </div>
+        </details>
       </section>
 
       {/* ── Attendance exceptions ─────────────────────────────────────────── */}
@@ -144,10 +148,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       {/* ── Temporary work locations ──────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Request a temporary work location</h2>
-        <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-          For a site that is not an approved location — a project office, an exhibition stand, a client&apos;s premises.
-          On approval it becomes a real work location with hard start and end dates, and the named staff are assigned to
-          it for that window only.
+        <p className="lf-hint" style={{ margin: '0 0 10px' }}>
+          For a site that is not an approved location, such as a project office or a client&apos;s premises. Once
+          approved, the named staff can check in there between the dates given.
         </p>
         <WorkspaceRecordForm
           endpoint={`${actions}/temporary-request`}

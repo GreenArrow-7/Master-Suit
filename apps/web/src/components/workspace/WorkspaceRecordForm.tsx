@@ -70,12 +70,6 @@ export default function WorkspaceRecordForm({
 
   return (
     <form onSubmit={submit} className="lf-form-section">
-      <div className="lf-form-section__heading">
-        <div>
-          <h2>Record details</h2>
-          <p>Complete the information below. Required fields are marked by the browser.</p>
-        </div>
-      </div>
       <div className="lf-form-grid">
         {fields.map((field) => (
           <label className="lf-field" key={field.name}>

@@ -23,6 +23,7 @@ import '@/styles/pages-copy.css';
 import '@/styles/lists-mobile.css';
 import '@/styles/forms-mobile.css';
 import '@/styles/daily-board.css';
+import '@/styles/redesign-mobile.css';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
 
 export const dynamic = 'force-dynamic';

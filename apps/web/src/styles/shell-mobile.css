@@ -16,11 +16,16 @@
     padding-top: calc(8px + env(safe-area-inset-top, 0px));
     padding-bottom: 8px;
   }
-  /* Landscape: the notch moves to the sides. */
-  .lf-app-frame,
-  .lf-page-main {
+  /* Landscape: the notch moves to the sides. The page keeps its gutter and
+     adds the inset; an earlier revision replaced the gutter with the inset,
+     which is 0 in a browser, so content sat on the screen edge. */
+  .lf-app-frame {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+  }
+  .lf-page-main {
+    padding-left: calc(var(--lf-page-gutter) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--lf-page-gutter) + env(safe-area-inset-right, 0px));
   }
 }
 

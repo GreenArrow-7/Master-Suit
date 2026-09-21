@@ -75,7 +75,7 @@ export default async function CommissionSlabsPage() {
         <div className="lf-card">
           <EmptyState
             title="No commission rules yet"
-            description="Nothing accrues until finance enters a slab here and someone other than the drafter signs it off. That is deliberate: the engine ships with no rates of its own, so an unsigned workspace pays nothing rather than guessing."
+            description="Nothing accrues until finance enters a slab and a second person signs it off."
           />
         </div>
       ) : (
