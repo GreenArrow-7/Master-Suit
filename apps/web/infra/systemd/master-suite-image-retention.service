@@ -1,0 +1,18 @@
+[Unit]
+Description=master-suite Docker image retention (threshold-gated)
+Documentation=file:///opt/mastersuite/docs/OPS-DISK-RETENTION.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# --auto exits 0 without touching anything below AUTO_PCT, so a healthy host
+# keeps every rollback image it has room for. The script additionally refuses to
+# run while a build or deploy is in flight.
+ExecStart=/usr/local/sbin/ms-image-retention.sh --auto
+Environment=AUTO_PCT=80
+Environment=RETAIN=5
+Environment=BAK_KEEP=2
+Environment=BAK_MAX_AGE_DAYS=30
+Nice=10
+IOSchedulingClass=idle
