@@ -125,9 +125,8 @@ export default function BuyerPlaybooks({ playbooks, canEdit }: { playbooks: Play
       <div className="lf-buyer-playbooks__head">
         <div>
           <div className="lf-eyebrow">Buyer playbooks</div>
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-            How you sell to each kind of buyer. The live coach folds the matched playbook — by lead tag, or the default
-            — into its guidance, and only ever asserts the approved claims written here.
+          <p className="lf-hint" style={{ margin: '4px 0 0' }}>
+            How you sell to each kind of buyer; the live coach only asserts the approved claims written here.
           </p>
         </div>
         {canEdit && !editing && (

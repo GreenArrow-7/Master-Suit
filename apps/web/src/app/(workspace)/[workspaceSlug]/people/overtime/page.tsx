@@ -50,10 +50,13 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">People</div>
         <h1 style={{ margin: '8px 0 0' }}>Overtime</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)' }}>
-          Detection reads the attendance roll-up and raises a claim; it never pays anything on its own. Every claim
-          needs a decision, and nobody decides their own.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Detection reads the attendance roll-up and raises a claim; it never pays anything on its own. Every claim
+            needs a decision, and nobody decides their own.
+          </div>
+        </details>
       </section>
 
       {pending.length > 0 && (
@@ -176,10 +179,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         <section className="lf-card" style={{ padding: 'var(--lf-space-5)', display: 'grid', gap: 10 }}>
           <div>
             <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: 0 }}>Detect from attendance</h2>
-            <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-              Scans closed attendance days for time worked beyond the rostered shift and raises a claim for anything
-              over {policy.overtimeMinMinutes} minutes. Safe to re-run: a day already scanned is updated, not
-              duplicated, and claims already decided are left alone.
+            <p className="lf-hint" style={{ margin: '6px 0 0' }}>
+              Raises a claim for time worked over {policy.overtimeMinMinutes} minutes beyond the rostered shift. Safe to
+              re-run.
               {!policy.overtimeDetectionEnabled && ' Detection is currently switched off in HR settings.'}
             </p>
           </div>

@@ -67,10 +67,14 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <div className="lf-eyebrow">Administration</div>
         <h1 style={{ margin: '8px 0 0' }}>Add user</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '92ch' }}>
-          Creates the employee record and the login together, and issues a temporary password shown once. If the person
-          can be emailed, send them an invitation instead — that way nobody but its owner ever knows their password.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Creates the employee record and the login together, and issues a temporary password shown once. If the
+            person can be emailed, send them an invitation instead — that way nobody but its owner ever knows their
+            password.
+          </div>
+        </details>
       </section>
 
       <NewUserForm

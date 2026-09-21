@@ -250,10 +250,7 @@ export default function CallActions({
 
       {/* Recording upload — consent gate mirrors the server's */}
       {hasConsent && (
-        <label
-          className="lf-btn lf-btn--secondary"
-          style={{ marginBottom: 8, display: 'block', textAlign: 'center', cursor: 'pointer' }}
-        >
+        <label className="lf-btn lf-btn--secondary" style={{ marginBottom: 8, cursor: 'pointer' }}>
           {busy === 'recording' ? 'Uploading…' : hasRecording ? 'Replace Recording' : 'Upload Recording'}
           <input
             type="file"

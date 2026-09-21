@@ -253,15 +253,14 @@ export default async function LeadsPage({
             type="search"
             className="lf-input"
             defaultValue={params.q ?? ''}
-            placeholder="Search name, company, email, phone or reference"
+            placeholder="Search leads"
             aria-label="Search leads"
           />
         </form>
         <nav className="lf-chips" aria-label="Saved views">
           {[
-            ['All', ''],
-            ['Mine', 'mine'],
-            ['Unassigned', 'unassigned'],
+            // All, Mine and Unassigned are the area tabs above; repeating them
+            // here was the same three choices twice on one screen.
             // Labelled, because for a manager these are two different questions
             // and an unlabelled "Overdue" would silently answer whichever one
             // the implementation happened to pick.

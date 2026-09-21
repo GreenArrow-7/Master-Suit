@@ -172,11 +172,14 @@ export default async function Page({
       <section>
         <div className="lf-eyebrow">Administration</div>
         <h1 style={{ margin: '8px 0 0' }}>Face recognition activity</h1>
-        <p style={{ margin: '6px 0 0', color: 'var(--lf-ink-2)', maxWidth: '100ch' }}>
-          Every enrolment, consent change and verification attempt, accepted or refused, with the geofence evidence the
-          server measured. Templates are never shown, returned or exported — a face template cannot be re-issued if it
-          leaks.
-        </p>
+        <details className="lf-help">
+          <summary>How this works</summary>
+          <div className="lf-help__body">
+            Every enrolment, consent change and verification attempt, accepted or refused, with the geofence evidence
+            the server measured. Templates are never shown, returned or exported — a face template cannot be re-issued
+            if it leaks.
+          </div>
+        </details>
       </section>
 
       <form className="lf-card lf-users__filters" method="get">

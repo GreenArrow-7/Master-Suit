@@ -142,9 +142,26 @@ export default function HrPolicyForm({
                   )}
                   {!isDefault && <span className="lf-badge">changed</span>}
                 </label>
-                <p style={{ margin: 0, color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)', maxWidth: '68ch' }}>
-                  {definition.help}
-                </p>
+                {/* One sentence beside the field; the reasoning behind it one tap away. */}
+                {(() => {
+                  const help = definition.help ?? '';
+                  const cut = help.search(/(?<=[.!?])\s+(?=[A-Z])/);
+                  const lead = cut > 0 ? help.slice(0, cut) : help;
+                  const rest = cut > 0 ? help.slice(cut).trim() : '';
+                  return (
+                    <>
+                      <p className="lf-hint" style={{ margin: 0 }}>
+                        {lead}
+                      </p>
+                      {rest && (
+                        <details className="lf-help" style={{ marginTop: 0 }}>
+                          <summary>Why this matters</summary>
+                          <div className="lf-help__body">{rest}</div>
+                        </details>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   {definition.type === 'number' && (
