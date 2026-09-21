@@ -73,6 +73,7 @@ export const POST = route(
 
     const draft = await draftFollowUpEmail({
       tenantId: ctx.tenantId,
+      userId: ctx.actor.id,
       recipientName: recipient?.name,
       senderName: (await senderName(ctx.tenantId, ctx.actor.id)) ?? 'Your account manager',
       companyName,

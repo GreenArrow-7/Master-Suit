@@ -15,6 +15,13 @@ import { generateJson, str } from './generate';
  * module runs end to end in development.
  */
 export interface FollowUpEmailInput {
+  /**
+   * The person who asked, when a person did. Their allowance is enforced and
+   * their name appears against the spend in the AI Control Center; a request
+   * with none stays attributed to the workspace, which is right for a queued
+   * job and wrong for a button somebody pressed.
+   */
+  userId?: string | null;
   tenantId?: string | null;
   /** Who it is addressed to; used for the greeting, not for the address. */
   recipientName?: string | null;
@@ -46,6 +53,7 @@ export async function draftFollowUpEmail(input: FollowUpEmailInput): Promise<Fol
   const generated = await generateJson<{ subject: string; body: string }>({
     tenantId: input.tenantId,
     label: 'gemini-followup-email',
+    userId: input.userId,
     prompt: buildPrompt(input),
     schema: SCHEMA,
     temperature: 0.4,
@@ -131,6 +139,7 @@ export async function draftFollowUpWhatsApp(input: FollowUpEmailInput): Promise<
   const generated = await generateJson<{ body: string }>({
     tenantId: input.tenantId,
     label: 'gemini-followup-whatsapp',
+    userId: input.userId,
     prompt,
     schema: WHATSAPP_SCHEMA,
     temperature: 0.4,

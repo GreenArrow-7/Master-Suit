@@ -76,7 +76,12 @@ export const POST = route(
     const now = new Date().toISOString();
     const withRep: PracticeTurn[] = [...turns, { role: 'REP', text: body.text, at: now }];
 
-    const reply = await prospectReply({ tenantId: ctx.tenantId, brief: session.brief, turns: withRep });
+    const reply = await prospectReply({
+      tenantId: ctx.tenantId,
+      userId: ctx.actor.id,
+      brief: session.brief,
+      turns: withRep,
+    });
     const withProspect: PracticeTurn[] = [
       ...withRep,
       { role: 'PROSPECT', text: reply.text, at: new Date().toISOString() },

@@ -60,6 +60,7 @@ export const POST = route(
 
     const draft = await draftFollowUpWhatsApp({
       tenantId: ctx.tenantId,
+      userId: ctx.actor.id,
       recipientName: lead?.fullName,
       senderName: sender?.fullName ?? 'Your account manager',
       companyName: settings?.productName ?? null,
