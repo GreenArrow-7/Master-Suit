@@ -95,6 +95,8 @@ export interface ProspectReply {
 
 export async function prospectReply(input: {
   tenantId?: string | null;
+  /** The person practising, so their allowance governs it and the spend is theirs. */
+  userId?: string | null;
   brief: string;
   turns: readonly PracticeTurn[];
 }): Promise<ProspectReply> {
@@ -116,6 +118,7 @@ export async function prospectReply(input: {
 
   const generated = await generateJson<{ reply: string; shouldEnd: boolean }>({
     tenantId: input.tenantId,
+    userId: input.userId,
     label: 'gemini-practice-reply',
     prompt,
     schema: REPLY_SCHEMA,
@@ -185,6 +188,8 @@ const SCORE_SCHEMA = {
 
 export async function scorePractice(input: {
   tenantId?: string | null;
+  /** The person practising, so their allowance governs it and the spend is theirs. */
+  userId?: string | null;
   scenario: PracticeScenario;
   brief: string;
   turns: readonly PracticeTurn[];
@@ -217,6 +222,7 @@ export async function scorePractice(input: {
     improvements: string[];
   }>({
     tenantId: input.tenantId,
+    userId: input.userId,
     label: 'gemini-practice-score',
     prompt,
     schema: SCORE_SCHEMA,

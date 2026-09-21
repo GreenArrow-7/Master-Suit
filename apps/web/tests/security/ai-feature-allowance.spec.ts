@@ -44,14 +44,14 @@ describe('per-feature AI allowance', () => {
   });
 
   it('refuses only the capped feature once it reaches its ceiling', async () => {
-    await expect(assertAiBudget(tenantId, deployment, 'live-coach')).resolves.toBeUndefined();
+    await expect(assertAiBudget(tenantId, deployment, 'live-coach')).resolves.toMatchObject({ downgrade: false });
     await recordAiUsage(tenantId, deployment, { totalTokens: 400 }, { feature: 'live-coach', model: 'm' });
     await expect(assertAiBudget(tenantId, deployment, 'live-coach')).rejects.toMatchObject({ status: 403 });
-    await expect(assertAiBudget(tenantId, deployment, 'call-analysis')).resolves.toBeUndefined();
+    await expect(assertAiBudget(tenantId, deployment, 'call-analysis')).resolves.toMatchObject({ downgrade: false });
     // A workspace key is never capped by the plan.
     await expect(
       assertAiBudget(tenantId, { key: 'own', source: 'workspace', provider: 'google' }, 'live-coach'),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ downgrade: false });
   });
 });
 
@@ -73,9 +73,11 @@ describe('per-user AI allowance', () => {
     expect(row?.used).toBe(500);
 
     await expect(assertAiBudget(tenantId, deployment, 'assistant', 'user-a')).rejects.toMatchObject({ status: 403 });
-    await expect(assertAiBudget(tenantId, deployment, 'assistant', 'user-b')).resolves.toBeUndefined();
+    await expect(assertAiBudget(tenantId, deployment, 'assistant', 'user-b')).resolves.toMatchObject({
+      downgrade: false,
+    });
     // No person behind the request (a worker job): the per-user ceiling does not apply.
-    await expect(assertAiBudget(tenantId, deployment, 'assistant')).resolves.toBeUndefined();
+    await expect(assertAiBudget(tenantId, deployment, 'assistant')).resolves.toMatchObject({ downgrade: false });
   });
 });
 

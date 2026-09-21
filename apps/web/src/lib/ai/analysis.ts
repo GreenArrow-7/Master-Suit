@@ -199,6 +199,12 @@ export async function analyzeTranscript(
       generateStructured({
         credential: { key: apiKey, provider: credential.provider },
         model: m,
+        // Named so the platform guardrails resolve for this request:
+        // personal data is stripped from the customer's own text and a
+        // transcript carrying instructions aimed at the model is refused.
+        tenantId: input.tenantId,
+        feature: 'call-analysis',
+        untrusted: input.transcript,
         prompt,
         schema: RESPONSE_SCHEMA,
         temperature: 0.2,

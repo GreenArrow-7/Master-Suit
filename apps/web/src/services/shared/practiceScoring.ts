@@ -32,6 +32,10 @@ export async function scorePracticeSession(job: PracticeScoreJob): Promise<{ don
   try {
     const result = await scorePractice({
       tenantId,
+      // The scoring runs on the worker, but it is one person's practice and it
+      // spends against their allowance: the session names its owner, so the
+      // spend is theirs rather than the workspace's.
+      userId: session.userId,
       scenario: session.scenario as PracticeScenario,
       brief: session.brief,
       turns: session.turns as unknown as PracticeTurn[],

@@ -255,9 +255,31 @@ export async function assertAiBudget(
   credential: GeminiCredential,
   feature?: string,
   userId?: string | null,
-): Promise<void> {
+): Promise<{ downgrade: boolean }> {
   // Their key, their bill. And simulation costs nothing to anybody.
-  if (!tenantId || credential.source !== 'deployment') return;
+  if (!tenantId || credential.source !== 'deployment') return { downgrade: false };
+
+  /**
+   * The AI Control Center's ceilings, checked here for the same reason the
+   * event is recorded in `recordAiUsage`: this is the function every AI feature
+   * already calls before it spends anything, and a check that sat only in
+   * `generate.ts` would have governed four features out of ten.
+   *
+   * Platform, provider, workspace, person, feature — in that order, and every
+   * one of them, not merely the narrowest. The plan-level ceilings below are
+   * left exactly as they were.
+   */
+  const { enforceBudgets } = await import('./allowance');
+  const verdict = await enforceBudgets({
+    tenantId,
+    userId,
+    feature: feature ?? 'unknown',
+    provider: credential.provider,
+  });
+  if (!verdict.allowed) {
+    logger.warn({ tenantId, userId, feature, level: verdict.level }, 'ai request refused by a control-centre ceiling');
+    throw Forbidden(verdict.message ?? 'This workspace has reached its AI budget.');
+  }
 
   // One person's ceiling, where the request has a person behind it (worker jobs do not).
   if (userId) {
@@ -283,10 +305,10 @@ export async function assertAiBudget(
   }
 
   const limit = await monthlyLimit(tenantId);
-  if (limit === null) return;
+  if (limit === null) return { downgrade: verdict.downgrade };
 
   const used = await deploymentUsedThisMonth(tenantId);
-  if (used < limit) return;
+  if (used < limit) return { downgrade: verdict.downgrade };
 
   logger.warn({ tenantId, used, limit }, 'ai budget exhausted for the month');
   throw Forbidden(
@@ -311,12 +333,48 @@ export async function recordAiUsage(
   tenantId: string | null | undefined,
   credential: GeminiCredential,
   usage: Partial<ModelUsage> | undefined,
-  context: { feature: string; model: string; userId?: string | null },
+  context: {
+    feature: string;
+    model: string;
+    userId?: string | null;
+    /** Round-trip time, when the caller measured it. */
+    latencyMs?: number | null;
+    /** The step tried first, when a later one answered. */
+    fellBackFrom?: string | null;
+    /** Non-sensitive detail for the console, e.g. redaction counts. */
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<void> {
   if (!tenantId || credential.source === 'simulated') return;
 
   const tokens = usage?.totalTokens ?? (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0);
   if (!tokens) return;
+
+  /**
+   * The AI Control Center's per-attempt row, written here rather than at each
+   * feature's own fetch.
+   *
+   * Four of the ten AI features never touch `lib/ai/generate.ts` — analysis,
+   * audit, live coaching and the assistant each call the provider directly —
+   * so a record written there would have described less than half the spend and
+   * the console would have named the wrong people as the heavy users. Every one
+   * of them calls this function, which is what makes it the right seam.
+   */
+  const { recordAiEvent } = await import('./events');
+  await recordAiEvent({
+    tenantId,
+    userId: context.userId ?? null,
+    feature: context.feature,
+    provider: credential.provider,
+    model: context.model,
+    kind: context.fellBackFrom ? 'FALLBACK' : 'REQUEST',
+    outcome: context.fellBackFrom ? 'FELL_BACK' : 'OK',
+    fellBackFrom: context.fellBackFrom ?? null,
+    inputTokens: usage?.promptTokens ?? 0,
+    outputTokens: usage?.completionTokens ?? 0,
+    latencyMs: context.latencyMs ?? null,
+    metadata: context.metadata ?? {},
+  });
 
   // Logged whatever happens next, so the attribution survives even if the write
   // does not — a log line is the only thing that was here before, and it had no

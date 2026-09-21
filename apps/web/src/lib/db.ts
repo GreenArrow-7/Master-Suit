@@ -88,6 +88,31 @@ export const GLOBAL_MODELS = new Set([
   // The exemption is narrower than it looks: every query names either `userId`,
   // which is a tenant-scoped User, or the unique `token`, which pins one row.
   'DeviceToken',
+  // AI Control Center policy: prices, budgets, guardrail overrides, model
+  // routes and alert rules. None carries a tenantId — a budget for one company
+  // names it in `scopeId`, which is a value the platform owner typed, not a
+  // scope the guard can enforce.
+  //
+  // Only the *writes* go through requirePlatformOwner. The reads do not and must
+  // not: every AI request resolves the ceilings and the guardrails in force
+  // before it spends anything, so these tables are read on the customer path by
+  // design. They hold no customer data — a limit, a threshold, a model name —
+  // and what bounds a workspace's exposure is that it can only ever read them,
+  // through code that asks about itself.
+  'AiModelPrice',
+  'AiBudget',
+  'AiGuardrailPolicy',
+  'AiRoute',
+  'AiAlertRule',
+  // The per-attempt record. Same shape as PlatformAccessGrant above and here
+  // for the same reason, not as a concession: the table is under FORCE row-level
+  // security (see the AI Control Center migration), and the queries that span
+  // tenants are genuinely cross-tenant — a platform or plan budget covers every
+  // subscriber, and the console's totals cover everyone. Those run inside
+  // withPlatformTx, which is what makes them visible at all. Every other query
+  // names a tenantId and is pinned by runPinned below, and one that forgot to
+  // would be filtered by the policy rather than widened: it fails closed.
+  'AiEvent',
 ]);
 
 /**
