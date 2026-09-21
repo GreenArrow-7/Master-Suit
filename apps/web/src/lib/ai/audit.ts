@@ -119,6 +119,12 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
       generateStructured({
         credential: { key: apiKey, provider: credential.provider },
         model: m,
+        // Named so the platform guardrails resolve for this request:
+        // personal data is stripped from the customer's own text and a
+        // transcript carrying instructions aimed at the model is refused.
+        tenantId: input.tenantId,
+        feature: 'call-audit',
+        untrusted: input.transcript,
         prompt: buildAuditPrompt(input),
         schema: AUDIT_SCHEMA,
         temperature: 0.1,

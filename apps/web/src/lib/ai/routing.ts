@@ -1,5 +1,6 @@
 import type { AiRoute } from '@prisma/client';
 import { prisma } from '../db';
+import { logger } from '../logger';
 import { modelCascade } from './cascade';
 
 /**
@@ -94,9 +95,15 @@ export async function routeFor(feature: string, tenantId?: string | null): Promi
   if (row?.enabled) {
     try {
       return fromRow(row);
-    } catch {
+    } catch (err) {
       // A stored route that stopped being valid must not take the feature down
-      // with it; the deployment default still answers.
+      // with it; the deployment default still answers. Said out loud, though:
+      // silently ignoring it made the console report the feature as never
+      // configured, so an operator would have re-entered the same broken chain.
+      logger.warn(
+        { feature, err: (err as Error).message },
+        'stored AI route is not valid; falling back to the deployment cascade',
+      );
     }
   }
   const models = await modelCascade(tenantId);

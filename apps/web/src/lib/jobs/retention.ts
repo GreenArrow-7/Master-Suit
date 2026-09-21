@@ -74,6 +74,11 @@ const AUDIT_TABLES: {
     days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
   },
   { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
+  // One row per AI request. It carries no prompt and no completion, only counts
+  // and a machine reason, but it is the fastest-growing table on a busy
+  // deployment and an operator who can see a spend curve for ever has also kept
+  // a per-person activity trail for ever.
+  { name: 'AiEvent', column: 'occurredAt', days: () => env.AI_EVENT_RETENTION_DAYS },
   // Identity documents of a deleted person: the executor sets purgeAt (owner decision: 15
   // days after completion); rows with purgeAt NULL never match `< now`.
   {

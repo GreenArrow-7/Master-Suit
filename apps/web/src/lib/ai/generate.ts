@@ -1,10 +1,9 @@
 import { geminiCredential } from './gemini';
 import { generateStructured } from './provider';
 import { assertAiBudget, recordAiUsage } from './usage';
-import { runCascade } from './cascade';
+import { modelCascade, runCascade } from './cascade';
 import { routeFor } from './routing';
 import { applyGuardrails } from './guardrails';
-import { checkBudget } from './budgets';
 import { recordAiEvent, reasonFor } from './events';
 import { Forbidden } from '../errors';
 
@@ -77,22 +76,21 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
     provider: credential.provider as string,
   };
 
-  // Before the request that would be billed, which is the only useful place.
-  await assertAiBudget(request.tenantId, credential, feature, request.userId);
-
-  // A workspace on its own key spends its own money; the platform's ceilings
-  // are about the deployment's bill, so they apply to the deployment key only.
-  if (credential.source === 'deployment') {
-    const verdict = await checkBudget({
-      tenantId: request.tenantId,
-      provider: credential.provider,
-      feature,
-      userId: request.userId,
-    });
-    if (!verdict.allowed) {
-      await recordAiEvent({ ...base, kind: 'BUDGET_BLOCK', outcome: 'BLOCKED', reason: 'BUDGET_EXCEEDED' });
-      throw Forbidden(verdict.message ?? 'This workspace has reached its AI budget.');
-    }
+  /**
+   * Before the request that would be billed, which is the only useful place.
+   *
+   * Every ceiling — platform, provider, plan, workspace, person, feature — is
+   * checked inside `assertAiBudget`, because that is the function all ten AI
+   * features call and this one is reached by four of them. It refuses by
+   * throwing; what comes back is only whether a ceiling asked for a cheaper
+   * model rather than a refusal.
+   */
+  let cheaper = false;
+  try {
+    ({ downgrade: cheaper } = await assertAiBudget(request.tenantId, credential, feature, request.userId));
+  } catch (err) {
+    await recordAiEvent({ ...base, kind: 'BUDGET_BLOCK', outcome: 'BLOCKED', reason: 'BUDGET_EXCEEDED' });
+    throw err;
   }
 
   const guard = await applyGuardrails({
@@ -106,13 +104,30 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
     throw Forbidden(guard.message ?? 'This request was refused by an AI safety rule.');
   }
 
-  // Cross-provider routing needs a credential per provider, which the key store
-  // does not yet hold, so a chain is narrowed to the steps this credential can
-  // actually run. Attributing a step to a provider that never saw it would put
-  // a wrong price on the row and a wrong name in the portal.
-  const route = await routeFor(feature, request.tenantId);
-  const usable = route.steps.filter((s) => s.provider === credential.provider);
-  const steps = usable.length ? usable : route.steps.slice(0, 1);
+  /**
+   * The chain to try, narrowed to what this credential can actually speak.
+   *
+   * A stored route is a platform decision about the deployment's own spend, so
+   * it governs the deployment key only. A workspace paying its own provider
+   * keeps the model it configured: overriding that would send their money to a
+   * model they never chose.
+   *
+   * When a route names no step this credential can run, the answer is the
+   * deployment's own cascade — never the route's first step. Posting an
+   * OpenRouter model id to Google's endpoint is a 400, every feature would read
+   * that as "the provider refused" and degrade to a simulated answer, and the
+   * console would blame the model.
+   */
+  const route = credential.source === 'deployment' ? await routeFor(feature, request.tenantId) : null;
+  const usable = route?.steps.filter((s) => s.provider === credential.provider) ?? [];
+  const chain: { provider: string; model: string; timeoutMs?: number; retries?: number }[] = usable.length
+    ? usable
+    : (await modelCascade(request.tenantId)).map((model) => ({ provider: credential.provider, model }));
+  // "Use a cheaper model" means start further down the chain, which is ordered
+  // best first. With a single-step chain there is nothing cheaper to drop to and
+  // the request runs as it would have — the ceiling was set to degrade, not to
+  // refuse, so refusing here would be the wrong reading of it.
+  const steps = cheaper && chain.length > 1 ? chain.slice(1) : chain;
   const models = steps.map((s) => s.model);
 
   let attempts = 0;
@@ -123,6 +138,9 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
       return generateStructured({
         credential: { key: credential.key!, provider: credential.provider },
         model: m,
+        // Already guarded above, and deliberately not named here: passing the
+        // feature would run the rules a second time, double the rate-limit
+        // counter and redact an already-redacted span.
         prompt: guard.prompt,
         schema: request.schema,
         temperature: request.temperature,
@@ -134,26 +152,31 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
     // Recorded before the parse: the tokens were spent whether or not the model
     // returned JSON we can read, and a malformed answer is exactly the case where
     // a workspace burning its allowance most needs to show up in the ledger.
-    await recordAiUsage(request.tenantId, credential, response.usage, { feature, model, userId: request.userId });
+    // `recordAiUsage` writes the per-attempt row as well as the monthly counters,
+    // so every feature is recorded at one seam rather than four.
     const fellBack = model !== models[0];
-    await recordAiEvent({
-      ...base,
+    await recordAiUsage(request.tenantId, credential, response.usage, {
+      feature,
       model,
-      kind: fellBack ? 'FALLBACK' : 'REQUEST',
-      outcome: fellBack ? 'FELL_BACK' : 'OK',
-      attempt: attempts,
-      fellBackFrom: fellBack ? (models[0] ?? null) : null,
-      inputTokens: response.usage.promptTokens,
-      outputTokens: response.usage.completionTokens,
+      userId: request.userId,
       latencyMs: Date.now() - started,
-      metadata: { redacted: guard.redacted, detected: guard.detected, routed: route.configured },
+      fellBackFrom: fellBack ? (models[0] ?? null) : null,
+      metadata: {
+        redacted: guard.redacted,
+        detected: guard.detected,
+        routed: Boolean(route?.configured && usable.length),
+        cheaper,
+      },
     });
 
     return { result: JSON.parse(response.text) as T, modelId: model, processingMs: Date.now() - started };
   } catch (err) {
     await recordAiEvent({
       ...base,
-      model: models[Math.min(attempts, models.length) - 1] ?? null,
+      // Only a model that was actually tried. With `attempts` still 0 nothing
+      // reached a provider, and naming the first model would blame a model that
+      // never saw the request for a failure that happened before it.
+      model: attempts > 0 ? (models[Math.min(attempts, models.length) - 1] ?? null) : null,
       kind: 'PROVIDER_ERROR',
       outcome: 'FAILED',
       reason: reasonFor(err),

@@ -357,7 +357,11 @@ function Guardrails({ data, send, busy }: SectionProps) {
                 resource: 'guardrail',
                 key: g.key,
                 scope: 'PLATFORM',
-                enabled: f.get('enabled') === 'on',
+                // A disabled checkbox sends nothing, so reading the form for a
+                // mandatory rule said "switch it off" — which the route rightly
+                // refuses with a 422, leaving the operator unable to change the
+                // one number beside it.
+                enabled: g.locked ? true : f.get('enabled') === 'on',
                 config,
               });
             }}

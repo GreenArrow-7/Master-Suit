@@ -252,6 +252,12 @@ export async function coachTick(
         generateStructured({
           credential: { key: apiKey, provider: credential.provider },
           model: m,
+          // Named so the platform guardrails resolve for this request. The
+          // coach's window is the customer's own conversation, so it is the
+          // untrusted span.
+          tenantId,
+          feature: 'live-coach',
+          untrusted: windowText,
           prompt,
           schema: HINT_SCHEMA,
           temperature: 0.3,
@@ -368,6 +374,9 @@ export async function coachAction(
     const response = await generateStructured({
       credential: { key: credential.key, provider: credential.provider },
       model,
+      tenantId,
+      feature: 'live-coach-action',
+      untrusted: windowText,
       prompt: buildCoachPrompt(ACTION_INSTRUCTION[action], windowText, contextBlock),
       schema: HINT_SCHEMA,
       temperature: 0.3,

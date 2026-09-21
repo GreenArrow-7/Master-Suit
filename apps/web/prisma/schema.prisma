@@ -8505,29 +8505,36 @@ enum AiBudgetAction {
 /// tenant, feature or user; it is null for the platform ceiling. The narrowest
 /// matching budget wins, which is what the portal shows as the effective limit.
 model AiBudget {
-  id            String         @id @default(cuid())
-  scope         AiBudgetScope
-  scopeId       String?
+  id             String         @id @default(cuid())
+  scope          AiBudgetScope
+  scopeId        String?
   /// Narrows a TENANT or PLAN budget to one feature, for "PRO plan: Live Coach 2M".
-  feature       String?
-  tokenLimit    BigInt?
-  costLimit     Decimal?       @db.Decimal(12, 2)
-  currency      String         @default("USD")
-  period        AiBudgetPeriod @default(MONTHLY)
+  feature        String?
+  /// The difference between "this company may spend 10M" and "each person in
+  /// this company may spend 500K". Both are budgets at TENANT scope and only
+  /// this flag separates them: set, the limit is the default allowance for each
+  /// person the scope covers and is what a USER override replaces; clear, it is
+  /// one ceiling over everybody's spend together, and no override removes it.
+  appliesPerUser Boolean        @default(false)
+  tokenLimit     BigInt?
+  costLimit      Decimal?       @db.Decimal(12, 2)
+  currency       String         @default("USD")
+  period         AiBudgetPeriod @default(MONTHLY)
   /// Percentages that raise a warning, ascending, e.g. [70, 85, 95].
-  thresholds    Int[]          @default([70, 85, 95])
-  action        AiBudgetAction @default(ALERT_ONLY)
-  hardLimit     Boolean        @default(false)
-  enabled       Boolean        @default(true)
-  effectiveFrom DateTime?
-  effectiveTo   DateTime?
-  note          String?
-  createdById   String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  thresholds     Int[]          @default([70, 85, 95])
+  action         AiBudgetAction @default(ALERT_ONLY)
+  hardLimit      Boolean        @default(false)
+  enabled        Boolean        @default(true)
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  note           String?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  @@unique([scope, scopeId, feature, period])
+  @@unique([scope, scopeId, feature, period, appliesPerUser])
   @@index([scope, enabled])
+  @@index([scope, scopeId, appliesPerUser])
 }
 
 /// A guardrail's policy at one level. `locked` marks a platform-mandatory

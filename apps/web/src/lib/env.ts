@@ -369,6 +369,12 @@ export const envSchema = z.object({
   AUDIT_LOG_RETENTION_DAYS: retentionDays,
   ATTENDANCE_PUNCH_RETENTION_DAYS: retentionDays,
   PLATFORM_AUDIT_RETENTION_DAYS: retentionDays,
+  /**
+   * The AI Control Center's per-attempt rows. One per AI request, so on a busy
+   * deployment this is the fastest-growing table in the schema; unset it keeps
+   * every row, which is the same rule every other window here follows.
+   */
+  AI_EVENT_RETENTION_DAYS: retentionDays,
 
   /**
    * Bearer token for GET /api/metrics. Unset means the endpoint 404s.

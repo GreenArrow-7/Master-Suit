@@ -131,7 +131,7 @@ describe('metering', () => {
 describe('the ceiling', () => {
   it('lets a workspace under its allowance through', async () => {
     // 200 used against a limit of 1000.
-    await expect(assertAiBudget(cappedTenant, DEPLOYMENT)).resolves.toBeUndefined();
+    await expect(assertAiBudget(cappedTenant, DEPLOYMENT)).resolves.toMatchObject({ downgrade: false });
   });
 
   it('refuses once the allowance is spent', async () => {
@@ -144,18 +144,18 @@ describe('the ceiling', () => {
     // The whole point of the split: over the *platform's* budget, not over
     // theirs. Connecting a key is the documented way out, and the refusal above
     // says so.
-    await expect(assertAiBudget(cappedTenant, WORKSPACE)).resolves.toBeUndefined();
+    await expect(assertAiBudget(cappedTenant, WORKSPACE)).resolves.toMatchObject({ downgrade: false });
   });
 
   it('does not cap a plan with no allowance configured', async () => {
     await recordAiUsage(uncappedTenant, DEPLOYMENT, { totalTokens: 10_000_000 }, { feature: 'test', model: 'm' });
     // A platform that has not decided on a number must not refuse work because
     // of a default somebody guessed.
-    await expect(assertAiBudget(uncappedTenant, DEPLOYMENT)).resolves.toBeUndefined();
+    await expect(assertAiBudget(uncappedTenant, DEPLOYMENT)).resolves.toMatchObject({ downgrade: false });
   });
 
   it('never caps simulation', async () => {
-    await expect(assertAiBudget(cappedTenant, SIMULATED)).resolves.toBeUndefined();
+    await expect(assertAiBudget(cappedTenant, SIMULATED)).resolves.toMatchObject({ downgrade: false });
   });
 });
 
@@ -194,14 +194,14 @@ describe('own-key spend does not consume the deployment allowance', () => {
     // The counter the ceiling reads is untouched, so a deployment-key call is
     // still allowed. Before the split this threw.
     expect(await used(ownKeyTenant, 'deployment')).toBe(0);
-    await expect(assertAiBudget(ownKeyTenant, DEPLOYMENT)).resolves.toBeUndefined();
+    await expect(assertAiBudget(ownKeyTenant, DEPLOYMENT)).resolves.toMatchObject({ downgrade: false });
   });
 
   it('still refuses once the deployment key itself passes the ceiling', async () => {
     await recordAiUsage(ownKeyTenant, DEPLOYMENT, { totalTokens: 1_200 }, { feature: 'test', model: 'm' });
     await expect(assertAiBudget(ownKeyTenant, DEPLOYMENT)).rejects.toThrow(/monthly AI allowance/);
     // …and the workspace's own key is never capped, whatever the counter says.
-    await expect(assertAiBudget(ownKeyTenant, WORKSPACE)).resolves.toBeUndefined();
+    await expect(assertAiBudget(ownKeyTenant, WORKSPACE)).resolves.toMatchObject({ downgrade: false });
   });
 });
 

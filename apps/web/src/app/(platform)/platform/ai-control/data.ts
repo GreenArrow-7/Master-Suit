@@ -174,8 +174,17 @@ export async function loadAiControl(): Promise<AiControlData> {
     planIds.length
       ? prisma.subscriptionPlan.findMany({ where: { id: { in: planIds } }, select: { id: true, name: true } })
       : [],
+    // Inside the platform transaction: `User` is tenant-owned and RLS-forced, so
+    // naming ids without a tenant is refused by the guard outright. Saving one
+    // USER budget from the console then made the console itself unrenderable,
+    // including the button that would have removed the row.
     userIds.length
-      ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+      ? withPlatformTx((tx) =>
+          tx.user.findMany({
+            where: { id: { in: userIds }, tenantId: { not: '' } },
+            select: { id: true, fullName: true },
+          }),
+        )
       : [],
   ]);
   const names = new Map<string, string>([

@@ -89,10 +89,14 @@ export async function spendFor(budget: AiBudget, now: Date = new Date()): Promis
   if (budget.scope === 'FEATURE') where.feature = budget.scopeId;
   if (budget.scope === 'PROVIDER') where.provider = budget.scopeId;
   if (budget.scope === 'PLAN') {
-    const tenants = await prisma.tenantSubscription.findMany({
-      where: { planId: budget.scopeId ?? '' },
-      select: { tenantId: true },
-    });
+    // Inside the platform transaction with the aggregate below, not beside it:
+    // TenantSubscription is tenant-owned, this read names every subscriber of a
+    // plan on purpose, and outside withPlatformTx the tenant guard refuses it
+    // outright — which took the console down and, through checkBudget, failed
+    // the customer's AI request as well.
+    const tenants = await withPlatformTx((tx) =>
+      tx.tenantSubscription.findMany({ where: { planId: budget.scopeId ?? '' }, select: { tenantId: true } }),
+    );
     where.tenantId = { in: tenants.map((t) => t.tenantId) };
   }
 
@@ -112,11 +116,15 @@ export async function spendFor(budget: AiBudget, now: Date = new Date()): Promis
 
 export async function budgetState(budget: AiBudget, now: Date = new Date()): Promise<BudgetState> {
   const { tokens, micros } = await spendFor(budget, now);
-  const byTokens = budget.tokenLimit !== null ? Number(tokens) / Number(budget.tokenLimit) : null;
-  const byCost = budget.costLimit !== null ? Number(micros) / (Number(budget.costLimit) * 1_000_000) : null;
+  // A ceiling of zero is "no AI here", the strictest thing an operator can set,
+  // and 0/0 is NaN — which is not >= 100, so the strictest setting was the one
+  // that never bound. Zero is treated as reached the moment it exists.
+  const ratioAgainst = (used: number, limit: number) => (limit > 0 ? used / limit : used >= 0 ? Infinity : 0);
+  const byTokens = budget.tokenLimit !== null ? ratioAgainst(Number(tokens), Number(budget.tokenLimit)) : null;
+  const byCost = budget.costLimit !== null ? ratioAgainst(Number(micros), Number(budget.costLimit) * 1_000_000) : null;
   // Whichever ceiling is closer to being reached is the one that binds.
   const ratio = byTokens === null ? byCost : byCost === null ? byTokens : Math.max(byTokens, byCost);
-  const percent = ratio === null ? null : Math.round(ratio * 1000) / 10;
+  const percent = ratio === null ? null : ratio === Infinity ? 100 : Math.round(ratio * 1000) / 10;
   const passed = [...budget.thresholds].sort((a, b) => a - b).filter((t) => percent !== null && percent >= t);
   return {
     budget,
@@ -149,26 +157,34 @@ const ALLOWED = { allowed: true, action: null, downgrade: false, state: null, me
 export async function checkBudget(subject: BudgetSubject, now: Date = new Date()): Promise<BudgetVerdict> {
   const budgets = await budgetsFor(subject, now);
   if (!budgets.length) return { ...ALLOWED };
-  const binding = budgets[0]!;
-  const state = await budgetState(binding, now);
-  if (!state.exceeded) return { ...ALLOWED, state };
 
+  // Narrowest first for *display*, but a refusal can come from any of them. The
+  // first version stopped at budgets[0]: a tenant ceiling set to "alert me", not
+  // yet reached, silently shadowed an exceeded platform ceiling set to BLOCK,
+  // and the platform's hard limit was unenforceable the moment anyone added a
+  // narrower advisory row. `enforceBudgets` in ./allowance is the request path;
+  // this stays for callers that want one verdict from the display list.
+  let first: BudgetState | null = null;
+  for (const candidate of budgets) {
+    const state = await budgetState(candidate, now);
+    first ??= state;
+    if (!state.exceeded) continue;
+    if (candidate.action === 'BLOCK' || candidate.hardLimit) return refuse(candidate, state);
+    if (candidate.action === 'CHEAPER_MODEL') {
+      return { allowed: true, action: candidate.action, downgrade: true, state, message: null };
+    }
+  }
+  return { ...ALLOWED, state: first };
+}
+
+function refuse(binding: AiBudget, state: BudgetState): BudgetVerdict {
   const scopeName = binding.feature ? `${binding.scope.toLowerCase()} ${binding.feature}` : binding.scope.toLowerCase();
   const period = binding.period === 'DAILY' ? "today's" : "this month's";
-  if (binding.action === 'BLOCK' || binding.hardLimit) {
-    return {
-      allowed: false,
-      action: 'BLOCK',
-      downgrade: false,
-      state,
-      message: `AI is paused: ${period} ${scopeName} budget has been reached. Ask your administrator to raise it.`,
-    };
-  }
   return {
-    allowed: true,
-    action: binding.action,
-    downgrade: binding.action === 'CHEAPER_MODEL',
+    allowed: false,
+    action: 'BLOCK',
+    downgrade: false,
     state,
-    message: null,
+    message: `AI is paused: ${period} ${scopeName} budget has been reached. Ask your administrator to raise it.`,
   };
 }

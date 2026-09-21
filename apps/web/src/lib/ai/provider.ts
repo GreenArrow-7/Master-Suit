@@ -162,6 +162,20 @@ export interface TextRequest {
 export interface StructuredRequest extends TextRequest {
   /** JSON Schema for the expected object. */
   schema: object;
+  /**
+   * Whose request this is and what it is for. Present, the AI Control Center's
+   * guardrails run over the prompt before it leaves the deployment; absent,
+   * nothing changes and the prompt is sent as written.
+   */
+  tenantId?: string | null;
+  feature?: string;
+  /**
+   * The part of the prompt that came from a customer — a transcript, an email
+   * body, a note. Only this is searched for instructions aimed at the model, and
+   * only this is rewritten by redaction. The prompt this codebase wrote around
+   * it legitimately contains instructions and an address to reply to.
+   */
+  untrusted?: string | null;
 }
 
 export interface StructuredResponse {
@@ -172,8 +186,34 @@ export interface StructuredResponse {
 
 /**
  * A prompt in, JSON out, against a schema the provider is asked to honour.
+ *
+ * This is the last function before the network, and therefore the only place a
+ * guardrail can be certain of catching every AI request. Six of the ten
+ * features never touch `lib/ai/generate.ts` — analysis, audit, live coaching
+ * and the assistant each call this directly — so a check that lived there
+ * governed the cheap features and left the expensive ones ungoverned.
+ *
+ * A caller that names neither tenant nor feature is sent as written: the guard
+ * has nothing to resolve a policy against, and guessing one would be worse than
+ * not having it.
  */
-export function generateStructured(request: StructuredRequest): Promise<StructuredResponse> {
+export async function generateStructured(request: StructuredRequest): Promise<StructuredResponse> {
+  if (request.feature) {
+    const { applyGuardrails } = await import('./guardrails');
+    const { Forbidden } = await import('../errors');
+    const verdict = await applyGuardrails({
+      prompt: request.prompt,
+      untrusted: request.untrusted,
+      tenantId: request.tenantId,
+      feature: request.feature,
+    });
+    if (!verdict.allowed) throw Forbidden(verdict.message ?? 'This request was refused by an AI safety rule.');
+    if (verdict.prompt !== request.prompt) return sendStructured({ ...request, prompt: verdict.prompt });
+  }
+  return sendStructured(request);
+}
+
+function sendStructured(request: StructuredRequest): Promise<StructuredResponse> {
   return complete(request, request.schema);
 }
 

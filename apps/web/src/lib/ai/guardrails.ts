@@ -205,7 +205,11 @@ export async function applyGuardrails(input: {
     if (input.untrusted) {
       const report = redact(input.untrusted);
       if (report.text !== input.untrusted && prompt.includes(input.untrusted)) {
-        prompt = prompt.replace(input.untrusted, report.text);
+        // split/join, not String.replace: a replacement string expands `$&` and
+        // `$1`, and a transcript really can contain them, so a customer's own
+        // text could rewrite itself into the prompt. It also replaces only the
+        // first occurrence, and a prompt may quote the same span twice.
+        prompt = prompt.split(input.untrusted).join(report.text);
         redacted = report.counts;
       }
     }

@@ -91,8 +91,14 @@ export const GLOBAL_MODELS = new Set([
   // AI Control Center policy: prices, budgets, guardrail overrides, model
   // routes and alert rules. None carries a tenantId — a budget for one company
   // names it in `scopeId`, which is a value the platform owner typed, not a
-  // scope the guard can enforce — and every one of them is reached only through
-  // requirePlatformOwner.
+  // scope the guard can enforce.
+  //
+  // Only the *writes* go through requirePlatformOwner. The reads do not and must
+  // not: every AI request resolves the ceilings and the guardrails in force
+  // before it spends anything, so these tables are read on the customer path by
+  // design. They hold no customer data — a limit, a threshold, a model name —
+  // and what bounds a workspace's exposure is that it can only ever read them,
+  // through code that asks about itself.
   'AiModelPrice',
   'AiBudget',
   'AiGuardrailPolicy',
