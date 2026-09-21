@@ -135,7 +135,22 @@ describe('budgets', () => {
   it('a request nobody set a ceiling for is allowed', async () => {
     const verdict = await checkBudget({ tenantId: `no-such-${suffix}`, feature: 'social-draft' });
     expect(verdict.allowed).toBe(true);
-    expect(verdict.state).toBeNull();
+  });
+
+  it('a per-person default is not an aggregate ceiling', async () => {
+    // The two live in one table and only `appliesPerUser` separates them. Read
+    // as a ceiling, a 100k-per-person default would refuse the whole company at
+    // 100k of combined spend, which is the opposite of what it was set for.
+    const perUser = await prisma.aiBudget.create({
+      data: { scope: 'PLATFORM', scopeId: null, appliesPerUser: true, tokenLimit: BigInt(1), action: 'BLOCK' },
+    });
+    try {
+      const verdict = await checkBudget({ tenantId: `no-such-${suffix}`, feature: 'social-draft' });
+      expect(verdict.allowed, 'a per-person default never refuses an aggregate check').toBe(true);
+      expect(verdict.state).toBeNull();
+    } finally {
+      await prisma.aiBudget.delete({ where: { id: perUser.id } });
+    }
   });
 });
 

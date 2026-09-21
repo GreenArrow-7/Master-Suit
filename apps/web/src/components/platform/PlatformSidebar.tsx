@@ -22,6 +22,7 @@ const sections = [
       ['Plans', '/platform/plans'],
       ['AI usage', '/platform/ai-usage'],
       ['AI Control Center', '/platform/ai-control'],
+      ['AI by workspace', '/platform/ai-control/workspaces'],
     ],
   ],
   [

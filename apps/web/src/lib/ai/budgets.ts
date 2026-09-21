@@ -72,7 +72,15 @@ export async function budgetsFor(subject: BudgetSubject, now: Date = new Date())
   candidates.push({ scope: 'PLATFORM', scopeId: null, feature: null });
 
   const rows = await prisma.aiBudget.findMany({
-    where: { enabled: true, OR: candidates.map((c) => ({ scope: c.scope, scopeId: c.scopeId, feature: c.feature })) },
+    where: {
+      enabled: true,
+      // Aggregate ceilings only. A row with `appliesPerUser` is one person's
+      // allowance written at a company or plan level, and treating it as a
+      // ceiling over everybody's spend together would refuse a whole workspace
+      // the moment its combined usage passed what a single person may have.
+      appliesPerUser: false,
+      OR: candidates.map((c) => ({ scope: c.scope, scopeId: c.scopeId, feature: c.feature })),
+    },
   });
   const rank = (b: AiBudget) =>
     candidates.findIndex((c) => c.scope === b.scope && c.scopeId === b.scopeId && c.feature === b.feature);
