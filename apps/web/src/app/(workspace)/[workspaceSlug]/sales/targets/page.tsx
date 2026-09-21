@@ -33,6 +33,9 @@ function TargetCard({
   const achieved = achievedFor(target);
   const pct = Math.min(100, Math.round((achieved / target.targetValue) * 100));
   const remaining = Math.max(0, target.targetValue - achieved);
+  // From the count, never from `pct`: 299 of 300 rounds to 100, and a card that
+  // says "Achieved · 100%" directly above its own "1 remaining" is simply wrong.
+  const met = remaining === 0;
   return (
     <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
       <div
@@ -51,7 +54,12 @@ function TargetCard({
             {target.period.toLowerCase()} target
           </div>
         </div>
-        <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
+        {/* One flex child, not two: a third child under space-between strands the
+            badge in the middle of the header, away from the number it qualifies. */}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--lf-space-2)' }}>
+          <Badge tone={met ? 'viridian' : 'brass'}>{met ? 'Achieved' : 'Pending'}</Badge>
+          <span className="lf-num lf-muted">{pct}%</span>
+        </span>
       </div>
       <div
         style={{
@@ -66,7 +74,7 @@ function TargetCard({
           style={{
             width: `${pct}%`,
             height: '100%',
-            background: pct >= 100 ? 'var(--lf-viridian)' : 'var(--lf-wine-700)',
+            background: met ? 'var(--lf-viridian)' : 'var(--lf-wine-700)',
             borderRadius: 4,
             transition: 'width 400ms ease',
           }}
@@ -204,7 +212,10 @@ export default async function TargetsPage() {
                         </td>
                         <td data-label="Progress" style={{ minWidth: 140 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--lf-space-2)' }}>
-                            <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
+                            <Badge tone={achieved >= t.targetValue ? 'viridian' : 'brass'}>
+                              {achieved >= t.targetValue ? 'Achieved' : 'Pending'}
+                            </Badge>
+                            <span className="lf-num lf-muted"> {pct}%</span>
                             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
                               {achieved} / {t.targetValue}
                             </span>
