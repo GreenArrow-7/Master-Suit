@@ -13,6 +13,16 @@ const fmtDuration = (secs: number | null) => {
   return m ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 };
 
+/**
+ * Whether today's target is met, in words. A percentage and a colour are not a
+ * status: colour alone fails anyone who cannot distinguish it, and "94%" does
+ * not say whether the day is done.
+ */
+export function targetStatus(r: DailyBoardRow): { label: string; tone: 'viridian' | 'brass' | 'slate' } {
+  if (r.completion === null) return { label: 'No target', tone: 'slate' };
+  return r.completion >= 100 ? { label: 'Achieved', tone: 'viridian' } : { label: 'Pending', tone: 'brass' };
+}
+
 /** How far behind a row is, for the highlight: no target → no judgement. */
 export function rowTone(r: DailyBoardRow): 'viridian' | 'brass' | 'vermillion' | 'slate' {
   if (r.completion === null) return 'slate';
@@ -140,11 +150,8 @@ export default function DailyBoardView({
                     <SalesLink href={detailHref(r.userId)}>{r.name ?? r.userId}</SalesLink>
                   </td>
                   <td data-label="Done" data-priority="secondary" style={{ textAlign: 'right' }}>
-                    {r.completion === null ? (
-                      <Badge tone="slate">no target</Badge>
-                    ) : (
-                      <Badge tone={rowTone(r)}>{r.completion}%</Badge>
-                    )}
+                    <Badge tone={targetStatus(r).tone}>{targetStatus(r).label}</Badge>
+                    {r.completion !== null && <span className="lf-num lf-muted"> {r.completion}%</span>}
                   </td>
                   {BOARD_COLUMNS.map(([label, key]) => (
                     <td

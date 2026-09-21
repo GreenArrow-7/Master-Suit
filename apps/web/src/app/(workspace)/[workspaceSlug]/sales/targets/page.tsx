@@ -51,7 +51,8 @@ function TargetCard({
             {target.period.toLowerCase()} target
           </div>
         </div>
-        <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
+        <Badge tone={pct >= 100 ? 'viridian' : 'brass'}>{pct >= 100 ? 'Achieved' : 'Pending'}</Badge>
+        <span className="lf-num lf-muted"> {pct}%</span>
       </div>
       <div
         style={{
@@ -204,7 +205,10 @@ export default async function TargetsPage() {
                         </td>
                         <td data-label="Progress" style={{ minWidth: 140 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--lf-space-2)' }}>
-                            <Badge tone={pct >= 100 ? 'viridian' : pct >= 50 ? 'brass' : 'slate'}>{pct}%</Badge>
+                            <Badge tone={pct >= 100 ? 'viridian' : 'brass'}>
+                              {pct >= 100 ? 'Achieved' : 'Pending'}
+                            </Badge>
+                            <span className="lf-num lf-muted"> {pct}%</span>
                             <span style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-2)' }}>
                               {achieved} / {t.targetValue}
                             </span>
