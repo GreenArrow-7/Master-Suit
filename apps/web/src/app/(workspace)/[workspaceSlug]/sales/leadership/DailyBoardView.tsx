@@ -17,10 +17,17 @@ const fmtDuration = (secs: number | null) => {
  * Whether today's target is met, in words. A percentage and a colour are not a
  * status: colour alone fails anyone who cannot distinguish it, and "94%" does
  * not say whether the day is done.
+ *
+ * Decided from `pending`, not from the percentage. `completion` is rounded, so
+ * 199 of 200 leads called is 100% — and a word that says "Achieved" beside a
+ * Pending column reading 1, while the check-out gate refuses the seller for
+ * that same one lead, is worse than the bare number it replaced. `pending` is
+ * exactly what `dailyTargetShortfall` gives the gate, so the board and the
+ * turnstile now answer from one figure.
  */
 export function targetStatus(r: DailyBoardRow): { label: string; tone: 'viridian' | 'brass' | 'slate' } {
-  if (r.completion === null) return { label: 'No target', tone: 'slate' };
-  return r.completion >= 100 ? { label: 'Achieved', tone: 'viridian' } : { label: 'Pending', tone: 'brass' };
+  if (r.target === null || r.completion === null) return { label: 'No target', tone: 'slate' };
+  return r.pending === 0 ? { label: 'Achieved', tone: 'viridian' } : { label: 'Pending', tone: 'brass' };
 }
 
 /** How far behind a row is, for the highlight: no target → no judgement. */
