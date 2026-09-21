@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { totp } from '@/lib/auth/mfa';
 import { waitForNextTotpStep } from '../helpers/totp';
 import {
@@ -21,6 +21,31 @@ import {
  * only appears on that second sign-in.
  */
 test.describe.configure({ mode: 'serial' });
+
+/**
+ * Confirm the password on the enrolment form, past the hydration race.
+ *
+ * The button is `disabled={busy || !password}` — React state, not the DOM
+ * value. `fill()` before hydration sets the input and fires no React onChange,
+ * so `password` stays empty, the button never enables, and the click times out
+ * against a button that is plainly visible and plainly filled. That is exactly
+ * what the CI screenshot showed. Re-entering the value once the form is live
+ * costs nothing and removes the race.
+ */
+async function confirmPassword(page: Page, password: string) {
+  const field = page.getByLabel('Password', { exact: true });
+  const submit = page.getByRole('button', { name: 'Continue' });
+  await field.fill(password);
+  await expect(async () => {
+    if (await submit.isDisabled()) {
+      await field.click();
+      await field.fill('');
+      await field.type(password, { delay: 10 });
+    }
+    await expect(submit).toBeEnabled({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await submit.click();
+}
 
 test.describe('Sign-in and two-factor enrolment', () => {
   const run = uniq();
@@ -75,8 +100,7 @@ test.describe('Sign-in and two-factor enrolment', () => {
      * — the same rule that already guards changing the password. The forced
      * first-run grant is exempt and is covered in tests/security/mfa-reauth.
      */
-    await page.getByLabel('Password', { exact: true }).fill(workspace.adminPassword);
-    await page.getByRole('button', { name: 'Continue' }).click();
+    await confirmPassword(page, workspace.adminPassword);
 
     await expect(page.getByText('Enter this setup key:')).toBeVisible();
 
