@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { targetStatus } from '@/app/(workspace)/[workspaceSlug]/sales/leadership/DailyBoardView';
+import { isBehind, rowTone, targetStatus } from '@/app/(workspace)/[workspaceSlug]/sales/leadership/DailyBoardView';
 import type { DailyBoardRow } from '@/services/targets/dailyBoard';
 
 /**
@@ -57,6 +57,27 @@ describe('the daily target status, in words', () => {
     const none = targetStatus(row({ target: null, leadsAssigned: 6, pending: 6, completion: null }));
     expect(none.label).toBe('No target');
     expect(none.tone).toBe('slate');
+  });
+
+  it('the word, the highlight and the behind marker never disagree', () => {
+    // These were four separate comparisons and three read the rounded
+    // percentage, so 199 of 200 was Pending, green, and not marked behind.
+    const nearly = row({ target: 200, leadsCalled: 199, pending: 1, completion: 100 });
+    expect(targetStatus(nearly).label).toBe('Pending');
+    expect(isBehind(nearly)).toBe(true);
+    expect(rowTone(nearly)).toBe('brass');
+
+    const done = row({ target: 200, leadsCalled: 200, pending: 0, completion: 100 });
+    expect(targetStatus(done).label).toBe('Achieved');
+    expect(isBehind(done)).toBe(false);
+    expect(rowTone(done)).toBe('viridian');
+
+    const far = row({ target: 10, leadsCalled: 2, pending: 8, completion: 20 });
+    expect(rowTone(far), 'well short of the target reads as urgent').toBe('vermillion');
+
+    const none = row({ target: null, leadsAssigned: 6, pending: 6, completion: null });
+    expect(isBehind(none), 'no target set is not "behind"').toBe(false);
+    expect(rowTone(none)).toBe('slate');
   });
 
   it('a target of zero reads as no target rather than met', () => {
