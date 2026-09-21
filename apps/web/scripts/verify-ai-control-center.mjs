@@ -329,7 +329,9 @@ const userLogin = await userCtx.request.post('/api/v1/auth/login', { data: { ema
 check('workspace administrator signs in', userLogin.ok(), `status ${userLogin.status()}`);
 const userPage = await userCtx.newPage();
 for (const path of ['/platform/ai-control', '/platform/ai-control/workspaces']) {
-  const res = await userPage.goto(path, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null);
+  // Where the browser ends up is the whole answer; the response status is not,
+  // because a redirect to the refusal page is itself a 200.
+  await userPage.goto(path, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null);
   const url = userPage.url();
   const kept = !/\/platform\/ai-control/.test(url);
   check(`workspace user is kept out of ${path}`, kept, `landed on ${url.replace(BASE, '')}`);
