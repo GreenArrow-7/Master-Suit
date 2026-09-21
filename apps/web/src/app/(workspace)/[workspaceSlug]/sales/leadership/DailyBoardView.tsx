@@ -17,18 +17,40 @@ const fmtDuration = (secs: number | null) => {
  * Whether today's target is met, in words. A percentage and a colour are not a
  * status: colour alone fails anyone who cannot distinguish it, and "94%" does
  * not say whether the day is done.
+ *
+ * Decided from `pending`, not from the percentage. `completion` is rounded, so
+ * 199 of 200 leads called is 100% — and a word that says "Achieved" beside a
+ * Pending column reading 1, while the check-out gate refuses the seller for
+ * that same one lead, is worse than the bare number it replaced. `pending` is
+ * exactly what `dailyTargetShortfall` gives the gate, so the board and the
+ * turnstile now answer from one figure.
  */
 export function targetStatus(r: DailyBoardRow): { label: string; tone: 'viridian' | 'brass' | 'slate' } {
-  if (r.completion === null) return { label: 'No target', tone: 'slate' };
-  return r.completion >= 100 ? { label: 'Achieved', tone: 'viridian' } : { label: 'Pending', tone: 'brass' };
+  if (!hasTarget(r)) return { label: 'No target', tone: 'slate' };
+  return isBehind(r) ? { label: 'Pending', tone: 'brass' } : { label: 'Achieved', tone: 'viridian' };
+}
+
+/** A target was set for this seller today, and it is a number worth judging against. */
+export function hasTarget(r: DailyBoardRow): boolean {
+  return r.target !== null && r.completion !== null;
+}
+
+/**
+ * Still owed work against today's target. One predicate, used by the word, the
+ * row highlight, the `data-behind` marker and the "Behind target" count — they
+ * were four separate comparisons and three of them read the rounded percentage,
+ * so a seller at 199 of 200 was simultaneously Pending, green, not marked behind
+ * and not counted as behind.
+ */
+export function isBehind(r: DailyBoardRow): boolean {
+  return hasTarget(r) && r.pending > 0;
 }
 
 /** How far behind a row is, for the highlight: no target → no judgement. */
 export function rowTone(r: DailyBoardRow): 'viridian' | 'brass' | 'vermillion' | 'slate' {
-  if (r.completion === null) return 'slate';
-  if (r.completion >= 100) return 'viridian';
-  if (r.completion >= 50) return 'brass';
-  return 'vermillion';
+  if (!hasTarget(r)) return 'slate';
+  if (!isBehind(r)) return 'viridian';
+  return r.completion! >= 50 ? 'brass' : 'vermillion';
 }
 
 export const BOARD_COLUMNS: [label: string, key: keyof DailyBoardRow][] = [
@@ -69,7 +91,7 @@ export default function DailyBoardView({
       connected: t.connected + r.connected,
       interested: t.interested + r.interested,
       deals: t.deals + r.dealsWon,
-      behind: t.behind + (r.completion !== null && r.completion < 100 ? 1 : 0),
+      behind: t.behind + (isBehind(r) ? 1 : 0),
     }),
     { target: 0, called: 0, connected: 0, interested: 0, deals: 0, behind: 0 },
   );
@@ -141,11 +163,7 @@ export default function DailyBoardView({
             </thead>
             <tbody>
               {board.rows.map((r) => (
-                <tr
-                  key={r.userId}
-                  data-tone={rowTone(r)}
-                  data-behind={r.completion !== null && r.completion < 100 ? '' : undefined}
-                >
+                <tr key={r.userId} data-tone={rowTone(r)} data-behind={isBehind(r) ? '' : undefined}>
                   <td data-label="Who" data-priority="primary">
                     <SalesLink href={detailHref(r.userId)}>{r.name ?? r.userId}</SalesLink>
                   </td>

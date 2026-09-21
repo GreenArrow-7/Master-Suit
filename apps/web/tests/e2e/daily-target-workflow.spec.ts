@@ -183,8 +183,10 @@ test.describe('daily lead target: the whole day', () => {
       // Drill into the employee: the calls that made the numbers.
       await boardRow.getByRole('link', { name: sellerName }).click();
       await expect(page).toHaveURL(new RegExp(`/sales/leadership/daily/${account.userId}`));
-      await expect(page.getByText('2 of 4 leads called')).toBeVisible();
-      await expect(page.getByText(/Pending/).first()).toBeVisible();
+      // Anchored to the summary line, not to any "Pending" on the page: the KPI
+      // tile below is also labelled Pending, and matching that made this
+      // assertion pass with the status missing from the summary entirely.
+      await expect(page.getByText('2 of 4 leads called · 50% · Pending')).toBeVisible();
       await expect(page.getByRole('table').getByRole('row')).toHaveCount(4); // header + 3 calls
       await expect(page.getByRole('link', { name: `Daily WF Lead ${run}-0` }).first()).toBeVisible();
 
@@ -196,6 +198,47 @@ test.describe('daily lead target: the whole day', () => {
       const done = after.rows.find((r) => r.userId === (account.userId as unknown as number));
       expect(done!.leadsCalled, 'the third lead counts').toBe(3);
       expect(done!.warm, 'a callback is warm').toBeGreaterThanOrEqual(1);
+      expect(done!.pending, 'one lead short of four').toBe(1);
+
+      // Still Pending at three of four: 75% must not read as done, and the word
+      // must not follow a rounded percentage.
+      await page.goto(`/${slug}/sales/leadership?view=daily`);
+      const threeOfFour = page.getByRole('row', { name: new RegExp(sellerName) });
+      await expect(threeOfFour.getByText('Pending', { exact: true })).toBeVisible();
+
+      // The fourth call meets the target, and only then does the word change.
+      // Without this the Achieved branch never renders in any suite, and a
+      // regression that always said Pending would ship green.
+      await ok(
+        await admin.post(api('/api/v1/leads/assign'), { data: { leadIds: [leadIds[0]], ownerId: account.userId } }),
+        'keep the lead owned',
+      );
+      const fourth = (await ok(
+        await admin.post(api('/api/v1/leads'), {
+          data: { fullName: `Daily WF Lead ${run}-3`, phone: `+9715${(Date.now() + 9).toString().slice(-8)}` },
+        }),
+        'fourth lead',
+      )) as { id: string };
+      await ok(
+        await admin.post(api('/api/v1/leads/assign'), { data: { leadIds: [fourth.id], ownerId: account.userId } }),
+        'assign the fourth lead',
+      );
+      await complete(fourth.id, 'CONNECTED', 45);
+
+      const met = (await ok(await admin.get(api('/api/v1/targets/daily')), 'board at target')) as {
+        rows: Record<string, number | null>[];
+      };
+      const metRow = met.rows.find((r) => r.userId === (account.userId as unknown as number));
+      expect(metRow!.leadsCalled, 'four distinct leads called').toBe(4);
+      expect(metRow!.pending, 'nothing left to call').toBe(0);
+      expect(metRow!.completion).toBe(100);
+
+      await page.goto(`/${slug}/sales/leadership?view=daily`);
+      const achieved = page.getByRole('row', { name: new RegExp(sellerName) });
+      await expect(achieved.getByText('Achieved', { exact: true })).toBeVisible();
+      await expect(achieved).not.toHaveAttribute('data-behind', '');
+      await achieved.getByRole('link', { name: sellerName }).click();
+      await expect(page.getByText('4 of 4 leads called · 100% · Achieved')).toBeVisible();
 
       // ── Role scoping: the seller sees only themselves ─────────────────────
       const sellerBoard = await seller.get(api('/api/v1/targets/daily'));
