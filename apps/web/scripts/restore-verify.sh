@@ -213,16 +213,50 @@ fi
 
 # ── 4. Is the schema actually at head? ──────────────────────────────────────
 # A dump can restore cleanly and still be from before a migration that the
-# application now requires. The ledger answers that in one query.
+# application now requires. The ledger answers that.
+#
+# ── Which head, though ──────────────────────────────────────────────────────
+#
+# This compared the restored ledger against the number of migration folders in
+# the checked-out tree, and during a release that tree is the CANDIDATE — whose
+# migrations have not reached production yet, which is the entire point of the
+# release. So every migration-bearing release failed its own backup drill:
+# "86 applied, 87 on disk" for a backup that was in fact perfect, verified at
+# 86/86 against the revision it came from. A gate that cries wolf on the normal
+# case is one people learn to wave through, which is the opposite of its job.
+#
+# The dump is production's. The honest question is not "does it match a tree
+# from the future" but "is it internally sound, and does this revision know
+# every migration in it":
+#
+#   - nothing unfinished or rolled back, as before, and
+#   - every applied migration exists on disk.
+#
+# The second catches what counting could not — a dump carrying a migration this
+# revision has never heard of, which would leave the schema ahead of the code
+# after a restore. Migrations on disk the dump has not applied are reported
+# rather than failed: they are exactly what this release is about to run.
 PENDING="$(${DC} exec -T postgres psql -U "${PG_USER}" -d "${CHECK_DB}" -qtA \
   -c "SELECT count(*) FROM \"_prisma_migrations\" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL;" 2>/dev/null || echo "?")"
 APPLIED="$(${DC} exec -T postgres psql -U "${PG_USER}" -d "${CHECK_DB}" -qtA \
   -c "SELECT count(*) FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL;" 2>/dev/null || echo 0)"
 ON_DISK="$(ls -1d ../prisma/migrations/*/ 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${PENDING}" = "0" ] && [ "${APPLIED}" = "${ON_DISK}" ]; then
+
+${DC} exec -T postgres psql -U "${PG_USER}" -d "${CHECK_DB}" -qtA \
+  -c "SELECT migration_name FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL;" 2>/dev/null \
+  | tr -d '\r' | sed '/^$/d' | LC_ALL=C sort > "${WORK}/applied-migrations.txt" || : > "${WORK}/applied-migrations.txt"
+ls -1d ../prisma/migrations/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | LC_ALL=C sort \
+  > "${WORK}/ondisk-migrations.txt" || : > "${WORK}/ondisk-migrations.txt"
+UNKNOWN="$(LC_ALL=C comm -23 "${WORK}/applied-migrations.txt" "${WORK}/ondisk-migrations.txt" | head -5 | tr '\n' ' ')"
+
+if [ "${PENDING}" != "0" ]; then
+  bad "migration ledger: ${PENDING} unfinished or rolled-back migration(s) in the restored dump"
+elif [ -n "${UNKNOWN% }" ]; then
+  bad "migration ledger: the dump applied migration(s) this revision does not have: ${UNKNOWN}"
+elif [ "${APPLIED}" = "${ON_DISK}" ]; then
   ok "migration ledger is clean and at head (${APPLIED}/${ON_DISK})"
 else
-  bad "migration ledger: ${APPLIED} applied, ${ON_DISK} on disk, ${PENDING} unfinished"
+  ok "migration ledger is clean; ${APPLIED} of ${ON_DISK} applied, $((ON_DISK - APPLIED)) awaiting this release"
 fi
 
 # ── 5. Reconcile row counts against the manifest ────────────────────────────
