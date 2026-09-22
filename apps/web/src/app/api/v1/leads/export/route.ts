@@ -1,6 +1,6 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { mergeWhere } from '@/lib/api/where';
-import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';

@@ -6,7 +6,7 @@ import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
