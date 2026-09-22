@@ -74,13 +74,22 @@ export const config = {
      *
      * Those are served straight from disk and carry no markup, so a policy on
      * them costs a middleware invocation per file and protects nothing.
+     *
+     * Prefetches are NOT excluded, deliberately.
+     *
+     * The usual `missing: [next-router-prefetch, purpose=prefetch]` clause was
+     * here, so this never ran for a prefetch and `x-pathname` was absent on one.
+     * The workspace layout reads that header to tell whether the viewer is
+     * already on the screen its forced-password gate would send them to; with
+     * the header absent it cannot tell, so it redirected the security screen to
+     * itself. The router follows that, gets the same redirect, and gives up —
+     * which is a blank page at the right URL with nothing in the server log,
+     * because a redirect is not an error.
+     *
+     * Skipping prefetches also meant a prefetched payload was built without the
+     * gate applying at all, so the router could hand back a page the gate exists
+     * to keep out of reach.
      */
-    {
-      source: '/((?!_next/static|_next/image|favicon.ico).*)',
-      missing: [
-        { type: 'header', key: 'next-router-prefetch' },
-        { type: 'header', key: 'purpose', value: 'prefetch' },
-      ],
-    },
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
