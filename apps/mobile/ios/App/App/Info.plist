@@ -28,14 +28,22 @@
 	<true/>
 	<!--
 	  iOS terminates the app rather than showing a permission prompt when a
-	  usage description is missing, so these two are not optional: WKWebView
+	  usage description is missing, so these three are not optional: WKWebView
 	  routes the page's getUserMedia and navigator.geolocation calls through
 	  them. App Review also reads the strings, and rejects the generic ones.
+
+	  The microphone one was missing until 22 Sep 2026, and its absence was not
+	  a missing prompt but a crash: live call coaching and practice both call
+	  getUserMedia({ audio: true }), so an iPhone opening either screen was
+	  killed by the system. Android had declared RECORD_AUDIO all along, which
+	  is why this only ever showed on one platform.
 	-->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to confirm where you are when you check in for attendance or record a site visit.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to take photos you attach to records, such as lead documents and receipt evidence, and for face check-in.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used to hear your side of a call while live coaching is on, and to hear your practice conversations.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
