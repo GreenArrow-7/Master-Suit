@@ -15,7 +15,7 @@ import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
-import { loginPathFor } from '@/lib/security/redirect';
+import { loginPathFor, needsPasswordChangeRedirect } from '@/lib/security/redirect';
 // The approved workspace look, scoped to this frame's marker; see the file header.
 import './workspace-surface.css';
 import '@/styles/shell-mobile.css';
@@ -72,9 +72,8 @@ export default async function WorkspaceLayout({
    * force, so this clears itself the moment the account does what it is asked.
    */
   if (shell.mustChangePassword) {
-    const security = `/${shell.slug}/profile/security`;
-    const here = (await headers()).get('x-pathname') ?? '';
-    if (!here.endsWith('/profile/security') && !here.endsWith('/people/security')) redirect(security);
+    const here = (await headers()).get('x-pathname');
+    if (needsPasswordChangeRedirect(here)) redirect(`/${shell.slug}/profile/security`);
   }
 
   return (

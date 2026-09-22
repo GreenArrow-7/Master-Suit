@@ -64,3 +64,23 @@ export function signInLanding(
   if (!slug || slug === 'login' || !workspaceSlugs.includes(slug)) return destination;
   return next;
 }
+
+/**
+ * Whether the forced-password gate should send this request to the security
+ * screen, given the path it is already on.
+ *
+ * `here` comes from the `x-pathname` header the proxy stamps, and the only
+ * honest answer when it is missing is "do not know". Redirecting on "do not
+ * know" is what blanked the application: the security screen itself came
+ * through with no header, the gate could not see it was already there, and sent
+ * it to itself. The router follows a redirect to the page it is loading,
+ * receives the same redirect, and ends with nothing rendered.
+ *
+ * So an unknown location never redirects. Nothing is let through by that: a
+ * request the layout renders without the header is one the proxy did not see,
+ * and the proxy now sees every request that is not a static file.
+ */
+export function needsPasswordChangeRedirect(here: string | null | undefined): boolean {
+  if (!here) return false;
+  return !here.endsWith('/profile/security') && !here.endsWith('/people/security');
+}
