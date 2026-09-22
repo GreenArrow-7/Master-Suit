@@ -914,6 +914,9 @@ model PlatformCoverageGrant {
   platformUser PlatformUser @relation("PlatformCoverageSubject", fields: [platformUserId], references: [id], onDelete: Cascade)
 
   @@index([platformUserId, revokedAt, expiresAt])
+  // The directory's "is this identity globally authorised for CRM" question,
+  // answered from the index rather than by scanning a holder's grant history.
+  @@index([platformUserId, kind, expiresAt])
 }
 
 model BillingEvent {
