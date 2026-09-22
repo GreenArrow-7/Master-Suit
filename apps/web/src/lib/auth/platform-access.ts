@@ -64,6 +64,30 @@ export const DEFAULT_COVERAGE_MINUTES = 60 * 24;
 export const MAX_COVERAGE_MINUTES = 60 * 24 * 7;
 
 /**
+ * The standing CRM monitoring authorisation, and why its clock is different.
+ *
+ * OPERATIONAL coverage is short because it describes an incident. This one
+ * describes a job: one named identity watches the CRM of every workspace as an
+ * ongoing responsibility, and asking again every week would make the control an
+ * obstacle rather than one anybody uses — which is the failure mode the comment
+ * above warns about, arriving from the other direction.
+ *
+ * It is still bounded. A year is long enough to be a standing arrangement and
+ * short enough that nobody is still being monitored by a person who left. There
+ * is deliberately no unlimited option: the rule that no authorisation escapes an
+ * expiry is the one thing here that must not acquire an exception.
+ */
+export const DEFAULT_CRM_MONITORING_MINUTES = 60 * 24 * 90;
+export const MAX_CRM_MONITORING_MINUTES = 60 * 24 * 365;
+
+/** Which ceiling and default a coverage kind gets. */
+export function coverageWindow(kind: CoverageKind): { fallback: number; ceiling: number } {
+  return kind === 'CRM_MONITORING'
+    ? { fallback: DEFAULT_CRM_MONITORING_MINUTES, ceiling: MAX_CRM_MONITORING_MINUTES }
+    : { fallback: DEFAULT_COVERAGE_MINUTES, ceiling: MAX_COVERAGE_MINUTES };
+}
+
+/**
  * Long enough to be a sentence. "fix" is not a reason; it is a word.
  *
  * Exported so the console can refuse the same input the API refuses, and say so
@@ -120,15 +144,49 @@ export async function activeCoverage(platformUserId: string): Promise<CoverageGr
   return prisma.platformCoverageGrant.findFirst({
     where: { platformUserId, revokedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { expiresAt: 'desc' },
-    select: { id: true, reason: true, grantedAt: true, expiresAt: true },
+    select: { id: true, kind: true, reason: true, grantedAt: true, expiresAt: true, sensitive: true },
   });
 }
 
+/**
+ * The standing platform-wide CRM monitoring entitlement, if this identity holds
+ * a live one.
+ *
+ * Asked by the monitoring directory to decide whether it lists every ACTIVE
+ * workspace or only the ones named in per-workspace grants. Deliberately a
+ * separate question from `activeCoverage`: an OPERATIONAL coverage grant also
+ * admits its holder everywhere, but it is an incident measure, and a directory
+ * that cannot tell the two apart cannot explain to the reader which one they
+ * are relying on or when it ends.
+ *
+ * Evaluated on read, like every other grant here, so a revocation takes effect
+ * on the next request rather than when a session happens to expire.
+ */
+export async function activeCrmMonitoring(platformUserId: string): Promise<CoverageGrant | null> {
+  return prisma.platformCoverageGrant.findFirst({
+    where: { platformUserId, kind: 'CRM_MONITORING', revokedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { expiresAt: 'desc' },
+    select: { id: true, kind: true, reason: true, grantedAt: true, expiresAt: true, sensitive: true },
+  });
+}
+
+export type CoverageKind = 'OPERATIONAL' | 'CRM_MONITORING';
+
 export interface CoverageGrant {
   id: string;
+  /**
+   * Which kind of coverage this is. Optional on the type rather than required,
+   * because `openCoverage` below returns the row it just wrote through the same
+   * shape and selects the columns it always did; a caller that needs the kind
+   * asks for it (`activeCoverage`, `activeCrmMonitoring`) and a caller that does
+   * not is unchanged.
+   */
+  kind?: CoverageKind;
   reason: string;
   grantedAt: Date;
   expiresAt: Date;
+  /** Recordings, transcripts and stored documents. Never implied by the kind. */
+  sensitive?: boolean;
 }
 
 /**

@@ -805,6 +805,25 @@ enum PlatformGrantKind {
 /// monitoring of explicitly authorised workspaces, whatever the role, however
 /// many grants the identity holds, and even while a break-glass WRITE grant is
 /// live.
+/// Why a coverage grant exists, and therefore how long it may last.
+///
+/// OPERATIONAL is the original: short, on-call coverage of every workspace for
+/// an incident or a rotation, capped at a week precisely so it cannot quietly
+/// become a role.
+///
+/// CRM_MONITORING is the standing authorisation this platform was asked for: a
+/// named identity, signed in with its MONITORING password, reads the CRM views
+/// of every ACTIVE workspace — including workspaces created after the grant —
+/// and nothing else. It is longer-lived because it describes an ongoing
+/// responsibility rather than an incident, and it is still bounded, revocable
+/// and audited. It confers no more *authority* than OPERATIONAL: both are
+/// read-only, both stop at `MONITORING_MODULES`, and neither carries
+/// `sensitive` unless it was typed.
+enum PlatformCoverageKind {
+  OPERATIONAL
+  CRM_MONITORING
+}
+
 enum PlatformCredentialPurpose {
   PLATFORM_ADMIN
   MONITORING
@@ -869,6 +888,10 @@ model PlatformAccessGrant {
 model PlatformCoverageGrant {
   id             String   @id @default(cuid())
   platformUserId String
+  /// Defaults to OPERATIONAL so a row written before this column existed keeps
+  /// exactly the meaning it had, and the longer ceiling is never applied
+  /// retrospectively to a grant nobody asked for it on.
+  kind           PlatformCoverageKind @default(OPERATIONAL)
   /// Same minimum as a workspace grant. Covering every customer at once needs at
   /// least as much justification as covering one.
   reason         String
@@ -891,6 +914,9 @@ model PlatformCoverageGrant {
   platformUser PlatformUser @relation("PlatformCoverageSubject", fields: [platformUserId], references: [id], onDelete: Cascade)
 
   @@index([platformUserId, revokedAt, expiresAt])
+  // The directory's "is this identity globally authorised for CRM" question,
+  // answered from the index rather than by scanning a holder's grant history.
+  @@index([platformUserId, kind, expiresAt])
 }
 
 model BillingEvent {
