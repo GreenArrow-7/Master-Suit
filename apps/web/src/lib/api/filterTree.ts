@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AppError } from '../errors';
+import { AppError, Invalid } from '../errors';
 import type { Ctx } from '../security/rbac';
 
 /**
@@ -322,4 +322,55 @@ function nest(path: string, clause: unknown): Record<string, unknown> {
     (acc, part, i) => (i === parts.length - 1 ? { [part]: clause } : { [part]: acc }),
     {},
   ) as Record<string, unknown>;
+}
+
+/**
+ * A `filter` query parameter, as the list routes receive it: base64url over
+ * JSON, decoded into a validated tree.
+ *
+ * ── Why this is a function and not four copies of one expression ────────────
+ *
+ * It was four copies — leads, accounts, contacts and opportunities each wrote
+ *
+ *     filterTreeSchema.parse(JSON.parse(Buffer.from(query.filter, 'base64url').toString()))
+ *
+ * and `Buffer.from(x, 'base64url')` does not reject a string that is not
+ * base64url. It silently drops every character outside the alphabet and decodes
+ * whatever is left. `?filter=overdue` therefore became the five bytes
+ * `a2 f7 ab 76 e7`, `toString()` turned those into replacement characters, and
+ * `JSON.parse` threw a `SyntaxError` that nothing caught: a 500, an alarm, and
+ * `PrismaClientKnownRequestError` in the customer's browser console for what is
+ * simply a malformed parameter.
+ *
+ * `overdue` is not a hypothetical. It is the spelling the screens and the CSV
+ * export use for the same parameter, and the dashboard's own attention links
+ * carry it.
+ *
+ * So: one decoder, one place to be wrong, and a 422 that names the field
+ * instead of a 500 that names a database driver.
+ */
+export function decodeFilterTree(raw: string): FilterNode {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+  } catch {
+    throw Invalid([
+      {
+        field: 'filter',
+        code: 'invalid',
+        message: 'filter must be a base64url-encoded filter tree.',
+      },
+    ]);
+  }
+  const result = filterTreeSchema.safeParse(parsed);
+  if (!result.success) {
+    throw Invalid([
+      {
+        field: 'filter',
+        code: 'invalid',
+        message: 'filter is not a valid filter tree.',
+      },
+    ]);
+  }
+  return result.data;
 }

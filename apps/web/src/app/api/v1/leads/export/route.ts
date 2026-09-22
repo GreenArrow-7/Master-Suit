@@ -1,6 +1,7 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { mergeWhere } from '@/lib/api/where';
 import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { ulid } from 'ulid';
@@ -32,12 +33,9 @@ import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 
 const query = z.object({ filter: z.string().max(40).optional(), q: z.string().max(200).optional() }).strict();
 
-const FILTERS: Record<string, (now: Date) => Record<string, unknown>> = {
-  unassigned: () => ({ ownerId: null }),
-  breached: () => ({ slaState: 'BREACHED' }),
-  high_score: () => ({ score: { gte: 70 } }),
-  closed_out: () => CLOSED_OUT_WHERE,
-};
+// Shared with the screen and the v1 list API. This copy had already drifted —
+// it was missing `mine` — which is what two copies of a map always do.
+const FILTERS = SIMPLE_NAMED_LEAD_FILTERS;
 
 /** RFC 4180: quote every field, double any embedded quote. Also blunts the
  *  spreadsheet formula-injection trick where a value starting =, +, - or @ is
@@ -100,7 +98,7 @@ async function handle(req: Request, requestId: string) {
     params.filter === 'overdue'
       ? (obligationWhere(access, 'overdue', new Date()) as Record<string, unknown>)
       : params.filter && FILTERS[params.filter]
-        ? FILTERS[params.filter]!(new Date())
+        ? FILTERS[params.filter]!(new Date(), ctx.actor.id)
         : {};
   const search = params.q ? { fullName: { contains: params.q, mode: 'insensitive' as const } } : {};
 
