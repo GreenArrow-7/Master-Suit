@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
-import { compileFilterTree, filterTreeSchema, referencedFields } from '@/lib/api/filterTree';
+import { compileFilterTree, decodeFilterTree, referencedFields } from '@/lib/api/filterTree';
+import { isNamedLeadFilter, simpleNamedLeadFilterWhere, wantsClosedOut } from '@/lib/leads/namedFilters';
 import { prisma } from '@/lib/db';
 import {
   loadFieldRules,
@@ -11,7 +12,7 @@ import {
   assertFilterableFields,
 } from '@/lib/security/fieldSecurity';
 import { visibilityWhere } from '@/lib/security/visibility';
-import { obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
+import { obligationAccess, obligationWhere, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { createLead, LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 
@@ -59,9 +60,26 @@ export const GET = route(
       includeUnassigned: query.includeUnassigned,
     });
 
-    const tree = query.filter
-      ? filterTreeSchema.parse(JSON.parse(Buffer.from(query.filter, 'base64url').toString()))
+    /**
+     * `filter` is either one of the product's named views or a filter tree.
+     *
+     * The names are what the screens and the CSV export have always used, and
+     * what the dashboard's attention rows link to. This route only understood
+     * trees, so a name decoded to rubbish and threw — see
+     * `decodeFilterTree` for the whole story. Names are checked first because a
+     * base64url tree can never spell one.
+     */
+    const named = query.filter && isNamedLeadFilter(query.filter) ? query.filter : null;
+    const namedWhere = named
+      ? named === 'overdue'
+        ? ((await obligationWhere(await obligationAccess(ctx, 'scope'), 'overdue', new Date())) as Record<
+            string,
+            unknown
+          >)
+        : simpleNamedLeadFilterWhere(named, new Date(), ctx.actor.id)
       : null;
+
+    const tree = !named && query.filter ? decodeFilterTree(query.filter) : null;
     if (tree) assertFilterableFields(rules, referencedFields(tree));
 
     const cursor = decodeCursor(query.cursor);
@@ -73,9 +91,12 @@ export const GET = route(
     const where = mergeWhere(
       scopeWhere,
       tree ? compileFilterTree('LEAD', tree, ctx) : null,
+      namedWhere,
       query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : null,
       cursorWhere(cursor),
-      query.includeClosedOut ? null : OPEN_LEADS_WHERE,
+      // `?filter=closed_out` is the one ask that is *for* closed-out leads, so
+      // the standing exclusion would make it answer nothing.
+      query.includeClosedOut || wantsClosedOut(named ?? undefined) ? null : OPEN_LEADS_WHERE,
     );
 
     // limit + 1 tells us whether another page exists without a second query.

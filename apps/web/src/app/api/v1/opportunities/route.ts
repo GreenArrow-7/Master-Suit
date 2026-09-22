@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
-import { compileFilterTree, filterTreeSchema, referencedFields } from '@/lib/api/filterTree';
+import { compileFilterTree, decodeFilterTree, referencedFields } from '@/lib/api/filterTree';
 import { prisma } from '@/lib/db';
 import {
   loadFieldRules,
@@ -45,9 +45,7 @@ export const GET = route(
       includeUnassigned: query.includeUnassigned,
     });
 
-    const tree = query.filter
-      ? filterTreeSchema.parse(JSON.parse(Buffer.from(query.filter, 'base64url').toString()))
-      : null;
+    const tree = query.filter ? decodeFilterTree(query.filter) : null;
     if (tree) assertFilterableFields(rules, referencedFields(tree));
 
     const cursor = decodeCursor(query.cursor);

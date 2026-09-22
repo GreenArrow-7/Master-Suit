@@ -4,8 +4,9 @@ import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
+import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import { CLOSED_OUT_WHERE, OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
+import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import LeadGrid from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -34,13 +35,9 @@ const PAGE_SIZE = 50;
  * below from the same predicate that produces the dates in the grid, so the
  * chip, the rows and the dates cannot disagree.
  */
-const FILTERS: Record<string, (now: Date, actorId: string) => Record<string, unknown>> = {
-  unassigned: () => ({ ownerId: null }),
-  breached: () => ({ slaState: 'BREACHED' }),
-  high_score: () => ({ score: { gte: 70 } }),
-  mine: (_now, actorId) => ({ ownerId: actorId }),
-  closed_out: () => CLOSED_OUT_WHERE,
-};
+// The named views, shared with the CSV export and the v1 list API so the three
+// cannot answer the same question differently. See lib/leads/namedFilters.ts.
+const FILTERS = SIMPLE_NAMED_LEAD_FILTERS;
 
 /**
  * The follow-up chips, and the view each one asks about.
