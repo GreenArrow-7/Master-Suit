@@ -266,9 +266,14 @@ describe('P2-15: the People module is gated by a layout, not by each page', () =
     expect(source).toContain("module: 'HRMS'");
     expect(source).toContain('redirect(');
     // Mirrors sales/layout.tsx, so a page added later inherits the gate instead
-    // of having to remember it.
+    // of having to remember it. The Sales gate is asserted by what it does
+    // rather than by one spelling of it: it names its module and it redirects.
+    // It no longer calls `resolveWorkspacePage({ module, permission })`, because
+    // the only permission it had to pass — SELF_SERVICE — is refused outright
+    // for a monitoring session, which closed every CRM screen to platform
+    // monitoring. See tests/security/platform-crm-monitoring.spec.ts.
     const sales = readFileSync('src/app/(workspace)/[workspaceSlug]/sales/layout.tsx', 'utf8');
-    expect(sales).toContain("module: 'SALES'");
+    expect(sales).toMatch(/'SALES'/);
     expect(sales).toContain('redirect(');
   });
 });
