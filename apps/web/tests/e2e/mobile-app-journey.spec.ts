@@ -186,6 +186,24 @@ test.describe('Mobile app journey (web layer of the development shell)', () => {
     await third.page.getByRole('button', { name: 'Sign out' }).click();
     await expect(third.page).toHaveURL(/\/login/, { timeout: 60_000 });
     expect((await third.page.request.get('/api/v1/leads')).status()).toBe(401);
+    /**
+     * Back after signing out must not put the account's records back on screen.
+     *
+     * This assertion needs a **production build** and fails against `next dev`,
+     * which is not a defect in either. Next sets the page's `Cache-Control` from
+     * `if (this.dev)` (server/base-server.js): dev sends `no-cache,
+     * must-revalidate` — and its comment says that is deliberate, "so the browser
+     * can restore them from the HTTP cache on back/forward instead of reloading" —
+     * while a production build sends `private, no-cache, no-store, max-age=0,
+     * must-revalidate`. It is the `no-store` that keeps the page out of the
+     * back/forward cache, so only the production build is the thing being
+     * asserted about here. Verified both ways: dev fails this line, `npm run
+     * start:local` passes it, with the session equally dead in both (the 401
+     * above holds either way).
+     *
+     * So run this file with `APP_URL` pointed at `npm run start:local`, not at a
+     * dev server. Worth knowing before reading a failure here as a leak.
+     */
     await third.page.goBack();
     await expect(third.page.getByText(`Mobile Journey ${tag}`)).toHaveCount(0);
 
