@@ -520,6 +520,25 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'hours saved automation',
             },
             { label: 'Productivity', href: s('/leadership?view=productivity'), permission: 'reports', module: S },
+            /**
+             * The daily board shipped without this line.
+             *
+             * Every other `/leadership?view=` screen is listed here; `view=daily`
+             * was not, and the page's own TABS array is only used to validate the
+             * query parameter — it is never rendered. So the board was reachable
+             * solely by typing the URL, and read as a feature that never shipped.
+             *
+             * Same `reports` + SALES gate as its siblings: this makes the screen
+             * findable, it does not make it visible to anyone who could not
+             * already open it by URL. Keywords carry both names it goes by.
+             */
+            {
+              label: 'Daily Activity',
+              href: s('/leadership?view=daily'),
+              permission: 'reports',
+              module: S,
+              keywords: 'daily targets board leads called today productivity',
+            },
             { label: 'Team Activity', href: s('/leadership?view=compliance'), permission: 'reports', module: S },
             { label: 'Activity Feed', href: s('/leadership?view=feed'), permission: 'reports', module: S },
             { label: 'HR', href: p('/reports'), permission: 'employee', module: H, audience: 'oversight' },
