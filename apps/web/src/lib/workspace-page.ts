@@ -177,6 +177,12 @@ async function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
    * check. Either way the row is written before `forbidden()` interrupts, so an
    * attempt is as visible as a success. Best effort: a failed write here must
    * not turn a refusal into an error page.
+   *
+   * Deliberately still `'monitoring'` and not "any platform mode". SELF_SERVICE
+   * marks twelve screens, most of which — the dashboard, the inbox, the People
+   * and Sales landings — are ordinary pages that need no particular permission,
+   * and a break-glass owner is meant to reach them. The two screens that manage
+   * a *credential* carry their own refusal; see profile/security/page.tsx.
    */
   let refused = false;
   if (options.permission === SELF_SERVICE) {
