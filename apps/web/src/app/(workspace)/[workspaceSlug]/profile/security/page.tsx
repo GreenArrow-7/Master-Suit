@@ -1,3 +1,4 @@
+import { forbidden } from 'next/navigation';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { mustChangePassword } from '@/services/identity/accounts';
 import { twoFactorStatus } from '@/services/identity/twoFactor';
@@ -17,6 +18,31 @@ export const metadata = { title: 'Security' };
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
+
+  /**
+   * Platform staff hold no credential here, so there is nothing on this screen
+   * for them to manage — and every loader below asks for one.
+   *
+   * They resolve the viewer's own account through `WorkspaceMembership` keyed on
+   * `ctx.actor.id`, which for a platform identity is a synthetic `platform:` id
+   * with no membership row; `twoFactorStatus` and `myDeletionRequest` answer
+   * that with NotFound. Thrown from inside a server component that has already
+   * passed the gate, it reaches the root error boundary, which replaces the
+   * whole workspace frame with a vertically centred "Something went wrong on our
+   * side" card — the top of the window is empty, so it reads as the application
+   * dying at the right URL. That is how it was reported.
+   *
+   * A monitoring session never got this far: `assertPageAccess` refuses it every
+   * self-service screen. A break-glass owner is admitted to those screens
+   * deliberately — the dashboard and the inbox are among them — so the refusal
+   * that belongs only to the credential screens belongs here, not in the gate.
+   * `people/security` renders this same page, so this one guard covers both.
+   *
+   * The interrupt rather than a thrown 403, for the reason `assertPageAccess`
+   * gives: a refusal is not a fault and must not read as one.
+   */
+  if (ctx.actor.platformMode) forbidden();
+
   const employee = await myEmployee(ctx);
   const [status, forced, consent, deletionRequest] = await Promise.all([
     twoFactorStatus(ctx),
