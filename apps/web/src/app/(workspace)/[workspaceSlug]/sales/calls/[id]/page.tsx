@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import CallLink from '@/components/workspace/CallLink';
 import CallActions from './CallActions';
 import AuditDelete from './AuditDelete';
 import EntityDelete from '@/components/sales/EntityDelete';
@@ -167,6 +168,14 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--lf-space-2)', alignItems: 'center' }}>
+          {/* Dialling is the first thing anyone opens this screen to do, so it is
+              the first control on it. The same button exists on the call list,
+              but as the last column of a nine-column grid that overflows its
+              container — so in practice people arrive here to find it, and it was
+              at the bottom of the page. Follow-up and WhatsApp stay where they
+              are, further down: they are what you do after the call, not instead
+              of it. One definition of the button, shared with the list. */}
+          <CallLink number={call.recipientNumber} className="lf-btn lf-btn--sm" />
           {['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status) && (
             <SalesLink className="lf-btn lf-btn--sm" href={`/calls/${call.id}/live`}>
               Open live workspace

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import CallLink, { dialable } from '@/components/workspace/CallLink';
 import FollowUpRowActions from '@/app/(workspace)/[workspaceSlug]/sales/follow-ups/FollowUpRowActions';
 import type { GridObject } from '@/lib/grid/columns';
 
@@ -10,34 +11,9 @@ export type GridRow = Record<string, any>;
 const dash = <span style={{ color: 'var(--lf-ink-3)' }}>—</span>;
 const muted = (value: ReactNode) => <span style={{ color: 'var(--lf-ink-2)' }}>{value}</span>;
 
-/**
- * A "Call" button that opens the device's dialler.
- *
- * `tel:` takes digits, an optional leading `+`, and the DTMF separators `,`
- * (pause) and `;` (wait) that an extension needs. Everything a person types for
- * legibility — spaces, brackets, dashes — is stripped, because a handset given
- * `+971 (50) 123-4567` may refuse the whole string.
- *
- * Nothing is rendered without a number: a dead button that silently does
- * nothing is worse than an obvious blank.
- */
+/** The button and its `tel:` sanitising live in CallLink, which the call detail also uses. */
 function dialLink(raw: unknown): ReactNode {
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value) return dash;
-  const dialable = value.replace(/[^+\d,;]/g, '').replace(/(?!^)\+/g, '');
-  if (!/\d/.test(dialable)) return dash;
-  return (
-    <a
-      className="lf-btn lf-btn--secondary lf-btn--sm"
-      href={`tel:${dialable}`}
-      style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-      // The number is not in the visible label, so the control has to say who it
-      // dials for anyone using a screen reader.
-      aria-label={`Call ${value}`}
-    >
-      Call
-    </a>
-  );
+  return dialable(raw) ? <CallLink number={raw} /> : dash;
 }
 
 function date(value: unknown): ReactNode {
