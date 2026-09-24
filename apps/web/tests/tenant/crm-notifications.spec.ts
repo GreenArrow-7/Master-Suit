@@ -1,8 +1,17 @@
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { notifyCrm } from '@/services/crm/notify';
+import { enqueue } from '@/lib/queue';
 import type { Ctx } from '@/lib/security/rbac';
+
+/**
+ * The queue is stubbed so the push enqueue is observable without a Redis and
+ * without a worker. What is being asserted is the decision — which events ring
+ * a phone and what the job carries — not BullMQ's ability to hold a job.
+ */
+vi.mock('@/lib/queue', () => ({ enqueue: vi.fn(async () => undefined) }));
+const enqueued = vi.mocked(enqueue);
 
 /**
  * The CRM bell, which until now only rang for workspaces that had built an
@@ -167,5 +176,100 @@ describe('notifyCrm', () => {
         recordId: 'call-x',
       }),
     ).resolves.toEqual({ recipients: 0 });
+  });
+});
+
+/**
+ * Follow-ups have to reach the phone, and most things must not.
+ *
+ * The CRM bell wrote in-app rows and nothing else: push was wired for HR events
+ * alone, so a follow-up falling due lit a screen nobody was looking at. That is
+ * the case the owner named — "notifications we can miss".
+ *
+ * The other half of the property matters just as much. Pushing all eight events
+ * would ring a pocket for every stage change, and a phone that buzzes at
+ * bookkeeping is a phone whose notifications get turned off — taking the
+ * follow-up reminder with them.
+ */
+describe('which events reach a phone', () => {
+  beforeEach(() => {
+    enqueued.mockClear();
+  });
+
+  it('a follow-up falling due rings the phone and says so on the row', async () => {
+    const result = await notifyCrm(ctx(), {
+      event: 'follow_up.due',
+      ownerId: state.ownerId,
+      title: 'Follow-up due: Marco Haddad',
+      body: 'Call back at 3pm',
+      objectType: 'lead',
+      recordId: 'lead-followup',
+    });
+    expect(result.recipients).toBe(1);
+
+    const row = (await rowsFor(state.ownerId)).find((r) => r.kind === 'follow_up.due');
+    expect(row).toBeDefined();
+
+    expect(enqueued).toHaveBeenCalledTimes(1);
+    const [queue, name, payload] = enqueued.mock.calls[0]!;
+    expect(queue).toBe('notifications');
+    expect(name).toBe('record-push');
+    // The record, never a path: the recipient's workspace slug is not known
+    // here, and a stored path is what made these clicks 404 before.
+    expect(payload).toMatchObject({
+      tenantId: state.tenantId,
+      userIds: [state.ownerId],
+      objectType: 'lead',
+      recordId: 'lead-followup',
+    });
+    expect(JSON.stringify(payload)).not.toContain('http');
+  });
+
+  it('a stage change stays in the bell', async () => {
+    const result = await notifyCrm(ctx(), {
+      event: 'lead.stage_changed',
+      ownerId: state.ownerId,
+      title: 'Marco Haddad moved to Contacted',
+      objectType: 'lead',
+      recordId: 'lead-stage',
+    });
+    expect(result.recipients).toBe(1);
+    expect(enqueued).not.toHaveBeenCalled();
+  });
+
+  it('rings only for the events that have a clock or a handover behind them', async () => {
+    const rings = async (event: Parameters<typeof notifyCrm>[1]['event']) => {
+      enqueued.mockClear();
+      await notifyCrm(ctx(), {
+        event,
+        ownerId: state.ownerId,
+        title: `probe ${event}`,
+        objectType: 'lead',
+        recordId: `probe-${event}`,
+      });
+      return enqueued.mock.calls.length > 0;
+    };
+
+    expect(await rings('follow_up.due')).toBe(true);
+    expect(await rings('call.reminder')).toBe(true);
+    expect(await rings('lead.assigned')).toBe(true);
+    expect(await rings('call.missed')).toBe(true);
+
+    expect(await rings('lead.created')).toBe(false);
+    expect(await rings('lead.stage_changed')).toBe(false);
+    expect(await rings('call.scheduled')).toBe(false);
+    expect(await rings('call.completed')).toBe(false);
+  });
+
+  it('tells nobody, and rings nothing, when there is no recipient', async () => {
+    const result = await notifyCrm(ctx(), {
+      event: 'follow_up.due',
+      ownerId: state.actorId, // the actor is excluded
+      title: 'Follow-up due: self',
+      objectType: 'lead',
+      recordId: 'lead-self-followup',
+    });
+    expect(result.recipients).toBe(0);
+    expect(enqueued).not.toHaveBeenCalled();
   });
 });
