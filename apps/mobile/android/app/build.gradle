@@ -7,7 +7,10 @@ android {
         applicationId "com.youhan.one"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
+        // 7, because 6 is already uploaded to Play and a versionCode cannot be
+        // reused. Same versionName: this build changes how the code is packaged
+        // (R8 below), not what the application does.
+        versionCode 7
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
