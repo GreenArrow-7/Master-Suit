@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { runReport, REPORT_KEYS, type ReportKey } from '@/services/leadership/reports';
 import EmptyState from '@/components/ui/EmptyState';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -96,7 +97,7 @@ export default async function ReportsPage({
   searchParams: Promise<{ report?: string; from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['reports', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['reports', 'VIEW'] });
 
   const to = params.to ? new Date(params.to) : new Date();
   const from = params.from ? new Date(params.from) : new Date(to.getFullYear(), to.getMonth() - 2, 1);

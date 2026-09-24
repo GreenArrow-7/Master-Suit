@@ -425,14 +425,29 @@ function definitions(slug: string): SectionDef[] {
           icon: 'deal',
           tabs: [
             {
-              // `collections`, not `visits`: the collections screen is what owns
-              // Booking, and reusing the visits permission here would have let a
-              // viewer with viewings but no booking access reach deals.
-              label: 'Deals',
-              href: r('/deals'),
+              /**
+               * `collections`, not `visits`: the collections screen is what owns
+               * Booking, and reusing the visits permission here would have let a
+               * viewer with viewings but no booking access reach deals.
+               *
+               * Labelled and routed as Collections rather than "Deals" for the
+               * reason the Allocation tab records: this screen already has a
+               * name in the product, and a second word for one thing is how two
+               * people end up meaning different screens. "Deals" and "bookings"
+               * are keywords so the brokerage vocabulary still finds it.
+               */
+              label: 'Collections',
+              href: r('/collections'),
               permission: 'collections',
               module: R,
-              keywords: 'bookings confirmed commission',
+              keywords: 'deals bookings confirmed instalments recovery',
+            },
+            {
+              label: 'Commissions',
+              href: r('/commissions'),
+              permission: 'commissions',
+              module: R,
+              keywords: 'brokerage payout slab agent earnings',
             },
             {
               label: 'Reports',

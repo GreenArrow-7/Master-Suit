@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma, withTx } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { assertRecordVisible } from '@/lib/security/visibility';
@@ -32,7 +33,7 @@ const REASON: Record<string, string> = {
  */
 export default async function CollectionsBookingPage({ params }: { params: Promise<{ bookingId: string }> }) {
   const { bookingId } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['collections', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['collections', 'VIEW'] });
 
   const booking = await prisma.booking.findFirst({
     where: { id: bookingId, tenantId: ctx.tenantId, deletedAt: null },

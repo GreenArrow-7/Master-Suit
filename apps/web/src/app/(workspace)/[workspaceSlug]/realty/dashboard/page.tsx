@@ -87,8 +87,13 @@ export default async function RealtyDashboardPage() {
           <MetricCard label="Total Leads" value={board.pipeline.totalLeads} href="/leads" />
           <Tile label="Visits Approved" value={board.pipeline.visitsApproved} href="/site-visits" />
           <Tile label="Visits Completed" value={board.pipeline.visitsCompleted} href="/site-visits" />
-          <Tile label="Bookings" value={board.pipeline.bookings} href="/deals" />
-          <Tile label="Confirmed Bookings" value={board.pipeline.confirmedBookings} href="/deals" tone="viridian" />
+          <Tile label="Bookings" value={board.pipeline.bookings} href="/collections" />
+          <Tile
+            label="Confirmed Bookings"
+            value={board.pipeline.confirmedBookings}
+            href="/collections"
+            tone="viridian"
+          />
         </div>
       </section>
 
@@ -97,8 +102,20 @@ export default async function RealtyDashboardPage() {
           Business
         </h2>
         <div style={CARD_GRID}>
-          <Tile label="Revenue Today" value={board.business.revenueToday} href="/deals" tone="wine" format={money} />
-          <Tile label="Revenue 7 Days" value={board.business.revenue7Days} href="/deals" tone="wine" format={money} />
+          <Tile
+            label="Revenue Today"
+            value={board.business.revenueToday}
+            href="/collections"
+            tone="wine"
+            format={money}
+          />
+          <Tile
+            label="Revenue 7 Days"
+            value={board.business.revenue7Days}
+            href="/collections"
+            tone="wine"
+            format={money}
+          />
           <Tile label="Available Inventory" value={board.business.availableInventory} href="/properties" />
         </div>
       </section>

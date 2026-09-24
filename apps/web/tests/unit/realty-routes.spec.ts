@@ -46,7 +46,19 @@ function pages(moduleRoot: string): string[] {
 }
 
 /** The registers Real Estate shares with Sales, as route prefixes. */
-const SHARED = ['leads', 'follow-ups', 'calls', 'site-visits', 'projects', 'listings', 'requirements', 'allocation'];
+const SHARED = [
+  'leads',
+  'follow-ups',
+  'calls',
+  'site-visits',
+  'projects',
+  'listings',
+  'requirements',
+  'allocation',
+  'collections',
+  'commissions',
+  'reports',
+];
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
 
@@ -56,7 +68,7 @@ const sharedRealtyRoutes = realtyRoutes.filter(isShared);
 describe('the shared registers exist under Real Estate', () => {
   it('finds routes to check', () => {
     // A walker that matched nothing would make every assertion below vacuous.
-    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(20);
+    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(26);
   });
 
   it('covers every shared register Sales has a screen for', () => {
@@ -185,8 +197,9 @@ describe('the inventory navigation points somewhere real', () => {
       const route = href.split('?')[0]!.replace(/^\//, '');
       return !existsSync(path.join(APP, 'realty', route, 'page.tsx'));
     });
-    // Deals and Reports are Phases 7 and 8 and are expected to be absent; this
-    // asserts the list of what is not yet built rather than letting it grow.
-    expect(missing.sort()).toEqual(['/deals', '/reports']);
+    // Every Real Estate tab now resolves to a page. Kept as an exact list
+    // rather than a length check so a tab added without a route fails here
+    // instead of 404ing for whoever clicks it.
+    expect(missing).toEqual([]);
   });
 });

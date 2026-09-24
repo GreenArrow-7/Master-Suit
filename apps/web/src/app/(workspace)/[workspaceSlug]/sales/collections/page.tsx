@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma, withTx } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -37,7 +38,7 @@ const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {
  * "collected" by a button press and have no verified receipt to show for it.
  */
 export default async function CollectionsPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['collections', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['collections', 'VIEW'] });
   const scope = await visibilityWhere(ctx, 'bookings', 'VIEW');
   const moneyScope = await visibilityWhere(ctx, 'collections', 'VIEW');
 
