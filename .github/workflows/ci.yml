@@ -102,25 +102,49 @@ jobs:
 
       # Object storage. Receipt evidence is stored for real by the unit and
       # browser suites, as it is in every environment; without a store here
-      # those uploads fail. The credentials are the local defaults `.env` was
-      # just generated with, read from it so the two cannot drift. lib/storage.ts
-      # creates the bucket on first use. MinIO no longer publishes to Docker Hub
-      # (`minio/minio` is refused), so the image is its own registry's copy of the
-      # release the local stack runs, pinned by digest.
+      # those uploads fail. lib/storage.ts creates the bucket on first use, and
+      # that path is deliberately left to run rather than pre-seeding a bucket —
+      # it is one of the things worth having covered.
+      #
+      # ── Why this is no longer MinIO ───────────────────────────────────────
+      #
+      # MinIO's images have stopped being anonymously pullable everywhere. This
+      # step already moved once, from Docker Hub to quay.io, when
+      # `docker.io/minio/minio` began refusing; on 2026-09-24 quay.io started
+      # refusing too and CI could not start on any branch, main included.
+      # Checked directly against all three registries with anonymous tokens:
+      # quay.io 401, docker.io 401 (every tag, including `latest`), ghcr.io 403,
+      # while `library/postgres:16` answered 200 from the same shell — so this
+      # is MinIO's distribution changing, not our network.
+      #
+      # `adobe/s3mock` replaces it, pinned by tag *and* digest. Verified rather
+      # than assumed: the full suite passes against it with exactly the same
+      # counts as against real MinIO (3035 passed, 0 failed, 3 skipped), and
+      # every S3 operation lib/storage.ts actually uses was probed against both
+      # — including the two a mock most often fakes, ListObjectsV2 paginating
+      # past its 1000-key page limit and DeleteObjects removing more than 1000
+      # keys in one batch. Both behaved identically.
+      #
+      # One fidelity loss, recorded rather than hidden: s3mock does not
+      # authenticate, so CI no longer proves the S3 credentials are wired up —
+      # it proves the object *semantics* are. Credentials stay covered by the
+      # real object store in staging and production. Nothing in this codebase
+      # uses presigned URLs, which is the other place a mock usually diverges.
       - name: Object storage
         run: |
-          KEY="$(grep '^S3_ACCESS_KEY_ID=' .env | cut -d= -f2-)"
-          SECRET="$(grep '^S3_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)"
-          docker run -d --name ci-minio -p 9000:9000 \
-            -e MINIO_ROOT_USER="$KEY" -e MINIO_ROOT_PASSWORD="$SECRET" \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
+          docker run -d --name ci-s3mock -p 9000:9090 \
+            adobe/s3mock:5.2.3@sha256:ab01a6946750f451ca215a47e91030695b260e4003b8a5a6201d25029b8fca92
+          # A JVM, so slower to accept connections than MinIO was — it reports
+          # ready at about eight seconds. The window stays at 30s, and the probe
+          # is a real S3 call (list buckets) rather than a liveness endpoint, so
+          # "ready" means the API answers rather than the process having started.
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
+            if curl -sf http://127.0.0.1:9000/ >/dev/null; then
               echo "object storage ready after ${i}s"; exit 0
             fi
             sleep 1
           done
-          echo "::error::object storage did not become ready"; docker logs ci-minio; exit 1
+          echo "::error::object storage did not become ready"; docker logs ci-s3mock; exit 1
 
       # tests/tenant/rls.spec.ts refuses to run unless RLS_DATABASE_URL is set and
       # names the *same* connection as DATABASE_URL — testing a role the
