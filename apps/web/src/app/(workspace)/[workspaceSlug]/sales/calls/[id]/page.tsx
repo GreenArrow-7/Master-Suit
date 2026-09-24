@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -40,7 +41,7 @@ function fmtDuration(s: number | null) {
 
 export default async function CallDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['calls', 'VIEW'] });
   // A monitoring identity reaches this page on calls:VIEW; what the model made
   // of the conversation is a separate authorisation, the same one the
   // transcript and recording routes declare. See lib/auth/sensitive-access.ts.

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visitPolicy } from '@/services/visits/punch';
@@ -20,7 +21,7 @@ export const metadata = { title: 'Site visit' };
  */
 export default async function SiteVisitPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['visits', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['visits', 'VIEW'] });
 
   const [visit, policy] = await Promise.all([
     prisma.siteVisit.findFirst({

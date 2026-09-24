@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { emptyFollowUpLabel, obligationAccess, scopedNextFollowUp } from '@/services/leads/nextFollowUp';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
@@ -12,7 +13,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['leads', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
   // One round trip, not three: the lookups and field rules depend only on ctx,

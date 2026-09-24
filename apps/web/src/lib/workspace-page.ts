@@ -9,8 +9,15 @@ import { recordPlatformAccess } from '@/lib/auth/service-identity';
 import { assertModuleEntitlement, type ProductModule } from '@/lib/security/entitlements';
 
 export interface WorkspacePageOptions {
-  /** Product module this screen belongs to, when it belongs to one. */
-  module?: ProductModule;
+  /**
+   * Product module this screen belongs to, when it belongs to one.
+   *
+   * A list means the screen belongs to several and the workspace needs **any**
+   * one of them — see `SALES_OR_REALTY`. It is not a weaker check: the module
+   * layout above the route still asserts the single module that URL lives
+   * under, so `/{slug}/realty/leads` remains refused without REAL_ESTATE.
+   */
+  module?: ProductModule | readonly ProductModule[];
   /**
    * `[module, action]` the viewer must hold. **Required, deliberately.**
    *
@@ -65,9 +72,29 @@ export const requestCtx = cache(async (): Promise<Ctx> =>
  */
 const workspaceRecord = cache(async (ctx: Ctx, slug: string) => requireWorkspace(ctx, slug));
 
-export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductModule) {
+/**
+ * Entitlement for a screen that may belong to more than one product.
+ *
+ * Any one of them is enough, and the refusal that surfaces is the last one, so
+ * a workspace entitled to neither is told about a module the screen actually
+ * belongs to rather than getting a generic message.
+ */
+async function assertAnyModule(tenantId: string, module: ProductModule | readonly ProductModule[]) {
+  if (typeof module === 'string') return assertModuleEntitlement(tenantId, module);
+  let refusal: unknown;
+  for (const candidate of module) {
+    try {
+      return await assertModuleEntitlement(tenantId, candidate);
+    } catch (error) {
+      refusal = error;
+    }
+  }
+  throw refusal;
+}
+
+export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductModule | readonly ProductModule[]) {
   const workspace = await workspaceRecord(ctx, slug);
-  if (module) await assertModuleEntitlement(workspace.id, module);
+  if (module) await assertAnyModule(workspace.id, module);
   return workspace;
 }
 
@@ -93,7 +120,7 @@ export async function resolveWorkspacePage(workspaceSlug: string, options: Works
  */
 export async function requirePageAccess(options: WorkspacePageOptions) {
   const ctx = await requestCtx();
-  if (options.module) await assertModuleEntitlement(ctx.tenantId, options.module);
+  if (options.module) await assertAnyModule(ctx.tenantId, options.module);
   await assertPageAccess(ctx, options);
   return ctx;
 }

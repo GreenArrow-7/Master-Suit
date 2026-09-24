@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { mergeWhere } from '@/lib/api/where';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -35,7 +36,7 @@ export default async function SiteVisitsPage({
   searchParams: Promise<{ queue?: string; status?: string }>;
 }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['visits', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['visits', 'VIEW'] });
 
   const isLeader = can(ctx, 'visits', 'APPROVE') || can(ctx, 'visits', 'MANAGE_USERS');
   const scope = await visibilityWhere(ctx, 'visits', 'VIEW');

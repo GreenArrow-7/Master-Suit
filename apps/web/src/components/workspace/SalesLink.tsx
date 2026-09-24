@@ -36,7 +36,12 @@ export function useModuleBase(): string {
 }
 
 /** The second path segment of every screen a module-relative link is valid on. */
-const MODULE_ROOTS = new Set(['sales', 'people', 'admin', 'profile']);
+// `realty` belongs here for the same reason the others do: Real Estate screens
+// render module-relative links (`/leads`, `/site-visits`) that must resolve to
+// `/{slug}/realty/...`. `useModuleBase` already produced the right prefix; only
+// this guard disagreed, so every Real Estate page logged a warning saying its
+// own correct base was not a module root.
+const MODULE_ROOTS = new Set(['sales', 'realty', 'people', 'admin', 'profile']);
 
 type Props = Omit<React.ComponentPropsWithoutRef<'a'>, 'href'> & { href: string };
 

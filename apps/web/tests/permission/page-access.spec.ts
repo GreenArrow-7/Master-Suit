@@ -26,8 +26,36 @@ import type { Grants } from '../helpers/fixtures';
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const pagesDir = path.join(root, 'src', 'app', '(workspace)');
 
+/** `export { default } from './x'` / `export { default, metadata } from './x'`. */
+const RE_EXPORT = /^\s*export \{[^}]*\bdefault\b[^}]*\} from '(\.[^']+)';/m;
+
 function workspacePages(): string[] {
   return globSync('**/page.tsx', { cwd: pagesDir }).sort();
+}
+
+/**
+ * The source that actually decides a route's access, following a re-export.
+ *
+ * Some routes are one line: `/{slug}/realty/leads` re-exports the Sales leads
+ * page, because Real Estate reads the same lead register rather than a copy of
+ * it. Such a file contains no gate call of its own and never should — the gate
+ * is in the page it renders, and duplicating it here would be a second place to
+ * get it wrong.
+ *
+ * So this resolves one hop and reads the target. That keeps the guard exactly as
+ * strong as it was: every route still has to arrive at a file that gates, and a
+ * re-export pointing at an ungated page fails on the target's source. What it
+ * stops is the guard reading a delegation as an absence.
+ *
+ * Deliberately one hop and no more. A chain of re-exports is not a thing this
+ * codebase has, and a resolver that followed arbitrarily many could loop.
+ */
+function accessSource(page: string): string {
+  const file = path.join(pagesDir, page);
+  const source = readFileSync(file, 'utf8');
+  const reexport = RE_EXPORT.exec(source);
+  if (!reexport) return source;
+  return readFileSync(path.join(path.dirname(file), reexport[1]! + '.tsx'), 'utf8');
 }
 
 describe('structural: no workspace page can skip the access check', () => {
@@ -39,7 +67,7 @@ describe('structural: no workspace page can skip the access check', () => {
   });
 
   it.each(workspacePages())('%s declares a permission', (page) => {
-    const source = readFileSync(path.join(pagesDir, page), 'utf8');
+    const source = accessSource(page);
     const gated = /resolveWorkspacePage\s*\(|requirePageAccess\s*\(/.test(source);
     expect(gated, `${page} resolves no access check`).toBe(true);
 
@@ -52,9 +80,7 @@ describe('structural: no workspace page can skip the access check', () => {
   });
 
   it('no page reaches for resolveCtx directly any more', () => {
-    const offenders = workspacePages().filter((page) =>
-      /\bresolveCtx\s*\(/.test(readFileSync(path.join(pagesDir, page), 'utf8')),
-    );
+    const offenders = workspacePages().filter((page) => /\bresolveCtx\s*\(/.test(accessSource(page)));
     expect(offenders).toEqual([]);
   });
 });
