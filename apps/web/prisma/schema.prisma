@@ -630,9 +630,14 @@ model Tenant {
   @@index([status])
 }
 
+/// The product modules a workspace can be entitled to, independently of one
+/// another. REAL_ESTATE is a brokerage experience over the same authoritative
+/// entities SALES uses — Lead, Call, Project, Listing, UnitInventory, SiteVisit,
+/// Booking — not a second copy of them. A workspace may hold any combination.
 enum ModuleKey {
   HRMS
   SALES
+  REAL_ESTATE
 }
 
 enum SubscriptionState {

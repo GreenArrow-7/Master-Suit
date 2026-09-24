@@ -39,7 +39,7 @@ export type IconName =
   | 'settings'
   | 'shield';
 
-type Module = 'SALES' | 'HRMS';
+type Module = 'SALES' | 'HRMS' | 'REAL_ESTATE';
 
 /**
  * Who a People screen is for. The HR screens serve both an employee and HR from
@@ -116,8 +116,10 @@ function definitions(slug: string): SectionDef[] {
   const s = (path: string) => `/${slug}/sales${path}`;
   const p = (path: string) => `/${slug}/people${path}`;
   const a = (path: string) => `/${slug}/admin${path}`;
+  const r = (path: string) => `/${slug}/realty${path}`;
   const S = 'SALES' as const;
   const H = 'HRMS' as const;
+  const R = 'REAL_ESTATE' as const;
 
   return [
     {
@@ -281,6 +283,121 @@ function definitions(slug: string): SectionDef[] {
               permission: 'reports',
               module: S,
               keywords: 'daily targets board leads called today productivity',
+            },
+          ],
+        },
+      ],
+    },
+    /**
+     * Real Estate: a brokerage experience, not a second CRM.
+     *
+     * Every tab here is gated on `module: R`, so the whole section disappears
+     * for a workspace without the entitlement — and the routes refuse
+     * independently, because hiding a link is not authorisation.
+     *
+     * The permissions are the *existing* ones (`leads`, `visits`, `calls`,
+     * `projects`, `listings`, `reports`). These screens read the same
+     * authoritative rows Sales reads; a parallel set of permissions over the
+     * same objects would be two answers to one question, and the second one
+     * would eventually disagree.
+     */
+    {
+      key: 'realty',
+      label: 'Real Estate',
+      areas: [
+        {
+          key: 'realty-overview',
+          label: 'Dashboard',
+          icon: 'home',
+          tabs: [
+            {
+              label: 'Dashboard',
+              href: r('/dashboard'),
+              permission: 'leads',
+              module: R,
+              keywords: 'brokerage overview today pipeline',
+            },
+          ],
+        },
+        {
+          key: 'realty-clients',
+          label: 'Leads',
+          icon: 'lead',
+          tabs: [
+            { label: 'Leads', href: r('/leads'), permission: 'leads', module: R, keywords: 'buyers enquiries' },
+            {
+              label: 'Follow-ups',
+              href: r('/follow-ups'),
+              permission: 'leads',
+              module: R,
+              keywords: 'callbacks due today overdue',
+            },
+            { label: 'Calls', href: r('/calls'), permission: 'calls', module: R, keywords: 'dialer recordings' },
+            {
+              label: 'Site Visits',
+              href: r('/site-visits'),
+              permission: 'visits',
+              module: R,
+              keywords: 'viewings inspections',
+            },
+          ],
+        },
+        {
+          key: 'realty-inventory',
+          label: 'Inventory',
+          icon: 'company',
+          tabs: [
+            {
+              label: 'Properties',
+              href: r('/properties'),
+              permission: 'listings',
+              module: R,
+              keywords: 'units stock availability',
+            },
+            {
+              label: 'Projects',
+              href: r('/projects'),
+              permission: 'projects',
+              module: R,
+              keywords: 'developer community handover',
+            },
+            {
+              label: 'Listings',
+              href: r('/listings'),
+              permission: 'listings',
+              module: R,
+              keywords: 'resale rental pocket',
+            },
+            {
+              label: 'Off-Plan',
+              href: r('/off-plan'),
+              permission: 'projects',
+              module: R,
+              keywords: 'under construction payment plan handover',
+            },
+          ],
+        },
+        {
+          key: 'realty-deals',
+          label: 'Deals',
+          icon: 'deal',
+          tabs: [
+            {
+              // `collections`, not `visits`: the collections screen is what owns
+              // Booking, and reusing the visits permission here would have let a
+              // viewer with viewings but no booking access reach deals.
+              label: 'Deals',
+              href: r('/deals'),
+              permission: 'collections',
+              module: R,
+              keywords: 'bookings confirmed commission',
+            },
+            {
+              label: 'Reports',
+              href: r('/reports'),
+              permission: 'reports',
+              module: R,
+              keywords: 'funnel source agent performance',
             },
           ],
         },
@@ -677,11 +794,25 @@ export const parsePermission = (token: string): [string, string] => {
  * The phone tab bar used to skip the URL and answer from entitlement alone, so a
  * workspace owning both products got the Sales tabs on every People screen.
  */
-export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' {
+export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' | 'realty' {
   const segment = pathname.split('/')[2];
   if (segment === 'people') return 'people';
   if (segment === 'sales') return 'sales';
-  return modules.includes('SALES') ? 'sales' : 'people';
+  if (segment === 'realty') return 'realty';
+  /**
+   * The URL said nothing, so fall back on what the workspace owns.
+   *
+   * Order is not arbitrary. A shared route (`/{slug}/dashboard`, `/{slug}/tasks`)
+   * has to pick one tab bar, and picking a product the workspace is not entitled
+   * to would offer a phone user four links that all refuse. SALES first keeps the
+   * existing answer for every workspace that has it, so nothing moves under
+   * anyone who is not entitled to Real Estate; a brokerage-only workspace gets
+   * 'realty' rather than being sent to People, which is what the previous
+   * two-way version would have done.
+   */
+  if (modules.includes('SALES')) return 'sales';
+  if (modules.includes('REAL_ESTATE')) return 'realty';
+  return 'people';
 }
 
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {

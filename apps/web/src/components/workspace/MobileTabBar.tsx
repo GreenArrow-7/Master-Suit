@@ -56,7 +56,15 @@ export default function MobileTabBar({ slug, modules }: { slug: string; modules:
   // Not named `module`: Next reserves that identifier in client bundles.
   const product = activeModule(pathname, modules);
 
-  // The daily loop differs by module; the shape does not.
+  /**
+   * The daily loop differs by module; the shape does not — four destinations,
+   * same order, so the thumb learns one layout.
+   *
+   * Real Estate's four are the brokerage day: the board, the people to call, the
+   * calls themselves, and the viewings. Site Visits takes the fourth slot rather
+   * than Tasks because a viewing is the thing an agent is judged on and the thing
+   * most often reached on a phone, standing outside a building.
+   */
   const items =
     product === 'people'
       ? [
@@ -65,12 +73,19 @@ export default function MobileTabBar({ slug, modules }: { slug: string; modules:
           { key: 'calls', label: 'Check in', href: `/${slug}/people/check-in` },
           { key: 'leads', label: 'People', href: `/${slug}/people/employees` },
         ]
-      : [
-          { key: 'overview', label: 'Home', href: `/${slug}/dashboard` },
-          { key: 'leads', label: 'Leads', href: `/${slug}/sales/leads` },
-          { key: 'calls', label: 'Calls', href: `/${slug}/sales/calls` },
-          { key: 'tasks', label: 'Tasks', href: `/${slug}/tasks` },
-        ];
+      : product === 'realty'
+        ? [
+            { key: 'overview', label: 'Home', href: `/${slug}/realty/dashboard` },
+            { key: 'leads', label: 'Leads', href: `/${slug}/realty/leads` },
+            { key: 'calls', label: 'Calls', href: `/${slug}/realty/calls` },
+            { key: 'visits', label: 'Visits', href: `/${slug}/realty/site-visits` },
+          ]
+        : [
+            { key: 'overview', label: 'Home', href: `/${slug}/dashboard` },
+            { key: 'leads', label: 'Leads', href: `/${slug}/sales/leads` },
+            { key: 'calls', label: 'Calls', href: `/${slug}/sales/calls` },
+            { key: 'tasks', label: 'Tasks', href: `/${slug}/tasks` },
+          ];
 
   return (
     <nav className="lf-tabbar" aria-label="Primary">

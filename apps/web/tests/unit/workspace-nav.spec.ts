@@ -19,7 +19,9 @@ import {
 const SLUG = 'ws';
 const everything: NavInput = {
   slug: SLUG,
-  modules: ['SALES', 'HRMS'],
+  // Every module, or the screen-coverage check below silently skips a whole
+  // product's routes — which is how a Real Estate screen could ship unreachable.
+  modules: ['SALES', 'HRMS', 'REAL_ESTATE'],
   permitted: NAV_PERMISSIONS,
   peopleOversight: true,
 };

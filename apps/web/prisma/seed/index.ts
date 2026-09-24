@@ -496,7 +496,16 @@ async function main() {
     { code: 'hrms', name: 'HRMS', modules: ['HRMS'] as const, seatLimit: 100, storageMb: 5120 },
     { code: 'sales', name: 'Sales', modules: ['SALES'] as const, seatLimit: 100, storageMb: 5120 },
     { code: 'business', name: 'Business', modules: ['HRMS', 'SALES'] as const, seatLimit: 250, storageMb: 20480 },
-    { code: 'enterprise', name: 'Enterprise', modules: ['HRMS', 'SALES'] as const, seatLimit: 1000, storageMb: 102400 },
+    // A brokerage plan: Real Estate on its own, because a brokerage does not
+    // need the generic Sales pipeline to work leads against inventory.
+    { code: 'realestate', name: 'Real Estate', modules: ['REAL_ESTATE'] as const, seatLimit: 100, storageMb: 5120 },
+    {
+      code: 'enterprise',
+      name: 'Enterprise',
+      modules: ['HRMS', 'SALES', 'REAL_ESTATE'] as const,
+      seatLimit: 1000,
+      storageMb: 102400,
+    },
   ];
   const seededPlans = new Map<string, { id: string }>();
   for (const spec of planSpecs) {
@@ -542,7 +551,9 @@ async function main() {
     create: { tenantId, planId: plan.id, state: 'ACTIVE' },
   });
   const seededSubscription = await db.tenantSubscription.findUniqueOrThrow({ where: { tenantId } });
-  for (const productModule of ['HRMS', 'SALES'] as const) {
+  // The demo workspace holds all three so every module can be demonstrated; a
+  // real workspace is entitled from its plan.
+  for (const productModule of ['HRMS', 'SALES', 'REAL_ESTATE'] as const) {
     await db.moduleEntitlement.upsert({
       where: { tenantId_module: { tenantId, module: productModule } },
       update: { state: 'ACTIVE' },

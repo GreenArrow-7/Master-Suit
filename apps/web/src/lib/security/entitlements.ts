@@ -2,7 +2,7 @@ import { prisma } from '../db';
 import { cached, redis } from '../redis';
 import { Forbidden } from '../errors';
 
-export type ProductModule = 'HRMS' | 'SALES';
+export type ProductModule = 'HRMS' | 'SALES' | 'REAL_ESTATE';
 
 /**
  * Every module, so invalidation can name its keys instead of searching for them.
@@ -13,7 +13,7 @@ export type ProductModule = 'HRMS' | 'SALES';
  * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
  * list that has to be kept in step by hand eventually is not.
  */
-const PRODUCT_MODULES = ['HRMS', 'SALES'] as const satisfies readonly ProductModule[];
+const PRODUCT_MODULES = ['HRMS', 'SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
 
 /**
  * Short, and deliberately so.
