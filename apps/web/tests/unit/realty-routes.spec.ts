@@ -58,6 +58,7 @@ const SHARED = [
   'collections',
   'commissions',
   'reports',
+  'events',
 ];
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
@@ -68,7 +69,7 @@ const sharedRealtyRoutes = realtyRoutes.filter(isShared);
 describe('the shared registers exist under Real Estate', () => {
   it('finds routes to check', () => {
     // A walker that matched nothing would make every assertion below vacuous.
-    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(26);
+    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(29);
   });
 
   it('covers every shared register Sales has a screen for', () => {

@@ -450,6 +450,20 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'brokerage payout slab agent earnings',
             },
             {
+              /**
+               * Open houses and launches are `Event` rows with an invitee list
+               * that already carries RSVP state and a check-in stamp, so the
+               * register exists and this is the way in. Deliberately labelled
+               * "Events", the product's own name for it — "Open House" is one
+               * kind of event, not the register.
+               */
+              label: 'Events',
+              href: r('/events'),
+              permission: 'events',
+              module: R,
+              keywords: 'open house viewing day launch rsvp check-in invitees',
+            },
+            {
               label: 'Reports',
               href: r('/reports'),
               permission: 'reports',
