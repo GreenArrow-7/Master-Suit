@@ -340,6 +340,16 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'viewings inspections',
             },
+            {
+              // The buyer's brief, and what currently answers it. The matching
+              // is `services/inventory/demand.ts`, already read from both ends
+              // — this tab is the register, not a second matcher.
+              label: 'Requirements',
+              href: r('/requirements'),
+              permission: 'requirements',
+              module: R,
+              keywords: 'buyer brief budget bedrooms matching',
+            },
           ],
         },
         {
