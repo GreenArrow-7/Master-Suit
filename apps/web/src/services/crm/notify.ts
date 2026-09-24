@@ -44,6 +44,8 @@ export type CrmEventKey =
   | 'lead.created'
   | 'lead.assigned'
   | 'lead.stage_changed'
+  /** Raised by the recycling sweep, to the owner who lost it. See leads/recycle.ts. */
+  | 'lead.recycled'
   | 'follow_up.due'
   | 'call.scheduled'
   | 'call.reminder'

@@ -3,6 +3,7 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
+import { runRecycleSweep } from '@/services/leads/recycle';
 import { sweepStaleTriage, sweepTriageDeadlines, sweepTriageNotifications } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
 import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
@@ -98,6 +99,16 @@ export async function handleMaintenanceJob(job: {
     logger.info(result, 'lead triage sweep complete');
     return result;
   }
+  if (job.name === 'lead-recycle') {
+    /**
+     * Returns leads nobody has worked to the pool, for the workspaces that
+     * asked for it. Workspaces that have not set `leadRecycleAfterDays` are
+     * skipped entirely, so this is a no-op everywhere by default.
+     */
+    const result = await runRecycleSweep();
+    logger.info(result, 'lead recycle sweep complete');
+    return result;
+  }
   if (job.name === 'follow-up-drift') {
     /**
      * Report-only, by design and without an override.
@@ -160,6 +171,11 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     // 03:20, after retention has settled: the canary reads what the night left.
     { id: 'follow-up-drift-daily', pattern: '20 3 * * *', name: 'follow-up-drift' },
     { id: 'account-deletions-quarter-hourly', pattern: QUARTER_HOURLY_PATTERN, name: 'account-deletions' },
+    // 04:10, once a day and well clear of the nightly sweeps above. Recycling
+    // is not time-critical — a lead dormant for thirty days is not more urgent
+    // at 04:10 than at noon — and running it hourly would only multiply the
+    // chances of colliding with somebody actually working a record.
+    { id: 'lead-recycle-daily', pattern: '10 4 * * *', name: 'lead-recycle' },
   ];
   const queue = new Queue('maintenance', { connection: redis });
   for (const schedule of schedules) {
