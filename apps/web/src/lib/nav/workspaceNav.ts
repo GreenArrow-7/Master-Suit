@@ -262,6 +262,28 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Practice', href: s('/practice'), permission: 'calls', module: S, keywords: 'roleplay' },
           ],
         },
+        /**
+         * Its own work area, next to the calling it measures.
+         *
+         * It was a tab under Reports, which is where someone looks once a month;
+         * this is a board a manager opens every morning and a seller checks
+         * against their own day. Same `reports` + SALES gate either way — the
+         * move changes where it is, not who can open it.
+         */
+        {
+          key: 'daily-activity',
+          label: 'Daily Activity',
+          icon: 'activity',
+          tabs: [
+            {
+              label: 'Today',
+              href: s('/leadership?view=daily'),
+              permission: 'reports',
+              module: S,
+              keywords: 'daily targets board leads called today productivity',
+            },
+          ],
+        },
       ],
     },
     {
@@ -520,25 +542,9 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'hours saved automation',
             },
             { label: 'Productivity', href: s('/leadership?view=productivity'), permission: 'reports', module: S },
-            /**
-             * The daily board shipped without this line.
-             *
-             * Every other `/leadership?view=` screen is listed here; `view=daily`
-             * was not, and the page's own TABS array is only used to validate the
-             * query parameter — it is never rendered. So the board was reachable
-             * solely by typing the URL, and read as a feature that never shipped.
-             *
-             * Same `reports` + SALES gate as its siblings: this makes the screen
-             * findable, it does not make it visible to anyone who could not
-             * already open it by URL. Keywords carry both names it goes by.
-             */
-            {
-              label: 'Daily Activity',
-              href: s('/leadership?view=daily'),
-              permission: 'reports',
-              module: S,
-              keywords: 'daily targets board leads called today productivity',
-            },
+            // Daily Activity is deliberately NOT here. It is a work area of its
+            // own in the CRM section above — it is a screen sellers and managers
+            // open every day, not a report someone goes looking for once.
             { label: 'Team Activity', href: s('/leadership?view=compliance'), permission: 'reports', module: S },
             { label: 'Activity Feed', href: s('/leadership?view=feed'), permission: 'reports', module: S },
             { label: 'HR', href: p('/reports'), permission: 'employee', module: H, audience: 'oversight' },
