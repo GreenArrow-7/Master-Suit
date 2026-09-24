@@ -6,11 +6,31 @@
  * about what is safe to disclose — a page that server-rendered one field more
  * than the API returns would be a leak nobody found by reading the API.
  */
+import type { EventStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { verifyRsvpToken } from './rsvpToken';
 
-const ANSWERABLE = ['SCHEDULED', 'LIVE'];
+/**
+ * The event states an invitee may still answer in.
+ *
+ * This read `['SCHEDULED', 'LIVE']`, and `EventStatus` is
+ * `DRAFT | PUBLISHED | CANCELLED | COMPLETED` — neither of those values exists
+ * in the enum. Both belong to *Call* status, which is where they were borrowed
+ * from. The comparison therefore never matched anything, `answerable` was false
+ * for every invitation ever issued, and the public RSVP page told every
+ * recipient "This invitation is not open for replies". The whole public RSVP
+ * flow was dead, silently, with no error anywhere to say so: a string compared
+ * against the wrong vocabulary fails quietly by design.
+ *
+ * `PUBLISHED` is the only state that qualifies. DRAFT is not yet announced, and
+ * CANCELLED and COMPLETED are both over — answering either is meaningless.
+ *
+ * Typed as `EventStatus[]` rather than `string[]` deliberately: that is what
+ * makes the next wrong value a compile error instead of a feature that works
+ * for nobody.
+ */
+const ANSWERABLE: EventStatus[] = ['PUBLISHED'];
 
 export interface Invitation {
   inviteeId: string;
@@ -80,7 +100,7 @@ export async function loadInvitation(token: string): Promise<Invitation> {
     rsvpStatus: invitee.rsvpStatus,
     rsvpAt: invitee.rsvpAt,
     viewedAt: invitee.viewedAt,
-    answerable: ANSWERABLE.includes(invitee.event.status),
+    answerable: ANSWERABLE.includes(invitee.event.status as EventStatus),
     event: {
       title: invitee.event.title,
       description: invitee.event.description,

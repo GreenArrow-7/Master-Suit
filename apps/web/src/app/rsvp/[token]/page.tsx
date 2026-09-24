@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { loadInvitation, publicView, recordView } from '@/lib/events/rsvp';
 import { AppError } from '@/lib/errors';
 import RsvpForm from './RsvpForm';
+import QrCode from '@/components/ui/QrCode';
+import { rsvpUrl } from '@/lib/events/rsvpToken';
 
 export const metadata = { title: 'Your invitation' };
 
@@ -31,6 +33,20 @@ export default async function RsvpPage({ params }: { params: Promise<{ token: st
 
   await recordView(invitation);
   const view = publicView(invitation);
+
+  /**
+   * A pass, only once it means something.
+   *
+   * Shown to a confirmed guest at an event they physically attend. Drawing one
+   * for somebody who has not answered — or for a webinar — would be a door pass
+   * for a door that is not theirs or does not exist, which is worse than no QR
+   * at all because it looks official.
+   *
+   * It encodes the RSVP URL, which is the address already in this visitor's own
+   * address bar. So the code discloses nothing the holder does not have, and
+   * nobody else is ever rendered it.
+   */
+  const showPass = view.rsvpStatus === 'CONFIRMED' && view.event.eventType === 'PHYSICAL';
 
   const when = new Intl.DateTimeFormat('en-GB', {
     dateStyle: 'full',
@@ -85,6 +101,36 @@ export default async function RsvpPage({ params }: { params: Promise<{ token: st
           eventStatus={view.event.status}
           meetingUrl={view.event.meetingUrl}
         />
+
+        {showPass && (
+          <section
+            style={{
+              marginTop: 24,
+              paddingTop: 20,
+              borderTop: '1px solid var(--lf-line)',
+              display: 'grid',
+              justifyItems: 'center',
+              gap: 10,
+            }}
+          >
+            <p className="lf-eyebrow" style={{ margin: 0 }}>
+              Your pass
+            </p>
+            <QrCode value={rsvpUrl(invitation.tenantId, invitation.inviteeId)} label="Your entry pass" />
+            <p
+              style={{
+                margin: 0,
+                fontSize: 'var(--lf-text-2xs)',
+                color: 'var(--lf-ink-3)',
+                textAlign: 'center',
+                maxWidth: 300,
+              }}
+            >
+              Show this at the door. It is the same link you are looking at, so it works offline once this page has
+              loaded.
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );
