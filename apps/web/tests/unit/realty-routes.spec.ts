@@ -46,7 +46,7 @@ function pages(moduleRoot: string): string[] {
 }
 
 /** The registers Real Estate shares with Sales, as route prefixes. */
-const SHARED = ['leads', 'follow-ups', 'calls', 'site-visits', 'projects', 'listings', 'requirements'];
+const SHARED = ['leads', 'follow-ups', 'calls', 'site-visits', 'projects', 'listings', 'requirements', 'allocation'];
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
 
@@ -56,7 +56,7 @@ const sharedRealtyRoutes = realtyRoutes.filter(isShared);
 describe('the shared registers exist under Real Estate', () => {
   it('finds routes to check', () => {
     // A walker that matched nothing would make every assertion below vacuous.
-    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(19);
+    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(20);
   });
 
   it('covers every shared register Sales has a screen for', () => {

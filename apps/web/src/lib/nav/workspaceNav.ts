@@ -350,6 +350,21 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'buyer brief budget bedrooms matching',
             },
+            {
+              /**
+               * Leadrat calls this the Data Pool; the screen is called
+               * Allocation and that is what it is — unowned leads in an OPEN
+               * stage, who is waiting for work, and how much each of them can
+               * take. Labelling the tab "Data Pool" would rename a thing the
+               * product already names, so the vocabulary lives in the keywords
+               * where search will find it instead.
+               */
+              label: 'Allocation',
+              href: r('/allocation'),
+              permission: 'allocation',
+              module: R,
+              keywords: 'data pool unassigned distribution queue capacity',
+            },
           ],
         },
         {
