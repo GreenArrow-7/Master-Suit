@@ -29,7 +29,12 @@ const root = path.resolve(__dirname, '../..');
 /** `KEY=value` lines only — comments, blanks and `export ` prefixes are not input. */
 function parseEnvFile(file: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const line of readFileSync(path.join(root, file), 'utf8').split('\n')) {
+  // `\r?\n`, not `\n`: on a CRLF checkout every line keeps a trailing `\r`, and
+  // JavaScript's `.` does not match `\r` — so `(.*)$` fails on every line and the
+  // file parses to *zero* keys, which surfaces as "APP_URL: Required" and reads
+  // as a broken schema rather than a line ending. The same split prisma.config.ts
+  // uses to parse these files for real.
+  for (const line of readFileSync(path.join(root, file), 'utf8').split(/\r?\n/)) {
     const match = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
     if (!match) continue;
     // Values are taken verbatim, quotes and all, because that is what

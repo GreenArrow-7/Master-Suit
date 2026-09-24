@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -196,6 +196,53 @@ describe('every existing workspace screen has a place', () => {
   it.each(concrete)('/%s', (route) => {
     const nav = buildNavigation(everything);
     expect(at(nav, `/${SLUG}/${route}`.replace(/\/$/, ''))).not.toBeNull();
+  });
+});
+
+/**
+ * The check above walks `page.tsx` files, so it cannot see a screen that is a
+ * query parameter rather than a directory — and `/leadership` holds eight of
+ * them behind `?view=`.
+ *
+ * `view=daily`, the daily activity board, shipped with a route, an API, a
+ * component and an entry in the page's own TABS array, and no link anywhere in
+ * the navigation. TABS is only ever read to validate the parameter; it is never
+ * rendered. So the board existed, worked, and could be reached solely by typing
+ * the URL — indistinguishable, to anyone looking for it, from a feature that was
+ * never deployed.
+ *
+ * The keys are read from the page rather than repeated here, so a ninth view
+ * added to that array fails this until it is given a way in.
+ */
+describe('every leadership view the page accepts is reachable from the navigation', () => {
+  const page = readFileSync(
+    join(__dirname, '..', '..', 'src', 'app', '(workspace)', '[workspaceSlug]', 'sales', 'leadership', 'page.tsx'),
+    'utf8',
+  );
+  const block = /const TABS = \[([\s\S]*?)\] as const;/.exec(page);
+  const views = [...(block?.[1] ?? '').matchAll(/\[\s*'[^']*'\s*,\s*'([^']*)'\s*\]/g)]
+    .map((m) => m[1]!)
+    .filter(Boolean); // '' is the overview, which is the bare /leadership tab
+
+  it('finds the TABS array to read', () => {
+    expect(views.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Asserted against the hrefs the navigation actually offers, not via
+   * `findActive`: that resolves `?view=daily` to the bare `/leadership` tab by
+   * path alone, so it answers "yes, reachable" for a view with no link at all.
+   * The first version of this test did exactly that and passed with the entry
+   * deleted, which is worth more as a comment than as a test.
+   */
+  const offered = () =>
+    buildNavigation(everything)
+      .flatMap((section) => section.areas)
+      .flatMap((area) => area.tabs)
+      .map((tab) => tab.href);
+
+  it.each(views)('?view=%s has a link of its own', (view) => {
+    expect(offered().some((href) => href.includes(`/leadership?view=${view}`))).toBe(true);
   });
 });
 

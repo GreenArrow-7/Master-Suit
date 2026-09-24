@@ -6,6 +6,7 @@ import { useModuleBase } from '@/components/workspace/SalesLink';
 import Badge from '@/components/ui/Badge';
 import type { LeadCallContext } from '@/services/leads/callContext';
 import { LIVE_AUDIO_NOTICE, vendorLabel, type LiveAudio } from '@/lib/integrations/telephony/liveAudio';
+import { recorderOptions } from '@/lib/media/recorderMimeType';
 
 interface Segment {
   speaker: string;
@@ -125,10 +126,7 @@ export default function LiveCallWorkspace({
   useEffect(
     () => () => {
       sourceRef.current?.close();
-      if (micRef.current) {
-        micRef.current.stopped = true;
-        micRef.current.stream.getTracks().forEach((t) => t.stop());
-      }
+      stopMic();
     },
     [],
   );
@@ -205,11 +203,32 @@ export default function LiveCallWorkspace({
     }
   }
 
+  /**
+   * Release the microphone, from wherever the session ends.
+   *
+   * Ending the call, leaving the screen and the recording loop failing all have
+   * to do exactly this, and each used to do its own version — which is how the
+   * loop's failure path managed to leave the device recording. Clearing the ref
+   * makes it idempotent: a second caller finds nothing to stop.
+   */
+  function stopMic() {
+    const mic = micRef.current;
+    if (!mic) return;
+    mic.stopped = true;
+    mic.stream.getTracks().forEach((t) => t.stop());
+    micRef.current = null;
+  }
+
   function endCall() {
-    if (mode === 'mic' && micRef.current) {
-      micRef.current.stopped = true;
-      micRef.current.stream.getTracks().forEach((t) => t.stop());
-      void fetch(`/api/v1/calls/${call.id}/live-audio?final=true`, { method: 'POST' });
+    const wasRecording = mode === 'mic' && micRef.current !== null;
+    stopMic();
+    if (wasRecording) {
+      // Fire-and-forget, but not unhandled: a failed finalise is worth a line in
+      // the UI, and an uncaught rejection in a WebView is not a cost worth paying
+      // for the last request of a call that is already over.
+      void fetch(`/api/v1/calls/${call.id}/live-audio?final=true`, { method: 'POST' }).catch(() =>
+        setMicError('The call ended, but the closing summary could not be sent.'),
+      );
     }
     sourceRef.current?.close();
     setPhase('done');
@@ -250,12 +269,37 @@ export default function LiveCallWorkspace({
   async function micLoop() {
     const mic = micRef.current;
     if (!mic) return;
+    try {
+      await micChunks(mic);
+    } catch (e) {
+      /**
+       * The recorder itself failed — on iOS that is the `NotSupportedError` the
+       * WebM request used to raise on the very first chunk.
+       *
+       * This ran as `void micLoop()` inside micStart's `try`, which does not
+       * catch an un-awaited rejection: the throw escaped as an unhandled
+       * rejection, the screen stayed "live" on "Listening…", and the microphone
+       * stayed open with nothing recording it. Say what happened and end the
+       * session properly instead.
+       */
+      setMicError(
+        `${(e as Error).message || 'Recording stopped unexpectedly.'} The microphone has been released; the call was not recorded.`,
+      );
+      stopMic();
+      setPhase('done');
+    }
+  }
+
+  async function micChunks(mic: { stream: MediaStream; stopped: boolean; chunk: number }) {
     while (!mic.stopped) {
-      const recorder = new MediaRecorder(mic.stream, { mimeType: 'audio/webm' });
+      const recorder = new MediaRecorder(mic.stream, ...recorderOptions());
       const parts: Blob[] = [];
-      const done = new Promise<Blob>((resolve) => {
+      const done = new Promise<Blob>((resolve, reject) => {
         recorder.ondataavailable = (e) => parts.push(e.data);
-        recorder.onstop = () => resolve(new Blob(parts, { type: 'audio/webm' }));
+        // A recorder that errors mid-chunk must not leave this promise pending
+        // forever — that is the loop stalling with the microphone still open.
+        recorder.onerror = () => reject(new Error('The microphone stopped recording.'));
+        recorder.onstop = () => resolve(new Blob(parts, { type: recorder.mimeType || 'audio/webm' }));
       });
       recorder.start();
       await new Promise((r) => setTimeout(r, 5000));

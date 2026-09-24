@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { recorderOptions } from '@/lib/media/recorderMimeType';
 
 interface Turn {
   role: 'REP' | 'PROSPECT';
@@ -76,22 +77,28 @@ export default function PracticeWorkspace({
       return;
     }
     setError('');
+    // Held outside the `try` so the failure path can release it. The recorder is
+    // built *after* the microphone is already open, and on iOS that construction
+    // is what throws — which left the device recording with the screen idle.
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, ...recorderOptions());
+      const open = stream;
       const parts: Blob[] = [];
       recorder.ondataavailable = (e) => parts.push(e.data);
       recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        open.getTracks().forEach((t) => t.stop());
         recorderRef.current = null;
         setRecording(false);
-        const blob = new Blob(parts, { type: 'audio/webm' });
+        const type = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(parts, { type });
         if (blob.size < 1000) return;
         setBusy(true);
         try {
           const res = await fetch('/api/v1/practice/transcribe', {
             method: 'POST',
-            headers: { 'content-type': 'audio/webm' },
+            headers: { 'content-type': type },
             body: blob,
           });
           const data = await res.json().catch(() => ({}));
@@ -107,8 +114,19 @@ export default function PracticeWorkspace({
       recorderRef.current = { recorder, stream, parts };
       recorder.start();
       setRecording(true);
-    } catch {
-      setError('Microphone access was refused.');
+    } catch (e) {
+      // Release whatever was opened before the failure, and say which failure it
+      // was: a refused permission and a recorder this browser cannot build are
+      // different problems, and calling both "refused" sent people to reset a
+      // permission they had already granted.
+      stream?.getTracks().forEach((t) => t.stop());
+      recorderRef.current = null;
+      setRecording(false);
+      setError(
+        (e as Error).name === 'NotAllowedError'
+          ? 'Microphone access was refused.'
+          : (e as Error).message || 'This device could not start recording.',
+      );
     }
   }
 

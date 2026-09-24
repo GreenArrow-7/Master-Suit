@@ -13,13 +13,13 @@ following items still prevent an unconditional commercial-production claim:
   same, if the role can bypass RLS, or if it owns an unforced table.
   `tests/tenant/rls.spec.ts` proves the policies over raw pg; the 639-test suite
   and the server integration suite both run against the application role, so the
-  application code *is* in the loop.
+  application code _is_ in the loop.
   The `{ tenantId: { in: [...] } }` gap recorded here previously is gone — no such
   filter remains in `src/`.
   `20260808200000_rls_call_intelligence` closes the last real hole: RecordingConsent,
   Recording, Transcript, AIAnalysis and CallAudit were on the bootstrap exclusion
   list and did not belong there. A bootstrap exclusion is for a lookup that
-  *cannot* name a tenant — a session token, a reset link, a webhook key. Those
+  _cannot_ name a tenant — a session token, a reset link, a webhook key. Those
   five were excluded only because the code reached them by `callId`, which is
   unique, so `findUnique({ where: { callId } })` compiled; every one of those
   callers already knew the tenant. The effect was that transcripts, AI summaries
@@ -31,7 +31,7 @@ following items still prevent an unconditional commercial-production claim:
   `PlatformAccessGrant` — the row that turns a platform owner from read-only into
   full control inside a customer's workspace — shipped outside RLS on the claim
   that a policy would make the grant lookup match nothing. `activeGrant` is
-  *handed* the tenantId by `buildSupportActor`, which already knows which
+  _handed_ the tenantId by `buildSupportActor`, which already knows which
   workspace is being opened; the lookup answers "may this person write here", not
   "where is here". `liveGrantCount`, the `/api/metrics` gauge, is the one caller
   that spans tenants and now runs under `withPlatformTx`.
@@ -124,7 +124,7 @@ following items still prevent an unconditional commercial-production claim:
   retention job applies **each workspace's own** `captureRetentionDays` to its
   own subtree rather than one global window; that sharding is also what makes a
   PDPL deletion request actionable against a single workspace.
-- **All 28 HRMS rows are now migrated** (H01–H28). What that does *not* mean:
+- **All 28 HRMS rows are now migrated** (H01–H28). What that does _not_ mean:
   - **A real face has still never gone through the pipeline end to end.** See the
     face check-in entry above. This is the single largest gap between "migrated"
     and "ready for staff".
@@ -167,7 +167,7 @@ following items still prevent an unconditional commercial-production claim:
     self, manager and HR calibration.
   - **Reporting now exists** (`src/services/hr/reports.ts`): 17 reports across
     people, attendance, leave, lifecycle, payroll, recruitment and performance,
-    behind one registry. Each report declares the permission for the *data* it
+    behind one registry. Each report declares the permission for the _data_ it
     returns rather than a generic reporting one, and the list, the run and the
     CSV export all resolve through a single gate — so an export cannot reach a
     report the screen would have hidden. `tests/hr/reports.spec.ts` asserts that
@@ -196,7 +196,7 @@ following items still prevent an unconditional commercial-production claim:
     refresh across concurrent callers (ten parallel refreshes would rotate ten
     times, and nine would present an already-rotated token — which the server
     correctly treats as theft and answers by revoking every session). What is
-    still true is that nothing refreshes on a *timer*: a session that goes idle
+    still true is that nothing refreshes on a _timer_: a session that goes idle
     is not extended in the background, which is the intended behaviour rather
     than a gap.
   - H28 covers the shell being usable on a phone. It has been verified by reading
@@ -221,7 +221,7 @@ following items still prevent an unconditional commercial-production claim:
   closes the gap and re-runs the catalog-driven RLS block for the new tables.
   **Now enforced.** CI gate 0a runs
   `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma
-  --exit-code` against the database it has just replayed every migration into, so
+--exit-code` against the database it has just replayed every migration into, so
   the schema and the migration history are compared directly. `npm run check:drift`
   runs the same check locally.
 - **Copying the catalog-driven RLS sweep into a new migration is a live trap, and
@@ -231,7 +231,7 @@ following items still prevent an unconditional commercial-production claim:
   `20260806000000` added `FORCE ROW LEVEL SECURITY` and the
   `app.platform_admin` branch, and `20260807020000` moved `WorkspaceInvitation`
   into the bootstrap set. A migration that pastes an older copy therefore
-  silently *downgrades* security across every tenant table — dropping FORCE, so
+  silently _downgrades_ security across every tenant table — dropping FORCE, so
   the owner role bypasses RLS again — and enables RLS on `WorkspaceInvitation`,
   which breaks every invitation link because the token lookup runs before any
   tenant is known. The first draft of `20260808140000_hr_overtime` did exactly
@@ -267,6 +267,7 @@ following items still prevent an unconditional commercial-production claim:
   Two of the three hand-kept lists remain hand-kept — `GLOBAL_UNIQUE_FIELDS` in
   `src/lib/db.ts` and the expected list in `tests/tenant/rls.spec.ts`. The third,
   the `bootstrap` array, is now cross-checked against the catalog by the gate.
+
 - **AI spend is metered per workspace and capped on the shared key.** Nothing
   counted tokens before — not per tenant, not in aggregate — so one workspace
   transcribing a backlog could exhaust the deployment's Gemini budget for
@@ -361,33 +362,33 @@ following items still prevent an unconditional commercial-production claim:
   placed a real call.** `src/lib/integrations/telephony/` carries Twilio, Exotel,
   Knowlarity and Plivo behind one interface, each with its own signature scheme
   (`X-Twilio-Signature` over URL + sorted params; `X-Plivo-Signature-V3` over URL
-  + nonce; a derived URL token for the two that sign nothing), and
-  `resolveTelephony` picks the workspace's chosen vendor from
-  `OrganizationSetting.telephonyProvider`.
-  What remains: **every adapter is written against the vendors' documented APIs,
-  and no live account has yet placed a call.** What *is* proven, and is as close
-  as a test suite can get: `tests/security/telephony-vendors.spec.ts` covers the
-  four signature schemes and the status normalisation, and
-  `tests/integration/telephony-webhook-flow.spec.ts` drives the whole lifecycle
-  through the real webhook route with signed, vendor-shaped bodies — ringing,
-  answer, completion, a redelivery, an out-of-order callback that must not reopen
-  a finished call, a recording discarded for want of consent and one stored with
-  it, plus refusals for an unsigned delivery, an unknown connection key and an
-  Exotel callback missing its URL token. What that cannot prove is the *outbound*
-  half: that the vendor accepts our create-call request. Save-and-verify makes a
-  live authenticated read at connect time for Twilio, Plivo and Exotel, which
-  catches a wrong key; the rest needs a handset.
-  `docs/TELEPHONY-PROVIDERS.md` has the per-vendor console setup and a
-  step-by-step first-call procedure — run it with a colleague, not a client.
-  Capability gaps are declared rather than papered over: Plivo
-  exposes no CallUUID at create time so hang-up and status polling are absent
-  from its capability list, and Knowlarity has no read-only endpoint so its
-  connection cannot be verified at save time and reports as unverified.
-  Exotel and Knowlarity **do not sign callbacks at all**. Their endpoint is
-  authenticated by the unguessable `webhookKey` in the path plus a derived
-  `token` query parameter compared in constant time. That proves the caller knows
-  a secret; it does not prove the body is untampered. Restrict those endpoints to
-  the vendor's source addresses at the edge where the deployment allows it.
+  - nonce; a derived URL token for the two that sign nothing), and
+    `resolveTelephony` picks the workspace's chosen vendor from
+    `OrganizationSetting.telephonyProvider`.
+    What remains: **every adapter is written against the vendors' documented APIs,
+    and no live account has yet placed a call.** What _is_ proven, and is as close
+    as a test suite can get: `tests/security/telephony-vendors.spec.ts` covers the
+    four signature schemes and the status normalisation, and
+    `tests/integration/telephony-webhook-flow.spec.ts` drives the whole lifecycle
+    through the real webhook route with signed, vendor-shaped bodies — ringing,
+    answer, completion, a redelivery, an out-of-order callback that must not reopen
+    a finished call, a recording discarded for want of consent and one stored with
+    it, plus refusals for an unsigned delivery, an unknown connection key and an
+    Exotel callback missing its URL token. What that cannot prove is the _outbound_
+    half: that the vendor accepts our create-call request. Save-and-verify makes a
+    live authenticated read at connect time for Twilio, Plivo and Exotel, which
+    catches a wrong key; the rest needs a handset.
+    `docs/TELEPHONY-PROVIDERS.md` has the per-vendor console setup and a
+    step-by-step first-call procedure — run it with a colleague, not a client.
+    Capability gaps are declared rather than papered over: Plivo
+    exposes no CallUUID at create time so hang-up and status polling are absent
+    from its capability list, and Knowlarity has no read-only endpoint so its
+    connection cannot be verified at save time and reports as unverified.
+    Exotel and Knowlarity **do not sign callbacks at all**. Their endpoint is
+    authenticated by the unguessable `webhookKey` in the path plus a derived
+    `token` query parameter compared in constant time. That proves the caller knows
+    a secret; it does not prove the body is untampered. Restrict those endpoints to
+    the vendor's source addresses at the edge where the deployment allows it.
 - **Call recordings are fetched into our own object storage, and only then are
   they readable.** The webhook stores the vendor URL under
   `Recording.storageBucket = 'provider'` and enqueues `media/recording.ingest`;
@@ -401,7 +402,7 @@ following items still prevent an unconditional commercial-production claim:
 - **AI call analysis never completed a single run before this release.**
   `POST /api/v1/calls/[id]/analysis` ended in
   `prisma.aIAnalysis.update({ where: { callId } })` against a row that nothing
-  created, so every first analysis raised P2025 *after* the model had been
+  created, so every first analysis raised P2025 _after_ the model had been
   called and paid for — and because `POST /calls/[id]/audit` requires a
   `COMPLETED` analysis, the whole audit, scoring and coaching chain was
   unreachable. The row is now claimed atomically before the model is called,
@@ -424,7 +425,7 @@ following items still prevent an unconditional commercial-production claim:
   one rather than needing an exception in the tenant guard and in RLS. A bad
   token is a 404, never a 403, so a valid token cannot be used to enumerate an
   event's guest list. The Meet link is withheld until the invitee confirms,
-  because an invitation carrying the joining link *is* the joining link and
+  because an invitation carrying the joining link _is_ the joining link and
   invitations get forwarded. `viewedAt` is its own column rather than an
   `RsvpStatus` value, since viewing and answering are orthogonal.
   What remains: **the WhatsApp template must carry a dynamic-URL button** for the
@@ -443,5 +444,33 @@ following items still prevent an unconditional commercial-production claim:
   that nothing ever wrote a row to, read by one page that has been replaced with
   the `IntegrationConnection` board. Dropping it is a one-line migration nobody
   has run, because dropping a table is not reversible by a rollback of code.
+- **The mobile apps are a WebView over `server.url`, which Capacitor does not
+  support for production.** This was recorded only as a comment in
+  `apps/mobile/capacitor.config.js`; it is written down here because it is a
+  release gate, not a note. Checked against the tree rather than assumed:
+  `webDir` (`apps/mobile/www/`) holds one 1135-byte "Not configured" placeholder,
+  so there is no bundled copy of the interface and the whole UI is fetched over
+  the network from `MOBILE_SERVER_URL` at sync time — `one.youhan.in` for a
+  production build. Capacitor's own configuration reference says of `server.url`:
+  "This is intended for use with live-reload servers. This is not intended for use
+  in production."
+  The comment is therefore current, not stale, and must not be deleted. Three
+  consequences follow, and none is a code defect to fix: a thin wrapper around a
+  website is what Apple guideline 4.2 (minimum functionality) is written for, so
+  store review is a real risk; there is no offline behaviour of any kind; and
+  because the origin is compiled in, a server outage or a change of hostname
+  breaks every installed copy with no remedy short of a new build through review.
+  The reason it is shaped this way is in the config's own header and is not
+  laziness: `apps/web` builds `output: 'standalone'` and renders most workspace
+  pages on the server against a session cookie and a tenant scope, so there is
+  nothing to export to static files, and loading the application's own origin is
+  what keeps the session a first-party httpOnly cookie instead of inventing a
+  token layer for mobile. Resolving it is an architecture decision — a real
+  Capacitor app against the API, or accepting the wrapper and arguing 4.2 — not a
+  patch.
+  One thing that follows immediately, and is good news: because the native shell
+  carries no application code, a web fix reaches Android and iOS as soon as the
+  server it points at is deployed. Only native configuration — usage strings,
+  permissions, version codes, the compiled-in origin — needs a new build.
 
 These are explicit release gates, not hidden behind placeholder success states.
