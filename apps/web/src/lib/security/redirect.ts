@@ -80,7 +80,32 @@ export function signInLanding(
  * request the layout renders without the header is one the proxy did not see,
  * and the proxy now sees every request that is not a static file.
  */
-export function needsPasswordChangeRedirect(here: string | null | undefined): boolean {
+/**
+ * `target` is where the gate would send this request. Passing it makes the last
+ * clause below possible, and that clause is the one that cannot be reasoned
+ * wrong: a redirect to the page currently being served is an infinite loop, no
+ * matter what the suffix test made of the path.
+ *
+ * It is here because this loop happened again in production on
+ * `/<workspace>/profile/security` — two dozen identical RSC requests, the app
+ * blank, nothing in the server log — and it was not reproducible on the same
+ * commit, the same account state (ordinary member, one workspace, forced
+ * password) or a production build. Clearing the forced-password state stopped
+ * it, which places it in this gate; the mechanism was never found, because the
+ * evidence that would have named it is a response body that only exists while
+ * the loop is running.
+ *
+ * So the suffix test is no longer the only thing standing between a bad path and
+ * an unusable application. The path is normalised first — a query, a fragment or
+ * a trailing slash made `endsWith` answer false on a path that ends in exactly
+ * what it is looking for — and then the self-redirect is refused outright. That
+ * is hardening, not a diagnosis, and it is deliberately not written as one.
+ */
+export function needsPasswordChangeRedirect(here: string | null | undefined, target?: string): boolean {
   if (!here) return false;
-  return !here.endsWith('/profile/security') && !here.endsWith('/people/security');
+  const bare = (path: string) => path.split(/[?#]/)[0]!.replace(/\/+$/, '') || '/';
+  const at = bare(here);
+  if (at.endsWith('/profile/security') || at.endsWith('/people/security')) return false;
+  if (target && bare(target) === at) return false;
+  return true;
 }

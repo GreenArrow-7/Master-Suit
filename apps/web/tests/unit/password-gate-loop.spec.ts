@@ -33,4 +33,38 @@ describe('forced-password gate cannot redirect the security screen to itself', (
     expect(needsPasswordChangeRedirect('/acme/dashboard')).toBe(true);
     expect(needsPasswordChangeRedirect('/acme/sales/leads')).toBe(true);
   });
+
+  /**
+   * The suffix test alone answered false on paths that end in exactly what it
+   * looks for, because a query, a fragment or a trailing slash is still part of
+   * the string. Each of these would have redirected the security screen to
+   * itself.
+   */
+  it('recognises the security screen through a query, a fragment or a trailing slash', () => {
+    expect(needsPasswordChangeRedirect('/acme/profile/security/')).toBe(false);
+    expect(needsPasswordChangeRedirect('/acme/profile/security?_rsc=abc123')).toBe(false);
+    expect(needsPasswordChangeRedirect('/acme/profile/security#top')).toBe(false);
+    expect(needsPasswordChangeRedirect('/acme/people/security///')).toBe(false);
+  });
+
+  /**
+   * The clause that cannot be reasoned wrong. Whatever the suffix test makes of
+   * a path, sending a request to the page it is already serving is an infinite
+   * loop — the router follows it, receives the same answer, and renders nothing.
+   * This is what production did, on a path nothing else here reproduces.
+   */
+  it('never redirects a request to the page it is already on', () => {
+    const target = '/acme/profile/security';
+    expect(needsPasswordChangeRedirect('/acme/profile/security', target)).toBe(false);
+    expect(needsPasswordChangeRedirect('/acme/profile/security/', target)).toBe(false);
+    expect(needsPasswordChangeRedirect('/acme/profile/security?_rsc=abc', target)).toBe(false);
+    // A different screen is still sent there — the guard is about self-redirects,
+    // not about weakening the gate.
+    expect(needsPasswordChangeRedirect('/acme/dashboard', target)).toBe(true);
+  });
+
+  it('is unchanged when no target is supplied', () => {
+    expect(needsPasswordChangeRedirect('/acme/dashboard')).toBe(true);
+    expect(needsPasswordChangeRedirect('/acme/profile/security')).toBe(false);
+  });
 });

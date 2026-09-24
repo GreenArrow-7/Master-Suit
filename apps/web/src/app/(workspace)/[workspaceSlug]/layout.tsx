@@ -73,7 +73,8 @@ export default async function WorkspaceLayout({
    */
   if (shell.mustChangePassword) {
     const here = (await headers()).get('x-pathname');
-    if (needsPasswordChangeRedirect(here)) redirect(`/${shell.slug}/profile/security`);
+    const target = `/${shell.slug}/profile/security`;
+    if (needsPasswordChangeRedirect(here, target)) redirect(target);
   }
 
   return (
