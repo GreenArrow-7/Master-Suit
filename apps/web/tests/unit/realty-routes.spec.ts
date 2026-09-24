@@ -46,7 +46,7 @@ function pages(moduleRoot: string): string[] {
 }
 
 /** The registers Real Estate shares with Sales, as route prefixes. */
-const SHARED = ['leads', 'follow-ups', 'calls', 'site-visits'];
+const SHARED = ['leads', 'follow-ups', 'calls', 'site-visits', 'projects', 'listings'];
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
 
@@ -56,7 +56,7 @@ const sharedRealtyRoutes = realtyRoutes.filter(isShared);
 describe('the shared registers exist under Real Estate', () => {
   it('finds routes to check', () => {
     // A walker that matched nothing would make every assertion below vacuous.
-    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(11);
+    expect(sharedRealtyRoutes.length).toBeGreaterThanOrEqual(17);
   });
 
   it('covers every shared register Sales has a screen for', () => {
@@ -137,5 +137,56 @@ describe('a refused module is named correctly', () => {
       (m) => m[1],
     );
     expect([...labelled].sort()).toEqual([...declared].sort());
+  });
+});
+
+describe('the inventory navigation points somewhere real', () => {
+  const nav = readFileSync(path.join(web, 'src', 'lib', 'nav', 'workspaceNav.ts'), 'utf8');
+
+  /**
+   * Off-plan is a filter, not a screen.
+   *
+   * `possessionStatus` already records whether a project completes before or
+   * after sale, `catalogueFilters` already validates `?possession=`, and the
+   * column is indexed. A separate `/off-plan` route would have been a second
+   * implementation of a question the catalogue answers — free to drift from it,
+   * and in this case linking to a page that was never built.
+   */
+  it('Off-Plan filters the project catalogue instead of inventing a route', () => {
+    const tab = /label: 'Off-Plan',\s*\n\s*href: r\('([^']+)'\)/.exec(nav);
+    expect(tab, 'Off-Plan tab not found').not.toBeNull();
+    const href = tab![1]!;
+    expect(href.startsWith('/projects?')).toBe(true);
+    // Both non-ready states: a new launch is off-plan too.
+    expect(href).toContain('UNDER_CONSTRUCTION');
+    expect(href).toContain('NEW_LAUNCH');
+    expect(href).not.toContain('READY_TO_MOVE');
+  });
+
+  /**
+   * A unit belongs to a project, and `/api/v1/projects/[id]/units` gates on
+   * `projects:VIEW`. Gating the link on `listings` offered the screen to people
+   * it then refuses, and disagreed with the API about the same rows.
+   */
+  it('Properties is gated on the permission its own screen asserts', () => {
+    const tab = /label: 'Properties',\s*\n\s*href: r\('\/properties'\),\s*\n\s*permission: '([a-z]+)'/.exec(nav);
+    expect(tab, 'Properties tab not found').not.toBeNull();
+    expect(tab![1]).toBe('projects');
+
+    const page = readFileSync(path.join(APP, 'realty', 'properties', 'page.tsx'), 'utf8');
+    expect(page).toContain("permission: ['projects', 'VIEW']");
+  });
+
+  /** Every realty tab href must resolve to a route that exists, or be a filter. */
+  it('every Real Estate tab has a page behind it', () => {
+    const hrefs = [...nav.matchAll(/href: r\('([^']+)'\)/g)].map((m) => m[1]!);
+    expect(hrefs.length).toBeGreaterThanOrEqual(10);
+    const missing = hrefs.filter((href) => {
+      const route = href.split('?')[0]!.replace(/^\//, '');
+      return !existsSync(path.join(APP, 'realty', route, 'page.tsx'));
+    });
+    // Deals and Reports are Phases 7 and 8 and are expected to be absent; this
+    // asserts the list of what is not yet built rather than letting it grow.
+    expect(missing.sort()).toEqual(['/deals', '/reports']);
   });
 });

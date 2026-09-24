@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
@@ -22,7 +23,7 @@ export const metadata = { title: 'Listing' };
  */
 export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['listings', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'VIEW'] });
 
   await expireLapsedMandates(ctx.tenantId);
 

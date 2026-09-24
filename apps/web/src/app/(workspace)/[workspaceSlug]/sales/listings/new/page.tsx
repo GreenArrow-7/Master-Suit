@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import EmptyState from '@/components/ui/EmptyState';
@@ -15,7 +16,7 @@ export const metadata = { title: 'New listing' };
  * `status` is absent: a new listing is a DRAFT until a mandate says otherwise.
  */
 export default async function NewListingPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['listings', 'CREATE'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'CREATE'] });
 
   const [owners, micromarkets, amenities] = await Promise.all([
     prisma.owner.findMany({

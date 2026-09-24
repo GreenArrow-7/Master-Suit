@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { columnsFor } from '@/lib/grid/resolve';
@@ -28,7 +29,7 @@ export default async function ListingsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const raw = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['listings', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'VIEW'] });
 
   // Lapsed mandates take their listings off the market before the page renders,
   // so the book is never read showing an agreement that ended last week.

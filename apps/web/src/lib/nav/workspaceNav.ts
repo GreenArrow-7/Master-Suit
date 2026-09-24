@@ -348,11 +348,16 @@ function definitions(slug: string): SectionDef[] {
           icon: 'company',
           tabs: [
             {
+              // `projects`, not `listings`: a unit belongs to a project and
+              // `/api/v1/projects/[id]/units` gates on `projects:VIEW`. A
+              // Listing is an advertisement that may point at a unit — a
+              // different object — so gating the unit register on it would have
+              // offered the link to someone the screen then refuses.
               label: 'Properties',
               href: r('/properties'),
-              permission: 'listings',
+              permission: 'projects',
               module: R,
-              keywords: 'units stock availability',
+              keywords: 'units stock availability inventory',
             },
             {
               label: 'Projects',
@@ -369,11 +374,23 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'resale rental pocket',
             },
             {
+              /**
+               * A filtered catalogue, not a screen of its own.
+               *
+               * Off-plan means bought before completion, which is exactly what
+               * `possessionStatus` already records — and `catalogueFilters`
+               * already validates `?possession=`, backed by an index. A separate
+               * route would have been a second implementation of a question the
+               * catalogue answers, free to drift from it.
+               *
+               * Both non-ready states, because NEW_LAUNCH is off-plan too; only
+               * READY_TO_MOVE is not.
+               */
               label: 'Off-Plan',
-              href: r('/off-plan'),
+              href: r('/projects?possession=UNDER_CONSTRUCTION,NEW_LAUNCH'),
               permission: 'projects',
               module: R,
-              keywords: 'under construction payment plan handover',
+              keywords: 'under construction new launch payment plan handover',
             },
           ],
         },

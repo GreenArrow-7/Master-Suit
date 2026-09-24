@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { can } from '@/lib/security/rbac';
@@ -21,7 +22,7 @@ export const metadata = { title: 'Project' };
  */
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['projects', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['projects', 'VIEW'] });
 
   const project = await prisma.project.findFirst({
     where: { id, tenantId: ctx.tenantId, deletedAt: null },
