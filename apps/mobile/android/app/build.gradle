@@ -35,8 +35,30 @@ android {
     buildTypes {
         release {
             if (keystoreFile.exists()) signingConfig signingConfigs.release
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            /**
+             * R8 on, which is what Play was reporting the absence of.
+             *
+             * Bundle 6 (1.1.0) came back with "DEX code optimization: Low",
+             * "Obfuscation percentage: 2%" and an empty "R8 configuration". All
+             * three are one cause: `minifyEnabled false` means R8 never runs, so
+             * there is nothing to report. R8 is already the shrinker in AGP 8.13 —
+             * it was simply not being invoked.
+             *
+             * Safe for a Capacitor app because the framework keeps its own
+             * reflection surface: @capacitor/android declares
+             * `consumerProguardFiles 'proguard-rules.pro'`, which is applied to
+             * this app automatically and keeps @CapacitorPlugin classes, Plugin
+             * subclasses, their @PluginMethod/@PermissionCallback/@ActivityCallback
+             * members and the Cordova compatibility classes. This shell registers
+             * no third-party plugins, so that is the whole surface.
+             *
+             * `proguard-android-optimize.txt`, not `proguard-android.txt`: the
+             * plain variant switches optimisation passes off, which is the half of
+             * the Play report that obfuscation alone does not answer.
+             */
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
