@@ -492,6 +492,16 @@ function definitions(slug: string): SectionDef[] {
               module: S,
               keywords: 'demand matching',
             },
+            {
+              // Gated on `requirements`, not a permission of its own: a
+              // proposal is a shortlist drawn from a buyer's requirement, and
+              // whoever may see the requirement may send it.
+              label: 'Proposals',
+              href: s('/proposals'),
+              permission: 'requirements',
+              module: S,
+              keywords: 'shortlist send client brochure',
+            },
             { label: 'Products', href: s('/products'), permission: 'products', module: S },
           ],
         },
