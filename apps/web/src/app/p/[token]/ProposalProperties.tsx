@@ -15,7 +15,9 @@ import type { PublicListing } from '@/lib/proposals/publicProposal';
  */
 export default function ProposalProperties({ token, listings }: { token: string; listings: PublicListing[] }) {
   const [state, setState] = useState<Record<string, { reaction: string | null; comment: string | null }>>(
-    Object.fromEntries(listings.map((listing) => [listing.itemId, { reaction: listing.reaction, comment: listing.comment }])),
+    Object.fromEntries(
+      listings.map((listing) => [listing.itemId, { reaction: listing.reaction, comment: listing.comment }]),
+    ),
   );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,9 +160,7 @@ export default function ProposalProperties({ token, listings }: { token: string;
                 </button>
 
                 {listing.permitNumber && (
-                  <span
-                    style={{ marginLeft: 'auto', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}
-                  >
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
                     Permit {listing.permitNumber}
                   </span>
                 )}

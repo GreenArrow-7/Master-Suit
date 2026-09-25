@@ -123,7 +123,11 @@ export async function sendProposal(ctx: Ctx, id: string, now = new Date()) {
       },
     });
 
-    await audit(ctx, { event: 'RECORD_UPDATED', objectType: 'proposal', recordId: id, newValue: { status: 'SENT' } }, tx);
+    await audit(
+      ctx,
+      { event: 'RECORD_UPDATED', objectType: 'proposal', recordId: id, newValue: { status: 'SENT' } },
+      tx,
+    );
 
     return proposalLink.url(ctx.tenantId, id);
   });

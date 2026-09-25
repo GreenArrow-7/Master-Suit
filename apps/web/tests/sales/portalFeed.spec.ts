@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  problemsWith,
-  renderFeed,
-  type FeedListing,
-  type PortalKey,
-} from '@/lib/inventory/portalFeed';
+import { problemsWith, renderFeed, type FeedListing, type PortalKey } from '@/lib/inventory/portalFeed';
 
 /**
  * What a portal will refuse.
@@ -22,8 +17,7 @@ const complete: FeedListing = {
   id: 'l1',
   reference: 'ME-0001',
   title: 'Two bedroom with a marina view',
-  description:
-    'A bright two bedroom on a high floor with an open marina view, a fitted kitchen and covered parking.',
+  description: 'A bright two bedroom on a high floor with an open marina view, a fitted kitchen and covered parking.',
   listingType: 'SALE',
   status: 'ACTIVE',
   propertyType: 'APARTMENT',
@@ -106,9 +100,7 @@ describe('what a portal refuses', () => {
 
   it('a listing that is not active, and names the state it is in', () => {
     expect(problemsWith(without({ status: 'DRAFT' }), 'WEBSITE', NOW).join(' ')).toMatch(/draft, not active/);
-    expect(problemsWith(without({ status: 'UNDER_OFFER' }), 'BAYUT', NOW).join(' ')).toMatch(
-      /under offer, not active/,
-    );
+    expect(problemsWith(without({ status: 'UNDER_OFFER' }), 'BAYUT', NOW).join(' ')).toMatch(/under offer, not active/);
   });
 
   it('a listing with no price, or a nonsensical one', () => {
@@ -143,7 +135,13 @@ describe('the document itself', () => {
   const images = new Map([['l1', ['https://app.test/li/tok1', 'https://cdn.example.test/b.jpg']]]);
 
   it('carries the listing, the permit and both photographs', () => {
-    const feed = renderFeed([complete], 'BAYUT', { name: 'Meridian', licenceNumber: '12345', phone: '+97144000000' }, images, NOW);
+    const feed = renderFeed(
+      [complete],
+      'BAYUT',
+      { name: 'Meridian', licenceNumber: '12345', phone: '+97144000000' },
+      images,
+      NOW,
+    );
 
     expect(feed.included).toBe(1);
     expect(feed.xml).toContain('<reference_number>ME-0001</reference_number>');
@@ -157,7 +155,13 @@ describe('the document itself', () => {
 
   it('leaves a refused listing out and says why, rather than shipping it', () => {
     const broken = without({ id: 'l2', permitNumber: null });
-    const feed = renderFeed([complete, broken], 'BAYUT', { name: 'Meridian', licenceNumber: null, phone: null }, images, NOW);
+    const feed = renderFeed(
+      [complete, broken],
+      'BAYUT',
+      { name: 'Meridian', licenceNumber: null, phone: null },
+      images,
+      NOW,
+    );
 
     expect(feed.included).toBe(1);
     expect(feed.xml).not.toContain('l2');
@@ -168,8 +172,17 @@ describe('the document itself', () => {
   });
 
   it('escapes what would otherwise break the document', () => {
-    const nasty = without({ title: 'Marina & "Views" <script>', description: "It's a 2 bed with a view of the marina and the beach beyond." });
-    const feed = renderFeed([nasty], 'WEBSITE', { name: 'A & B Realty', licenceNumber: null, phone: null }, new Map(), NOW);
+    const nasty = without({
+      title: 'Marina & "Views" <script>',
+      description: "It's a 2 bed with a view of the marina and the beach beyond.",
+    });
+    const feed = renderFeed(
+      [nasty],
+      'WEBSITE',
+      { name: 'A & B Realty', licenceNumber: null, phone: null },
+      new Map(),
+      NOW,
+    );
 
     expect(feed.xml).toContain('Marina &amp; &quot;Views&quot; &lt;script&gt;');
     expect(feed.xml).toContain('A &amp; B Realty');

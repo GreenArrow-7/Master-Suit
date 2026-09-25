@@ -62,9 +62,7 @@ export default function ProposalActions({
             Withdraw
           </button>
         )}
-        {status === 'CLOSED' && (
-          <span style={{ color: 'var(--lf-ink-3)' }}>Withdrawn. The link no longer opens.</span>
-        )}
+        {status === 'CLOSED' && <span style={{ color: 'var(--lf-ink-3)' }}>Withdrawn. The link no longer opens.</span>}
         {expiresAt && status === 'SENT' && (
           <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
             The link stops working on {new Date(expiresAt).toLocaleDateString('en-GB')}
