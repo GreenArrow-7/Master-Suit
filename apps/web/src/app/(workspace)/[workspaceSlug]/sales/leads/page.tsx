@@ -5,7 +5,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
-import LeadGrid from './LeadGrid';
+import LeadGrid, { type LeadRow } from './LeadGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -52,7 +52,7 @@ export default async function LeadsPage({
 
   const rules = await loadFieldRules(ctx, 'LEAD');
 
-  const [rows, stages, users, taskTypes, setting] = await Promise.all([
+  const [rows, total, stages, users, taskTypes, setting] = await Promise.all([
     prisma.lead.findMany({
       where,
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
@@ -76,6 +76,9 @@ export default async function LeadsPage({
         owner: { select: { fullName: true } },
       },
     }),
+    // Same where as the page, so the header states the real size of the scope
+    // and the pager can say how many pages there are.
+    prisma.lead.count({ where }),
     prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { position: 'asc' },
@@ -104,25 +107,26 @@ export default async function LeadsPage({
 
   // Masking happens here, in the serialiser, so it covers the grid, exports and
   // every other egress path identically.
-  const data = pageRows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS));
+  const data = pageRows.map((r) => applyFieldSecurity(ctx, 'LEAD', rules, r, LEAD_SENSITIVE_FIELDS)) as LeadRow[];
+
+  const exportQuery = new URLSearchParams({
+    ...(params.filter ? { filter: params.filter } : {}),
+    ...(params.q ? { q: params.q } : {}),
+  });
 
   return (
     <>
       <ListHeader
         title="Leads"
-        count={pageRows.length}
+        total={total}
         noun="lead"
-        capped={hasMore}
         // Adding a lead is what someone came here to do; import, export and
         // column choice are housekeeping and fold behind the disclosure.
         secondaryActions={
           <>
             {can(ctx, 'leads', 'IMPORT') && <LeadImport />}
             {can(ctx, 'leads', 'EXPORT') && (
-              <a
-                className="lf-btn lf-btn--secondary lf-btn--sm"
-                href={`/api/v1/leads/export?${new URLSearchParams({ ...(params.filter ? { filter: params.filter } : {}), ...(params.q ? { q: params.q } : {}) })}`}
-              >
+              <a className="lf-btn lf-btn--secondary" href={`/api/v1/leads/export?${exportQuery}`}>
                 Export
               </a>
             )}
@@ -133,7 +137,7 @@ export default async function LeadsPage({
         }
         actions={
           can(ctx, 'leads', 'CREATE') ? (
-            <SalesLink className="lf-btn lf-btn--sm" href="/leads/new">
+            <SalesLink className="lf-btn" href="/leads/new">
               Add lead
             </SalesLink>
           ) : undefined
@@ -199,17 +203,15 @@ export default async function LeadsPage({
       </div>
 
       {data.length === 0 ? (
-        <div className="lf-card">
-          <EmptyState
-            title="Nothing matches this view"
-            description="Adjust the filter, or add a lead to start building this list."
-            actionLabel={can(ctx, 'leads', 'CREATE') ? 'Add lead' : undefined}
-            actionHref="/leads/new"
-          />
-        </div>
+        <EmptyState
+          title="Nothing matches this view"
+          description="Adjust the filter, or add a lead to start building this list."
+          actionLabel={can(ctx, 'leads', 'CREATE') ? 'Add lead' : undefined}
+          actionHref="/leads/new"
+        />
       ) : (
         <LeadGrid
-          rows={data as any}
+          rows={data}
           columns={columns}
           stages={stages}
           users={users}
@@ -219,7 +221,13 @@ export default async function LeadsPage({
         />
       )}
 
-      <Pager page={page} hasMore={hasMore} basePath="/leads" params={{ filter: params.filter, q: params.q }} />
+      <Pager
+        page={page}
+        hasMore={hasMore}
+        totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+        basePath="/leads"
+        params={{ filter: params.filter, q: params.q }}
+      />
     </>
   );
 }

@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { COMPANY_NAME, PRODUCT_NAME } from '@/lib/branding';
+import { COMPANY_NAME, PRODUCT_NAME, PRODUCT_SHORT_NAME } from '@/lib/branding';
 import YouhanMark from '@/components/brand/YouhanMark';
-import { buildWorkspaceNav, type IconName, type NavGroup, type NavItem } from '@/lib/nav/workspaceNav';
+import { buildWorkspaceNav, isNavItemActive, type IconName, type NavGroup, type NavItem } from '@/lib/nav/workspaceNav';
 
 /**
  * The rail. One navigation for the whole product — see lib/nav/workspaceNav.ts
@@ -32,6 +32,8 @@ export default function WorkspaceSidebar({
   user: { name: string; role: string };
 }) {
   const pathname = usePathname();
+  // The only query the model navigates by; see isNavItemActive.
+  const view = useSearchParams().get('view');
   const router = useRouter();
   // null = follow the tier; true/false = the viewer overrode it deliberately.
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
@@ -45,7 +47,7 @@ export default function WorkspaceSidebar({
    * this reuses the exact rendering the desktop collapse toggle produces.
    * `matchMedia`, not a resize listener: the browser evaluates the query, so
    * this fires once per crossing. The literal matches the tablet tier in
-   * tokens.css.
+   * tokens.css, and the 64px it collapses to is declared in globals.css.
    */
   const [tabletRail, setTabletRail] = useState(false);
   useEffect(() => {
@@ -61,26 +63,6 @@ export default function WorkspaceSidebar({
   const collapsed = userCollapsed ?? tabletRail;
   const setCollapsed = (next: boolean | ((value: boolean) => boolean)) =>
     setUserCollapsed(typeof next === 'function' ? next(collapsed) : next);
-
-  /**
-   * Which half of the product is open — the third path segment, not a substring.
-   * Nothing in the rail changes with it any more; MobileTabBar and the top bar
-   * still read it, and the navigation tests assert the attribute ModuleTheme
-   * stamps from the same test.
-   */
-  const moduleSegment = pathname.split('/')[2];
-  const activeModule: 'people' | 'sales' =
-    moduleSegment === 'people'
-      ? 'people'
-      : moduleSegment === 'sales'
-        ? 'sales'
-        : modules.includes('SALES')
-          ? 'sales'
-          : 'people';
-
-  useEffect(() => {
-    window.localStorage.setItem(`master-suite:${slug}:module`, activeModule);
-  }, [activeModule, slug]);
 
   // The bottom tab bar's Menu button asks for the drawer. An event rather than
   // lifted state: one button does not justify a context provider.
@@ -122,26 +104,51 @@ export default function WorkspaceSidebar({
             beneath — still switchable, still always visible. */}
         <div className="lf-sidebar-brand">
           <Link href={`/${slug}/dashboard`} className="lf-brand-mark" aria-label={`${PRODUCT_NAME} — ${name} overview`}>
-            <YouhanMark size={30} />
+            <YouhanMark size={22} />
           </Link>
           {!collapsed && (
             <div className="lf-brand-copy">
-              <strong>{PRODUCT_NAME}</strong>
+              {/* Drawn with weight, not a second family: the vendor at 600, the
+                  product at 500. globals.css styles the <em>. */}
+              <strong>
+                {COMPANY_NAME} <em>{PRODUCT_SHORT_NAME}</em>
+              </strong>
               {workspaces.length > 1 ? (
-                <select
-                  className="lf-brand-workspace-switch"
-                  value={slug}
-                  aria-label="Switch workspace"
-                  onChange={(event) => router.push(`/${event.target.value}/dashboard`)}
-                >
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.slug} value={workspace.slug}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
+                /* A native <select> keeps the keyboard and screen-reader
+                   behaviour for free; the chevron is drawn beside it because a
+                   select cannot hold an SVG child. */
+                <span className="lf-brand-switch">
+                  <select
+                    className="lf-brand-workspace-switch"
+                    value={slug}
+                    aria-label="Switch workspace"
+                    onChange={(event) => router.push(`/${event.target.value}/dashboard`)}
+                  >
+                    {workspaces.map((workspace) => (
+                      <option key={workspace.slug} value={workspace.slug}>
+                        {workspace.name}
+                      </option>
+                    ))}
+                  </select>
+                  <svg
+                    className="lf-brand-switch__chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </span>
               ) : (
-                <span>{name}</span>
+                /* One workspace: the same 26px row, no chevron, no hover, so
+                   the geometry never changes between accounts. */
+                <span className="lf-brand-workspace-switch" data-single="">
+                  {name}
+                </span>
               )}
             </div>
           )}
@@ -156,12 +163,12 @@ export default function WorkspaceSidebar({
 
         <nav className="lf-sidebar-nav" aria-label="Workspace">
           {groups.map((group) => {
-            const inside = group.items.some((item) => isActive(item, pathname));
+            const inside = group.items.some((item) => isNavItemActive(item, pathname, view));
             const links = group.items.map((item) => (
               <NavLink
                 key={item.href}
                 item={item}
-                pathname={pathname}
+                active={isNavItemActive(item, pathname, view)}
                 collapsed={collapsed}
                 onNavigate={() => setMobileOpen(false)}
               />
@@ -186,56 +193,43 @@ export default function WorkspaceSidebar({
           })}
         </nav>
 
+        {/* Sign-out lives in the top bar only — present at every width. */}
         <div className="lf-sidebar-account">
           <div className="lf-sidebar-user">
-            <span className="lf-avatar" style={{ background: 'rgb(255 255 255 / .11)', color: '#fff' }}>
+            <span className="lf-avatar" aria-hidden="true">
               {initials(user.name)}
             </span>
             {!collapsed && (
               <div className="lf-sidebar-user-copy">
                 <strong>{user.name}</strong>
-                <span>{user.role.replaceAll('_', ' ')}</span>
+                <span>{sentence(user.role.replaceAll('_', ' '))}</span>
               </div>
             )}
           </div>
-          {/* Sign-out lives in the top bar only — present at every width. */}
-          {!collapsed && <div className="lf-sidebar-built-by">by {COMPANY_NAME}</div>}
         </div>
       </aside>
     </>
   );
 }
 
-/**
- * Module roots (`/{slug}/sales`, `/{slug}/people`, `/{slug}/dashboard`) match
- * exactly — prefix matching would light "Sales overview" on every sales page.
- * Query-string items (`/clients?view=referrals`) match on the full string only.
- */
-function isActive(item: NavItem, pathname: string) {
-  const [path, query] = item.href.split('?');
-  if (query) return false;
-  const moduleRoot = path.split('/').filter(Boolean).length <= 2;
-  return pathname === path || (!moduleRoot && pathname.startsWith(`${path}/`));
-}
-
 function NavLink({
   item,
-  pathname,
+  active,
   collapsed,
   onNavigate,
 }: {
   item: NavItem;
-  pathname: string;
+  active: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const active = isActive(item, pathname);
   return (
     <Link
       className="lf-nav-link"
       href={item.href}
       aria-current={active ? 'page' : undefined}
       title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       onClick={onNavigate}
     >
       <Icon name={item.icon} />
@@ -266,6 +260,7 @@ function Icon({ name }: { name: IconName }) {
     settings:
       'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7 M19.4 15a2 2 0 0 0 .4 2.2l.1.1-2.6 2.6-.1-.1a2 2 0 0 0-2.2-.4 2 2 0 0 0-1.2 1.8V21H10v-.2A2 2 0 0 0 8.8 19a2 2 0 0 0-2.2.4l-.1.1-2.6-2.6.1-.1A2 2 0 0 0 4.4 15 2 2 0 0 0 2.6 13H2V9h.6a2 2 0 0 0 1.8-1.2A2 2 0 0 0 4 5.6l-.1-.1 2.6-2.6.1.1A2 2 0 0 0 8.8 3.4 2 2 0 0 0 10 1.6V1h4v.6a2 2 0 0 0 1.2 1.8 2 2 0 0 0 2.2-.4l.1-.1 2.6 2.6-.1.1a2 2 0 0 0-.4 2.2A2 2 0 0 0 21.4 9h.6v4h-.6a2 2 0 0 0-2 2z',
     shield: 'M12 22s8-4 8-12V4l-8-2-8 2v6c0 8 8 12 8 12 M9 12l2 2 4-5',
+    spark: 'M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z',
   };
   return (
     <svg
@@ -273,7 +268,7 @@ function Icon({ name }: { name: IconName }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -289,3 +284,6 @@ const initials = (value: string) =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+
+/** "workspace admin" → "Workspace admin". A role key is a label, not a shout. */
+const sentence = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);

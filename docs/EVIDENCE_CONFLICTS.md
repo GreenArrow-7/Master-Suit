@@ -579,6 +579,35 @@ production release gate, where it must be answered.
 
 **Decision owner:** the owner of the SDD standard.
 
+**Bounded decision form — for the standard owner.** Deliberately narrow: it
+asks one question and changes nothing else. Do not treat it as an invitation to
+revisit the reviewer model, the risk matrix, or the gate structure.
+
+> **Question.** At R4, where `docs/sdd/RISK_TO_PROCESS_MATRIX.md` requires
+> "2 reviewers, one security-literate": must the two reviewer slots be filled by
+> **two distinct human persons**?
+>
+> **Decision:** ☐ YES — two distinct humans required  ☐ NO — one human may fill both
+>
+> Decided by: ______________________  Role: ______________________
+>
+> Date: ______________
+
+| If | Then |
+|---|---|
+| **YES** | `REV-0002` and `REV-0003` both carry `actorId: GreenArrow-7` and therefore satisfy only one slot. `SPEC-0005` needs **one further genuine human reviewer, security-literate**, before production release. Nothing else changes; the specification stays `CONVERGED` and its implementation is untouched. |
+| **NO** | The existing records already satisfy the gate. `EVC-019` closes with no further review, and `docs/sdd/RISK_TO_PROCESS_MATRIX.md` should gain one clarifying sentence so the next reader does not re-raise this. |
+
+**Out of scope for this decision**, explicitly: whether AI sessions can ever
+count as reviewers (settled — they cannot), the R3 review model, the gate list,
+and `SPEC-0005`'s implementation, which is unaffected either way.
+
+**An agent must not answer this.** It is a policy choice about human
+independence, and an AI recording it would be the exact substitution the rule
+exists to prevent.
+
+
+
 
 ## Resolved Conflicts
 

@@ -45,12 +45,23 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export default function MobileTabBar({ slug, module }: { slug: string; module: 'sales' | 'people' }) {
+export default function MobileTabBar({ slug, modules }: { slug: string; modules: string[] }) {
   const pathname = usePathname();
+
+  /**
+   * Which half of the product is open — the third path segment, the same test
+   * the sidebar, the top bar and ModuleTheme use, so the four agree. It used to
+   * be frozen at the layout by entitlement, which gave a workspace holding both
+   * modules the Leads/Calls loop on every HR screen. Pages outside either
+   * module (the dashboard, tasks) fall back to whichever module the workspace
+   * holds.
+   */
+  const segment = pathname.split('/')[2];
+  const activeModule = segment === 'people' || (segment !== 'sales' && !modules.includes('SALES')) ? 'people' : 'sales';
 
   // The daily loop differs by module; the shape does not.
   const items =
-    module === 'people'
+    activeModule === 'people'
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },

@@ -4,16 +4,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from '@/lib/auth/signOut';
+import { ASSISTANT_NAME } from '@/lib/branding';
+import { useModKey } from '@/lib/nav/modKey';
 import { applyTheme, THEMES, THEME_LABELS } from '@/lib/theme';
 import { useTheme } from '@/lib/useTheme';
 
 /**
- * The HR breadcrumb's page name, from the path: `/{slug}/people/work-locations`
- * reads as "Work locations". The module root is "Overview".
+ * The phone app bar's page name when the caller has none: `/platform/users`
+ * reads as "Users". Inside a workspace the layout passes the label from the
+ * navigation model instead, which already holds the right words; this is the
+ * fallback for a page the model does not list.
  */
 function pageTitle(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean);
-  // /{slug}/sales/leads → "Leads"; /{slug}/dashboard → "Overview".
   const leaf = segments[segments.length - 1] ?? '';
   if (!leaf || leaf === 'dashboard') return 'Overview';
   // A record id is not a page name; fall back to its section.
@@ -85,6 +88,24 @@ function BellIcon({ ringing }: { ringing: boolean }) {
   );
 }
 
+/** The same four-point spark the rail's ONE AI item carries. */
+function SparkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z" />
+    </svg>
+  );
+}
+
 /**
  * One glyph per family of event, so a panel of twenty rows can be scanned
  * without reading every title.
@@ -133,19 +154,24 @@ function relTime(iso: string) {
 export default function TopBar({
   basePath = '',
   module = 'sales',
-  workspaceName,
-  plan,
+  title,
   creatable,
 }: {
   basePath?: string;
   module?: 'sales' | 'people' | 'platform';
+  /** The phone app bar's page name; the workspace layout takes it from the nav model. */
+  title?: string;
+  /**
+   * Accepted for callers that still pass it; the bar no longer prints it. The
+   * rail carries the workspace name and its switcher.
+   */
   workspaceName?: string;
-  plan?: string;
   /** Permission modules the signed-in role may CREATE; undefined = show all. */
   creatable?: string[];
 } = {}) {
   const pathname = usePathname();
   const router = useRouter();
+  const mod = useModKey();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
   /**
@@ -166,6 +192,7 @@ export default function TopBar({
   const [notiLoading, setNotiLoading] = useState(false);
   const notiRef = useRef<HTMLDivElement>(null);
 
+  // The platform console has no palette; ⌘K focuses its search form instead.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -364,7 +391,7 @@ export default function TopBar({
     <header className="lf-shell-topbar">
       {/* Phone only: the bar has to say where you are, because the sidebar's
           active row is off-screen. */}
-      <span className="lf-appbar-title">{pageTitle(pathname)}</span>
+      <span className="lf-appbar-title">{title ?? pageTitle(pathname)}</span>
 
       {/* Inside a workspace the box is the ⌘K palette's trigger — the palette
           jumps to any page and searches every list that reads ?q=, so one
@@ -389,7 +416,7 @@ export default function TopBar({
             <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
           </svg>
           <span>Search or jump to…</span>
-          <kbd>⌘K</kbd>
+          <kbd>{mod} K</kbd>
         </button>
       )}
 
@@ -406,15 +433,13 @@ export default function TopBar({
           }}
         >
           <svg
+            className="lf-shell-search__icon"
             aria-hidden="true"
-            width="14"
-            height="14"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="var(--lf-ink-3)"
+            stroke="currentColor"
             strokeWidth="1.8"
             strokeLinecap="round"
-            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
           >
             <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
           </svg>
@@ -422,28 +447,11 @@ export default function TopBar({
             ref={search}
             name="q"
             type="search"
-            className="lf-input"
+            className="lf-input lf-shell-search__input"
             placeholder={target.placeholder}
             aria-label={target.label}
-            style={{ paddingRight: 46, paddingLeft: 30 }}
           />
-          <kbd
-            style={{
-              position: 'absolute',
-              right: 8,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              padding: '2px 6px',
-              borderRadius: 'var(--lf-radius-sm)',
-              border: '1px solid var(--lf-line-2)',
-              background: 'var(--lf-surface-2)',
-              fontFamily: 'var(--lf-font-mono)',
-              fontSize: 'var(--lf-text-2xs)',
-              color: 'var(--lf-ink-3)',
-            }}
-          >
-            ⌘K
-          </kbd>
+          <kbd className="lf-kbd lf-shell-search__kbd">{mod} K</kbd>
         </form>
       )}
 
@@ -455,59 +463,38 @@ export default function TopBar({
           visible on People regardless — only its unread badge was suppressed,
           which is the worst of both. The attribute is gone and the decision is
           made openly: People raises most of this system's notifications, so the
-          people working in it need the bell, the workspace switcher's sibling
-          controls and Log out as much as anyone. The one control that genuinely
-          differs is the search box, which is already gated above. */}
+          people working in it need the bell and Sign out as much as anyone.
+          The one control that genuinely differs is the search box, which is
+          already gated above.
+
+          Dashboard is not here: the rail's Overview and the phone tab bar's
+          Home both go there. Nor the workspace name or plan — the rail shows
+          the workspace and offers the switcher. */}
       <div className="lf-shell-actions">
-        {/* The dashboard is a destination, not an action: it leads the right
-            cluster with an icon+label and a clear pressed state, quieter than
-            + Create but always one click away. */}
-        {(() => {
-          const dashHref = module === 'platform' ? '/platform' : `${basePath}/dashboard`;
-          const active = pathname === dashHref;
-          return (
-            <Link
-              href={dashHref}
-              className="lf-btn lf-btn--ghost lf-btn--sm lf-topbar-optional"
-              aria-current={active ? 'page' : undefined}
-              style={
-                active ? { background: 'var(--lf-wine-050)', color: 'var(--lf-wine-700)', fontWeight: 600 } : undefined
-              }
-            >
-              <svg
-                aria-hidden="true"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 10.5 12 3l9 7.5 M5 9.5V21h5v-6h4v6h5V9.5" />
-              </svg>
-              Dashboard
-            </Link>
-          );
-        })()}
-        {workspaceName && (
-          <span className="lf-topbar-optional" style={{ color: 'var(--lf-ink-2)', fontSize: 11, fontWeight: 600 }}>
-            {workspaceName}
-          </span>
+        {/* The copilot, where the headline capability belongs: a button in the
+            bar and an item in the rail, not a floating bubble. The panel it
+            opens is mounted by the layout and listens for this event. Icon-only
+            below desktop. */}
+        {module !== 'platform' && (
+          <button
+            type="button"
+            className="lf-btn lf-btn--secondary lf-ask-ai"
+            onClick={() => window.dispatchEvent(new CustomEvent('lf:open-ai'))}
+            aria-label={`Ask ${ASSISTANT_NAME}`}
+            title={`Ask ${ASSISTANT_NAME}`}
+          >
+            <SparkIcon />
+            <span>Ask {ASSISTANT_NAME}</span>
+          </button>
         )}
-        {plan && (
-          <span className="lf-badge lf-topbar-optional" data-tone="wine">
-            {plan}
-          </span>
-        )}
+
         {/*
          * Density, theme, help and sign-out, in one menu.
          *
          * These were four separate buttons in a bar that already carried ten
          * controls, and three of them are set once and then never touched.
          * Collapsing them leaves the bar holding only what people press daily:
-         * search, Dashboard, the bell and Create.
+         * search, the copilot, the bell and Create.
          *
          * Deliberately NOT `lf-topbar-optional`. Three of the four used to carry
          * that class — `display: none` at the tablet and phone breakpoints —
@@ -520,10 +507,9 @@ export default function TopBar({
          * `<details>` rather than component state: the browser handles toggling
          * and Escape, and it is the pattern the Help disclosure already used.
          */}
-        <details className="lf-account-menu" style={{ position: 'relative' }}>
+        <details className="lf-account-menu">
           <summary
-            className="lf-btn lf-btn--ghost lf-btn--sm"
-            style={{ listStyle: 'none', cursor: 'pointer' }}
+            className="lf-btn lf-btn--ghost"
             aria-label="Preferences and account"
             title="Preferences and account"
           >
@@ -562,7 +548,7 @@ export default function TopBar({
             <div className="lf-account-pop__group">
               <span className="lf-eyebrow">Help</span>
               <span className="lf-account-pop__note">
-                Press <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> to jump to search.
+                Press <kbd className="lf-kbd">{mod} K</kbd> to jump to search.
               </span>
               <span className="lf-account-pop__note">Use + Create for new leads, tasks and calls.</span>
               <span className="lf-account-pop__note">Manage columns on any list via Columns.</span>
@@ -588,58 +574,28 @@ export default function TopBar({
 
         {/* Notifications */}
         {module !== 'platform' && (
-          <div ref={notiRef} style={{ position: 'relative' }}>
+          <div ref={notiRef} className="lf-noti">
             <button
-              className="lf-btn lf-btn--secondary lf-btn--sm"
+              className="lf-btn lf-btn--secondary lf-noti__bell"
               onClick={() => {
                 setNotiOpen((o) => !o);
                 if (!notiOpen) loadNotifications();
               }}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
               aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
               aria-expanded={notiOpen}
               title="Notifications"
             >
               <BellIcon ringing={unreadCount > 0} />
-              {unreadCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    background: 'var(--lf-vermillion)',
-                    color: '#fff',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: '18px',
-                    textAlign: 'center',
-                    padding: '0 4px',
-                  }}
-                >
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
+              {unreadCount > 0 && <span className="lf-noti__count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
             </button>
 
             {notiOpen && (
               <div className="lf-pop lf-noti-panel" role="dialog" aria-label="Notifications">
-                <div
-                  style={{
-                    padding: '12px 16px',
-                    borderBottom: '1px solid var(--lf-line)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span style={{ fontWeight: 600, fontSize: 'var(--lf-text-sm)' }}>Notifications</span>
+                <div className="lf-noti-panel__head">
+                  <span className="lf-noti-panel__title">Notifications</span>
                   {unreadCount > 0 && (
                     <button
                       className="lf-btn lf-btn--ghost lf-btn--sm"
-                      style={{ fontSize: 'var(--lf-text-2xs)' }}
                       onClick={() => {
                         const unreadIds = notifications.filter((n) => !n.readAt).map((n) => n.id);
                         if (unreadIds.length) markRead(unreadIds);
@@ -651,35 +607,16 @@ export default function TopBar({
                 </div>
 
                 {notiLoading ? (
-                  <div
-                    style={{
-                      padding: 24,
-                      textAlign: 'center',
-                      color: 'var(--lf-ink-3)',
-                      fontSize: 'var(--lf-text-sm)',
-                    }}
-                  >
-                    Loading…
-                  </div>
+                  <div className="lf-noti-panel__empty">Loading…</div>
                 ) : notifications.length === 0 ? (
-                  <div
-                    style={{
-                      padding: 32,
-                      textAlign: 'center',
-                      color: 'var(--lf-ink-3)',
-                      fontSize: 'var(--lf-text-sm)',
-                    }}
-                  >
-                    No notifications yet
-                  </div>
+                  <div className="lf-noti-panel__empty">No notifications yet</div>
                 ) : (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  <ul className="lf-noti-list">
                     {notifications.map((n) => (
                       <li
                         key={n.id}
                         className="lf-noti-row"
                         data-unread={n.readAt ? undefined : ''}
-                        style={{ cursor: destinationOf(n) ? 'pointer' : 'default' }}
                         /* A clickable <li> is invisible to the keyboard: no tab
                            stop, no Enter. Button semantics on the row keep the
                            existing markup while making it operable. */
@@ -702,62 +639,17 @@ export default function TopBar({
                           else window.location.href = target;
                         }}
                       >
-                        <div
-                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}
-                        >
-                          {/* Type marker, and the unread dot in the same slot:
-                              two indicators competing for the left gutter is
-                              what makes a notification list look busy. */}
-                          <span
-                            aria-hidden="true"
-                            title={kindGlyph(n.kind).label}
-                            style={{
-                              flex: '0 0 auto',
-                              width: 18,
-                              lineHeight: '20px',
-                              textAlign: 'center',
-                              fontSize: 10,
-                              color: n.readAt ? 'var(--lf-ink-3)' : 'var(--lf-wine-600)',
-                            }}
-                          >
-                            {kindGlyph(n.kind).glyph}
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontSize: 'var(--lf-text-sm)',
-                                fontWeight: n.readAt ? 400 : 600,
-                                color: 'var(--lf-ink)',
-                              }}
-                            >
-                              {n.title}
-                            </div>
-                            {n.body && (
-                              <div
-                                style={{
-                                  fontSize: 'var(--lf-text-2xs)',
-                                  color: 'var(--lf-ink-3)',
-                                  marginTop: 2,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {n.body}
-                              </div>
-                            )}
-                          </div>
-                          <span
-                            style={{
-                              fontSize: 'var(--lf-text-2xs)',
-                              color: 'var(--lf-ink-4)',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {relTime(n.createdAt)}
-                          </span>
+                        {/* Type marker, and the unread weight in the same slot:
+                            two indicators competing for the left gutter is
+                            what makes a notification list look busy. */}
+                        <span aria-hidden="true" title={kindGlyph(n.kind).label} className="lf-noti-row__glyph">
+                          {kindGlyph(n.kind).glyph}
+                        </span>
+                        <div className="lf-noti-row__body">
+                          <div className="lf-noti-row__title">{n.title}</div>
+                          {n.body && <div className="lf-noti-row__text">{n.body}</div>}
                         </div>
+                        <span className="lf-noti-row__time">{relTime(n.createdAt)}</span>
                       </li>
                     ))}
                   </ul>
@@ -774,8 +666,8 @@ export default function TopBar({
 
         {/* Create dropdown — absent entirely for roles that can create nothing. */}
         {CREATE_ITEMS.length > 0 && (
-          <div ref={createRef} style={{ position: 'relative' }}>
-            <button className="lf-btn lf-btn--sm" onClick={() => setCreateOpen((o) => !o)}>
+          <div ref={createRef} className="lf-create">
+            <button className="lf-btn" onClick={() => setCreateOpen((o) => !o)} aria-expanded={createOpen}>
               + Create
             </button>
 
@@ -786,21 +678,12 @@ export default function TopBar({
                     {/* A group label when the group changes — after role filtering,
                       so an SDR who can only create leads sees no lone headings. */}
                     {item.group && item.group !== CREATE_ITEMS[index - 1]?.group && (
-                      <div className="lf-eyebrow" style={{ padding: index === 0 ? '8px 16px 3px' : '10px 16px 3px' }}>
-                        {item.group}
-                      </div>
+                      <div className="lf-eyebrow lf-create-menu__group">{item.group}</div>
                     )}
                     <Link
                       href={item.href}
-                      style={{
-                        display: 'block',
-                        padding: '8px 16px',
-                        fontSize: 'var(--lf-text-sm)',
-                        color: 'var(--lf-ink)',
-                        textDecoration: 'none',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      className="lf-menu__item"
+                      role="menuitem"
                       // A soft navigation no longer tears the menu down; close it.
                       onClick={() => setCreateOpen(false)}
                     >

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "specId": "SPEC-0007",
+  "slug": "astra-claude-orchestration",
+  "kind": "change",
+  "risk": "R4",
+  "status": "DRAFT",
+  "artifacts": {
+    "spec": "spec.md",
+    "clarifications": "clarifications.md",
+    "plan": "plan.md",
+    "threatModel": "threat-model.md",
+    "testPlan": "test-plan.md",
+    "tasks": "tasks.md",
+    "traceability": "traceability.md",
+    "convergence": null,
+    "changeRecord": null
+  },
+  "statusHistory": [{ "status": "DRAFT", "date": "2026-09-14" }],
+  "approvals": [],
+  "reviews": [],
+  "evidenceConflicts": []
+}

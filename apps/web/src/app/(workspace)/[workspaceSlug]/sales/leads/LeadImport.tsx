@@ -81,7 +81,7 @@ export default function LeadImport() {
 
     // \uFEFF as an escape, not the literal byte: Excel writes a UTF-8 BOM onto
     // the first header cell, and a raw BOM here is invisible to every reader.
-    const headers = rows[0].map((h) => h.trim().replace(/^\uFEFF/, ''));
+    const headers = rows[0]!.map((h) => h.trim().replace(/^\uFEFF/, ''));
     if (!headers.includes(REQUIRED)) {
       setBusy(false);
       setError(`The header row must include a "${REQUIRED}" column. Found: ${headers.join(', ') || '(none)'}`);
@@ -126,94 +126,79 @@ export default function LeadImport() {
     if (created > 0) router.refresh();
   }
 
-  if (!open) {
-    return (
-      <button className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setOpen(true)}>
-        Import
-      </button>
-    );
+  function close() {
+    setOpen(false);
+    setReport(null);
+    setError('');
   }
 
   return (
-    <div
-      className="lf-card"
-      style={{
-        position: 'absolute',
-        right: 0,
-        top: '100%',
-        marginTop: 6,
-        zIndex: 20,
-        width: 340,
-        padding: 'var(--lf-space-4)',
-        boxShadow: 'var(--lf-shadow-2)',
-        textAlign: 'left',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--lf-space-3)',
-        }}
+    <span className="lf-pop-anchor">
+      <button
+        type="button"
+        className="lf-btn lf-btn--secondary"
+        aria-expanded={open}
+        onClick={() => (open ? close() : setOpen(true))}
       >
-        <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import leads from CSV</strong>
-        <button
-          className="lf-toast__action"
-          onClick={() => {
-            setOpen(false);
-            setReport(null);
-            setError('');
-          }}
-        >
-          Close
-        </button>
-      </div>
+        Import
+      </button>
+      {open && (
+        <div className="lf-pop lf-panelpop lf-panelpop--wide" role="dialog" aria-label="Import leads from CSV">
+          <div className="lf-panelpop__head">
+            <strong className="lf-panelpop__title">Import leads from CSV</strong>
+            <button type="button" className="lf-linkbtn" onClick={close}>
+              Close
+            </button>
+          </div>
 
-      <p style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)', margin: '0 0 var(--lf-space-3)' }}>
-        First row must be a header. Recognised columns: {ACCEPTED.join(', ')}. Rows are sent in batches of 500; a row
-        that fails is reported and skipped, not rolled back.
-      </p>
-
-      <input
-        type="file"
-        accept=".csv,text/csv"
-        disabled={busy}
-        aria-label="CSV file"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void handleFile(file);
-        }}
-      />
-
-      {busy && (
-        <p style={{ fontSize: 'var(--lf-text-sm)', marginTop: 8 }}>
-          Importing… {progress > 0 && `${progress} rows sent`}
-        </p>
-      )}
-      {error && <p style={{ color: 'var(--lf-vermillion)', fontSize: 'var(--lf-text-2xs)', marginTop: 8 }}>{error}</p>}
-
-      {report && (
-        <div style={{ marginTop: 'var(--lf-space-3)', fontSize: 'var(--lf-text-2xs)' }}>
-          <p style={{ margin: 0, color: 'var(--lf-viridian)' }}>
-            {report.created} lead{report.created === 1 ? '' : 's'} created.
+          <p className="lf-hint">
+            First row must be a header. Recognised columns: {ACCEPTED.join(', ')}. Rows are sent in batches of 500; a
+            row that fails is reported and skipped, not rolled back.
           </p>
-          {report.failed.length > 0 && (
-            <>
-              <p style={{ margin: '6px 0 2px', color: 'var(--lf-vermillion)' }}>
-                {report.failed.length} row(s) rejected:
+
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            disabled={busy}
+            aria-label="CSV file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleFile(file);
+            }}
+          />
+
+          {busy && (
+            <p className="lf-hint" role="status">
+              Importing… {progress > 0 && `${progress} rows sent`}
+            </p>
+          )}
+          {error && (
+            <p className="lf-hint lf-hint--error" role="alert">
+              {error}
+            </p>
+          )}
+
+          {report && (
+            <div className="lf-panelpop__report">
+              <p data-tone="viridian">
+                {report.created} lead{report.created === 1 ? '' : 's'} created.
               </p>
-              <ul style={{ margin: 0, paddingLeft: 16, maxHeight: 120, overflowY: 'auto' }}>
-                {report.failed.slice(0, 20).map((f) => (
-                  <li key={f.line}>
-                    Line {f.line}: {f.reason}
-                  </li>
-                ))}
-              </ul>
-            </>
+              {report.failed.length > 0 && (
+                <>
+                  <p data-tone="vermillion">{report.failed.length} row(s) rejected:</p>
+                  <ul>
+                    {report.failed.slice(0, 20).map((f) => (
+                      <li key={f.line}>
+                        Line {f.line}: {f.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
-    </div>
+    </span>
   );
 }

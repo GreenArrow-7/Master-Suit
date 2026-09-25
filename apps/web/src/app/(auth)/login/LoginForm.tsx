@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 
 /**
  * Two visual steps over one endpoint: credentials, then — only when the server
- * says so — the second factor, with the credentials collapsed to a summary and
- * kept in hidden inputs. Every state the endpoint can answer with has a screen:
+ * says so — the second factor, with the credentials collapsed to a one-line
+ * summary and held in state. Every state the endpoint can answer with has a screen:
  * signed in, MFA required, enrolment required, throttled, refused.
  */
 export default function LoginForm() {
@@ -90,7 +90,7 @@ export default function LoginForm() {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'grid', gap: 'var(--lf-space-4)' }} noValidate>
+    <form onSubmit={submit} className="lf-auth-form" noValidate>
       <div>
         <h1 className="lf-auth-title">{mfaNeeded ? 'Verify it’s you' : 'Welcome back'}</h1>
         <p className="lf-auth-lede">
@@ -127,13 +127,11 @@ export default function LoginForm() {
           </div>
 
           <div className="lf-field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div className="lf-auth-labelrow">
               <label className="lf-label" data-required htmlFor="password">
                 Password
               </label>
-              <Link href="/forgot-password" style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-wine-700)' }}>
-                Forgot password?
-              </Link>
+              <Link href="/forgot-password">Forgot password?</Link>
             </div>
             <div className="lf-auth-pwwrap">
               <input
@@ -152,7 +150,7 @@ export default function LoginForm() {
                 aria-pressed={showPassword}
                 onClick={() => setShowPassword((v) => !v)}
               >
-                <EyeIcon off={showPassword} />
+                {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
           </div>
@@ -182,8 +180,7 @@ export default function LoginForm() {
               </label>
               <input
                 id="recoveryCode"
-                className="lf-input lf-num"
-                style={{ letterSpacing: '0.12em', textAlign: 'center' }}
+                className="lf-input lf-num lf-auth-recovery"
                 value={recoveryCode}
                 onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
                 autoComplete="one-time-code"
@@ -193,7 +190,7 @@ export default function LoginForm() {
               <span className="lf-hint">Each saved code works once.</span>
               <button
                 type="button"
-                style={LINK_BUTTON}
+                className="lf-linkbtn"
                 onClick={() => {
                   setUseRecoveryCode(false);
                   setError(null);
@@ -221,7 +218,7 @@ export default function LoginForm() {
               />
               <button
                 type="button"
-                style={LINK_BUTTON}
+                className="lf-linkbtn"
                 onClick={() => {
                   setUseRecoveryCode(true);
                   setError(null);
@@ -234,46 +231,10 @@ export default function LoginForm() {
         </>
       )}
 
-      <button
-        className="lf-btn lf-auth-submit"
-        type="submit"
-        disabled={busy}
-        style={{ marginTop: 'var(--lf-space-2)' }}
-      >
-        {busy && <span className="lf-auth-spin" aria-hidden="true" />}
+      {/* The label change IS the busy state — the e2e helper reads exactly this string. */}
+      <button className="lf-btn lf-auth-submit" type="submit" disabled={busy}>
         {busy ? 'Signing in…' : mfaNeeded ? 'Verify and sign in' : 'Sign in'}
       </button>
     </form>
   );
 }
-
-function EyeIcon({ off }: { off: boolean }) {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden="true"
-    >
-      <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
-      <circle cx="12" cy="12" r="2.6" />
-      {off && <path d="M4 20 20 4" />}
-    </svg>
-  );
-}
-
-const LINK_BUTTON: React.CSSProperties = {
-  marginTop: 'var(--lf-space-2)',
-  background: 'none',
-  border: 0,
-  padding: 0,
-  color: 'var(--lf-wine-700)',
-  font: 'inherit',
-  fontSize: 'var(--lf-text-sm)',
-  textAlign: 'left',
-  textDecoration: 'underline',
-  cursor: 'pointer',
-};

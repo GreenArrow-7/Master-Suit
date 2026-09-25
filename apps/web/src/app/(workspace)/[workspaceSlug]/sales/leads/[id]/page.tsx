@@ -77,6 +77,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
 
+  // The stage trail is stored as ids; the client only knows names. A stage that
+  // has since been deleted, or a user no longer active, degrades to a fallback
+  // rather than a blank.
+  const stageName = new Map(stages.map((s) => [s.id, s.name]));
+  const userName = new Map(tenantUsers.map((u) => [u.id, u.fullName]));
+
   // Serialize dates to ISO strings for the client component
   const serializedLead = {
     id: safe.id,
@@ -93,6 +99,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     consentStatus: lead.consentStatus,
     priority: lead.priority,
     slaState: lead.slaState,
+    slaDueAt: lead.slaDueAt?.toISOString() ?? null,
     score: lead.score,
     grade: lead.grade,
     notes: lead.notes,
@@ -110,6 +117,17 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       durationSecs: a.durationSecs,
       type: a.type,
     })),
+    stageHistory: lead.stageHistory.map((h) => ({
+      id: h.id,
+      from: h.fromStageId ? (stageName.get(h.fromStageId) ?? 'Removed stage') : null,
+      to: stageName.get(h.toStageId) ?? 'Removed stage',
+      changedBy: h.changedById ? (userName.get(h.changedById) ?? null) : null,
+      changedBySystem: h.changedBySystem,
+      reason: h.reason,
+      createdAt: h.createdAt.toISOString(),
+    })),
+    // The query already restricts tasks to OPEN | IN_PROGRESS, so completedAt is
+    // always null here and is not sent.
     tasks: lead.tasks.map((t) => ({
       id: t.id,
       title: t.title,
@@ -117,8 +135,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       dueAt: t.dueAt.toISOString(),
       priority: t.priority,
       status: t.status,
-      completedAt: t.completedAt?.toISOString() ?? null,
-      type: { name: t.type.name, key: t.type.key, color: t.type.color },
+      type: { name: t.type.name, key: t.type.key },
     })),
     documents: lead.documents.map((d) => ({
       id: d.id,
@@ -131,17 +148,37 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     })),
   };
 
+  const meta = [lead.jobTitle, lead.company].filter(Boolean).join(' · ');
+
   return (
-    <>
-      <SalesLink href="/leads" style={{ fontSize: 'var(--lf-text-sm)' }}>
-        &larr; Leads
-      </SalesLink>
+    <div className="lf-page-stack">
+      <header>
+        <nav className="lf-breadcrumbs" aria-label="Breadcrumb">
+          <SalesLink href="/leads">Leads</SalesLink>
+          <span className="lf-breadcrumbs__sep" aria-hidden="true">
+            /
+          </span>
+          <span>{safe.fullName}</span>
+        </nav>
+        <div className="lf-record-head">
+          <span className="lf-avatar lf-avatar--lg" aria-hidden="true">
+            {initials(safe.fullName)}
+          </span>
+          <div className="lf-record-head__copy">
+            <h1 className="lf-record-head__title">{safe.fullName}</h1>
+            <div className="lf-record-head__meta">
+              {meta && `${meta} · `}
+              <span className="lf-code">{safe.reference}</span>
+            </div>
+          </div>
+        </div>
+      </header>
 
       <StageRail
-        stages={stages as any}
+        stages={stages}
         currentKey={lead.stage.key}
-        slaState={lead.slaState as any}
-        slaDueAt={lead.slaDueAt}
+        slaState={lead.slaState}
+        slaDueAt={serializedLead.slaDueAt}
       />
 
       <LeadDetail
@@ -159,6 +196,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         // administrator is granted `documents:DELETE`.
         canDeleteDocuments={can(ctx, 'documents', 'DELETE')}
       />
-    </>
+    </div>
   );
 }
+
+/** Splits on runs of whitespace: a double or trailing space must not yield an
+ *  empty part, whose missing first character rendered as "undefined". */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');

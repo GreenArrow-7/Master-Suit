@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono, Manrope } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import { PRODUCT_NAME } from '@/lib/branding';
 import ServiceWorkerRegistration from '@/components/pwa/ServiceWorkerRegistration';
 import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 
 /**
- * The two YOUHAN faces, self-hosted, plus the diagnostics mono.
+ * One product face, self-hosted, plus the identifier mono.
  *
  * next/font downloads these at build time and serves them from our own origin,
  * which is what the `font-src 'self'` CSP allows — a Google Fonts <link> would
@@ -14,21 +14,16 @@ import './globals.css';
  * added: tokens.css previously named 'Inter' without anything loading it, so
  * every Sales screen had silently been rendering in Segoe UI.
  *
- * Inter is the product face — headings, tables, controls, forms, body: one
- * family for the whole working UI. Manrope is the marketing site's face and
- * appears here only in the brand lockup (the wordmark beside the YH mark, the
- * login headline); two weights, nothing else. JetBrains Mono carries figures,
- * the geofence and the GPS diagnostics.
+ * Inter is the whole working UI: headings, tables, controls, forms, body and
+ * the brand lockup, which is drawn with weight ("YOUHAN" 600 / "ONE" 500)
+ * rather than a second family. Manrope used to be downloaded to set exactly two
+ * strings; --yh-font-brand keeps its name and resolves to Inter in tokens.css.
+ * JetBrains Mono survives for identifiers only (reference codes, ids, keys);
+ * figures are Inter tabular.
  *
  * Fraunces and Inter Tight were the People module's separate serif identity and
  * are gone with it: one product, one type system.
  */
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['600', '700'],
-  variable: '--yh-font-manrope',
-  display: 'swap',
-});
 const inter = Inter({
   subsets: ['latin'],
   weight: ['400', '500', '600'],
@@ -48,7 +43,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
-  themeColor: '#020817',
+  themeColor: '#f7f8fa',
   width: 'device-width',
   initialScale: 1,
   /**
@@ -66,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-density="comfortable"
-      className={`${manrope.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
       // The stored theme is applied by the script below before first paint, so
       // this attribute is intentionally absent here rather than set to 'light':
       // rendering light and correcting it after hydration is the flash.

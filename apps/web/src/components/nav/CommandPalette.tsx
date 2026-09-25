@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useModKey } from '@/lib/nav/modKey';
 import { buildWorkspaceNav, searchTargets, type NavInput } from '@/lib/nav/workspaceNav';
 
 /**
@@ -26,10 +27,13 @@ interface Result {
   hint?: string;
 }
 
-const MAX_PAGES = 9;
+// An empty query lists this many pages. Nine showed Home plus six Sales rows
+// of up to 68 permitted pages; 24 reaches People and Reports before scrolling.
+const MAX_PAGES = 24;
 
 export default function CommandPalette({ slug, modules, permitted, serviceMode = false }: NavInput) {
   const router = useRouter();
+  const mod = useModKey();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
@@ -38,15 +42,18 @@ export default function CommandPalette({ slug, modules, permitted, serviceMode =
 
   const pages = useMemo(
     () =>
-      buildWorkspaceNav({ slug, modules, permitted, serviceMode }).flatMap((group) =>
-        group.items.map((item) => ({
+      buildWorkspaceNav({ slug, modules, permitted, serviceMode }).flatMap((group) => {
+        // A "Show all" tail files under its parent, so one "Sales" heading
+        // covers the core items and the long tail alike.
+        const heading = group.parent ?? group.label;
+        return group.items.map((item) => ({
           key: item.href,
-          group: group.label.replace('More · ', ''),
+          group: heading,
           label: item.label,
           href: item.href,
-          haystack: `${item.label} ${item.keywords ?? ''} ${group.label}`.toLowerCase(),
-        })),
-      ),
+          haystack: `${item.label} ${item.keywords ?? ''} ${heading}`.toLowerCase(),
+        }));
+      }),
     [slug, modules, permitted, serviceMode],
   );
   const targets = useMemo(() => searchTargets({ slug, modules, permitted }), [slug, modules, permitted]);
@@ -203,7 +210,7 @@ export default function CommandPalette({ slug, modules, permitted, serviceMode =
             <kbd>↵</kbd> open
           </span>
           <span>
-            <kbd>⌘K</kbd> toggle
+            <kbd>{mod} K</kbd> toggle
           </span>
         </div>
       </div>

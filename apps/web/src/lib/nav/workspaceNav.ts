@@ -1,3 +1,5 @@
+import { ASSISTANT_NAME } from '@/lib/branding';
+
 /**
  * The workspace navigation model — one rail for the whole product.
  *
@@ -7,10 +9,13 @@
  * model both the sidebar and the ⌘K palette read, so what you can click and
  * what you can jump to can never disagree.
  *
- * Shape: five primary groups a person uses daily, always open; the long tail
- * behind two collapsed "More" groups; administration and account settings
- * collapsed and role-gated. Every item still carries the permission the page
- * itself asserts server-side — this is presentation, not access control.
+ * Shape: Home, Sales, People, Reports, Settings. Sales and People each carry
+ * their daily items open and their long tail behind a collapsed "Show all"
+ * group placed directly after them (keyed `sales-more` / `people-more`, with
+ * `parent` naming the group they belong to). ONE AI is the first item of
+ * Reports, gated exactly as its API is. Every item still carries the
+ * permission the page itself asserts server-side — this is presentation, not
+ * access control.
  *
  * Pure: no React, no hooks, no ambient URL. Same inputs, same groups.
  */
@@ -34,7 +39,8 @@ export type IconName =
   | 'org'
   | 'document'
   | 'settings'
-  | 'shield';
+  | 'shield'
+  | 'spark';
 
 export interface NavItem {
   label: string;
@@ -52,6 +58,12 @@ export interface NavGroup {
   items: NavItem[];
   /** Collapsed by default; opens when the current page is inside it. */
   collapsible?: boolean;
+  /**
+   * The group a long tail belongs to. The rail renders the tail as its own
+   * <details> under the parent; the palette files its rows under the parent's
+   * heading, so one "Sales" heading covers both.
+   */
+  parent?: string;
 }
 
 export interface NavInput {
@@ -68,6 +80,30 @@ export interface NavInput {
 export const itemAllowed = (item: NavItem, permitted: string[]) =>
   !item.permission ||
   (Array.isArray(item.permission) ? item.permission : [item.permission]).every((p) => permitted.includes(p));
+
+/**
+ * Module roots (`/{slug}/sales`, `/{slug}/people`, `/{slug}/dashboard`) match
+ * exactly — prefix matching would light "Sales overview" on every sales page;
+ * deeper paths match their descendants so /sales/leads/123 keeps Leads lit.
+ * `?view=` is the only query the model uses: a `?view=` item lights when the
+ * path and the view both match, and its bare sibling (`/clients` beside
+ * `/clients?view=referrals`) only when no view is set, so one row lights.
+ */
+export function isNavItemActive(item: NavItem, pathname: string, view: string | null): boolean {
+  const [path = item.href, query] = item.href.split('?');
+  if (query) return pathname === path && new URLSearchParams(query).get('view') === view;
+  if (pathname === path) return view === null;
+  const moduleRoot = path.split('/').filter(Boolean).length <= 2;
+  return !moduleRoot && pathname.startsWith(`${path}/`);
+}
+
+/** The label of the item the current page belongs to; the most specific wins. */
+export function activeNavLabel(groups: NavGroup[], pathname: string, view: string | null): string | undefined {
+  return groups
+    .flatMap((group) => group.items)
+    .filter((item) => isNavItemActive(item, pathname, view))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.label;
+}
 
 export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = false }: NavInput): NavGroup[] {
   const sales = modules.includes('SALES');
@@ -92,7 +128,7 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
       ],
     });
 
-  if (sales)
+  if (sales) {
     groups.push({
       key: 'sales',
       label: 'Sales',
@@ -105,99 +141,39 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
           permission: 'opportunities',
           keywords: 'deals',
         },
-        { label: 'Follow-ups', href: s('/follow-ups'), icon: 'task', keywords: 'overdue due today' },
-        { label: 'Calls', href: s('/calls'), icon: 'call', permission: 'calls', keywords: 'recordings dialer' },
         { label: 'Accounts', href: s('/accounts'), icon: 'company', permission: 'accounts', keywords: 'companies' },
         { label: 'Contacts', href: s('/contacts'), icon: 'contact', permission: 'contacts', keywords: 'people' },
-        { label: 'Calendar', href: s('/calendar'), icon: 'calendar', permission: 'tasks', keywords: 'schedule' },
+        { label: 'Calls', href: s('/calls'), icon: 'call', permission: 'calls', keywords: 'recordings dialer' },
+        { label: 'Follow-ups', href: s('/follow-ups'), icon: 'task', keywords: 'overdue due today' },
       ],
     });
 
-  if (people)
-    groups.push({
-      key: 'people',
-      label: 'People',
-      items: [
-        {
-          label: 'Employees',
-          href: p('/employees'),
-          icon: 'people',
-          permission: 'employee',
-          keywords: 'staff directory',
-        },
-        {
-          label: 'Attendance',
-          href: p('/attendance'),
-          icon: 'attendance',
-          permission: 'employee',
-          keywords: 'present absent late',
-        },
-        { label: 'Leave', href: p('/leave'), icon: 'leave', keywords: 'holiday time off' },
-        { label: 'Check in', href: p('/check-in'), icon: 'attendance', keywords: 'punch clock face' },
-        {
-          label: 'Performance',
-          href: p('/performance'),
-          icon: 'report',
-          permission: 'employee',
-          keywords: 'reviews ratings',
-        },
-      ],
-    });
+    // Management used to be its own three-item group that came and went with
+    // the role; a group that appears and vanishes is noise in a 236px column.
+    // A service identity has no targets to manage.
+    const management: NavItem[] = serviceMode
+      ? []
+      : [
+          { label: 'Targets', href: s('/targets'), icon: 'report', keywords: 'quota goals' },
+          {
+            label: 'Commissions',
+            href: s('/commissions'),
+            icon: 'report',
+            permission: 'commissions',
+            keywords: 'payouts',
+          },
+          { label: 'Leadership', href: s('/leadership'), icon: 'report', permission: 'reports', keywords: 'executive' },
+        ];
 
-  const intelligence: NavItem[] = [];
-  if (sales)
-    intelligence.push(
-      {
-        label: 'Call audits',
-        href: s('/call-audits'),
-        icon: 'shield',
-        permission: 'calls',
-        keywords: 'ai scoring quality',
-      },
-      { label: 'Coaching', href: s('/coaching'), icon: 'people', permission: 'calls' },
-      { label: 'Reports', href: s('/reports'), icon: 'report', permission: 'reports', keywords: 'analytics export' },
-      {
-        label: 'Dashboards',
-        href: s('/dashboards'),
-        icon: 'report',
-        permission: ['dashboards', 'leads'],
-        keywords: 'charts',
-      },
-    );
-  if (people)
-    intelligence.push({
-      label: 'People reports',
-      href: p('/reports'),
-      icon: 'report',
-      permission: 'employee',
-      keywords: 'hr analytics',
-    });
-  if (intelligence.length) groups.push({ key: 'intelligence', label: 'Intelligence', items: intelligence });
-
-  if (sales && !serviceMode)
-    groups.push({
-      key: 'management',
-      label: 'Management',
-      items: [
-        { label: 'Targets', href: s('/targets'), icon: 'report', keywords: 'quota goals' },
-        {
-          label: 'Commissions',
-          href: s('/commissions'),
-          icon: 'report',
-          permission: 'commissions',
-          keywords: 'payouts',
-        },
-        { label: 'Leadership', href: s('/leadership'), icon: 'report', permission: 'reports', keywords: 'executive' },
-      ],
-    });
-
-  if (sales)
     groups.push({
       key: 'sales-more',
-      label: 'More · Sales',
+      label: 'Show all',
+      parent: 'Sales',
       collapsible: true,
       items: [
         { label: 'Sales overview', href: s(''), icon: 'home', keywords: 'my day' },
+        { label: 'Calendar', href: s('/calendar'), icon: 'calendar', permission: 'tasks', keywords: 'schedule' },
+        ...management,
         {
           label: 'Smart views',
           href: s('/smart-views'),
@@ -265,11 +241,43 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         { label: 'Slab rules', href: s('/commissions/slabs'), icon: 'settings', permission: 'commissionslabs' },
       ],
     });
+  }
 
-  if (people)
+  if (people) {
+    groups.push({
+      key: 'people',
+      label: 'People',
+      items: [
+        {
+          label: 'Employees',
+          href: p('/employees'),
+          icon: 'people',
+          permission: 'employee',
+          keywords: 'staff directory',
+        },
+        {
+          label: 'Attendance',
+          href: p('/attendance'),
+          icon: 'attendance',
+          permission: 'employee',
+          keywords: 'present absent late',
+        },
+        { label: 'Leave', href: p('/leave'), icon: 'leave', keywords: 'holiday time off' },
+        { label: 'Check in', href: p('/check-in'), icon: 'attendance', keywords: 'punch clock face' },
+        {
+          label: 'Performance',
+          href: p('/performance'),
+          icon: 'report',
+          permission: 'employee',
+          keywords: 'reviews ratings',
+        },
+      ],
+    });
+
     groups.push({
       key: 'people-more',
-      label: 'More · People',
+      label: 'Show all',
+      parent: 'People',
       collapsible: true,
       items: [
         { label: 'People overview', href: p(''), icon: 'home', permission: 'employee' },
@@ -309,12 +317,55 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         { label: 'HR policy', href: p('/settings'), icon: 'settings', permission: 'employee' },
       ],
     });
+  }
 
-  // Users and Roles used to appear here *and* under People — one screen each,
-  // two doors. Admin is the door.
+  // Reports, not "Intelligence": the group holds audits, coaching and reports,
+  // and naming it after the copilot made the copilot read as a bolt-on with a
+  // fake home. ONE AI leads it instead, gated exactly as its API is — the SALES
+  // entitlement and leads:VIEW (app/api/v1/assistant/route.ts).
+  const reports: NavItem[] = [];
+  if (sales)
+    reports.push(
+      {
+        label: ASSISTANT_NAME,
+        href: `/${slug}/ai`,
+        icon: 'spark',
+        permission: 'leads',
+        keywords: 'assistant copilot ask chat',
+      },
+      {
+        label: 'Call audits',
+        href: s('/call-audits'),
+        icon: 'shield',
+        permission: 'calls',
+        keywords: 'ai scoring quality',
+      },
+      { label: 'Coaching', href: s('/coaching'), icon: 'people', permission: 'calls' },
+      { label: 'Reports', href: s('/reports'), icon: 'report', permission: 'reports', keywords: 'analytics export' },
+      {
+        label: 'Dashboards',
+        href: s('/dashboards'),
+        icon: 'report',
+        permission: ['dashboards', 'leads'],
+        keywords: 'charts',
+      },
+    );
+  if (people)
+    reports.push({
+      label: 'People reports',
+      href: p('/reports'),
+      icon: 'report',
+      permission: 'employee',
+      keywords: 'hr analytics',
+    });
+  groups.push({ key: 'reports', label: 'Reports', items: reports });
+
+  // One door for administration and the account: Admin and Account were two
+  // collapsed groups for twelve settings screens. Users and Roles live here
+  // and nowhere else — one screen each, one door.
   groups.push({
-    key: 'admin',
-    label: 'Admin',
+    key: 'settings',
+    label: 'Settings',
     collapsible: true,
     items: [
       { label: 'Company', href: a('/company'), icon: 'company', permission: 'settings', keywords: 'profile branding' },
@@ -336,16 +387,8 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         keywords: 'meta whatsapp twilio',
       },
       { label: 'Security', href: a('/security'), icon: 'shield', permission: 'settings', keywords: 'mfa policy' },
-      { label: 'Settings', href: a('/settings'), icon: 'settings', permission: 'settings' },
+      { label: 'Workspace settings', href: a('/settings'), icon: 'settings', permission: 'settings' },
       { label: 'Audit logs', href: a('/audit'), icon: 'report', permission: 'auditlogs', keywords: 'history events' },
-    ],
-  });
-
-  groups.push({
-    key: 'account',
-    label: 'Account',
-    collapsible: true,
-    items: [
       { label: 'My security', href: `/${slug}/profile/security`, icon: 'shield', keywords: 'password mfa' },
       { label: 'My role & access', href: `/${slug}/profile/role`, icon: 'people' },
       { label: 'Appearance', href: `/${slug}/profile/appearance`, icon: 'settings', keywords: 'theme density' },

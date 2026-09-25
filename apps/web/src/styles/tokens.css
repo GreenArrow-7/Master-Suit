@@ -1,121 +1,198 @@
 /* ═════════════════════════════════════════════════════════════════════════════
    YOUHAN ONE — design tokens
 
-   youhan.in is the dark, cinematic brand. ONE is the workspace built by the
-   same company: a LIGHT working surface, a midnight sidebar, and the brand's
-   blue spent only where it means something. People run this application for
-   hours; the canvas is #F7F9FC and the text is near-black because readability
-   is the premium.
+   Near-monochrome. ~93% neutral, ~7% accent + semantic. Hierarchy is type size,
+   weight and vertical rhythm — not colour, not boxes, not shadow.
 
    HOW THE FILE IS ORGANISED
    1. `--yh-*` are the canonical brand tokens. New code uses these.
-   2. `--lf-*` are aliases onto them. ~400 existing call sites reference the old
-      names; renaming all of them would be a large diff for no visual change and
-      a real regression risk, so the old names survive as a thin alias layer.
-      Nothing but this file should define an `--lf-*` colour.
+   2. `--lf-*` are aliases onto them. ~4000 existing call sites and 2,057 inline
+      style={{}} objects reference the old names; renaming them all would be a
+      large diff for no visual change and a real regression risk, so every
+      historical name survives. Nothing but this file defines an `--lf-*` colour.
 
-   THE COLOUR BUDGET
-   Neutral first. Brand blue is for: the primary action, links, focus, the
-   selected navigation indicator. Cyan is for: that indicator, and AI. A
-   business state is never a brand colour — won is green, breached is red, due
-   is amber, informational is blue — because "breached" and "brand" must never
-   look alike.
+   NAMES ARE FROZEN, VALUES ARE NOT. Six names below now describe something they
+   are not. Each is annotated REPURPOSED. Do not rename them and do not "fix"
+   them by restoring the old hue — the repurposing is what converts dozens of
+   call sites without a component edit.
 
-   PRIMARY IS BRAND BLUE, NOT CYAN
-   #00D9F5 against white is 1.7:1. It cannot carry text or be a filled button on
-   a light canvas. Brand blue (#2455E6) is the primary action; azure (#087BF5)
-   is links, focus and hover; cyan is reserved for marks on midnight chrome and
-   for the intelligence surfaces, where it is legible and where it means "AI".
+   THE ACCENT BUDGET — four appearances per screen, no exceptions:
+     1. the primary button      2. the focus ring
+     3. the active nav row      4. a link
+   NOT: borders, hovers, selection grounds, avatars, badges, metrics, chart
+   defaults, table headers, chips, tabs, scores, dots, or "brand moments".
+
+   CYAN IS NOT A UI COLOUR. #00D9F5 is 1.7:1 on white. It is defined here only so
+   YouhanMark.tsx and app/icon.svg have a name for it. Zero rules in globals.css
+   may reference `--yh-cyan`; there were eight, and all eight were deleted.
+
+   AI IS NEVER THE ACCENT. `--yh-ai` (#7052DE, hue 253°) sits 10° and 7 points of
+   lightness from `--yh-primary` (#4640CE, hue 242°) — enough to read as a
+   different idea, not enough to survive on its own. So the hard rule is:
+   `--yh-ai` never appears as a fill, and never inside the same component as
+   `--yh-primary`. It always arrives with the words "ONE AI" beside it.
    ═════════════════════════════════════════════════════════════════════════════ */
 
 :root {
   /**
-   * Space reserved at the bottom of scrollable page content so the fixed
-   * assistant button (.lf-ai-fab: bottom 18px, 52px tall) never comes to rest
-   * on top of it. Bump this if the button's size or offset changes.
+   * Bottom clearance for whatever docks bottom-right. The 52px circular AI FAB
+   * is retired — ONE AI moves into the top bar and the Intelligence group — so
+   * pages no longer reserve a band for a floating button. These are NOT zeroed:
+   * `--lf-fab-gutter` was a measured fix keeping phone row-action buttons out
+   * from under a fixed control (globals.css:1874-1878), and zeroing it in the
+   * same commit that relocates the control means two entangled changes and one
+   * bug you can only debug together. Reduce now, verify on a device, then zero.
    */
-  --lf-fab-safe: 88px;
-  /* The horizontal band the assistant button occupies: its 52px width plus the
-     18px it is inset from the right, plus 10px so a target does not merely
-     abut it. `--lf-fab-safe` keeps content from ending *underneath* the button;
-     this keeps a tappable control from passing under it mid-scroll, which the
-     vertical reserve cannot prevent — the button is fixed, so any row can come
-     to rest below it. */
-  --lf-fab-gutter: 80px;
+  --lf-fab-safe: 32px;
+  --lf-fab-gutter: 24px;
 
   /* ── Brand constants ─────────────────────────────────────────────────────
-     These do not change between themes. They are YOUHAN. */
-  --yh-midnight: #020817; /* sidebar, brand areas */
-  --yh-navy: #071426; /* deep navy — the lighter end of midnight chrome */
-  --yh-navy-lift: #0d2b52; /* the far corner of a midnight gradient */
-  --yh-cyan: #00d9f5; /* the accent: nav indicator, AI. On dark chrome only. */
-  --yh-azure: #087bf5; /* links, focus, hover */
-  --yh-blue: #2455e6; /* brand blue — the primary action */
-  /* Ink for the surfaces that are midnight in every theme — the sidebar, the
-     auth story, a toast. These do not follow the appearance setting, so their
-     text colour cannot be `--yh-text` either. */
-  --yh-on-midnight: #dbe5f2;
-  --yh-on-midnight-muted: rgb(219 229 242 / 0.62);
+     REPURPOSED: --yh-midnight / --yh-navy / --yh-navy-lift were the navy chrome
+     stack that painted the sidebar, the auth story panel, the console command
+     band and the AI panel header. They are now the near-black INK stack used by
+     the toast and tooltips only; every one of those four surfaces is rewritten
+     light. --yh-on-midnight / --yh-on-midnight-muted stay light ink because the
+     toast is still dark. */
+  --yh-midnight: #14161b;
+  --yh-navy: #1d2027;
+  --yh-navy-lift: #2a2e36;
+  --yh-on-midnight: #f1f2f4;
+  --yh-on-midnight-muted: rgb(241 242 244 / 0.64);
 
-  /* ── Surfaces (light theme) ────────────────────────────────────────────── */
-  --yh-bg: #f7f9fc; /* the primary workspace */
-  --yh-surface: #ffffff; /* cards, tables, forms */
-  --yh-surface-elevated: #f2f5f8; /* soft surface: table heads, wells */
-  --yh-border: #dde3ea;
-  --yh-border-strong: #c5cdd8;
+  /* The mark, and nowhere else. See the header note. */
+  --yh-cyan: #00d9f5;
 
-  /* ── Text ─────────────────────────────────────────────────────────────── */
-  --yh-text: #111827;
-  --yh-text-secondary: #667085;
-  --yh-text-muted: #8a94a6;
-  --yh-text-faint: #a9b2c0;
+  /* REPURPOSED: --yh-azure was the bright-blue link/focus/hover colour and
+     --yh-blue was the brand blue. Both now resolve to the one indigo, so the
+     ~8 legacy azure call sites de-blue with no edit. */
+  --yh-azure: #4640ce;
+  --yh-blue: #4640ce;
+
+  /* ── Surfaces ─────────────────────────────────────────────────────────────
+     Four planes, and the step between canvas and surface is what replaces a
+     card border. #FFFFFF on #F7F8FA is a ~6% luminance step: too faint for a
+     1px line, plenty for a filled region, which is exactly why the boxes come
+     off and the sheets stay.
+       canvas  #F7F8FA  the page ground — sections and tables sit directly here
+       surface #FFFFFF  sheets, inputs, menus, the rare real card
+       subtle  #F1F3F5  the light sidebar ground, wells, disclaimers
+       hover   #ECEFF3  nav rows, menu items, chips */
+  --yh-bg: #f7f8fa;
+  --yh-surface: #ffffff;
+  --yh-surface-elevated: #f1f3f5;
+  --yh-subtle: #f1f3f5;
+  --yh-hover: #eceff3;
+
+  /* THREE border weights, and they are not interchangeable.
+       soft   #EDEFF2  1.15:1 on white — table row dividers, list rules
+       base   #E5E7EB  1.24:1 on white — section boundaries, card edges
+       strong #D6DAE1  1.40:1 on white — control borders, the table header rule
+     A divider that carries structure never drops to `soft`; 50 rows of `base`
+     is a grid. Two weights in play at once, never three. */
+  --yh-border-soft: #edeff2;
+  --yh-border: #e5e7eb;
+  --yh-border-strong: #d6dae1;
+
+  /* ── Text ─────────────────────────────────────────────────────────────────
+     Every step is verified against BOTH #FFFFFF and the #F7F8FA canvas, because
+     in a system with no colour and no boxes the ink ramp IS the hierarchy and a
+     step that fails on the canvas is a dead step. The brief suggested #98A2B3
+     for muted; it measures 2.58:1 on white and cannot carry a word. */
+  --yh-text: #101317; /* 18.6:1 on white · 17.5:1 on canvas */
+  --yh-text-secondary: #5b6472; /* 5.98:1 · 5.63:1 — body secondary, table cells */
+  --yh-text-muted: #67707e; /* 5.01:1 · 4.71:1 — labels, meta, hints */
+  --yh-text-faint: #8b93a1; /* 3.09:1 — PLACEHOLDERS AND DISABLED ONLY. Never a value. */
 
   /* ── Action ───────────────────────────────────────────────────────────────
-     `--yh-on-primary` exists because the primary colour flips role between
-     themes: on light it is a deep blue carrying white text; on dark it is a
-     bright blue carrying midnight text. Hardcoding #fff on .lf-btn is what gave
-     the previous dark theme a 2.7:1 primary button. */
+     #4640CE is hue 242.5°, S 59%, L 53%. One hex legally serves both roles:
+     7.28:1 as a solid fill under white text, and 7.28:1 as 13px link text on
+     white (6.85:1 on the canvas) — so there is no second "text version" of the
+     accent, which is what keeps an accent budget honest. Tailwind's indigo-600
+     (#4F46E5) is 6.29:1 and reads as the default SaaS purple at 1-2px widths;
+     dropping 6 points of lightness and 16 of chroma turns it from a
+     light-emitter into ink. */
   --yh-primary: var(--yh-blue);
-  --yh-primary-hover: #1c48d1;
+  --yh-primary-hover: #3a34b4; /* 9.01:1 — darkens on hover, never brightens */
+  --yh-primary-active: #322da0; /* 10.40:1 */
   --yh-on-primary: #ffffff;
+  /* The ONLY accent-tinted grounds in the product: the active nav row and the
+     selected table row. Not a hover, not a badge, not an avatar, not a chip. */
+  --yh-primary-wash: #eeedfa;
+  --yh-primary-wash-soft: #f5f4fd;
+  --yh-primary-border: #c9c6ef;
+  /* 0.75 alpha, not 0.38. A 38%-alpha ring blends to ~1.9:1 against white and
+     fails WCAG 2.4.11; at 0.75 the effective colour is #746FDA = 4.14:1, which
+     passes 3:1 with margin and is still visibly soft. */
+  --yh-primary-ring: rgb(70 64 206 / 0.75);
+  --yh-primary-disabled-bg: #edecf7; /* a FADED indigo reads as a rendering bug */
 
-  /* ── Semantic status. Deliberately not brand-coloured. ────────────────── */
-  --yh-success: #0e7c66;
-  --yh-success-sub: #dcf2ec;
-  --yh-warning: #b45309;
-  --yh-warning-sub: #fdf1d8;
-  --yh-danger: #c4342c;
-  --yh-danger-hover: #a82a23;
-  --yh-danger-sub: #fbeae7;
-  --yh-info: #087bf5;
-  --yh-info-sub: #e4f0fe;
-  --yh-neutral: #5a6980;
-  --yh-neutral-sub: #eef1f6;
+  /* ── AI ───────────────────────────────────────────────────────────────────
+     5.32:1 on white, 5.00:1 on canvas. --yh-ai-sub is for the one AI well (the
+     write-action confirm block); the inline insight has NO ground at all. */
+  --yh-ai: #7052de;
+  --yh-ai-sub: #f1effc; /* --yh-ai on it: 4.68:1 */
+  --yh-ai-border: #ddd6f7;
 
-  /* Cyan is unreadable as text on a light canvas; this is the ink-weight
-     version for the few places a cyan *word* is needed off dark chrome — the
-     AI INSIGHT label, chiefly. */
-  --yh-cyan-ink: #0b7f95;
+  /* ── Semantic status — muted ground, dark ink, verified in pairs ──────────
+     success  #17614C on #E7F2EE  6.43:1
+     warning  #8A5A0B on #FAF0DF  5.24:1
+     danger   #B42318 on #FDECEA  5.75:1
+     info     #2F5FA8 on #EAF1FA  5.56:1   (desaturated slate-blue, deliberately
+                                            NOT the accent: "informational" must
+                                            never look like "primary")
+     neutral  #475467 on #F1F3F5  6.91:1
+     A business state is never a brand colour. `wine` is deleted from the tone
+     map in Badge.tsx for exactly this reason. */
+  --yh-success: #17614c;
+  --yh-success-sub: #e7f2ee;
+  --yh-warning: #8a5a0b;
+  --yh-warning-sub: #faf0df;
+  --yh-danger: #b42318;
+  --yh-danger-hover: #96190f;
+  --yh-danger-sub: #fdecea;
+  --yh-info: #2f5fa8;
+  --yh-info-sub: #eaf1fa;
+  --yh-neutral: #475467;
+  --yh-neutral-sub: #f1f3f5;
+
+  /* REPURPOSED: was #0B7F95, the cyan ink of the AI INSIGHT label. Pointing it
+     at the AI violet retires cyan from `.lf-ai-label` and `.lf-ai-confidence`
+     with no component edit. */
+  --yh-cyan-ink: var(--yh-ai);
 
   /* ═══ Alias layer: the historical --lf-* names, remapped ═══════════════════
-     The old ramp was named for burgundy. The slots are unchanged — 900/800 are
-     chrome, 700 is the brand, 500 is hover, the low numbers are tints — only
-     the hues moved. */
+     The slots are unchanged — 900/800 chrome, 700 accent, 600/500 hover — with
+     ONE deliberate exception that is the highest-leverage line in this file:
+     050/100/200/300 are now NEUTRAL. Those four are the hover, selection and
+     tint colour on ~30 rules in globals.css (tables, grids, tabs, chips,
+     wizard steps, role rows, inbox threads, notification rows, AI messages,
+     the command palette, secondary-button hover) and on 7 components. Turning
+     them neutral de-blues every one of them in four declarations. Accent
+     grounds now name themselves: --yh-primary-wash. */
   --lf-wine-900: var(--yh-midnight);
   --lf-wine-800: var(--yh-navy);
   --lf-wine-700: var(--yh-primary);
-  --lf-wine-600: #1c48d1;
-  --lf-wine-500: var(--yh-primary-hover);
-  --lf-wine-300: #93b4f7;
-  --lf-wine-200: #cadefb; /* selection */
-  --lf-wine-100: #e6effe;
-  --lf-wine-050: #f3f7ff;
+  --lf-wine-600: var(--yh-primary-hover);
+  --lf-wine-500: var(--yh-primary-active);
+  --lf-wine-300: #d6dae1; /* REPURPOSED: neutral control border */
+  --lf-wine-200: #e2e5ea; /* REPURPOSED: ::selection ground */
+  --lf-wine-100: #eceff3; /* REPURPOSED: neutral hover-strong, avatar ground */
+  --lf-wine-050: #f1f3f5; /* REPURPOSED: neutral hover, selected row */
 
   --lf-canvas: var(--yh-bg);
   --lf-surface: var(--yh-surface);
   --lf-surface-2: var(--yh-surface-elevated);
+  --lf-subtle: var(--yh-subtle);
   --lf-line: var(--yh-border);
+  --lf-line-soft: var(--yh-border-soft);
   --lf-line-2: var(--yh-border-strong);
+
+  /* Explicit interaction grounds, so no rule ever has to reach for a tint. */
+  --lf-hover: #fafbfc; /* table rows, list rows — quieter than a nav row */
+  --lf-hover-2: var(--yh-hover); /* nav rows, menu items, chips */
+  --lf-selected: var(--yh-primary-wash);
+  --lf-rail: #f1f3f5; /* the light sidebar ground */
+  --lf-rail-line: #e5e7eb;
 
   --lf-ink: var(--yh-text);
   --lf-ink-2: var(--yh-text-secondary);
@@ -135,66 +212,89 @@
   --lf-info-sub: var(--yh-info-sub);
   --lf-slate: var(--yh-neutral);
   --lf-slate-sub: var(--yh-neutral-sub);
+  --lf-ai: var(--yh-ai);
+  --lf-ai-sub: var(--yh-ai-sub);
+  /* These four were referenced by components and never defined here, so each
+     silently fell back to a hardcoded literal (#2447C7, #0D9488, #7C3AED,
+     #0369A1). Defining them is how a token rewrite actually reaches them. */
+  --lf-primary: var(--yh-primary);
+  --lf-teal: #2e7d64;
+  --lf-plum: #7052de;
+  --lf-sky: #7c86a6;
 
-  /* ── Chart / categorical ramp ─────────────────────────────────────────────
-     Ready for the tables and charts that come after this pass; nothing on the
-     three redesigned surfaces reads these yet. Brand blue leads and cyan
-     follows, then the widest-separated hues that still sit in one family.
-     Mid-tone on purpose: a series is a fill, so it needs 3:1 against its
-     ground, and one value that clears that on both white and midnight keeps
-     its identity when the theme changes. */
-  --lf-chart-1: #3b82f6; /* blue */
-  --lf-chart-2: #06b6d4; /* cyan */
-  --lf-chart-3: #10b981; /* green */
-  --lf-chart-4: #f59e0b; /* amber */
-  --lf-chart-5: #8b5cf6; /* violet */
-  --lf-chart-6: #64748b; /* slate */
+  /* ── Chart / categorical ──────────────────────────────────────────────────
+     Muted print-plate hues that survive a near-white page without out-shouting
+     the type. Accent leads; nothing here is cyan; every value clears 3:1 as a
+     fill on both #FFFFFF and the dark surface. */
+  --lf-chart-1: #4640ce;
+  --lf-chart-2: #2e7d64;
+  --lf-chart-3: #a8761b;
+  --lf-chart-4: #7052de;
+  --lf-chart-5: #a8453c;
+  --lf-chart-6: #7c86a6;
 
   /* ── Type ───────────────────────────────────────────────────────────────
-     Inter, everywhere in the product: headings, tables, controls, body. One
-     face, chosen for small-size legibility and tabular figures. Manrope — the
-     marketing site's face — appears only in the brand lockup (the wordmark
-     beside the YH mark, and the login headline), never on a working screen.
+     ONE face. Manrope is retired: a whole self-hosted family was being
+     downloaded to set two strings (the sidebar wordmark and the login
+     headline). --yh-font-brand survives as a name and now resolves to Inter;
+     the lockup is drawn with weight instead — "YOUHAN" 600 / "ONE" 500 at
+     -0.01em. Delete the Manrope import from app/layout.tsx once that lands.
 
-     Both are self-hosted by next/font in app/layout.tsx. They must be, not
-     merely named: `font-src 'self'` blocks Google's CDN, and the previous
-     stylesheet named 'Inter' without loading it — so the whole product had
-     silently been rendering in Segoe UI. */
-  --yh-font-brand: var(--yh-font-manrope), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+     Inter is loaded at 400/500/600 and NOTHING IN THIS SYSTEM ASKS FOR MORE.
+     globals.css currently declares font-weight 650 seven times and 700 thirteen
+     times, plus fifteen `font: 650 …` shorthands — 35 declarations for weights
+     that are not loaded, so 650 silently resolves to 600 and 700 is synthesised.
+     Rewrite all 35 to 600 rather than pulling a fourth font file for a weight
+     no spec references. This is a prerequisite of the pass: in a lens where
+     weight carries the hierarchy, headings currently render flatter than the
+     CSS claims. */
+  --yh-font-brand: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
   --lf-font-display: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
   --lf-font-ui: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
   --lf-font-body: var(--yh-font-inter), 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  /* Mono is for IDENTIFIERS ONLY now — reference codes, ids, API keys — not for
+     figures. See the .lf-num rule at the foot of this file. */
   --lf-font-mono: var(--yh-font-mono), ui-monospace, monospace;
 
-  --lf-text-2xs: 0.625rem; /* 10px — eyebrow labels */
-  --lf-text-xs: 0.6875rem; /* 11px — grid meta, badges */
-  --lf-text-sm: 0.8125rem; /* 13px — grid body, the workhorse */
-  --lf-text-base: 0.9375rem; /* 15px — forms, detail panes */
-  /* Fluid above body size.
-     A 30px page title is right on a desktop and overbearing on a 320px phone,
-     but stepping it down at a breakpoint makes the layout lurch as the window
-     crosses it. clamp() scales continuously between a floor and the desktop
-     value, so the app fits whatever resolution it is given rather than the
-     handful we happened to test. Body sizes stay fixed: readable text should
-     not depend on window width. */
-  --lf-text-lg: 1.0625rem;
-  --lf-text-xl: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem);
-  --lf-text-2xl: clamp(1.375rem, 1.1rem + 1.35vw, 1.875rem);
-  --lf-text-hero: clamp(2rem, 1.5rem + 2.4vw, 2.75rem); /* display metrics only */
-  /* Between base (0.9375) and lg (1.0625): seven call sites were already
-     asking for this step; without it their font-size silently fell to inherit. */
-  --lf-text-md: 1rem;
+  /* THE 10px FLOOR IS GONE. --lf-text-2xs was 10px and is the label voice of
+     the whole product: 208 .lf-label sites, 159 .lf-eyebrow, 68 inline. Raising
+     it to 12px and dropping --lf-track-wide to 0.01em retires every shouting
+     micro-cap in two values. `text-transform: uppercase` comes off those rules
+     at the same time — 9-11px letterspaced caps is the single most reliable
+     enterprise-template tell in the product, and 12px caps is the same tell one
+     size larger. Everything is sentence case. */
+  --lf-text-2xs: 0.75rem; /* 12px — labels, tags, meta */
+  --lf-text-xs: 0.8125rem; /* 13px — hints, captions, links, secondary rows */
+  --lf-text-sm: 0.875rem; /* 14px — BODY AND TABLE. the workhorse (284 sites) */
+  --lf-text-base: 0.9375rem; /* 15px — form controls, detail panes */
+  --lf-text-md: 1rem; /* 16px */
+  --lf-text-lg: 1.125rem; /* 18px — THE section heading. one size, no variants. */
+  /* Fluid above body size: a 28px page title is right on a desktop and
+     overbearing on a 320px phone, and stepping it at a breakpoint makes the
+     layout lurch as the window crosses it. Body sizes stay fixed — readable
+     text must not depend on window width. */
+  --lf-text-xl: clamp(1.25rem, 1.15rem + 0.45vw, 1.375rem); /* 20→22 */
+  --lf-text-2xl: clamp(1.5rem, 1.35rem + 0.7vw, 1.75rem); /* 24→28 page title */
+  --lf-text-hero: clamp(1.75rem, 1.55rem + 0.9vw, 2rem); /* 28→32 metrics ONLY */
 
-  /* The page gutter scales with the viewport too, so content is not pinned to
-     16px on a phone and 32px everywhere above it. */
-  --lf-page-gutter: clamp(14px, 3.6vw, 32px);
+  --lf-page-gutter: clamp(16px, 3.2vw, 32px);
 
-  --lf-track-tight: -0.02em;
-  --lf-track-wide: 0.09em;
+  --lf-track-tight: -0.015em;
+  /* REPURPOSED: was 0.09em, the wide tracking on every uppercase micro-label.
+     Now effectively off. Nothing in this product is letterspaced-uppercase. */
+  --lf-track-wide: 0.01em;
 
-  /* ── Density ────────────────────────────────────────────────────────────── */
-  --lf-row-comfortable: 44px;
-  --lf-row-compact: 32px;
+  /* ── Density ──────────────────────────────────────────────────────────────
+     48px is the low end of the brief's 48-52 band, chosen because the product's
+     core screen is a 50-row grid and 52px would cost ~9% of the rows a sales
+     manager triaging 200 leads sees at once. Compact is a REAL step, not a
+     squeeze, and its text floor is 13px — never 12.
+     NOTE: globals.css:5698 currently hardcodes `height: 44px` on grid cells and
+     discards this token, so [data-density='compact'] does nothing for tables
+     today. That override must be reverted to var(--lf-row) in the same pass or
+     the redesign ships as a pure density loss. */
+  --lf-row-comfortable: 48px;
+  --lf-row-compact: 40px;
   --lf-row: var(--lf-row-comfortable);
 
   /* The 4/8 spacing scale. Every component composes from these steps. */
@@ -207,6 +307,11 @@
   --lf-space-8: 32px;
   --lf-space-10: 40px;
   --lf-space-12: 48px;
+  /* THE ONE vertical rhythm between page sections. Not a suggestion: if one
+     screen uses 24px here and another 32px, the de-carded pages become an
+     undifferentiated column and the redesign reads as "they deleted the
+     design". Sections separate at 40px. Nothing else. */
+  --lf-section-gap: 40px;
 
   /* ── Responsive tiers ─────────────────────────────────────────────────────
      Three intentional experiences, not one layout scaled down. Every new
@@ -229,12 +334,16 @@
   --lf-bp-tablet: 1023px;
   --lf-bp-desktop: 1024px;
 
-  /* Controls at 6/8, cards at 12, the largest surfaces at 14. Nothing rounder:
-     a 20px corner reads as a consumer app, and this is not one. */
-  --lf-radius-sm: 6px;
-  --lf-radius: 8px;
-  --lf-radius-lg: 12px;
-  --lf-radius-xl: 14px;
+  /* Controls at 4/6, sheets at 8, overlays at 10. --lf-radius-lg drops 12→8,
+     which un-rounds every card in the product in one line. --lf-radius-full is
+     scoped to AVATARS ONLY — the 19 hardcoded 999px pills become 4px tags,
+     because a status is a tag, not a lozenge. Naming the one legitimate
+     exception is what stops implementers reinventing it as a literal. */
+  --lf-radius-sm: 4px;
+  --lf-radius: 6px;
+  --lf-radius-lg: 8px;
+  --lf-radius-xl: 10px;
+  --lf-radius-full: 999px;
 
   /* Commercial design-token aliases shared by Sales, People and Platform. */
   --background: var(--yh-bg);
@@ -251,74 +360,128 @@
   --danger: var(--yh-danger);
   --information: var(--yh-info);
 
-  /* Shadows are midnight-tinted and faint. A card is defined by its border;
-     the shadow is there only for the surfaces that float. */
-  --lf-shadow-1: 0 1px 2px rgb(17 24 39 / 0.05);
-  --lf-shadow-2: 0 4px 12px rgb(17 24 39 / 0.08), 0 1px 3px rgb(17 24 39 / 0.05);
-  --lf-shadow-3: 0 16px 40px rgb(17 24 39 / 0.14);
+  /* ── Shadows ──────────────────────────────────────────────────────────────
+     shadow-1 IS NONE, and that is the second-highest-leverage value in this
+     file. Eleven rules consume it — .lf-card, .lf-metric-card, .lf-table-wrap,
+     .lf-module-panel, .lf-ledger, .lf-statstrip__item, .lf-attention__item,
+     .lf-kpi, .lf-btn:hover, and two phone rules. Setting it to none de-shadows
+     nine resting components and the button hover with no component edit.
 
-  --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--yh-azure);
+     WARNING, and it must be handled in the same commit: .lf-mobile-nav-button
+     (globals.css:1182) and the phone table cards (1947) float on shadow-1
+     ALONE. On a light canvas with no shadow they disappear the day this lands.
+     Both get an explicit 1px var(--lf-line-2) border instead. */
+  --lf-shadow-1: none;
+  --lf-shadow-2: 0 4px 12px rgb(16 19 23 / 0.06), 0 1px 2px rgb(16 19 23 / 0.04);
+  --lf-shadow-3: 0 20px 48px -12px rgb(16 19 23 / 0.2), 0 4px 12px rgb(16 19 23 / 0.06);
 
-  /* The signal hairline: cyan into azure. Used two pixels at a time — the
-     active navigation row, the active stage segment, the AI surface's edge. */
-  --lf-brass-edge: linear-gradient(180deg, var(--yh-cyan) 0%, var(--yh-azure) 100%);
+  /* Two rings, 4px total: a 2px paper gap then a 2px soft indigo. Not a 4px
+     halo. See --yh-primary-ring for why the alpha is 0.75 and not lower. */
+  --lf-focus: 0 0 0 2px var(--lf-surface), 0 0 0 4px var(--yh-primary-ring);
+  --lf-focus-inset: inset 0 0 0 2px var(--yh-primary-ring);
+
+  /* One scrim for every overlay. Four hand-mixed values used to exist, two of
+     them burgundy-tinted blacks from the pre-YOUHAN palette. */
+  --lf-scrim: rgb(16 19 23 / 0.4);
+
+  /* REPURPOSED: was `linear-gradient(180deg, cyan, azure)` — the "signal
+     hairline" painted on the active nav row, the active stage segment, the
+     command band and the AI surface's edge. Five rules consume it as
+     `border-image: var(--yh-signal-edge) 1`, which rejects a plain colour, so
+     it stays gradient-TYPED and is a flat AI violet in fact. Nothing glows,
+     nothing is cyan, and no rule needs to change to lose the gradient. */
+  --lf-brass-edge: linear-gradient(180deg, var(--yh-ai) 0%, var(--yh-ai) 100%);
   --yh-signal-edge: var(--lf-brass-edge);
+
+  /* Motion. One duration for state, one for entrances, one ease. Nothing loops:
+     both continuous animations in the product (`lf-shimmer` on the skeleton,
+     `lf-ai-pulse` on the thinking dot) are deleted, not slowed. */
+  --lf-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --lf-dur-fast: 120ms;
+  --lf-dur: 160ms;
+  --lf-dur-slow: 220ms;
 }
 
 [data-density='compact'] {
   --lf-row: var(--lf-row-compact);
-  --lf-text-sm: 0.75rem;
+  --lf-text-sm: 0.8125rem; /* 13px — the table floor. Never 12. */
 }
 
 /* ── Dark (opt-in) ─────────────────────────────────────────────────────────
-   Not the default, and not the design: the product is a light workspace. This
-   remains an appearance setting for people who choose it, and it uses the
-   brand's own surface stack — #020817 / #0A1729 / #0D1C30 — so it is at least
-   the same colours as youhan.in rather than an interpretation of them. Glassy
-   shares this block and overrides only its surfaces further down. */
+   Not the default, and not the design: the product is a light workspace. But it
+   must ship in the same commit, re-derived on the neutral+indigo stack. Left on
+   the old #020817 values, one settings toggle would return the user to the
+   exact palette this pass exists to remove. Neutral greys, not navy. */
 [data-theme='dark'],
 [data-theme='glass'] {
-  --yh-bg: #020817;
-  --yh-surface: #0a1729;
-  --yh-surface-elevated: #0d1c30;
-  --yh-border: #1b2c44;
-  --yh-border-strong: #2a3e5c;
+  --yh-bg: #101216;
+  --yh-surface: #171a20;
+  --yh-surface-elevated: #1e2128;
+  --yh-subtle: #1e2128;
+  --yh-hover: #262a32;
+  --yh-border-soft: #1e2128;
+  --yh-border: #272b33;
+  --yh-border-strong: #363b45;
 
-  --yh-text: #f7f9fc;
-  --yh-text-secondary: #9aa7b8;
-  --yh-text-muted: #68768a;
-  --yh-text-faint: #4c5a6e;
+  --yh-text: #f2f3f5;
+  --yh-text-secondary: #a6acb8;
+  --yh-text-muted: #838a97;
+  --yh-text-faint: #5e6572;
 
-  /* The role flip described at --yh-on-primary: bright fill, midnight label.
-     This is also what makes the primary readable *as text* on #0A1729, which a
-     dark-enough-for-white-text blue could never be. */
-  --yh-primary: #4d9bff;
-  --yh-primary-hover: #6fb2ff;
-  --yh-on-primary: #041024;
+  /* The role flip: on light the primary is a deep indigo carrying white text;
+     on dark it is a light indigo carrying near-black text. #8B85F0 is 5.57:1 on
+     the surface as text and carries #14161B at 5.78:1 as a fill — which a
+     dark-enough-for-white-text indigo could never do. */
+  --yh-primary: #8b85f0;
+  --yh-primary-hover: #a6a1f5;
+  --yh-primary-active: #c2bef9;
+  --yh-on-primary: #14161b;
+  --yh-primary-wash: #1f1e38;
+  --yh-primary-wash-soft: #191a2a;
+  --yh-primary-border: #3a3866;
+  --yh-primary-ring: rgb(139 133 240 / 0.55);
+  --yh-primary-disabled-bg: #22252e;
 
-  --lf-wine-600: #3d8bf5;
-  --lf-wine-300: #2f5480;
-  --lf-wine-200: #16305a;
-  --lf-wine-100: #102340;
-  --lf-wine-050: #0b1a2e;
+  --yh-ai: #a791ee; /* 6.58:1 on --yh-surface */
+  --yh-ai-sub: #1e1a2c;
+  --yh-ai-border: #38315a;
 
-  --yh-success: #34d399;
-  --yh-success-sub: #06281f;
-  --yh-warning: #f5b23d;
-  --yh-warning-sub: #33260c;
-  --yh-danger: #f97066;
-  --yh-danger-hover: #ff8d84;
-  --yh-danger-sub: #35110e;
-  --yh-info: #38bdf8;
-  --yh-info-sub: #0a2438;
-  --yh-neutral: #94a3b8;
-  --yh-neutral-sub: #16233a;
+  --lf-wine-600: var(--yh-primary-hover);
+  --lf-wine-300: #363b45;
+  --lf-wine-200: #2b2f52;
+  --lf-wine-100: #262a32;
+  --lf-wine-050: #1e2128;
 
-  --yh-cyan-ink: var(--yh-cyan);
+  --lf-hover: #1b1e25;
+  --lf-hover-2: #262a32;
+  --lf-rail: #14161b;
+  --lf-rail-line: #272b33;
 
-  --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
-  --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.45);
-  --lf-shadow-3: 0 18px 44px rgb(0 0 0 / 0.55);
+  --yh-success: #35c79b;
+  --yh-success-sub: #0d2a22;
+  --yh-warning: #e0a44a;
+  --yh-warning-sub: #2c2110;
+  --yh-danger: #f27a70;
+  --yh-danger-hover: #f79a92;
+  --yh-danger-sub: #2e1512;
+  --yh-info: #74a6e8;
+  --yh-info-sub: #131f2f;
+  --yh-neutral: #a6acb8;
+  --yh-neutral-sub: #1e2128;
+
+  /* On dark, the AI violet is already legible as a word — no separate ink. */
+  --yh-cyan-ink: var(--yh-ai);
+
+  --lf-chart-1: #8b85f0;
+  --lf-chart-2: #4fbf9d;
+  --lf-chart-3: #d9a441;
+  --lf-chart-4: #a791ee;
+  --lf-chart-5: #e07a6e;
+  --lf-chart-6: #8b93a1;
+
+  --lf-shadow-1: none;
+  --lf-shadow-2: 0 4px 14px rgb(0 0 0 / 0.42);
+  --lf-shadow-3: 0 20px 48px -12px rgb(0 0 0 / 0.6);
 }
 
 /* ── Glassy (opt-in) ──────────────────────────────────────────────────────
@@ -328,23 +491,23 @@
  * cannot drift out of sync with them — the failure mode of a second dark theme
  * maintained by hand.
  *
- * The overrides below are only the ones translucency actually requires. Anything
- * a reader has to *read* — text, focus rings, status pills — is inherited
+ * The canvas wash previously laid a 10%-opacity CYAN pool over the entire page,
+ * which is the rejected direction re-entering through a settings toggle. It is
+ * rebuilt here on the indigo and a white highlight, at half the alpha. Anything
+ * a reader has to *read* — text, focus rings, status tags — is inherited
  * unchanged, because a glass panel that dims its own contrast is the mistake
  * this style is usually accused of.
  */
 [data-theme='glass'] {
-  /* A canvas with structure in it. Blur over a flat colour is invisible: the
-     effect is entirely in what shows through, so there has to be something to
-     show. Two soft pools, fixed, so scrolling does not drag them. */
-  --yh-bg: #030b1c;
+  --yh-bg: #0d0f13;
   --lf-canvas-wash:
-    radial-gradient(1100px 620px at 12% -8%, rgb(0 217 245 / 0.1), transparent 60%),
-    radial-gradient(880px 520px at 96% 6%, rgb(36 85 230 / 0.16), transparent 62%);
+    radial-gradient(1100px 620px at 12% -8%, rgb(139 133 240 / 0.07), transparent 60%),
+    radial-gradient(880px 520px at 96% 6%, rgb(255 255 255 / 0.04), transparent 62%);
 
   /* Panels. Alpha, not a solid — everything else here follows from that. */
   --yh-surface: rgb(255 255 255 / 0.05);
   --yh-surface-elevated: rgb(255 255 255 / 0.08);
+  --yh-border-soft: rgb(255 255 255 / 0.07);
   --yh-border: rgb(255 255 255 / 0.11);
   --yh-border-strong: rgb(255 255 255 / 0.2);
 
@@ -356,26 +519,43 @@
    * These are near-opaque on purpose: the glass reads at the panel edge, not
    * through the numbers.
    */
-  --lf-glass-solid: rgb(10 23 41 / 0.93);
+  --lf-glass-solid: rgb(23 26 32 / 0.93);
   --lf-glass-blur: 14px;
   --lf-glass-blur-strong: 20px;
   /* A single top highlight is what reads as "pane of glass" rather than
      "translucent box". Cheap: one inset shadow, no extra element. */
   --lf-glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.13);
 
-  --lf-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --lf-shadow-1: none;
   --lf-shadow-2: 0 6px 22px rgb(0 0 0 / 0.4);
   --lf-shadow-3: 0 22px 54px rgb(0 0 0 / 0.5);
 }
 
-/* Every figure in the product is tabular so columns align without extra CSS. */
+/* Every figure in the product is tabular so columns align without extra CSS.
+   The FACE changed: figures are Inter tabular, not JetBrains Mono. A monospaced
+   timestamp column beside a monospaced counter is the console tell; Inter's
+   tabular figures align just as well and set like a financial statement.
+   `cv05` gives Inter the straight-sided one, which stops a column of 1s reading
+   as serif clutter. */
 .lf-num,
 td[data-type='number'],
 td[data-type='currency'],
 td[data-type='date'] {
+  font-family: var(--lf-font-ui);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings:
+    'tnum' 1,
+    'cv05' 1;
+  letter-spacing: -0.005em;
+}
+
+/* Mono survives here and nowhere else: an identifier is not a number, and a
+   reference code should still read as a code. */
+td[data-type='reference'],
+.lf-code {
   font-family: var(--lf-font-mono);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'zero' 1;
+  font-size: var(--lf-text-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {

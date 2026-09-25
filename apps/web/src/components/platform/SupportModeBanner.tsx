@@ -7,6 +7,9 @@ import { useRouter } from 'next/navigation';
  * Shown while platform staff are viewing a customer workspace. It exists so the
  * viewer is never in any doubt that this is someone else's data and that they
  * are in a read-only mode, and so there is an obvious way back out.
+ *
+ * A warning strip, not a brand band: "you are looking at someone else's data"
+ * is a warning, and a warning painted in the brand colour stops reading as one.
  */
 export default function SupportModeBanner({
   workspaceId,
@@ -34,22 +37,7 @@ export default function SupportModeBanner({
   }
 
   return (
-    <div
-      role="status"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 16,
-        padding: '8px 20px',
-        // Amber, not the brand gradient it used to wear. This banner says
-        // "you are looking at someone else's data" — that is a warning, and a
-        // warning painted in the brand colour stops reading as one.
-        background: 'var(--yh-warning)',
-        color: 'var(--yh-on-primary)',
-        fontSize: 'var(--lf-text-sm)',
-      }}
-    >
+    <div role="status" className="lf-support-banner">
       <span>
         {readOnly ? (
           <>
@@ -63,7 +51,7 @@ export default function SupportModeBanner({
           </>
         )}
       </span>
-      <button type="button" onClick={leave} disabled={busy} className="lf-btn lf-btn--ghost">
+      <button type="button" onClick={leave} disabled={busy} className="lf-btn lf-btn--ghost lf-btn--sm">
         {busy ? 'Leaving…' : 'Exit to platform'}
       </button>
     </div>

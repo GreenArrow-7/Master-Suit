@@ -19,14 +19,12 @@ export interface StageRailProps {
 }
 
 /**
- * The signature component. Completed segments deepen in burgundy as the record
- * advances, so pipeline depth reads peripherally by colour intensity before any
- * label is read. The active segment widens, carries the brass hairline, and holds
- * the SLA countdown — and abandons the wine ramp entirely for brass or vermillion
- * when the SLA turns, which is exactly why those hues were kept off the burgundy
- * ramp in the token layer.
- *
- * Rendered identically on leads, opportunities and tickets.
+ * Stage position, SLA state and the countdown in one 28px strip, rendered the
+ * same on a lead, an opportunity and a ticket. Nothing here is saturated and
+ * nothing moves: done segments are a neutral step, the active one is the indigo
+ * wash at 600, and an at-risk or breached segment sits on its muted semantic
+ * ground. `.lf-rail__seg` carries every state, so a segment only declares what
+ * it is — no per-segment colour is computed here.
  */
 export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', slaDueAt, compact }: StageRailProps) {
   const index = Math.max(
@@ -43,19 +41,12 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
   return (
     <div
       className={`lf-rail${terminal === 'terminal' ? ' lf-rail--terminal' : terminal === 'lost' ? ' lf-rail--lost' : ''}`}
-      style={compact ? { height: 24 } : undefined}
+      data-compact={compact || undefined}
       role="group"
       aria-label={`Stage: ${current?.name ?? currentKey}`}
     >
       {stages.map((stage, i) => {
         const state = i < index ? 'done' : i === index ? 'active' : 'pending';
-        // Progressive saturation across completed segments.
-        const depth = index > 0 ? i / index : 0;
-        const style =
-          state === 'done'
-            ? { background: `color-mix(in oklab, var(--lf-wine-700) ${16 + depth * 44}%, var(--lf-wine-050))` }
-            : undefined;
-
         return (
           <div
             key={stage.key}
@@ -64,21 +55,11 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
             data-sla={
               state === 'active' && slaState !== 'ON_TRACK' && slaState !== 'MET' ? slaState.toLowerCase() : undefined
             }
-            style={style}
             title={stage.name}
             aria-current={state === 'active' ? 'step' : undefined}
           >
-            {state === 'active' ? (
-              <>
-                <span>{stage.name}</span>
-                {showTimer && countdown && <span className="lf-rail__timer">{countdown}</span>}
-              </>
-            ) : (
-              <span aria-hidden="true">{i < index ? '' : ''}</span>
-            )}
-            <span className="sr-only" style={SR_ONLY}>
-              {stage.name}
-            </span>
+            <span className="lf-rail__name">{stage.name}</span>
+            {state === 'active' && showTimer && countdown && <span className="lf-rail__timer">{countdown}</span>}
           </div>
         );
       })}
@@ -127,15 +108,3 @@ function useCountdown(due?: string | Date | null): string | null {
   const ss = String(s % 60).padStart(2, '0');
   return `${overdue ? '+' : ''}${hh}:${mm}:${ss}`;
 }
-
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clip: 'rect(0 0 0 0)',
-  whiteSpace: 'nowrap',
-  border: 0,
-};

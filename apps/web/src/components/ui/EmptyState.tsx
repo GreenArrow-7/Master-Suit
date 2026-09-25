@@ -1,35 +1,29 @@
 import SalesLink from '@/components/workspace/SalesLink';
 
 /**
- * An empty screen is an invitation to act, never an apology. The copy names what
- * the person can do next in the same words the button uses.
+ * An empty screen is an invitation to act, never an apology. Left-aligned type
+ * on the canvas — no plate, no glyph — and the copy names what the person can
+ * do next in the same words the link uses.
  */
 export default function EmptyState({
   title,
   description,
   actionLabel,
   actionHref,
-  icon = '◇',
 }: {
   title: string;
   description?: string;
   actionLabel?: string;
   actionHref?: string;
+  /** Accepted for the callers that still pass one; nothing renders it. */
   icon?: string;
 }) {
   return (
     <div className="lf-empty">
-      <div className="lf-empty__mark" aria-hidden="true">
-        {icon}
-      </div>
       <div className="lf-h2">{title}</div>
-      {description && (
-        <p style={{ margin: '6px auto 0', maxWidth: 380, color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-          {description}
-        </p>
-      )}
+      {description && <p>{description}</p>}
       {actionLabel && actionHref && (
-        <SalesLink className="lf-btn" href={actionHref} style={{ marginTop: 'var(--lf-space-5)' }}>
+        <SalesLink className="lf-link" href={actionHref}>
           {actionLabel}
         </SalesLink>
       )}

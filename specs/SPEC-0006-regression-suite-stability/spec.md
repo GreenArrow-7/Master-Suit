@@ -79,6 +79,47 @@ implementation. If the limiter itself had to change to make this testable, that
 would be a different risk class and would stop here for classification — it
 does not.
 
+## Known open defect — BUG-006
+
+**Recorded 2026-09-08, after this specification reached `VERIFYING`.** It is
+inside this specification's domain — regression suite stability — and is
+recorded here rather than against `SPEC-0004`, which is `CONVERGED` and stays
+frozen.
+
+**Symptom.** `apps/web/tests/e2e/hr-modules.spec.ts` fails on a cold
+Playwright-spawned dev server: the readiness probe times out after 180 s on
+`/api/v1/workspaces/readiness-probe/identity/self/password-change`, receiving
+`404 text/html` throughout.
+
+**Reproduced 4 of 4** in that condition. Narrowed by experiment:
+
+| Condition | Result |
+|---|---|
+| Cold spawned server, `hr-modules` | FAIL 4/4 |
+| Pre-warmed reused server, `hr-modules` | PASS |
+| Cold spawned server, `tablesearch-a11y` | PASS 7/7 |
+| Full 50-test run, `hr-modules` | passed, 0 readiness timeouts |
+| Manual `npm run dev` + curl | `401 application/problem+json` every time |
+
+**Not a product defect.** The route compiles and answers correctly; the probe's
+expectation is correct. The condition is cold-spawned-server and
+**spec-dependent**, and the mechanism separating `hr-modules` from
+`tablesearch-a11y` is **not isolated** — both call `warmApiRoutes(page.request)`
+identically. That gap is stated rather than filled with a guess.
+
+**Attribution, stated plainly.** This is a residual limitation of the
+`CONV-004` readiness remediation. That fix removed the discarded-404 defect and
+took the suite to 5 of 5; it did not eliminate every cold-start condition.
+
+**Status:** `OPEN`, not fixed. **Risk:** `R1` — tests only, no product code, no
+security dimension. **Severity:** `SEV-4`.
+
+**Not fixed now, deliberately.** The standing instruction is to stop broad
+local E2E runs, and this defect cannot be verified fixed without them. It does
+not block the release candidate, the draft PR or CI. It **may** block staging
+verification, which is the one reason to take it before staging rather than
+after.
+
 ## Acceptance criteria
 
 - `AC-001` — Three consecutive full-suite runs report 4 failures, all `RC-4`.

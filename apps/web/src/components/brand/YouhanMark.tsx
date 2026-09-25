@@ -1,5 +1,3 @@
-import { useId } from 'react';
-
 /**
  * The official YH mark, as vector.
  *
@@ -9,14 +7,16 @@ import { useId } from 'react';
  * of the same SVG in the sidebar, the auth shell, the platform console and the
  * app bar — when the design team supplies path data, it is replaced once.
  *
- * Drawn inline so the gradient can be the brand's own: cyan at the top-left of
- * the Y into deep blue at the foot of the right stem, which is what the
- * artwork does. No plate behind it — the glyph is the mark. The favicon at
- * app/icon.svg is the one standalone copy, and the only place these paths are
- * repeated: a file served to the browser as an icon cannot import a component.
+ * Ink, not a gradient: the four strokes take `currentColor`, so the mark is
+ * the ink of whatever it sits on, and one cyan element — a counter cut into the
+ * Y's arm — is the product's entire cyan budget. Flat fills need no <defs>, so
+ * two marks on one page can no longer collide on a gradient id. No plate
+ * behind it — the glyph is the mark. The favicon at app/icon.svg is the one
+ * standalone copy, and the only place these paths are repeated: a file served
+ * to the browser as an icon cannot import a component.
  *
- * ponytail: hand-traced polygons, not the studio's Béziers. Swap the four
- * <path> elements for the official path data and nothing else needs to change.
+ * ponytail: hand-traced polygons, not the studio's Béziers. Swap the <path>
+ * elements for the official path data and nothing else needs to change.
  */
 export default function YouhanMark({
   size = 34,
@@ -28,8 +28,6 @@ export default function YouhanMark({
   /** Pass only when the mark is the sole label for a control. */
   title?: string;
 }) {
-  // Colons are legal in an id but not in a url(#…) fragment without escaping.
-  const gradientId = `yh-mark-${useId().replace(/:/g, '')}`;
   return (
     <svg
       width={size}
@@ -41,21 +39,7 @@ export default function YouhanMark({
       aria-hidden={title ? undefined : true}
       focusable="false"
     >
-      <defs>
-        {/*
-         * A unique id per instance, not a fixed one. Two marks render on the
-         * login page, and on a phone the first — inside the hidden story panel
-         * — is `display: none`. A gradient defined in a non-rendered subtree is
-         * not painted, and with a shared id the visible mark resolved to that
-         * one and drew nothing. `useId` is stable across server and client.
-         */}
-        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1ce8ff" />
-          <stop offset="45%" stopColor="#0a6bff" />
-          <stop offset="100%" stopColor="#0b1f9e" />
-        </linearGradient>
-      </defs>
-      <g fill={`url(#${gradientId})`}>
+      <g fill="currentColor">
         {/* The Y, sweeping into the crossbar. */}
         <path d="M30 90 L240 90 L640 548 C680 585 720 570 760 570 L1010 570 L1010 740 L760 740 C640 740 570 705 510 636 Z" />
         {/* Left stem, above the sweep. */}
@@ -65,6 +49,9 @@ export default function YouhanMark({
         {/* Right stem. */}
         <path d="M1010 235 L1290 35 L1290 1085 L1010 1085 Z" />
       </g>
+      {/* The counter: inset in the Y's arm, aligned to its rake. The one cyan
+          element in the product — see tokens.css. */}
+      <path d="M145 170 L265 170 L405 330 L286 330 Z" fill="#00d9f5" />
     </svg>
   );
 }

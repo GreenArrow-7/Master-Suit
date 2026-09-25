@@ -112,6 +112,51 @@ most of the repository does not, because rewriting them converted them to LF.
 That is `REV-0003/CR-009`, and it has no effect on committed content —
 `core.autocrlf` normalises to LF in the index either way.
 
+**UPDATE 2026-09-08 — a claim in this entry was wrong, and the error mattered.**
+
+This entry recorded *"Current production impact: **NONE** — CI runs Linux with
+LF, where the gate passes."* **GitHub-hosted CI falsified that.** Run
+`34244828113` on `e620171` failed the `verify` job at **Format check**:
+
+```
+[warn] scripts/prepare-test-db.mjs
+[warn] SETUP.md
+[warn] tests/e2e/tablesearch-a11y.spec.ts
+Code style issues found in 3 files.
+```
+
+The CRLF noise was never merely cosmetic. **It was a masking defect.** ~900
+false positives hid three real violations in files this workstream authored,
+and the release candidate reached CI carrying them. The local gate did not
+merely fail loudly — it failed *uninformatively*, which is worse, because it
+trained every reader to discount its output.
+
+Measured on one commit (`63daf3d`), varying only the checkout filter:
+
+| Materialisation | `prettier --check .` |
+|---|---|
+| CRLF (`core.autocrlf=true`) | `Code style issues found in 902 files` |
+| LF (`core.autocrlf=false`, as CI checks out) | `All matched files use Prettier code style!` |
+
+Same bytes in git — the committed blobs were always LF. The **check** is what
+was wrong, not the tree.
+
+**Corrected fields:**
+
+| Field | Was | Now |
+|---|---|---|
+| Current production impact | NONE | **NONE for the product; it blocked the release candidate at CI** |
+| Reproduction status | 870 files | **902 files on CRLF; 0 on LF — the count is an artefact of the checkout, not a property of the repository** |
+| Severity | SEV-4 | **SEV-3** — it masked a real gate failure |
+
+**Fix status: still NOT STARTED, and the reasoning is unchanged.** The remedy is
+a `.gitattributes` (better than `"endOfLine": "auto"`, which would only silence
+the symptom for prettier while leaving every other tool reading CRLF). It
+changes a repository-wide gate for every contributor and sits inside no approved
+specification, so it stays raised here rather than smuggled into a CI
+remediation commit. The three violations it hid were fixed in `63daf3d`; the
+masking itself is not fixed.
+
 ### BUG-004 — webhook rate-limit test races a fixed-window boundary
 
 | Field | Value |
@@ -161,6 +206,100 @@ than a number.
 
 **Observed seeded baselines today:** `1914·4·2`, `1914·4·2`, `1913·5·2`,
 `1913·5·2`. The four `RC-4` failures are constant across all four.
+
+### BUG-006 — Playwright readiness probe times out on a cold spawned server
+
+| Field | Value |
+|---|---|
+| Classification | **LOCAL/CI-ONLY — TEST INFRASTRUCTURE DEFECT** |
+| Affected functionality | `apps/web/tests/e2e/helpers.ts` → `warmApiRoutes`, as used by `hr-modules.spec.ts` |
+| Current production impact | **NONE** — test harness only, no product code involved |
+| Reproduction status | **REPRODUCED 4 of 4** on a cold Playwright-spawned dev server |
+| Evidence source | Isolated runs 2026-09-08 |
+| Severity | **SEV-4** |
+| Risk class | **R1** — tests only; no product code, no security dimension |
+| Security impact | none |
+| Data impact | none |
+| Owner | `SPEC-0006` (regression suite stability) |
+| Fix status | **NOT STARTED** — recorded, not fixed |
+
+**The failure:**
+
+```
+API readiness timed out after 180000ms on
+/api/v1/workspaces/readiness-probe/identity/self/password-change.
+Last answer: 404 (text/html); expected 401 with a JSON body.
+```
+
+**Narrowed by experiment, not by assumption:**
+
+| Condition | Result |
+|---|---|
+| Cold spawned server, `hr-modules` | **FAIL 4/4** |
+| Pre-warmed reused server, `hr-modules` | **PASS** (2.5m) |
+| Cold spawned server, `tablesearch-a11y` | **PASS 7/7** |
+| Full 50-test run, `hr-modules` | passed, 2.9m, **0 readiness timeouts** |
+| Manual `npm run dev` + curl the probe route | **401 `application/problem+json`**, every attempt |
+
+**What this rules out.** The route is correct and compiles — it answers `401`
+on any manually started server. The probe's declared expectation is correct.
+The failure is a cold-spawned-server condition, and it is **spec-dependent**:
+the same probe passes in `tablesearch-a11y` under identical conditions.
+
+**Why `hr-modules` and not `tablesearch-a11y` is NOT isolated.** Both call
+`warmApiRoutes(page.request)` with the same shape. The differentiating
+mechanism is unknown and is not guessed at here.
+
+**Honest attribution.** This is a residual limitation of the `CONV-004`
+readiness remediation delivered under `SPEC-0004`. That fix removed the
+discarded-404 defect and took the suite to 5 of 5; it did not eliminate every
+cold-start condition. `SPEC-0004` is `CONVERGED` and is **not** reopened —
+`SPEC-0006` owns suite stability and is still open.
+
+**Does not block:** the release candidate, the draft PR, or CI. **May block**
+staging verification later if the same condition appears there, which is the
+one reason to fix it before staging rather than after.
+
+### BUG-007 — effective connection pool is 10 while the URL declares 20
+
+| Field | Value |
+|---|---|
+| Classification | **PERFORMANCE / CAPACITY RISK — not production-confirmed** |
+| Affected functionality | `apps/web/src/lib/db.ts` connection pool; workspace dashboard |
+| Current production impact | **UNKNOWN** — no production evidence exists |
+| Reproduction status | **PROVEN STATICALLY**, not observed in production |
+| Severity | **SEV-4** provisionally — would rise if production evidence connects it to a symptom |
+| Risk class | R2 if ever fixed — touches shared data-access configuration |
+| Owner | unassigned pending production evidence |
+| Fix status | **NOT STARTED — deliberately** |
+
+**Proven by execution, not by reading documentation:**
+
+```
+keys pg understands from the URL: schema, connection_limit, user, password, host, port, database
+max present? NO - connection_limit is dropped
+resulting pg Pool max = 10
+```
+
+`connection_limit=20` is a **Prisma-engine** parameter. The code uses a driver
+adapter — `PrismaPg({ connectionString, connectionTimeoutMillis: 5000 })` — and
+passes no `max`, so `pg-pool` applies its default of **10**. A deployment
+reading `DATABASE_URL` would reasonably believe it has 20.
+
+**The amplifier.** `runPinned` (`src/lib/db.ts:383`) promotes every
+tenant-scoped query to its own batched `$transaction`, so **one query holds one
+connection**. The workspace dashboard issues **29** concurrent
+`prisma.*.count()` calls.
+
+**Why it is not being fixed now.** The P2028 errors that surfaced it did **not**
+reproduce at low load — 0 across three isolated runs — so the observed symptom
+is contention, not a demonstrated product defect. Changing pool size, timeouts,
+`runPinned`, or tenant pinning on this evidence would be changing production
+behaviour to suppress a signal that does not reproduce.
+
+**What would change that:** a production symptom involving the workspace
+dashboard failing or partially loading, or production 5xx grouped on the
+dashboard route.
 
 ---
 

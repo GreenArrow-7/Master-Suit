@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 
 /**
- * The list-screen header, reproducing what the Leads screen established: a 30px
- * title, a line saying how much of the record set is on screen, and a right-aligned
- * action cluster. It exists so that pattern is one component rather than twenty
- * inline-styled copies that drift apart.
+ * The list-screen header: the page title, a line saying how large the record
+ * set is, and a right-aligned action cluster. It exists so that pattern is one
+ * component rather than twenty inline-styled copies that drift apart.
  */
 export default function ListHeader({
   title,
   count,
+  total,
   noun = 'record',
   capped,
   actions,
@@ -19,6 +19,8 @@ export default function ListHeader({
   title: ReactNode;
   /** Rows on screen. Omit for screens that are not a record list. */
   count?: number;
+  /** The whole scope, from a count query. Beats `count`: a page size is not information. */
+  total?: number;
   /** Singular noun for the count line. Pluralised with a trailing s. */
   noun?: string;
   /** True when the query hit its take() limit, so the count is a page not a total. */
@@ -30,7 +32,7 @@ export default function ListHeader({
   /** The primary action, and anything that must always be visible. */
   actions?: ReactNode;
   /**
-   * Actions that fold behind a ••• disclosure.
+   * Actions that fold behind a ⋯ disclosure.
    *
    * A phone header carrying Import, Export, Columns and Add lead is four
    * buttons competing above the content they act on, and only one of them is
@@ -40,13 +42,16 @@ export default function ListHeader({
    */
   secondaryActions?: ReactNode;
 }) {
+  const plural = (n: number) => `${noun}${n === 1 ? '' : 's'}`;
   const description =
     override ??
-    (count === undefined
-      ? undefined
-      : capped
-        ? `First ${count} ${noun}s in your scope`
-        : `${count} ${noun}${count === 1 ? '' : 's'} in your scope`);
+    (total !== undefined
+      ? `${total.toLocaleString('en-GB')} ${plural(total)} in your scope`
+      : count === undefined
+        ? undefined
+        : capped
+          ? `First ${count} ${noun}s in your scope`
+          : `${count} ${plural(count)} in your scope`);
 
   return (
     <header className="lf-list-header">
@@ -60,12 +65,12 @@ export default function ListHeader({
           {secondaryActions && (
             /* Native disclosure: no state to synchronise and keyboard
                reachable. It does NOT close itself — no browser dismisses a
-               <details> on outside click, despite what this comment used to
-               say — so the top bar installs one delegated listener that closes
-               these on outside click, Escape and item selection. */
+               <details> on outside click — so the top bar installs one
+               delegated listener that closes these on outside click, Escape
+               and item selection. */
             <details className="lf-overflow">
-              <summary className="lf-btn lf-btn--secondary lf-btn--sm" aria-label="More actions" title="More actions">
-                <span aria-hidden="true">•••</span>
+              <summary className="lf-btn lf-btn--secondary" aria-label="More actions" title="More actions">
+                <span aria-hidden="true">⋯</span>
               </summary>
               <div className="lf-overflow__menu">{secondaryActions}</div>
             </details>

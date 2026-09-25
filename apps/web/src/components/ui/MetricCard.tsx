@@ -1,62 +1,51 @@
 import type { Tone } from './Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 
-const COLOR: Record<Tone, string> = {
-  slate: 'var(--lf-ink)',
-  wine: 'var(--lf-wine-700)',
-  brass: 'var(--lf-brass)',
-  viridian: 'var(--lf-viridian)',
-  vermillion: 'var(--lf-vermillion)',
-};
-
 export interface MetricCardProps {
   label: string;
   value: number | string;
+  /** Set small and muted before the figure: a currency code. */
+  unit?: string;
+  /** Set at the mid size after the figure: a compact-notation letter or a percent sign. */
+  suffix?: string;
+  /** "of N", set at the mid size after a slash. */
+  denominator?: number | string;
+  /** Semantic ink on the figure. The label carries the meaning; the ink adds urgency. */
   tone?: Tone;
-  delta?: { value: number; label: string };
   href?: string;
 }
 
 /**
- * The only place besides the wordmark where the display serif appears. These four
- * numbers are what a manager reads first each morning; making them typographically
- * distinct from every other figure in the product is functional, not decorative.
+ * One large figure on the metric rule — 28→32px/600 Inter tabular, the same
+ * family as the dashboard's .lf-kpi. The unit/suffix/denominator spans are what
+ * turn "AED 21.3M" from a digit wall into a set figure.
+ *
+ * No delta slot: nothing in the product computes a comparison window, and a
+ * trend with no data behind it is a fabrication, not a style.
  */
-export default function MetricCard({ label, value, tone = 'slate', delta, href }: MetricCardProps) {
+export default function MetricCard({ label, value, unit, suffix, denominator, tone, href }: MetricCardProps) {
   const body = (
     <>
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-hero-figure" style={{ color: COLOR[tone], marginTop: 6 }}>
+      <span className="lf-metric-card__label">{label}</span>
+      <span className="lf-metric-card__value" data-tone={tone}>
+        {unit && <span className="lf-figure__unit">{unit}</span>}
         {typeof value === 'number' ? value.toLocaleString('en-AE') : value}
-      </div>
-      {delta && (
-        <div style={{ marginTop: 6, fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-          <span
-            className="lf-num"
-            style={{ color: delta.value >= 0 ? 'var(--lf-viridian)' : 'var(--lf-vermillion)', fontWeight: 600 }}
-          >
-            {delta.value >= 0 ? '↑' : '↓'} {Math.abs(delta.value)}%
-          </span>{' '}
-          {delta.label}
-        </div>
-      )}
+        {suffix && <span className="lf-figure__suffix">{suffix}</span>}
+        {denominator !== undefined && (
+          <span className="lf-figure__denom">
+            <span className="lf-figure__slash">/</span>
+            {denominator}
+          </span>
+        )}
+      </span>
     </>
   );
 
-  const style: React.CSSProperties = {
-    padding: 'var(--lf-space-5)',
-    display: 'block',
-    textDecoration: 'none',
-    color: 'inherit',
-  };
-
   return href ? (
-    <SalesLink className="lf-card" style={style} href={href}>
+    <SalesLink className="lf-metric-card" href={href}>
       {body}
     </SalesLink>
   ) : (
-    <div className="lf-card" style={style}>
-      {body}
-    </div>
+    <div className="lf-metric-card">{body}</div>
   );
 }

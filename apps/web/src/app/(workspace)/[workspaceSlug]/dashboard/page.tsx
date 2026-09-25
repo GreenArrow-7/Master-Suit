@@ -1,10 +1,13 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
+import EmptyState from '@/components/ui/EmptyState';
+import PageHeader from '@/components/ui/PageHeader';
 
 /**
  * The workspace landing page. Reachable by every member — which is why each
@@ -35,7 +38,6 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   // run when they do — an unauthorised viewer costs no database work either.
   const showPeople = modules.has('HRMS') && can(ctx, 'employee', 'VIEW');
   const showSales = modules.has('SALES') && can(ctx, 'leads', 'VIEW');
-  const showSubscription = can(ctx, 'settings', 'VIEW');
 
   /**
    * One round of concurrency, not two.
@@ -68,7 +70,6 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         prisma.hrLeaveRequest.count({
           where: { tenantId: ctx.tenantId, status: 'APPROVED', startDate: { lte: today }, endDate: { gte: today } },
         }),
-        prisma.hrLeaveRequest.count({ where: { tenantId: ctx.tenantId, status: 'PENDING' } }),
         prisma.hrHoliday.count({ where: { tenantId: ctx.tenantId, holidayDate: { gte: today } } }),
       ])
     : null;
@@ -329,10 +330,11 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
 
   // ponytail: ratio of averages, not average of per-call ratios — exact only
   // while every audit shares one rubric; per-row aggregation if rubrics diverge.
-  const avgScore =
+  const avgScorePct =
     calls && calls[3]._avg.maxScore
-      ? `${Math.round(((calls[3]._avg.overallScore ?? 0) / calls[3]._avg.maxScore) * 100)}%`
-      : '—';
+      ? Math.round(((calls[3]._avg.overallScore ?? 0) / calls[3]._avg.maxScore) * 100)
+      : null;
+  const avgScore = avgScorePct === null ? '—' : `${avgScorePct}%`;
 
   const approvalItems = approvals
     ? ([
@@ -346,9 +348,34 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       ].filter(([, value]) => value !== null) as [string, number, string][])
     : [];
 
-  // Money reads as "AED 21.3M", not a digit wall; counts stay exact.
-  const money = (value: number) =>
-    `${workspace.currency} ${new Intl.NumberFormat('en-AE', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}`;
+  // Money reads as "AED 21.3M", not a digit wall; counts stay exact. The parts
+  // are split so the code and the magnitude set small beside the figure.
+  const money = (value: number) => {
+    const parts = new Intl.NumberFormat('en-AE', { notation: 'compact', maximumFractionDigits: 1 }).formatToParts(
+      value,
+    );
+    const suffix = parts.find((part) => part.type === 'compact')?.value;
+    return (
+      <>
+        <span className="lf-figure__unit">{workspace.currency}</span>
+        {parts
+          .filter((part) => part.type !== 'compact')
+          .map((part) => part.value)
+          .join('')
+          .trim()}
+        {suffix && <span className="lf-figure__suffix">{suffix}</span>}
+      </>
+    );
+  };
+  const ratio = (value: number, of: number) => (
+    <>
+      {value}
+      <span className="lf-figure__denom">
+        <span className="lf-figure__slash">/</span>
+        {of}
+      </span>
+    </>
+  );
 
   const hour = Number(
     new Intl.DateTimeFormat('en-AE', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Dubai' }).format(new Date()),
@@ -358,11 +385,20 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
   // third time. Empty for platform staff, whose actor is labelled rather than
   // named: greeting a support session "Good morning, Platform" is nobody's name.
   const firstName = ctx.actor.id.startsWith('platform:') ? '' : ctx.actor.fullName.split(/\s+/)[0];
+  // The same wall clock as the daypart and the check-in console: the workspace
+  // timezone is free text, and an invalid zone name would throw here.
+  const clock = new Intl.DateTimeFormat('en-AE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'Asia/Dubai',
+  });
 
   /**
-   * The attention row: every queue that is somebody's overdue work, one chip
-   * each, rendered only when non-zero. Vermillion means already late; brass
-   * means waiting on you. A quiet day renders no row at all.
+   * The attention list: every queue that is somebody's overdue work, one row
+   * each, rendered only when non-zero. The count's ink is the only signal —
+   * vermillion means already late; brass means waiting on you. A quiet day
+   * renders no list at all.
    */
   const attention: { label: string; hint: string; count: number; tone: 'vermillion' | 'brass'; href: string }[] = [];
   if (sales) {
@@ -425,16 +461,16 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         label: 'Locked or disabled accounts',
         hint: 'People who cannot sign in',
         count: security[1],
-        tone: 'brass',
+        tone: 'vermillion',
         href: `/${workspace.slug}/admin/users`,
       });
   }
 
-  // The band's figures: the three or four numbers that describe the operation.
-  const bandStats: { label: string; value: string; href: string }[] = [];
+  // The figure row: the three or four numbers that describe the operation.
+  const bandStats: { label: string; value: ReactNode; href: string }[] = [];
   if (sales) {
     // The figures are scoped by the viewer's grant; the words must say so. A
-    // rep's band reads "My pipeline", a manager's "Team pipeline", an
+    // rep's row reads "My pipeline", a manager's "Team pipeline", an
     // executive's the operation — same composition, honest at every altitude.
     const lens = salesScope === 'OWN' ? 'My' : salesScope === 'ORGANIZATION' ? '' : 'Team';
     const title = (base: string) => (lens ? `${lens} ${base.toLowerCase()}` : base);
@@ -444,52 +480,72 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         value: money(Number(sales[4]._sum.amount ?? 0)),
         href: `/${workspace.slug}/sales/opportunities`,
       },
-      { label: title('Open opportunities'), value: String(sales[2]), href: `/${workspace.slug}/sales/opportunities` },
-      { label: title('Active leads'), value: String(sales[0]), href: `/${workspace.slug}/sales/leads` },
+      { label: title('Open opportunities'), value: sales[2], href: `/${workspace.slug}/sales/opportunities` },
+      { label: title('Active leads'), value: sales[0], href: `/${workspace.slug}/sales/leads` },
     );
   }
   if (!sales && calls) {
-    // The QA landing: no pipeline to report, so the band speaks call quality.
+    // The QA landing: no pipeline to report, so the row speaks call quality.
     bandStats.push(
-      { label: 'Calls today', value: String(calls[0]), href: `/${workspace.slug}/sales/calls` },
-      { label: 'Awaiting review', value: String(calls[1]), href: `/${workspace.slug}/sales/call-audits` },
-      { label: 'Average score', value: avgScore, href: `/${workspace.slug}/sales/call-audits` },
+      { label: 'Calls today', value: calls[0], href: `/${workspace.slug}/sales/calls` },
+      { label: 'Awaiting review', value: calls[1], href: `/${workspace.slug}/sales/call-audits` },
+      {
+        label: 'Average score',
+        value:
+          avgScorePct === null ? (
+            avgScore
+          ) : (
+            <>
+              {avgScorePct}
+              <span className="lf-figure__suffix">%</span>
+            </>
+          ),
+        href: `/${workspace.slug}/sales/call-audits`,
+      },
     );
   }
   if (people) {
     bandStats.push({
       label: 'Present today',
-      value: `${people[1]} / ${people[0]}`,
+      value: ratio(people[1], people[0]),
       href: `/${workspace.slug}/people/attendance`,
     });
   }
-  const isAdminView = showSubscription;
   // A seller's day leads with their own queue; an analyst or executive reads
-  // the operation first. Permission (leads EDIT) is the honest proxy.
-  const workerView = !isAdminView && can(ctx, 'leads', 'EDIT');
+  // the operation first. Permission (leads EDIT) is the honest proxy, and
+  // settings VIEW is the admin's.
+  const workerView = !can(ctx, 'settings', 'VIEW') && can(ctx, 'leads', 'EDIT');
 
   /**
    * My day, minus the rows that have nothing to say.
    *
    * All five were rendered unconditionally, so a salesperson with no leave
-   * request, no overtime, no assessment and no payslip read four tiles of "0"
-   * every morning — a panel whose only content was the absence of content.
+   * request, no overtime, no assessment and no payslip read four rows of "0"
+   * every morning — a column whose only content was the absence of content.
    * Zeros here are not information: nobody is waiting to learn they have no
    * pending overtime.
    *
    * Attendance always shows, because "Not checked in" *is* the day's state and
-   * the thing the panel's own link acts on. If nothing else has a value the
-   * panel is one row, and if attendance is the only row it still earns its
-   * place; the panel disappears entirely only when there is no employee record
-   * behind it at all.
+   * the thing the column's own link acts on — and when they have checked in,
+   * the time says when. If nothing else has a value the column is one row, and
+   * it still earns its place; the column disappears entirely only when there
+   * is no employee record behind it at all.
    */
-  const myDayPanel = mine ? (
+  const myDayColumn = mine ? (
     <Summary
-      link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
+      key="mine"
+      link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in' }}
       title="My day"
       values={(
         [
-          ['Today', mine[1]?.checkInAt ? (mine[1].checkOutAt ? 'Checked out' : 'Checked in') : 'Not checked in'],
+          [
+            'Today',
+            mine[1]?.checkInAt
+              ? mine[1].checkOutAt
+                ? `Checked out ${clock.format(mine[1].checkOutAt)}`
+                : `Checked in ${clock.format(mine[1].checkInAt)}`
+              : 'Not checked in',
+          ],
           ['My pending leave', mine[2]],
           ['My pending overtime', mine[3]],
           ['Self-assessment due', mine[4]],
@@ -498,30 +554,67 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       ).filter(([label, value]) => label === 'Today' || Number(value) > 0)}
     />
   ) : null;
+  const peopleColumn = people ? (
+    <Summary
+      key="people"
+      link={{ href: `/${workspace.slug}/people`, label: 'Open People' }}
+      title="People"
+      values={[
+        ['Total employees', people[0]],
+        ['Present today', people[1]],
+        ['Absent today', people[2]],
+        ['On leave', people[3]],
+        ['Upcoming holidays', people[4]],
+      ]}
+    />
+  ) : null;
+  // The review backlog and the average score live in the ONE AI block below;
+  // repeating them here made one count render three times on one screen.
+  const callsColumn = calls ? (
+    <Summary
+      key="calls"
+      link={{ href: `/${workspace.slug}/sales/call-audits`, label: 'Open call audits' }}
+      title="Call quality"
+      values={[
+        ['Calls today', calls[0]],
+        ['Reviewed audits', calls[2]],
+      ]}
+    />
+  ) : null;
+  // Failed sign-ins and locked accounts are attention rows, not repeated here.
+  const securityColumn = security ? (
+    <Summary
+      key="security"
+      title="Security today"
+      link={{ href: `/${workspace.slug}/admin/audit`, label: 'Open audit log' }}
+      values={[
+        ['Active accounts', security[2]],
+        ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
+        ['Audited events', security[4]],
+      ]}
+    />
+  ) : null;
+  // A representative's day leads with their own work; an administrator's or
+  // analyst's with the business. Same columns, different order.
+  const todayColumns = workerView
+    ? [myDayColumn, peopleColumn, callsColumn, securityColumn]
+    : [peopleColumn, callsColumn, myDayColumn, securityColumn];
+  const todaySection = todayColumns.some(Boolean) ? <div className="lf-today-grid">{todayColumns}</div> : null;
 
   return (
     <div className="lf-page-stack">
-      {/* The greeting: who you are and what the day holds, on the workspace's
-          own light surface. This used to be a midnight band with the figures
-          inside it; the figures are cards now, because a number a person acts
-          on belongs on the surface they act on, and the dark band is the
-          sidebar's job. */}
-      <header className="lf-dash-head">
-        <div>
-          <h1>
-            Good {daypart}
-            {firstName ? `, ${firstName}` : ''}.
-          </h1>
-          <p>Here’s what needs your attention today.</p>
-        </div>
-        <div className="lf-dash-meta">
-          {workspace.displayName}
-          {sales && salesScope !== 'ORGANIZATION' ? ` · ${salesScope === 'OWN' ? 'My' : 'Team'} view` : ''}
-        </div>
-      </header>
+      <PageHeader
+        title={`Good ${daypart}${firstName ? `, ${firstName}` : ''}.`}
+        description="Here’s what needs your attention today."
+        // The scope word is load-bearing: the same figure means three different
+        // things at OWN, TEAM and ORGANIZATION.
+        meta={`${workspace.displayName}${
+          sales && salesScope !== 'ORGANIZATION' ? ` · ${salesScope === 'OWN' ? 'My' : 'Team'} view` : ''
+        }`}
+      />
 
-      {/* The business, in three or four numbers. Each is scoped by the
-          viewer's grant, and the label says so ("My pipeline", "Team pipeline"). */}
+      {/* The business, in three or four figures on a rule. Each is scoped by
+          the viewer's grant, and the label says so ("My pipeline"). */}
       {bandStats.length > 0 && (
         <div className="lf-kpi-grid">
           {bandStats.map((stat) => (
@@ -534,12 +627,12 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
       )}
 
       {attention.length > 0 && (
-        <section className="lf-attn" aria-label="Needs attention">
+        <section className="lf-attn" aria-labelledby="dash-attention">
           <div className="lf-attn__head">
-            <h2>Needs attention</h2>
-            <span>
-              {attention.length} {attention.length === 1 ? 'queue' : 'queues'} · each opens the filtered list
-            </span>
+            <h2 className="lf-h2" id="dash-attention">
+              Needs attention
+            </h2>
+            <span>each opens the filtered list</span>
           </div>
           {attention.map((item) => (
             <Link key={item.label} className="lf-attn__row" data-tone={item.tone} href={item.href}>
@@ -547,193 +640,118 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
               <span className="lf-attn__label">{item.label}</span>
               <span className="lf-attn__hint">{item.hint}</span>
               <span className="lf-attn__go" aria-hidden="true">
-                →
+                ›
               </span>
             </Link>
           ))}
         </section>
       )}
 
-      {calls && (calls[1] > 0 || calls[2] > 0) && (
-        <AiInsight
-          label="AI insight"
-          action={
-            <Link className="lf-link" href={`/${workspace.slug}/sales/call-audits`}>
-              View call audits →
-            </Link>
-          }
-        >
-          {calls[1] > 0 && (
-            <p style={{ margin: 0 }}>
-              <strong>{calls[1]}</strong> call {calls[1] === 1 ? 'audit has' : 'audits have'} been scored by AI and{' '}
-              {calls[1] === 1 ? 'is' : 'are'} waiting for a human review.
-            </p>
-          )}
-          {calls[2] > 0 && (
-            <p style={{ margin: calls[1] > 0 ? '6px 0 0' : 0 }}>
-              Average audit score is <strong>{avgScore}</strong> across {calls[2]} reviewed{' '}
-              {calls[2] === 1 ? 'audit' : 'audits'}.
-            </p>
-          )}
-        </AiInsight>
-      )}
+      {workerView && todaySection}
 
-      {/* A representative's day leads with their own work; an administrator's
-          or analyst's with the business. Same panels, different order. */}
-      {workerView && myDayPanel}
-
-      {/* "Sales summary" stood here and repeated the page back to itself.
-          Every one of its six figures had already been read: pipeline value,
-          open opportunities and active leads in the band above, overdue
-          follow-ups, tasks due and unassigned leads in the attention chips. A
-          reader who scrolled past the band met the same numbers twice more, in
-          two more visual treatments, and had to work out whether they were
-          being told something new. They were not.
-
-          It also put two incomparable figures side by side. "Total leads" is
-          scoped by `visibilityWhere` to what this viewer may see; "Unassigned
-          leads" is tenant-wide by design — see the comment on that query. A
-          regional manager therefore read "Total leads 38" next to "Unassigned
-          leads 42" and reasonably concluded the page was broken. The unassigned
-          count keeps its own chip, where the hint says whose it is. */}
       {/* Whose work is outstanding, by name — the question a count cannot
           answer. Only rendered for a viewer whose scope reaches past their own
           records; a representative sees their own queue in My day instead. */}
       {teamFollowUps && teamFollowUps.length > 0 && (
-        <section className="lf-table-wrap" style={{ gridColumn: '1 / -1' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              gap: 'var(--lf-space-3)',
-              padding: '14px 16px 0',
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: 'var(--lf-text-md)' }}>Follow-ups across the workspace</h2>
+        <section aria-labelledby="dash-followups">
+          <div className="lf-panel__head">
+            <h2 className="lf-h2" id="dash-followups">
+              Follow-ups due
+              <span className="lf-h2__count">{teamFollowUps.length}</span>
+            </h2>
             <Link className="lf-link" href={`/${workspace.slug}/sales/follow-ups`}>
-              All follow-ups →
+              All follow-ups
             </Link>
           </div>
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Owner</th>
-                <th>Follow-up</th>
-                <th>Lead</th>
-                <th>Due</th>
-                <th>Priority</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teamFollowUps.map((row) => {
-                const overdue = row.dueAt.getTime() < Date.now();
-                return (
-                  <tr key={row.id}>
-                    <td data-label="Owner">{row.owner}</td>
-                    <td data-label="Follow-up">{row.title}</td>
-                    <td data-label="Lead">
-                      {row.leadId ? (
-                        <Link className="lf-link" href={`/${workspace.slug}/sales/leads/${row.leadId}`}>
-                          {row.lead}
-                        </Link>
-                      ) : (
-                        row.lead
-                      )}
-                    </td>
-                    <td
-                      data-label="Due"
-                      style={overdue ? { color: 'var(--lf-vermillion)', fontWeight: 600 } : undefined}
-                    >
-                      {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
-                      {overdue ? ' · overdue' : ''}
-                    </td>
-                    <td data-label="Priority">{row.priority.toLowerCase()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="lf-table-wrap">
+            <table className="lf-table">
+              <thead>
+                <tr>
+                  <th>Owner</th>
+                  <th>Follow-up</th>
+                  <th>Lead</th>
+                  <th>Due</th>
+                  <th>Priority</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamFollowUps.map((row) => {
+                  const overdue = row.dueAt.getTime() < Date.now();
+                  return (
+                    <tr key={row.id}>
+                      <td data-label="Owner">{row.owner}</td>
+                      <td data-label="Follow-up">{row.title}</td>
+                      <td data-label="Lead">
+                        {row.leadId ? (
+                          <Link className="lf-link" href={`/${workspace.slug}/sales/leads/${row.leadId}`}>
+                            {row.lead}
+                          </Link>
+                        ) : (
+                          row.lead
+                        )}
+                      </td>
+                      {/* The word carries "overdue"; the ink only underlines it. */}
+                      <td data-label="Due" className={overdue ? 'lf-due--overdue' : undefined}>
+                        {row.dueAt.toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
+                        {overdue && <span className="lf-due__word">Overdue</span>}
+                      </td>
+                      <td data-label="Priority">
+                        <span className="lf-badge">{sentence(row.priority)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
-      <div className="lf-panel-duo">
-        {people && (
-          <Summary
-            link={{ href: `/${workspace.slug}/people`, label: 'Open People →' }}
-            title="People summary"
-            values={[
-              ['Total employees', people[0]],
-              ['Present today', people[1]],
-              ['Absent today', people[2]],
-              ['On leave', people[3]],
-              ['Pending approvals', people[4]],
-              ['Upcoming holidays', people[5]],
-            ]}
-          />
-        )}
-        {calls && (
-          <Summary
-            link={{ href: `/${workspace.slug}/sales/call-audits`, label: 'Open call audits →' }}
-            title="Call quality"
-            values={[
-              ['Calls today', calls[0]],
-              ['Audits awaiting review', calls[1]],
-              ['Reviewed audits', calls[2]],
-              ['Average audit score', avgScore],
-            ]}
-          />
-        )}
-        {!workerView && myDayPanel}
 
-        {showSubscription && (
-          <Summary
-            title="Subscription"
-            values={[
-              ['Current plan', workspace.subscription?.plan.name ?? workspace.planCode],
-              ['Enabled modules', [...modules].join(' + ')],
-              ['Users', `${workspace._count.memberships} / ${workspace.maxUsers ?? '∞'}`],
-              ['Employees', `${workspace._count.employeeProfiles} / ${workspace.maxEmployees ?? '∞'}`],
-              ['Status', workspace.subscription?.state ?? 'NONE'],
-              [
-                'Trial / renewal',
-                workspace.trialEndsAt?.toLocaleDateString('en-AE') ??
-                  workspace.subscription?.currentPeriodEnd?.toLocaleDateString('en-AE') ??
-                  'Not set',
-              ],
-            ]}
-          />
-        )}
-        {security && (
-          <Summary
-            title="Security today"
-            link={{ href: `/${workspace.slug}/admin/audit`, label: 'Open audit log →' }}
-            values={[
-              ['Failed sign-ins', security[0]],
-              ['Locked or disabled', security[1]],
-              ['Active accounts', security[2]],
-              ['Two-factor coverage', security[2] ? `${Math.round((security[3] / security[2]) * 100)}%` : '—'],
-              ['Audited events', security[4]],
-            ]}
-          />
-        )}
-      </div>
+      {!workerView && todaySection}
 
-      {!people && !sales && !mine && !security && !showSubscription && (
-        <p style={{ color: 'var(--lf-ink-3)' }}>
-          Nothing to show here yet. Use the navigation to reach the areas you have access to.
-        </p>
+      {calls && (calls[1] > 0 || calls[2] > 0) && (
+        <AiInsight
+          label="ONE AI"
+          action={
+            <Link className="lf-ai-actionlink" href={`/${workspace.slug}/sales/call-audits`}>
+              View call audits
+            </Link>
+          }
+        >
+          {calls[1] > 0 && (
+            <>
+              <strong>{calls[1]}</strong> call {calls[1] === 1 ? 'audit has' : 'audits have'} been scored by AI and{' '}
+              {calls[1] === 1 ? 'is' : 'are'} waiting for a human review.
+            </>
+          )}
+          {calls[1] > 0 && calls[2] > 0 && ' '}
+          {calls[2] > 0 && (
+            <>
+              Average audit score is <strong>{avgScore}</strong> across {calls[2]} reviewed{' '}
+              {calls[2] === 1 ? 'audit' : 'audits'}.
+            </>
+          )}
+        </AiInsight>
+      )}
+
+      {!people && !sales && !mine && !security && !calls && (
+        <EmptyState
+          title="Nothing to show here yet"
+          description="Use the navigation to reach the areas you have access to."
+        />
       )}
     </div>
   );
 }
 
+/** "URGENT" → "Urgent": the enum is storage, not copy. */
+function sentence(value: string) {
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
 /**
- * One dashboard panel: a title, an optional link, and a key/value list.
- *
- * This used to render each value as a metric tile — "Absent today: 0" in a
- * 28px numeral inside its own bordered card, six to a panel. A number is not
- * more important for being larger, and a wall of zeros is not information. A
- * list reads top to bottom in one glance and takes a third of the height.
+ * One Today column: a heading, an optional link, and a key/value list on
+ * hairlines. No box — a list of counts is a section, not an object.
  */
 function Summary({
   title,
@@ -745,15 +763,13 @@ function Summary({
   link?: { href: string; label: string };
 }) {
   return (
-    <section className="lf-panel">
-      <div className="lf-panel__head">
-        <h2>{title}</h2>
-        {link && (
-          <Link className="lf-link" href={link.href}>
-            {link.label}
-          </Link>
-        )}
-      </div>
+    <section>
+      <h2 className="lf-h2">{title}</h2>
+      {link && (
+        <Link className="lf-link lf-today__link" href={link.href}>
+          {link.label}
+        </Link>
+      )}
       <dl className="lf-kv">
         {values.map(([label, value]) => (
           <div key={label}>

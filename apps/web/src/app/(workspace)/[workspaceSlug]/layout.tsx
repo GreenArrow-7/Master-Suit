@@ -16,7 +16,16 @@ import CommandPalette from '@/components/nav/CommandPalette';
 
 export const dynamic = 'force-dynamic';
 
-/** Every permission module the workspace navigation can gate an item on. */
+/**
+ * Every permission module the workspace navigation can gate an item on.
+ *
+ * A key missing here is a nav item that can never render: `permitted` is this
+ * list filtered by VIEW, and itemAllowed() drops any item naming a key that is
+ * not in it — from the rail and from ⌘K alike. Thirteen keys were absent while
+ * the pages behind them asserted those exact keys server-side, so thirteen
+ * entries were dead in every workspace. When workspaceNav.ts gains a
+ * permission, it gains a line here.
+ */
 const PERMISSION_KEYS = [
   'leads',
   'opportunities',
@@ -38,6 +47,18 @@ const PERMISSION_KEYS = [
   'reports',
   'dashboards',
   'smartviews',
+  'commissions',
+  'commissionslabs',
+  'visits',
+  'projects',
+  'listings',
+  'requirements',
+  'clientprofiles',
+  'testimonials',
+  'referrals',
+  'allocation',
+  'posts',
+  'contests',
   'users',
   'roles',
   'settings',
@@ -48,6 +69,7 @@ const PERMISSION_KEYS = [
   'leave',
   'attendance',
   'hr_documents',
+  'payroll',
 ];
 
 export default async function WorkspaceLayout({
@@ -114,15 +136,20 @@ export default async function WorkspaceLayout({
             readOnly={shell.supportReadOnly}
           />
         )}
+        {/* The same model as the rail, so the phone app bar names the page the
+            rail lights. */}
         <WorkspaceTopBar
           slug={shell.slug}
-          workspaceName={shell.displayName}
-          plan={shell.plan}
+          modules={shell.modules}
+          permitted={shell.permitted}
+          serviceMode={shell.serviceMode}
           creatable={shell.creatable}
         />
         <main className="lf-page-main">{children}</main>
-        {/* Phone-tier primary navigation; hidden by CSS above it. */}
-        <MobileTabBar slug={shell.slug} module={shell.modules.includes('SALES') ? 'sales' : 'people'} />
+        {/* Phone-tier primary navigation; hidden by CSS above it. It reads the
+            module off the path itself; the entitlements are only the fallback
+            for pages outside either module. */}
+        <MobileTabBar slug={shell.slug} modules={shell.modules} />
       </div>
       <AssistantWidget slug={shell.slug} />
       {/* ⌘K. Same navigation model as the rail, so it can only offer what the
@@ -213,7 +240,6 @@ async function loadShell(workspaceSlug: string) {
         ctx.passwordChangedAt !== undefined
           ? passwordExpired(ctx.passwordChangedAt, await passwordPolicy(workspace.id))
           : false,
-      plan: workspace.subscription?.plan.name ?? workspace.planCode,
       modules,
       availableWorkspaces:
         memberships.length > 0

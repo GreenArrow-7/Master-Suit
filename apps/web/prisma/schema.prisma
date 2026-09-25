@@ -512,6 +512,7 @@ model Tenant {
   leadScoreHistories         LeadScoreHistory[]
   leadStages                 LeadStage[]
   leadStageHistories         LeadStageHistory[]
+  leadSubStatuses            LeadSubStatus[]
   leadTags                   LeadTag[]
   listings                   Listing[]
   listingMedias              ListingMedia[]
@@ -2940,13 +2941,51 @@ model LeadStage {
   updatedById       String?
   deletedAt         DateTime?
 
-  leads Lead[]
+  leads       Lead[]
+  subStatuses LeadSubStatus[]
 
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   metaRoutings MetaLeadFormRouting[]
 
   @@unique([tenantId, key])
   @@index([tenantId, position])
+}
+
+/// The reason a lead is sitting where it is sitting.
+///
+/// A stage says what the pipeline thinks; a sub-status says why nothing has
+/// moved. "Pending" is four different situations — the phone is off, the budget
+/// is short, the client is abroad until March, the spouse has to see it first —
+/// and a pipeline that cannot tell them apart produces a "Pending" column that
+/// means nothing and a follow-up queue nobody trusts.
+///
+/// Deliberately a separate table rather than a self-relation on LeadStage: the
+/// fifteen places that list stages for a pipeline would each have had to grow a
+/// `parentId: null` filter, and the one that was forgotten would have shown
+/// sub-statuses as columns. Nothing that reads stages today changes.
+model LeadSubStatus {
+  id       String @id @default(cuid())
+  tenantId String
+  stageId  String
+  key      String
+  name     String
+  position Int    @default(0)
+  /// Terminal sub-statuses ("Not Interested → budget too low") must say why.
+  /// Enforced by the API, not the column, because the requirement is per-tenant.
+  requiresReason Boolean @default(false)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  stage  LeadStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  leads  Lead[]
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, stageId, key])
+  @@index([tenantId, stageId, position])
 }
 
 model Lead {
@@ -2979,6 +3018,7 @@ model Lead {
   campaignId            String?
   productInterestId     String?
   stageId               String
+  subStatusId           String?
   status                String?
   score                 Int           @default(0)
   grade                 String?
@@ -3018,6 +3058,7 @@ model Lead {
   deletedAt             DateTime?
 
   stage          LeadStage               @relation(fields: [stageId], references: [id])
+  subStatus      LeadSubStatus?          @relation(fields: [subStatusId], references: [id])
   owner          User?                   @relation("LeadOwner", fields: [ownerId], references: [id])
   account        Account?                @relation(fields: [accountId], references: [id])
   campaign       Campaign?               @relation(fields: [campaignId], references: [id])
@@ -3053,6 +3094,7 @@ model Lead {
   @@index([tenantId, ownerId, updatedAt(sort: Desc)])
   @@index([accountId])
   @@index([campaignId])
+  @@index([subStatusId])
 }
 
 model LeadCustomFieldDefinition {

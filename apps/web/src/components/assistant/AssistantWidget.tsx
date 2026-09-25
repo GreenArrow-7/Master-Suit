@@ -37,8 +37,12 @@ interface Msg {
   error?: string;
 }
 
-const STORAGE_KEY = 'manath-ai-chat';
-const OFFLINE = 'AI Assistant is temporarily unavailable. Your CRM data and other features are still available.';
+const STORAGE_KEY = 'youhan-ai-chat';
+/** The pre-rename key, read once so an in-flight conversation survives the deploy. */
+const LEGACY_STORAGE_KEY = 'manath-ai-chat';
+/** Fired by the top bar's "Ask ONE AI" button and the command palette. */
+const OPEN_EVENT = 'lf:open-ai';
+const OFFLINE = `${ASSISTANT_NAME} is temporarily unavailable. Your CRM data and other features are still available.`;
 
 const SINGULAR: Record<string, EntityType> = {
   leads: 'lead',
@@ -48,13 +52,12 @@ const SINGULAR: Record<string, EntityType> = {
   calls: 'call',
 };
 
+/** At most four are ever shown; the lead set replaces, not extends, the globals. */
 const GLOBAL_SUGGESTIONS = [
   'What should I focus on today?',
   'Show my overdue follow-ups',
   'Which leads have breached SLA?',
   'Show my hottest leads',
-  'What opportunities close this month?',
-  'Summarize my latest recorded call',
 ];
 
 const LEAD_SUGGESTIONS = [
@@ -104,7 +107,9 @@ function Markdown({ text }: { text: string }) {
 function loadStored(): Msg[] {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed: unknown = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '[]');
+    const raw = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    const parsed: unknown = JSON.parse(raw ?? '[]');
     return Array.isArray(parsed) ? (parsed as Msg[]) : [];
   } catch {
     return [];
@@ -133,6 +138,13 @@ export default function AssistantWidget({ slug }: { slug: string }) {
       /* storage full or unavailable — chat still works */
     }
   }, [messages]);
+
+  // The panel has no control of its own: it opens from the top bar and ⌘K.
+  useEffect(() => {
+    const openPanel = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, openPanel);
+    return () => window.removeEventListener(OPEN_EVENT, openPanel);
+  }, []);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -276,37 +288,21 @@ export default function AssistantWidget({ slug }: { slug: string }) {
     }
   }
 
-  const suggestions =
-    context?.entityType === 'lead' ? [...LEAD_SUGGESTIONS, ...GLOBAL_SUGGESTIONS] : GLOBAL_SUGGESTIONS;
+  const suggestions = context?.entityType === 'lead' ? LEAD_SUGGESTIONS : GLOBAL_SUGGESTIONS;
 
-  if (!open)
-    return (
-      <button type="button" className="lf-ai-fab" aria-label={`Open ${ASSISTANT_NAME}`} onClick={() => setOpen(true)}>
-        {/* The intelligence node: a cyan point with a ring around it, drawn
-            rather than set as a glyph so it is the same mark at any size and
-            does not depend on an emoji font. */}
-        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-          <circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="1.25" />
-          <circle cx="10" cy="10" r="3.25" fill="currentColor" />
-        </svg>
-      </button>
-    );
+  if (!open) return null;
 
   return (
     <div className="lf-ai-panel" role="dialog" aria-label={ASSISTANT_NAME}>
       <div className="lf-ai-head">
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <strong className="lf-ai-title">{ASSISTANT_NAME}</strong>
-            {context && (
-              <span className="lf-badge" data-tone="wine">
-                Viewing: {context.entityType}
-              </span>
-            )}
+        <div className="lf-ai-head__text">
+          <div className="lf-ai-head__row">
+            <span className="lf-ai-title">{ASSISTANT_NAME}</span>
+            {context && <span className="lf-ai-context">Viewing: {context.entityType}</span>}
           </div>
-          <div className="lf-ai-subtitle">{ASSISTANT_TAGLINE}</div>
+          <span className="lf-ai-subtitle">{ASSISTANT_TAGLINE}</span>
         </div>
-        <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm" onClick={newChat} aria-label="New chat">
+        <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm" onClick={newChat}>
           New chat
         </button>
         <button
@@ -315,7 +311,9 @@ export default function AssistantWidget({ slug }: { slug: string }) {
           onClick={() => setOpen(false)}
           aria-label={`Close ${ASSISTANT_NAME}`}
         >
-          ×
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
 
@@ -330,6 +328,7 @@ export default function AssistantWidget({ slug }: { slug: string }) {
             ))}
           </div>
         )}
+        {/* The speaker labels ("You" / "ONE AI") are drawn by CSS from data-role. */}
         {messages.map((msg, msgIdx) => (
           <div key={msgIdx} className="lf-ai-msg" data-role={msg.role}>
             {msg.role === 'user' ? msg.content : <Markdown text={msg.content} />}
@@ -356,7 +355,7 @@ export default function AssistantWidget({ slug }: { slug: string }) {
               <div key={actIdx} className="lf-ai-action">
                 <span>{action.spec.label}</span>
                 {action.state === 'pending' || action.state === 'busy' ? (
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="lf-ai-action__btns">
                     <button
                       type="button"
                       className="lf-btn lf-btn--sm"
@@ -367,7 +366,7 @@ export default function AssistantWidget({ slug }: { slug: string }) {
                     </button>
                     <button
                       type="button"
-                      className="lf-btn lf-btn--secondary lf-btn--sm"
+                      className="lf-btn lf-btn--ghost lf-btn--sm"
                       disabled={action.state === 'busy'}
                       onClick={() =>
                         patch(msgIdx, (m) => ({
@@ -379,19 +378,17 @@ export default function AssistantWidget({ slug }: { slug: string }) {
                       Cancel
                     </button>
                   </div>
-                ) : action.state === 'done' ? (
-                  <span style={{ color: 'var(--lf-viridian)', fontWeight: 600 }}>Done ✓</span>
-                ) : action.state === 'cancelled' ? (
-                  <span style={{ color: 'var(--lf-ink-3)' }}>Cancelled</span>
                 ) : (
-                  <span style={{ color: 'var(--lf-vermillion)' }}>{action.detail}</span>
+                  <span className="lf-ai-action__state" data-state={action.state}>
+                    {action.state === 'done' ? 'Done' : action.state === 'cancelled' ? 'Cancelled' : action.detail}
+                  </span>
                 )}
               </div>
             ))}
             {msg.error && (
               <div className="lf-ai-error">
                 <span>{msg.error}</span>
-                <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={retry}>
+                <button type="button" className="lf-linkbtn" onClick={retry}>
                   Retry
                 </button>
               </div>
@@ -420,12 +417,21 @@ export default function AssistantWidget({ slug }: { slug: string }) {
         />
         <button
           type="button"
-          className="lf-btn"
+          className="lf-btn lf-ai-send"
           disabled={streaming || !draft.trim()}
           onClick={() => send(draft)}
           aria-label="Send message"
         >
-          Send
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path
+              d="M8 13V3M3.5 7.5 8 3l4.5 4.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       </div>
     </div>
