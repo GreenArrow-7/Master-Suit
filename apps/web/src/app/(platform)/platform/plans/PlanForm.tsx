@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 export default function PlanForm() {
   const router = useRouter();
@@ -83,13 +84,12 @@ export default function PlanForm() {
       </div>
       <fieldset style={{ border: '1px solid var(--lf-line)', borderRadius: 8, padding: 'var(--lf-space-4)' }}>
         <legend className="lf-label">Included modules</legend>
-        <div style={{ display: 'flex', gap: 'var(--lf-space-5)' }}>
-          <label>
-            <input type="checkbox" name="modules" value="HRMS" defaultChecked /> People / HRMS
-          </label>
-          <label>
-            <input type="checkbox" name="modules" value="SALES" defaultChecked /> Sales CRM
-          </label>
+        <div style={{ display: 'flex', gap: 'var(--lf-space-5)', flexWrap: 'wrap' }}>
+          {PRODUCT_MODULE_CHOICES.map((module) => (
+            <label key={module.value}>
+              <input type="checkbox" name="modules" value={module.value} defaultChecked /> {module.label}
+            </label>
+          ))}
         </div>
       </fieldset>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--lf-space-4)' }}>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 const steps = ['Company details', 'Administrator', 'Subscription', 'Modules', 'Review'];
 
@@ -225,18 +226,15 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
           description="Choose the products this workspace can access. Entitlements are enforced server-side."
         />
         <div className="lf-form-grid">
-          <ModuleChoice
-            name="enabledModules"
-            value="SALES"
-            title="Sales"
-            description="Leads, opportunities, accounts, activities, campaigns and reporting."
-          />
-          <ModuleChoice
-            name="enabledModules"
-            value="HRMS"
-            title="People / HRMS"
-            description="Employees, attendance, leave, shifts, documents and organisation."
-          />
+          {PRODUCT_MODULE_CHOICES.map((module) => (
+            <ModuleChoice
+              key={module.value}
+              name="enabledModules"
+              value={module.value}
+              title={module.label}
+              description={module.description}
+            />
+          ))}
         </div>
         <StepActions step={step} onMove={move} />
       </section>

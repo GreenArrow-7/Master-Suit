@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { activeModule } from '@/lib/nav/workspaceNav';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 /**
  * One product module, four declarations, and nothing making them agree.
@@ -66,6 +67,49 @@ describe('the product module list does not drift', () => {
   it("the navigation's Module union matches ModuleKey", () => {
     const declared = tsUnion(nav, /type Module = ([^;]+);/);
     expect([...declared].sort()).toEqual([...schemaModules].sort());
+  });
+});
+
+describe('every module can actually be sold and enabled', () => {
+  /**
+   * The gap this exists for.
+   *
+   * REAL_ESTATE was added to the schema, the entitlement union, the navigation
+   * and the routes — and the three platform screens that offer modules each
+   * carried their own hand-typed pair. So the plan form offered two checkboxes,
+   * no plan could include Real Estate, no workspace could be entitled to it, and
+   * the module was unreachable in production despite being deployed. Nothing
+   * threw; the checkbox was simply absent.
+   *
+   * A module in the schema that nobody can buy is not shipped, so this is
+   * checked with the same weight as the type-level lists above.
+   */
+  it('the choice catalogue offers exactly the modules the schema defines', () => {
+    const offered = PRODUCT_MODULE_CHOICES.map((choice) => choice.value);
+    expect([...offered].sort()).toEqual([...schemaModules].sort());
+  });
+
+  it('every choice is labelled and described', () => {
+    for (const choice of PRODUCT_MODULE_CHOICES) {
+      expect(choice.label.trim().length, `${choice.value} has no label`).toBeGreaterThan(0);
+      expect(choice.description.trim().length, `${choice.value} has no description`).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The three screens must read the catalogue rather than restate it. A fourth
+   * hand-typed list is exactly how this broke the first time.
+   */
+  it.each([
+    'src/app/(platform)/platform/plans/PlanForm.tsx',
+    'src/app/(platform)/platform/workspaces/new/NewWorkspaceForm.tsx',
+    'src/app/(platform)/platform/workspaces/[workspaceId]/WorkspaceEditForm.tsx',
+  ])('%s reads the catalogue instead of listing modules itself', (file) => {
+    const source = read(file);
+    expect(source).toContain('PRODUCT_MODULE_CHOICES');
+    // No literal module keys left behind in the markup.
+    expect(source).not.toMatch(/value="(HRMS|SALES|REAL_ESTATE)"/);
+    expect(source).not.toMatch(/\['(HRMS|SALES)',/);
   });
 });
 
