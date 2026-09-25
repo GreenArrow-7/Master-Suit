@@ -1,4 +1,5 @@
 import { permanentRedirect } from 'next/navigation';
+import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 
 export const metadata = { title: 'Check in' };
 
@@ -16,10 +17,14 @@ export const metadata = { title: 'Check in' };
  * history and on their home screens. Permanent, so those are corrected rather
  * than followed for ever.
  *
- * Reachable only by a workspace with HRMS — the layout above still decides that,
- * and for anyone else the new address is what every link now points at.
+ * The session is resolved before redirecting even though nothing is disclosed
+ * here. A page that skips the check is a page the next person copies, and
+ * tests/permission/page-access.spec.ts is right to refuse one — bouncing a
+ * signed-out visitor to the sign-in page is also simply better than bouncing
+ * them to a workspace URL that will bounce them again.
  */
 export default async function MovedCheckInPage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
+  await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
   permanentRedirect(`/${workspaceSlug}/check-in`);
 }
