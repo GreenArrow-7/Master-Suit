@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 interface Plan {
   code: string;
@@ -141,10 +142,7 @@ export default function WorkspaceEditForm({
           <legend className="lf-label" style={{ padding: 0 }}>
             Modules
           </legend>
-          {[
-            ['HRMS', 'People'],
-            ['SALES', 'Sales CRM'],
-          ].map(([value, label]) => (
+          {PRODUCT_MODULE_CHOICES.map(({ value, label }) => (
             <label key={value} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
               <input type="checkbox" checked={values.modules.includes(value)} onChange={() => toggleModule(value)} />
               {label}
