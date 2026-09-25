@@ -56,10 +56,10 @@ export default function PortalFeeds({ portals }: { portals: FeedView[] }) {
 
   return (
     <section style={{ display: 'grid', gap: 'var(--lf-space-4)', marginBottom: 'var(--lf-space-5)' }}>
-      <p style={{ margin: 0, color: 'var(--lf-muted)' }}>
-        The portals collect listings from an address you give them rather than accepting a push, so
-        nothing appears the moment you publish it — they fetch on their own schedule, usually every few
-        hours. Give each portal its own address, and never the same one twice.
+      <p style={{ margin: 0, color: 'var(--lf-ink-3)' }}>
+        The portals collect listings from an address you give them rather than accepting a push, so nothing appears the
+        moment you publish it — they fetch on their own schedule, usually every few hours. Give each portal its own
+        address, and never the same one twice.
       </p>
 
       {note && <p style={{ margin: 0, color: 'var(--lf-viridian, #0E7C66)' }}>{note}</p>}
@@ -76,13 +76,13 @@ export default function PortalFeeds({ portals }: { portals: FeedView[] }) {
             <span
               style={{
                 fontSize: 'var(--lf-text-xs)',
-                color: feed.isActive ? 'var(--lf-viridian, #0E7C66)' : 'var(--lf-muted)',
+                color: feed.isActive ? 'var(--lf-viridian, #0E7C66)' : 'var(--lf-ink-3)',
               }}
             >
               {feed.isActive ? 'live' : 'off'}
             </span>
             {feed.lastBuiltAt && (
-              <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-muted)' }}>
+              <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
                 last built {new Date(feed.lastBuiltAt).toLocaleString('en-GB')} · {feed.lastItemCount}{' '}
                 {feed.lastItemCount === 1 ? 'listing' : 'listings'}
               </span>

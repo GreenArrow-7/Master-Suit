@@ -955,6 +955,10 @@ model OrganizationSetting {
   accentColor          String   @default("#0E7C66")
   emailFromName        String?
   emailFromAddress     String?
+  /// The agency's broker registration number — ORN in Dubai, and the
+  /// equivalent elsewhere. Portal feeds carry it at the agency level, and a
+  /// feed without one is refused by some of them.
+  reraOrn              String?
   defaultTimezone      String   @default("Asia/Dubai")
   defaultLocale        String   @default("en-AE")
   defaultCurrency      String   @default("AED")

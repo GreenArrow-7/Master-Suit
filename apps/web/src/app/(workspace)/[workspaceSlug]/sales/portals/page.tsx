@@ -78,8 +78,7 @@ export default async function PortalsPage() {
 
     // Checked against the strictest portal it is actually on, so the warning
     // matches what will happen rather than a worst case it never meets.
-    const strictest: PortalKey =
-      published.find((portal) => portal !== 'WEBSITE') ?? published[0] ?? 'WEBSITE';
+    const strictest: PortalKey = published.find((portal) => portal !== 'WEBSITE') ?? published[0] ?? 'WEBSITE';
 
     return {
       id: listing.id,
@@ -89,9 +88,7 @@ export default async function PortalsPage() {
       community: listing.micromarket?.name ?? null,
       published,
       problems:
-        published.length > 0
-          ? problemsWith({ ...listing, owner: null } as unknown as FeedListing, strictest)
-          : [],
+        published.length > 0 ? problemsWith({ ...listing, owner: null } as unknown as FeedListing, strictest) : [],
     };
   });
 
@@ -144,14 +141,14 @@ export default async function PortalsPage() {
                 <tr key={row.id}>
                   <td>
                     <a href={`../listings/${row.id}`}>{row.title}</a>
-                    <span style={{ display: 'block', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-muted)' }}>
+                    <span style={{ display: 'block', fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
                       {row.reference}
                       {row.community ? ` · ${row.community}` : ''} · {row.status.toLowerCase()}
                     </span>
                   </td>
                   <td>
                     {row.published.length === 0 ? (
-                      <span style={{ color: 'var(--lf-muted)' }}>—</span>
+                      <span style={{ color: 'var(--lf-ink-3)' }}>—</span>
                     ) : (
                       row.published.map((portal) => (
                         <Badge key={portal} tone="slate">
@@ -164,7 +161,7 @@ export default async function PortalsPage() {
                     {row.problems.length > 0 ? (
                       <span style={{ color: 'var(--lf-vermillion, #B3261E)' }}>{row.problems.join('; ')}</span>
                     ) : (
-                      <span style={{ color: 'var(--lf-muted)' }}>—</span>
+                      <span style={{ color: 'var(--lf-ink-3)' }}>—</span>
                     )}
                   </td>
                 </tr>
