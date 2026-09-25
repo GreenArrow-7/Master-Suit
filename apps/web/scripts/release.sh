@@ -273,6 +273,37 @@ fi
 # Before the new image starts, which is correct for additive migrations and
 # unsafe for a drop or rename — the old container is still serving during it.
 # On production this is also the staging-first gate (scripts/check-staging-first.mjs).
+#
+# ── Built immediately before it runs, and never assumed ─────────────────────
+#
+# `migrate` carries `profiles: ['tools']`, so `${DC} build` above does not build
+# it: Compose only builds services whose profile is active. `run --rm migrate`
+# then started whatever `<project>-migrate:latest` happened to be lying around —
+# the image from the *previous* release, holding that release's
+# `prisma/migrations`.
+#
+# On 2026-09-25 that shipped a release to production whose two migrations were
+# never applied: the runner reported "87 migrations found in prisma/migrations"
+# while the tree it was deploying had 89, concluded "No pending migrations to
+# apply", and exited 0. The deploy looked clean and left new code running on the
+# old schema until it was rolled back.
+#
+# It fails silently in the worst possible direction — a *stale* image finds
+# fewer migrations than exist, so the gate has nothing to refuse and reports
+# success. Nothing downstream can tell that apart from a genuinely up-to-date
+# database.
+#
+# The promotion path made it worse: when the web image already exists nothing is
+# built at all, so the migrate image could be arbitrarily old.
+#
+# Unlike web and worker, this image is not tagged by commit — it is a throwaway
+# runner, and the migrations it must apply are read from the working tree, which
+# the check above has already proven equals ${TAG}. So the fix is to build it
+# here, every time, immediately before running it. It is a cached no-op when the
+# tree has not moved, and it cannot be stale when it has.
+say 'building the migration runner from the deployed tree ...'
+${DC} --profile tools build migrate
+
 say 'running migrations ...'
 ${DC} --profile tools run --rm migrate
 
