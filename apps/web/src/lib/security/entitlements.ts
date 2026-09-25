@@ -3,7 +3,7 @@ import { prisma } from '../db';
 import { cached, redis } from '../redis';
 import { Forbidden } from '../errors';
 
-export type ProductModule = 'HRMS' | 'SALES' | 'REALESTATE';
+export type ProductModule = 'HRMS' | 'SALES';
 
 /**
  * Every module, so invalidation can name its keys instead of searching for them.
@@ -14,7 +14,7 @@ export type ProductModule = 'HRMS' | 'SALES' | 'REALESTATE';
  * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
  * list that has to be kept in step by hand eventually is not.
  */
-const PRODUCT_MODULES = ['HRMS', 'SALES', 'REALESTATE'] as const satisfies readonly ProductModule[];
+const PRODUCT_MODULES = ['HRMS', 'SALES'] as const satisfies readonly ProductModule[];
 
 /**
  * What a workspace is told when it reaches for a module it does not have.
@@ -26,7 +26,6 @@ const PRODUCT_MODULES = ['HRMS', 'SALES', 'REALESTATE'] as const satisfies reado
 const MODULE_LABEL: Record<ProductModule, string> = {
   HRMS: 'HR',
   SALES: 'Sales',
-  REALESTATE: 'Real Estate',
 };
 
 /**

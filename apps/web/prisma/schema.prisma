@@ -583,8 +583,14 @@ model Tenant {
 enum ModuleKey {
   HRMS
   SALES
-  /// Real estate: property inventory, bookings and the brokerage-specific
-  /// workflow layered on top of Sales' leads rather than beside them.
+  /// Reserved, and deliberately not licensable.
+  ///
+  /// Added when real estate was going to be a module of its own, before it
+  /// turned out Sales already carries projects, units, listings, mandates,
+  /// bookings and commission. It is left here only because Postgres cannot
+  /// drop an enum value without recreating a type four tables depend on, and
+  /// that is not a trade worth making to tidy up a value nothing reads.
+  /// `PRODUCT_MODULES` in lib/security/entitlements.ts is the licensable list.
   REALESTATE
 }
 

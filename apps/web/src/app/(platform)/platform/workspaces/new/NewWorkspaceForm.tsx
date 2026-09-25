@@ -229,12 +229,6 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
             title="People / HRMS"
             description="Employees, attendance, leave, shifts, documents and organisation."
           />
-          <ModuleChoice
-            name="enabledModules"
-            value="REALESTATE"
-            title="Real Estate"
-            description="Projects, units and listings, bookings and commission, proposals and portal feeds."
-          />
         </div>
         <StepActions step={step} onMove={move} />
       </section>
