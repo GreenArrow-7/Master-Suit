@@ -14,7 +14,14 @@ interface HrEventJob {
   body: string;
 }
 
-interface HrEventPushJob {
+/**
+ * A push about a record, whoever raised it.
+ *
+ * Nothing in this payload was ever HR-specific — it is a title, a body, some
+ * recipients and a record to open — so the CRM side raises the same job rather
+ * than growing a parallel one that would drift from it.
+ */
+interface RecordPushJob {
   tenantId: string;
   userIds: string[];
   title: string;
@@ -37,7 +44,7 @@ interface HrEventPushJob {
  * notification list, which is a worse destination than the record and a much
  * better one than nothing.
  */
-async function pushHrEvent(data: HrEventPushJob) {
+async function pushRecord(data: RecordPushJob) {
   if (!pushConfigured()) return { pushed: 0 };
 
   const [devices, tenant] = await Promise.all([
@@ -80,9 +87,12 @@ export function startNotificationsWorker() {
   return new Worker(
     'notifications',
     async (job) => {
-      if (job.name === 'hr-event-push') {
+      // `hr-event-push` is the name this job had when only HR raised it. Still
+      // accepted, because jobs queued under the old name may be mid-flight
+      // across a deploy and an unknown name would drop them silently.
+      if (job.name === 'record-push' || job.name === 'hr-event-push') {
         try {
-          return await pushHrEvent(job.data as HrEventPushJob);
+          return await pushRecord(job.data as RecordPushJob);
         } catch (error) {
           // Swallowed, not rethrown: a retry would re-ring the phones that did
           // receive it, and there is no delivery stamp to filter them out.

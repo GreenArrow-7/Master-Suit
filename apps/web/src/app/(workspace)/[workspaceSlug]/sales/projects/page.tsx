@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { columnsFor } from '@/lib/grid/resolve';
@@ -29,7 +30,7 @@ export default async function ProjectsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const raw = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['projects', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['projects', 'VIEW'] });
 
   // Unparseable filters fall back to none rather than throwing: a hand-edited
   // URL should show the catalogue, not an error page.

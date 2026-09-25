@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -34,7 +35,7 @@ const money = (amount: { toString(): string }, currency: string) =>
  */
 export default async function CommissionsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['commissions', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['commissions', 'VIEW'] });
   const view = params.view === 'payouts' ? 'payouts' : 'earnings';
 
   // Commissions and payouts are somebody's earnings, so they scope on userId

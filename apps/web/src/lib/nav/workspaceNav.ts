@@ -39,7 +39,7 @@ export type IconName =
   | 'settings'
   | 'shield';
 
-type Module = 'SALES' | 'HRMS';
+type Module = 'SALES' | 'HRMS' | 'REAL_ESTATE';
 
 /**
  * Who a People screen is for. The HR screens serve both an employee and HR from
@@ -116,8 +116,10 @@ function definitions(slug: string): SectionDef[] {
   const s = (path: string) => `/${slug}/sales${path}`;
   const p = (path: string) => `/${slug}/people${path}`;
   const a = (path: string) => `/${slug}/admin${path}`;
+  const r = (path: string) => `/${slug}/realty${path}`;
   const S = 'SALES' as const;
   const H = 'HRMS' as const;
+  const R = 'REAL_ESTATE' as const;
 
   return [
     {
@@ -281,6 +283,192 @@ function definitions(slug: string): SectionDef[] {
               permission: 'reports',
               module: S,
               keywords: 'daily targets board leads called today productivity',
+            },
+          ],
+        },
+      ],
+    },
+    /**
+     * Real Estate: a brokerage experience, not a second CRM.
+     *
+     * Every tab here is gated on `module: R`, so the whole section disappears
+     * for a workspace without the entitlement — and the routes refuse
+     * independently, because hiding a link is not authorisation.
+     *
+     * The permissions are the *existing* ones (`leads`, `visits`, `calls`,
+     * `projects`, `listings`, `reports`). These screens read the same
+     * authoritative rows Sales reads; a parallel set of permissions over the
+     * same objects would be two answers to one question, and the second one
+     * would eventually disagree.
+     */
+    {
+      key: 'realty',
+      label: 'Real Estate',
+      areas: [
+        {
+          key: 'realty-overview',
+          label: 'Dashboard',
+          icon: 'home',
+          tabs: [
+            {
+              label: 'Dashboard',
+              href: r('/dashboard'),
+              permission: 'leads',
+              module: R,
+              keywords: 'brokerage overview today pipeline',
+            },
+          ],
+        },
+        {
+          key: 'realty-clients',
+          label: 'Leads',
+          icon: 'lead',
+          tabs: [
+            { label: 'Leads', href: r('/leads'), permission: 'leads', module: R, keywords: 'buyers enquiries' },
+            {
+              label: 'Follow-ups',
+              href: r('/follow-ups'),
+              permission: 'leads',
+              module: R,
+              keywords: 'callbacks due today overdue',
+            },
+            { label: 'Calls', href: r('/calls'), permission: 'calls', module: R, keywords: 'dialer recordings' },
+            {
+              label: 'Site Visits',
+              href: r('/site-visits'),
+              permission: 'visits',
+              module: R,
+              keywords: 'viewings inspections',
+            },
+            {
+              // The buyer's brief, and what currently answers it. The matching
+              // is `services/inventory/demand.ts`, already read from both ends
+              // — this tab is the register, not a second matcher.
+              label: 'Requirements',
+              href: r('/requirements'),
+              permission: 'requirements',
+              module: R,
+              keywords: 'buyer brief budget bedrooms matching',
+            },
+            {
+              /**
+               * Leadrat calls this the Data Pool; the screen is called
+               * Allocation and that is what it is — unowned leads in an OPEN
+               * stage, who is waiting for work, and how much each of them can
+               * take. Labelling the tab "Data Pool" would rename a thing the
+               * product already names, so the vocabulary lives in the keywords
+               * where search will find it instead.
+               */
+              label: 'Allocation',
+              href: r('/allocation'),
+              permission: 'allocation',
+              module: R,
+              keywords: 'data pool unassigned distribution queue capacity',
+            },
+          ],
+        },
+        {
+          key: 'realty-inventory',
+          label: 'Inventory',
+          icon: 'company',
+          tabs: [
+            {
+              // `projects`, not `listings`: a unit belongs to a project and
+              // `/api/v1/projects/[id]/units` gates on `projects:VIEW`. A
+              // Listing is an advertisement that may point at a unit — a
+              // different object — so gating the unit register on it would have
+              // offered the link to someone the screen then refuses.
+              label: 'Properties',
+              href: r('/properties'),
+              permission: 'projects',
+              module: R,
+              keywords: 'units stock availability inventory',
+            },
+            {
+              label: 'Projects',
+              href: r('/projects'),
+              permission: 'projects',
+              module: R,
+              keywords: 'developer community handover',
+            },
+            {
+              label: 'Listings',
+              href: r('/listings'),
+              permission: 'listings',
+              module: R,
+              keywords: 'resale rental pocket',
+            },
+            {
+              /**
+               * A filtered catalogue, not a screen of its own.
+               *
+               * Off-plan means bought before completion, which is exactly what
+               * `possessionStatus` already records — and `catalogueFilters`
+               * already validates `?possession=`, backed by an index. A separate
+               * route would have been a second implementation of a question the
+               * catalogue answers, free to drift from it.
+               *
+               * Both non-ready states, because NEW_LAUNCH is off-plan too; only
+               * READY_TO_MOVE is not.
+               */
+              label: 'Off-Plan',
+              href: r('/projects?possession=UNDER_CONSTRUCTION,NEW_LAUNCH'),
+              permission: 'projects',
+              module: R,
+              keywords: 'under construction new launch payment plan handover',
+            },
+          ],
+        },
+        {
+          key: 'realty-deals',
+          label: 'Deals',
+          icon: 'deal',
+          tabs: [
+            {
+              /**
+               * `collections`, not `visits`: the collections screen is what owns
+               * Booking, and reusing the visits permission here would have let a
+               * viewer with viewings but no booking access reach deals.
+               *
+               * Labelled and routed as Collections rather than "Deals" for the
+               * reason the Allocation tab records: this screen already has a
+               * name in the product, and a second word for one thing is how two
+               * people end up meaning different screens. "Deals" and "bookings"
+               * are keywords so the brokerage vocabulary still finds it.
+               */
+              label: 'Collections',
+              href: r('/collections'),
+              permission: 'collections',
+              module: R,
+              keywords: 'deals bookings confirmed instalments recovery',
+            },
+            {
+              label: 'Commissions',
+              href: r('/commissions'),
+              permission: 'commissions',
+              module: R,
+              keywords: 'brokerage payout slab agent earnings',
+            },
+            {
+              /**
+               * Open houses and launches are `Event` rows with an invitee list
+               * that already carries RSVP state and a check-in stamp, so the
+               * register exists and this is the way in. Deliberately labelled
+               * "Events", the product's own name for it — "Open House" is one
+               * kind of event, not the register.
+               */
+              label: 'Events',
+              href: r('/events'),
+              permission: 'events',
+              module: R,
+              keywords: 'open house viewing day launch rsvp check-in invitees',
+            },
+            {
+              label: 'Reports',
+              href: r('/reports'),
+              permission: 'reports',
+              module: R,
+              keywords: 'funnel source agent performance',
             },
           ],
         },
@@ -677,11 +865,25 @@ export const parsePermission = (token: string): [string, string] => {
  * The phone tab bar used to skip the URL and answer from entitlement alone, so a
  * workspace owning both products got the Sales tabs on every People screen.
  */
-export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' {
+export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' | 'realty' {
   const segment = pathname.split('/')[2];
   if (segment === 'people') return 'people';
   if (segment === 'sales') return 'sales';
-  return modules.includes('SALES') ? 'sales' : 'people';
+  if (segment === 'realty') return 'realty';
+  /**
+   * The URL said nothing, so fall back on what the workspace owns.
+   *
+   * Order is not arbitrary. A shared route (`/{slug}/dashboard`, `/{slug}/tasks`)
+   * has to pick one tab bar, and picking a product the workspace is not entitled
+   * to would offer a phone user four links that all refuse. SALES first keeps the
+   * existing answer for every workspace that has it, so nothing moves under
+   * anyone who is not entitled to Real Estate; a brokerage-only workspace gets
+   * 'realty' rather than being sent to People, which is what the previous
+   * two-way version would have done.
+   */
+  if (modules.includes('SALES')) return 'sales';
+  if (modules.includes('REAL_ESTATE')) return 'realty';
+  return 'people';
 }
 
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {

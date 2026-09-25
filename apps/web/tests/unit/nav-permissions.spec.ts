@@ -144,7 +144,14 @@ describe('newly reachable nav keys do not widen what their pages serve', () => {
       ['payroll', 'people/payroll/page.tsx'],
     ] as const) {
       const source = pageSource(page);
-      expect(source, `${page} declares no product module`).toMatch(/module: '(SALES|HRMS)'/);
+      // A literal, or one of the named constants that stands for a set of
+      // them. `SALES_OR_REALTY` is still an entitlement assertion — it means
+      // "either product", for the registers Sales and Real Estate share — so
+      // what this guard is really checking, that the page asserts *some*
+      // module, is unchanged. A page with no `module:` at all still fails.
+      expect(source, `${page} declares no product module`).toMatch(
+        /module: ('(SALES|HRMS|REAL_ESTATE)'|SALES_OR_REALTY)/,
+      );
       expect(navPermissionKeys(), `${key} is not a nav permission`).toContain(key);
     }
   });

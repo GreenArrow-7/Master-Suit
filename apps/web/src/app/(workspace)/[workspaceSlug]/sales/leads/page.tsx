@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity';
@@ -65,7 +66,7 @@ export default async function LeadsPage({
   searchParams: Promise<{ filter?: string; q?: string; page?: string }>;
 }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['leads', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['leads', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);
 
   const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });

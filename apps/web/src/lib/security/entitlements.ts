@@ -2,7 +2,7 @@ import { prisma } from '../db';
 import { cached, redis } from '../redis';
 import { Forbidden } from '../errors';
 
-export type ProductModule = 'HRMS' | 'SALES';
+export type ProductModule = 'HRMS' | 'SALES' | 'REAL_ESTATE';
 
 /**
  * Every module, so invalidation can name its keys instead of searching for them.
@@ -13,7 +13,36 @@ export type ProductModule = 'HRMS' | 'SALES';
  * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
  * list that has to be kept in step by hand eventually is not.
  */
-const PRODUCT_MODULES = ['HRMS', 'SALES'] as const satisfies readonly ProductModule[];
+const PRODUCT_MODULES = ['HRMS', 'SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
+
+/**
+ * What each module is called when we have to tell somebody they cannot use it.
+ *
+ * This was `module === 'HRMS' ? 'HR' : 'Sales'`, which was true while there were
+ * two modules and became a lie on the third: a workspace without Real Estate was
+ * told "Sales is not enabled for this company", naming a product it may well be
+ * paying for. A record keyed by the union is a compile error when a module is
+ * added without a name, which the ternary could never be.
+ */
+const MODULE_LABEL: Record<ProductModule, string> = {
+  HRMS: 'HR',
+  SALES: 'Sales',
+  REAL_ESTATE: 'Real Estate',
+};
+
+/**
+ * The screens Sales and Real Estate genuinely share.
+ *
+ * Leads, follow-ups, calls and site visits are one register read two ways, not
+ * two registers — the brief was explicit that Real Estate must not grow a
+ * parallel `RealEstateLead`. So the page files live under `sales/` and the
+ * `realty/` routes re-export them, and the entitlement they assert has to be
+ * "either product", because the workspace reaching them may be paying for only
+ * one. The `realty/` and `sales/` layouts still assert their own module, so the
+ * specific URL is gated exactly as before; this only stops the page beneath
+ * refusing a Real Estate workspace for not owning Sales.
+ */
+export const SALES_OR_REALTY = ['SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
 
 /**
  * Short, and deliberately so.
@@ -47,7 +76,7 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     ['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state) &&
     (!entitlement.endsAt || new Date(entitlement.endsAt) > new Date());
   if (!usable) {
-    throw Forbidden(`${module === 'HRMS' ? 'HR' : 'Sales'} is not enabled for this company.`);
+    throw Forbidden(`${MODULE_LABEL[module]} is not enabled for this company.`);
   }
   return entitlement;
 }

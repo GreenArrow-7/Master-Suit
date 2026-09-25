@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import { POSSESSION_STATUSES, PROJECT_STATUSES } from '@/lib/inventory/catalogue';
@@ -15,7 +16,7 @@ export const metadata = { title: 'New project' };
  * API once the record exists.
  */
 export default async function NewProjectPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['projects', 'CREATE'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['projects', 'CREATE'] });
 
   const [micromarkets, developers, amenities] = await Promise.all([
     prisma.micromarket.findMany({

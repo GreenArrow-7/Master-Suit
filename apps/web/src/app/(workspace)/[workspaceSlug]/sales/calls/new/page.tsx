@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import NewCallForm from './NewCallForm';
 
 /**
@@ -11,6 +12,6 @@ import NewCallForm from './NewCallForm';
 export const metadata = { title: 'New call' };
 
 export default async function NewCallPage() {
-  await requirePageAccess({ module: 'SALES', permission: ['calls', 'CREATE'] });
+  await requirePageAccess({ module: SALES_OR_REALTY, permission: ['calls', 'CREATE'] });
   return <NewCallForm />;
 }

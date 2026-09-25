@@ -1,0 +1,11 @@
+-- REAL_ESTATE joins HRMS and SALES as an independently entitled product module.
+--
+-- Additive only: a new enum value. No table, no column, no backfill, and nothing
+-- reads it until a workspace is entitled to it, so this is safe to apply ahead of
+-- the code that uses it.
+--
+-- Deliberately alone in this migration. PostgreSQL allows ALTER TYPE ... ADD VALUE
+-- inside a transaction (12+), but the new value cannot be *used* in the same
+-- transaction that adds it — so entitling a workspace is seed work, not migration
+-- work, and mixing the two here would fail at apply time.
+ALTER TYPE "ModuleKey" ADD VALUE IF NOT EXISTS 'REAL_ESTATE';

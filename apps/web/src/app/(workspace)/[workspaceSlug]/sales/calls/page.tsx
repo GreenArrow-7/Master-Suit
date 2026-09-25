@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { prisma } from '@/lib/db';
@@ -30,7 +31,7 @@ const TABS: [string, string, Record<string, unknown>][] = [
 
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ tab?: string; page?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['calls', 'VIEW'] });
   const page = Math.max(1, Number(params.page) || 1);
 
   // Role scope, not just own calls: a manager sees the team's history here the

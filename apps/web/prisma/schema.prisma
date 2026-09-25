@@ -630,9 +630,14 @@ model Tenant {
   @@index([status])
 }
 
+/// The product modules a workspace can be entitled to, independently of one
+/// another. REAL_ESTATE is a brokerage experience over the same authoritative
+/// entities SALES uses — Lead, Call, Project, Listing, UnitInventory, SiteVisit,
+/// Booking — not a second copy of them. A workspace may hold any combination.
 enum ModuleKey {
   HRMS
   SALES
+  REAL_ESTATE
 }
 
 enum SubscriptionState {
@@ -964,6 +969,14 @@ model OrganizationSetting {
   /// default that changes in a release reaches every workspace that never
   /// overrode it.
   hrPolicy              Json     @default("{}")
+  /// Days a lead may sit with an owner and no activity before the recycling
+  /// sweep returns it to the pool. Null means the sweep does not run for this
+  /// workspace, and null is the default deliberately: clearing ownership is a
+  /// write against somebody's book of work, and a feature that switched itself
+  /// on for every existing workspace at deploy time would move customer data
+  /// nobody asked it to move. A workspace opts in by setting a number.
+  leadRecycleAfterDays  Int?
+
   /// Administrator-chosen grid columns, keyed by object type ("LEAD": ["stage", ...]).
   /// Only the chosen order is stored; labels and rendering stay in
   /// src/lib/grid/columns.ts so a catalogue change reaches every workspace.

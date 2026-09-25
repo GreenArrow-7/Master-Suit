@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { headroom, poolDepth } from '@/services/distribution/allocation';
@@ -22,7 +23,7 @@ export const metadata = { title: 'Allocation' };
  */
 export default async function AllocationPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['allocation', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['allocation', 'VIEW'] });
   const view = params.view === 'capacity' ? 'capacity' : params.view === 'waiting' ? 'waiting' : 'requests';
 
   const isLeader = can(ctx, 'allocation', 'APPROVE');

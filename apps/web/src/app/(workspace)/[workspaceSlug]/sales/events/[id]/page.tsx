@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
@@ -21,7 +22,7 @@ const RSVP_TONE: Record<string, Tone> = {
 
 export default async function EventDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = await paramsPromise;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['events', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
   const event = await prisma.event.findFirst({
     where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

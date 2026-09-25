@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -22,7 +23,7 @@ const amount = (n: { toString(): string } | null, currency: string) =>
  * accrual, which is why the signature column is the first thing on the row.
  */
 export default async function CommissionSlabsPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['commissionslabs', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['commissionslabs', 'VIEW'] });
 
   const slabs = await prisma.commissionSlab.findMany({
     where: { tenantId: ctx.tenantId },

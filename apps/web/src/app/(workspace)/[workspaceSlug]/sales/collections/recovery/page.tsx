@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -16,7 +17,7 @@ export const metadata = { title: 'Recovery cases' };
  * on this page moves money.
  */
 export default async function RecoveryCasesPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['collections', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['collections', 'VIEW'] });
   const booking = await visibilityWhere(ctx, 'collections', 'VIEW');
   const cases = await prisma.collectionRecoveryCase.findMany({
     where: { tenantId: ctx.tenantId, booking },

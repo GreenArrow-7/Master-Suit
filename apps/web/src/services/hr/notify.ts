@@ -168,7 +168,7 @@ export async function notifyHr(ctx: Ctx, notification: HrNotification): Promise<
      * stay at most-once. It carries the record rather than the event name
      * because the push needs a destination to open, not a subject line.
      */
-    await enqueue('notifications', 'hr-event-push', {
+    await enqueue('notifications', 'record-push', {
       tenantId: ctx.tenantId,
       userIds: recipients,
       title: notification.title,

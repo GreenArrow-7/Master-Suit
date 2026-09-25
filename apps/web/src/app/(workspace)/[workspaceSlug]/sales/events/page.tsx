@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge, { type Tone } from '@/components/ui/Badge';
@@ -25,7 +26,7 @@ const TABS = [
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['events', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['events', 'VIEW'] });
 
   const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
   if (params.tab === 'upcoming') where.startAt = { gte: new Date() };

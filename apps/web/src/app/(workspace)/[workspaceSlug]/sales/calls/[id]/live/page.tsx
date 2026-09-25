@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
@@ -17,7 +18,7 @@ export default async function LiveCallPage({
   params: Promise<{ workspaceSlug: string; id: string }>;
 }) {
   const params = await paramsPromise;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['calls', 'EDIT'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['calls', 'EDIT'] });
 
   const call = await prisma.call.findFirst({
     where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

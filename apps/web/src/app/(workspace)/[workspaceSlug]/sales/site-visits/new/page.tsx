@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
@@ -14,7 +15,7 @@ export const metadata = { title: 'Request a visit' };
  * approved visit would make the register a diary.
  */
 export default async function NewSiteVisitPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['visits', 'CREATE'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['visits', 'CREATE'] });
 
   // Booking a visit needs `visits:CREATE`; listing leads to pick from needs
   // `leads:VIEW`. They are separate grants, and `visibilityWhere` throws
