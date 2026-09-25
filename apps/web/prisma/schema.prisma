@@ -583,6 +583,9 @@ model Tenant {
 enum ModuleKey {
   HRMS
   SALES
+  /// Real estate: property inventory, bookings and the brokerage-specific
+  /// workflow layered on top of Sales' leads rather than beside them.
+  REALESTATE
 }
 
 enum SubscriptionState {

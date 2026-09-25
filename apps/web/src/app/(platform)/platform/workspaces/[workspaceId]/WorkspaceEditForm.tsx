@@ -144,6 +144,7 @@ export default function WorkspaceEditForm({
           {[
             ['HRMS', 'People'],
             ['SALES', 'Sales CRM'],
+            ['REALESTATE', 'Real Estate'],
           ].map(([value, label]) => (
             <label key={value} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
               <input type="checkbox" checked={values.modules.includes(value)} onChange={() => toggleModule(value)} />

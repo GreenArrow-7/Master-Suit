@@ -5,6 +5,7 @@ import { AI_TOKEN_LIMIT_KEY } from '@/lib/ai/usage';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
+import { productModuleSchema } from '@/lib/security/entitlements';
 
 const planSchema = z.object({
   code: z
@@ -13,7 +14,7 @@ const planSchema = z.object({
     .max(64)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   name: z.string().min(2).max(120),
-  modules: z.array(z.enum(['HRMS', 'SALES'])).min(1),
+  modules: z.array(productModuleSchema).min(1),
   maxUsers: z.number().int().positive().max(100000),
   maxEmployees: z.number().int().positive().max(100000),
   maxStorageMb: z.number().int().positive().max(10000000),

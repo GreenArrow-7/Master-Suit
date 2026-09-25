@@ -1,8 +1,9 @@
+import { z } from 'zod';
 import { prisma } from '../db';
 import { cached, redis } from '../redis';
 import { Forbidden } from '../errors';
 
-export type ProductModule = 'HRMS' | 'SALES';
+export type ProductModule = 'HRMS' | 'SALES' | 'REALESTATE';
 
 /**
  * Every module, so invalidation can name its keys instead of searching for them.
@@ -13,7 +14,30 @@ export type ProductModule = 'HRMS' | 'SALES';
  * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
  * list that has to be kept in step by hand eventually is not.
  */
-const PRODUCT_MODULES = ['HRMS', 'SALES'] as const satisfies readonly ProductModule[];
+const PRODUCT_MODULES = ['HRMS', 'SALES', 'REALESTATE'] as const satisfies readonly ProductModule[];
+
+/**
+ * What a workspace is told when it reaches for a module it does not have.
+ *
+ * A map rather than a ternary: the ternary read "HR or Sales", so a third
+ * module silently inherited Sales' wording and told a brokerage that *Sales*
+ * was disabled when Real Estate was.
+ */
+const MODULE_LABEL: Record<ProductModule, string> = {
+  HRMS: 'HR',
+  SALES: 'Sales',
+  REALESTATE: 'Real Estate',
+};
+
+/**
+ * The same list, as a validator.
+ *
+ * Three API routes each had their own `z.enum(['HRMS', 'SALES'])`, so adding a
+ * module meant finding all three — and missing one meant a platform owner
+ * could tick it in the UI and be told it was invalid, with nothing in the
+ * types to catch it. Derived from `PRODUCT_MODULES` so there is one list.
+ */
+export const productModuleSchema = z.enum(PRODUCT_MODULES);
 
 /**
  * Short, and deliberately so.
@@ -47,7 +71,7 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     ['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state) &&
     (!entitlement.endsAt || new Date(entitlement.endsAt) > new Date());
   if (!usable) {
-    throw Forbidden(`${module === 'HRMS' ? 'HR' : 'Sales'} is not enabled for this company.`);
+    throw Forbidden(`${MODULE_LABEL[module]} is not enabled for this company.`);
   }
   return entitlement;
 }

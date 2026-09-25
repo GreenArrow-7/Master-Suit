@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
+import { productModuleSchema } from '@/lib/security/entitlements';
 
 const updateSchema = z
   .object({
@@ -15,7 +16,7 @@ const updateSchema = z
     maxEmployees: z.number().int().positive().nullable().optional(),
     maxStorageMb: z.number().int().positive().nullable().optional(),
     enabledModules: z
-      .array(z.enum(['HRMS', 'SALES']))
+      .array(productModuleSchema)
       .min(1)
       .optional(),
     trialStartedAt: z.coerce.date().nullable().optional(),

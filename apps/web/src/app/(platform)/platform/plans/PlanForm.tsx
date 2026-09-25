@@ -75,6 +75,9 @@ export default function PlanForm() {
           <label>
             <input type="checkbox" name="modules" value="SALES" defaultChecked /> Sales CRM
           </label>
+          <label>
+            <input type="checkbox" name="modules" value="REALESTATE" /> Real Estate
+          </label>
         </div>
       </fieldset>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--lf-space-4)' }}>
