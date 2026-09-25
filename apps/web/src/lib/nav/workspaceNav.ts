@@ -110,6 +110,8 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
   const people = modules.includes('HRMS');
   const s = (path: string) => `/${slug}/sales${path}`;
   const p = (path: string) => `/${slug}/people${path}`;
+  /** Outside both modules — the self-service screens, which no entitlement gates. */
+  const w = (path: string) => `/${slug}${path}`;
   const a = (path: string) => `/${slug}/admin${path}`;
 
   const groups: NavGroup[] = [];
@@ -189,13 +191,16 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
          * still find the one screen its agents open every morning. With HRMS on,
          * the People group already carries it and a second entry to the same
          * page is just two places to look.
+         *
+         * `w`, not `s`: the screen sits outside both modules, because everything
+         * under sales/ and people/ inherits that module's entitlement gate.
          */
         ...(people
           ? []
           : [
               {
                 label: 'Check in',
-                href: p('/check-in'),
+                href: w('/check-in'),
                 icon: 'attendance' as const,
                 keywords: 'punch clock face attendance',
               },
@@ -300,7 +305,7 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
           keywords: 'present absent late',
         },
         { label: 'Leave', href: p('/leave'), icon: 'leave', keywords: 'holiday time off' },
-        { label: 'Check in', href: p('/check-in'), icon: 'attendance', keywords: 'punch clock face' },
+        { label: 'Check in', href: w('/check-in'), icon: 'attendance', keywords: 'punch clock face' },
         {
           label: 'Performance',
           href: p('/performance'),
