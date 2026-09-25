@@ -194,6 +194,13 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
           keywords: 'bayut property finder dubizzle syndication publish',
         },
         { label: 'Requirements', href: s('/requirements'), icon: 'lead', permission: 'requirements' },
+        {
+          label: 'Proposals',
+          href: s('/proposals'),
+          icon: 'deal',
+          permission: 'requirements',
+          keywords: 'shortlist send client brochure',
+        },
         { label: 'Client profiles', href: s('/clients'), icon: 'contact', permission: 'clientprofiles' },
         { label: 'Testimonials', href: s('/clients?view=testimonials'), icon: 'activity', permission: 'testimonials' },
         { label: 'Referrals', href: s('/clients?view=referrals'), icon: 'lead', permission: 'referrals' },
