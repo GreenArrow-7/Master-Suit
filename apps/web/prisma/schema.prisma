@@ -835,6 +835,17 @@ model OrganizationSetting {
   /// flagged for a human. Not blocked: a genuine visit from a passenger seat on
   /// a motorway looks exactly like this.
   visitMaxTravelKph     Int      @default(160)
+  /// Days a lead must sit in a lost stage before it may be offered to somebody
+  /// else. 0 switches recycling off, which is the default: handing a cold lead
+  /// to a second agent is a decision a brokerage makes, not one a CRM makes for
+  /// it. Only TERMINAL_NEGATIVE stages are eligible — TERMINAL_JUNK is a wrong
+  /// number, and recycling it just moves noise around the floor.
+  leadRecycleAfterDays  Int      @default(0)
+  /// Times one lead may be recycled before it is left alone for good.
+  leadRecycleMaxTimes   Int      @default(2)
+  /// The stage a recycled lead comes back to. Null means the pipeline's default
+  /// stage, so a workspace that never chooses one still behaves sensibly.
+  leadRecycleStageId    String?
   /// Roleplay sessions one rep may start per day. A practice turn is a billed
   /// model call, so the cap is the workspace's spend control, not a difficulty
   /// setting. 0 turns practice off.
@@ -3066,6 +3077,12 @@ model Lead {
   assignedAt            DateTime?
   duplicateOfId         String?
   isMerged              Boolean       @default(false)
+  /// How many times this lead has been handed back to the floor after going
+  /// cold. The ceiling lives in OrganizationSetting.leadRecycleMaxTimes: a
+  /// person who has said no three times is a no, and a pipeline that keeps
+  /// reopening them is how a brokerage earns a TDRA complaint.
+  recycleCount          Int           @default(0)
+  recycledAt            DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   createdById           String?

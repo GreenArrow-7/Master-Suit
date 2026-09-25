@@ -186,6 +186,13 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         { label: 'Site visits', href: s('/site-visits'), icon: 'attendance', permission: 'visits' },
         { label: 'Projects', href: s('/projects'), icon: 'company', permission: 'projects', keywords: 'inventory' },
         { label: 'Listings', href: s('/listings'), icon: 'deal', permission: 'listings', keywords: 'inventory units' },
+        {
+          label: 'Portals',
+          href: s('/portals'),
+          icon: 'deal',
+          permission: 'listings',
+          keywords: 'bayut property finder dubizzle syndication publish',
+        },
         { label: 'Requirements', href: s('/requirements'), icon: 'lead', permission: 'requirements' },
         { label: 'Client profiles', href: s('/clients'), icon: 'contact', permission: 'clientprofiles' },
         { label: 'Testimonials', href: s('/clients?view=testimonials'), icon: 'activity', permission: 'testimonials' },
@@ -205,6 +212,13 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
           keywords: 'channels',
         },
         { label: 'Campaigns', href: s('/campaigns'), icon: 'campaign', permission: 'campaigns', keywords: 'marketing' },
+        {
+          label: 'Recycle leads',
+          href: s('/leads/recycle'),
+          icon: 'lead',
+          permission: 'leads',
+          keywords: 'lost cold re-engage revive',
+        },
         {
           label: 'Social leads',
           href: s('/social-leads'),

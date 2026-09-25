@@ -3,6 +3,7 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { runReminderSweep } from '@/services/crm/reminders';
+import { runRecycleSweep } from '@/services/leads/recycling';
 
 /**
  * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
@@ -20,7 +21,14 @@ import { runReminderSweep } from '@/services/crm/reminders';
  * delete competes with customer traffic.
  */
 
-/** 03:00 UTC — after the working day in every timezone this product ships to. */
+/**
+ * 03:00 UTC — after the working day in every timezone this product ships to.
+ *
+ * Shared by the retention sweep and the lead recycle sweep. Recycling belongs
+ * overnight for a reason of its own: it hands leads to whoever the rotation
+ * picks, and a queue that changes under an agent mid-shift is how a rep loses a
+ * call they were halfway through preparing.
+ */
 const DAILY_PATTERN = '0 3 * * *';
 
 /**
@@ -43,6 +51,11 @@ export function startMaintenanceWorker() {
         // scheduled sweep that only counted would be the current bug wearing a
         // cron expression.
         return runRetentionCleanup(false);
+      }
+      if (job.name === 'lead-recycle') {
+        const result = await runRecycleSweep();
+        logger.info(result, 'lead recycle sweep complete');
+        return result;
       }
       if (job.name === 'reminders') {
         const result = await runReminderSweep();
@@ -76,6 +89,7 @@ export async function armMaintenanceScheduler(): Promise<string[]> {
     { pattern: QUARTER_HOURLY_PATTERN },
     { name: 'reminders' },
   );
+  await queue.upsertJobScheduler('lead-recycle-daily', { pattern: DAILY_PATTERN }, { name: 'lead-recycle' });
   await queue.close();
-  return ['retention-daily', 'reminders-quarter-hourly'];
+  return ['retention-daily', 'reminders-quarter-hourly', 'lead-recycle-daily'];
 }
