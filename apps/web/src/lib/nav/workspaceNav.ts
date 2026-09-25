@@ -486,11 +486,31 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Projects', href: s('/projects'), permission: 'projects', module: S, keywords: 'units inventory' },
             { label: 'Listings', href: s('/listings'), permission: 'listings', module: S },
             {
+              // `listings` at EDIT, matching what the page asserts: publishing a
+              // listing to a portal is changing how it is advertised, not
+              // browsing it.
+              label: 'Portals',
+              href: s('/portals'),
+              permission: 'listings',
+              module: S,
+              keywords: 'syndication property finder bayut feed publish',
+            },
+            {
               label: 'Buyer Requirements',
               href: s('/requirements'),
               permission: 'requirements',
               module: S,
               keywords: 'demand matching',
+            },
+            {
+              // Gated on `requirements`, not a permission of its own: a
+              // proposal is a shortlist drawn from a buyer's requirement, and
+              // whoever may see the requirement may send it.
+              label: 'Proposals',
+              href: s('/proposals'),
+              permission: 'requirements',
+              module: S,
+              keywords: 'shortlist send client brochure',
             },
             { label: 'Products', href: s('/products'), permission: 'products', module: S },
           ],
