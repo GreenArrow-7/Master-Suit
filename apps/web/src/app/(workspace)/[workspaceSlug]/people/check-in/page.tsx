@@ -19,8 +19,24 @@ export const metadata = { title: 'Check in' };
  */
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: SELF_SERVICE });
-  const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
+  /**
+   * No product module.
+   *
+   * The API behind this screen is already `selfService` with no module gate —
+   * deliberately, because clocking yourself in is not an HR privilege. The page
+   * asked for HRMS anyway, so a brokerage that licenses Sales alone could not
+   * open the one screen its agents need every morning, while the endpoint it
+   * posts to would have served them. Page and route now agree.
+   *
+   * Reading everyone else’s attendance stays where it was: /people/attendance,
+   * gated on `employee` and HRMS. Doing your own is self-service; managing the
+   * floor’s is HR.
+   */
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, { permission: SELF_SERVICE });
+  // The self-service endpoints, not the HR dispatcher. That one is gated on
+  // `employee:VIEW`, an HR directory permission an ordinary agent does not
+  // hold — so the console 403'd for exactly the people it is for.
+  const actions = `/api/v1/workspaces/${workspaceSlug}/hr/self`;
 
   const employee = await myEmployee(ctx);
   if (!employee) {

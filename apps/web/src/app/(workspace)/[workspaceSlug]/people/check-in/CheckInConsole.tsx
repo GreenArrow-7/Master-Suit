@@ -44,7 +44,24 @@ interface Preflight {
     maxAccuracyM: number;
     accuracyOk: boolean;
   }[];
+  /** Only on a check-out, and only where the workspace enforces daily targets. */
+  quota: Quota | null;
 }
+
+interface Quota {
+  blocked: boolean;
+  message: string;
+  releasedByHours: boolean;
+  rows: { metric: string; target: number; achieved: number; remaining: number }[];
+}
+
+/** “CALLS_ATTEMPTED” is a column name. This is what a person is shown. */
+const METRIC_LABEL: Record<string, string> = {
+  CALLS_ATTEMPTED: 'Calls',
+  CALLS_CONNECTED: 'Connected calls',
+  FOLLOWUPS_COMPLETED: 'Follow-ups',
+  INVITATIONS_SENT: 'Invitations',
+};
 
 const FRAME_COUNT = 3;
 
@@ -102,6 +119,7 @@ export default function CheckInConsole({
   const [busy, setBusy] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [recent, setRecent] = useState<RecentPunch[]>(initialRecent);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [hasOpen, setHasOpen] = useState(openCheckIn);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -188,6 +206,9 @@ export default function CheckInConsole({
           setDiagnosticBad(true);
           setOnSite('FAIL');
         }
+        // Cleared on a check-in read, so yesterday's shortfall does not sit
+        // under this morning's button.
+        setQuota(pre.quota);
         setHint(pre.ok ? 'Location confirmed' : pre.message);
         return pre;
       } catch (error) {
@@ -242,7 +263,7 @@ export default function CheckInConsole({
 
   async function refreshRecent() {
     try {
-      const res = await fetch(`${endpointBase.replace('/actions', '')}/attendance-punches?limit=8`);
+      const res = await fetch(`${endpointBase}/attendance-punches?limit=8`);
       const rows = await res.json().catch(() => []);
       if (Array.isArray(rows)) {
         setRecent(
@@ -413,6 +434,20 @@ export default function CheckInConsole({
             Check out
           </button>
         </div>
+
+        {quota && quota.rows.length > 0 && (
+          <div className="lf-checkin__quota">
+            {quota.rows.map((row) => (
+              <p key={row.metric} className="lf-checkin__quota-row">
+                <span>{METRIC_LABEL[row.metric] ?? row.metric}</span>
+                <strong style={{ color: row.remaining > 0 ? 'var(--lf-vermillion)' : 'var(--lf-viridian)' }}>
+                  {row.achieved} of {row.target}
+                </strong>
+              </p>
+            ))}
+            {quota.message && <p className="lf-checkin__hint">{quota.message}</p>}
+          </div>
+        )}
 
         <p className="lf-checkin__status" role="status" aria-live="polite">
           {status}

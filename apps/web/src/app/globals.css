@@ -2337,6 +2337,26 @@ a:hover,
   font: 400 var(--lf-text-xs) / 1.5 var(--lf-font-ui);
   color: var(--lf-ink-3);
 }
+/* The day's targets, under the check-out button. Shown before it is pressed:
+   an agent who sees the number at four o'clock can still do something about
+   it, one told at seven can only resent it. */
+.lf-checkin__quota {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--lf-line);
+  border-radius: var(--lf-radius);
+  background: var(--lf-surface-2);
+}
+.lf-checkin__quota-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font: 400 var(--lf-text-xs) / 1.5 var(--lf-font-ui);
+  color: var(--lf-ink-2);
+}
 .lf-checkin__recent-head {
   display: flex;
   align-items: center;

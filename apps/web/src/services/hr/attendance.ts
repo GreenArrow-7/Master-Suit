@@ -35,6 +35,7 @@ import {
 } from './face';
 import { isHrAdmin, myEmployee, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
+import { checkOutQuota, workedMinutesSince } from './checkOutQuota';
 import { storeCapture } from './captureVault';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
@@ -298,6 +299,7 @@ export async function preflight(
       code: 'NO_ACTIVE_ASSIGNMENT',
       message: 'You have no active work-location assignment for this action right now. Contact HR.',
       candidates: [],
+      quota: null,
     };
   }
   if (action === 'CHECK_OUT' && open?.locationId) {
@@ -335,6 +337,7 @@ export async function preflight(
       code: 'LOCATION_ACCURACY_TOO_LOW',
       message: `Your GPS is accurate to about ±${Math.round(position.gpsAccuracyM)} m. This location requires ${nearest.maxAccuracyM} m or better. Move to an open area and retry.`,
       candidates: rows,
+      quota: null,
     };
   }
   const ready = rows.find((row) => row.inside);
@@ -344,13 +347,30 @@ export async function preflight(
       code: 'OUTSIDE_APPROVED_LOCATION',
       message: `You are ${Math.round(nearest.distanceM)} metres away from ${nearest.name}. The permitted radius is ${nearest.radiusM} metres.`,
       candidates: rows,
+      quota: null,
     };
   }
+
+  /**
+   * The day's targets, on the way out only.
+   *
+   * Reported whether or not they block, because the number is the point: an
+   * agent who sees “18 more calls” at four o’clock still has an afternoon to
+   * use it, and one who first learns of it when check-out is refused at seven
+   * has been told too late to do anything but resent it.
+   */
+  const quota =
+    action === 'CHECK_OUT' ? await checkOutQuota(ctx, workedMinutesSince(open?.serverTime)) : null;
+  if (quota?.blocked) {
+    return { ok: false, code: 'TARGETS_NOT_MET', message: quota.message, candidates: rows, quota };
+  }
+
   return {
     ok: true,
     code: 'READY',
     message: `Inside ${ready.name} — ${Math.round(ready.distanceM)} m from centre, radius ${ready.radiusM} m.`,
     candidates: rows,
+    quota,
   };
 }
 
@@ -697,6 +717,25 @@ export async function punch(ctx: Ctx, input: PunchInput) {
       serverTime: row.serverTime,
       distanceM: error.distanceM ?? null,
     };
+  }
+
+  /**
+   * The day's targets, before the nonce and before the face engine.
+   *
+   * Deliberately not recorded as a punch. A refusal here says nothing about
+   * who they are or where they stand — the two things the punch log exists to
+   * evidence — and filing it would put an agent who tried to leave at six into
+   * the same review queue as a stranger holding a photograph. They are told;
+   * the shortfall is already on the targets screen.
+   *
+   * Checked here rather than after the face match so nobody spends a liveness
+   * challenge, a model call and a stored capture frame on a refusal that was
+   * never about their face.
+   */
+  if (input.punchType === 'CHECK_OUT') {
+    const open = await openCheckIn(ctx, employee.id);
+    const quota = await checkOutQuota(ctx, workedMinutesSince(open?.serverTime));
+    if (quota.blocked) throw Conflict(quota.message);
   }
 
   // 3. Spend the nonce. From here a replayed payload is worthless.

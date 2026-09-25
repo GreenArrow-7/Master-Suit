@@ -7,6 +7,9 @@ import ListHeader from '@/components/workspace/ListHeader';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import TargetAdmin, { TargetDelete } from './TargetAdmin';
 import { METRICS } from './metrics';
+import CheckOutRules from './CheckOutRules';
+import { GATEABLE_METRICS } from '@/lib/hr/checkOutQuota';
+import { quotaPolicy } from '@/services/hr/checkOutQuota';
 
 export const metadata = { title: 'My Targets' };
 
@@ -117,6 +120,9 @@ export default async function TargetsPage() {
       : Promise.resolve([]),
   ]);
 
+  // Only for whoever sets the targets: the check-out rule is the same decision.
+  const checkOut = managesTargets ? await quotaPolicy(ctx.tenantId) : null;
+
   const outstanding = mine.reduce((sum, t) => sum + Math.max(0, t.targetValue - achievedFor(t)), 0);
   const dateFmt = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
@@ -151,6 +157,8 @@ export default async function TargetsPage() {
       )}
 
       {mine.length > 0 && <SignOff complete={outstanding === 0} remaining={outstanding} />}
+
+      {checkOut && <CheckOutRules policy={checkOut} available={GATEABLE_METRICS} />}
 
       {managesTargets && (
         <section style={{ marginTop: 'var(--lf-space-6)', display: 'grid', gap: 'var(--lf-space-4)' }}>

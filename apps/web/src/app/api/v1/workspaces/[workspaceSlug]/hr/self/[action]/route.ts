@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
-import { grantConsent, preflight, punch, requestChallenge, withdrawConsent } from '@/services/hr/attendance';
+import { grantConsent, myPunches, preflight, punch, requestChallenge, withdrawConsent } from '@/services/hr/attendance';
 
 /**
  * The things an employee does to their own record: consent, and clocking in.
@@ -61,15 +61,18 @@ export const POST = route(
         return withdrawConsent(ctx);
 
       case 'attendance-preflight': {
+        // `punchType`, matching attendance-punch below and the HR dispatcher.
+        // This route asked for `action` instead, which nothing sends — so the
+        // self-service preflight had never actually been called by anything.
         const input = z
           .object({
-            action: z.enum(['CHECK_IN', 'CHECK_OUT']),
+            punchType: z.enum(['CHECK_IN', 'CHECK_OUT']),
             latitude: z.coerce.number().min(-90).max(90),
             longitude: z.coerce.number().min(-180).max(180),
-            gpsAccuracyM: z.coerce.number().min(0).max(10_000),
+            gpsAccuracyM: z.coerce.number().min(0).max(10_000).default(0),
           })
           .parse(body);
-        return preflight(ctx, input.action, input);
+        return preflight(ctx, input.punchType, input);
       }
       case 'attendance-challenge':
         return requestChallenge(ctx);
@@ -89,5 +92,34 @@ export const POST = route(
         return punch(ctx, input);
       }
     }
+  },
+);
+
+/**
+ * Your own punch history — the “Recent” list on the check-in console.
+ *
+ * It used to be read from the HR resource endpoint, which is gated on
+ * `employee:VIEW` and the HRMS module, so the one list an employee is entitled
+ * to see was the one their account could not fetch. Same reasoning as the POST
+ * above: `myPunches` resolves the employee from `ctx.actor` and takes no
+ * target, so there is no parameter through which one person could read
+ * another’s attendance.
+ */
+const getParamsSchema = z.object({
+  workspaceSlug: z.string().min(2).max(64),
+  action: z.enum(['attendance-punches']),
+});
+
+export const GET = route(
+  {
+    module: 'hr_self',
+    action: 'VIEW',
+    selfService: true,
+    params: getParamsSchema,
+    query: z.object({ limit: z.coerce.number().int().min(1).max(50).default(8) }),
+  },
+  async ({ ctx, params, query }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
+    return myPunches(ctx, query.limit);
   },
 );

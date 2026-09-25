@@ -184,6 +184,22 @@ export function buildWorkspaceNav({ slug, modules, permitted, serviceMode = fals
         { label: 'Activities', href: s('/activities'), icon: 'activity', permission: 'activities' },
         { label: 'All tasks', href: s('/tasks'), icon: 'task', permission: 'tasks', keywords: 'team tasks' },
         { label: 'Site visits', href: s('/site-visits'), icon: 'attendance', permission: 'visits' },
+        /**
+         * Only where People is not licensed, so a brokerage on Sales alone can
+         * still find the one screen its agents open every morning. With HRMS on,
+         * the People group already carries it and a second entry to the same
+         * page is just two places to look.
+         */
+        ...(people
+          ? []
+          : [
+              {
+                label: 'Check in',
+                href: p('/check-in'),
+                icon: 'attendance' as const,
+                keywords: 'punch clock face attendance',
+              },
+            ]),
         { label: 'Projects', href: s('/projects'), icon: 'company', permission: 'projects', keywords: 'inventory' },
         { label: 'Listings', href: s('/listings'), icon: 'deal', permission: 'listings', keywords: 'inventory units' },
         {

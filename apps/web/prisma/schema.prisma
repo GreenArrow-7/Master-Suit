@@ -848,6 +848,25 @@ model OrganizationSetting {
   /// The stage a recycled lead comes back to. Null means the pipeline's default
   /// stage, so a workspace that never chooses one still behaves sensibly.
   leadRecycleStageId    String?
+  /// Whether an unmet daily target stops somebody checking out.
+  ///
+  /// Off by default. A sales floor runs on activity a manager set that
+  /// morning — a hundred calls — and this is what turns that target into a
+  /// condition of going home. Here rather than in `hrPolicy` for two reasons:
+  /// the rule belongs to whoever sets the targets, not to HR, and a brokerage
+  /// that licenses Sales without People could not reach the HR settings screen
+  /// to switch it on.
+  requireTargetsBeforeCheckOut Boolean @default(false)
+  /// Which target metrics may hold somebody back. Only effort a person
+  /// controls — see GATEABLE_METRICS in src/lib/hr/checkOutQuota.ts, which is
+  /// the list this is filtered against. Outcomes are refused there, so a value
+  /// stored here can never gate on whether a stranger bought a flat.
+  checkOutQuotaMetrics         String[] @default(["CALLS_ATTEMPTED"])
+  /// Hours after check-in at which the targets stop blocking, whatever is left
+  /// undone. UAE labour law caps the working day, and an attendance gate with
+  /// no ceiling is how a system meant to encourage effort records unlawful
+  /// hours instead.
+  checkOutQuotaMaxHours        Int      @default(10)
   /// Roleplay sessions one rep may start per day. A practice turn is a billed
   /// model call, so the cap is the workspace's spend control, not a difficulty
   /// setting. 0 turns practice off.
