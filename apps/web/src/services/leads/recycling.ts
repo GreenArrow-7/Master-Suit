@@ -272,12 +272,7 @@ export async function recycleLeads(
   for (const leadId of moved) {
     await enqueue('distribution', 'assign-lead', { tenantId, leadId });
     if (stage.slaMinutes) {
-      await enqueue(
-        'sla',
-        'lead-first-contact',
-        { tenantId, leadId },
-        { delayMs: stage.slaMinutes * 60_000 },
-      );
+      await enqueue('sla', 'lead-first-contact', { tenantId, leadId }, { delayMs: stage.slaMinutes * 60_000 });
     }
     await enqueue('automation', 'trigger', { tenantId, event: 'record.updated', object: 'LEAD', recordId: leadId });
   }

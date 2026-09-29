@@ -98,11 +98,7 @@ function phrase(row: QuotaRow): string {
  * problem, but not this one's: a check-out with nothing to check out of is
  * refused earlier, by the assignment rules.
  */
-export function quotaVerdict(
-  rows: QuotaRow[],
-  workedMinutes: number | null,
-  policy: QuotaPolicy,
-): QuotaVerdict {
+export function quotaVerdict(rows: QuotaRow[], workedMinutes: number | null, policy: QuotaPolicy): QuotaVerdict {
   const unmet = rows.filter((row) => row.remaining > 0);
 
   if (rows.length === 0 || unmet.length === 0) {

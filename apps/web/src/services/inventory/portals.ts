@@ -108,9 +108,7 @@ export async function buildFeed(tenantId: string, portal: PortalKey): Promise<Bu
       imageUrls.set(
         listing.id,
         listing.media
-          .map((item) =>
-            item.externalUrl ? item.externalUrl : listingImageLink.url(tenantId, item.id),
-          )
+          .map((item) => (item.externalUrl ? item.externalUrl : listingImageLink.url(tenantId, item.id)))
           .filter((url): url is string => Boolean(url)),
       );
     }

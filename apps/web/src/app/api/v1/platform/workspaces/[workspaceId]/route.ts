@@ -15,10 +15,7 @@ const updateSchema = z
     maxUsers: z.number().int().positive().nullable().optional(),
     maxEmployees: z.number().int().positive().nullable().optional(),
     maxStorageMb: z.number().int().positive().nullable().optional(),
-    enabledModules: z
-      .array(productModuleSchema)
-      .min(1)
-      .optional(),
+    enabledModules: z.array(productModuleSchema).min(1).optional(),
     trialStartedAt: z.coerce.date().nullable().optional(),
     trialEndsAt: z.coerce.date().nullable().optional(),
     revokeSessions: z.boolean().optional(),

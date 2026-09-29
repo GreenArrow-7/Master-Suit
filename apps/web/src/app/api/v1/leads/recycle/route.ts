@@ -11,22 +11,19 @@ import { findRecyclable, recycleLeads, recyclePolicy } from '@/services/leads/re
  * lost them and puts them back in the rotation — that is a reassignment, and
  * everyone who can do it by hand can do it here.
  */
-export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'REASSIGN' },
-  async ({ ctx }) => {
-    const [policy, candidates, stages] = await Promise.all([
-      recyclePolicy(ctx.tenantId),
-      findRecyclable(ctx.tenantId),
-      prisma.leadStage.findMany({
-        where: { tenantId: ctx.tenantId, category: 'OPEN', deletedAt: null },
-        orderBy: [{ isDefault: 'desc' }, { position: 'asc' }],
-        select: { id: true, name: true },
-      }),
-    ]);
+export const GET = route({ module: 'leads', productModule: 'SALES', action: 'REASSIGN' }, async ({ ctx }) => {
+  const [policy, candidates, stages] = await Promise.all([
+    recyclePolicy(ctx.tenantId),
+    findRecyclable(ctx.tenantId),
+    prisma.leadStage.findMany({
+      where: { tenantId: ctx.tenantId, category: 'OPEN', deletedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { position: 'asc' }],
+      select: { id: true, name: true },
+    }),
+  ]);
 
-    return { policy, stages, candidates };
-  },
-);
+  return { policy, stages, candidates };
+});
 
 const policyBody = z.object({
   /** 0 switches recycling off. Capped at two years: beyond that the phone number is someone else's. */

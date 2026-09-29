@@ -50,11 +50,7 @@ export async function quotaPolicy(tenantId: string): Promise<QuotaPolicy> {
 }
 
 /** Targets are held by the sales user, not the employee profile. */
-export async function checkOutQuota(
-  ctx: Ctx,
-  workedMinutes: number | null,
-  now = new Date(),
-): Promise<QuotaVerdict> {
+export async function checkOutQuota(ctx: Ctx, workedMinutes: number | null, now = new Date()): Promise<QuotaVerdict> {
   const policy = await quotaPolicy(ctx.tenantId);
   const metrics = enforcedMetrics(policy);
   if (metrics.length === 0) {

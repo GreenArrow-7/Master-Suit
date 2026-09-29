@@ -131,8 +131,11 @@ test.describe('Each module opens and does its job', () => {
 
       await page.reload();
       // The badge, not the header count — the same words appear in both, and a
-      // loose match is ambiguous.
-      await expect(page.getByText('awaiting finance', { exact: true })).toBeVisible();
+      // loose match is ambiguous. The badge renders "Awaiting finance" (Badge
+      // capitalises its value); the header reads "0 signed off · 1 awaiting
+      // finance". `exact` is case-sensitive and whole-string, so this matches
+      // the badge alone — which is what the sentence above always meant.
+      await expect(page.getByText('Awaiting finance', { exact: true })).toBeVisible();
       // Drafted, and visibly not yet usable: accrual ignores an unsigned slab.
       await expect(page.getByText('not used for any calculation')).toBeVisible();
     });

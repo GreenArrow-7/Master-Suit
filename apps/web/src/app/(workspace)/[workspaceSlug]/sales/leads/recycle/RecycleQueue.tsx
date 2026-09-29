@@ -78,9 +78,9 @@ export default function RecycleQueue({
       <div className="lf-card" style={{ padding: 'var(--lf-space-4)', display: 'grid', gap: 12 }}>
         <strong>When a lost lead may be offered to somebody else</strong>
         <p style={{ margin: 0, color: 'var(--lf-ink-3)' }}>
-          A recycled lead loses its owner and goes back through your distribution rules, so whoever is next
-          in the rotation picks it up. Leads that asked not to be called are never recycled, however long
-          they have been sitting.
+          A recycled lead loses its owner and goes back through your distribution rules, so whoever is next in the
+          rotation picks it up. Leads that asked not to be called are never recycled, however long they have been
+          sitting.
         </p>
 
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -218,8 +218,11 @@ export default function RecycleQueue({
                         className="lf-btn lf-btn--ghost"
                         disabled={busy}
                         onClick={() =>
-                          void send('POST', { leadIds: [row.id] }, (result: { skipped: { reason: string }[] }) =>
-                            result.skipped[0]?.reason ?? 'Back in the rotation.',
+                          void send(
+                            'POST',
+                            { leadIds: [row.id] },
+                            (result: { skipped: { reason: string }[] }) =>
+                              result.skipped[0]?.reason ?? 'Back in the rotation.',
                           )
                         }
                       >

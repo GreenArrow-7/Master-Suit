@@ -186,9 +186,9 @@ describe('proposals', () => {
     await sendProposal(ctx, other.id);
 
     const otherView = await loadProposal((await sendProposal(ctx, other.id)).url.split('/p/')[1]!);
-    await expect(
-      react(url.split('/p/')[1]!, otherView.listings[0]!.itemId, 'INTERESTED', null),
-    ).rejects.toThrow(AppError);
+    await expect(react(url.split('/p/')[1]!, otherView.listings[0]!.itemId, 'INTERESTED', null)).rejects.toThrow(
+      AppError,
+    );
   });
 
   it('drops a property that has gone, even from a link already sent', async () => {

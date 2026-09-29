@@ -20,11 +20,7 @@ export const metadata = { title: 'Requirement' };
  * shared; the client is not, so an agent cannot read somebody else's buyer by
  * asking what matches them.
  */
-export default async function RequirementPage({
-  params,
-}: {
-  params: Promise<{ id: string; workspaceSlug: string }>;
-}) {
+export default async function RequirementPage({ params }: { params: Promise<{ id: string; workspaceSlug: string }> }) {
   const { id, workspaceSlug } = await params;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['requirements', 'VIEW'] });
 

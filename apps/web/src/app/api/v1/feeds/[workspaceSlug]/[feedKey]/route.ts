@@ -24,10 +24,7 @@ import type { PortalKey } from '@/lib/inventory/portalFeed';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ workspaceSlug: string; feedKey: string }> },
-) {
+export async function GET(_req: NextRequest, context: { params: Promise<{ workspaceSlug: string; feedKey: string }> }) {
   const { workspaceSlug, feedKey } = await context.params;
 
   const tenant = await prisma.tenant.findFirst({

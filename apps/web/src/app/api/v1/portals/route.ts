@@ -16,41 +16,39 @@ import type { PortalKey } from '@/lib/inventory/portalFeed';
  */
 const PORTALS = ['PROPERTY_FINDER', 'BAYUT', 'DUBIZZLE', 'WEBSITE'] as const;
 
-export const GET = route(
-  { module: 'listings', productModule: 'SALES', action: 'EDIT' },
-  async ({ ctx }) =>
-    withTx(ctx.tenantId, async (tx) => {
-      // The slug is not on Ctx and the feed address needs it.
-      const tenant = await tx.tenant.findUniqueOrThrow({
-        where: { id: ctx.tenantId },
-        select: { slug: true },
-      });
-      const feeds = await tx.portalFeed.findMany({
-        where: { tenantId: ctx.tenantId },
-        select: {
-          portal: true,
-          feedKey: true,
-          isActive: true,
-          lastBuiltAt: true,
-          lastItemCount: true,
-        },
-      });
+export const GET = route({ module: 'listings', productModule: 'SALES', action: 'EDIT' }, async ({ ctx }) =>
+  withTx(ctx.tenantId, async (tx) => {
+    // The slug is not on Ctx and the feed address needs it.
+    const tenant = await tx.tenant.findUniqueOrThrow({
+      where: { id: ctx.tenantId },
+      select: { slug: true },
+    });
+    const feeds = await tx.portalFeed.findMany({
+      where: { tenantId: ctx.tenantId },
+      select: {
+        portal: true,
+        feedKey: true,
+        isActive: true,
+        lastBuiltAt: true,
+        lastItemCount: true,
+      },
+    });
 
-      return {
-        portals: PORTALS.map((portal) => {
-          const feed = feeds.find((row) => row.portal === portal);
-          return {
-            portal,
-            isActive: feed?.isActive ?? false,
-            // The address is only meaningful once the feed is live, and a key
-            // shown for a switched-off feed is a key somebody pastes anyway.
-            path: feed?.isActive ? `/api/v1/feeds/${tenant.slug}/${feed.feedKey}` : null,
-            lastBuiltAt: feed?.lastBuiltAt ?? null,
-            lastItemCount: feed?.lastItemCount ?? 0,
-          };
-        }),
-      };
-    }),
+    return {
+      portals: PORTALS.map((portal) => {
+        const feed = feeds.find((row) => row.portal === portal);
+        return {
+          portal,
+          isActive: feed?.isActive ?? false,
+          // The address is only meaningful once the feed is live, and a key
+          // shown for a switched-off feed is a key somebody pastes anyway.
+          path: feed?.isActive ? `/api/v1/feeds/${tenant.slug}/${feed.feedKey}` : null,
+          lastBuiltAt: feed?.lastBuiltAt ?? null,
+          lastItemCount: feed?.lastItemCount ?? 0,
+        };
+      }),
+    };
+  }),
 );
 
 const patchBody = z.object({

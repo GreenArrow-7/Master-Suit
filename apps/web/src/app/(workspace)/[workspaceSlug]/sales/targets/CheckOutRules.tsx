@@ -27,13 +27,7 @@ const LABELS: Record<string, string> = {
  * not in the list and the server refuses them, because keeping somebody at
  * their desk until a stranger buys a flat is not a target.
  */
-export default function CheckOutRules({
-  policy,
-  available,
-}: {
-  policy: CheckOutPolicy;
-  available: readonly string[];
-}) {
+export default function CheckOutRules({ policy, available }: { policy: CheckOutPolicy; available: readonly string[] }) {
   const router = useRouter();
   const [draft, setDraft] = useState<CheckOutPolicy>(policy);
   const [busy, setBusy] = useState(false);
@@ -80,8 +74,8 @@ export default function CheckOutRules({
       <div>
         <h2 style={{ margin: 0, fontSize: 'var(--lf-text-lg)' }}>Finishing the day</h2>
         <p style={{ margin: '4px 0 0', color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-sm)' }}>
-          Whether an unmet daily target stops somebody checking out. Only daily targets count, and only the
-          activity below — a conversion is not something an agent can finish by staying later.
+          Whether an unmet daily target stops somebody checking out. Only daily targets count, and only the activity
+          below — a conversion is not something an agent can finish by staying later.
         </p>
       </div>
 
@@ -89,9 +83,7 @@ export default function CheckOutRules({
         <input
           type="checkbox"
           checked={draft.requireTargetsBeforeCheckOut}
-          onChange={(event) =>
-            setDraft({ ...draft, requireTargetsBeforeCheckOut: event.target.checked })
-          }
+          onChange={(event) => setDraft({ ...draft, requireTargetsBeforeCheckOut: event.target.checked })}
         />
         <span>Require the day&rsquo;s targets before check-out</span>
       </label>
@@ -134,8 +126,8 @@ export default function CheckOutRules({
             onChange={(event) => setDraft({ ...draft, checkOutQuotaMaxHours: Number(event.target.value) })}
           />
           <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-            After this the shortfall is still recorded, but nobody is kept in. UAE labour law caps the working
-            day, and a gate with no ceiling records unlawful hours.
+            After this the shortfall is still recorded, but nobody is kept in. UAE labour law caps the working day, and
+            a gate with no ceiling records unlawful hours.
           </span>
         </label>
       </fieldset>

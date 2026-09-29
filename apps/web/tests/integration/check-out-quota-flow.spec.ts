@@ -27,12 +27,7 @@ function ctxFor(tenant: { tenantId: string; userId: string }) {
   );
 }
 
-async function setRule(
-  tenantId: string,
-  on: boolean,
-  metrics: string[] = ['CALLS_ATTEMPTED'],
-  maxHours = 10,
-) {
+async function setRule(tenantId: string, on: boolean, metrics: string[] = ['CALLS_ATTEMPTED'], maxHours = 10) {
   await prisma.organizationSetting.upsert({
     where: { tenantId },
     update: {

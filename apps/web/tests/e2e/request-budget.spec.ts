@@ -138,17 +138,19 @@ test.describe('Request budget: the five hot navigations', () => {
       assertBudget('leads list → lead detail', requests);
     });
 
-    await test.step('dashboard, via the top bar', async () => {
-      // Directly guards the TopBar Dashboard control staying a <Link>: as a raw
-      // <a> this click is a document load and the assertion fails.
+    await test.step('dashboard, via the sidebar', async () => {
+      // Guards the dashboard control staying a <Link>: as a raw <a> this click
+      // is a document load and the assertion fails.
       const requests = await requestsDuring(page, origin, async () => {
-        // Scoped to the banner, which is what "via the top bar" means and what
-        // the <Link> guard above is about. Unscoped it is ambiguous: the nav
-        // refactor gave the sidebar its own exactly-"Dashboard" link, so the
-        // locator resolved to two elements and Playwright refused to click
-        // either. `exact` still earns its place — it excludes the sidebar brand
-        // link, whose label is "<workspace> dashboard".
-        await page.getByRole('banner').getByRole('link', { name: 'Dashboard', exact: true }).click();
+        // The banner carried this control when the step was written. The nav
+        // refactor removed it — the banner now holds only search, ONE AI,
+        // notifications and Create — and renamed the sidebar's link to
+        // "Overview". That link is the surviving soft navigation to the
+        // dashboard, so it is what the budget is measured across.
+        //
+        // Scoped to the sidebar and exact, which excludes the brand link above
+        // it: its label is "<workspace> overview", not "Overview".
+        await page.getByRole('complementary').getByRole('link', { name: 'Overview', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));
       });
       assertBudget('lead detail → dashboard', requests);
@@ -165,10 +167,11 @@ test.describe('Request budget: the five hot navigations', () => {
     });
 
     await test.step('settings', async () => {
-      // Admin is a collapsed group in the rail; opening it is DOM only, and it
-      // happens outside the measured window so the budget counts the
-      // navigation alone.
-      await page.locator('aside summary', { hasText: 'Admin' }).click();
+      // A collapsed group in the rail; opening it is DOM only, and it happens
+      // outside the measured window so the budget counts the navigation alone.
+      // The nav refactor renamed this group from "Admin" to "Settings" — see
+      // the group's label in src/lib/nav/workspaceNav.ts.
+      await page.locator('aside summary', { hasText: 'Settings' }).click();
       const requests = await requestsDuring(page, origin, async () => {
         await page.locator(`aside a[href="/${workspace.slug}/admin/settings"]`).first().click();
         await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/admin/settings`));

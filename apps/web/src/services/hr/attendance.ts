@@ -359,8 +359,7 @@ export async function preflight(
    * use it, and one who first learns of it when check-out is refused at seven
    * has been told too late to do anything but resent it.
    */
-  const quota =
-    action === 'CHECK_OUT' ? await checkOutQuota(ctx, workedMinutesSince(open?.serverTime)) : null;
+  const quota = action === 'CHECK_OUT' ? await checkOutQuota(ctx, workedMinutesSince(open?.serverTime)) : null;
   if (quota?.blocked) {
     return { ok: false, code: 'TARGETS_NOT_MET', message: quota.message, candidates: rows, quota };
   }

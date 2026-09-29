@@ -39,8 +39,7 @@ async function createListing(
         micromarketId: micromarket.id,
         reference: over.reference,
         title: over.title ?? 'Two bedroom with a marina view',
-        description:
-          'A bright two bedroom on a high floor with an open view, a fitted kitchen and covered parking.',
+        description: 'A bright two bedroom on a high floor with an open view, a fitted kitchen and covered parking.',
         listingType: 'SALE',
         status: 'ACTIVE',
         propertyType: 'APARTMENT',

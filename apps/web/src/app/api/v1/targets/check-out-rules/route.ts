@@ -12,10 +12,10 @@ import { quotaPolicy } from '@/services/hr/checkOutQuota';
  * is a condition of going home. It is deliberately not an HR permission; a
  * brokerage licensing Sales alone has no HR administrator to ask.
  */
-export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW' },
-  async ({ ctx }) => ({ policy: await quotaPolicy(ctx.tenantId), available: GATEABLE_METRICS }),
-);
+export const GET = route({ module: 'leads', productModule: 'SALES', action: 'VIEW' }, async ({ ctx }) => ({
+  policy: await quotaPolicy(ctx.tenantId),
+  available: GATEABLE_METRICS,
+}));
 
 const body = z.object({
   requireTargetsBeforeCheckOut: z.boolean(),

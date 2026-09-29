@@ -118,7 +118,11 @@ test.describe('Refusal, empty and search states', () => {
     // greeting changes with the clock and the viewer's name, the line under it
     // does not.
     await expect(page.getByText(/what needs your attention today/)).toBeVisible();
-    await expect(page.getByText('People summary')).toHaveCount(0);
+    // The panel is headed "People" since the nav refactor; this asserted
+    // "People summary", a string the app no longer renders anywhere, so it
+    // held against a dashboard showing the panel in full. Scoped to main and
+    // exact, because the sidebar has its own "People" section label.
+    await expect(page.getByRole('main').getByRole('heading', { name: 'People', exact: true })).toHaveCount(0);
     await expect(page.getByText('Pending approvals')).toHaveCount(0);
     await expect(page.getByText(/Subscription|Seats used|Renews/)).toHaveCount(0);
   });
@@ -129,7 +133,7 @@ test.describe('Refusal, empty and search states', () => {
 
     // Otherwise the previous case would pass just as well against a dashboard
     // that renders nothing at all.
-    await expect(page.getByText('People summary')).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'People', exact: true })).toBeVisible();
   });
 
   test('5.3-4: the sidebar omits Administration links the viewer cannot open', async ({ page }) => {
@@ -143,7 +147,10 @@ test.describe('Refusal, empty and search states', () => {
     await expect(page.getByRole('link', { name: 'Audit logs' })).toHaveCount(0);
 
     // And the workspace is still usable — this is a filter, not a blank page.
-    await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible();
+    // The link to the dashboard is labelled "Overview" since the nav refactor;
+    // nothing is named "Dashboard" any more, so this asserted against an
+    // element that could never appear.
+    await expect(page.getByRole('complementary').getByRole('link', { name: 'Overview', exact: true })).toBeVisible();
   });
 
   test('the workspace navigation survives a refusal', async ({ page }) => {
@@ -151,8 +158,9 @@ test.describe('Refusal, empty and search states', () => {
     await page.goto(`/${workspace.slug}/admin/roles`);
 
     // Rendered inside the workspace shell, so there is somewhere to go next
-    // rather than a dead end.
-    await expect(page.getByRole('link', { name: 'Dashboard' }).first()).toBeVisible();
+    // rather than a dead end. "Overview" is that link since the nav refactor;
+    // nothing is named "Dashboard" any more.
+    await expect(page.getByRole('complementary').getByRole('link', { name: 'Overview', exact: true })).toBeVisible();
   });
 });
 

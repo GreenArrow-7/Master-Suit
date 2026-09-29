@@ -91,9 +91,7 @@ export default function SendShortlist({
       </label>
 
       <label style={{ display: 'grid', gap: 4 }}>
-        <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-          A note from you (optional)
-        </span>
+        <span style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>A note from you (optional)</span>
         <textarea
           className="lf-input"
           rows={3}
