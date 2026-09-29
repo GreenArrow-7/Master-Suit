@@ -9,6 +9,8 @@ import { expireLapsedMandates } from '@/services/inventory/mandates';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
+import { can } from '@/lib/security/rbac';
+import SendShortlist from './SendShortlist';
 
 export const metadata = { title: 'Requirement' };
 
@@ -19,8 +21,8 @@ export const metadata = { title: 'Requirement' };
  * shared; the client is not, so an agent cannot read somebody else's buyer by
  * asking what matches them.
  */
-export default async function RequirementPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function RequirementPage({ params }: { params: Promise<{ id: string; workspaceSlug: string }> }) {
+  const { id, workspaceSlug } = await params;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
 
   const owned = await prisma.clientRequirement.findFirst({
@@ -116,6 +118,25 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
           Live stock only — a listing whose mandate has lapsed is not offered. Closest to the middle of the stated
           budget first.
         </p>
+
+        {matches.length > 0 && can(ctx, 'requirements', 'CREATE') && (
+          <div style={{ margin: '12px 0 18px' }}>
+            <SendShortlist
+              leadId={owned.leadId}
+              contactId={owned.contactId}
+              requirementId={id}
+              clientName={client?.fullName ?? 'you'}
+              workspaceSlug={workspaceSlug}
+              matches={matches.map((m) => ({
+                id: m.id,
+                title: m.title,
+                price: m.price.toString(),
+                currency: m.currency,
+                community: m.micromarket ? `${m.micromarket.name}, ${m.micromarket.city}` : null,
+              }))}
+            />
+          </div>
+        )}
 
         {matches.length === 0 ? (
           <EmptyState

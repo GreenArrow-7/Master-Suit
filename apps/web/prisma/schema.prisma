@@ -626,6 +626,10 @@ model Tenant {
   collectionRecoveryCases    CollectionRecoveryCase[]
 
   agencyFeeAmendments AgencyFeeAmendment[]
+  portalFeeds         PortalFeed[]
+  listingPublications ListingPublication[]
+  proposals           Proposal[]
+  proposalItems       ProposalItem[]
 
   @@index([status])
 }
@@ -891,7 +895,7 @@ model PlatformAccessGrant {
 /// expiry and a revocation path — so "who can currently see every customer" is a
 /// query rather than an inference.
 model PlatformCoverageGrant {
-  id             String   @id @default(cuid())
+  id             String               @id @default(cuid())
   platformUserId String
   /// Defaults to OPERATIONAL so a row written before this column existed keeps
   /// exactly the meaning it had, and the longer ceiling is never applied
@@ -900,13 +904,13 @@ model PlatformCoverageGrant {
   /// Same minimum as a workspace grant. Covering every customer at once needs at
   /// least as much justification as covering one.
   reason         String
-  grantedAt      DateTime @default(now())
+  grantedAt      DateTime             @default(now())
   /// Required, and capped. Standing coverage that nobody has to re-ask for is
   /// the thing "explicit" is meant to exclude.
   expiresAt      DateTime
   /// As on PlatformAccessGrant: recordings, transcripts and documents are a
   /// separate ask, and covering every workspace does not change that.
-  sensitive      Boolean  @default(false)
+  sensitive      Boolean              @default(false)
 
   revokedAt     DateTime?
   revokedReason String?
@@ -942,40 +946,44 @@ model BillingEvent {
 }
 
 model OrganizationSetting {
-  id                    String   @id @default(cuid())
-  tenantId              String   @unique
-  productName           String   @default("Master App")
-  logoUrl               String?
-  faviconUrl            String?
-  primaryColor          String   @default("#2447C7")
-  accentColor           String   @default("#0E7C66")
-  emailFromName         String?
-  emailFromAddress      String?
-  defaultTimezone       String   @default("Asia/Dubai")
-  defaultLocale         String   @default("en-AE")
-  defaultCurrency       String   @default("AED")
-  fiscalYearStart       Int      @default(1)
-  terminology           Json     @default("{}")
-  workingHours          Json     @default("{}")
-  quietHours            Json     @default("{}")
-  passwordPolicy        Json     @default("{}")
-  sessionTtlMinutes     Int      @default(480)
-  mfaRequired           Boolean  @default(false)
-  ipAllowlist           String[] @default([])
-  retentionPolicy       Json     @default("{}")
-  featureFlags          Json     @default("{}")
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique
+  productName          String   @default("Master App")
+  logoUrl              String?
+  faviconUrl           String?
+  primaryColor         String   @default("#2447C7")
+  accentColor          String   @default("#0E7C66")
+  emailFromName        String?
+  emailFromAddress     String?
+  /// The agency's broker registration number — ORN in Dubai, and the
+  /// equivalent elsewhere. Portal feeds carry it at the agency level, and a
+  /// feed without one is refused by some of them.
+  reraOrn              String?
+  defaultTimezone      String   @default("Asia/Dubai")
+  defaultLocale        String   @default("en-AE")
+  defaultCurrency      String   @default("AED")
+  fiscalYearStart      Int      @default(1)
+  terminology          Json     @default("{}")
+  workingHours         Json     @default("{}")
+  quietHours           Json     @default("{}")
+  passwordPolicy       Json     @default("{}")
+  sessionTtlMinutes    Int      @default(480)
+  mfaRequired          Boolean  @default(false)
+  ipAllowlist          String[] @default([])
+  retentionPolicy      Json     @default("{}")
+  featureFlags         Json     @default("{}")
   /// Workspace overrides for the HR policy registry in src/services/hr/settings.ts.
   /// Only keys that differ from the statutory/product default are stored, so a
   /// default that changes in a release reaches every workspace that never
   /// overrode it.
-  hrPolicy              Json     @default("{}")
+  hrPolicy             Json     @default("{}")
   /// Days a lead may sit with an owner and no activity before the recycling
   /// sweep returns it to the pool. Null means the sweep does not run for this
   /// workspace, and null is the default deliberately: clearing ownership is a
   /// write against somebody's book of work, and a feature that switched itself
   /// on for every existing workspace at deploy time would move customer data
   /// nobody asked it to move. A workspace opts in by setting a number.
-  leadRecycleAfterDays  Int?
+  leadRecycleAfterDays Int?
 
   /// Administrator-chosen grid columns, keyed by object type ("LEAD": ["stage", ...]).
   /// Only the chosen order is stored; labels and rendering stay in
@@ -1204,6 +1212,7 @@ model User {
   practiceSessions    PracticeSession[]     @relation("PracticeUser")
   coachingNotes       CoachingNote[]        @relation("CoachingAuthor")
   workspaceMembership WorkspaceMembership?
+  proposals           Proposal[]            @relation("ProposalOwner")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -6785,7 +6794,14 @@ model Listing {
   siteVisits    SiteVisit[]
   bookings      Booking[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// Trakheesi, or the equivalent advertising permit elsewhere. Per listing,
+  /// unlike the project's RERA number — the portals check for this one, and
+  /// advertising without it is a compliance problem rather than a portal rule.
+  permitNumber  String?
+  permitExpiry  DateTime?
+  publications  ListingPublication[]
+  proposalItems ProposalItem[]
 
   @@unique([tenantId, reference])
   /// The keyset order, matching the project catalogue.
@@ -8702,4 +8718,175 @@ model AiAlertRule {
   updatedAt   DateTime    @updatedAt
 
   @@index([kind, enabled])
+}
+
+enum PortalKey {
+  PROPERTY_FINDER
+  BAYUT
+  DUBIZZLE
+  /// The brokerage's own website, which usually wants everything and enforces
+  /// less than a portal does.
+  WEBSITE
+}
+
+model PortalFeed {
+  id       String    @id @default(cuid())
+  tenantId String
+  portal   PortalKey
+
+  /// The public path segment. Long and random because the feed carries every
+  /// listing the brokerage holds with the asking price attached.
+  ///
+  /// Stored rather than derived from the signing pepper like `publicLink`,
+  /// because a portal that has been given the wrong address needs that one
+  /// feed rotated — and rotating the pepper would take every outstanding
+  /// public link in the product with it.
+  feedKey  String  @unique
+  isActive Boolean @default(false)
+
+  lastBuiltAt   DateTime?
+  lastItemCount Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, portal])
+}
+
+/// Whether one listing goes to one portal, and why it did not.
+///
+/// A row per pairing rather than an array on the listing, because each one
+/// carries its own outcome: Property Finder refuses a listing with no permit
+/// number while the brokerage's own site is happy to show it, and "why is this
+/// not on Bayut" needs an answer attached to the pairing rather than the row.
+model ListingPublication {
+  id        String    @id @default(cuid())
+  tenantId  String
+  listingId String
+  portal    PortalKey
+
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+
+  /// Recomputed on every build, so a complaint about a photograph that was
+  /// added last week does not linger after it was fixed.
+  lastError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, listingId, portal])
+  @@index([tenantId, portal, isPublished])
+}
+
+/// Whether one listing goes to one portal, and why it did not.
+///
+/// A row per pairing rather than an array on the listing, because each one
+/// carries its own outcome: Property Finder refuses a listing with no permit
+/// number while the brokerage's own site is happy to show it, and "why is this
+/// not on Bayut" needs an answer attached to the pairing rather than the row.
+enum ProposalStatus {
+  DRAFT
+  SENT
+  /// Withdrawn by the agency. The link stops resolving; the record stays.
+  CLOSED
+}
+
+/// What a client said about one property. Absent means they have not said.
+enum ProposalReaction {
+  INTERESTED
+  NOT_INTERESTED
+}
+
+/// A shortlist an agent sends a client, on the agency's own letterhead.
+///
+/// The thing every brokerage does in WhatsApp today: six photographs, six
+/// prices, and no idea which one landed. A proposal is the same shortlist on a
+/// link, and the difference is the part that comes back — who opened it, when,
+/// and which of the six they liked. That is what makes the follow-up call worth
+/// making.
+///
+/// The link carries no stored token. `publicLink('proposal', 'p')` derives one
+/// from the tenant and the proposal id, so rotating WEBHOOK_SIGNING_PEPPER
+/// invalidates every outstanding proposal at once and there is no column to
+/// leak. See src/lib/proposals/proposalLink.ts.
+model Proposal {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A buyer is a Lead before they are a Contact, and the proposal follows the
+  /// person — so either may be set, like ClientRequirement above.
+  leadId        String?
+  contactId     String?
+  requirementId String?
+
+  title   String
+  /// The agent's covering note, shown above the properties.
+  message String?
+
+  status  ProposalStatus @default(DRAFT)
+  /// Sent by whom — the name and photograph on the page, and who hears back.
+  ownerId String?
+
+  sentAt    DateTime?
+  /// After this the link stops resolving. A price quoted in March is not a
+  /// price in September, and a shortlist with no end is a shortlist that gets
+  /// forwarded to somebody else's client in six months.
+  expiresAt DateTime?
+
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+
+  items  ProposalItem[]
+  owner  User?          @relation("ProposalOwner", fields: [ownerId], references: [id])
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, ownerId, status])
+}
+
+/// One property on a proposal, and what the client made of it.
+///
+/// The listing is referenced rather than copied, so a price correction reaches
+/// a proposal that is already out. The trade is that a listing withdrawn from
+/// the book disappears from the client's page — which is the right way round:
+/// showing stock the agency can no longer sell is worse than showing fewer.
+model ProposalItem {
+  id         String @id @default(cuid())
+  tenantId   String
+  proposalId String
+  listingId  String
+  position   Int    @default(0)
+
+  /// Why this one, for this client. "Closest to the school you mentioned."
+  note String?
+
+  reaction  ProposalReaction?
+  /// What they typed when they said no. The most useful sentence in the record.
+  comment   String?
+  reactedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  listing  Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, listingId])
+  @@index([tenantId, proposalId, position])
 }
