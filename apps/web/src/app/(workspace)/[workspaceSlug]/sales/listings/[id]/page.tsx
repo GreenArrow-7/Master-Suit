@@ -1,7 +1,9 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
+import { workspacePath } from '@/lib/workspace';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
@@ -21,9 +23,16 @@ export const metadata = { title: 'Listing' };
  * page is already server-rendered, and a round trip to our own API to fill a
  * section below the fold is a hop for nothing.
  */
-export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ListingDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string; workspaceSlug: string }>;
+}) {
+  const { id, workspaceSlug } = await params;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'VIEW'] });
+  // A contact is a Sales record with no Real Estate screen: link to it only where
+  // the workspace has Sales, and by its Sales address.
+  const contactsReachable = await hasModuleEntitlement(ctx.tenantId, 'SALES');
 
   await expireLapsedMandates(ctx.tenantId);
 
@@ -250,7 +259,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         {r.leadId ? (
                           <SalesLink href={`/leads/${r.leadId}`}>Lead</SalesLink>
                         ) : r.contactId ? (
-                          <SalesLink href={`/contacts/${r.contactId}`}>Contact</SalesLink>
+                          contactsReachable ? (
+                            <Link href={workspacePath(workspaceSlug, `/sales/contacts/${r.contactId}`)}>Contact</Link>
+                          ) : (
+                            'Contact'
+                          )
                         ) : (
                           '—'
                         )}

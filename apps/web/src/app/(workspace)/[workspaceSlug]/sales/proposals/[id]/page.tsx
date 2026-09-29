@@ -1,6 +1,8 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
+import { workspacePath } from '@/lib/workspace';
 import { AppError } from '@/lib/errors';
 import { proposalDetail } from '@/services/proposals/proposals';
 import Badge from '@/components/ui/Badge';
@@ -16,8 +18,8 @@ export const metadata = { title: 'Proposal' };
  * ticked the second and third and wrote "too far from the metro" on the first
  * has their next call and their next search, both written by the buyer.
  */
-export default async function ProposalPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ProposalPage({ params }: { params: Promise<{ id: string; workspaceSlug: string }> }) {
+  const { id, workspaceSlug } = await params;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
 
   let proposal;
@@ -27,6 +29,11 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
     if (err instanceof AppError && err.status === 404) notFound();
     throw err;
   }
+
+  // A contact is a Sales record with no Real Estate screen: link to it only where
+  // the workspace has Sales, and by its Sales address, which this page reached
+  // through /realty/ would otherwise resolve against.
+  const contactsReachable = await hasModuleEntitlement(ctx.tenantId, 'SALES');
 
   const liked = proposal.items.filter((item) => item.reaction === 'INTERESTED').length;
   const rejected = proposal.items.filter((item) => item.reaction === 'NOT_INTERESTED').length;
@@ -42,7 +49,9 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
           <Badge value={proposal.status} />
           {proposal.owner && <span style={{ color: 'var(--lf-ink-3)' }}>{proposal.owner.fullName}</span>}
           {proposal.leadId && <SalesLink href={`/leads/${proposal.leadId}`}>Open the lead</SalesLink>}
-          {proposal.contactId && <SalesLink href={`/contacts/${proposal.contactId}`}>Open the contact</SalesLink>}
+          {proposal.contactId && contactsReachable && (
+            <Link href={workspacePath(workspaceSlug, `/sales/contacts/${proposal.contactId}`)}>Open the contact</Link>
+          )}
         </div>
       </header>
 

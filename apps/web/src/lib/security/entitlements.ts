@@ -1,6 +1,6 @@
 import { prisma } from '../db';
 import { cached, redis } from '../redis';
-import { Forbidden } from '../errors';
+import { AppError, Forbidden } from '../errors';
 
 export type ProductModule = 'HRMS' | 'SALES' | 'REAL_ESTATE';
 
@@ -79,6 +79,21 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     throw Forbidden(`${MODULE_LABEL[module]} is not enabled for this company.`);
   }
   return entitlement;
+}
+
+/**
+ * Whether the workspace may use a module — for deciding what to *show*, such as
+ * a link into another product's screen, not whether to refuse. Only the
+ * entitlement refusal becomes `false`; any other failure still throws.
+ */
+export async function hasModuleEntitlement(tenantId: string, module: ProductModule): Promise<boolean> {
+  try {
+    await assertModuleEntitlement(tenantId, module);
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && error.status === 403) return false;
+    throw error;
+  }
 }
 
 /**
