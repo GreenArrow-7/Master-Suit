@@ -45,7 +45,7 @@ test.describe('Mobile viewport', () => {
   const PAGES = [
     'dashboard',
     'people',
-    'people/check-in',
+    'check-in',
     'people/attendance',
     'people/work-locations',
     'people/leave',

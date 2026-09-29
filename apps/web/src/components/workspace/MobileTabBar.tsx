@@ -70,7 +70,7 @@ export default function MobileTabBar({ slug, modules }: { slug: string; modules:
       ? [
           { key: 'overview', label: 'Home', href: `/${slug}/people` },
           { key: 'tasks', label: 'Leave', href: `/${slug}/people/leave` },
-          { key: 'calls', label: 'Check in', href: `/${slug}/people/check-in` },
+          { key: 'calls', label: 'Check in', href: `/${slug}/check-in` },
           { key: 'leads', label: 'People', href: `/${slug}/people/employees` },
         ]
       : product === 'realty'

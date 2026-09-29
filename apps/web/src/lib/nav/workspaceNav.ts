@@ -56,6 +56,12 @@ export interface NavTab {
   /** `module` means VIEW; `module:ACTION` names another action. All must be held. */
   permission?: string | string[];
   module?: Module;
+  /**
+   * Hidden when the workspace does hold this module, because another area
+   * carries the same screen there. For a screen every workspace needs but one
+   * product already files in its own place — so it is offered once, not twice.
+   */
+  unlessModule?: Module;
   audience?: Audience;
   /** Other routes that are this same screen (older duplicates, sub-pages). */
   aliases?: string[];
@@ -138,6 +144,18 @@ function definitions(slug: string): SectionDef[] {
               label: 'Workspace Summary',
               href: `/${slug}/dashboard`,
               keywords: 'home dashboard my day today start',
+            },
+            // Clocking yourself in is self-service, not an HR privilege, so a
+            // workspace licensing Sales or Real Estate without People still needs
+            // a way in — the screen sits outside every module folder for the same
+            // reason. Where People is licensed, My HR already files it beside My
+            // Attendance and My Leave, so it is offered there and not here too.
+            {
+              label: 'Check-in',
+              href: `/${slug}/check-in`,
+              unlessModule: H,
+              aliases: [p('/check-in')],
+              keywords: 'punch clock face attendance',
             },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
@@ -559,7 +577,13 @@ function definitions(slug: string): SectionDef[] {
           personal: true,
           tabs: [
             { label: 'Overview', href: p(''), module: H, audience: 'self' },
-            { label: 'Check-in', href: p('/check-in'), module: H, keywords: 'punch clock face' },
+            {
+              label: 'Check-in',
+              href: `/${slug}/check-in`,
+              module: H,
+              aliases: [p('/check-in')],
+              keywords: 'punch clock face',
+            },
             { label: 'My Attendance', href: p('/attendance'), module: H, audience: 'self' },
             { label: 'My Leave', href: p('/leave'), module: H, audience: 'self', keywords: 'holiday time off' },
             {
@@ -908,6 +932,7 @@ export function activeModule(pathname: string, modules: readonly string[]): 'peo
 
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {
   if (tab.module && !input.modules.includes(tab.module)) return false;
+  if (tab.unlessModule && input.modules.includes(tab.unlessModule)) return false;
   if (tab.audience === 'self' && input.peopleOversight) return false;
   if (tab.audience === 'oversight' && !input.peopleOversight) return false;
   return tokens(tab).every((token) => input.permitted.includes(token));

@@ -487,7 +487,7 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
    */
   const myDayPanel = mine ? (
     <Summary
-      link={{ href: `/${workspace.slug}/people/check-in`, label: 'Open check-in →' }}
+      link={{ href: `/${workspace.slug}/check-in`, label: 'Open check-in →' }}
       title="My day"
       values={(
         [
