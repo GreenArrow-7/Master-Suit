@@ -116,6 +116,35 @@ describe('self-service attendance for an employee without employee:VIEW', () => 
     expect(preflight.status).toBe(200);
   });
 
+  /**
+   * `hr/self` takes API keys by design, so a client outside this repository may
+   * have been sending the old field name while the console could not. Fixing
+   * one must not break the other.
+   */
+  it('still accepts the old `action` field, for clients built against it', async () => {
+    const { punchType, ...where } = PREFLIGHT;
+    const res = await post(
+      selfPost,
+      at('self', 'attendance-preflight').path,
+      { action: punchType, ...where },
+      cookie,
+      at('self', 'attendance-preflight').params,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a preflight that names neither field', async () => {
+    const { punchType: _omitted, ...where } = PREFLIGHT;
+    const res = await post(
+      selfPost,
+      at('self', 'attendance-preflight').path,
+      where,
+      cookie,
+      at('self', 'attendance-preflight').params,
+    );
+    expect(res.status).toBe(422);
+  });
+
   it('sends preflight the field the route reads', () => {
     const source = readFileSync(
       join(__dirname, '..', '..', 'src', 'app', '(workspace)', '[workspaceSlug]', 'check-in', 'CheckInConsole.tsx'),

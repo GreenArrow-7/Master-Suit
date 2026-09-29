@@ -61,20 +61,30 @@ export const POST = route(
         return withdrawConsent(ctx);
 
       case 'attendance-preflight': {
-        // `punchType`, matching attendance-punch below, the HR dispatcher, and
-        // what the check-in console sends. This asked for `action`, which
-        // nothing sends — so since the console moved onto this route, every
-        // self-service preflight has thrown on validation before reading a
-        // coordinate.
+        // `punchType` is the field: attendance-punch below reads it, the HR
+        // dispatcher reads it, and the check-in console sends it. This route
+        // read `action` instead, which no client in the repository sends — so
+        // since the console moved here, every self-service preflight threw on
+        // validation before reading a coordinate.
+        //
+        // `action` is still accepted, as a deprecated alias. This route takes
+        // API keys by design, so an integration outside this repository may
+        // have been sending it successfully all along; fixing the console must
+        // not break a caller nobody here can see.
         const input = z
           .object({
-            punchType: z.enum(['CHECK_IN', 'CHECK_OUT']),
+            punchType: z.enum(['CHECK_IN', 'CHECK_OUT']).optional(),
+            action: z.enum(['CHECK_IN', 'CHECK_OUT']).optional(),
             latitude: z.coerce.number().min(-90).max(90),
             longitude: z.coerce.number().min(-180).max(180),
             gpsAccuracyM: z.coerce.number().min(0).max(10_000).default(0),
           })
+          .refine((fields) => Boolean(fields.punchType ?? fields.action), {
+            message: 'Required',
+            path: ['punchType'],
+          })
           .parse(body);
-        return preflight(ctx, input.punchType, input);
+        return preflight(ctx, (input.punchType ?? input.action)!, input);
       }
       case 'attendance-challenge':
         return requestChallenge(ctx);
