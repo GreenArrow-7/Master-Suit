@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { CLOSE_OUT_STATUSES, closeOutLead } from '@/services/leads/closeOut';
@@ -17,7 +18,7 @@ const body = z
  * allowed to delete.
  */
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     const lead = await closeOutLead(ctx, params.id, body);
     return { id: lead.id, status: lead.status, duplicateOfId: lead.duplicateOfId };

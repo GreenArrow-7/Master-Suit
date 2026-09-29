@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { punch } from '@/services/visits/punch';
@@ -34,7 +35,7 @@ const body = z
 export const POST = route(
   {
     module: 'visits',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params,
     body,

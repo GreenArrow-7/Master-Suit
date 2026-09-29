@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { AppError } from '@/lib/errors';
+import { realtyEquivalent } from '@/lib/nav/realtyShared';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 
 /**
@@ -39,8 +41,31 @@ export default async function SalesLayout({
     // is rethrown, because the old bare `catch` turned every one of them into
     // "this workspace has no Sales module", which is the wrong answer and hides
     // the real one.
-    if (error instanceof AppError && error.status === 403) redirect(`/${workspaceSlug}/dashboard`);
+    if (error instanceof AppError && error.status === 403) redirect(await elsewhere(workspaceSlug));
     throw error;
   }
   return children;
+}
+
+/**
+ * Where a workspace without Sales goes instead.
+ *
+ * Record links — the notification bell, a push notification already on a
+ * phone, the assistant — are built as `/sales/...` (lib/nav/entityRoute.ts).
+ * A workspace that bought only Real Estate owns the same registers under
+ * `/realty/`, so it is sent to the same screen there rather than to the
+ * dashboard. Anything Real Estate has no screen for still goes to the dashboard.
+ */
+async function elsewhere(workspaceSlug: string): Promise<string> {
+  const header = await headers();
+  const target = realtyEquivalent(`${header.get('x-pathname') ?? ''}${header.get('x-search') ?? ''}`);
+  if (target) {
+    try {
+      await requestWorkspace(await requestCtx(), workspaceSlug, 'REAL_ESTATE');
+      return target;
+    } catch (error) {
+      if (!(error instanceof AppError && error.status === 403)) throw error;
+    }
+  }
+  return `/${workspaceSlug}/dashboard`;
 }

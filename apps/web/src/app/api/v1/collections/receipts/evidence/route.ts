@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
   let storedKey = '';
   try {
     const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'SALES',
+      productModule: SALES_OR_REALTY,
       permission: ['collections', 'CREATE'],
     });
 

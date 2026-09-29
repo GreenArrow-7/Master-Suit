@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -19,7 +20,7 @@ const params = z.object({ id: z.string().cuid() });
  * free-form send is currently possible for this call's lead.
  */
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({

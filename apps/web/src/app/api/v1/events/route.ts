@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -28,7 +29,13 @@ const createBody = z
   .refine((d) => d.endAt > d.startAt, { message: 'endAt must be after startAt' });
 
 export const POST = route(
-  { module: 'events', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'events',
+    productModule: SALES_OR_REALTY,
+    action: 'CREATE',
+    body: createBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, body }) => {
     const event = await prisma.event.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, ...body },
@@ -77,7 +84,7 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'events', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'events', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };
     // Below TEAM scope an event is yours when you host it, created it, or were

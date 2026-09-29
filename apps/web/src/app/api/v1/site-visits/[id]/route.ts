@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -8,7 +9,7 @@ import { VISIT_STATUSES, amendCompleted, transition, verify } from '@/services/v
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'visits', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'visits', productModule: SALES_OR_REALTY, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const visit = await prisma.siteVisit.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -82,7 +83,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'visits',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params,
     body: patchBody,
@@ -142,7 +143,7 @@ export const PATCH = route(
  * something that took place; making it disappear is the opposite of a register.
  */
 export const DELETE = route(
-  { module: 'visits', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'visits', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) =>
     withTx(ctx.tenantId, async (tx) => {
       const visit = await tx.siteVisit.findFirst({

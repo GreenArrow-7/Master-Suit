@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -28,7 +29,14 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'calls',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: createBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, params, body }) => {
     await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
@@ -134,7 +142,7 @@ export const POST = route(
 export const GET = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'VIEW',
     params,
     auditEvent: 'DOCUMENT_ACCESSED',

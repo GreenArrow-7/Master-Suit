@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { route } from '@/lib/api/handler';
@@ -18,7 +19,7 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'projects', productModule: 'SALES', action: 'VIEW', params, query: listQuery },
+  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', params, query: listQuery },
   async ({ ctx, params, query }) => {
     // Expired holds are returned to the market at the moment someone looks,
     // rather than by a sweeper that runs over every tenant to change nothing.
@@ -79,7 +80,7 @@ const MAX_UNITS_PER_REQUEST = 1_000;
 export const POST = route(
   {
     module: 'projects',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'CREATE',
     params,
     body: createBody,

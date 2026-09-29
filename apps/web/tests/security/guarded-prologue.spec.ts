@@ -67,7 +67,7 @@ describe('the security prologue', () => {
     // runs, so a caller without an entitlement never reaches the permission
     // check and never consumes a token from somebody else's bucket.
     const source = readFileSync(join(__dirname, '..', '..', 'src', 'lib', 'api', 'guarded.ts'), 'utf8');
-    const order = ['resolveCtx(', 'assertModuleEntitlement(', 'assertPermission(', 'consume('].map((needle) =>
+    const order = ['resolveCtx(', 'assertAnyModuleEntitlement(', 'assertPermission(', 'consume('].map((needle) =>
       source.indexOf(needle, source.indexOf('export async function resolveGuardedCtx')),
     );
     expect(order.every((index) => index > 0)).toBe(true);

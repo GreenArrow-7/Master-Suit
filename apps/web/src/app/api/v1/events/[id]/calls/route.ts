@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -25,7 +26,7 @@ const BATCH_LIMIT = 200;
  * Gemini analysis then run through the existing per-call endpoints unchanged.
  */
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'CREATE', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
     await assertEventInScope(ctx, params.id);
     const event = await prisma.event.findFirst({

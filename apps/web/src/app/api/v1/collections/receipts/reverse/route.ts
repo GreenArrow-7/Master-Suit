@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { reverseReceipt } from '@/services/money/collections';
@@ -19,6 +20,6 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'collections', productModule: 'SALES', action: 'CREATE', body, auditEvent: 'RECORD_CREATED' },
+  { module: 'collections', productModule: SALES_OR_REALTY, action: 'CREATE', body, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => reverseReceipt({ ctx, ...body }),
 );

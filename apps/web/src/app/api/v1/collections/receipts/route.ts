@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { listReceipts, recordReceipt } from '@/services/money/collections';
@@ -14,7 +15,7 @@ import { listReceipts, recordReceipt } from '@/services/money/collections';
 const listQuery = z.object({ bookingId: z.string().cuid() }).strict();
 
 export const GET = route(
-  { module: 'collections', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'collections', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => listReceipts(ctx, query.bookingId),
 );
 
@@ -34,6 +35,12 @@ const recordBody = z
   .strict();
 
 export const POST = route(
-  { module: 'collections', productModule: 'SALES', action: 'CREATE', body: recordBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'collections',
+    productModule: SALES_OR_REALTY,
+    action: 'CREATE',
+    body: recordBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, body }) => recordReceipt({ ctx, ...body }),
 );

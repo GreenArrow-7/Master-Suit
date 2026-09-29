@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { decideResolution } from '@/services/money/recoveryCases';
@@ -6,7 +7,7 @@ import { decideResolution } from '@/services/money/recoveryCases';
 export const PATCH = route(
   {
     module: 'collections',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'APPROVE',
     body: z
       .object({ caseId: z.string().cuid(), approve: z.boolean(), note: z.string().min(4).max(1000).optional() })

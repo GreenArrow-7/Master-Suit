@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -28,7 +29,7 @@ function mayAssignOthers(scope: string) {
 }
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const { ownerId, ...rest } = body;
     const scope = scopeFor(ctx, 'leads', 'EDIT');

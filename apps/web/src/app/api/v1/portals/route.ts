@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
@@ -16,7 +17,7 @@ import type { PortalKey } from '@/lib/inventory/portalFeed';
  */
 const PORTALS = ['PROPERTY_FINDER', 'BAYUT', 'DUBIZZLE', 'WEBSITE'] as const;
 
-export const GET = route({ module: 'listings', productModule: 'SALES', action: 'EDIT' }, async ({ ctx }) =>
+export const GET = route({ module: 'listings', productModule: SALES_OR_REALTY, action: 'EDIT' }, async ({ ctx }) =>
   withTx(ctx.tenantId, async (tx) => {
     // The slug is not on Ctx and the feed address needs it.
     const tenant = await tx.tenant.findUniqueOrThrow({
@@ -60,7 +61,7 @@ const patchBody = z.object({
 });
 
 export const PATCH = route(
-  { module: 'listings', productModule: 'SALES', action: 'EDIT', body: patchBody },
+  { module: 'listings', productModule: SALES_OR_REALTY, action: 'EDIT', body: patchBody },
   async ({ ctx, body }) => {
     const portal = body.portal as PortalKey;
 

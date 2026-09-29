@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -59,7 +60,7 @@ const query = z
  * prevent, and the workspace records it before the first chunk.
  */
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, query },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params, query },
   async ({ ctx, params, query, req }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

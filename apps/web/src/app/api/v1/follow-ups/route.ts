@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -16,7 +17,7 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'EDIT', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     // Same contract as a task: the lead is locked and its stored aggregate
     // recomputed in the transaction that creates the obligation.
@@ -38,7 +39,7 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const now = new Date();
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);

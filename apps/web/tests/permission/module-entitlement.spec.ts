@@ -19,6 +19,8 @@ import { GET as listRoles } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/
 import { GET as selfStatus } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { GET as salesLeads } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
+import { GET as leadsList } from '@/app/api/v1/leads/route';
+import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
 import { createSessionToken } from '../helpers/session';
 import { get } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -36,7 +38,7 @@ interface Workspace {
  * A workspace with exactly the modules given, an admin holding every permission
  * used below, and a plain member holding none.
  */
-async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES')[]): Promise<Workspace> {
+async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES' | 'REAL_ESTATE')[]): Promise<Workspace> {
   const slug = `${label}-${suffix}`;
   const tenant = await prisma.tenant.create({
     data: { slug, legalName: `${label} LLC`, displayName: label, status: 'ACTIVE' },
@@ -56,6 +58,7 @@ async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES')[]): Prom
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
     ['leads', 'VIEW'],
+    ['opportunities', 'VIEW'],
   ];
   for (const [permissionModule, action] of grants) {
     const permission = await prisma.permission.upsert({
@@ -103,15 +106,17 @@ async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES')[]): Prom
 let hrOnly: Workspace;
 let salesOnly: Workspace;
 let both: Workspace;
+let realtyOnly: Workspace;
 
 beforeAll(async () => {
   hrOnly = await makeWorkspace('ent-hr', ['HRMS']);
   salesOnly = await makeWorkspace('ent-sales', ['SALES']);
   both = await makeWorkspace('ent-both', ['HRMS', 'SALES']);
+  realtyOnly = await makeWorkspace('ent-realty', ['REAL_ESTATE']);
 });
 
 afterAll(async () => {
-  for (const w of [hrOnly, salesOnly, both]) {
+  for (const w of [hrOnly, salesOnly, both, realtyOnly]) {
     if (w?.id) await prisma.tenant.delete({ where: { id: w.id } }).catch(() => {});
   }
 });
@@ -136,6 +141,27 @@ describe('product modules are gated by entitlement', () => {
     const sales = await get(salesLeads, salesPath(both), both.cookie, { workspaceSlug: both.slug });
     expect(hr.status).toBe(200);
     expect(sales.status).toBe(200);
+  });
+});
+
+describe('Real Estate reaches the registers it shares with Sales, and nothing else of Sales', () => {
+  // The Real Estate screens are the Sales screens, and they write through these
+  // APIs. When the APIs asserted Sales alone, a workspace that bought only Real
+  // Estate saw every screen render and every action on it refused.
+  it('a Real-Estate-only workspace reads the shared lead register', async () => {
+    const res = await get(leadsList, '/api/v1/leads', realtyOnly.cookie);
+    expect(res.status).toBe(200);
+  });
+
+  it('a Real-Estate-only workspace is refused a Sales-only register', async () => {
+    // The admin holds `opportunities:VIEW`, so the refusal is the entitlement's.
+    const res = await get(opportunitiesList, '/api/v1/opportunities', realtyOnly.cookie);
+    expect(res.status).toBe(403);
+  });
+
+  it('an HRMS-only workspace is still refused the shared register', async () => {
+    const res = await get(leadsList, '/api/v1/leads', hrOnly.cookie);
+    expect(res.status).toBe(403);
   });
 });
 

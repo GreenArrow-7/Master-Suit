@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { decideAmendment } from '@/services/money/feeAmendments';
@@ -6,7 +7,7 @@ import { decideAmendment } from '@/services/money/feeAmendments';
 export const PATCH = route(
   {
     module: 'agencyfee',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'APPROVE',
     body: z
       .object({

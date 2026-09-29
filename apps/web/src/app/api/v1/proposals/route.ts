@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
@@ -16,7 +17,7 @@ const listQuery = z.object({
 });
 
 export const GET = route(
-  { module: 'requirements', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'requirements', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) =>
     withTx(ctx.tenantId, async (tx) => {
       const proposals = await tx.proposal.findMany({
@@ -82,7 +83,7 @@ const createBody = z.object({
 export const POST = route(
   {
     module: 'requirements',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

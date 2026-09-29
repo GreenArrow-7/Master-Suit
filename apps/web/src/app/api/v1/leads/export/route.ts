@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { mergeWhere } from '@/lib/api/where';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
 
 async function handle(req: Request, requestId: string) {
   const ctx = await resolveGuardedCtx(req, requestId, {
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     permission: ['leads', 'EXPORT'],
   });
 

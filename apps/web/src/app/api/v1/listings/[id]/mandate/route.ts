@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { createMandate } from '@/services/inventory/mandates';
@@ -34,7 +35,7 @@ const body = z
 export const POST = route(
   {
     module: 'listings',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'CREATE',
     params,
     body,

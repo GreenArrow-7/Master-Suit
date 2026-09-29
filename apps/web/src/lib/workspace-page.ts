@@ -6,7 +6,7 @@ import { resolveCtx } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { assertPermission, type Action, type Ctx } from '@/lib/security/rbac';
 import { recordPlatformAccess } from '@/lib/auth/service-identity';
-import { assertModuleEntitlement, type ProductModule } from '@/lib/security/entitlements';
+import { assertAnyModuleEntitlement, type ProductModule } from '@/lib/security/entitlements';
 
 export interface WorkspacePageOptions {
   /**
@@ -72,29 +72,9 @@ export const requestCtx = cache(async (): Promise<Ctx> =>
  */
 const workspaceRecord = cache(async (ctx: Ctx, slug: string) => requireWorkspace(ctx, slug));
 
-/**
- * Entitlement for a screen that may belong to more than one product.
- *
- * Any one of them is enough, and the refusal that surfaces is the last one, so
- * a workspace entitled to neither is told about a module the screen actually
- * belongs to rather than getting a generic message.
- */
-async function assertAnyModule(tenantId: string, module: ProductModule | readonly ProductModule[]) {
-  if (typeof module === 'string') return assertModuleEntitlement(tenantId, module);
-  let refusal: unknown;
-  for (const candidate of module) {
-    try {
-      return await assertModuleEntitlement(tenantId, candidate);
-    } catch (error) {
-      refusal = error;
-    }
-  }
-  throw refusal;
-}
-
 export async function requestWorkspace(ctx: Ctx, slug: string, module?: ProductModule | readonly ProductModule[]) {
   const workspace = await workspaceRecord(ctx, slug);
-  if (module) await assertAnyModule(workspace.id, module);
+  if (module) await assertAnyModuleEntitlement(workspace.id, module);
   return workspace;
 }
 
@@ -120,7 +100,7 @@ export async function resolveWorkspacePage(workspaceSlug: string, options: Works
  */
 export async function requirePageAccess(options: WorkspacePageOptions) {
   const ctx = await requestCtx();
-  if (options.module) await assertAnyModule(ctx.tenantId, options.module);
+  if (options.module) await assertAnyModuleEntitlement(ctx.tenantId, options.module);
   await assertPageAccess(ctx, options);
   return ctx;
 }

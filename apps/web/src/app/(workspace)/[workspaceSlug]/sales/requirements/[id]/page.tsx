@@ -21,8 +21,8 @@ export const metadata = { title: 'Requirement' };
  * shared; the client is not, so an agent cannot read somebody else's buyer by
  * asking what matches them.
  */
-export default async function RequirementPage({ params }: { params: Promise<{ id: string; workspaceSlug: string }> }) {
-  const { id, workspaceSlug } = await params;
+export default async function RequirementPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
 
   const owned = await prisma.clientRequirement.findFirst({
@@ -126,7 +126,6 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
               contactId={owned.contactId}
               requirementId={id}
               clientName={client?.fullName ?? 'you'}
-              workspaceSlug={workspaceSlug}
               matches={matches.map((m) => ({
                 id: m.id,
                 title: m.title,

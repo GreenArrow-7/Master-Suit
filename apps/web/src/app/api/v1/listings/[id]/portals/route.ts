@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
@@ -73,7 +74,7 @@ async function stateOf(tenantId: string, listingId: string) {
 }
 
 export const GET = route(
-  { module: 'listings', productModule: 'SALES', action: 'VIEW', params: z.object({ id: z.string() }) },
+  { module: 'listings', productModule: SALES_OR_REALTY, action: 'VIEW', params: z.object({ id: z.string() }) },
   async ({ ctx, params }) => stateOf(ctx.tenantId, params.id),
 );
 
@@ -82,7 +83,7 @@ const body = z.object({ portals: z.array(z.enum(PORTALS)) });
 export const PATCH = route(
   {
     module: 'listings',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params: z.object({ id: z.string() }),
     body,

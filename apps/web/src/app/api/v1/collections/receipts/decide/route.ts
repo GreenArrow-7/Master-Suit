@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { decideReceipt } from '@/services/money/collections';
@@ -19,6 +20,6 @@ const body = z
   .strict();
 
 export const PATCH = route(
-  { module: 'collections', productModule: 'SALES', action: 'APPROVE', body, auditEvent: 'STAGE_CHANGED' },
+  { module: 'collections', productModule: SALES_OR_REALTY, action: 'APPROVE', body, auditEvent: 'STAGE_CHANGED' },
   async ({ ctx, body }) => decideReceipt({ ctx, ...body }),
 );

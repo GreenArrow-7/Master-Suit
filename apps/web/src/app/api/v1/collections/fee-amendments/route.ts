@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { listAmendments, proposeAmendment } from '@/services/money/feeAmendments';
@@ -11,7 +12,7 @@ import { listAmendments, proposeAmendment } from '@/services/money/feeAmendments
 export const GET = route(
   {
     module: 'agencyfee',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'VIEW',
     query: z.object({ bookingId: z.string().cuid() }).strict(),
   },
@@ -28,6 +29,12 @@ const proposeBody = z
   .strict();
 
 export const POST = route(
-  { module: 'agencyfee', productModule: 'SALES', action: 'CREATE', body: proposeBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'agencyfee',
+    productModule: SALES_OR_REALTY,
+    action: 'CREATE',
+    body: proposeBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, body }) => proposeAmendment({ ctx, ...body }),
 );

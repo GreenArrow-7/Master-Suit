@@ -82,6 +82,26 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
 }
 
 /**
+ * Entitlement for a screen or route that may belong to more than one product.
+ *
+ * Any one of them is enough, and the refusal that surfaces is the last one, so
+ * a workspace entitled to neither is told about a module the surface actually
+ * belongs to rather than getting a generic message.
+ */
+export async function assertAnyModuleEntitlement(tenantId: string, module: ProductModule | readonly ProductModule[]) {
+  if (typeof module === 'string') return assertModuleEntitlement(tenantId, module);
+  let refusal: unknown;
+  for (const candidate of module) {
+    try {
+      return await assertModuleEntitlement(tenantId, candidate);
+    } catch (error) {
+      refusal = error;
+    }
+  }
+  throw refusal;
+}
+
+/**
  * Call after any write to a workspace's module entitlements.
  *
  * Without this, revoking a module leaves it working for up to a minute. That is

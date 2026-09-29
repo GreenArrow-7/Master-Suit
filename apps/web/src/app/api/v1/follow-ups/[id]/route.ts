@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
@@ -23,7 +24,14 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'leads',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) =>
     withTx(ctx.tenantId, async (tx) => {
       const followUp = await tx.followUpTask.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });

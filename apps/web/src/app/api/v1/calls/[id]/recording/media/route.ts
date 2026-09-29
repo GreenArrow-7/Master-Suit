@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
@@ -31,7 +32,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'VIEW',
     params,
     auditEvent: 'RECORDING_ACCESSED',
@@ -102,7 +103,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'SALES',
+      productModule: SALES_OR_REALTY,
       permission: ['calls', 'EDIT'],
     });
 

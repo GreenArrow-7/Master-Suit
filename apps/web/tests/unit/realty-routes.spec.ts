@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { REALTY_SHARED_ROOTS, realtyEquivalent } from '@/lib/nav/realtyShared';
 
 /**
  * Real Estate reuses Sales' client register rather than copying it.
@@ -46,20 +47,7 @@ function pages(moduleRoot: string): string[] {
 }
 
 /** The registers Real Estate shares with Sales, as route prefixes. */
-const SHARED = [
-  'leads',
-  'follow-ups',
-  'calls',
-  'site-visits',
-  'projects',
-  'listings',
-  'requirements',
-  'allocation',
-  'collections',
-  'commissions',
-  'reports',
-  'events',
-];
+const SHARED: readonly string[] = REALTY_SHARED_ROOTS;
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
 
@@ -110,6 +98,69 @@ describe('the shared Sales pages admit a Real Estate workspace', () => {
     expect(source).not.toMatch(/module: 'SALES'/);
     expect(source).toContain('module: SALES_OR_REALTY');
     expect(source).toContain("from '@/lib/security/entitlements'");
+  });
+});
+
+describe('the APIs behind the shared screens admit a Real Estate workspace', () => {
+  /**
+   * The pages above admitted a Real Estate workspace while every write they
+   * make — a new lead, a logged call, an assigned enquiry — went to an API that
+   * asserted `productModule: 'SALES'`. The screen rendered; every action on it
+   * was refused. Same silent failure as the page check, one layer down.
+   *
+   * These are the /api/v1 roots the shared screens call, plus the ones those
+   * screens reach indirectly (documents, tasks, activities, commission slabs).
+   */
+  const SHARED_API = [...SHARED, 'documents', 'tasks', 'activities', 'commission-slabs'];
+  const API = path.join(web, 'src', 'app', 'api', 'v1');
+  const routes = SHARED_API.flatMap((prefix) => {
+    const root = path.join(API, prefix);
+    if (!existsSync(root)) return [];
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry === 'route.ts') out.push(path.relative(API, full).split(path.sep).join('/'));
+      }
+    };
+    walk(root);
+    return out;
+  });
+
+  it('finds routes to check', () => {
+    expect(routes.length).toBeGreaterThanOrEqual(80);
+  });
+
+  it.each(routes)('%s asserts either product, not Sales alone', (route) => {
+    const source = read(path.join(API, route));
+    expect(source).not.toMatch(/productModule: 'SALES'/);
+    if (source.includes('productModule')) expect(source).toContain('productModule: SALES_OR_REALTY');
+  });
+});
+
+describe('a /sales/ link reaches a Real-Estate-only workspace', () => {
+  /**
+   * Notification, push and assistant links are built as `/sales/...`
+   * (lib/nav/entityRoute.ts). The Sales layout sends a workspace without Sales
+   * to the Real Estate screen for the same record rather than to the dashboard.
+   */
+  it('maps a shared record to the same record under Real Estate', () => {
+    expect(realtyEquivalent('/acme/sales/leads/42?tab=calls')).toBe('/acme/realty/leads/42?tab=calls');
+    expect(realtyEquivalent('/acme/sales/follow-ups?due=overdue')).toBe('/acme/realty/follow-ups?due=overdue');
+    expect(realtyEquivalent('/acme/sales/site-visits')).toBe('/acme/realty/site-visits');
+  });
+
+  it('leaves a Sales-only register alone', () => {
+    expect(realtyEquivalent('/acme/sales/opportunities/7')).toBeNull();
+    expect(realtyEquivalent('/acme/sales/leadsx')).toBeNull();
+    expect(realtyEquivalent('/acme/people/leads')).toBeNull();
+  });
+
+  it('the Sales layout uses it', () => {
+    const layout = read(path.join(APP, 'sales', 'layout.tsx'));
+    expect(layout).toContain('realtyEquivalent(');
+    expect(layout).toContain("'REAL_ESTATE'");
   });
 });
 

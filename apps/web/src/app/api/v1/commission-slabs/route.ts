@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { route } from '@/lib/api/handler';
@@ -9,15 +10,18 @@ import { orderedBands, SlabError, type Band } from '@/services/money/slabs';
 const MODES = ['PROGRESSIVE', 'FLAT'] as const;
 const BASES = ['PERCENT_OF_SALE', 'PERCENT_OF_AGENCY_FEE', 'FIXED'] as const;
 
-export const GET = route({ module: 'commissionslabs', productModule: 'SALES', action: 'VIEW' }, async ({ ctx }) => {
-  const data = await prisma.commissionSlab.findMany({
-    where: { tenantId: ctx.tenantId },
-    include: { bands: { orderBy: { position: 'asc' } }, _count: { select: { commissions: true } } },
-    orderBy: [{ name: 'asc' }, { version: 'desc' }],
-    take: 200,
-  });
-  return { data };
-});
+export const GET = route(
+  { module: 'commissionslabs', productModule: SALES_OR_REALTY, action: 'VIEW' },
+  async ({ ctx }) => {
+    const data = await prisma.commissionSlab.findMany({
+      where: { tenantId: ctx.tenantId },
+      include: { bands: { orderBy: { position: 'asc' } }, _count: { select: { commissions: true } } },
+      orderBy: [{ name: 'asc' }, { version: 'desc' }],
+      take: 200,
+    });
+    return { data };
+  },
+);
 
 const bandInput = z.object({
   fromAmount: z.coerce.number().nonnegative(),
@@ -56,7 +60,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'commissionslabs',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     body: createBody,
     auditEvent: 'PERMISSION_CHANGED',
@@ -148,7 +152,7 @@ const approveBody = z
 export const PATCH = route(
   {
     module: 'commissionslabs',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'APPROVE',
     body: approveBody,
     auditEvent: 'PERMISSION_CHANGED',

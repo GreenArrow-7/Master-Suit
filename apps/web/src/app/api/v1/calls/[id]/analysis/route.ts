@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -26,7 +27,7 @@ const params = z.object({ id: z.string().cuid() });
  * in the claim (and in the payload-hashed jobId), not here.
  */
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params, auditEvent: 'AI_ANALYSIS_COMPLETED' },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const [call, transcript, existing] = await Promise.all([
@@ -64,7 +65,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call analyses' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', params, sensitive: 'AI call analyses' },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const analysis = await prisma.aIAnalysis.findFirst({
@@ -104,7 +105,7 @@ const correctionBody = z
 export const PATCH = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params,
     body: correctionBody,

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { AppError } from '@/lib/errors';
 import { proposalDetail } from '@/services/proposals/proposals';
 import Badge from '@/components/ui/Badge';
@@ -17,7 +18,7 @@ export const metadata = { title: 'Proposal' };
  */
 export default async function ProposalPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['requirements', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
 
   let proposal;
   try {
