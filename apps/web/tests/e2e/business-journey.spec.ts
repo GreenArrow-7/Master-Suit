@@ -214,7 +214,7 @@ test.describe('YOUHAN ONE business journey', () => {
     // §5: the gate counts the untouched leads before any work.
     const pre1 = await ok(
       await rep.post(api(`/api/v1/workspaces/${slug}/hr/self/attendance-preflight`), {
-        data: { action: 'CHECK_OUT', latitude: 25.2048, longitude: 55.2708, gpsAccuracyM: 8 },
+        data: { punchType: 'CHECK_OUT', latitude: 25.2048, longitude: 55.2708, gpsAccuracyM: 8 },
       }),
       'preflight before work',
     );
@@ -299,7 +299,7 @@ test.describe('YOUHAN ONE business journey', () => {
     // §5 again: one lead worked, the count falls by one.
     const pre2 = await ok(
       await rep.post(api(`/api/v1/workspaces/${slug}/hr/self/attendance-preflight`), {
-        data: { action: 'CHECK_OUT', latitude: 25.2048, longitude: 55.2708, gpsAccuracyM: 8 },
+        data: { punchType: 'CHECK_OUT', latitude: 25.2048, longitude: 55.2708, gpsAccuracyM: 8 },
       }),
       'preflight after one call',
     );
