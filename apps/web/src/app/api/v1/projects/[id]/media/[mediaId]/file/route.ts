@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -19,7 +20,7 @@ const params = z.object({ id: z.string().cuid(), mediaId: z.string().cuid() });
  * URL and is linked, not proxied.
  */
 export const GET = route(
-  { module: 'projects', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const media = await prisma.projectMedia.findFirst({
       where: { id: params.mediaId, tenantId: ctx.tenantId, projectId: params.id },

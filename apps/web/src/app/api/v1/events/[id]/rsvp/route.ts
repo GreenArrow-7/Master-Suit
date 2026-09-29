@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -15,7 +16,7 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'events', productModule: 'SALES', action: 'EDIT', params, body },
+  { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body },
   async ({ ctx, params, body: { inviteeId, rsvpStatus, channel } }) => {
     await assertEventInScope(ctx, params.id);
     const invitee = await prisma.eventInvitee.findFirst({

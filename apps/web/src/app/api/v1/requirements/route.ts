@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
@@ -28,7 +29,7 @@ const listQuery = z
  * manager their subtree, exactly as it does for leads.
  */
 export const GET = route(
-  { module: 'requirements', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'requirements', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const scope = await visibilityWhere(ctx, 'requirements', 'VIEW');
 
@@ -71,7 +72,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'requirements',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

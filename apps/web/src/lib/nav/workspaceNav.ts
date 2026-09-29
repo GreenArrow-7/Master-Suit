@@ -351,6 +351,15 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'buyer brief budget bedrooms matching',
             },
             {
+              // The same screen and gate as Sales' Proposals tab: a proposal is
+              // a shortlist drawn from a buyer's requirement.
+              label: 'Proposals',
+              href: r('/proposals'),
+              permission: 'requirements',
+              module: R,
+              keywords: 'shortlist send client brochure',
+            },
+            {
               /**
                * Leadrat calls this the Data Pool; the screen is called
                * Allocation and that is what it is — unowned leads in an OPEN
@@ -397,6 +406,14 @@ function definitions(slug: string): SectionDef[] {
               permission: 'listings',
               module: R,
               keywords: 'resale rental pocket',
+            },
+            {
+              // The same screen and gate as Sales' Portals tab.
+              label: 'Portals',
+              href: r('/portals'),
+              permission: 'listings',
+              module: R,
+              keywords: 'syndication property finder bayut feed publish',
             },
             {
               /**

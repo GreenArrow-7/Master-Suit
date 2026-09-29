@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { withTx } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -15,7 +16,7 @@ export const metadata = { title: 'Proposals' };
  * this morning, and there was previously no way to know that had happened.
  */
 export default async function ProposalsPage() {
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['requirements', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
 
   const rows = await withTx(ctx.tenantId, async (tx) => {
     const proposals = await tx.proposal.findMany({

@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
@@ -52,7 +53,7 @@ const GRID_COLUMNS = {
 } as const;
 
 export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
 
@@ -151,7 +152,7 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     // Fields the actor may not write are dropped before validation reaches the

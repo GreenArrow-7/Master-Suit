@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -37,7 +38,7 @@ const body = z
 const BATCH_LIMIT = 100;
 
 export const POST = route(
-  { module: 'events', productModule: 'SALES', action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
+  { module: 'events', productModule: SALES_OR_REALTY, action: 'EDIT', params, body, auditEvent: 'RECORD_UPDATED' },
   async ({ ctx, params, body }) => {
     await assertEventInScope(ctx, params.id);
     const event = await prisma.event.findFirst({

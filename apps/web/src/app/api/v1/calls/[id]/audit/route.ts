@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -24,7 +25,7 @@ const auditBody = z
 export const POST = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params,
     body: auditBody,
@@ -57,7 +58,7 @@ export const POST = route(
 );
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'AI call audits' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', params, sensitive: 'AI call audits' },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     // 404 for a call this tenant does not have, not an empty list: an empty list
@@ -82,7 +83,14 @@ const reviewBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: reviewBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'calls',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: reviewBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     await assertCallInScope(ctx, params.id);
     const audit = await prisma.callAudit.findFirst({
@@ -108,7 +116,7 @@ const deleteQuery = z.object({ auditId: z.string().cuid() }).strict();
 export const DELETE = route(
   {
     module: 'calls',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'DELETE',
     params,
     query: deleteQuery,

@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { listTriageQueue } from '@/services/distribution/triageQueue';
@@ -17,7 +18,7 @@ const listQuery = z.object({
 });
 
 export const GET = route(
-  { module: 'leads', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const rows = await listTriageQueue(ctx, { take: query.take, mineOnly: query.mine });
     return {

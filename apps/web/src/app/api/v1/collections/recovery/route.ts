@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import {
@@ -16,7 +17,7 @@ import {
 export const GET = route(
   {
     module: 'collections',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'VIEW',
     query: z
       .object({
@@ -54,7 +55,7 @@ const body = z.discriminatedUnion('action', [
 ]);
 
 export const PATCH = route(
-  { module: 'collections', productModule: 'SALES', action: 'CREATE', body, auditEvent: 'STAGE_CHANGED' },
+  { module: 'collections', productModule: SALES_OR_REALTY, action: 'CREATE', body, auditEvent: 'STAGE_CHANGED' },
   async ({ ctx, body }) => {
     switch (body.action) {
       case 'ASSIGN':

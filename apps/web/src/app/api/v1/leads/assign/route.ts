@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -10,7 +11,7 @@ const body = z
   .strict();
 
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'ASSIGN', body, auditEvent: 'OWNER_CHANGED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'ASSIGN', body, auditEvent: 'OWNER_CHANGED' },
   async ({ ctx, body: { leadIds, ownerId } }) => {
     const owner = await prisma.user.findFirst({
       where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null },

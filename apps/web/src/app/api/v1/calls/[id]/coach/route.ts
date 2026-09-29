@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -30,7 +31,7 @@ const body = z
  * no AI provider is configured, so the buttons always answer.
  */
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params, body },
   async ({ ctx, params, body }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

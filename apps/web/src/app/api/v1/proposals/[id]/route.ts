@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { closeProposal, proposalDetail, sendProposal } from '@/services/proposals/proposals';
@@ -5,7 +6,7 @@ import { closeProposal, proposalDetail, sendProposal } from '@/services/proposal
 const params = z.object({ id: z.string().min(1) });
 
 export const GET = route(
-  { module: 'requirements', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'requirements', productModule: SALES_OR_REALTY, action: 'VIEW', params },
   async ({ ctx, params: { id } }) => proposalDetail(ctx, id),
 );
 
@@ -17,7 +18,7 @@ const patchBody = z.object({
 export const PATCH = route(
   {
     module: 'requirements',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     params,
     body: patchBody,

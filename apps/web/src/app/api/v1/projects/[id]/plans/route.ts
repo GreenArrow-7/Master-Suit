@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -31,7 +32,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'projects',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'CREATE',
     params,
     body: createBody,
@@ -70,7 +71,7 @@ const deleteQuery = z.object({ planId: z.string().cuid() }).strict();
 export const DELETE = route(
   {
     module: 'projects',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'DELETE',
     params,
     query: deleteQuery,

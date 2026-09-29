@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'SALES',
+      productModule: SALES_OR_REALTY,
       permission: ['leads', 'EDIT'],
     });
 

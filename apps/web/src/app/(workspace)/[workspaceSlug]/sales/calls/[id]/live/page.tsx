@@ -2,6 +2,7 @@ import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { leadCallContext } from '@/services/leads/callContext';
 import { geminiCredential } from '@/lib/ai/gemini';
@@ -30,8 +31,11 @@ export default async function LiveCallPage({
   if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) notFound();
 
   // A finished call has no live session — its story lives on the detail page.
+  // Under whichever product the viewer came through: a Real Estate workspace
+  // does not own Sales, so a hard-coded /sales/ would redirect into a refusal.
   if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
-    redirect(`/${params.workspaceSlug}/sales/calls/${call.id}`);
+    const product = (await headers()).get('x-pathname')?.includes('/realty/') ? 'realty' : 'sales';
+    redirect(`/${params.workspaceSlug}/${product}/calls/${call.id}`);
   }
 
   // The full pre-call briefing: profile, open requirement, last-call recap and

@@ -2,7 +2,7 @@ import { resolveCtx } from '../auth/session';
 import { recordPlatformAccess } from '../auth/service-identity';
 import { assertMonitoringReadOnly } from './handler';
 import { assertPermission, type Action, type Ctx } from '../security/rbac';
-import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { assertAnyModuleEntitlement, type ProductModule } from '../security/entitlements';
 import { consume, limits, type Limit } from '../security/ratelimit';
 import { requireWorkspace } from '../workspace';
 
@@ -37,8 +37,8 @@ import { requireWorkspace } from '../workspace';
  * the other three steps were already being done consistently.
  */
 export interface GuardSpec {
-  /** The entitlement the workspace must hold. */
-  productModule: ProductModule;
+  /** The entitlement the workspace must hold; a list means any one of them. */
+  productModule: ProductModule | readonly ProductModule[];
   /**
    * Permission module and action.
    *
@@ -60,7 +60,7 @@ export async function resolveGuardedCtx(req: Request, requestId: string, spec: G
   // can throw, and each throws before the next runs.
   const ctx = await resolveCtx(req, requestId);
   const access = {
-    module: spec.permission?.[0] ?? spec.productModule.toLowerCase(),
+    module: spec.permission?.[0] ?? [spec.productModule].flat()[0].toLowerCase(),
     action: spec.permission?.[1] ?? 'VIEW',
     method: req.method,
     path: new URL(req.url).pathname,
@@ -69,9 +69,10 @@ export async function resolveGuardedCtx(req: Request, requestId: string, spec: G
   try {
     // The kernel's read-only rule for monitoring, before anything else runs.
     assertMonitoringReadOnly(ctx, req.method);
-    await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+    await assertAnyModuleEntitlement(ctx.tenantId, spec.productModule);
 
-    if (spec.workspaceSlug) await requireWorkspace(ctx, spec.workspaceSlug, spec.productModule);
+    // Entitlement is settled on the line above; this only checks the slug.
+    if (spec.workspaceSlug) await requireWorkspace(ctx, spec.workspaceSlug);
     if (spec.permission) assertPermission(ctx, spec.permission[0], spec.permission[1]);
 
     await consume(spec.limit ?? limits.sessionUser(ctx.actor.id));

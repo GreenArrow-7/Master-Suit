@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -32,7 +33,7 @@ async function assertCallVisible(ctx: Ctx, callId: string) {
 // A manager's note on how a conversation went is conversation content, not call
 // metadata: a monitoring grant reads it only when it is marked sensitive.
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params, sensitive: 'coaching notes' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', params, sensitive: 'coaching notes' },
   async ({ ctx, params }) => {
     await assertCallVisible(ctx, params.id);
     const data = await prisma.coachingNote.findMany({
@@ -47,7 +48,14 @@ export const GET = route(
 const createBody = z.object({ body: z.string().min(1).max(5000) }).strict();
 
 export const POST = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: createBody, auditEvent: 'RECORD_CREATED' },
+  {
+    module: 'calls',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: createBody,
+    auditEvent: 'RECORD_CREATED',
+  },
   async ({ ctx, params, body }) => {
     const call = await assertCallVisible(ctx, params.id);
     // Coaching is a manager writing about someone *else's* call. Whatever the
@@ -81,7 +89,14 @@ const patchBody = z
  * feedback disappears without being read.
  */
 export const PATCH = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'calls',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     const call = await assertCallVisible(ctx, params.id);
     const note = await prisma.coachingNote.findFirst({

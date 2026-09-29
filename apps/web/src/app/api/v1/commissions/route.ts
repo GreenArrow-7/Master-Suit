@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
@@ -17,7 +18,7 @@ const listQuery = z
 
 /** What somebody has earned. Owner-scoped, so an agent sees their own. */
 export const GET = route(
-  { module: 'commissions', productModule: 'SALES', action: 'VIEW', query: listQuery },
+  { module: 'commissions', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     // Commissions key on userId, not ownerId — the whole point is whose earnings they are.
     const scope = await visibilityWhere(ctx, 'commissions', 'VIEW', { ownerField: 'userId' });
@@ -74,7 +75,7 @@ const clawbackBody = z
 export const POST = route(
   {
     module: 'commissions',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     // EDIT covers both: accrual is a derived write, and the clawback branch is
     // separately gated on commissions:APPROVE inside the service.
     action: 'EDIT',
@@ -106,7 +107,7 @@ const transitionBody = z
 export const PATCH = route(
   {
     module: 'commissions',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'EDIT',
     body: transitionBody,
     auditEvent: 'STAGE_CHANGED',

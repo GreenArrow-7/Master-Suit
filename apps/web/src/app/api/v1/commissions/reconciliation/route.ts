@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { reconciliation } from '@/services/money/commissions';
@@ -15,6 +16,6 @@ const query = z
  * control, not the scope.
  */
 export const GET = route(
-  { module: 'commissions', productModule: 'SALES', action: 'EXPORT', query },
+  { module: 'commissions', productModule: SALES_OR_REALTY, action: 'EXPORT', query },
   async ({ ctx, query: q }) => reconciliation(ctx.tenantId, q.from, q.to),
 );

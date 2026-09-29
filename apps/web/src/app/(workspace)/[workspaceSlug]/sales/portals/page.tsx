@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { problemsWith, type FeedListing, type PortalKey } from '@/lib/inventory/portalFeed';
 import Badge from '@/components/ui/Badge';
@@ -52,7 +53,7 @@ const SELECT = {
 export default async function PortalsPage() {
   // EDIT rather than VIEW: a feed address is a credential, and this page
   // shows it.
-  const ctx = await requirePageAccess({ module: 'SALES', permission: ['listings', 'EDIT'] });
+  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'EDIT'] });
 
   const tenant = await prisma.tenant.findUniqueOrThrow({
     where: { id: ctx.tenantId },

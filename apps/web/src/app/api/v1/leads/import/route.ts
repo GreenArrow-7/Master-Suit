@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -41,7 +42,7 @@ const body = z
  * batch, because a 900-row file with three typos should still land 897 leads.
  */
 export const POST = route(
-  { module: 'leads', productModule: 'SALES', action: 'IMPORT', body, auditEvent: 'IMPORT_STARTED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'IMPORT', body, auditEvent: 'IMPORT_STARTED' },
   async ({ ctx, body }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     const failed: { line: number; reason: string }[] = [];

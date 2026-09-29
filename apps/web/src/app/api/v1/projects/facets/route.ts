@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { catalogueFilters, catalogueWhere } from '@/lib/inventory/catalogue';
@@ -17,7 +18,7 @@ import { catalogueFilters, catalogueWhere } from '@/lib/inventory/catalogue';
  * small by the time a user is looking at facets.
  */
 export const GET = route(
-  { module: 'projects', productModule: 'SALES', action: 'VIEW', query: catalogueFilters },
+  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', query: catalogueFilters },
   async ({ ctx, query }) => {
     const favouriteIds = query.favourites
       ? (

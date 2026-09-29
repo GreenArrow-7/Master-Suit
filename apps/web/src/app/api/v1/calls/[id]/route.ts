@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -11,7 +12,7 @@ import { assertCallInScope } from '@/lib/security/record-scope';
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'calls', productModule: 'SALES', action: 'VIEW', params },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', params },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({
@@ -55,7 +56,14 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'calls', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'CALL_COMPLETED' },
+  {
+    module: 'calls',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'CALL_COMPLETED',
+  },
   async ({ ctx, params, body }) => {
     await assertCallInScope(ctx, params.id);
     const existing = await prisma.call.findFirst({
@@ -127,7 +135,7 @@ export const PATCH = route(
  * is kept on purpose. A second delete, or another tenant's call, is a 404.
  */
 export const DELETE = route(
-  { module: 'calls', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'calls', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({

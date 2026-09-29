@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -12,7 +13,7 @@ import { assertBookingInScope, EVIDENCE_CATEGORY } from '@/services/money/collec
 export const GET = route(
   {
     module: 'collections',
-    productModule: 'SALES',
+    productModule: SALES_OR_REALTY,
     action: 'VIEW',
     params: z.object({ id: z.string().cuid() }),
     auditEvent: 'DOCUMENT_ACCESSED',

@@ -1,3 +1,4 @@
+import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -16,7 +17,14 @@ const patchBody = z
   .strict();
 
 export const PATCH = route(
-  { module: 'leads', productModule: 'SALES', action: 'EDIT', params, body: patchBody, auditEvent: 'RECORD_UPDATED' },
+  {
+    module: 'leads',
+    productModule: SALES_OR_REALTY,
+    action: 'EDIT',
+    params,
+    body: patchBody,
+    auditEvent: 'RECORD_UPDATED',
+  },
   async ({ ctx, params, body }) => {
     // An activity logged with the wrong outcome was previously permanent.
     const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
@@ -33,7 +41,7 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', productModule: 'SALES', action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'leads', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!activity) throw NotFound('Activity');

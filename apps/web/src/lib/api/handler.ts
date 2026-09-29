@@ -12,13 +12,14 @@ import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
-import { assertModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { assertAnyModuleEntitlement, type ProductModule } from '../security/entitlements';
 import { recordError, recordRequest } from '../metrics';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
   module: string;
   action: Action;
-  productModule?: ProductModule;
+  /** A list means any one of them, for the routes Sales and Real Estate share — see `SALES_OR_REALTY`. */
+  productModule?: ProductModule | readonly ProductModule[];
   /** Skip authentication entirely. Only for /public and /webhooks/inbound routes. */
   anonymous?: boolean;
   /**
@@ -125,7 +126,7 @@ export function route<
         // to do with Sales, and made "forgot to declare it" indistinguishable
         // from "deliberately Sales". Platform-level surfaces — users, roles,
         // profile, notifications — belong to no product module.
-        if (spec.productModule) await assertModuleEntitlement(ctx.tenantId, spec.productModule);
+        if (spec.productModule) await assertAnyModuleEntitlement(ctx.tenantId, spec.productModule);
         /**
          * `selfService` waives the permission check entirely — that is its
          * point, and it is worth knowing what that means for an API key.

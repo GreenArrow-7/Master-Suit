@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useModuleBase } from '@/components/workspace/SalesLink';
 
 export interface MatchOption {
   id: string;
@@ -29,16 +30,17 @@ export default function SendShortlist({
   requirementId,
   clientName,
   matches,
-  workspaceSlug,
 }: {
   leadId: string | null;
   contactId: string | null;
   requirementId: string;
   clientName: string;
   matches: MatchOption[];
-  workspaceSlug: string;
 }) {
   const router = useRouter();
+  // Under whichever product the viewer came through: a Real Estate workspace
+  // does not own Sales, so a hard-coded /sales/ would open a refusal.
+  const base = useModuleBase();
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>(matches.slice(0, 20).map((match) => match.id));
   const [title, setTitle] = useState(`A few places for ${clientName}`);
@@ -66,7 +68,7 @@ export default function SendShortlist({
       });
       const result = (await response.json().catch(() => ({}))) as { id?: string; detail?: string; title?: string };
       if (!response.ok || !result.id) throw new Error(result.detail ?? result.title ?? 'That did not work.');
-      router.push(`/${workspaceSlug}/sales/proposals/${result.id}`);
+      router.push(`${base}/proposals/${result.id}`);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'That did not work.');
       setBusy(false);
