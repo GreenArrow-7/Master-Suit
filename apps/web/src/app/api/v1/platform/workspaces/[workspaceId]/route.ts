@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 const updateSchema = z
   .object({
@@ -14,10 +15,7 @@ const updateSchema = z
     maxUsers: z.number().int().positive().nullable().optional(),
     maxEmployees: z.number().int().positive().nullable().optional(),
     maxStorageMb: z.number().int().positive().nullable().optional(),
-    enabledModules: z
-      .array(z.enum(['HRMS', 'SALES']))
-      .min(1)
-      .optional(),
+    enabledModules: z.array(z.enum(PRODUCT_MODULE_KEYS)).min(1).optional(),
     trialStartedAt: z.coerce.date().nullable().optional(),
     trialEndsAt: z.coerce.date().nullable().optional(),
     revokeSessions: z.boolean().optional(),
@@ -96,7 +94,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
         });
       }
       if (body.enabledModules) {
-        for (const productModule of ['HRMS', 'SALES'] as const) {
+        for (const productModule of PRODUCT_MODULE_KEYS) {
           const enabled = body.enabledModules.includes(productModule);
           await tx.moduleEntitlement.upsert({
             where: { tenantId_module: { tenantId: current.id, module: productModule } },

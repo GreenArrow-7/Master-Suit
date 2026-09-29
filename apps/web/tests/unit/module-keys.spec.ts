@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { activeModule } from '@/lib/nav/workspaceNav';
-import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
+import { PRODUCT_MODULE_CHOICES, PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
  * One product module, four declarations, and nothing making them agree.
@@ -110,6 +110,39 @@ describe('every module can actually be sold and enabled', () => {
     // No literal module keys left behind in the markup.
     expect(source).not.toMatch(/value="(HRMS|SALES|REAL_ESTATE)"/);
     expect(source).not.toMatch(/\['(HRMS|SALES)',/);
+  });
+});
+
+describe('the platform APIs accept every module the UI offers', () => {
+  /**
+   * The failure this exists for, and it was expensive to find.
+   *
+   * Four platform routes validated `enabledModules` / `modules` against their
+   * own `z.enum(['HRMS', 'SALES'])`. Adding the Real Estate checkbox to the
+   * wizard therefore made it post a value the API refused, so workspace
+   * creation failed — and the E2E suite reported only `POST /api/v1/auth/login
+   * 401` on every later sign-in, because the admin that login needed had never
+   * been created. Nothing in the output named modules at all.
+   *
+   * An API narrower than the form that feeds it is a 400 the user cannot act
+   * on, so the list has one home and everything reads it.
+   */
+  it('the key tuple matches ModuleKey', () => {
+    expect([...PRODUCT_MODULE_KEYS].sort()).toEqual([...schemaModules].sort());
+  });
+
+  it('the catalogue and the key tuple agree', () => {
+    expect(PRODUCT_MODULE_CHOICES.map((c) => c.value).sort()).toEqual([...PRODUCT_MODULE_KEYS].sort());
+  });
+
+  it.each([
+    'src/app/api/v1/platform/plans/route.ts',
+    'src/app/api/v1/platform/workspaces/route.ts',
+    'src/app/api/v1/platform/workspaces/[workspaceId]/route.ts',
+  ])('%s validates against the shared list, not its own literals', (file) => {
+    const source = read(file);
+    expect(source).toContain('PRODUCT_MODULE_KEYS');
+    expect(source, 'a hand-written module list is still here').not.toMatch(/\['HRMS', 'SALES'\]/);
   });
 });
 

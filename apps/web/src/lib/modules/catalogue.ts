@@ -21,9 +21,22 @@
  * these are the shop-window labels, which is a different voice for a different
  * reader.
  */
+/**
+ * The module keys, as a closed tuple.
+ *
+ * Exported for `z.enum` on the platform APIs, which validated against their own
+ * `['HRMS', 'SALES']` literals. That is the same duplication as the three
+ * screens, one layer down and with a worse failure: the wizard offered Real
+ * Estate, the API refused the request, workspace creation failed, and the E2E
+ * suite saw every subsequent sign-in return 401 with nothing naming the cause.
+ */
+export const PRODUCT_MODULE_KEYS = ['HRMS', 'SALES', 'REAL_ESTATE'] as const;
+
+export type ProductModuleKey = (typeof PRODUCT_MODULE_KEYS)[number];
+
 export interface ModuleChoice {
   /** The `ModuleKey` value stored and sent in form data. */
-  value: 'HRMS' | 'SALES' | 'REAL_ESTATE';
+  value: ProductModuleKey;
   /** What the module is called on screen. */
   label: string;
   /** One line on what it covers, for the screens that show more than a tick. */
