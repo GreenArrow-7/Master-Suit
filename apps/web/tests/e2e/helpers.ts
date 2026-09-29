@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { totp } from '@/lib/auth/mfa';
 import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
+import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
 
 /**
  * Clears the login rate-limit counters.
@@ -404,10 +405,19 @@ export async function createWorkspaceViaWizard(page: Page, spec: NewWorkspace): 
   // Step 3 — subscription and limits (defaults are valid)
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  // Step 4 — modules. Both boxes start checked; uncheck what this spec excludes.
-  for (const value of ['SALES', 'HRMS'] as const) {
+  /**
+   * Step 4 — modules. Every box starts checked, so this unchecks what the spec
+   * did not ask for.
+   *
+   * Driven by the catalogue rather than a literal pair. When Real Estate was
+   * added, a hard-coded `['SALES', 'HRMS']` loop left its box checked and every
+   * workspace this helper built silently carried a module its spec never asked
+   * for — and, while the API still refused the value, creation failed and the
+   * only symptom was `401` on the next sign-in.
+   */
+  for (const { value } of PRODUCT_MODULE_CHOICES) {
     const box = page.locator(`input[name="enabledModules"][value="${value}"]`);
-    if (spec.modules.includes(value)) await box.check();
+    if ((spec.modules as readonly string[]).includes(value)) await box.check();
     else await box.uncheck();
   }
   await page.getByRole('button', { name: 'Continue' }).click();

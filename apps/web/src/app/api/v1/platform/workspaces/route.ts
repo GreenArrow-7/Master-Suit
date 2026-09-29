@@ -6,6 +6,7 @@ import { AppError, Conflict } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { hashPassword } from '@/lib/auth/password';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 const createSchema = z.object({
   workspaceName: z.string().min(2).max(120),
@@ -29,7 +30,7 @@ const createSchema = z.object({
   primaryAdminName: z.string().min(2).max(160),
   primaryAdminEmail: z.string().email().max(254),
   primaryAdminPassword: z.string().min(16).max(200),
-  enabledModules: z.array(z.enum(['HRMS', 'SALES'])).min(1),
+  enabledModules: z.array(z.enum(PRODUCT_MODULE_KEYS)).min(1),
   maxEmployees: z.number().int().positive().max(100000),
   maxUsers: z.number().int().positive().max(100000),
   maxStorageMb: z.number().int().positive().max(10000000),
