@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { REALTY_SHARED_ROOTS, realtyEquivalent } from '@/lib/nav/realtyShared';
 
 /**
  * Real Estate reuses Sales' client register rather than copying it.
@@ -46,22 +47,7 @@ function pages(moduleRoot: string): string[] {
 }
 
 /** The registers Real Estate shares with Sales, as route prefixes. */
-const SHARED = [
-  'leads',
-  'follow-ups',
-  'calls',
-  'site-visits',
-  'projects',
-  'listings',
-  'requirements',
-  'allocation',
-  'collections',
-  'commissions',
-  'reports',
-  'events',
-  'proposals',
-  'portals',
-];
+const SHARED: readonly string[] = REALTY_SHARED_ROOTS;
 const isShared = (route: string) =>
   SHARED.some((prefix) => route === `${prefix}/page.tsx` || route.startsWith(`${prefix}/`));
 
@@ -150,6 +136,31 @@ describe('the APIs behind the shared screens admit a Real Estate workspace', () 
     const source = read(path.join(API, route));
     expect(source).not.toMatch(/productModule: 'SALES'/);
     if (source.includes('productModule')) expect(source).toContain('productModule: SALES_OR_REALTY');
+  });
+});
+
+describe('a /sales/ link reaches a Real-Estate-only workspace', () => {
+  /**
+   * Notification, push and assistant links are built as `/sales/...`
+   * (lib/nav/entityRoute.ts). The Sales layout sends a workspace without Sales
+   * to the Real Estate screen for the same record rather than to the dashboard.
+   */
+  it('maps a shared record to the same record under Real Estate', () => {
+    expect(realtyEquivalent('/acme/sales/leads/42?tab=calls')).toBe('/acme/realty/leads/42?tab=calls');
+    expect(realtyEquivalent('/acme/sales/follow-ups?due=overdue')).toBe('/acme/realty/follow-ups?due=overdue');
+    expect(realtyEquivalent('/acme/sales/site-visits')).toBe('/acme/realty/site-visits');
+  });
+
+  it('leaves a Sales-only register alone', () => {
+    expect(realtyEquivalent('/acme/sales/opportunities/7')).toBeNull();
+    expect(realtyEquivalent('/acme/sales/leadsx')).toBeNull();
+    expect(realtyEquivalent('/acme/people/leads')).toBeNull();
+  });
+
+  it('the Sales layout uses it', () => {
+    const layout = read(path.join(APP, 'sales', 'layout.tsx'));
+    expect(layout).toContain('realtyEquivalent(');
+    expect(layout).toContain("'REAL_ESTATE'");
   });
 });
 
