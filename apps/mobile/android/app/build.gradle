@@ -7,10 +7,13 @@ android {
         applicationId "com.youhan.one"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // 7, because 6 is already uploaded to Play and a versionCode cannot be
-        // reused. Same versionName: this build changes how the code is packaged
-        // (R8 below), not what the application does.
-        versionCode 7
+        // 8. A versionCode cannot be reused, and 7 has already been built and
+        // handed out as a file even though it never reached Play — so bumping
+        // keeps one code meaning exactly one artefact rather than two bundles
+        // that differ in their launcher label. Same versionName: this build
+        // changes how the code is packaged (R8 below) and what the home screen
+        // calls it, not what the application does.
+        versionCode 8
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
