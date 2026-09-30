@@ -1,19 +1,21 @@
 apply plugin: 'com.android.application'
 
 android {
+    // The Java/R package, not the store identity: it stays com.youhan.one so no
+    // source moves. What Play and the phone know the app by is applicationId.
     namespace = "com.youhan.one"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.youhan.one"
+        // Play treats a package name as a different app, and it can never change
+        // after an upload: com.youhan.one1 is a new Play listing, not an update
+        // to com.youhan.one.
+        applicationId "com.youhan.one1"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // 8. A versionCode cannot be reused, and 7 has already been built and
-        // handed out as a file even though it never reached Play — so bumping
-        // keeps one code meaning exactly one artefact rather than two bundles
-        // that differ in their launcher label. Same versionName: this build
-        // changes how the code is packaged (R8 below) and what the home screen
-        // calls it, not what the application does.
-        versionCode 8
+        // 9. A versionCode cannot be reused, and 8 has already been built as a
+        // com.youhan.one bundle — so one code keeps meaning exactly one
+        // artefact. Same versionName: only the package name changed.
+        versionCode 9
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

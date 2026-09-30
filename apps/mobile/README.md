@@ -22,7 +22,7 @@ production-supported architecture is chosen. Do not submit them to a store.
 | FileProvider | Limited to the camera capture folder (`external-files-path` `Pictures/`) |
 | Push | **Not included.** The plugin is removed until FCM/APNs credentials exist (see below) |
 | Location, microphone | **Not declared.** Face check-in, the site-visit GPS punch and any audio feature cannot work in this build |
-| Identifiers | iOS bundle id `com.youhan.one`; Android `com.mastersuite.app` is still a **placeholder**; label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
+| Identifiers | iOS bundle id `com.youhan.one`; Android `applicationId` `com.youhan.one1` (namespace `com.youhan.one`); label "YOUHAN ONE Dev", version `0.1.0-dev-poc` |
 
 ## Android: build the development APK
 
@@ -145,7 +145,7 @@ shipped in a build that has no credentials.
 ## Before any release build
 
 - **Architecture** — `server.url` is not production-supported (see top).
-- **Android `applicationId`** — `com.mastersuite.app` is a placeholder; neither store allows a change after a published upload. iOS uses `com.youhan.one`.
+- **Android `applicationId`** — `com.youhan.one1`, a separate Play listing from the earlier `com.youhan.one`; neither store allows a change after a published upload. iOS uses `com.youhan.one`, and so does `capacitor.config.js` `appId`, which does not set the Android package.
 - **A stable, approved HTTPS origin** — dev tunnels show Microsoft's one-time "developer tunnel" warning page to browsers and WebViews.
 - **Release signing** — upload key ownership (Android), Apple team, certificates and provisioning (iOS).
 - **App Store guideline 4.2** — apps that are only a website are rejected.
