@@ -136,6 +136,7 @@ export default function TopBar({
   workspaceName,
   plan,
   creatable,
+  crmRoot = 'sales',
 }: {
   basePath?: string;
   module?: 'sales' | 'people' | 'platform';
@@ -143,6 +144,8 @@ export default function TopBar({
   plan?: string;
   /** Permission modules the signed-in role may CREATE; undefined = show all. */
   creatable?: string[];
+  /** Which product's forms + Create opens for the registers Sales and Real Estate share. */
+  crmRoot?: 'sales' | 'realty';
 } = {}) {
   const pathname = usePathname();
   const router = useRouter();
@@ -329,7 +332,12 @@ export default function TopBar({
           // list pages and a `#new` fragment that no screen implements, so the menu
           // looked complete while only navigating away.
           [
-            { label: 'Lead', href: `${basePath}/sales/leads/new`, module: 'leads', group: 'Sales' },
+            {
+              label: 'Lead',
+              href: `${basePath}/${crmRoot}/leads/new`,
+              module: 'leads',
+              group: crmRoot === 'realty' ? 'Real Estate' : 'Sales',
+            },
             {
               label: 'Opportunity',
               href: `${basePath}/sales/opportunities/new`,
@@ -338,8 +346,8 @@ export default function TopBar({
             },
             { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts', group: 'Sales' },
             { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts', group: 'Sales' },
-            { label: 'Call', href: `${basePath}/sales/calls/new`, module: 'calls', group: 'Engage' },
-            { label: 'Event', href: `${basePath}/sales/events/new`, module: 'events', group: 'Engage' },
+            { label: 'Call', href: `${basePath}/${crmRoot}/calls/new`, module: 'calls', group: 'Engage' },
+            { label: 'Event', href: `${basePath}/${crmRoot}/events/new`, module: 'events', group: 'Engage' },
           ].filter((item) => !creatable || creatable.includes(item.module));
 
   /**

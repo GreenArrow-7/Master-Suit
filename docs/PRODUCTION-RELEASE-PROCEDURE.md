@@ -32,13 +32,17 @@ database names, two different applied-migration counts. Neither Postgres publish
 so nothing on the host can reach either database by address except through its own Compose
 network.
 
-**Consequence for the staging-first gate [C18]:** production's `migrate` service reads
-`STAGING_DATABASE_URL` and the compose file documents it as `host.docker.internal:5433`. Staging
-publishes **no** port, so as things stand the gate **cannot reach staging** and will exit 1
-("never applied to staging") for every pending migration — or, if `ALLOW_UNSTAGED_MIGRATION` is
-set to get past that, it is bypassed. **This must be resolved before Phase 3**, by a root
-decision in §2a. It is not resolvable from the `deploy` account and it is not to be resolved
-by touching staging during the owner's test round.
+**Consequence for the staging-first gate [C18] — resolved, see §2a:** production's `migrate`
+service reads `STAGING_DATABASE_URL`. Staging publishes **no** port, so the loopback address
+`docker-compose.azure.yml` once documented (`host.docker.internal:5433`) cannot reach it. The live
+setup joins only the one-off `migrate` container to staging's network through
+`infra/docker-compose.staging-gate.yml` (`STAGING_NETWORK=youhan-ios-staging_default`) and reaches
+`youhan-ios-staging-postgres-1:5432` by name. Do not publish 5433 for this staging.
+
+Two facts that cost a release to learn (25 Sep): `ALLOW_UNSTAGED_MIGRATION` is honoured only when
+`STAGING_DATABASE_URL` is unset (`check-staging-first.mjs`), so it cannot bypass a reachable
+staging; and a staging script that prints success is not evidence — the gate's own
+`staging { … applied: N }` / `production { … applied: N }` lines are.
 
 ### The Compose invocation — an array, never `eval` **[C9]**
 

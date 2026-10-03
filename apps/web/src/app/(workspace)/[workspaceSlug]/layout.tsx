@@ -103,6 +103,7 @@ export default async function WorkspaceLayout({
           workspaceName={shell.displayName}
           plan={shell.plan}
           creatable={shell.creatable}
+          modules={shell.modules}
         />
         <main className="lf-page-main">
           <WorkAreaTabs

@@ -177,7 +177,14 @@ services:
     environment:
       NODE_ENV: production
       # The staging project's database, read only to answer "has this migration
-      # already succeeded there?". Set it in .env.production:
+      # already succeeded there?". Set it in .env.production. The live host runs
+      # staging as its own Compose project that publishes no port, so it is
+      # reached by name through infra/docker-compose.staging-gate.yml:
+      #
+      #   STAGING_NETWORK=youhan-ios-staging_default
+      #   STAGING_DATABASE_URL=postgresql://<user>:<pw>@youhan-ios-staging-postgres-1:5432/youhan_ios_demo
+      #
+      # The alternative below is for a staging built from docker-compose.staging.yml:
       #
       #   STAGING_DATABASE_URL=postgresql://leadflow:...@host.docker.internal:5433/leadflow_staging
       #
