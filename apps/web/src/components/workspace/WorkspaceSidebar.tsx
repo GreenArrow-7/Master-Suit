@@ -5,14 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { COMPANY_NAME, PRODUCT_NAME } from '@/lib/branding';
 import YouhanMark from '@/components/brand/YouhanMark';
-import {
-  activeModule,
-  buildNavigation,
-  findActive,
-  type IconName,
-  type NavSection,
-  type WorkArea,
-} from '@/lib/nav/workspaceNav';
+import { buildNavigation, findActive, type IconName, type NavSection, type WorkArea } from '@/lib/nav/workspaceNav';
 
 /**
  * The rail: one entry per work area. The screens inside an area are its tabs,
@@ -76,17 +69,6 @@ export default function WorkspaceSidebar({
   const collapsed = userCollapsed ?? tabletRail;
   const setCollapsed = (next: boolean | ((value: boolean) => boolean)) =>
     setUserCollapsed(typeof next === 'function' ? next(collapsed) : next);
-
-  /**
-   * Which half of the product is open. Nothing in the rail changes with it any
-   * more; MobileTabBar reads the same rule, and the navigation tests assert the
-   * attribute ModuleTheme stamps from the same test.
-   */
-  const product = activeModule(pathname, modules);
-
-  useEffect(() => {
-    window.localStorage.setItem(`master-suite:${slug}:module`, product);
-  }, [product, slug]);
 
   // The bottom tab bar's Menu button asks for the drawer. An event rather than
   // lifted state: one button does not justify a context provider.

@@ -11,7 +11,6 @@ import MobileTabBar from '@/components/workspace/MobileTabBar';
 import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
 import WorkAreaTabs from '@/components/workspace/WorkAreaTabs';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
-import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
@@ -78,7 +77,6 @@ export default async function WorkspaceLayout({
 
   return (
     <div className="lf-app-frame" data-lf-surface="workspace">
-      <ModuleTheme />
       <WorkspaceSidebar
         slug={shell.slug}
         name={shell.displayName}
