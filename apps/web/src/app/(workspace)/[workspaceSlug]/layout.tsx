@@ -8,7 +8,7 @@ import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import MobileTabBar from '@/components/workspace/MobileTabBar';
-import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
+import TopBar from '@/components/nav/TopBar';
 import WorkAreaTabs from '@/components/workspace/WorkAreaTabs';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
@@ -96,8 +96,8 @@ export default async function WorkspaceLayout({
             readOnly={shell.supportReadOnly}
           />
         )}
-        <WorkspaceTopBar
-          slug={shell.slug}
+        <TopBar
+          basePath={`/${shell.slug}`}
           workspaceName={shell.displayName}
           plan={shell.plan}
           creatable={shell.creatable}

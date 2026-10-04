@@ -132,22 +132,37 @@ function relTime(iso: string) {
 
 export default function TopBar({
   basePath = '',
-  module = 'sales',
+  module: fixedModule,
   workspaceName,
   plan,
   creatable,
-  crmRoot = 'sales',
+  modules = [],
 }: {
   basePath?: string;
-  module?: 'sales' | 'people' | 'platform';
+  /** Set by the platform shells. A workspace's module is read from the path. */
+  module?: 'platform';
   workspaceName?: string;
   plan?: string;
   /** Permission modules the signed-in role may CREATE; undefined = show all. */
   creatable?: string[];
-  /** Which product's forms + Create opens for the registers Sales and Real Estate share. */
-  crmRoot?: 'sales' | 'realty';
+  /** The product modules this workspace is entitled to. */
+  modules?: string[];
 } = {}) {
   const pathname = usePathname();
+  /**
+   * The module is the third path segment, `/{slug}/people/...` — not a substring.
+   *
+   * `pathname.includes('/people')` matched two things it should not have:
+   * `/{slug}/sales/people`, a Sales screen, which then rendered the HR top bar;
+   * and every screen of any workspace whose slug contains the word, so a tenant
+   * slugged `peoplefirst-realty` saw the HR chrome on its Leads list.
+   */
+  const segment = pathname.split('/')[2];
+  const area = fixedModule ?? (segment === 'people' ? 'people' : 'sales');
+  // Where + Create sends a new lead, call or event: the Real Estate screens when
+  // the viewer is working in Real Estate, or when the workspace has no Sales.
+  const crmRoot =
+    segment === 'realty' || (!modules.includes('SALES') && modules.includes('REAL_ESTATE')) ? 'realty' : 'sales';
   const router = useRouter();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
@@ -248,7 +263,7 @@ export default function TopBar({
    * generates. Platform still skips it: there are no notifications there at all.
    */
   useEffect(() => {
-    if (module === 'platform') return;
+    if (area === 'platform') return;
 
     const refresh = () =>
       fetch('/api/v1/notifications?unread=true')
@@ -290,7 +305,7 @@ export default function TopBar({
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [module]);
+  }, [area]);
 
   const loadNotifications = useCallback(() => {
     setNotiLoading(true);
@@ -321,9 +336,9 @@ export default function TopBar({
   }, []);
 
   const CREATE_ITEMS: { label: string; href: string; module?: string; group?: string }[] =
-    module === 'people'
+    area === 'people'
       ? [{ label: 'Employee', href: `${basePath}/people/employees/new` }]
-      : module === 'platform'
+      : area === 'platform'
         ? [
             { label: 'Workspace', href: '/platform/workspaces/new' },
             { label: 'Plan', href: '/platform/plans' },
@@ -378,7 +393,7 @@ export default function TopBar({
           jumps to any page and searches every list that reads ?q=, so one
           control does what a per-module search box did for one list. The
           platform console has no palette and keeps its search form. */}
-      {module !== 'platform' && (
+      {area !== 'platform' && (
         <button
           type="button"
           className="lf-shell-search lf-cmdk-trigger"
@@ -401,7 +416,7 @@ export default function TopBar({
         </button>
       )}
 
-      {module === 'platform' && (
+      {area === 'platform' && (
         <form
           className="lf-shell-search"
           action={target.href}
@@ -471,7 +486,7 @@ export default function TopBar({
             cluster with an icon+label and a clear pressed state, quieter than
             + Create but always one click away. */}
         {(() => {
-          const dashHref = module === 'platform' ? '/platform' : `${basePath}/dashboard`;
+          const dashHref = area === 'platform' ? '/platform' : `${basePath}/dashboard`;
           const active = pathname === dashHref;
           return (
             <Link
@@ -595,7 +610,7 @@ export default function TopBar({
         </details>
 
         {/* Notifications */}
-        {module !== 'platform' && (
+        {area !== 'platform' && (
           <div ref={notiRef} style={{ position: 'relative' }}>
             <button
               className="lf-btn lf-btn--secondary lf-btn--sm"
