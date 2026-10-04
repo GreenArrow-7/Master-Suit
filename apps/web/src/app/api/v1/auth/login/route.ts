@@ -25,6 +25,8 @@ import {
   type CredentialPurpose,
 } from '@/lib/auth/credentials';
 import { toResponse } from '@/lib/api/handler';
+import { consumeTotp } from '@/lib/auth/totp-consume';
+import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 
 /**
  * Two shapes, one endpoint.
@@ -220,20 +222,7 @@ async function passwordStep(body: Body & { email: string; password: string }, in
    * No session is created, so there is nothing doomed to revoke.
    */
   if (isPlatformServiceRole(user.platformRole)) {
-    await prisma.platformAuditEvent
-      .create({
-        data: {
-          actorUserId: user.id,
-          event: 'LOGIN_FAILED',
-          objectType: 'platform_user',
-          objectId: user.id,
-          ipAddress: info.ip,
-          userAgent: info.ua,
-          requestId: info.requestId,
-          metadata: { reason: 'SERVICE_IDENTITY_WRONG_ROUTE' },
-        },
-      })
-      .catch(() => {});
+    await recordFailure(null, user.id, info, 'SERVICE_IDENTITY_WRONG_ROUTE');
     return NextResponse.json(
       {
         serviceIdentity: true,
@@ -404,9 +393,6 @@ async function completeChallenge(challengeId: string, body: Body, info: RequestI
   if (!body.mfaCode && !body.recoveryCode) {
     throw Invalid([{ field: 'mfaCode', code: 'required', message: 'Enter the code from your authenticator.' }]);
   }
-
-  const { consumeTotp } = await import('@/lib/auth/totp-consume');
-  const { consumeRecoveryCode } = await import('@/services/identity/twoFactor');
 
   // The secret is stored encrypted; values enrolled before that change are
   // passed through unchanged by decryptSecret.

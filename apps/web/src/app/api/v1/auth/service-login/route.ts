@@ -6,7 +6,14 @@ import { env } from '@/lib/env';
 import { Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { burnTiming, verifyPassword } from '@/lib/auth/password';
-import { clientIp, createPlatformSession, SERVICE_SESSION_COOKIE } from '@/lib/auth/session';
+import { cookies } from 'next/headers';
+import {
+  clientIp,
+  createPlatformSession,
+  resolvePlatformCtx,
+  revokeAllPlatformSessions,
+  SERVICE_SESSION_COOKIE,
+} from '@/lib/auth/session';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { clear as clearLimit, consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
@@ -98,19 +105,21 @@ export async function POST(req: Request) {
      * way into the *human* login route for this role — that is refused
      * separately, in api/v1/auth/login.
      */
-    const identifier = username;
-    const user = identifier.includes('@')
-      ? await prisma.platformUser.findUnique({ where: { normalizedEmail: identifier } })
-      : await prisma.platformUser.findUnique({ where: { username: identifier } });
+    const user = username.includes('@')
+      ? await prisma.platformUser.findUnique({ where: { normalizedEmail: username } })
+      : await prisma.platformUser.findUnique({ where: { username } });
     const now = new Date();
 
-    // Unknown username, no password set, or deleted — all answered identically,
-    // and all after the same Argon2 work a real verification would cost.
-    if (!user || user.deletedAt || !user.passwordHash) {
+    // Every refusal before the password is proven: the same Argon2 work a real
+    // verification would cost, then the one generic message.
+    const refuse = async (platformUserId: string | null, reason: string) => {
       await burnTiming();
-      await recordFailure(null, ip, ua, requestId, 'UNKNOWN_ACCOUNT', username);
-      throw Unauthorized(GENERIC);
-    }
+      await recordFailure(platformUserId, ip, ua, requestId, reason, username);
+      return Unauthorized(GENERIC);
+    };
+
+    // Unknown username, no password set, or deleted — all answered identically.
+    if (!user || user.deletedAt || !user.passwordHash) throw await refuse(null, 'UNKNOWN_ACCOUNT');
 
     /**
      * This route signs in service identities and nothing else.
@@ -119,25 +128,12 @@ export async function POST(req: Request) {
      * second sign-in path to it — one that skips the human route's workspace
      * checks. An OWNER must keep arriving through api/v1/auth/login.
      */
-    if (!isPlatformServiceRole(user.platformRole)) {
-      await burnTiming();
-      await recordFailure(user.id, ip, ua, requestId, 'NOT_A_SERVICE_IDENTITY', username);
-      throw Unauthorized(GENERIC);
-    }
+    if (!isPlatformServiceRole(user.platformRole)) throw await refuse(user.id, 'NOT_A_SERVICE_IDENTITY');
+    if (user.lockedUntil && user.lockedUntil > now) throw await refuse(user.id, 'LOCKED');
+    if (user.status !== 'ACTIVE') throw await refuse(user.id, 'INACTIVE');
 
-    if (user.lockedUntil && user.lockedUntil > now) {
-      await burnTiming();
-      await recordFailure(user.id, ip, ua, requestId, 'LOCKED', username);
-      throw Unauthorized(GENERIC);
-    }
-
-    if (user.status !== 'ACTIVE') {
-      await burnTiming();
-      await recordFailure(user.id, ip, ua, requestId, 'INACTIVE', username);
-      throw Unauthorized(GENERIC);
-    }
-
-    if (!(await verifyPassword(user.passwordHash, body.password))) {
+    /** One more failure toward lockout; a failure that reaches the limit locks and resets the count. */
+    const countFailure = async () => {
       const failures = user.failedLoginCount + 1;
       const locked = failures >= env.MAX_FAILED_LOGINS;
       await prisma.platformUser.update({
@@ -147,6 +143,11 @@ export async function POST(req: Request) {
           lockedUntil: locked ? new Date(now.getTime() + env.LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
         },
       });
+      return { failures, locked };
+    };
+
+    if (!(await verifyPassword(user.passwordHash, body.password))) {
+      const { failures, locked } = await countFailure();
       await recordFailure(user.id, ip, ua, requestId, locked ? 'LOCKED_NOW' : 'BAD_PASSWORD', username, {
         attempt: failures,
       });
@@ -213,15 +214,7 @@ export async function POST(req: Request) {
        * somebody holding the password and working on the factor. Neither should
        * get unlimited attempts.
        */
-      const failures = user.failedLoginCount + 1;
-      const locked = failures >= env.MAX_FAILED_LOGINS;
-      await prisma.platformUser.update({
-        where: { id: user.id },
-        data: {
-          failedLoginCount: locked ? 0 : failures,
-          lockedUntil: locked ? new Date(now.getTime() + env.LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
-        },
-      });
+      const { failures, locked } = await countFailure();
       const reason = totpOutcome === 'REPLAYED' ? 'MFA_CODE_REPLAYED' : 'BAD_MFA';
       await recordFailure(user.id, ip, ua, requestId, locked ? `LOCKED_NOW_${reason}` : reason, username);
       if (locked) await record(user.id, 'ACCOUNT_LOCKED', ip, ua, requestId, { after: failures, cause: 'mfa' });
@@ -320,7 +313,6 @@ export async function PATCH(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     assertSameOrigin(req);
-    const { resolvePlatformCtx } = await import('@/lib/auth/session');
     const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
     if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
 
@@ -369,12 +361,10 @@ export async function DELETE(req: Request) {
   const requestId = req.headers.get('x-request-id') ?? ulid();
   try {
     assertSameOrigin(req);
-    const { resolvePlatformCtx } = await import('@/lib/auth/session');
     const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE', 'MFA_ENROLMENT']);
     if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
 
     const all = new URL(req.url).searchParams.get('all') === 'true';
-    const { revokeAllPlatformSessions } = await import('@/lib/auth/session');
     const revoked = all
       ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
       : await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT').then(() => 1);
@@ -385,7 +375,6 @@ export async function DELETE(req: Request) {
     // the operator out of the platform console instead, which is a different
     // identity that happens to share the browser.
     try {
-      const { cookies } = await import('next/headers');
       (await cookies()).delete(SERVICE_SESSION_COOKIE);
     } catch {
       /* no request scope */
