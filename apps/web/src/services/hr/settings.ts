@@ -678,7 +678,11 @@ export const HR_SETTINGS: Definition[] = [
 ];
 
 /** The check-out rules, which a workspace without HRMS may also set: check-in is not an HR product. */
-export const CHECKOUT_RULE_KEYS = ['checkoutRequiresDailyTarget', 'checkoutRequiresLeadWork', 'checkoutWorkGateMaxHours'];
+export const CHECKOUT_RULE_KEYS = [
+  'checkoutRequiresDailyTarget',
+  'checkoutRequiresLeadWork',
+  'checkoutWorkGateMaxHours',
+];
 
 export type HrPolicy = {
   faceMatchThreshold: number;
