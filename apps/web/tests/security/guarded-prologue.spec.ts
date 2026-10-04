@@ -53,6 +53,17 @@ describe('the security prologue', () => {
     expect(handRolled).toEqual([]);
   });
 
+  it('is the only rate limit on the routes that use it', () => {
+    // The prologue already charges the caller's bucket; a different ceiling is
+    // passed as `limit`. A route that consumes again charges every request twice,
+    // which the CSV export did from the day it moved onto the prologue.
+    const doubled = routeFiles.filter((file) => {
+      const source = readFileSync(join(API, file), 'utf8');
+      return source.includes('resolveGuardedCtx(') && /\bconsume\(/.test(source);
+    });
+    expect(doubled).toEqual([]);
+  });
+
   it('offers no way to ask for no rate limit', () => {
     // The guarantee in one assertion. `limit` may be *replaced*; it cannot be
     // switched off, because a route that forgets it is the failure this exists

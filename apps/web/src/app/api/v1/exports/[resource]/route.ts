@@ -5,10 +5,8 @@ import { ulid } from 'ulid';
 import { NotFound } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
-import { consume, limits } from '@/lib/security/ratelimit';
 import { csvHeaders, csvStream, type CsvColumn } from '@/lib/csv';
 import { toResponse } from '@/lib/api/handler';
 
@@ -50,7 +48,7 @@ interface Resource {
   /** Rows are scoped exactly as the list route scopes them. */
   ownerField?: string;
   columns: CsvColumn<any>[];
-  page: (ctx: Ctx, where: Record<string, unknown>, cursor: string | null, take: number) => Promise<{ id: string }[]>;
+  page: (where: Record<string, unknown>, cursor: string | null, take: number) => Promise<{ id: string }[]>;
 }
 
 const date = (value: Date | null | undefined) => value?.toISOString().slice(0, 10) ?? null;
@@ -71,7 +69,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.ownerId ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.listing.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
@@ -102,7 +100,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Possession', value: (r) => r.possessionStatus },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.project.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
@@ -124,7 +122,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.contact.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
@@ -154,7 +152,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.account.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
@@ -185,7 +183,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Expected close', value: (r) => date(r.expectedCloseDate) },
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.opportunity.findMany({
         where: { ...where, deletedAt: null },
         orderBy: { id: 'asc' },
@@ -222,7 +220,7 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Reversal', value: (r) => (r.reversesId ? 'yes' : 'no') },
       { label: 'Paid', value: (r) => date(r.paidAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.commission.findMany({
         where,
         orderBy: { id: 'asc' },
@@ -258,12 +256,13 @@ async function handle(req: Request, params: { resource: string }, requestId: str
   const resource = RESOURCES[params.resource];
   if (!resource) throw NotFound('Export');
 
-  const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'SALES' });
   // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
   // of the building are different authorities, and every module here already
   // defines the second.
-  assertPermission(ctx, resource.module, 'EXPORT');
-  await consume(limits.sessionUser(ctx.actor.id));
+  const ctx = await resolveGuardedCtx(req, requestId, {
+    productModule: 'SALES',
+    permission: [resource.module, 'EXPORT'],
+  });
 
   const where = await visibilityWhere(ctx, resource.module, 'VIEW', { ownerField: resource.ownerField });
 
@@ -273,7 +272,7 @@ async function handle(req: Request, params: { resource: string }, requestId: str
     pageSize: PAGE,
     // `take` comes from the stream rather than PAGE, so the final page is
     // trimmed to land exactly on EXPORT_MAX_ROWS.
-    page: (cursor, take) => resource.page(ctx, where, cursor, take) as Promise<{ id: string }[]>,
+    page: (cursor, take) => resource.page(where, cursor, take) as Promise<{ id: string }[]>,
     onDone: async (rows, truncated) => {
       await audit(ctx, {
         event: 'EXPORT_REQUESTED',
