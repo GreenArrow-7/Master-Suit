@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { lockShared, UPLOAD_LIMIT_LOCK, type Release } from '../helpers/serialize';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { redis } from '@/lib/redis';
@@ -77,7 +77,7 @@ describe('P2-4: an oversized upload is refused before it is read', () => {
   /**
    * The limit the route will actually use, not the environment variable.
    *
-   * `getUploadMaxMb()` prefers the `PlatformSetting` row over `env`, and
+   * `getNumericSetting('uploadMaxMb')` prefers the `PlatformSetting` row over `env`, and
    * `platform-admin-crud.spec.ts` writes that row — key `uploadMaxMb`, value
    * `10` — while testing the operator console. `PlatformSetting` carries no
    * tenantId (it is in `GLOBAL_MODELS`), so there is no isolation between the
@@ -99,7 +99,7 @@ describe('P2-4: an oversized upload is refused before it is read', () => {
   });
 
   it('rejects on Content-Length before parsing the body', async () => {
-    const uploadMaxMb = await getUploadMaxMb();
+    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
     const maxBytes = uploadMaxMb * 1024 * 1024;
 
     /**
@@ -132,7 +132,7 @@ describe('P2-4: an oversized upload is refused before it is read', () => {
 
   it('still refuses a file whose declared size is honest but too large', async () => {
     // The second guard: `file.size`, known without reading the bytes.
-    const maxBytes = (await getUploadMaxMb()) * 1024 * 1024;
+    const maxBytes = (await getNumericSetting('uploadMaxMb')) * 1024 * 1024;
     const form = new FormData();
     form.set('file', new File([new Uint8Array(maxBytes + 1024)], 'big.pdf', { type: 'application/pdf' }));
     form.set('employeeId', 'irrelevant');

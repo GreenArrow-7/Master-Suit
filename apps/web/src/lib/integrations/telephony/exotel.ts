@@ -12,7 +12,7 @@
  * and reads keys case-insensitively; Exotel's own documentation is inconsistent
  * about the casing.
  */
-import { basic, urlTokenValid, vendorFetch } from './http';
+import { basic, urlTokenValid, vendorFetch, num } from './http';
 import type {
   CallEvent,
   CallEventKind,
@@ -173,9 +173,3 @@ function readBody(request: WebhookRequest): Record<string, string | undefined> {
   for (const [key, value] of new URLSearchParams(request.rawBody)) flat[key.toLowerCase()] = value;
   return flat;
 }
-
-const num = (value: unknown): number | undefined => {
-  if (value == null || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-};

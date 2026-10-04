@@ -12,7 +12,7 @@
  * behaviour rather than something to work around.
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { basic, vendorFetch, xml } from './http';
+import { basic, vendorFetch, xml, num } from './http';
 import type {
   CallEvent,
   CallEventKind,
@@ -203,9 +203,3 @@ export class TwilioProvider implements TelephonyProvider {
     return ['api.twilio.com', '.twiliocdn.com'];
   }
 }
-
-const num = (value: string | null): number | undefined => {
-  if (value == null || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-};

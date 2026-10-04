@@ -158,9 +158,9 @@ export function route<
       const rawBody =
         wantsJson && ['POST', 'PATCH', 'PUT'].includes(req.method) ? await req.json().catch(() => ({})) : {};
 
-      const params = spec.params ? parse(spec.params, rawParams) : (rawParams as P);
-      const query = spec.query ? parse(spec.query, rawQuery) : (rawQuery as unknown as Q);
-      const body = spec.body ? parse(spec.body, rawBody) : (rawBody as B);
+      const params = spec.params ? spec.params.parse(rawParams) : (rawParams as P);
+      const query = spec.query ? spec.query.parse(rawQuery) : (rawQuery as unknown as Q);
+      const body = spec.body ? spec.body.parse(rawBody) : (rawBody as B);
 
       // 5. Handle ──────────────────────────────────────────────────────────────
       // Scrubbed on the way out. A handler that returns a Prisma record with a
@@ -309,17 +309,6 @@ function scrubSecrets<T>(value: T, seen = new WeakMap<object, unknown>()): T {
 
 /** Exposed for tests/security/secret-egress.spec.ts. Not part of the route API. */
 export const scrubForTest = <T>(value: T): T => scrubSecrets(value);
-
-function parse<T extends ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
-  try {
-    return schema.parse(value);
-  } catch (e) {
-    if (e instanceof ZodError) {
-      throw Invalid(e.issues.map((i) => ({ field: i.path.join('.'), code: i.code, message: i.message })));
-    }
-    throw e;
-  }
-}
 
 /** The label for an error series: stable, low-cardinality, never a message. */
 function errorCode(err: unknown): string {

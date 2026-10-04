@@ -3,27 +3,12 @@ import { createHash } from 'node:crypto';
 import { redis } from './redis';
 import { logger } from './logger';
 
-export type QueueName =
-  | 'automation'
-  | 'distribution'
-  | 'sla'
-  | 'campaign'
-  | 'webhook'
-  | 'maintenance'
-  /** Fetching call recordings out of a vendor and into our own bucket. */
-  | 'media'
-  /** Transcription, Gemini analysis and the call audit that follows them. */
-  | 'ai'
-  /** Email for in-app notifications that have already been written. */
-  | 'notifications';
-
 /**
  * Every queue, as a value rather than only a type.
  *
- * The metrics endpoint iterates this to ask Redis about each one. Deriving it
- * from the same place the type comes from means a queue added to `QueueName`
- * cannot be invisible to monitoring — which is the failure mode that let the
- * whole worker process die unnoticed.
+ * The metrics endpoint iterates this to ask Redis about each one. `QueueName` is
+ * derived from it, so a queue cannot exist without being visible to monitoring
+ * — which is the failure mode that let the whole worker process die unnoticed.
  */
 export const QUEUE_NAMES = [
   'automation',
@@ -32,10 +17,15 @@ export const QUEUE_NAMES = [
   'campaign',
   'webhook',
   'maintenance',
+  // Fetching call recordings out of a vendor and into our own bucket.
   'media',
+  // Transcription, Gemini analysis and the call audit that follows them.
   'ai',
+  // Email for in-app notifications that have already been written.
   'notifications',
-] as const satisfies readonly QueueName[];
+] as const;
+
+export type QueueName = (typeof QUEUE_NAMES)[number];
 
 const RETRY: Record<QueueName, { attempts: number; backoff: any }> = {
   automation: { attempts: 5, backoff: { type: 'exponential', delay: 2_000 } },

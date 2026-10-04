@@ -71,14 +71,9 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     return row ? { state: row.state, endsAt: row.endsAt?.toISOString() ?? null } : null;
   });
 
-  const usable =
-    entitlement &&
-    ['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state) &&
-    (!entitlement.endsAt || new Date(entitlement.endsAt) > new Date());
-  if (!usable) {
+  if (!isEntitlementUsable(entitlement)) {
     throw Forbidden(`${MODULE_LABEL[module]} is not enabled for this company.`);
   }
-  return entitlement;
 }
 
 /**

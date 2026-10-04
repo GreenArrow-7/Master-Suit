@@ -9,7 +9,7 @@ import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { getObject, putObject } from '@/lib/storage';
 import { scanBuffer } from '@/lib/antivirus';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueue, queueHasWorkers } from '@/lib/queue';
@@ -110,7 +110,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     const { id: callId } = await context.params;
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
 
-    const uploadMaxMb = await getUploadMaxMb();
+    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
     const maxBytes = uploadMaxMb * 1024 * 1024;
     const tooLarge = () => new AppError(413, 'file-too-large', `Recordings must be under ${uploadMaxMb} MB.`);
     const declared = Number(req.headers.get('content-length') ?? 0);

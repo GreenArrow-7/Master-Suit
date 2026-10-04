@@ -6,7 +6,7 @@ import { scanBuffer } from '@/lib/antivirus';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { deleteObject, putObject } from '@/lib/storage';
 import { assertBookingInScope, EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
 import { toResponse } from '@/lib/api/handler';
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       permission: ['collections', 'CREATE'],
     });
 
-    const uploadMaxMb = await getUploadMaxMb();
+    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
     const maxBytes = uploadMaxMb * 1024 * 1024;
     const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
     if (Number(req.headers.get('content-length') ?? 0) > maxBytes + 64 * 1024) throw tooLarge();

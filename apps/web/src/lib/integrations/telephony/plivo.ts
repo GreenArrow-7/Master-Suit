@@ -10,7 +10,7 @@
  * carry several comma-separated signatures during a key rotation.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { basic, vendorFetch } from './http';
+import { basic, vendorFetch, num } from './http';
 import type {
   CallEvent,
   CallEventKind,
@@ -155,9 +155,3 @@ export class PlivoProvider implements TelephonyProvider {
     return ['api.plivo.com', '.plivo.com'];
   }
 }
-
-const num = (value: string | null): number | undefined => {
-  if (value == null || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-};

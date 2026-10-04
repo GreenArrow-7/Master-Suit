@@ -2,7 +2,7 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PageHeader from '@/components/ui/PageHeader';
 import SettingEditor from '@/components/platform/SettingEditor';
 import { env } from '@/lib/env';
-import { getNumericSetting, getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { requirePlatformPage } from '@/lib/platform-page';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic';
 export default async function PlatformSettingsPage() {
   await requirePlatformPage();
   const [uploadMaxMb, sessionTtl, idleTimeout, maxFailedLogins, lockoutMinutes] = await Promise.all([
-    getUploadMaxMb(),
+    getNumericSetting('uploadMaxMb'),
     getNumericSetting('sessionTtlMinutes'),
     getNumericSetting('sessionIdleTimeoutMinutes'),
     getNumericSetting('maxFailedLogins'),

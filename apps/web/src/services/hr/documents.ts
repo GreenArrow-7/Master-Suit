@@ -17,7 +17,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
@@ -64,7 +64,7 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   const employee = await requireEmployee(ctx, input.employeeId);
 
   if (!input.bytes.length) throw Conflict('That file is empty.');
-  const uploadMaxMb = await getUploadMaxMb();
+  const uploadMaxMb = await getNumericSetting('uploadMaxMb');
   const maxBytes = uploadMaxMb * 1024 * 1024;
   if (input.bytes.length > maxBytes)
     throw new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);

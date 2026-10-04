@@ -2,7 +2,7 @@ import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { requireWorkspace } from '@/lib/workspace';
 import { uploadDocument } from '@/services/hr/documents';
 import { toResponse } from '@/lib/api/handler';
@@ -35,7 +35,7 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
      * Three checks, cheapest first: the declared length, then the part's own
      * size, then the real byte count in the service (a Content-Length can lie).
      */
-    const uploadMaxMb = await getUploadMaxMb();
+    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
     const maxBytes = uploadMaxMb * 1024 * 1024;
     const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
 
