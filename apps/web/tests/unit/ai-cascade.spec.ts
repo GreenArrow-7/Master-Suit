@@ -6,15 +6,13 @@ vi.mock('@/lib/ai/gemini', () => ({ geminiModel: vi.fn(async () => 'primary-mode
 const transient = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
 
 describe('model cascade', () => {
-  afterEach(() => {
-    delete process.env.GEMINI_FALLBACK_MODEL;
-  });
+  afterEach(() => vi.unstubAllEnvs());
 
   it('is the primary model alone unless a fallback is configured', async () => {
     expect(await modelCascade('t')).toEqual(['primary-model']);
-    process.env.GEMINI_FALLBACK_MODEL = 'cheap-model';
+    vi.stubEnv('GEMINI_FALLBACK_MODEL', 'cheap-model');
     expect(await modelCascade('t')).toEqual(['primary-model', 'cheap-model']);
-    process.env.GEMINI_FALLBACK_MODEL = 'primary-model';
+    vi.stubEnv('GEMINI_FALLBACK_MODEL', 'primary-model');
     expect(await modelCascade('t')).toEqual(['primary-model']);
   });
 

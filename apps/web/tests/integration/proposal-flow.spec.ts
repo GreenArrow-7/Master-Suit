@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTx } from '@/lib/db';
-import type { PermissionMap } from '@/lib/security/rbac';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { closeProposal, createProposal, proposalDetail, sendProposal } from '@/services/proposals/proposals';
@@ -25,11 +24,11 @@ function ctxFor(tenant: { tenantId: string; userId: string }) {
     buildActor({
       id: tenant.userId,
       tenantId: tenant.tenantId,
-      permissions: new Map([
-        ['requirements:VIEW', 'ORGANIZATION'],
-        ['requirements:CREATE', 'ORGANIZATION'],
-        ['requirements:EDIT', 'ORGANIZATION'],
-      ]) as PermissionMap,
+      grants: [
+        ['requirements', 'VIEW'],
+        ['requirements', 'CREATE'],
+        ['requirements', 'EDIT'],
+      ],
     }),
   );
 }

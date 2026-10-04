@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { assertAiBudget, featureLimitKey, featureUsageMetric, recordAiUsage, usageMetric } from '@/lib/ai/usage';
 
@@ -29,6 +29,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   if (tenantId) await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
 });
 
@@ -98,11 +99,11 @@ describe('token direction and cost estimate', () => {
     expect(by[inputUsageMetric('deployment')]).toBe(700);
     expect(by[outputUsageMetric('deployment')]).toBe(300);
 
-    delete process.env.AI_COST_USD_PER_MILLION_INPUT;
-    delete process.env.AI_COST_USD_PER_MILLION_OUTPUT;
+    vi.stubEnv('AI_COST_USD_PER_MILLION_INPUT', undefined);
+    vi.stubEnv('AI_COST_USD_PER_MILLION_OUTPUT', undefined);
     expect(estimateCostUsd(700, 300)).toBeNull();
-    process.env.AI_COST_USD_PER_MILLION_INPUT = '0.30';
-    process.env.AI_COST_USD_PER_MILLION_OUTPUT = '2.50';
+    vi.stubEnv('AI_COST_USD_PER_MILLION_INPUT', '0.30');
+    vi.stubEnv('AI_COST_USD_PER_MILLION_OUTPUT', '2.50');
     expect(estimateCostUsd(1_000_000, 1_000_000)).toBe(2.8);
   });
 });

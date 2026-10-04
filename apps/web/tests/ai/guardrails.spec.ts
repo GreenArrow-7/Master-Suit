@@ -34,7 +34,7 @@ const transcript =
 describe('AI guardrails and fallbacks', () => {
   afterEach(() => {
     generateStructured.mockReset();
-    delete process.env.GEMINI_FALLBACK_MODEL;
+    vi.unstubAllEnvs();
   });
 
   it('a non-JSON model answer degrades to the labelled keyword pass, never a fake result', async () => {
@@ -48,7 +48,7 @@ describe('AI guardrails and fallbacks', () => {
 
   it('outage on primary and fallback degrades with the reason; a transient primary failure is answered by the fallback', async () => {
     const { analyzeTranscript } = await import('@/lib/ai/analysis');
-    process.env.GEMINI_FALLBACK_MODEL = 'cheap-model';
+    vi.stubEnv('GEMINI_FALLBACK_MODEL', 'cheap-model');
 
     generateStructured.mockRejectedValue(transient(503));
     const down = await analyzeTranscript({ tenantId: 't1', transcript });
