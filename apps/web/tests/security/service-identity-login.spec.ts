@@ -457,6 +457,21 @@ describe('session security', () => {
     expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
   });
 
+  it('a plain logout ends only the session that asked', async () => {
+    const cookie = await sessionFor(null);
+    await sessionFor(null);
+    const live = () => prisma.platformSession.count({ where: { platformUserId: identityId, revokedAt: null } });
+    const before = await live();
+
+    const res = await serviceLogout(
+      new Request('http://localhost/api/v1/auth/service-login', { method: 'DELETE', headers: { cookie } }),
+    );
+    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+    expect((await res.json()).sessionsRevoked).toBe(1);
+    // It used to revoke every session the identity held and report 1.
+    expect(await live()).toBe(before - 1);
+  });
+
   it('logout-all ends every live session', async () => {
     const cookie = await sessionFor(null);
     await sessionFor(null);

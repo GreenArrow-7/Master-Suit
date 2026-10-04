@@ -367,7 +367,12 @@ export async function DELETE(req: Request) {
     const all = new URL(req.url).searchParams.get('all') === 'true';
     const revoked = all
       ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
-      : await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT').then(() => 1);
+      : (
+          await prisma.platformSession.updateMany({
+            where: { id: ctx.sessionId, revokedAt: null },
+            data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
+          })
+        ).count;
 
     await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
 
