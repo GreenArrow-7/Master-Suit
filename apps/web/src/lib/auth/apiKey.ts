@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { prisma } from '../db';
 import { Unauthorized, Forbidden } from '../errors';
 import { verifyPassword, hashPassword } from './password';
@@ -101,5 +101,3 @@ function scopeAllows(scopes: string[], module: string, action: string): boolean 
   const wanted = READ_ACTIONS.has(action) ? 'read' : 'write';
   return scopes.includes(`${module}:${wanted}`) || scopes.includes(`${module}:*`) || scopes.includes('*');
 }
-
-export const fingerprint = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 12);

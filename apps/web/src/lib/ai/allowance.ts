@@ -299,7 +299,7 @@ export async function enforceBudgets(
     if (!budget || !inForce(budget, now)) continue;
     const state = await budgetState(budget, now);
     if (!state.exceeded) continue;
-    const verdict = decide(budget, level, state, now);
+    const verdict = decide(budget, level, state);
     if (verdict) return verdict;
   }
 
@@ -352,19 +352,14 @@ export async function enforceBudgets(
     if (!budget || !inForce(budget, now)) continue;
     const state = await budgetState(budget, now);
     if (!state.exceeded) continue;
-    const verdict = decide(budget, 'feature', state, now);
+    const verdict = decide(budget, 'feature', state);
     if (verdict) return verdict;
   }
 
   return { ...ALLOWED };
 }
 
-function decide(
-  budget: AiBudget,
-  level: EnforcementVerdict['level'],
-  state: BudgetState,
-  _now: Date,
-): EnforcementVerdict | null {
+function decide(budget: AiBudget, level: EnforcementVerdict['level'], state: BudgetState): EnforcementVerdict | null {
   if (budget.action === 'BLOCK' || budget.hardLimit) {
     const period = budget.period === 'DAILY' ? "today's" : "this month's";
     const name =

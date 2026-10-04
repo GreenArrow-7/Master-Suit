@@ -25,7 +25,6 @@ import type {
 } from './types';
 
 export * from './types';
-export { TelephonyApiError } from './http';
 
 /**
  * The two callback secrets derived from a connection's `webhookKey`.

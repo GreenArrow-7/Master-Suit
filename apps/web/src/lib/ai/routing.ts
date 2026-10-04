@@ -115,8 +115,3 @@ export async function routeFor(feature: string, tenantId?: string | null): Promi
     configured: false,
   };
 }
-
-/** Whether this failure is one the route says to cascade on. */
-export function shouldFallBack(route: ResolvedRoute, reason: string): boolean {
-  return route.triggers.includes(reason as FallbackTrigger);
-}

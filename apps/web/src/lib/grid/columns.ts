@@ -273,10 +273,6 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
 };
 
-export function isGridObject(value: string): value is GridObject {
-  return (GRID_OBJECTS as readonly string[]).includes(value);
-}
-
 /** Keys that may be reordered or removed, in catalogue order. */
 export function optionalColumns(object: GridObject): ColumnDef[] {
   return GRID_COLUMNS[object].filter((column) => !column.fixed);

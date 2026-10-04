@@ -65,15 +65,6 @@ export function usageMetric(paidBy: PaidBy, at: Date = new Date()): string {
   return `ai_tokens:${paidBy}:${period(at)}`;
 }
 
-/**
- * The pre-split key. Rows under it are real spend that cannot be attributed
- * retroactively, so they are read and shown as their own line rather than
- * folded into either side or quietly dropped.
- */
-export function legacyUsageMetric(at: Date = new Date()): string {
-  return `ai_tokens:${period(at)}`;
-}
-
 /** Matches every ai_tokens row, in any of the three shapes. */
 export const AI_METRIC_PREFIX = 'ai_tokens:';
 

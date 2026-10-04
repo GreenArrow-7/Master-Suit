@@ -10,8 +10,6 @@ export const pageQuery = z.object({
   sort: z.string().optional(),
 });
 
-export type PageQuery = z.infer<typeof pageQuery>;
-
 export interface Cursor {
   updatedAt: string;
   id: string;

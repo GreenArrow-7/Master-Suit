@@ -2,7 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { wrapCredentials } from '@/lib/integrations/connection';
-import { geminiCredential, geminiKey, geminiModel, geminiProvider } from '@/lib/ai/gemini';
+import { geminiCredential, geminiModel, geminiProvider } from '@/lib/ai/gemini';
+
+const geminiKey = async (tenantId?: string) => (await geminiCredential(tenantId)).key;
 
 /**
  * Whose key an AI feature runs on.

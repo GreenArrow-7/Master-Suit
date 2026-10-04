@@ -91,11 +91,6 @@ async function configuredModel(tenantId: string): Promise<string | null> {
   return typeof model === 'string' && model.trim() ? model.trim() : null;
 }
 
-/** The key alone, for callers that only need to know whether one exists. */
-export async function geminiKey(tenantId?: string | null): Promise<string | null> {
-  return (await geminiCredential(tenantId)).key;
-}
-
 /**
  * The model to ask for.
  *
@@ -115,9 +110,4 @@ export async function geminiModel(tenantId?: string | null): Promise<string> {
    * simulation while the integration screen said Connected.
    */
   return process.env.GEMINI_MODEL || 'gemini-flash-latest';
-}
-
-/** Whether AI features will use a real model for this workspace. */
-export async function geminiConfigured(tenantId?: string | null): Promise<boolean> {
-  return Boolean(await geminiKey(tenantId));
 }

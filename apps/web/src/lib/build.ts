@@ -22,13 +22,3 @@ export function buildId(): string {
     })();
   return cached;
 }
-
-/** Host/database of the active connection — identity only, never credentials. */
-export function databaseId(): string {
-  try {
-    const url = new URL(process.env.DATABASE_URL ?? '');
-    return `${url.pathname.replace('/', '')}@${url.hostname}:${url.port || '5432'}`;
-  } catch {
-    return 'unknown';
-  }
-}

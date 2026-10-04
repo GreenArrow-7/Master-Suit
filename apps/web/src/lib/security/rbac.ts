@@ -146,12 +146,6 @@ export function assertPermission(ctx: Ctx, module: string, action: Action): Scop
   return scope;
 }
 
-export function assertScopeAtLeast(ctx: Ctx, module: string, action: Action, minimum: Scope) {
-  const scope = assertPermission(ctx, module, action);
-  if (SCOPE_RANK[scope] < SCOPE_RANK[minimum]) throw Forbidden();
-  return scope;
-}
-
 /**
  * Vertical escalation guard: a user may only administer roles ranked strictly below
  * their own, and never their own role. Without this, an org admin's deputy can

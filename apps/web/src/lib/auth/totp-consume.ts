@@ -1,4 +1,4 @@
-import { prisma, type TxClient } from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { matchTotpStep } from '@/lib/auth/mfa';
 import { decryptSecret } from '@/services/identity/secrets';
 
@@ -27,12 +27,11 @@ export async function consumeTotp(
   platformUserId: string,
   encryptedSecret: string | null | undefined,
   code: string | null | undefined,
-  db: Pick<TxClient, 'platformUser'> = prisma,
 ): Promise<TotpOutcome> {
   if (!encryptedSecret || !code) return 'INVALID';
   const step = matchTotpStep(decryptSecret(encryptedSecret), code);
   if (step === null) return 'INVALID';
-  const { count } = await db.platformUser.updateMany({
+  const { count } = await prisma.platformUser.updateMany({
     where: { id: platformUserId, OR: [{ mfaLastUsedStep: null }, { mfaLastUsedStep: { lt: step } }] },
     data: { mfaLastUsedStep: step },
   });

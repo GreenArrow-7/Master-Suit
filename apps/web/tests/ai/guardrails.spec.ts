@@ -25,8 +25,6 @@ vi.mock('@/lib/ai/gemini', () => ({
   geminiCredential: vi.fn(async () => ({ key: 'test-key', source: 'workspace', provider: 'google' })),
   geminiModel: vi.fn(async () => 'primary-model'),
   geminiProvider: vi.fn(async () => 'google'),
-  geminiKey: vi.fn(async () => 'test-key'),
-  geminiConfigured: vi.fn(async () => true),
 }));
 
 const transient = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
