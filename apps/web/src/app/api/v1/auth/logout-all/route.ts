@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { Unauthorized } from '@/lib/errors';
-import { SESSION_COOKIE, clientIp } from '@/lib/auth/session';
+import { SESSION_COOKIE, clientIp, loadSession, revokeAllPlatformSessions } from '@/lib/auth/session';
 import { toResponse } from '@/lib/api/handler';
 
 /**
@@ -23,23 +22,10 @@ export async function POST(req: Request) {
     const token = jar.get(SESSION_COOKIE)?.value;
     if (!token) throw Unauthorized();
 
-    const session = await prisma.platformSession.findUnique({
-      where: { tokenHash: createHash('sha256').update(token).digest('hex') },
-      select: { platformUserId: true, activeTenantId: true, revokedAt: true, expiresAt: true },
-    });
-    if (!session || session.revokedAt || session.expiresAt < new Date())
-      throw Unauthorized('Your session has expired.');
+    const session = await loadSession(token, new Date());
+    if (!session) throw Unauthorized('Your session has expired.');
 
-    const platform = await prisma.platformSession.updateMany({
-      where: { platformUserId: session.platformUserId, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: 'USER_LOGOUT_ALL' },
-    });
-
-    // The legacy per-workspace sweep that used to run here read every
-    // membership and then revoked rows in a table nothing creates.
-    // PlatformSession is the only session store and was cleared above, so the
-    // query and the count it produced were both dead weight.
-    const workspace = 0;
+    const signedOut = await revokeAllPlatformSessions(session.platformUserId, 'USER_LOGOUT_ALL');
 
     await prisma.platformAuditEvent
       .create({
@@ -52,16 +38,13 @@ export async function POST(req: Request) {
           ipAddress: clientIp(req),
           userAgent: req.headers.get('user-agent'),
           requestId,
-          metadata: { scope: 'all-devices', platformSessions: platform.count, workspaceSessions: workspace },
+          metadata: { scope: 'all-devices', platformSessions: signedOut },
         },
       })
       .catch(() => {});
 
     jar.delete(SESSION_COOKIE);
-    return NextResponse.json(
-      { ok: true, signedOut: platform.count + workspace },
-      { headers: { 'x-request-id': requestId } },
-    );
+    return NextResponse.json({ ok: true, signedOut }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
     return toResponse(error, requestId, { route: '/api/v1/auth/logout-all' });
   }

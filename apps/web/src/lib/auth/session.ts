@@ -264,7 +264,7 @@ async function sessionTokens(req: Request, allowPurpose: readonly SessionPurpose
 }
 
 /** One session by token, or null when it does not exist, is revoked or has expired. */
-async function loadSession(token: string, now: Date) {
+export async function loadSession(token: string, now: Date) {
   const session = await prisma.platformSession.findUnique({
     where: { tokenHash: sha256(token) },
     include: { platformUser: true },

@@ -5,7 +5,13 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
 import { Unauthorized } from '@/lib/errors';
-import { SESSION_COOKIE, clientIp, createPlatformSession, type SessionPurpose } from '@/lib/auth/session';
+import {
+  SESSION_COOKIE,
+  clientIp,
+  createPlatformSession,
+  revokeAllPlatformSessions,
+  type SessionPurpose,
+} from '@/lib/auth/session';
 import { credentialRefusal } from '@/lib/auth/credentials';
 import { toResponse } from '@/lib/api/handler';
 
@@ -55,10 +61,7 @@ export async function POST(req: Request) {
 
     if (session.revokedAt) {
       // A token that was already rotated away is being presented again.
-      await prisma.platformSession.updateMany({
-        where: { platformUserId: session.platformUserId, revokedAt: null },
-        data: { revokedAt: new Date(), revokedReason: 'ROTATED_TOKEN_REPLAYED' },
-      });
+      await revokeAllPlatformSessions(session.platformUserId, 'ROTATED_TOKEN_REPLAYED');
       await prisma.platformAuditEvent
         .create({
           data: {
