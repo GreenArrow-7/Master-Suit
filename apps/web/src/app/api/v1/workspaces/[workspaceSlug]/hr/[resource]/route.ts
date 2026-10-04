@@ -111,7 +111,7 @@ const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = 
 export const GET = route(
   { module: 'employee', productModule: 'HRMS', action: 'VIEW', params: paramsSchema, query: querySchema },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const extra = RESOURCE_PERMISSION[params.resource];
     if (extra !== FLOOR) assertPermission(ctx, extra[0], extra[1]);
 
@@ -133,7 +133,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const workspace = await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    const workspace = await requireWorkspace(ctx, params.workspaceSlug);
     switch (params.resource) {
       case 'departments': {
         if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change the department structure.');
@@ -450,7 +450,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug);
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change HR records.');
     const { id } = query;
 
@@ -619,7 +619,7 @@ export const DELETE = route(
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug);
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can archive HR records.');
     const { id } = query;
 

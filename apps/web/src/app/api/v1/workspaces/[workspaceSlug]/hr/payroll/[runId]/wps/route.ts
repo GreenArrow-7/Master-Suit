@@ -2,7 +2,6 @@ import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 
-import { requireWorkspace } from '@/lib/workspace';
 import { generateSif, type SifLayoutKey } from '@/services/hr/wps';
 import { toResponse } from '@/lib/api/handler';
 
@@ -27,9 +26,9 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
     // bucket unless a route asks for another, so it cannot be omitted again.
     const ctx = await resolveGuardedCtx(req, requestId, {
       productModule: 'HRMS',
+      workspaceSlug,
       permission: ['payroll', 'EXPORT'],
     });
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     const layout = (new URL(req.url).searchParams.get('layout') ?? 'uae-sif-v1') as SifLayoutKey;
     const file = await generateSif(ctx, runId, layout);

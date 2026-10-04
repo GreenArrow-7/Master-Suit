@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { getNumericSetting } from '@/lib/platform-settings';
-import { requireWorkspace } from '@/lib/workspace';
 import { uploadDocument } from '@/services/hr/documents';
 import { toResponse } from '@/lib/api/handler';
 
@@ -19,9 +18,9 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
     const { workspaceSlug } = await context.params;
     const ctx = await resolveGuardedCtx(req, requestId, {
       productModule: 'HRMS',
+      workspaceSlug,
       permission: ['hr_documents', 'CREATE'],
     });
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     /**
      * Refuse on the declared size, before anything is read.

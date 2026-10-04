@@ -34,7 +34,7 @@ const stageBody = z.object({
 export const GET = route(
   { module: 'settings', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     return prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
@@ -52,7 +52,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const clash = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, key: body.key, deletedAt: null },
     });
@@ -75,7 +75,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const stage = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, id: query.id, deletedAt: null },
     });
@@ -96,7 +96,7 @@ export const DELETE = route(
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const stage = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, id: query.id, deletedAt: null },
     });

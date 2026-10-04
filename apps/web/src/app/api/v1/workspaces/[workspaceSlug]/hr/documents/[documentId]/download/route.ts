@@ -2,7 +2,6 @@ import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 
-import { requireWorkspace } from '@/lib/workspace';
 import { downloadDocument } from '@/services/hr/documents';
 import { toResponse } from '@/lib/api/handler';
 
@@ -20,9 +19,9 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
     const { workspaceSlug, documentId } = await context.params;
     const ctx = await resolveGuardedCtx(req, requestId, {
       productModule: 'HRMS',
+      workspaceSlug,
       permission: ['hr_documents', 'VIEW'],
     });
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
 
     const file = await downloadDocument(ctx, documentId);
 

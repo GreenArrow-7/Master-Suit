@@ -242,7 +242,7 @@ export const POST = route(
      *   * a verb with a permission asserts exactly that permission, below;
      *   * a SELF verb asserts `employee:VIEW`, which is precisely the floor the
      *     kernel used to apply — self-service behaviour is unchanged;
-     *   * `requireWorkspace(..., 'HRMS')` and the HRMS module entitlement are
+     *   * the kernel's HRMS entitlement check and `requireWorkspace` are
      *     unchanged and still run first.
      *
      * An API key reaching a `selfService` route inherits its creator's identity
@@ -254,7 +254,7 @@ export const POST = route(
     body: z.record(z.string(), z.unknown()),
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug);
 
     // Each verb asserts the authority it actually needs: `hrms:EDIT` used to
     // cover all of them, so approving another person's leave and applying for

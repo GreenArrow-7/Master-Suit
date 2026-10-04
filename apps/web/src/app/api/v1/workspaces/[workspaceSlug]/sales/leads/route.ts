@@ -10,7 +10,7 @@ const paramsSchema = z.object({ workspaceSlug: z.string().min(2).max(64) });
 export const GET = route(
   { module: 'leads', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     // Same row filter as /api/v1/leads — this legacy path previously returned
     // every lead in the tenant regardless of the caller's scope.
     const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
@@ -41,7 +41,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const stage = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, deletedAt: null, isDefault: true },
     });
