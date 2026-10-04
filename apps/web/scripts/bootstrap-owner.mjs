@@ -36,7 +36,7 @@
  * and in the process list, which is the one leak this account cannot afford.
  */
 import { randomBytes } from 'node:crypto';
-import 'dotenv/config';
+import './env.mjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { hash } from '@node-rs/argon2';

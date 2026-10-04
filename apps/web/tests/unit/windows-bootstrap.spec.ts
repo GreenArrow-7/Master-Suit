@@ -45,7 +45,7 @@ describe('setup.ps1 and the demo seed gate', () => {
   });
 
   /**
-   * The seed reads `.env` through dotenv, so a line there would satisfy gate 3
+   * The seed loads `.env` into its environment, so a line there would satisfy gate 3
    * for every future run — including the run nobody meant to make.
    */
   it('never writes the answer into an env file', () => {

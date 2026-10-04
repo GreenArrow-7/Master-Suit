@@ -34,6 +34,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -182,14 +183,11 @@ const listOnly = process.argv.includes('--list');
 // must name the same connection or the tenant suites throw rather than skip.
 const env = { ...process.env };
 if (!env.RLS_DATABASE_URL) {
-  const line = readFileSync(path.join(root, '.env'), 'utf8')
-    .split('\n')
-    .find((l) => l.startsWith('DATABASE_URL='));
-  if (!line) {
+  env.RLS_DATABASE_URL = parseEnv(readFileSync(path.join(root, '.env'), 'utf8')).DATABASE_URL;
+  if (!env.RLS_DATABASE_URL) {
     console.error('[verify] No DATABASE_URL in apps/web/.env — run `npm run secrets` first.');
     process.exit(2);
   }
-  env.RLS_DATABASE_URL = line.slice('DATABASE_URL='.length);
 }
 env.CI = 'true';
 env.NODE_OPTIONS = env.NODE_OPTIONS ?? '--max-old-space-size=6144';

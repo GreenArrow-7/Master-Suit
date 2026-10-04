@@ -37,6 +37,7 @@
  * string to `host:port/name`, and that is what every message carries.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 
 export type TestProfile = 'mock' | 'local-capture';
@@ -95,19 +96,7 @@ export class UnsafeTestEnvironment extends Error {
 /** An env file as the *application* will read it. */
 export function readEnvFile(file: string): Record<string, string> {
   const full = path.isAbsolute(file) ? file : path.join(process.cwd(), file);
-  if (!existsSync(full)) return {};
-  const out: Record<string, string> = {};
-  for (const raw of readFileSync(full, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    out[line.slice(0, eq).trim()] = line
-      .slice(eq + 1)
-      .trim()
-      .replace(/^["']|["']$/g, '');
-  }
-  return out;
+  return existsSync(full) ? (parseEnv(readFileSync(full, 'utf8')) as Record<string, string>) : {};
 }
 
 /**

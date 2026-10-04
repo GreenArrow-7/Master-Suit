@@ -26,6 +26,7 @@
  */
 import { readdir, readFile, unlink } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
@@ -38,9 +39,8 @@ const PREFIX = 'attendance/';
 function env(name, fallback = '') {
   if (process.env[name]) return process.env[name];
   for (const file of ['.env.production', '.env']) {
-    if (!existsSync(file)) continue;
-    const match = new RegExp(`^${name}=(.*)$`, 'm').exec(readFileSync(file, 'utf8'));
-    if (match) return match[1].trim();
+    const value = existsSync(file) ? parseEnv(readFileSync(file, 'utf8'))[name] : undefined;
+    if (value) return value;
   }
   return fallback;
 }
