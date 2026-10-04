@@ -13,6 +13,7 @@ import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { allocate, headroom, type AllocateInput } from './allocation';
+import { names } from '@/services/leadership/rollups';
 
 export const REQUEST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
@@ -195,11 +196,10 @@ export async function pendingRequests(tenantId: string, limit = 50) {
   const room = await headroom(tenantId, [...new Set(requests.map((r) => r.requesterId))]);
   const roomBy = new Map(room.map((r) => [r.userId, r]));
 
-  const names = await prisma.user.findMany({
-    where: { tenantId, id: { in: requests.map((r) => r.requesterId) } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    tenantId,
+    requests.map((r) => r.requesterId),
+  );
 
   return requests.map((r) => ({
     ...r,

@@ -12,9 +12,20 @@
  * instead of being re-derived differently in six places.
  */
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma, prismaRead } from '@/lib/db';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
+
+/** Display names by user id, nulls and repeats dropped. Read from the replica: a name can lag a moment. */
+export async function names(tenantId: string, ids: (string | null)[]) {
+  const real = [...new Set(ids.filter((i): i is string => i !== null))];
+  if (real.length === 0) return new Map<string, string>();
+  const rows = await prismaRead.user.findMany({
+    where: { tenantId, id: { in: real } },
+    select: { id: true, fullName: true },
+  });
+  return new Map(rows.map((u) => [u.id, u.fullName]));
+}
 
 export interface Range {
   from: Date;
@@ -232,11 +243,10 @@ export async function performerBoard(
 ): Promise<{ top: BoardRow[]; bottom: BoardRow[] }> {
   const rows = await rank(tenantId, userIds, range, metric);
 
-  const names = await prisma.user.findMany({
-    where: { tenantId, id: { in: rows.map((r) => r.userId) } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    tenantId,
+    rows.map((r) => r.userId),
+  );
   const withNames = rows.map((r) => ({ ...r, name: nameBy.get(r.userId) ?? null }));
 
   /**

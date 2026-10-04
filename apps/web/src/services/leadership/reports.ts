@@ -13,7 +13,7 @@
 import { Prisma } from '@prisma/client';
 import { prismaRead } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
-import { conversion, funnel, rank, subtree, type Range } from './rollups';
+import { conversion, funnel, names, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
 
 /**
@@ -69,16 +69,6 @@ const money = (amount: Prisma.Decimal | null, currency = 'AED') =>
 
 /** Empty user list means the whole workspace, matching the rollups module. */
 const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
-
-async function names(tenantId: string, ids: (string | null)[]) {
-  const real = [...new Set(ids.filter((i): i is string => i !== null))];
-  if (real.length === 0) return new Map<string, string>();
-  const rows = await prismaRead.user.findMany({
-    where: { tenantId, id: { in: real } },
-    select: { id: true, fullName: true },
-  });
-  return new Map(rows.map((u) => [u.id, u.fullName]));
-}
 
 export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise<Report> {
   const tenantId = ctx.tenantId;

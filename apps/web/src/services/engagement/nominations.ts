@@ -14,6 +14,7 @@ import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { names } from '@/services/leadership/rollups';
 
 export const NOMINATION_STATUSES = ['OPEN', 'WITHDRAWN', 'WON'] as const;
 export type NominationStatus = (typeof NOMINATION_STATUSES)[number];
@@ -188,11 +189,10 @@ export async function results(ctx: Ctx, eventId: string): Promise<CategoryResult
     orderBy: { category: 'asc' },
   });
 
-  const users = await prisma.user.findMany({
-    where: { tenantId: ctx.tenantId, id: { in: [...new Set(nominations.map((n) => n.nomineeId))] } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(users.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    ctx.tenantId,
+    nominations.map((n) => n.nomineeId),
+  );
 
   const byCategory = new Map<string, CategoryResult>();
   for (const n of nominations) {

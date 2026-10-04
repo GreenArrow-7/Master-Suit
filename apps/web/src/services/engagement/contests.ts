@@ -13,7 +13,7 @@ import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
-import { rank, type BoardMetric } from '@/services/leadership/rollups';
+import { names, rank, type BoardMetric } from '@/services/leadership/rollups';
 
 export const CONTEST_METRICS = ['bookings', 'revenue', 'leads', 'activities'] as const;
 export const CONTEST_STATUSES = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED'] as const;
@@ -138,11 +138,10 @@ export async function leaderboard(
 }
 
 async function withNames(tenantId: string, rows: { rank: number; userId: string; value: string }[]) {
-  const users = await prisma.user.findMany({
-    where: { tenantId, id: { in: rows.map((r) => r.userId) } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(users.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    tenantId,
+    rows.map((r) => r.userId),
+  );
   return rows.map((r) => ({ ...r, name: nameBy.get(r.userId) ?? null }));
 }
 
