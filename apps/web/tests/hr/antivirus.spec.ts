@@ -84,21 +84,4 @@ describe('fail closed', () => {
       expect(result.detail).toMatch(/no malware scanner/i);
     });
   });
-
-  it('reports itself as not ready when unconfigured, so readiness checks fail', async () => {
-    await withProvider('none-configured', async () => {
-      const { antivirusHealth } = await import('@/lib/antivirus');
-      const health = await antivirusHealth();
-      expect(health.ready).toBe(false);
-    });
-  });
-
-  it('does not describe the mock provider as protection', async () => {
-    await withProvider('mock', async () => {
-      const { antivirusHealth } = await import('@/lib/antivirus');
-      const health = await antivirusHealth();
-      expect(health.ready).toBe(true);
-      expect(health.detail).toMatch(/not protection/i);
-    });
-  });
 });

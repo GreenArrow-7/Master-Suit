@@ -1,6 +1,6 @@
 import type { AiBudget } from '@prisma/client';
 import { prisma } from '../db';
-import { budgetState, periodStart, spendFor, type BudgetState } from './budgets';
+import { budgetState, periodStart, type BudgetState } from './budgets';
 
 /**
  * One person's AI allowance: where the number came from, what it is, and how
@@ -387,46 +387,3 @@ function decide(budget: AiBudget, level: EnforcementVerdict['level'], state: Bud
   // what they asked for, and the other two need a surface that does not exist yet.
   return null;
 }
-
-/** Everything the per-user spend/usage helpers need, kept in one place. */
-export async function workspaceSpend(
-  tenantId: string,
-  period: 'DAILY' | 'MONTHLY' = 'MONTHLY',
-  now: Date = new Date(),
-) {
-  const since = periodStart(period, now);
-  const [agg, users, byFeature, byModel, fallbacks, last] = await Promise.all([
-    prisma.aiEvent.aggregate({
-      where: { tenantId, occurredAt: { gte: since } },
-      _count: { _all: true },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['userId'],
-      where: { tenantId, occurredAt: { gte: since }, userId: { not: null } },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['feature'],
-      where: { tenantId, occurredAt: { gte: since } },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['provider', 'model'],
-      where: { tenantId, occurredAt: { gte: since } },
-      _sum: { inputTokens: true, outputTokens: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.count({ where: { tenantId, occurredAt: { gte: since }, outcome: 'FELL_BACK' } }),
-    prisma.aiEvent.findFirst({
-      where: { tenantId },
-      orderBy: { occurredAt: 'desc' },
-      select: { occurredAt: true },
-    }),
-  ]);
-  return { agg, users, byFeature, byModel, fallbacks, lastActivityAt: last?.occurredAt ?? null, since };
-}
-
-export { spendFor };
