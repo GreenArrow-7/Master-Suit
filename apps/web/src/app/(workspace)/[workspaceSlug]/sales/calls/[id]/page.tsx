@@ -8,7 +8,6 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink from '@/components/workspace/CallLink';
 import CallActions from './CallActions';
-import AuditDelete from './AuditDelete';
 import EntityDelete from '@/components/sales/EntityDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
@@ -353,7 +352,12 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                             {pct}%
                           </span>
                         )}
-                        {canDeleteAudits && <AuditDelete callId={call.id} auditId={a.id} />}
+                        {canDeleteAudits && (
+                          <EntityDelete
+                            endpoint={`/api/v1/calls/${call.id}/audit?auditId=${encodeURIComponent(a.id)}`}
+                            label="audit"
+                          />
+                        )}
                       </span>
                     </div>
 
