@@ -53,6 +53,12 @@ interface Resource {
 
 const date = (value: Date | null | undefined) => value?.toISOString().slice(0, 10) ?? null;
 const decimal = (value: { toString(): string } | null | undefined) => value?.toString() ?? null;
+/** One page of a keyset walk in id order: `take` rows after `cursor`. */
+const keyset = (cursor: string | null, take: number) => ({
+  orderBy: { id: 'asc' as const },
+  take,
+  ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+});
 
 const RESOURCES: Record<string, Resource> = {
   listings: {
@@ -72,9 +78,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.listing.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -103,9 +107,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.project.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: { id: true, code: true, name: true, status: true, possessionStatus: true, createdAt: true },
       }),
   },
@@ -125,9 +127,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.contact.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -155,9 +155,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.account.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -186,9 +184,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.opportunity.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -223,9 +219,7 @@ const RESOURCES: Record<string, Resource> = {
     page: (where, cursor, take) =>
       prismaRead.commission.findMany({
         where,
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           userId: true,
