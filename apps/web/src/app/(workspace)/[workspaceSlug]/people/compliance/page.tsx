@@ -2,6 +2,7 @@ import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import { csvCell } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
 import { complianceRegister } from '@/services/hr/compliance';
 
@@ -14,7 +15,6 @@ const SEVERITY_TONE: Record<string, string> = {
   watch: 'var(--lf-ink-3)',
 };
 
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 const date = (value: Date) => value.toLocaleDateString('en-AE', { timeZone: 'UTC' });
 
 /**

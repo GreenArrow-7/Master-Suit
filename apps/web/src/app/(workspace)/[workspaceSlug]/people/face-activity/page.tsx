@@ -4,6 +4,7 @@ import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { isHrAdmin } from '@/services/hr/access';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import { csvCell } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
 import TableSearch from '@/components/workspace/TableSearch';
 
@@ -20,7 +21,6 @@ const stamp = (value: Date) =>
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(value);
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 /** What each punch result means in plain words, for the activity log. */
 const OUTCOME: Record<string, { label: string; ok: boolean; reason?: string }> = {
