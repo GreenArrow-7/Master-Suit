@@ -2,11 +2,11 @@ import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
-import { scanBuffer } from '@/lib/antivirus';
+import { assertClean, scanBuffer } from '@/lib/antivirus';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
-import { getNumericSetting } from '@/lib/platform-settings';
+import { readUpload } from '@/lib/api/read-body';
 import { deleteObject, putObject } from '@/lib/storage';
 import { assertBookingInScope, EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
 import { toResponse } from '@/lib/api/handler';
@@ -39,16 +39,7 @@ export async function POST(req: Request) {
       permission: ['collections', 'CREATE'],
     });
 
-    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
-    const maxBytes = uploadMaxMb * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
-    if (Number(req.headers.get('content-length') ?? 0) > maxBytes + 64 * 1024) throw tooLarge();
-
-    const form = await req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File) || file.size === 0)
-      throw new AppError(422, 'validation-failed', 'Attach a file to upload.');
-    if (file.size > maxBytes) throw tooLarge();
+    const { form, file } = await readUpload(req);
 
     const bookingId = String(form.get('bookingId') ?? '');
     if (!bookingId) throw new AppError(404, 'not-found', 'Booking not found.');
@@ -59,16 +50,7 @@ export async function POST(req: Request) {
     const kind = SIGNATURES.find((s) => s.bytes.every((b, i) => bytes[i] === b));
     if (!kind) throw new AppError(422, 'validation-failed', 'Evidence must be a PDF, PNG or JPEG file.');
 
-    const scan = await scanBuffer(bytes);
-    if (scan.verdict !== 'CLEAN') {
-      throw new AppError(
-        422,
-        'validation-failed',
-        scan.verdict === 'INFECTED'
-          ? 'The file failed the malware scan and was not stored.'
-          : 'The malware scanner was unavailable; try again.',
-      );
-    }
+    assertClean(await scanBuffer(bytes));
 
     const safeName = file.name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'evidence';
     storedKey = `${evidencePrefix(ctx.tenantId, booking.id)}${ulid()}-${safeName}`;

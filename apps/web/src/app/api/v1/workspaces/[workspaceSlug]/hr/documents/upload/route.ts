@@ -2,7 +2,7 @@ import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
-import { getNumericSetting } from '@/lib/platform-settings';
+import { readUpload } from '@/lib/api/read-body';
 import { uploadDocument } from '@/services/hr/documents';
 import { toResponse } from '@/lib/api/handler';
 
@@ -22,32 +22,9 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
       permission: ['hr_documents', 'CREATE'],
     });
 
-    /**
-     * Refuse on the declared size, before anything is read.
-     *
-     * The size check lived in uploadDocument, which receives a Buffer — so the
-     * whole body had already been parsed by `req.formData()` and copied again by
-     * `file.arrayBuffer()` before anyone asked how big it was. A 2 GB POST was
-     * read into memory in full and *then* rejected, which is a way to exhaust
-     * the server with requests it is going to refuse anyway.
-     *
-     * Three checks, cheapest first: the declared length, then the part's own
-     * size, then the real byte count in the service (a Content-Length can lie).
-     */
-    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
-    const maxBytes = uploadMaxMb * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
-
-    const declared = Number(req.headers.get('content-length') ?? 0);
-    // Multipart framing adds headers and boundaries around the file itself, so
-    // the envelope is allowed a little more than the file limit.
-    if (declared > maxBytes + 64 * 1024) throw tooLarge();
-
-    const form = await req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw new AppError(422, 'validation-failed', 'Attach a file to upload.');
-    // Known without reading the bytes.
-    if (file.size > maxBytes) throw tooLarge();
+    // Refused on its declared size before anything is read; uploadDocument
+    // counts the real bytes too.
+    const { form, file } = await readUpload(req);
 
     const employeeId = String(form.get('employeeId') ?? '');
     const kind = String(form.get('kind') ?? '');

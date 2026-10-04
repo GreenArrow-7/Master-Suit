@@ -7,8 +7,8 @@ import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { getObject, putObject } from '@/lib/storage';
-import { scanBuffer } from '@/lib/antivirus';
-import { getNumericSetting } from '@/lib/platform-settings';
+import { assertClean, scanBuffer } from '@/lib/antivirus';
+import { readUpload } from '@/lib/api/read-body';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueueOrRun } from '@/lib/queue';
@@ -109,12 +109,6 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     const { id: callId } = await context.params;
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
 
-    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
-    const maxBytes = uploadMaxMb * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Recordings must be under ${uploadMaxMb} MB.`);
-    const declared = Number(req.headers.get('content-length') ?? 0);
-    if (declared > maxBytes + 64 * 1024) throw tooLarge();
-
     const [call, consent] = await Promise.all([
       prisma.call.findFirst({ where: { id: callId, tenantId: ctx.tenantId, deletedAt: null }, select: { id: true } }),
       prisma.recordingConsent.findFirst({ where: { callId, tenantId: ctx.tenantId } }),
@@ -126,10 +120,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
       throw new AppError(403, 'forbidden', 'Cannot store a recording without active consent.');
     }
 
-    const form = await req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw new AppError(422, 'validation-failed', 'Attach a recording to upload.');
-    if (file.size > maxBytes) throw tooLarge();
+    const { form, file } = await readUpload(req, 'recording');
 
     const mimeType = (file.type || 'application/octet-stream').split(';')[0].trim().toLowerCase();
     if (!ACCEPTED_MEDIA.test(mimeType)) {
@@ -137,16 +128,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const scan = await scanBuffer(bytes);
-    if (scan.verdict !== 'CLEAN') {
-      throw new AppError(
-        422,
-        'validation-failed',
-        scan.verdict === 'INFECTED'
-          ? 'The file failed the malware scan and was not stored.'
-          : 'The malware scanner was unavailable; try again.',
-      );
-    }
+    assertClean(await scanBuffer(bytes));
 
     const durationSecs = Number(form.get('durationSecs') ?? 0) || null;
     const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${ulid()}`;

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
-import { getNumericSetting } from '@/lib/platform-settings';
+import { readUpload } from '@/lib/api/read-body';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { scanBuffer } from '@/lib/antivirus';
 import { putObject } from '@/lib/storage';
@@ -29,17 +29,7 @@ export async function POST(req: Request) {
       permission: ['leads', 'EDIT'],
     });
 
-    const uploadMaxMb = await getNumericSetting('uploadMaxMb');
-    const maxBytes = uploadMaxMb * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
-
-    const declared = Number(req.headers.get('content-length') ?? 0);
-    if (declared > maxBytes + 64 * 1024) throw tooLarge();
-
-    const form = await req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw new AppError(422, 'validation-failed', 'Attach a file to upload.');
-    if (file.size > maxBytes) throw tooLarge();
+    const { form, file } = await readUpload(req);
 
     const leadId = String(form.get('leadId') ?? '');
     if (!leadId) throw new AppError(422, 'validation-failed', 'A lead is required.');

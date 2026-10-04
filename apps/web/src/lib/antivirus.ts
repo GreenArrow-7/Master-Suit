@@ -14,6 +14,7 @@
 import { connect } from 'node:net';
 import { env } from './env';
 import { logger } from './logger';
+import { AppError } from './errors';
 
 export type ScanVerdict = 'CLEAN' | 'INFECTED' | 'ERROR';
 
@@ -119,6 +120,18 @@ function mockScan(payload: Buffer): ScanResult {
  * In production the env schema forbids `mock`, so a deployment cannot
  * accidentally run with the test provider and believe it is scanning.
  */
+/** Refuses a payload the scan did not pass, so nothing unscanned is stored. */
+export function assertClean(scan: ScanResult) {
+  if (scan.verdict === 'CLEAN') return;
+  throw new AppError(
+    422,
+    'validation-failed',
+    scan.verdict === 'INFECTED'
+      ? 'The file failed the malware scan and was not stored.'
+      : 'The malware scanner was unavailable; try again.',
+  );
+}
+
 export async function scanBuffer(payload: Buffer): Promise<ScanResult> {
   switch (env.ANTIVIRUS_PROVIDER.toLowerCase()) {
     case 'clamav':
