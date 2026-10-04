@@ -347,68 +347,26 @@ export async function POST(req: Request) {
           data: { tenantId: created.id, key: 'sales', name: 'Sales Pipeline', isDefault: true },
         });
         await tx.pipelineStage.createMany({
-          data: [
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'qualification',
-              name: 'Qualification',
-              category: 'OPEN',
-              color: '#3D6BC7',
-              position: 0,
-              probability: 10,
-            },
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'needs_analysis',
-              name: 'Needs Analysis',
-              category: 'OPEN',
-              color: '#2447C7',
-              position: 1,
-              probability: 25,
-            },
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'proposal',
-              name: 'Proposal',
-              category: 'OPEN',
-              color: '#8A5A1A',
-              position: 2,
-              probability: 50,
-            },
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'negotiation',
-              name: 'Negotiation',
-              category: 'OPEN',
-              color: '#6E4B12',
-              position: 3,
-              probability: 70,
-            },
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'closed_won',
-              name: 'Closed Won',
-              category: 'CONVERSION',
-              color: '#0B6E5A',
-              position: 4,
-              probability: 100,
-            },
-            {
-              tenantId: created.id,
-              pipelineId: pipeline.id,
-              key: 'closed_lost',
-              name: 'Closed Lost',
-              category: 'TERMINAL_NEGATIVE',
-              color: '#A8232B',
-              position: 5,
-              probability: 0,
-            },
-          ],
+          // The six stages `prisma/seed/crm.ts` seeds for the demo workspace.
+          data: (
+            [
+              ['qualification', 'Qualification', 'OPEN', '#3D6BC7', 10],
+              ['needs_analysis', 'Needs Analysis', 'OPEN', '#2447C7', 25],
+              ['proposal', 'Proposal', 'OPEN', '#8A5A1A', 50],
+              ['negotiation', 'Negotiation', 'OPEN', '#6E4B12', 70],
+              ['closed_won', 'Closed Won', 'CONVERSION', '#0B6E5A', 100],
+              ['closed_lost', 'Closed Lost', 'TERMINAL_NEGATIVE', '#A8232B', 0],
+            ] as const
+          ).map(([key, name, category, color, probability], position) => ({
+            tenantId: created.id,
+            pipelineId: pipeline.id,
+            key,
+            name,
+            category,
+            color,
+            position,
+            probability,
+          })),
         });
       }
       await platformAudit(
