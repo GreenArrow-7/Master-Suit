@@ -4,6 +4,7 @@ import { assertPermission } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { hasModuleEntitlement, PRODUCT_MODULES } from '@/lib/security/entitlements';
 import { applyForLeave, cancelLeave, decideLeave, isHrAdmin, myEmployee, runCarryForward } from '@/services/hr/leave';
 import {
   activateEmployee,
@@ -24,7 +25,7 @@ import {
   resetFaceEnrolment,
   withdrawConsent,
 } from '@/services/hr/attendance';
-import { updateHrPolicy } from '@/services/hr/settings';
+import { CHECKOUT_RULE_KEYS, updateHrPolicy } from '@/services/hr/settings';
 import { cancelOvertime, decideOvertime, detectOvertime, requestOvertime } from '@/services/hr/overtime';
 import {
   acknowledgePip,
@@ -286,10 +287,22 @@ const ACTION_PERMISSION: Record<HrAction, ActionPermission | typeof SELF> = {
   'pip-close': ['performance', 'EDIT'],
 };
 
+/**
+ * What check-in needs set up, which every workspace has: assignments, face
+ * enrolment and the check-out rules. Every other verb here is HRMS.
+ */
+const ATTENDANCE_SETUP = new Set<string>([
+  'location-revoke',
+  'face-enrol',
+  'face-reset',
+  'consent-grant-supervised',
+  'settings-update',
+]);
+
 export const POST = route(
   {
     module: 'employee',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULES,
     action: 'VIEW',
     /**
      * The kernel's own permission check is waived here, and every action below
@@ -318,8 +331,8 @@ export const POST = route(
      *   * a verb with a permission asserts exactly that permission, below;
      *   * a SELF verb asserts `employee:VIEW`, which is precisely the floor the
      *     kernel used to apply — self-service behaviour is unchanged;
-     *   * `requireWorkspace(..., 'HRMS')` and the HRMS module entitlement are
-     *     unchanged and still run first.
+     *   * `requireWorkspace(..., 'HRMS')` still runs first, for every verb
+     *     outside ATTENDANCE_SETUP.
      *
      * An API key reaching a `selfService` route inherits its creator's identity
      * with no kernel check (see lib/api/handler.ts), so both branches below
@@ -330,7 +343,7 @@ export const POST = route(
     body: z.record(z.string(), z.unknown()),
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug, ATTENDANCE_SETUP.has(params.action) ? undefined : 'HRMS');
 
     // Each verb asserts the authority it actually needs: `hrms:EDIT` used to
     // cover all of them, so approving another person's leave and applying for
@@ -948,8 +961,15 @@ export const POST = route(
 
       // Validated against the registry, not a schema written twice: an unknown
       // key is ignored and an out-of-range one is a 422 naming the field.
-      case 'settings-update':
-        return updateHrPolicy(ctx, body as Record<string, unknown>);
+      case 'settings-update': {
+        // Without HRMS only the check-out rules are this workspace's to set.
+        const patch = body as Record<string, unknown>;
+        const hrms = await hasModuleEntitlement(ctx.tenantId, 'HRMS');
+        return updateHrPolicy(
+          ctx,
+          hrms ? patch : Object.fromEntries(Object.entries(patch).filter(([key]) => CHECKOUT_RULE_KEYS.includes(key))),
+        );
+      }
 
       // ── Temporary work locations and attendance exceptions ────────────────
       case 'temporary-request': {

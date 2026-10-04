@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { PRODUCT_MODULES } from '@/lib/security/entitlements';
+import HrPolicyForm from '@/components/workspace/HrPolicyForm';
+import { CHECKOUT_RULE_KEYS, getHrPolicy, HR_SETTINGS } from '@/services/hr/settings';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
@@ -12,7 +15,10 @@ const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULES,
+    permission: ['employee', 'VIEW'],
+  });
   const base = `/api/v1/workspaces/${workspaceSlug}/hr`;
   const hr = isHrAdmin(ctx);
   const self = hr ? null : await myEmployee(ctx);
@@ -20,7 +26,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   // Non-HR viewers see the fence's name and size, never its centre — the
   // coordinate is what a convincing GPS spoof needs — and only their own
   // assignments, because who works where is HR data.
-  const [locations, employees, assignments] = await Promise.all([
+  const [locations, employees, assignments, policy] = await Promise.all([
     prisma.hrWorkLocation.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { name: 'asc' } }),
     hr
       ? prisma.employeeProfile.findMany({
@@ -35,6 +41,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       orderBy: { assignedAt: 'desc' },
       take: 200,
     }),
+    getHrPolicy(ctx),
   ]);
 
   return (
@@ -184,7 +191,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
           )}
         </div>
         <WorkspaceTable
-          headers={['Employee', 'Location', 'Type', 'Window', 'Check-out rule', 'Status', '']}
+          headers={['Employee', 'Location', 'Type', 'Window', 'Check-out rule', 'Status', '', '']}
           empty="Nobody is assigned to a work location yet, so no check-in can succeed."
           rows={assignments.map((assignment) => [
             assignment.employee.membership.platformUser.fullName,
@@ -207,9 +214,34 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
             ) : (
               '—'
             ),
+            hr ? (
+              <a key="face" href={`/${workspaceSlug}/admin/work-locations/${assignment.employeeId}/face`}>
+                Face enrolment
+              </a>
+            ) : (
+              ''
+            ),
           ])}
         />
       </section>
+
+      {hr && (
+        <section>
+          <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Check-out rules</h2>
+          <HrPolicyForm
+            endpoint={`${base}/actions`}
+            groups={[
+              {
+                key: 'checkout',
+                label: 'Check-out',
+                definitions: HR_SETTINGS.filter((setting) => CHECKOUT_RULE_KEYS.includes(setting.key)),
+              },
+            ]}
+            policy={policy as unknown as Record<string, unknown>}
+            readOnly={false}
+          />
+        </section>
+      )}
     </div>
   );
 }

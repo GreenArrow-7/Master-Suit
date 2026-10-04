@@ -107,7 +107,7 @@ export default async function UsersPage({
              /admin/users/new — no such route. The only add-user form in the
              product is the People module's. */
           mayManage ? (
-            <Link className="lf-btn lf-btn--sm" href={`/${workspaceSlug}/people/users/new`}>
+            <Link className="lf-btn lf-btn--sm" href={`/${workspaceSlug}/admin/users/new`}>
               Add user
             </Link>
           ) : undefined

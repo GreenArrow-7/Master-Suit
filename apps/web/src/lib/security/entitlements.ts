@@ -13,7 +13,7 @@ export type ProductModule = 'HRMS' | 'SALES' | 'REAL_ESTATE';
  * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
  * list that has to be kept in step by hand eventually is not.
  */
-const PRODUCT_MODULES = ['HRMS', 'SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
+export const PRODUCT_MODULES = ['HRMS', 'SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
 
 /**
  * What each module is called when we have to tell somebody they cannot use it.

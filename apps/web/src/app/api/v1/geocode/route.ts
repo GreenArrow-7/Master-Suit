@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { PRODUCT_MODULES } from '@/lib/security/entitlements';
 
 /**
  * Server-side address search for the work-location map picker.
@@ -16,7 +17,7 @@ const query = z.object({ q: z.string().min(2).max(200) });
 export const GET = route(
   {
     module: 'employee',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULES,
     action: 'EDIT',
     query,
     rateLimit: { max: 30, windowSeconds: 60 },

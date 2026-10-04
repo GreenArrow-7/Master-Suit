@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { PRODUCT_MODULES } from '@/lib/security/entitlements';
 import { isHrAdmin } from '@/services/hr/access';
 import { getHrPolicy } from '@/services/hr/settings';
 import { Forbidden } from '@/lib/errors';
@@ -30,7 +31,10 @@ const stamp = (value: Date) =>
  */
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string; employeeId: string }> }) {
   const { workspaceSlug, employeeId } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'EDIT'] });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULES,
+    permission: ['employee', 'EDIT'],
+  });
   if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can run face enrolment.');
 
   const employee = await prisma.employeeProfile.findFirst({

@@ -678,6 +678,7 @@ function definitions(slug: string): SectionDef[] {
               permission: 'employee',
               module: H,
               audience: 'oversight',
+              aliases: [a('/work-locations')],
               keywords: 'geofence office',
             },
             {
@@ -847,6 +848,14 @@ function definitions(slug: string): SectionDef[] {
               keywords: 'distribution rules',
             },
             { label: 'HR Policies', href: p('/settings'), permission: 'employee:EDIT', module: H },
+            {
+              // Check-in works without People; this is where such a workspace sets it up.
+              label: 'Work Locations',
+              href: a('/work-locations'),
+              permission: 'employee:EDIT',
+              unlessModule: H,
+              keywords: 'check-in attendance geofence face enrolment check-out',
+            },
             {
               label: 'Integrations',
               href: a('/integrations'),

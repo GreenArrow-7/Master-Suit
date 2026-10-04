@@ -3,6 +3,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { PRODUCT_MODULES } from '@/lib/security/entitlements';
 import { assertPermission } from '@/lib/security/rbac';
 import { audit } from '@/lib/security/audit';
 import { applyForLeave, myEmployee } from '@/services/hr/leave';
@@ -108,10 +109,17 @@ const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = 
   report: FLOOR,
 };
 
+/**
+ * Check-in works in every workspace, so what it needs set up — locations and
+ * who is assigned to them — does too. Everything else here is HRMS.
+ */
+const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments']);
+const moduleFor = (resource: string) => (ATTENDANCE_SETUP.has(resource) ? undefined : 'HRMS');
+
 export const GET = route(
-  { module: 'employee', productModule: 'HRMS', action: 'VIEW', params: paramsSchema, query: querySchema },
+  { module: 'employee', productModule: PRODUCT_MODULES, action: 'VIEW', params: paramsSchema, query: querySchema },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
     const extra = RESOURCE_PERMISSION[params.resource];
     if (extra !== FLOOR) assertPermission(ctx, extra[0], extra[1]);
 
@@ -126,14 +134,14 @@ const createBody = z.record(z.string(), z.unknown());
 export const POST = route(
   {
     module: 'employee',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULES,
     action: 'CREATE',
     params: paramsSchema,
     body: createBody,
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const workspace = await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    const workspace = await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
     switch (params.resource) {
       case 'departments': {
         if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change the department structure.');
@@ -442,7 +450,7 @@ const idParam = z.object({ id: z.string().min(1).max(64) });
 export const PATCH = route(
   {
     module: 'employee',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULES,
     action: 'EDIT',
     params: paramsSchema,
     query: idParam,
@@ -450,7 +458,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change HR records.');
     const { id } = query;
 
@@ -612,14 +620,14 @@ export const PATCH = route(
 export const DELETE = route(
   {
     module: 'employee',
-    productModule: 'HRMS',
+    productModule: PRODUCT_MODULES,
     action: 'DELETE',
     params: paramsSchema,
     query: idParam,
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can archive HR records.');
     const { id } = query;
 
