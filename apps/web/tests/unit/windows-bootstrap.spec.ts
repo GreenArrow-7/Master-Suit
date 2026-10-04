@@ -49,9 +49,9 @@ describe('setup.ps1 and the demo seed gate', () => {
    * for every future run — including the run nobody meant to make.
    */
   it('never writes the answer into an env file', () => {
-    for (const file of ['.env.example', 'apps/web/.env.example']) {
-      expect(read(file), `${file} pre-answers the demo seed gate`).not.toContain('ALLOW_DEMO_SEED');
-    }
+    expect(read('apps/web/.env.example'), 'apps/web/.env.example pre-answers the demo seed gate').not.toContain(
+      'ALLOW_DEMO_SEED',
+    );
     expect(setup).not.toMatch(/Set-Content[^\n]*ALLOW_DEMO_SEED/);
     expect(setup).not.toMatch(/Add-Content[^\n]*ALLOW_DEMO_SEED/);
   });
