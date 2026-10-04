@@ -4,10 +4,9 @@ import { mergeWhere } from '@/lib/api/where';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
 import { NextResponse } from 'next/server';
-import { z, ZodError } from 'zod';
+import { z } from 'zod';
 import { ulid } from 'ulid';
-import { AppError, Invalid } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -16,6 +15,7 @@ import { loadFieldRules, applyFieldSecurity } from '@/lib/security/fieldSecurity
 import { audit } from '@/lib/security/audit';
 import { LEAD_SENSITIVE_FIELDS } from '@/services/leads/createLead';
 import { resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -57,22 +57,7 @@ export async function GET(req: Request) {
   try {
     return await handle(req, requestId);
   } catch (err) {
-    // This route answers outside the API kernel, so it has to translate errors the
-    // way the kernel would. Without this an unauthorised export returned 500 and
-    // read as a server fault rather than a refusal.
-    const headers = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
-    if (err instanceof ZodError) {
-      const invalid = Invalid(err.issues.map((i) => ({ field: i.path.join('.'), code: i.code, message: i.message })));
-      return NextResponse.json(invalid.toProblem(requestId), { status: invalid.status, headers });
-    }
-    if (err instanceof AppError) {
-      if (err.status >= 500) logger.error({ err, requestId }, 'lead export failed');
-      else logger.warn({ requestId, code: err.code, status: err.status }, 'lead export rejected');
-      return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId }, 'lead export failed');
-    const problem = new AppError(500, 'internal-error', 'Something went wrong on our side.', [], false);
-    return NextResponse.json(problem.toProblem(requestId), { status: 500, headers });
+    return toResponse(err, requestId, { route: '/api/v1/leads/export' });
   }
 }
 

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AppError, Forbidden } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Forbidden } from '@/lib/errors';
 import { clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { acceptInvitation, previewInvitation } from '@/services/identity/invitations';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Redeeming an invitation. Unauthenticated by necessity — the whole point is
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(preview, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    return problem(error, requestId, 'invitation preview failed');
+    return toResponse(error, requestId, { route: '/api/v1/auth/accept-invite' });
   }
 }
 
@@ -57,27 +57,6 @@ export async function POST(req: Request) {
       { status: 201, headers: { 'x-request-id': requestId } },
     );
   } catch (error) {
-    return problem(error, requestId, 'invitation acceptance failed');
+    return toResponse(error, requestId, { route: '/api/v1/auth/accept-invite' });
   }
-}
-
-function problem(error: unknown, requestId: string, message: string) {
-  if (error instanceof AppError) {
-    const headers: Record<string, string> = { 'x-request-id': requestId };
-    if ((error as any).retryAfter) headers['retry-after'] = String((error as any).retryAfter);
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers });
-  }
-  if (error instanceof z.ZodError) {
-    return NextResponse.json(
-      {
-        status: 422,
-        title: 'Validation failed',
-        requestId,
-        errors: error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
-      },
-      { status: 422, headers: { 'x-request-id': requestId } },
-    );
-  }
-  logger.error({ err: error, requestId }, message);
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

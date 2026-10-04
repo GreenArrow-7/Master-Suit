@@ -3,7 +3,7 @@ import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { AppError, Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
+import { Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { burnTiming, verifyPassword } from '@/lib/auth/password';
 import { clientIp, createPlatformSession, SERVICE_SESSION_COOKIE } from '@/lib/auth/session';
@@ -13,6 +13,7 @@ import { readJsonBody } from '@/lib/api/read-body';
 import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { assertSameOrigin } from '@/lib/security/origin';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Interactive sign-in for an `AI_SERVICE` identity:
@@ -281,14 +282,7 @@ export async function POST(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) {
-      const headers: Record<string, string> = { 'x-request-id': requestId };
-      const retryAfter = (err as { retryAfter?: number }).retryAfter;
-      if (retryAfter) headers['retry-after'] = String(retryAfter);
-      return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId }, 'service login failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
   }
 }
 
@@ -361,14 +355,7 @@ export async function PATCH(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), {
-        status: err.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err, requestId }, 'service workspace selection failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
   }
 }
 
@@ -406,14 +393,7 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ signedOut: true, sessionsRevoked: revoked }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), {
-        status: err.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err, requestId }, 'service logout failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
   }
 }
 

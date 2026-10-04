@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { PlatformUser } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
-import { AppError, Unauthorized, TooManyRequests, Invalid } from '@/lib/errors';
+import { Unauthorized, TooManyRequests, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -24,6 +24,7 @@ import {
   recordMfaChallengeFailure,
   type CredentialPurpose,
 } from '@/lib/auth/credentials';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Two shapes, one endpoint.
@@ -79,13 +80,7 @@ export async function POST(req: Request) {
     if (body.challenge) return await challengeStep(body.challenge, body, info);
     throw Invalid([{ field: 'password', code: 'required', message: 'Enter your password.' }]);
   } catch (err) {
-    if (err instanceof AppError) {
-      const headers: Record<string, string> = { 'x-request-id': info.requestId };
-      if ((err as any).retryAfter) headers['retry-after'] = String((err as any).retryAfter);
-      return NextResponse.json(err.toProblem(info.requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId: info.requestId }, 'login failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId: info.requestId }, { status: 500 });
+    return toResponse(err, info.requestId, { route: '/api/v1/auth/login' });
   }
 }
 

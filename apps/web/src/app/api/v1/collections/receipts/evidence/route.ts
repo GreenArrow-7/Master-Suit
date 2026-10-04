@@ -6,10 +6,10 @@ import { scanBuffer } from '@/lib/antivirus';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { getUploadMaxMb } from '@/lib/platform-settings';
 import { deleteObject, putObject } from '@/lib/storage';
 import { assertBookingInScope, EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
+import { toResponse } from '@/lib/api/handler';
 
 /** The only kinds of file a receipt is evidenced by, recognised by their first bytes rather than their name. */
 const SIGNATURES: { type: string; bytes: number[] }[] = [
@@ -95,13 +95,6 @@ export async function POST(req: Request) {
     // Stored but not recorded: take the object back out, so a failed upload
     // leaves nothing behind that no row points at.
     if (storedKey) await deleteObject(storedKey).catch(() => {});
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'receipt evidence upload failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/collections/receipts/evidence' });
   }
 }

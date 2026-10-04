@@ -2,7 +2,7 @@ import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { route } from '@/lib/api/handler';
+import { route, toResponse } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
@@ -194,14 +194,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
 
     return NextResponse.json({ ...recording, transcription: 'QUEUED' }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'call recording upload failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/calls/[id]/recording/media' });
   }
 }
 

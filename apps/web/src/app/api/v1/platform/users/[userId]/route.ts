@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Conflict, NotFound } from '@/lib/errors';
+import { Conflict, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { refuseOwnerLockout } from '@/services/platform/identity';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import { dropMonitoringCredential } from '@/services/identity/platformCredentials';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 const updateSchema = z
   .object({
@@ -88,19 +89,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
 
     return NextResponse.json({ user }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]' });
   }
 }
 
@@ -156,12 +145,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ userI
 
     return NextResponse.json({ deleted: true, id: current.id }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]' });
   }
 }

@@ -1,9 +1,8 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ZodError } from 'zod';
+
 import { ulid } from 'ulid';
-import { AppError, Invalid, NotFound } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { NotFound } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
@@ -11,6 +10,7 @@ import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { csvHeaders, csvStream, type CsvColumn } from '@/lib/csv';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -250,22 +250,7 @@ export async function GET(req: Request, context: { params: Promise<{ resource: s
   try {
     return await handle(req, await context.params, requestId);
   } catch (err) {
-    // Outside the API kernel, so errors have to be translated the way it would.
-    // Without this an unauthorised export answers 500 and reads as a fault
-    // rather than a refusal.
-    const headers = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
-    if (err instanceof ZodError) {
-      const invalid = Invalid(err.issues.map((i) => ({ field: i.path.join('.'), code: i.code, message: i.message })));
-      return NextResponse.json(invalid.toProblem(requestId), { status: invalid.status, headers });
-    }
-    if (err instanceof AppError) {
-      if (err.status >= 500) logger.error({ err, requestId }, 'export failed');
-      else logger.warn({ requestId, code: err.code, status: err.status }, 'export rejected');
-      return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId }, 'export failed');
-    const problem = new AppError(500, 'internal-error', 'Something went wrong on our side.', [], false);
-    return NextResponse.json(problem.toProblem(requestId), { status: 500, headers });
+    return toResponse(err, requestId, { route: '/api/v1/exports/[resource]' });
   }
 }
 

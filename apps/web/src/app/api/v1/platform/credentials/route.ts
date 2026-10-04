@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AppError, Forbidden } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Forbidden } from '@/lib/errors';
 import { resolvePlatformCtx, type PlatformCtx } from '@/lib/auth/session';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import { readJsonBody } from '@/lib/api/read-body';
@@ -12,6 +11,7 @@ import {
   revokeOwnMonitoringCredential,
   setOwnMonitoringCredential,
 } from '@/services/identity/platformCredentials';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * A platform staff member's own two passwords.
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
     });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/credentials' });
   }
 }
 
@@ -79,16 +79,6 @@ export async function POST(req: Request) {
           : await changeOwnAdministrationPassword(actor, body);
     return NextResponse.json(result, { headers: { 'x-request-id': requestId, 'cache-control': 'no-store' } });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/credentials' });
   }
-}
-
-function problem(error: unknown, requestId: string) {
-  if (error instanceof AppError) {
-    const headers: Record<string, string> = { 'x-request-id': requestId };
-    if ((error as { retryAfter?: number }).retryAfter) headers['retry-after'] = String((error as any).retryAfter);
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers });
-  }
-  logger.error({ err: error, requestId }, 'credential management failed');
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

@@ -329,7 +329,15 @@ function errorCode(err: unknown): string {
   return 'internal-error';
 }
 
-function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {
+/**
+ * Any thrown error as the problem+json response a client gets, logged once.
+ *
+ * Exported for the routes that answer outside `route()` — streams, cookies,
+ * multipart — so a refusal reads the same whichever path produced it: 422 with
+ * per-field errors for a ZodError, the AppError's own status (with Retry-After
+ * and Allow where they apply), and a logged 500 for anything else.
+ */
+export function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {
   const headers: Record<string, string> = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
 
   // Validation may also happen inside a handler when the payload is adapted for
@@ -342,7 +350,9 @@ function toResponse(err: unknown, requestId: string, meta: Record<string, unknow
         message: issue.message,
       })),
     );
-    logger.warn({ requestId, code: invalid.code, status: invalid.status, ...meta }, 'request rejected');
+    // Field names only, never values: nothing a person typed reaches the log.
+    const fields = invalid.errors.map((e) => e.field);
+    logger.warn({ requestId, code: invalid.code, status: invalid.status, fields, ...meta }, 'request rejected');
     return NextResponse.json(invalid.toProblem(requestId), { status: invalid.status, headers });
   }
 

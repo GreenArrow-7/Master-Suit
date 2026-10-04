@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { AppError, Conflict, Forbidden, Unauthorized } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Conflict, Forbidden, Unauthorized } from '@/lib/errors';
 import { generateSecret, otpauthUrl } from '@/lib/auth/mfa';
 import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
 import { verifyPassword } from '@/lib/auth/password';
@@ -13,6 +12,7 @@ import { issueRecoveryCodes } from '@/services/identity/twoFactor';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * First-run two-factor enrolment, reachable with an MFA_ENROLMENT grant.
@@ -171,14 +171,7 @@ export async function POST(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'two-factor enrolment failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/auth/enroll-2fa' });
   }
 }
 

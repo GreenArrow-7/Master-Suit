@@ -9,6 +9,7 @@ import { validateSteps, FALLBACK_TRIGGERS } from '@/lib/ai/routing';
 import { GUARDRAIL_BY_KEY, type GuardrailKey } from '@/lib/ai/guardrails';
 import { AI_FEATURE_KEYS, AI_PROVIDERS } from '@/lib/ai/features';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * The AI Control Center's writes: prices, budgets, guardrail overrides and
@@ -420,7 +421,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, id: objectId }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/ai' });
   }
 }
 
@@ -444,22 +445,6 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/ai' });
   }
-}
-
-function problem(error: unknown, requestId: string) {
-  if (error instanceof AppError) {
-    return NextResponse.json(error.toProblem(requestId), {
-      status: error.status,
-      headers: { 'x-request-id': requestId },
-    });
-  }
-  if (error instanceof z.ZodError) {
-    return NextResponse.json(
-      { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-      { status: 422 },
-    );
-  }
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

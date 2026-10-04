@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { requirePlatformOwner } from '@/lib/auth/platform';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { readJsonBody } from '@/lib/api/read-body';
+import { toResponse } from '@/lib/api/handler';
 
 const body = z.object({ dryRun: z.boolean().default(true) }).strict();
 
@@ -27,13 +27,6 @@ export async function POST(req: Request) {
     const result = await runRetentionCleanup(dryRun);
     return NextResponse.json(result, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), {
-        status: err.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err, requestId }, 'retention cleanup failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/admin/retention' });
   }
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Forbidden, NotFound } from '@/lib/errors';
+import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_COVERAGE_MINUTES,
@@ -16,6 +16,7 @@ import {
   revokeGrants,
 } from '@/lib/auth/platform-access';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Who may monitor which customers.
@@ -150,8 +151,7 @@ export async function POST(req: Request) {
     );
     return NextResponse.json({ coverage }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }
 
@@ -192,8 +192,7 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ closed }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }
 
@@ -211,7 +210,6 @@ export async function GET(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }

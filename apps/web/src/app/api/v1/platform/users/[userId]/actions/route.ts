@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AppError } from '@/lib/errors';
+
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   changeWorkspaceRole,
@@ -13,6 +13,7 @@ import {
   setPlatformRole,
   unlockAccount,
 } from '@/services/platform/identity';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Every privileged recovery action on one account, behind one owner-only gate.
@@ -62,19 +63,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
       headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
     });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]/actions' });
   }
 }
 

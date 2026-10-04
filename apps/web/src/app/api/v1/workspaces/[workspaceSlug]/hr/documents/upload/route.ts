@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { getUploadMaxMb } from '@/lib/platform-settings';
-import { logger } from '@/lib/logger';
 import { requireWorkspace } from '@/lib/workspace';
 import { uploadDocument } from '@/services/hr/documents';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Multipart upload. This cannot go through the API kernel, which parses every
@@ -88,13 +88,6 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
 
     return NextResponse.json(document, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'document upload failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/workspaces/[workspaceSlug]/hr/documents/upload' });
   }
 }

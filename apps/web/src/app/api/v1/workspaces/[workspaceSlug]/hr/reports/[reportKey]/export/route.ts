@@ -1,9 +1,9 @@
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+
 import { exportReportCsv } from '@/services/hr/reports';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * A report as a CSV.
@@ -58,13 +58,6 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
       },
     });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'report export failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/workspaces/[workspaceSlug]/hr/reports/[reportKey]/export' });
   }
 }

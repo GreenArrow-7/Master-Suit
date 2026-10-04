@@ -3,9 +3,9 @@ import { ulid } from 'ulid';
 import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { AppError, Unauthorized } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Unauthorized } from '@/lib/errors';
 import { SESSION_COOKIE, clientIp } from '@/lib/auth/session';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Signs the account out of every device, including this one.
@@ -63,13 +63,6 @@ export async function POST(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'logout-all failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/auth/logout-all' });
   }
 }

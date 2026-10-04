@@ -7,6 +7,7 @@ import { requirePlatformOwner } from '@/lib/auth/platform';
 import { EDITABLE_SETTINGS, isEditableSetting, settingCacheKey } from '@/lib/platform-settings';
 import { redis } from '@/lib/redis';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 const patchSchema = z.object({
   key: z.string().min(1).max(64),
@@ -50,18 +51,6 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ setting }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/settings' });
   }
 }

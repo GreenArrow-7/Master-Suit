@@ -5,11 +5,11 @@ import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { getUploadMaxMb } from '@/lib/platform-settings';
-import { logger } from '@/lib/logger';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { scanBuffer } from '@/lib/antivirus';
 import { putObject } from '@/lib/storage';
 import { prisma } from '@/lib/db';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Upload a document against a lead. Multipart, so it reproduces the kernel's
@@ -94,13 +94,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(document, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'sales document upload failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/documents' });
   }
 }

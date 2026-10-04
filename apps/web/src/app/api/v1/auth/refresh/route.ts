@@ -4,10 +4,10 @@ import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
-import { AppError, Unauthorized } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Unauthorized } from '@/lib/errors';
 import { SESSION_COOKIE, clientIp, createPlatformSession, type SessionPurpose } from '@/lib/auth/session';
 import { credentialRefusal } from '@/lib/auth/credentials';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Rotates the session token.
@@ -136,13 +136,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ expiresAt: rotated.expiresAt }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'session refresh failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/auth/refresh' });
   }
 }

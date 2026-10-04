@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { AppError, Forbidden } from '@/lib/errors';
+import { Forbidden } from '@/lib/errors';
 import { resolvePlatformCtx, switchActiveWorkspace } from '@/lib/auth/session';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 const switchSchema = z.object({ workspaceId: z.string().min(1) });
 
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/auth/workspaces' });
   }
 }
 
@@ -61,16 +62,6 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/auth/workspaces' });
   }
-}
-
-function problem(error: unknown, requestId: string) {
-  if (error instanceof AppError) {
-    return NextResponse.json(error.toProblem(requestId), {
-      status: error.status,
-      headers: { 'x-request-id': requestId },
-    });
-  }
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

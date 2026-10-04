@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 const updateSchema = z
   .object({
@@ -110,19 +111,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ subscr
 
     return NextResponse.json({ subscription }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/subscriptions/[subscriptionId]' });
   }
 }
 
@@ -165,12 +154,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ subsc
 
     return NextResponse.json({ canceled: true, id: subscriptionId }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(error, requestId, { route: '/api/v1/platform/subscriptions/[subscriptionId]' });
   }
 }

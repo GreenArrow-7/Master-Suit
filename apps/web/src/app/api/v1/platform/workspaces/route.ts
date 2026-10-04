@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Conflict } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { hashPassword } from '@/lib/auth/password';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 const createSchema = z.object({
   workspaceName: z.string().min(2).max(120),
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
     });
     return NextResponse.json({ workspaces }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/workspaces' });
   }
 }
 
@@ -447,43 +447,6 @@ export async function POST(req: Request) {
       { status: 201, headers: { 'x-request-id': requestId } },
     );
   } catch (error) {
-    return problem(error, requestId);
+    return toResponse(error, requestId, { route: '/api/v1/platform/workspaces' });
   }
-}
-
-function problem(error: unknown, requestId: string) {
-  /**
-   * Rejections are logged too, not only crashes.
-   *
-   * This route does not go through the API kernel, so nothing recorded a 403,
-   * a 409 or a 422 anywhere — a customer reporting "workspace creation fails"
-   * left no trace at all to correlate against, and the only honest answer was
-   * that we could not tell what had happened. Codes and field names only; no
-   * values, so nothing the operator typed reaches the log.
-   */
-  if (error instanceof AppError) {
-    logger.warn(
-      { requestId, status: error.status, code: error.code, route: '/api/v1/platform/workspaces' },
-      'workspace provisioning rejected',
-    );
-    return NextResponse.json(error.toProblem(requestId), {
-      status: error.status,
-      headers: { 'x-request-id': requestId },
-    });
-  }
-  if (error instanceof z.ZodError) {
-    const flattened = error.flatten();
-    logger.warn(
-      { requestId, status: 422, fields: Object.keys(flattened.fieldErrors), route: '/api/v1/platform/workspaces' },
-      'workspace provisioning rejected',
-    );
-    return NextResponse.json(
-      { status: 422, title: 'Validation failed', requestId, errors: flattened },
-      { status: 422 },
-    );
-  }
-  // An unexpected failure here was previously answered with a bare 500 and never
-  // written anywhere, so provisioning failures were undiagnosable from the logs.
-  logger.error({ err: error, requestId }, 'workspace provisioning failed');
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
 }

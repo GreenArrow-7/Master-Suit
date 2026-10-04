@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Forbidden, NotFound } from '@/lib/errors';
+import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_GRANT_MINUTES,
@@ -13,6 +13,7 @@ import {
   revokeGrants,
 } from '@/lib/auth/platform-access';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Break-glass: write access into one customer workspace, for a stated reason and
@@ -88,8 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
 
     return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }
 
@@ -118,8 +118,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ workspac
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }
 
@@ -157,7 +156,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
 
     return NextResponse.json({ closed }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }

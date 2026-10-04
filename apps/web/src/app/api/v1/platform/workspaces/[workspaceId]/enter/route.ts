@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import { mayEnterWorkspace } from '@/lib/auth/platform-access';
 import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Opens a customer workspace for platform staff.
@@ -76,10 +77,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    }
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/enter' });
   }
 }
 
@@ -94,9 +92,6 @@ export async function DELETE(req: Request) {
     });
     return NextResponse.json({ destination: '/platform' }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    }
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/enter' });
   }
 }

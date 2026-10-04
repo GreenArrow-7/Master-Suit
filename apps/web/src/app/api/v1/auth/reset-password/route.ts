@@ -3,8 +3,7 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { AppError, Invalid, Unauthorized } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Invalid, Unauthorized } from '@/lib/errors';
 import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { assertDistinctFromOtherCredential, isPlatformStaff } from '@/lib/auth/credentials';
 import { writePrimaryPassword } from '@/services/identity/platformCredentials';
@@ -12,6 +11,7 @@ import { passwordPolicy } from '@/services/identity/accounts';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
 import { revokeAllPlatformSessions } from '@/lib/auth/session';
 import { readJsonBody } from '@/lib/api/read-body';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * No `tenantSlug`. The token names the workspace it was issued for; asking the
@@ -145,13 +145,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), {
-        status: err.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err, requestId }, 'reset-password failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/auth/reset-password' });
   }
 }
