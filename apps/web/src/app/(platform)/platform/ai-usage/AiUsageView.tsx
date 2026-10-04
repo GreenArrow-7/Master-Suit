@@ -1,6 +1,7 @@
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import PageHeader from '@/components/ui/PageHeader';
 import type { AiUsageData } from './data';
+import { Stat } from '../ai-control/ui';
 
 /**
  * The console's presentation, and nothing else.
@@ -119,18 +120,6 @@ export default function AiUsageView({
           ])}
         />
       </section>
-    </div>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div>
-      <div className="lf-hint" style={{ marginBottom: 2 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 'var(--lf-text-2xl)', fontWeight: 600 }}>{value}</div>
-      <div className="lf-hint">{hint}</div>
     </div>
   );
 }
