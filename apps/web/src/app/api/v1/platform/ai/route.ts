@@ -8,6 +8,7 @@ import { resetPriceCache } from '@/lib/ai/pricing';
 import { validateSteps, FALLBACK_TRIGGERS } from '@/lib/ai/routing';
 import { GUARDRAIL_BY_KEY, type GuardrailKey } from '@/lib/ai/guardrails';
 import { AI_FEATURE_KEYS, AI_PROVIDERS } from '@/lib/ai/features';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * The AI Control Center's writes: prices, budgets, guardrail overrides and
@@ -331,30 +332,24 @@ export async function POST(req: Request) {
         }
       }
 
-      await prisma.platformAuditEvent.create({
-        data: {
+      await platformAudit(ctx, {
+        tenantId: input.tenantId,
+        event: input.reset ? 'AI_USER_OVERRIDE_REMOVED' : 'AI_USER_LIMIT_CHANGED',
+        objectType: 'ai_user_budget',
+        objectId: userIds.join(','),
+        metadata: {
           tenantId: input.tenantId,
-          actorUserId: ctx.platformUserId,
-          event: input.reset ? 'AI_USER_OVERRIDE_REMOVED' : 'AI_USER_LIMIT_CHANGED',
-          objectType: 'ai_user_budget',
-          objectId: userIds.join(','),
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
-          metadata: {
-            tenantId: input.tenantId,
-            userIds,
-            feature,
-            period: input.period,
-            previous: before.map((b) => ({
-              userId: b.scopeId,
-              tokenLimit: b.tokenLimit === null ? null : Number(b.tokenLimit),
-            })),
-            tokenLimit: input.reset ? null : input.tokenLimit,
-            action: input.action,
-            hardLimit: input.hardLimit,
-            reason: input.reason,
-          },
+          userIds,
+          feature,
+          period: input.period,
+          previous: before.map((b) => ({
+            userId: b.scopeId,
+            tokenLimit: b.tokenLimit === null ? null : Number(b.tokenLimit),
+          })),
+          tokenLimit: input.reset ? null : input.tokenLimit,
+          action: input.action,
+          hardLimit: input.hardLimit,
+          reason: input.reason,
         },
       });
       return NextResponse.json({ ok: true, count: userIds.length }, { headers: { 'x-request-id': requestId } });
@@ -398,41 +393,29 @@ export async function POST(req: Request) {
         else await prisma.aiBudget.create({ data: { ...data, createdById: ctx.platformUserId } });
       }
 
-      await prisma.platformAuditEvent.create({
-        data: {
-          tenantId: input.tenantId,
-          actorUserId: ctx.platformUserId,
-          event: 'AI_WORKSPACE_BUDGET_CHANGED',
-          objectType: `ai_workspace_${input.kind}`,
-          objectId: input.tenantId,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
-          metadata: {
-            kind: input.kind,
-            feature: input.feature,
-            previous:
-              existing?.tokenLimit === undefined || existing?.tokenLimit === null ? null : Number(existing.tokenLimit),
-            tokenLimit: input.reset ? null : input.tokenLimit,
-            costLimit: input.reset ? null : input.costLimit,
-            reason: input.reason,
-          },
+      await platformAudit(ctx, {
+        tenantId: input.tenantId,
+        event: 'AI_WORKSPACE_BUDGET_CHANGED',
+        objectType: `ai_workspace_${input.kind}`,
+        objectId: input.tenantId,
+        metadata: {
+          kind: input.kind,
+          feature: input.feature,
+          previous:
+            existing?.tokenLimit === undefined || existing?.tokenLimit === null ? null : Number(existing.tokenLimit),
+          tokenLimit: input.reset ? null : input.tokenLimit,
+          costLimit: input.reset ? null : input.costLimit,
+          reason: input.reason,
         },
       });
       return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
     }
 
-    await prisma.platformAuditEvent.create({
-      data: {
-        actorUserId: ctx.platformUserId,
-        event: 'AI_POLICY_CHANGED',
-        objectType: `ai_${input.resource}`,
-        objectId,
-        requestId,
-        ipAddress: ctx.ip,
-        userAgent: ctx.userAgent,
-        metadata: input as unknown as object,
-      },
+    await platformAudit(ctx, {
+      event: 'AI_POLICY_CHANGED',
+      objectType: `ai_${input.resource}`,
+      objectId,
+      metadata: input as unknown as object,
     });
 
     return NextResponse.json({ ok: true, id: objectId }, { headers: { 'x-request-id': requestId } });
@@ -453,16 +436,10 @@ export async function DELETE(req: Request) {
     if (resource === 'route') await prisma.aiRoute.delete({ where: { id } });
     if (resource === 'price') resetPriceCache();
 
-    await prisma.platformAuditEvent.create({
-      data: {
-        actorUserId: ctx.platformUserId,
-        event: 'AI_POLICY_REMOVED',
-        objectType: `ai_${resource}`,
-        objectId: id,
-        requestId,
-        ipAddress: ctx.ip,
-        userAgent: ctx.userAgent,
-      },
+    await platformAudit(ctx, {
+      event: 'AI_POLICY_REMOVED',
+      objectType: `ai_${resource}`,
+      objectId: id,
     });
 
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });

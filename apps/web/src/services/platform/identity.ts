@@ -38,6 +38,7 @@ import {
 import { generateTemporaryPassword } from '@/services/identity/accounts';
 import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import type { PlatformCtx } from '@/lib/auth/session';
+import { platformAudit } from '@/lib/security/audit';
 
 export type MfaState = 'ENABLED' | 'ENROLMENT_PENDING' | 'ENROLMENT_REQUIRED' | 'NOT_CONFIGURED' | 'RECOVERY_REQUIRED';
 
@@ -426,21 +427,15 @@ async function record(
   metadata: Record<string, unknown>,
   tenantId?: string | null,
 ) {
-  await prisma.platformAuditEvent.create({
-    data: {
-      tenantId: tenantId ?? null,
-      actorUserId: ctx.platformUserId,
-      event,
-      objectType: 'platform_user',
-      objectId: target.id,
-      requestId: ctx.requestId,
-      ipAddress: ctx.ip,
-      userAgent: ctx.userAgent,
-      // `target` and `result` only. No password, temporary or otherwise, and no
-      // hash — see SECRET_KEYS in lib/security/audit.ts for the same rule on the
-      // workspace side.
-      metadata: { target: target.email, ...metadata },
-    },
+  await platformAudit(ctx, {
+    tenantId: tenantId ?? null,
+    event,
+    objectType: 'platform_user',
+    objectId: target.id,
+    // `target` and `result` only. No password, temporary or otherwise, and no
+    // hash — see SECRET_KEYS in lib/security/audit.ts for the same rule on the
+    // workspace side.
+    metadata: { target: target.email, ...metadata },
   });
 }
 

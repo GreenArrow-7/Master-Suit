@@ -7,6 +7,7 @@ import { requirePlatformOwner } from '@/lib/auth/platform';
 import { refuseOwnerLockout } from '@/services/platform/identity';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import { dropMonitoringCredential } from '@/services/identity/platformCredentials';
+import { platformAudit } from '@/lib/security/audit';
 
 const updateSchema = z
   .object({
@@ -63,21 +64,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
       if (body.status && body.status !== 'ACTIVE') {
         await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: current.id, consumedAt: null } });
       }
-      await tx.platformAuditEvent.create({
-        data: {
-          actorUserId: ctx.platformUserId,
+      await platformAudit(
+        ctx,
+        {
           event: 'PLATFORM_USER_UPDATED',
           objectType: 'platform_user',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: {
             before: { fullName: current.fullName, platformRole: current.platformRole, status: current.status },
             changes: body,
           },
         },
-      });
+        tx,
+      );
       return updated;
     });
     // Leaving platform staff ends the monitoring password. The session layer
@@ -143,18 +142,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ userI
         where: { platformUserId: current.id },
         data: { status: 'SUSPENDED' },
       });
-      await tx.platformAuditEvent.create({
-        data: {
-          actorUserId: ctx.platformUserId,
+      await platformAudit(
+        ctx,
+        {
           event: 'PLATFORM_USER_DELETED',
           objectType: 'platform_user',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: { email: current.email, fullName: current.fullName },
         },
-      });
+        tx,
+      );
     });
 
     return NextResponse.json({ deleted: true, id: current.id }, { headers: { 'x-request-id': requestId } });

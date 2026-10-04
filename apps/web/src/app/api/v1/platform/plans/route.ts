@@ -6,6 +6,7 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
+import { platformAudit } from '@/lib/security/audit';
 
 const planSchema = z.object({
   code: z
@@ -88,18 +89,16 @@ export async function POST(req: Request) {
         },
         include: { planModules: true, planLimits: true },
       });
-      await tx.platformAuditEvent.create({
-        data: {
-          actorUserId: ctx.platformUserId,
+      await platformAudit(
+        ctx,
+        {
           event: 'PLAN_CREATED',
           objectType: 'subscription_plan',
           objectId: created.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: { code: created.code, modules: body.modules, aiTokensMonthly: body.maxAiTokensMonthly ?? null },
         },
-      });
+        tx,
+      );
       return created;
     });
 

@@ -6,6 +6,7 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
+import { platformAudit } from '@/lib/security/audit';
 
 const updateSchema = z
   .object({
@@ -128,19 +129,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
           data: { revokedAt: new Date(), revokedReason: 'PLATFORM_OWNER_REVOKED' },
         });
       }
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: current.id,
-          actorUserId: ctx.platformUserId,
           event: 'WORKSPACE_UPDATED',
           objectType: 'workspace',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: { before: { status: current.status, planCode: current.planCode }, changes: body },
         },
-      });
+        tx,
+      );
       return updated;
     });
 
@@ -203,19 +202,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
         where: { activeTenantId: current.id, revokedAt: null },
         data: { revokedAt: now, revokedReason: 'WORKSPACE_DELETED' },
       });
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: current.id,
-          actorUserId: ctx.platformUserId,
           event: 'WORKSPACE_DELETED',
           objectType: 'workspace',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: { slug: current.slug, displayName: current.displayName },
         },
-      });
+        tx,
+      );
     });
     await invalidateEntitlements(current.id);
 

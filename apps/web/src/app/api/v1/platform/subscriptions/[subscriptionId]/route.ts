@@ -5,6 +5,7 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
+import { platformAudit } from '@/lib/security/audit';
 
 const updateSchema = z
   .object({
@@ -92,19 +93,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ subscr
         });
       }
 
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: current.tenantId,
-          actorUserId: ctx.platformUserId,
           event: 'SUBSCRIPTION_UPDATED',
           objectType: 'subscription',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: { before: { plan: current.plan.code, state: current.state }, changes: body },
         },
-      });
+        tx,
+      );
       return updated;
     });
     await invalidateEntitlements(subscription.tenantId);
@@ -149,19 +148,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ subsc
         where: { subscriptionId: current.id },
         data: { state: 'CANCELED' },
       });
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: current.tenantId,
-          actorUserId: ctx.platformUserId,
           event: 'SUBSCRIPTION_CANCELED',
           objectType: 'subscription',
           objectId: current.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: {},
         },
-      });
+        tx,
+      );
       return current.tenantId;
     });
     await invalidateEntitlements(tenantId);

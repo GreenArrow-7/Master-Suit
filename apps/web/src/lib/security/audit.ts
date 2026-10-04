@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import type { Ctx } from './rbac';
+import type { PlatformCtx } from '../auth/session';
 
 export type AuditEventName =
   | 'LOGIN'
@@ -103,6 +104,33 @@ export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = pris
       ipAddress: ctx.ip,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
+    },
+  });
+}
+
+/**
+ * The platform audit trail: what a platform identity did, from where, on which
+ * request. The actor and request fields come from the context, so a call site
+ * states only the event.
+ */
+export async function platformAudit(
+  ctx: Pick<PlatformCtx, 'platformUserId' | 'requestId' | 'ip' | 'userAgent'>,
+  event: {
+    event: string;
+    objectType: string;
+    objectId?: string | null;
+    tenantId?: string | null;
+    metadata?: Prisma.InputJsonValue;
+  },
+  db: Pick<typeof prisma, 'platformAuditEvent'> = prisma,
+) {
+  await db.platformAuditEvent.create({
+    data: {
+      ...event,
+      actorUserId: ctx.platformUserId,
+      requestId: ctx.requestId,
+      ipAddress: ctx.ip,
+      userAgent: ctx.userAgent,
     },
   });
 }

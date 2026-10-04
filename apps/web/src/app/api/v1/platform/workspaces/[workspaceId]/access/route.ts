@@ -12,6 +12,7 @@ import {
   openGrant,
   revokeGrants,
 } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Break-glass: write access into one customer workspace, for a stated reason and
@@ -70,21 +71,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
     });
 
     await withPlatformTx(async (tx) => {
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: workspace.id,
-          actorUserId: ctx.platformUserId,
           event: 'PLATFORM_WRITE_ACCESS_OPENED',
           objectType: 'workspace',
           objectId: workspace.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           // The reason is the point of the record. A grant whose justification
           // lives only in somebody's memory is the thing this replaces.
           metadata: { slug: workspace.slug, reason: grant.reason, expiresAt: grant.expiresAt.toISOString() },
         },
-      });
+        tx,
+      );
     });
 
     return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
@@ -142,19 +141,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
     // reads.
     if (closed > 0) {
       await withPlatformTx(async (tx) => {
-        await tx.platformAuditEvent.create({
-          data: {
+        await platformAudit(
+          ctx,
+          {
             tenantId: workspace.id,
-            actorUserId: ctx.platformUserId,
             event: 'PLATFORM_WRITE_ACCESS_CLOSED',
             objectType: 'workspace',
             objectId: workspace.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
             metadata: { slug: workspace.slug, closed },
           },
-        });
+          tx,
+        );
       });
     }
 

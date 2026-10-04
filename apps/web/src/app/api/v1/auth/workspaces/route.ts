@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { AppError, Forbidden } from '@/lib/errors';
 import { resolvePlatformCtx, switchActiveWorkspace } from '@/lib/auth/session';
+import { platformAudit } from '@/lib/security/audit';
 
 const switchSchema = z.object({ workspaceId: z.string().min(1) });
 
@@ -52,17 +53,11 @@ export async function POST(req: Request) {
     }
     const body = switchSchema.parse(await req.json());
     await switchActiveWorkspace(ctx, body.workspaceId);
-    await prisma.platformAuditEvent.create({
-      data: {
-        tenantId: body.workspaceId,
-        actorUserId: ctx.platformUserId,
-        event: 'WORKSPACE_SWITCHED',
-        objectType: 'workspace',
-        objectId: body.workspaceId,
-        requestId,
-        ipAddress: ctx.ip,
-        userAgent: ctx.userAgent,
-      },
+    await platformAudit(ctx, {
+      tenantId: body.workspaceId,
+      event: 'WORKSPACE_SWITCHED',
+      objectType: 'workspace',
+      objectId: body.workspaceId,
     });
     return NextResponse.json({ ok: true }, { headers: { 'x-request-id': requestId } });
   } catch (error) {

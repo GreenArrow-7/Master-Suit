@@ -4,6 +4,7 @@ import { prisma, withPlatformTx } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import { mayEnterWorkspace } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Opens a customer workspace for platform staff.
@@ -52,16 +53,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
         where: { id: ctx.sessionId },
         data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
       });
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: workspace.id,
-          actorUserId: ctx.platformUserId,
           event: 'WORKSPACE_OPENED',
           objectType: 'workspace',
           objectId: workspace.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           // Read-only is now the truth for every platform role, including
           // OWNER. It was not before: this same line recorded
           // `platform_support_readonly` for a session that could delete the
@@ -69,7 +67,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
           // the sibling `access` route.
           metadata: { slug: workspace.slug, mode: 'platform_readonly' },
         },
-      });
+        tx,
+      );
     });
 
     return NextResponse.json(

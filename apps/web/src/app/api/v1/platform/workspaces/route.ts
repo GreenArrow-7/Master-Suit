@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { hashPassword } from '@/lib/auth/password';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
+import { platformAudit } from '@/lib/security/audit';
 
 const createSchema = z.object({
   workspaceName: z.string().min(2).max(120),
@@ -410,16 +411,13 @@ export async function POST(req: Request) {
           ],
         });
       }
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: created.id,
-          actorUserId: ctx.platformUserId,
           event: 'WORKSPACE_CREATED',
           objectType: 'workspace',
           objectId: created.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: {
             slug: created.slug,
             planCode: plan.code,
@@ -428,7 +426,8 @@ export async function POST(req: Request) {
             reusedExistingIdentity,
           },
         },
-      });
+        tx,
+      );
       return { created, reusedExistingIdentity };
     });
 

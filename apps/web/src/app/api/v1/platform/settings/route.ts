@@ -6,6 +6,7 @@ import { AppError } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { EDITABLE_SETTINGS, isEditableSetting, settingCacheKey } from '@/lib/platform-settings';
 import { redis } from '@/lib/redis';
+import { platformAudit } from '@/lib/security/audit';
 
 const patchSchema = z.object({
   key: z.string().min(1).max(64),
@@ -40,17 +41,11 @@ export async function PATCH(req: Request) {
     // write for — the entry expires on its own.
     await redis.del(settingCacheKey(body.key)).catch(() => {});
 
-    await prisma.platformAuditEvent.create({
-      data: {
-        actorUserId: ctx.platformUserId,
-        event: 'PLATFORM_SETTING_CHANGED',
-        objectType: 'platform_setting',
-        objectId: body.key,
-        requestId,
-        ipAddress: ctx.ip,
-        userAgent: ctx.userAgent,
-        metadata: { before: previous?.value ?? null, after: setting.value },
-      },
+    await platformAudit(ctx, {
+      event: 'PLATFORM_SETTING_CHANGED',
+      objectType: 'platform_setting',
+      objectId: body.key,
+      metadata: { before: previous?.value ?? null, after: setting.value },
     });
 
     return NextResponse.json({ setting }, { headers: { 'x-request-id': requestId } });

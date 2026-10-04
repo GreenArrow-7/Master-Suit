@@ -15,6 +15,7 @@ import {
   revokeCoverage,
   revokeGrants,
 } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Who may monitor which customers.
@@ -96,18 +97,15 @@ export async function POST(req: Request) {
       });
 
       await withPlatformTx((tx) =>
-        tx.platformAuditEvent.create({
-          data: {
+        platformAudit(
+          ctx,
+          {
             // The customer's own trail. Somebody being authorised to watch their
             // workspace is their business before it is ours.
             tenantId: workspace.id,
-            actorUserId: ctx.platformUserId,
             event: 'MONITORING_ACCESS_GRANTED',
             objectType: 'platform_user',
             objectId: subject.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
             metadata: {
               slug: workspace.slug,
               subject: subject.email,
@@ -116,7 +114,8 @@ export async function POST(req: Request) {
               expiresAt: grant.expiresAt.toISOString(),
             },
           },
-        }),
+          tx,
+        ),
       );
       return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
     }
@@ -131,25 +130,23 @@ export async function POST(req: Request) {
     });
 
     await withPlatformTx((tx) =>
-      tx.platformAuditEvent.create({
-        data: {
+      platformAudit(
+        ctx,
+        {
           // No tenantId: coverage names no workspace, so there is no single
           // customer trail this belongs on. It is a platform-level act and lives
           // in the platform-level stream.
-          actorUserId: ctx.platformUserId,
           event: 'MONITORING_COVERAGE_GRANTED',
           objectType: 'platform_user',
           objectId: subject.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           metadata: {
             subject: subject.email,
             reason: coverage.reason,
             expiresAt: coverage.expiresAt.toISOString(),
           },
         },
-      }),
+        tx,
+      ),
     );
     return NextResponse.json({ coverage }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
@@ -179,19 +176,17 @@ export async function DELETE(req: Request) {
 
     if (closed > 0) {
       await withPlatformTx((tx) =>
-        tx.platformAuditEvent.create({
-          data: {
+        platformAudit(
+          ctx,
+          {
             tenantId: input.workspaceId ?? null,
-            actorUserId: ctx.platformUserId,
             event: input.workspaceId ? 'MONITORING_ACCESS_REVOKED' : 'MONITORING_COVERAGE_REVOKED',
             objectType: 'platform_user',
             objectId: subject.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
             metadata: { subject: subject.email, reason, closed },
           },
-        }),
+          tx,
+        ),
       );
     }
 
