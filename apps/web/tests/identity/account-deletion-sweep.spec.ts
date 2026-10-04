@@ -7,7 +7,7 @@ import {
 } from '@/services/identity/accountDeletion';
 import { handleMaintenanceJob } from '@/workers/maintenance';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 
 /**
  * The consumer, and what survives the thing it runs.
@@ -35,15 +35,7 @@ function mine() {
 }
 let seq = 0;
 
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 let fixture: Fixture;
 

@@ -12,7 +12,7 @@ import {
 } from '@/services/identity/accountDeletion';
 import { acceptInvitation } from '@/services/identity/invitations';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 
 /**
  * What happens when erasure does not go cleanly the first time.
@@ -34,15 +34,7 @@ const ownedPlatformUserIds = new Set<string>();
 let seq = 0;
 let fixture: Fixture;
 
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 /** Only this file's accounts, so a sibling suite's open requests are never touched. */
 function mine() {

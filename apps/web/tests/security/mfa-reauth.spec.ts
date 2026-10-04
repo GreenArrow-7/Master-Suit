@@ -21,21 +21,20 @@
  * else, and is revoked on completion, so demanding the password a second time
  * would only strand the person the workspace is compelling to enrol.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { issueApiKey } from '@/lib/auth/apiKey';
-import { SESSION_COOKIE } from '@/lib/auth/session';
 import { POST as selfAction } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { POST as enroll2fa } from '@/app/api/v1/auth/enroll-2fa/route';
 import { post } from '../helpers/request';
+import { createPlatformSessionToken } from '../helpers/session';
 
 const suffix = randomBytes(5).toString('hex');
 const slug = `reauth-${suffix}`;
 const email = `reauth-${suffix}@mfa.test`;
 const PASSWORD = 'ReauthPassword1!';
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 let tenantId = '';
 let platformUserId = '';
@@ -47,20 +46,7 @@ const params = { workspaceSlug: slug, action: 'two-factor-begin' };
 const path = `/api/v1/workspaces/${slug}/identity/self/two-factor-begin`;
 
 async function session(purpose: 'FULL' | 'MFA_ENROLMENT') {
-  const token = randomBytes(32).toString('base64url');
-  await prisma.platformSession.create({
-    data: {
-      platformUserId,
-      activeTenantId: tenantId,
-      tokenHash: sha256(token),
-      mfaSatisfied: false,
-      purpose,
-      expiresAt: new Date(Date.now() + 30 * 60_000),
-      ipAddress: '127.0.0.1',
-      userAgent: 'vitest',
-    },
-  });
-  return `${SESSION_COOKIE}=${token}`;
+  return createPlatformSessionToken(platformUserId, tenantId, { mfaSatisfied: false, purpose });
 }
 
 /** enroll-2fa is a bare handler, not a kernel route, so it is called directly. */

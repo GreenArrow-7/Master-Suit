@@ -27,8 +27,9 @@ const { startMaintenanceWorker } = await import('@/workers/maintenance');
 const { POST: login } = await import('@/app/api/v1/auth/login/route');
 const { post } = await import('../helpers/request');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
+const { buildActor, buildCtx } = await import('../helpers/ctx');
+const { createPlatformSessionToken } = await import('../helpers/session');
 type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
-type Ctx = Parameters<typeof requestAccountDeletion>[0];
 type RetainedCategory = { category: string; count: number; reason: string };
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
@@ -83,13 +84,7 @@ describe('request → real worker → completion → revoked access', () => {
     });
     // Things that must stop working: a live session, an API key, a service credential,
     // an access grant, and an open invitation to the same address.
-    await prisma.platformSession.create({
-      data: {
-        platformUserId,
-        tokenHash: `wk-${Math.random().toString(36).slice(2)}`,
-        expiresAt: new Date(Date.now() + 86_400_000),
-      },
-    });
+    await createPlatformSessionToken(platformUserId);
     const { key } = await issueApiKey(fixture.a.tenantId, 'worker-path', role.id, [], user.id);
     await prisma.platformServiceCredential.create({
       data: {
@@ -124,13 +119,7 @@ describe('request → real worker → completion → revoked access', () => {
     const before = await post(login, '/api/v1/auth/login', { email, password: PASSWORD });
     expect(before.status, JSON.stringify(before.body)).toBeLessThan(300);
 
-    const ctx = {
-      tenantId: fixture.a.tenantId,
-      actor: { id: user.id, permissions: new Map() },
-      requestId: 'wk',
-      ip: '127.0.0.1',
-      userAgent: 'vitest',
-    } as unknown as Ctx;
+    const ctx = buildCtx(buildActor({ id: user.id, tenantId: fixture.a.tenantId }));
     const request = await requestAccountDeletion(ctx, { password: PASSWORD, reason: 'worker path' });
     expect(request.status).toBe('REQUESTED');
 

@@ -16,8 +16,8 @@ const { executionEnabled, processAccountDeletion, requestAccountDeletion, sweepA
   await import('@/services/identity/accountDeletion');
 const { handleMaintenanceJob } = await import('@/workers/maintenance');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
+const { buildActor, buildCtx } = await import('../helpers/ctx');
 type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
-type Ctx = Parameters<typeof requestAccountDeletion>[0];
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
 const ownedPlatformUserIds = new Set<string>();
@@ -44,13 +44,7 @@ async function makePerson() {
     password: PASSWORD,
   });
   ownedPlatformUserIds.add(user.platformUserId);
-  const ctx = {
-    tenantId: fixture.a.tenantId,
-    actor: { id: user.id, permissions: new Map() },
-    requestId: 'off',
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
+  const ctx = buildCtx(buildActor({ id: user.id, tenantId: fixture.a.tenantId }));
   return { platformUserId: user.platformUserId, ctx };
 }
 
