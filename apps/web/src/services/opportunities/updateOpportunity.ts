@@ -4,7 +4,6 @@ import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
-import { emit } from '../shared/events';
 
 export interface UpdateOpportunityInput {
   name?: string;
@@ -124,15 +123,6 @@ export async function updateOpportunity(ctx: Ctx, id: string, input: UpdateOppor
     object: 'OPPORTUNITY',
     recordId: id,
   });
-  emit(
-    ctx,
-    updated.status === 'WON'
-      ? 'opportunity.won'
-      : updated.status === 'LOST'
-        ? 'opportunity.lost'
-        : 'opportunity.updated',
-    { opportunityId: id },
-  );
   return updated;
 }
 

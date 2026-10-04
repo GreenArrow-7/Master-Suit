@@ -3,7 +3,6 @@ import { NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { nextReference } from '../shared/reference';
-import { emit } from '../shared/events';
 import { enqueue } from '@/lib/queue';
 
 export interface CreateOpportunityInput {
@@ -89,6 +88,5 @@ export async function createOpportunity(ctx: Ctx, input: CreateOpportunityInput)
     object: 'OPPORTUNITY',
     recordId: opportunity.id,
   });
-  emit(ctx, 'opportunity.created', { opportunityId: opportunity.id });
   return opportunity;
 }

@@ -3,7 +3,6 @@ import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import type { Ctx } from '@/lib/security/rbac';
-import { emit } from '../shared/events';
 
 export interface UpdateAccountInput {
   name?: string;
@@ -46,7 +45,6 @@ export async function updateAccount(ctx: Ctx, id: string, input: UpdateAccountIn
     return after;
   });
 
-  emit(ctx, 'account.updated', { accountId: id });
   return updated;
 }
 

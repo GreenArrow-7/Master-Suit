@@ -6,7 +6,6 @@ import { can } from '@/lib/security/rbac';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
-import { emit } from '../shared/events';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
@@ -170,7 +169,6 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
 
   if (ownerId) await recordTargetProgress(ctx, ownerId, 'LEADS_ASSIGNED');
 
-  emit(ctx, 'lead.created', { leadId: lead.id, duplicates: duplicates.length });
   return lead;
 }
 

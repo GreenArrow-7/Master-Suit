@@ -3,7 +3,6 @@ import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import type { Ctx } from '@/lib/security/rbac';
-import { emit } from '../shared/events';
 import { normalizePhone } from '../leads/normalizePhone';
 
 export interface UpdateContactInput {
@@ -41,7 +40,6 @@ export async function updateContact(ctx: Ctx, id: string, input: UpdateContactIn
     return after;
   });
 
-  emit(ctx, 'contact.updated', { contactId: id });
   return updated;
 }
 

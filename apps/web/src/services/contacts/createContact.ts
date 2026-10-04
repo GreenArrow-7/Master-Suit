@@ -1,7 +1,6 @@
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { nextReference } from '../shared/reference';
-import { emit } from '../shared/events';
 import { normalizePhone } from '../leads/normalizePhone';
 import type { Ctx } from '@/lib/security/rbac';
 
@@ -54,6 +53,5 @@ export async function createContact(ctx: Ctx, input: CreateContactInput) {
     return created;
   });
 
-  emit(ctx, 'contact.created', { contactId: contact.id });
   return contact;
 }
