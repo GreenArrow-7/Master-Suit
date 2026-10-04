@@ -104,6 +104,21 @@ describe('work-gated check-out', () => {
     await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position, true, DEFAULT_POLICY)).resolves.toBeTruthy();
   });
 
+  it('stops holding the check-out once the shift reaches the hours ceiling', async () => {
+    const shift = await prisma.hrAttendancePunch.findFirstOrThrow({ where: { tenantId, punchType: 'CHECK_IN' } });
+    const atCeiling = new Date(Date.now() - DEFAULT_POLICY.checkoutWorkGateMaxHours * 3_600_000);
+    await prisma.hrAttendancePunch.updateMany({ where: { tenantId, id: shift.id }, data: { serverTime: atCeiling } });
+    try {
+      expect(await pendingLeadWork(ctx(), 'Asia/Dubai'), 'the leads are still untouched').toBe(2);
+      await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position, true, gated)).resolves.toBeTruthy();
+    } finally {
+      await prisma.hrAttendancePunch.updateMany({
+        where: { tenantId, id: shift.id },
+        data: { serverTime: shift.serverTime },
+      });
+    }
+  });
+
   it("holds the check-out while today's lead-calling target is short", async () => {
     const targeted = { ...DEFAULT_POLICY, checkoutRequiresDailyTarget: true };
     const midnight = startOfLocalDay(new Date(), 'UTC');
