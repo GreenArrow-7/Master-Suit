@@ -18,6 +18,7 @@ import { buildActor, buildCtx } from '../helpers/ctx';
 import { fixtureUnit } from '../helpers/inventory';
 import { patch, post } from '../helpers/request';
 import type { Ctx } from '@/lib/security/rbac';
+import { grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `bookings-${suffix}`;
@@ -50,22 +51,7 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `seller-${suffix}`, name: 'Seller', rank: 50, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of GRANTS) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: {
-        tenantId,
-        roleId: role.id,
-        permissionId: permission.id,
-        granted: true,
-        scope: 'ORGANIZATION' as VisibilityScope,
-      },
-    });
-  }
+  await grantPermissions(tenantId, role.id, GRANTS, 'ORGANIZATION' as VisibilityScope);
 
   const user = await prisma.user.create({
     data: { tenantId, email: `seller-${suffix}@bk.test`, fullName: 'Seller', roleId: role.id, status: 'ACTIVE' },

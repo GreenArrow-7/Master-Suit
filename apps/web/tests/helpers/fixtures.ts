@@ -96,18 +96,11 @@ async function createAdminRole(tenantId: string, suffix: string) {
     },
   });
 
-  for (const permissionModule of MODULES) {
-    for (const action of ALL_ACTIONS) {
-      const permission = await prisma.permission.upsert({
-        where: { module_action: { module: permissionModule, action } },
-        update: {},
-        create: { module: permissionModule, action },
-      });
-      await prisma.rolePermission.create({
-        data: { tenantId, roleId: role.id, permissionId: permission.id, scope: 'ORGANIZATION' },
-      });
-    }
-  }
+  await grantPermissions(
+    tenantId,
+    role.id,
+    MODULES.flatMap((module) => ALL_ACTIONS.map((action) => [module, action] as const)),
+  );
   return role;
 }
 
@@ -235,17 +228,15 @@ export async function seedHierarchy(): Promise<Hierarchy> {
     const role = await prisma.role.create({
       data: { tenantId, key: `${key}-${suffix}`, name: key, rank, defaultScope: scope },
     });
-    for (const action of ALL_ACTIONS) {
-      // Reps may not ASSIGN: claiming another owner's record is the escalation
-      // the scope tests probe for.
-      if (action === 'ASSIGN' && scope === 'OWN') continue;
-      const permission = await prisma.permission.upsert({
-        where: { module_action: { module: 'leads', action } },
-        update: {},
-        create: { module: 'leads', action },
-      });
-      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, permissionId: permission.id, scope } });
-    }
+    // Reps may not ASSIGN: claiming another owner's record is the escalation
+    // the scope tests probe for.
+    const actions = ALL_ACTIONS.filter((action) => !(action === 'ASSIGN' && scope === 'OWN'));
+    await grantPermissions(
+      tenantId,
+      role.id,
+      actions.map((action) => ['leads', action] as const),
+      scope,
+    );
     return role;
   }
 

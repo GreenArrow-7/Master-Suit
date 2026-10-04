@@ -32,6 +32,7 @@ import { GET as listOpportunities, POST as createOpportunityRoute } from '@/app/
 import { createSessionToken } from '../helpers/session';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { get, post } from '../helpers/request';
+import { grantPermissions, type Grants } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `fieldsec-${suffix}`;
@@ -60,20 +61,11 @@ const ctxFor = (label: string, roleId: string) =>
     }),
   );
 
-async function member(label: string, grants: readonly (readonly [string, string])[]) {
+async function member(label: string, grants: Grants) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action: action as never } },
-      update: {},
-      create: { module, action: action as never },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants);
   const user = await prisma.user.create({
     data: { tenantId, email: `${label}-${suffix}@fs.test`, fullName: label, roleId: role.id, status: 'ACTIVE' },
   });

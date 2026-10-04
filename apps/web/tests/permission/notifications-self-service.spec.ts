@@ -20,6 +20,7 @@ import { prisma } from '@/lib/db';
 import { GET as listNotifications, PATCH as markRead } from '@/app/api/v1/notifications/route';
 import { createSessionToken } from '../helpers/session';
 import { get, patch } from '../helpers/request';
+import { grantPermissions, type Grants } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `notif-${suffix}`;
@@ -28,20 +29,11 @@ let tenantId = '';
 const users: Record<string, { id: string; cookie: string }> = {};
 
 /** A member holding exactly these `module:ACTION` grants at ORGANIZATION scope. */
-async function member(label: string, grants: readonly (readonly [string, string])[]) {
+async function member(label: string, grants: Grants) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action: action as never } },
-      update: {},
-      create: { module, action: action as never },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants);
   const user = await prisma.user.create({
     data: { tenantId, email: `${label}-${suffix}@notif.test`, fullName: label, roleId: role.id, status: 'ACTIVE' },
   });

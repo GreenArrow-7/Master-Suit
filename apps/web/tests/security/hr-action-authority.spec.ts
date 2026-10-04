@@ -25,6 +25,7 @@ import { prisma } from '@/lib/db';
 import { POST as hrAction } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/actions/[action]/route';
 import { createSessionToken } from '../helpers/session';
 import { post } from '../helpers/request';
+import { grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `hrauth-${suffix}`;
@@ -39,16 +40,7 @@ async function actor(label: string, grants: [string, PermissionAction][], scope:
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 40, defaultScope: scope },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants, scope);
   const user = await prisma.user.create({
     data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
   });

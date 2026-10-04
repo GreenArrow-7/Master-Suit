@@ -20,6 +20,7 @@ import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } from './helpers';
 import { RUN_TAG } from './run-tag';
+import { grantPermissions } from '../helpers/fixtures';
 
 const before = process.env.SUMMARY_PHASE === 'before';
 const workspace = {
@@ -207,18 +208,18 @@ test.describe('Workspace Summary sample', () => {
       const role = await prisma.role.create({
         data: { tenantId, key: `sum-agent-${RUN_TAG}`, name: 'Summary agent', rank: 60, defaultScope: 'OWN' },
       });
-      for (const [module, action] of [
-        ['leads', 'VIEW'],
-        ['leads', 'EDIT'],
-        ['opportunities', 'VIEW'],
-        ['tasks', 'VIEW'],
-        ['calls', 'VIEW'],
-      ] as const) {
-        const permission = await prisma.permission.findUniqueOrThrow({ where: { module_action: { module, action } } });
-        await prisma.rolePermission.create({
-          data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'OWN' },
-        });
-      }
+      await grantPermissions(
+        tenantId,
+        role.id,
+        [
+          ['leads', 'VIEW'],
+          ['leads', 'EDIT'],
+          ['opportunities', 'VIEW'],
+          ['tasks', 'VIEW'],
+          ['calls', 'VIEW'],
+        ] as const,
+        'OWN',
+      );
       const platformUser = await prisma.platformUser.create({
         data: {
           email: agentEmail,

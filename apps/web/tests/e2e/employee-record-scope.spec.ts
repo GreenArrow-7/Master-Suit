@@ -15,6 +15,7 @@ import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { login, strongPassword, uniq } from './helpers';
+import { grantPermissions } from '../helpers/fixtures';
 
 const run = uniq();
 const slug = `empscope-${run}`.toLowerCase();
@@ -29,16 +30,7 @@ async function person(label: string, grants: [string, PermissionAction, Visibili
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${run}`, name: label, rank: 40, defaultScope: 'OWN' },
   });
-  for (const [module, action, scope] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
+  for (const [module, action, scope] of grants) await grantPermissions(tenantId, role.id, [[module, action]], scope);
   const email = `${label}-${run}@empscope.test`;
   const name = `Scope ${label} ${run}`;
   const platformUser = await prisma.platformUser.create({

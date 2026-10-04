@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
@@ -34,14 +34,7 @@ async function roleGranting(label: string, scope: 'OWN' | 'BRANCH' | 'ORGANIZATI
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank, defaultScope: scope },
   });
-  const permission = await prisma.permission.upsert({
-    where: { module_action: { module: 'leads', action: 'VIEW' } },
-    update: {},
-    create: { module: 'leads', action: 'VIEW' },
-  });
-  await prisma.rolePermission.create({
-    data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-  });
+  await grantPermissions(tenantId, role.id, [['leads', 'VIEW']], scope);
   return role.id;
 }
 

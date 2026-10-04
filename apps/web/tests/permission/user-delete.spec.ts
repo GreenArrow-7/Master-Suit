@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { DELETE as identityDelete } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser, type Grants } from '../helpers/fixtures';
+import { createWorkspaceUser, type Grants, grantPermissions } from '../helpers/fixtures';
 import { del } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
@@ -34,16 +34,7 @@ async function role(label: string, rank: number, grants: Grants) {
   const created = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: created.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, created.id, grants);
   return created;
 }
 

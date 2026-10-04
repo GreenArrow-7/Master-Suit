@@ -13,7 +13,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { GET as listUsers } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
 import { GET as listRoles } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
 import { GET as selfStatus } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
@@ -60,22 +60,7 @@ async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES' | 'REAL_E
     ['leads', 'VIEW'],
     ['opportunities', 'VIEW'],
   ];
-  for (const [permissionModule, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module: permissionModule, action } },
-      update: {},
-      create: { module: permissionModule, action },
-    });
-    await prisma.rolePermission.create({
-      data: {
-        tenantId: tenant.id,
-        roleId: adminRole.id,
-        permissionId: permission.id,
-        granted: true,
-        scope: 'ORGANIZATION',
-      },
-    });
-  }
+  await grantPermissions(tenant.id, adminRole.id, grants);
 
   // Holds nothing at all — used to prove selfService needs no permission.
   const plainRole = await prisma.role.create({

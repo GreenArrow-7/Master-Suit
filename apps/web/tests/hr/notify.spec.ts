@@ -18,6 +18,7 @@ import { entityRoute } from '@/lib/nav/entityRoute';
 import { decideOvertime, requestOvertime } from '@/services/hr/overtime';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { PermissionMap } from '@/lib/security/rbac';
+import { grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `ntf-${suffix}`;
@@ -83,14 +84,7 @@ beforeAll(async () => {
     data: { tenantId, key: `approver-${suffix}`, name: 'Overtime Approver', rank: 20, defaultScope: 'ORGANIZATION' },
   });
   approverRoleId = approverRole.id;
-  const permission = await prisma.permission.upsert({
-    where: { module_action: { module: 'overtime', action: 'APPROVE' } },
-    update: {},
-    create: { module: 'overtime', action: 'APPROVE' },
-  });
-  await prisma.rolePermission.create({
-    data: { tenantId, roleId: approverRole.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-  });
+  await grantPermissions(tenantId, approverRole.id, [['overtime', 'APPROVE']]);
 
   await makeEmployee('worker', plain.id);
   await makeEmployee('manager', approverRole.id);
@@ -196,14 +190,9 @@ describe('permission-resolved audiences', () => {
     const newRole = await prisma.role.create({
       data: { tenantId, key: `moved-${suffix}`, name: 'Moved', rank: 20, defaultScope: 'ORGANIZATION' },
     });
-    const permission = await prisma.permission.findFirstOrThrow({
-      where: { module: 'overtime', action: 'APPROVE' },
-    });
     // Take the authority off the original role and give it to a new one.
     await prisma.rolePermission.deleteMany({ where: { tenantId, roleId: approverRoleId } });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: newRole.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
+    await grantPermissions(tenantId, newRole.id, [['overtime', 'APPROVE']]);
     await prisma.user.update({ where: { tenantId, id: userIds.bystander! }, data: { roleId: newRole.id } });
 
     await requestOvertime(ctxFor('worker', STAFF), {

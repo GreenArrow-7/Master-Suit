@@ -13,6 +13,7 @@ import { test, expect, type APIRequestContext, type Browser } from '@playwright/
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
+import { grantPermissions, type Grants } from '../helpers/fixtures';
 
 const run = uniq();
 const workspace = {
@@ -52,18 +53,11 @@ async function as(browser: Browser, who: Person): Promise<{ request: APIRequestC
  * already been changed, an active workspace user on the role, and the
  * membership that joins them.
  */
-async function person(label: string, grants: readonly (readonly [string, string])[]): Promise<Person> {
+async function person(label: string, grants: Grants): Promise<Person> {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${run}`, name: label, rank: 40, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.findUniqueOrThrow({
-      where: { module_action: { module, action: action as never } },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants);
   const email = `${label}-${run}@masterapp.local`;
   const platformUser = await prisma.platformUser.create({
     data: {

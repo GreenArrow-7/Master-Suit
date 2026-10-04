@@ -12,6 +12,7 @@ import { test, expect, devices, type Browser, type Page } from '@playwright/test
 import { prisma, withPlatformTx } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
+import { grantPermissions } from '../helpers/fixtures';
 
 const run = uniq();
 const workspace = {
@@ -41,12 +42,7 @@ async function person(label: string, grants: readonly (readonly [string, string,
     data: { tenantId, key: `${label}-${run}`, name: label, rank: 40, defaultScope: 'ORGANIZATION' },
   });
   for (const [module, action, scope = 'ORGANIZATION'] of grants) {
-    const permission = await prisma.permission.findUniqueOrThrow({
-      where: { module_action: { module, action: action as never } },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: scope as never },
-    });
+    await grantPermissions(tenantId, role.id, [[module, action as never]], scope as never);
   }
   const email = `${label}-${run}@masterapp.local`;
   const platformUser = await prisma.platformUser.create({

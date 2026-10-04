@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { activeConsent, grantConsentSupervised } from '@/services/hr/attendance';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { PermissionMap } from '@/lib/security/rbac';
+import { grantPermissions, type Grants } from '../helpers/fixtures';
 
 /**
  * Consent recorded at HR's desk with the employee present: the employee signs by
@@ -20,16 +21,7 @@ async function user(key: string, rank: number, grants: [string, string][]) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${key}-${suffix}`, name: key, rank, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action: action as never } },
-      update: {},
-      create: { module, action: action as never },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants as Grants);
   const u = await prisma.user.create({
     data: { tenantId, email: `${key}-${suffix}@example.com`, fullName: key, roleId: role.id, status: 'ACTIVE' },
   });

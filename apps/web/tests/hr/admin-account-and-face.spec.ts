@@ -19,7 +19,7 @@ import { prisma } from '@/lib/db';
 import { createStaffAccount } from '@/services/identity/accounts';
 import { resetFaceEnrolment } from '@/services/hr/attendance';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import type { PermissionMap } from '@/lib/security/rbac';
 import type { PermissionAction } from '@prisma/client';
 
@@ -37,16 +37,7 @@ async function role(key: string, rank: number, grants: [string, PermissionAction
   const created = await prisma.role.create({
     data: { tenantId, key: `${key}-${suffix}`, name: key, rank, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: created.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  await grantPermissions(tenantId, created.id, grants);
   return created;
 }
 

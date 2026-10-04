@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } from './helpers';
 import { RUN_TAG } from './run-tag';
+import { grantPermissions } from '../helpers/fixtures';
 
 const workspace = {
   displayName: `Deletes ${RUN_TAG}`,
@@ -59,17 +60,12 @@ test.describe('Deletes from lists and detail pages', () => {
     const role = await prisma.role.create({
       data: { tenantId, key: `del-rep-${RUN_TAG}`, name: 'Delete-less rep', rank: 60, defaultScope: 'ORGANIZATION' },
     });
-    for (const [module, action] of [
+    await grantPermissions(tenantId, role.id, [
       ['leads', 'VIEW'],
       ['leads', 'EDIT'],
       ['tasks', 'VIEW'],
       ['calls', 'VIEW'],
-    ] as const) {
-      const permission = await prisma.permission.findUniqueOrThrow({ where: { module_action: { module, action } } });
-      await prisma.rolePermission.create({
-        data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-      });
-    }
+    ] as const);
     const identity = await prisma.platformUser.create({
       data: {
         email: repEmail,

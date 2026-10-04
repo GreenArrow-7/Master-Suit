@@ -18,7 +18,7 @@ import { PATCH as automationPatch } from '@/app/api/v1/automations/[id]/route';
 import { POST as landingCreate } from '@/app/api/v1/landing-pages/route';
 import { automationGraph } from '@/services/automation/graph';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get, post, patch } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
@@ -38,7 +38,7 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `growth-${suffix}`, name: 'Growth', rank: 5, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of [
+  await grantPermissions(tenantId, role.id, [
     ['campaigns', 'CREATE'],
     ['campaigns', 'EDIT'],
     ['leads', 'VIEW'],
@@ -46,16 +46,7 @@ beforeAll(async () => {
     ['forms', 'MANAGE_CONFIGURATION'],
     ['landingpages', 'CREATE'],
     ['automation', 'MANAGE_AUTOMATION'],
-  ] as const) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  ] as const);
   const user = await createWorkspaceUser({
     tenantId,
     roleId: role.id,
