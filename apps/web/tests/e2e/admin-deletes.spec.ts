@@ -10,7 +10,7 @@
 import { test, expect, type Browser } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { createWorkspaceViaWizard, login, loginPlatformOwner, resetLoginThrottle, strongPassword } from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } from './helpers';
 import { RUN_TAG } from './run-tag';
 
 const workspace = {
@@ -38,7 +38,6 @@ const at = (path: string) => `/${workspace.slug}${path}`;
 async function signedIn(browser: Browser, email: string, password: string) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, email, password);
   return { context, page };
 }
@@ -50,7 +49,6 @@ test.describe('Deletes from lists and detail pages', () => {
   test('a workspace with an administrator and a rep who cannot delete', async ({ browser }) => {
     if (!(await prisma.tenant.findUnique({ where: { slug: workspace.slug } }))) {
       const page = await browser.newPage();
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, workspace);
       await page.close();
@@ -196,7 +194,6 @@ test.describe('Deletes from lists and detail pages', () => {
     // in their tenant — telling them "forbidden" would confirm the id exists.
     if (!(await prisma.tenant.findUnique({ where: { slug: other.slug } }))) {
       const page = await browser.newPage();
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, other);
       await page.close();

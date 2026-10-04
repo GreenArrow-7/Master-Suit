@@ -16,14 +16,7 @@
  * standalone artifact behind TLS, with a real sign-in.
  */
 import { test, expect, devices, type APIRequestContext } from '@playwright/test';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -49,11 +42,9 @@ test.describe('Follow-up work on a phone', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('a workspace and a lead exist', async ({ page }) => {
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
 
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const created = await post(page.request, 'leads', {
       fullName: `Mobile buyer ${run}`,
@@ -69,7 +60,6 @@ test.describe('Follow-up work on a phone', () => {
     const context = await browser.newContext({ ...devices['Pixel 7'] });
     const page = await context.newPage();
     try {
-      await resetLoginThrottle();
       await login(page, workspace.adminEmail, workspace.adminPassword);
 
       const due = new Date(Date.now() - 2 * 86_400_000).toISOString(); // overdue
@@ -127,7 +117,6 @@ test.describe('Follow-up work on a phone', () => {
     const context = await browser.newContext({ ...devices['Pixel 7'] });
     const page = await context.newPage();
     try {
-      await resetLoginThrottle();
       await login(page, workspace.adminEmail, workspace.adminPassword);
 
       await post(page.request, 'follow-ups', {
@@ -152,7 +141,6 @@ test.describe('Follow-up work on a phone', () => {
   });
 
   test('the dashboard overdue count equals the rows its link returns', async ({ page }) => {
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
     // One overdue obligation, owned by this viewer.

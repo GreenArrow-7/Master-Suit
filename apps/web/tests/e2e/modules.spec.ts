@@ -1,13 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  logout,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, logout, strongPassword, uniq } from './helpers';
 
 /**
  * One happy path per module, as §7 asks for.
@@ -50,14 +42,11 @@ test.describe('Each module opens and does its job', () => {
     await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
   }
 
-  test.beforeAll(resetLoginThrottle);
-
   test('a fresh workspace can reach and use every sales module', async ({ page }) => {
     await test.step('a workspace is created and its administrator signs in', async () => {
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, workspace);
       await logout(page);
-      await resetLoginThrottle();
       await login(page, workspace.adminEmail, workspace.adminPassword);
       await page.goto(`/${workspace.slug}/dashboard`);
       await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));

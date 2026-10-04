@@ -12,14 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, type APIRequestContext, type Browser } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -48,7 +41,6 @@ let financeB: Person;
 async function as(browser: Browser, who: Person): Promise<{ request: APIRequestContext; close: () => Promise<void> }> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, who.email, password);
   return { request: page.request, close: () => context.close() };
 }
@@ -106,7 +98,6 @@ test.describe('Agency-fee receipts on the release artifact (API-only — there i
   test.describe.configure({ mode: 'serial' });
 
   test('a workspace, a confirmed sale with an agreed fee, and four people exist', async ({ page }) => {
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } });
@@ -132,7 +123,6 @@ test.describe('Agency-fee receipts on the release artifact (API-only — there i
     ]);
 
     // The sale itself goes through the administrator and the real routes.
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const project = await page.request.post('/api/v1/projects', {
       data: { name: `Tower ${run}`, code: `T-${run}`.slice(0, 40) },

@@ -8,14 +8,7 @@
  * moves inventory with the sale. Runs against whatever `APP_URL` points at.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -52,10 +45,8 @@ test.describe('Booking confirmation on the release artifact', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('a workspace, a project with two units, and a buyer exist', async ({ page }) => {
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
     const project = await post(page.request, 'projects', { name: `Tower ${run}`, code: `T-${run}`.slice(0, 40) });
@@ -85,7 +76,6 @@ test.describe('Booking confirmation on the release artifact', () => {
   test('two drafts on one unit, confirmed together: exactly one sale, one refusal, the flat booked', async ({
     page,
   }) => {
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const body = (v: number) => ({
       leadId,
@@ -114,7 +104,6 @@ test.describe('Booking confirmation on the release artifact', () => {
   });
 
   test('a draft that names no unit cannot be confirmed', async ({ page }) => {
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const draft = (
       await post(page.request, 'bookings', {
@@ -131,7 +120,6 @@ test.describe('Booking confirmation on the release artifact', () => {
   });
 
   test('confirming against a sold flat is refused and moves nothing', async ({ page }) => {
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
 
     // Sell unit B the proper way, then try to sell it again.

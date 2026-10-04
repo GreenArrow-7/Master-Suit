@@ -11,14 +11,7 @@
 import { test, expect, devices, type Browser, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -84,7 +77,6 @@ async function signedIn(
         : {},
   );
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, email, pw);
   return { page, close: () => context.close() };
 }
@@ -97,7 +89,6 @@ test.describe('Work-area navigation', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('a workspace with Sales and People, an agent and a finance officer', async ({ page }) => {
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
     tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } })).id;

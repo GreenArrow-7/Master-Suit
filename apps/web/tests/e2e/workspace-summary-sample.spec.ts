@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { test, expect, devices, type Browser, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { createWorkspaceViaWizard, login, loginPlatformOwner, resetLoginThrottle, strongPassword } from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } from './helpers';
 import { RUN_TAG } from './run-tag';
 
 const before = process.env.SUMMARY_PHASE === 'before';
@@ -47,7 +47,6 @@ async function signedIn(
     if (message.type() === 'error') errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(error.message));
-  await resetLoginThrottle();
   await login(page, email, password);
   return { page, errors, close: () => context.close() };
 }
@@ -139,7 +138,6 @@ test.describe('Workspace Summary sample', () => {
   test('a workspace with pipeline, queues, follow-ups and an AI-scored call', async ({ browser }) => {
     if (await prisma.tenant.findUnique({ where: { slug: workspace.slug }, select: { id: true } })) return;
     const page = await browser.newPage();
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
     await page.close();

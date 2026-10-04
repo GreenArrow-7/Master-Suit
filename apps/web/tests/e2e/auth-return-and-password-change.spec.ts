@@ -40,7 +40,6 @@ test.describe('Sign-in return and password change', () => {
 
   test('a workspace to sign in to', async ({ browser }) => {
     const page = await browser.newPage();
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
     await page.close();
@@ -68,7 +67,6 @@ test.describe('Sign-in return and password change', () => {
   test('changing the password keeps this phone signed in and signs out the other one', async ({ browser }) => {
     const mine = await freshPhone(browser);
     const other = await freshPhone(browser);
-    await resetLoginThrottle();
     await login(mine.page, workspace.adminEmail, workspace.adminPassword);
     await login(other.page, workspace.adminEmail, workspace.adminPassword);
     expect((await other.page.request.get('/api/v1/leads')).status()).toBe(200);

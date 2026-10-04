@@ -14,7 +14,7 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
 import type { PermissionAction, VisibilityScope } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { login, resetLoginThrottle, strongPassword, uniq } from './helpers';
+import { login, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const slug = `empscope-${run}`.toLowerCase();
@@ -72,7 +72,6 @@ async function person(label: string, grants: [string, PermissionAction, Visibili
 async function signedIn(browser: Browser, label: string) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, people[label].email, password);
   return { page, close: () => context.close() };
 }

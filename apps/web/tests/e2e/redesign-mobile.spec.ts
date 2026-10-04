@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 /**
  * The phone redesign's first slice, reproduced from the owner's iPhone
@@ -14,7 +14,6 @@ const password = process.env.E2E_DEMO_PASSWORD!;
 
 test.describe('phone redesign: shell, Leads, Leadership', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
-  test.beforeEach(resetLoginThrottle);
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
   test('shell: 16px gutter, icon search, no page-wide scroll, header below the inset', async ({ page }) => {

@@ -11,14 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { test, expect, devices, type Browser, type Page } from '@playwright/test';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -92,7 +85,6 @@ async function signedIn(
 ): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await browser.newContext(mobile ? { ...devices['Pixel 7'] } : {});
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, who.email, password);
   return { page, close: () => context.close() };
 }
@@ -118,7 +110,6 @@ test.describe('Collections through the screens', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('a workspace, a confirmed sale with an agreed fee, and two finance people', async ({ page }) => {
-    await resetLoginThrottle();
     await loginPlatformOwner(page);
     await createWorkspaceViaWizard(page, workspace);
     tenantId = (await prisma.tenant.findUniqueOrThrow({ where: { slug: workspace.slug }, select: { id: true } })).id;
@@ -136,7 +127,6 @@ test.describe('Collections through the screens', () => {
       ['agencyfee', 'CREATE'],
     ]);
 
-    await resetLoginThrottle();
     await login(page, workspace.adminEmail, workspace.adminPassword);
     const project = await page.request.post('/api/v1/projects', {
       data: { name: `Tower ${run}`, code: `T-${run}`.slice(0, 40) },
@@ -552,10 +542,8 @@ test.describe('Collections through the screens', () => {
         adminPassword: strongPassword(`cuif${run}`),
         modules: ['SALES'] as ('SALES' | 'HRMS')[],
       };
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, foreign);
-      await resetLoginThrottle();
       await login(page, foreign.adminEmail, foreign.adminPassword);
       expect((await page.request.get(evidenceHref)).status()).toBe(404);
     } finally {
