@@ -36,7 +36,7 @@ jobs:
         run: npm ci && npm run sync
       - name: Build
         working-directory: apps/mobile/android
-        run: ./gradlew --no-daemon assembleDebug
+        run: bash ./gradlew --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: youhan-one-android-debug-apk
