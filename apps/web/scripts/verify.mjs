@@ -51,18 +51,21 @@ const workflow = path.resolve(root, '../../.github/workflows/ci.yml');
  */
 const PLAN = {
   Redis: { skip: 'CI starts its own Redis container; yours is already running — `npm run docker:up`.' },
+  'Object storage': { skip: 'CI starts its own S3 container; yours runs under `npm run docker:up`.' },
   Install: { skip: 'CI installs from a clean lockfile; your node_modules is already there.' },
   'Generate .env': {
     skip: 'Would overwrite your .env with fresh generated secrets. CI has no .env until this step; you do.',
   },
-  'Export RLS connection': { skip: 'Done below, from your .env, by the same rule CI uses.' },
+  'Export test connections': { skip: 'Done below, from your .env, by the same rule CI uses.' },
   'Apply migrations': {
     skip: 'Your database is already at head — and if it is not, "Schema drift" two lines down says so.',
   },
   'Schema drift': { run: true },
   'Tenant isolation': { run: true },
   'Raw SQL scope': { run: true },
+  'Permission catalogue': { run: true },
   'Seed demo data': { skip: 'Creates dozens of demo logins. CI builds a database per run and throws it away.' },
+  'Demo credentials': { skip: "Pins a fresh demo password for CI's throwaway database; your seed printed yours." },
   Typecheck: { run: true },
   Lint: { run: true },
   'Format check': { run: true },
@@ -73,17 +76,19 @@ const PLAN = {
   'Backup round trip': { run: true },
   Test: { run: true },
   // Needs E2E_DATABASE_URL and E2E_REDIS_URL, named explicitly and pointing at
-  // the same disposable database the server reads. tests/server/environment.ts
+  // the same disposable database the server reads. tests/helpers/isolation.ts
   // refuses to run without them rather than falling back to a default, because
   // the default it used to have was the developer's own database. This gate
   // therefore fails with a readable message, not a mystery 401, when the
   // variables are absent. See docs/TEST-ISOLATION.md.
   'Integration (server)': { run: true, slow: true },
+  Worker: { skip: 'Backgrounds the queue worker for the e2e demo journeys; `npm run worker` if you run those.' },
   'Playwright version': { skip: 'Reads a version into a CI output variable. Not a gate.' },
   'Install Playwright browser': { skip: 'Installs and caches Chromium on the runner.' },
   E2E: {
     skip: 'The slowest gate by a wide margin, and it needs a production build and a matching Chromium. Run `npm run test:e2e` when you have touched the browser paths.',
   },
+  'Stop worker': { skip: 'Stops the worker CI started above.' },
   Build: { run: true, slow: true },
   Audit: { run: true },
 };
