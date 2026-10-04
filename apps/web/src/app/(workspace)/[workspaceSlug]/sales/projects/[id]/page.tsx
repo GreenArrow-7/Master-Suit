@@ -9,6 +9,7 @@ import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import FavouriteButton, { ProjectFlags } from './FavouriteButton';
 import UnitBoard from './UnitBoard';
+import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Project' };
 
@@ -351,15 +352,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
     </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="lf-metric-card">
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
-    </article>
   );
 }
 

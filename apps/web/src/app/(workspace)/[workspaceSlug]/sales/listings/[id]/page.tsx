@@ -12,6 +12,7 @@ import { requirementsWanting } from '@/services/inventory/demand';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import MandatePanel from './MandatePanel';
+import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Listing' };
 
@@ -289,15 +290,6 @@ export default async function ListingDetailPage({
         </section>
       )}
     </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="lf-metric-card">
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
-    </article>
   );
 }
 

@@ -7,7 +7,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import Badge from '@/components/ui/Badge';
 import type { WorkspaceDetail } from '@/services/ai/console';
-import { STATUS_LABEL, STATUS_TONE, SOURCE_LABEL, UsageBar, nf, money, ago } from '../../ui';
+import { STATUS_LABEL, STATUS_TONE, SOURCE_LABEL, UsageBar, Field, Stat, nf, money, ago } from '../../ui';
 
 /**
  * One company's AI consumption, and the controls over it.
@@ -356,29 +356,6 @@ export default function WorkspaceView(data: WorkspaceDetail) {
           rows={data.byModel.map((m) => [m.provider, m.model, nf(m.requests), nf(m.tokens)])}
         />
       </section>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="lf-field" style={{ minWidth: 150 }}>
-      <span className="lf-label">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div>
-      <div className="lf-muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 600 }}>{value}</div>
-      <div className="lf-muted" style={{ fontSize: 12 }}>
-        {hint}
-      </div>
     </div>
   );
 }

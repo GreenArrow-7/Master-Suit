@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Tone } from './Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 
@@ -46,5 +47,15 @@ export default function MetricCard({ label, value, tone = 'slate', href }: Metri
     <div className="lf-card" style={style}>
       {body}
     </div>
+  );
+}
+
+/** A compact label-and-value tile, for record detail pages and consoles. */
+export function Metric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <article className="lf-metric-card">
+      <div className="lf-eyebrow">{label}</div>
+      <div className="lf-metric-card__value">{value}</div>
+    </article>
   );
 }
