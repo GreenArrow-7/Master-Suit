@@ -124,11 +124,6 @@ export function effective(key: string, file: Record<string, string>): string | u
 }
 
 export interface IsolationOptions {
-  /**
-   * The env file the application under test reads. `.env` for the server and
-   * browser suites, whose server is started from it.
-   */
-  appEnvFile?: string;
   /** Suite name, for messages. */
   suite: string;
 }
@@ -305,7 +300,7 @@ export function assertDisposableEnvironment(opts: IsolationOptions): Targets {
    * a configuration nothing is using — the guard would pass while the server ran
    * on something else entirely. `E2E_APP_ENV_FILE` names the real one.
    */
-  const file = readEnvFile(process.env.E2E_APP_ENV_FILE ?? opts.appEnvFile ?? '.env');
+  const file = readEnvFile(process.env.E2E_APP_ENV_FILE ?? '.env');
 
   const databaseUrl = process.env.E2E_DATABASE_URL;
   const redisUrl = process.env.E2E_REDIS_URL;

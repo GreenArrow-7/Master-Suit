@@ -5,11 +5,11 @@ import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '@/lib/auth/password';
 import { totp } from '@/lib/auth/mfa';
-import { assertDisposableEnvironment } from './environment';
+import { assertDisposableEnvironment } from '../helpers/isolation';
 import { waitForNextTotpStep } from '../helpers/totp';
 
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-const targets = assertDisposableEnvironment();
+const targets = assertDisposableEnvironment({ suite: 'server integration' });
 
 /**
  * This spec drives a *running server*, so it must read the database that server

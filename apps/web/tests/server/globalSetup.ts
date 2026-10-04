@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import path from 'node:path';
-import { assertDisposableEnvironment } from './environment';
+import { assertDisposableEnvironment } from '../helpers/isolation';
 
 /**
  * Starts the application for the specs in this directory, and stops it again.
@@ -89,7 +89,7 @@ export default async function setup() {
   // Before anything is started or written. The suites assert this too — they
   // open their own client — but doing it here means an unsafe configuration
   // costs nothing rather than a server boot and a partial fixture run.
-  assertDisposableEnvironment();
+  assertDisposableEnvironment({ suite: 'server integration' });
 
   // An externally supplied URL wins, so CI can point these at a deployed
   // instance without this file having to know about it.
