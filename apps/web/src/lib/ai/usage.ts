@@ -41,7 +41,7 @@ export type PaidBy = Exclude<GeminiCredential['source'], 'simulated'>;
 
 /** `2026-08`. UTC, so a workspace's month does not depend on its timezone. */
 function period(at: Date): string {
-  return `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
+  return at.toISOString().slice(0, 7);
 }
 
 /**
@@ -163,66 +163,31 @@ export function parseModelMetric(metric: string): { paidBy: string; model: strin
 export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
 
 /**
- * The workspace's ceiling for this month, or null for "no limit configured".
+ * A ceiling from the workspace's plan, or null for "no limit configured".
  *
  * Read from the plan rather than from `WorkspaceUsage.limit`, because a plan
  * change should move every subscriber's ceiling at once. Absent means unlimited:
  * a platform that has not decided on a number must not refuse work because of a
  * default somebody guessed.
  */
-async function monthlyLimit(tenantId: string): Promise<number | null> {
+async function planLimit(tenantId: string, key: string): Promise<number | null> {
   const subscription = await prisma.tenantSubscription.findUnique({
     where: { tenantId },
-    select: { plan: { select: { planLimits: { where: { key: AI_TOKEN_LIMIT_KEY }, select: { value: true } } } } },
+    select: { plan: { select: { planLimits: { where: { key }, select: { value: true } } } } },
   });
   const value = subscription?.plan?.planLimits[0]?.value;
   return typeof value === 'number' && value > 0 ? value : null;
 }
 
 /**
- * Deployment-key spend only — the budget the ceiling is about.
- *
- * A workspace's own-key spend is deliberately not counted here. Doing so was
- * the bug: it charged a tenant against an allowance for a bill they were
- * already paying themselves.
+ * What a counter has reached this month. The ceilings read the `deployment`
+ * counters only: a workspace's own-key spend is deliberately not counted.
+ * Doing so was the bug — it charged a tenant against an allowance for a bill
+ * they were already paying themselves.
  */
-async function featureLimit(tenantId: string, feature: string): Promise<number | null> {
-  const subscription = await prisma.tenantSubscription.findUnique({
-    where: { tenantId },
-    select: { plan: { select: { planLimits: { where: { key: featureLimitKey(feature) }, select: { value: true } } } } },
-  });
-  const value = subscription?.plan?.planLimits[0]?.value;
-  return typeof value === 'number' && value > 0 ? value : null;
-}
-
-async function userLimit(tenantId: string): Promise<number | null> {
-  const subscription = await prisma.tenantSubscription.findUnique({
-    where: { tenantId },
-    select: { plan: { select: { planLimits: { where: { key: USER_TOKEN_LIMIT_KEY }, select: { value: true } } } } },
-  });
-  const value = subscription?.plan?.planLimits[0]?.value;
-  return typeof value === 'number' && value > 0 ? value : null;
-}
-
-async function userUsedThisMonth(tenantId: string, userId: string): Promise<number> {
+async function usedThisMonth(tenantId: string, metric: string): Promise<number> {
   const row = await prisma.workspaceUsage.findUnique({
-    where: { tenantId_metric: { tenantId, metric: userUsageMetric('deployment', userId) } },
-    select: { used: true },
-  });
-  return row?.used ?? 0;
-}
-
-async function featureUsedThisMonth(tenantId: string, feature: string): Promise<number> {
-  const row = await prisma.workspaceUsage.findUnique({
-    where: { tenantId_metric: { tenantId, metric: featureUsageMetric('deployment', feature) } },
-    select: { used: true },
-  });
-  return row?.used ?? 0;
-}
-
-async function deploymentUsedThisMonth(tenantId: string): Promise<number> {
-  const row = await prisma.workspaceUsage.findUnique({
-    where: { tenantId_metric: { tenantId, metric: usageMetric('deployment') } },
+    where: { tenantId_metric: { tenantId, metric } },
     select: { used: true },
   });
   return row?.used ?? 0;
@@ -274,8 +239,8 @@ export async function assertAiBudget(
 
   // One person's ceiling, where the request has a person behind it (worker jobs do not).
   if (userId) {
-    const cap = await userLimit(tenantId);
-    if (cap !== null && (await userUsedThisMonth(tenantId, userId)) >= cap) {
+    const cap = await planLimit(tenantId, USER_TOKEN_LIMIT_KEY);
+    if (cap !== null && (await usedThisMonth(tenantId, userUsageMetric('deployment', userId))) >= cap) {
       logger.warn({ tenantId, userId, cap }, 'ai per-user budget exhausted for the month');
       throw Forbidden(
         `You have used your monthly AI allowance (${cap.toLocaleString()} tokens). It resets at the start of next month.`,
@@ -285,8 +250,8 @@ export async function assertAiBudget(
 
   // A feature's own ceiling first: it is the narrower rule, and the message names it.
   if (feature) {
-    const cap = await featureLimit(tenantId, feature);
-    if (cap !== null && (await featureUsedThisMonth(tenantId, feature)) >= cap) {
+    const cap = await planLimit(tenantId, featureLimitKey(feature));
+    if (cap !== null && (await usedThisMonth(tenantId, featureUsageMetric('deployment', feature))) >= cap) {
       logger.warn({ tenantId, feature, cap }, 'ai feature budget exhausted for the month');
       throw Forbidden(
         `This workspace has used its monthly AI allowance for ${feature} (${cap.toLocaleString()} tokens). ` +
@@ -295,10 +260,10 @@ export async function assertAiBudget(
     }
   }
 
-  const limit = await monthlyLimit(tenantId);
+  const limit = await planLimit(tenantId, AI_TOKEN_LIMIT_KEY);
   if (limit === null) return { downgrade: verdict.downgrade };
 
-  const used = await deploymentUsedThisMonth(tenantId);
+  const used = await usedThisMonth(tenantId, usageMetric('deployment'));
   if (used < limit) return { downgrade: verdict.downgrade };
 
   logger.warn({ tenantId, used, limit }, 'ai budget exhausted for the month');
@@ -379,82 +344,42 @@ export async function recordAiUsage(
   // this is the platform-wide spend curve.
   recordAiTokens(context.feature, credential.source, tokens);
 
-  try {
-    const metric = usageMetric(credential.source);
-    await prisma.workspaceUsage.upsert({
-      where: { tenantId_metric: { tenantId, metric } },
-      create: { tenantId, metric, used: tokens, limit: await monthlyLimit(tenantId), measuredAt: new Date() },
-      update: { used: { increment: tokens }, measuredAt: new Date() },
-    });
-  } catch (err) {
-    logger.warn({ err, tenantId }, 'could not record ai usage');
-  }
+  /**
+   * Adds to one counter. Each write is best-effort and separate: a failure to
+   * record one breakdown must not cost the deployment the row its ceiling reads.
+   */
+  const bump = async (metric: string, amount: number, limit: number | null = null) => {
+    try {
+      await prisma.workspaceUsage.upsert({
+        where: { tenantId_metric: { tenantId, metric } },
+        create: { tenantId, metric, used: amount, limit, measuredAt: new Date() },
+        update: { used: { increment: amount }, measuredAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ err, tenantId, metric }, 'could not record ai usage');
+    }
+  };
+
+  await bump(usageMetric(credential.source), tokens, await planLimit(tenantId, AI_TOKEN_LIMIT_KEY));
 
   /**
-   * The same tokens again, attributed to the model.
-   *
-   * Its own try/catch, and second: the row above is what the ceiling reads, so
-   * a failure to record the breakdown must not cost the deployment its
-   * accounting. `limit` is deliberately left null here — the allowance belongs
-   * to the workspace's month, not to one model within it, and copying it onto
-   * every model row would invite a reader to treat six ceilings as real.
+   * The same tokens again, attributed to the model. `limit` is deliberately
+   * left null — the allowance belongs to the workspace's month, not to one model
+   * within it, and copying it onto every model row would invite a reader to
+   * treat six ceilings as real.
    */
-  try {
-    const metric = modelUsageMetric(credential.source, context.model);
-    await prisma.workspaceUsage.upsert({
-      where: { tenantId_metric: { tenantId, metric } },
-      create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
-      update: { used: { increment: tokens }, measuredAt: new Date() },
-    });
-  } catch (err) {
-    logger.warn({ err, tenantId, model: context.model }, 'could not record ai model usage');
-  }
+  await bump(modelUsageMetric(credential.source, context.model), tokens);
 
   // Sent and received, separately: a summary that reads 40k tokens is a different
   // bill from one that writes them, and the estimate needs both.
   const promptTokens = usage?.promptTokens ?? 0;
   const completionTokens = usage?.completionTokens ?? 0;
-  if (promptTokens || completionTokens) {
-    for (const [metric, amount] of [
-      [inputUsageMetric(credential.source), promptTokens],
-      [outputUsageMetric(credential.source), completionTokens],
-    ] as const) {
-      if (!amount) continue;
-      try {
-        await prisma.workspaceUsage.upsert({
-          where: { tenantId_metric: { tenantId, metric } },
-          create: { tenantId, metric, used: amount, limit: null, measuredAt: new Date() },
-          update: { used: { increment: amount }, measuredAt: new Date() },
-        });
-      } catch (err) {
-        logger.warn({ err, tenantId, metric }, 'could not record ai token direction');
-      }
-    }
-  }
+  if (promptTokens) await bump(inputUsageMetric(credential.source), promptTokens);
+  if (completionTokens) await bump(outputUsageMetric(credential.source), completionTokens);
 
   // By person, where there is one: what the per-user ceiling reads.
-  if (context.userId) {
-    try {
-      const metric = userUsageMetric(credential.source, context.userId);
-      await prisma.workspaceUsage.upsert({
-        where: { tenantId_metric: { tenantId, metric } },
-        create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
-        update: { used: { increment: tokens }, measuredAt: new Date() },
-      });
-    } catch (err) {
-      logger.warn({ err, tenantId, userId: context.userId }, 'could not record ai user usage');
-    }
-  }
+  if (context.userId) await bump(userUsageMetric(credential.source, context.userId), tokens);
 
   // And once more by feature, which is what a per-feature ceiling reads.
-  try {
-    const metric = featureUsageMetric(credential.source, context.feature);
-    await prisma.workspaceUsage.upsert({
-      where: { tenantId_metric: { tenantId, metric } },
-      create: { tenantId, metric, used: tokens, limit: null, measuredAt: new Date() },
-      update: { used: { increment: tokens }, measuredAt: new Date() },
-    });
-  } catch (err) {
-    logger.warn({ err, tenantId, feature: context.feature }, 'could not record ai feature usage');
-  }
+  await bump(featureUsageMetric(credential.source, context.feature), tokens);
 }
