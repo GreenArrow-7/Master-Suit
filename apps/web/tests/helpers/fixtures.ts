@@ -69,6 +69,54 @@ export async function createWorkspaceUser(input: {
   return { ...user, membershipId: membership.id, platformUserId: platformUser.id };
 }
 
+/**
+ * An ACTIVE employee who joined on 2020-01-01: a workspace user plus their
+ * EmployeeProfile. Without `roleId` they get a role of their own that carries
+ * no grants — HR specs state the permissions they exercise on the Ctx
+ * (buildActor's `grants`) rather than inheriting them from a fixture.
+ */
+export async function createEmployee(input: {
+  tenantId: string;
+  label: string;
+  suffix: string;
+  roleId?: string;
+  defaultScope?: VisibilityScope;
+  joinedOn?: Date;
+  managerMembershipId?: string | null;
+}) {
+  const { tenantId, label, suffix } = input;
+  const roleId =
+    input.roleId ??
+    (
+      await prisma.role.create({
+        data: {
+          tenantId,
+          key: `${label}-${suffix}`,
+          name: label,
+          rank: 50,
+          defaultScope: input.defaultScope ?? 'ORGANIZATION',
+        },
+      })
+    ).id;
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId,
+    email: `${label}-${suffix}@employee.test`,
+    fullName: label,
+  });
+  const employee = await prisma.employeeProfile.create({
+    data: {
+      tenantId,
+      membershipId: user.membershipId,
+      employeeNumber: `${label.toUpperCase()}-${suffix}`,
+      employmentStatus: 'ACTIVE',
+      joinedOn: input.joinedOn ?? new Date('2020-01-01'),
+      managerMembershipId: input.managerMembershipId ?? null,
+    },
+  });
+  return { employeeId: employee.id, userId: user.id, membershipId: user.membershipId };
+}
+
 export interface TenantFixture {
   tenantId: string;
   slug: string;

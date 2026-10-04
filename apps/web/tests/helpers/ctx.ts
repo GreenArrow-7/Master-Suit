@@ -8,7 +8,11 @@
 import { ulid } from 'ulid';
 import type { Ctx, Actor, PermissionMap } from '@/lib/security/rbac';
 
-export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: string }): Actor {
+/** `grants` is shorthand for `permissions`: each `[module, action]` pair at ORGANIZATION scope. */
+export function buildActor({
+  grants = [],
+  ...overrides
+}: Partial<Actor> & { id: string; tenantId: string; grants?: readonly (readonly [string, string])[] }): Actor {
   return {
     fullName: 'Test Actor',
     email: 'actor@test.local',
@@ -21,7 +25,7 @@ export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: s
     grantedRegionIds: [],
     teamIds: [],
     managedUserIds: [],
-    permissions: new Map() as PermissionMap,
+    permissions: new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap,
     ...overrides,
   };
 }

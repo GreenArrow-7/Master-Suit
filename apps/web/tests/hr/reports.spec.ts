@@ -11,7 +11,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { REPORTS, availableReports, exportReportCsv, runReport } from '@/services/hr/reports';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import type { PermissionMap } from '@/lib/security/rbac';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `rpt-${suffix}`;
@@ -20,11 +19,8 @@ let tenantId = '';
 let employeeId = '';
 let userId = '';
 
-const permissions = (grants: readonly (readonly [string, string])[]) =>
-  new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap;
-
 const ctxWith = (grants: readonly (readonly [string, string])[]) =>
-  buildCtx(buildActor({ id: userId, tenantId, permissions: permissions(grants) }));
+  buildCtx(buildActor({ id: userId, tenantId, grants }));
 
 /** The floor plus employee reads: what an ordinary line manager holds. */
 const MANAGER = [
