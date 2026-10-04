@@ -12,13 +12,11 @@ const EICAR = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$
 
 async function withProvider(provider: string, run: () => Promise<void>) {
   vi.resetModules();
-  const previous = process.env.ANTIVIRUS_PROVIDER;
-  process.env.ANTIVIRUS_PROVIDER = provider;
+  vi.stubEnv('ANTIVIRUS_PROVIDER', provider);
   try {
     await run();
   } finally {
-    if (previous === undefined) delete process.env.ANTIVIRUS_PROVIDER;
-    else process.env.ANTIVIRUS_PROVIDER = previous;
+    vi.unstubAllEnvs();
     vi.resetModules();
   }
 }
@@ -64,15 +62,13 @@ describe('fail closed', () => {
     await withProvider('clamav', async () => {
       // Port 1 is reserved and nothing listens on it, so this is a genuine
       // connection failure rather than a stubbed one.
-      process.env.CLAMAV_PORT = '1';
-      process.env.ANTIVIRUS_TIMEOUT_MS = '1500';
+      vi.stubEnv('CLAMAV_PORT', '1');
+      vi.stubEnv('ANTIVIRUS_TIMEOUT_MS', '1500');
       const { scanBuffer } = await import('@/lib/antivirus');
       const result = await scanBuffer(Buffer.from('%PDF-1.4 harmless'));
       expect(result.verdict).toBe('ERROR');
       expect(result.verdict).not.toBe('CLEAN');
       expect(result.detail).toBeTruthy();
-      delete process.env.CLAMAV_PORT;
-      delete process.env.ANTIVIRUS_TIMEOUT_MS;
     });
   }, 20_000);
 

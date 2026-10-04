@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { wrapCredentials } from '@/lib/integrations/connection';
 import { geminiCredential, geminiModel, geminiProvider } from '@/lib/ai/gemini';
@@ -15,8 +15,6 @@ const geminiKey = async (tenantId?: string) => (await geminiCredential(tenantId)
  */
 const suffix = randomBytes(4).toString('hex');
 const workspace = { id: '', other: '' };
-const originalKey = process.env.GEMINI_API_KEY;
-const originalModel = process.env.GEMINI_MODEL;
 
 beforeAll(async () => {
   const [a, b] = await Promise.all([
@@ -42,20 +40,19 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  process.env.GEMINI_API_KEY = originalKey;
-  process.env.GEMINI_MODEL = originalModel;
+  vi.unstubAllEnvs();
   await prisma.integrationConnection.deleteMany({ where: { tenantId: { in: [workspace.id, workspace.other] } } });
   await prisma.tenant.deleteMany({ where: { id: { in: [workspace.id, workspace.other] } } });
 });
 
 describe('gemini key resolution', () => {
   it('prefers the workspace key over the deployment key', async () => {
-    process.env.GEMINI_API_KEY = 'deployment-key';
+    vi.stubEnv('GEMINI_API_KEY', 'deployment-key');
     expect(await geminiKey(workspace.id)).toBe('tenant-a-key');
   });
 
   it('falls back to the deployment key for a workspace that has not connected one', async () => {
-    process.env.GEMINI_API_KEY = 'deployment-key';
+    vi.stubEnv('GEMINI_API_KEY', 'deployment-key');
     expect(await geminiKey(workspace.other)).toBe('deployment-key');
   });
 
@@ -65,13 +62,13 @@ describe('gemini key resolution', () => {
    * makes a leak look like a working feature rather than an error.
    */
   it('never lends one workspace key to another', async () => {
-    delete process.env.GEMINI_API_KEY;
+    vi.stubEnv('GEMINI_API_KEY', undefined);
     expect(await geminiKey(workspace.id)).toBe('tenant-a-key');
     expect(await geminiKey(workspace.other)).toBeNull();
   });
 
   it('reports nothing when neither source has a key', async () => {
-    delete process.env.GEMINI_API_KEY;
+    vi.stubEnv('GEMINI_API_KEY', undefined);
     expect(await geminiKey(workspace.other)).toBeNull();
     expect(await geminiKey()).toBeNull();
   });
@@ -86,7 +83,7 @@ describe('gemini key resolution', () => {
   });
 
   it('lets a workspace pick its own model, and falls back when it has not', async () => {
-    process.env.GEMINI_MODEL = 'gemini-2.0-flash';
+    vi.stubEnv('GEMINI_MODEL', 'gemini-2.0-flash');
     expect(await geminiModel(workspace.id)).toBe('gemini-3-pro');
     expect(await geminiModel(workspace.other)).toBe('gemini-2.0-flash');
   });
@@ -114,7 +111,7 @@ describe('gemini key resolution', () => {
     });
 
     it('travels with the credential, so the transport cannot guess', async () => {
-      delete process.env.GEMINI_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', undefined);
       await setProvider(workspace.id, 'openrouter', 'google/gemini-2.0-flash-001');
       expect(await geminiCredential(workspace.id)).toEqual({
         key: 'tenant-a-key',
@@ -130,7 +127,7 @@ describe('gemini key resolution', () => {
      * puts the misconfiguration where somebody sees it.
      */
     it('refuses to guess an OpenRouter model rather than defaulting to Google’s', async () => {
-      delete process.env.GEMINI_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', undefined);
       await setProvider(workspace.id, 'openrouter');
       const credential = await geminiCredential(workspace.id);
       expect(credential.key).toBeNull();
@@ -140,10 +137,10 @@ describe('gemini key resolution', () => {
     });
 
     it('still serves a Google key with no model set, because that default is real', async () => {
-      delete process.env.GEMINI_API_KEY;
+      vi.stubEnv('GEMINI_API_KEY', undefined);
       // An earlier case pins GEMINI_MODEL; this one is about the built-in
       // fallback, which only shows when the deployment has not overridden it.
-      delete process.env.GEMINI_MODEL;
+      vi.stubEnv('GEMINI_MODEL', undefined);
       await setProvider(workspace.id, 'google');
       const credential = await geminiCredential(workspace.id);
       expect(credential.key).toBe('tenant-a-key');
@@ -161,7 +158,7 @@ describe('gemini key resolution', () => {
      * google regardless, so it cannot tell the two behaviours apart.
      */
     it('keeps the deployment key on google whatever the workspace chose', async () => {
-      process.env.GEMINI_API_KEY = 'deployment-key';
+      vi.stubEnv('GEMINI_API_KEY', 'deployment-key');
       await setProvider(workspace.id, 'openrouter', 'google/gemini-2.0-flash-001');
       expect(await geminiProvider(workspace.id)).toBe('openrouter');
 
@@ -189,7 +186,7 @@ describe('gemini key resolution', () => {
       where: { tenantId: workspace.id, provider: 'gemini' },
       data: { status: 'DISCONNECTED' },
     });
-    delete process.env.GEMINI_API_KEY;
+    vi.stubEnv('GEMINI_API_KEY', undefined);
     // Disconnected means disconnected — not "keep using the key quietly".
     expect(await geminiKey(workspace.id)).toBeNull();
     await prisma.integrationConnection.updateMany({

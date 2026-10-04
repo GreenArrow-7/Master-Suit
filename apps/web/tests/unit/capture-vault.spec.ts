@@ -76,14 +76,12 @@ beforeEach(async () => {
   bucket.clear();
   putShouldFail = false;
   legacyRoot = mkdtempSync(join(tmpdir(), 'captures-'));
-  process.env.ATTENDANCE_CAPTURE_DIR = legacyRoot;
+  vi.stubEnv('ATTENDANCE_CAPTURE_DIR', legacyRoot);
   vi.resetModules();
   vault = await import('@/services/hr/captureVault');
 });
 
-afterEach(() => {
-  delete process.env.ATTENDANCE_CAPTURE_DIR;
-});
+afterEach(() => vi.unstubAllEnvs());
 
 describe('storing a capture', () => {
   it('returns the same relative path shape the punch column already holds', async () => {

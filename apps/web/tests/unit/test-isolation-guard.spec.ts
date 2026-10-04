@@ -10,7 +10,7 @@
  * a relaxed `mock`: it swaps in one verified allowance and keeps every other
  * refusal, and the tests say so.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assertDisposableEnvironment, describeTarget } from '../helpers/isolation';
 
 const OWNER = 'postgresql://leadflow:secret@127.0.0.1:5432/master_suite_val?schema=public';
@@ -36,11 +36,8 @@ const KEYS = [
   'GEMINI_API_KEY',
 ] as const;
 
-let saved: Record<string, string | undefined>;
-
 beforeEach(() => {
-  saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
-  for (const k of KEYS) delete process.env[k];
+  for (const k of KEYS) vi.stubEnv(k, undefined);
   // Pin the application's own configuration in the process environment, which
   // takes precedence over the env file — so these tests describe one fixed
   // world rather than whatever .env happens to say on this machine.
@@ -52,12 +49,7 @@ beforeEach(() => {
   process.env.S3_ENDPOINT = 'http://127.0.0.1:9000';
 });
 
-afterEach(() => {
-  for (const k of KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-});
+afterEach(() => vi.unstubAllEnvs());
 
 const guard = () => assertDisposableEnvironment({ suite: 'unit-under-test' });
 
