@@ -683,9 +683,6 @@ body {
   cursor: pointer;
 }
 
-@media (max-width: 760px) {
-}
-
 @keyframes lf-sheet-rise {
   from {
     transform: translateY(12px);
@@ -4978,30 +4975,7 @@ a.lf-kpi:hover {
   border-radius: 999px;
   background: var(--yh-cyan);
 }
-.lf-ai-confidence {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font: 500 var(--lf-text-2xs) / 1 var(--lf-font-mono);
-  color: var(--lf-ink-3);
-}
-.lf-ai-confidence__bar {
-  width: 34px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--lf-line);
-  overflow: hidden;
-}
-.lf-ai-confidence__fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--yh-signal-edge);
-}
 /* Low confidence leaves the brand ramp for amber: "verify this" is a warning. */
-.lf-ai-confidence[data-level='low'] .lf-ai-confidence__fill {
-  background: var(--yh-warning);
-}
 .lf-ai-disclaimer {
   margin: 0 0 var(--lf-space-3);
   padding: var(--lf-space-2) var(--lf-space-3);

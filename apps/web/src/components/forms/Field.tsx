@@ -22,7 +22,6 @@ export default function Field({
   htmlFor,
   required,
   error,
-  hint,
   children,
 }: {
   label: ReactNode;
@@ -31,7 +30,6 @@ export default function Field({
   required?: boolean;
   /** The message for THIS field, from useFormErrors. */
   error?: string;
-  hint?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -40,7 +38,6 @@ export default function Field({
         {label}
       </label>
       {children}
-      {hint && !error && <span className="lf-field__hint">{hint}</span>}
       {error && (
         <span className="lf-field__error" role="alert">
           {error}

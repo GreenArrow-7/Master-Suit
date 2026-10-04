@@ -23,36 +23,27 @@ export default function TableSearch({
   children,
   placeholder = 'Search this list…',
   label = 'Search',
-  /** Column indexes to match against. Omit to search the whole row. */
-  columns,
 }: {
   children: ReactNode;
   placeholder?: string;
   label?: string;
-  columns?: number[];
 }) {
   const host = useRef<HTMLDivElement>(null);
   const id = useId();
   const [count, setCount] = useState<{ shown: number; total: number } | null>(null);
 
-  const filter = useCallback(
-    (raw: string) => {
-      const rows = host.current?.querySelectorAll<HTMLTableRowElement>('tbody tr');
-      if (!rows) return;
-      const needle = raw.trim().toLowerCase();
-      let shown = 0;
-      for (const row of rows) {
-        const haystack = columns
-          ? columns.map((index) => row.cells[index]?.textContent ?? '').join(' ')
-          : (row.textContent ?? '');
-        const match = !needle || haystack.toLowerCase().includes(needle);
-        row.style.display = match ? '' : 'none';
-        if (match) shown += 1;
-      }
-      setCount(needle ? { shown, total: rows.length } : null);
-    },
-    [columns],
-  );
+  const filter = useCallback((raw: string) => {
+    const rows = host.current?.querySelectorAll<HTMLTableRowElement>('tbody tr');
+    if (!rows) return;
+    const needle = raw.trim().toLowerCase();
+    let shown = 0;
+    for (const row of rows) {
+      const match = !needle || (row.textContent ?? '').toLowerCase().includes(needle);
+      row.style.display = match ? '' : 'none';
+      if (match) shown += 1;
+    }
+    setCount(needle ? { shown, total: rows.length } : null);
+  }, []);
 
   return (
     <div ref={host} style={{ display: 'grid', gap: 'var(--lf-space-2)' }}>

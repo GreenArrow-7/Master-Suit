@@ -13,7 +13,6 @@ export interface MetricCardProps {
   label: string;
   value: number | string;
   tone?: Tone;
-  delta?: { value: number; label: string };
   href?: string;
 }
 
@@ -22,24 +21,13 @@ export interface MetricCardProps {
  * numbers are what a manager reads first each morning; making them typographically
  * distinct from every other figure in the product is functional, not decorative.
  */
-export default function MetricCard({ label, value, tone = 'slate', delta, href }: MetricCardProps) {
+export default function MetricCard({ label, value, tone = 'slate', href }: MetricCardProps) {
   const body = (
     <>
       <div className="lf-eyebrow">{label}</div>
       <div className="lf-hero-figure" style={{ color: COLOR[tone], marginTop: 6 }}>
         {typeof value === 'number' ? value.toLocaleString('en-AE') : value}
       </div>
-      {delta && (
-        <div style={{ marginTop: 6, fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>
-          <span
-            className="lf-num"
-            style={{ color: delta.value >= 0 ? 'var(--lf-viridian)' : 'var(--lf-vermillion)', fontWeight: 600 }}
-          >
-            {delta.value >= 0 ? '↑' : '↓'} {Math.abs(delta.value)}%
-          </span>{' '}
-          {delta.label}
-        </div>
-      )}
     </>
   );
 
