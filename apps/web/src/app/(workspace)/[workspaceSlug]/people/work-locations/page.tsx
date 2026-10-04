@@ -47,7 +47,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
       <section>
-        <div className="lf-eyebrow">People</div>
+        <div className="lf-eyebrow">Attendance</div>
         <h1 style={{ margin: '8px 0 0' }}>Work locations</h1>
         <details className="lf-help">
           <summary>How this works</summary>
