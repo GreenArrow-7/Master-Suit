@@ -22,6 +22,7 @@
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { names } from '@/services/leadership/rollups';
 
 /** A session idle longer than this has its claim released. */
 const STALE_AFTER_MS = 15 * 60_000;
@@ -561,11 +562,11 @@ export async function teamSessions(tenantId: string, campaignId: string) {
   });
   if (sessions.length === 0) return [];
 
-  const [users, contacts] = await Promise.all([
-    prisma.user.findMany({
-      where: { tenantId, id: { in: sessions.map((s) => s.userId) } },
-      select: { id: true, fullName: true },
-    }),
+  const [name, contacts] = await Promise.all([
+    names(
+      tenantId,
+      sessions.map((s) => s.userId),
+    ),
     prisma.campaignContact.findMany({
       where: {
         tenantId,
@@ -575,7 +576,6 @@ export async function teamSessions(tenantId: string, campaignId: string) {
     }),
   ]);
 
-  const name = new Map(users.map((u) => [u.id, u.fullName]));
   const onNow = new Map(contacts.map((c) => [c.id, c]));
 
   return sessions.map((s) => ({

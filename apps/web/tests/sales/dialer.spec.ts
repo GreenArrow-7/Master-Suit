@@ -1,6 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { advance, endSession, resumeOrStart, sweepStaleClaims, usesDialer } from '@/services/dialer/session';
+import {
+  advance,
+  endSession,
+  resumeOrStart,
+  sweepStaleClaims,
+  teamSessions,
+  usesDialer,
+} from '@/services/dialer/session';
 import { loadQueue, queueStats } from '@/services/dialer/queue';
 import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
 
@@ -615,5 +622,20 @@ describe('which campaigns are dialled at all', () => {
     // the count is tenant-scoped at all: a contact in tenant B must not make
     // tenant A's campaign look dialled.
     expect(await usesDialer(fixture.b.tenantId, campaign)).toBe(false);
+  });
+});
+
+// ── The leader's view of who is dialling ─────────────────────────────────────
+describe('the supervisor view', () => {
+  it('names each agent, and shows the id when no account is behind it', async () => {
+    await resumeOrStart(fixture.a.tenantId, fixture.a.userId, campaignId);
+    await resumeOrStart(fixture.a.tenantId, AGENT_B, campaignId);
+    const { fullName } = await prisma.user.findFirstOrThrow({
+      where: { id: fixture.a.userId, tenantId: fixture.a.tenantId },
+      select: { fullName: true },
+    });
+
+    const agents = (await teamSessions(fixture.a.tenantId, campaignId)).map((row) => row.agent);
+    expect(agents.sort()).toEqual([AGENT_B, fullName].sort());
   });
 });

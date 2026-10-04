@@ -18,6 +18,7 @@ import { lockAndVerify, DEFAULT_POLICY, policyFromRule } from './eligibility';
 import { explainReason, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 import { enqueueNotice, withdrawNotice } from '@/services/notifications/outbox';
 import { findReplay, recordOutcome, type IdempotencyRequest } from '@/services/idempotency';
+import { names } from '@/services/leadership/rollups';
 
 /**
  * Stable identities for the three notices this file decides on.
@@ -102,13 +103,8 @@ export async function listTriageQueue(
 
   const userIds = [...new Set(rows.map((r) => r.responsibleUserId).filter((v): v is string => !!v))];
   const teamIds = [...new Set(rows.map((r) => r.responsibleTeamId).filter((v): v is string => !!v))];
-  const [users, teams] = await Promise.all([
-    userIds.length
-      ? prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, id: { in: userIds } },
-          select: { id: true, fullName: true },
-        })
-      : [],
+  const [userName, teams] = await Promise.all([
+    names(ctx.tenantId, userIds),
     teamIds.length
       ? prisma.team.findMany({
           where: { tenantId: ctx.tenantId, id: { in: teamIds } },
@@ -116,7 +112,6 @@ export async function listTriageQueue(
         })
       : [],
   ]);
-  const userName = new Map(users.map((u) => [u.id, u.fullName]));
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
 
   return rows.map((r) => {
