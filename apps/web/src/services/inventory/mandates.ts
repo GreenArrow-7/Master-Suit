@@ -6,7 +6,7 @@
  * disagreeing, because the failure mode is not a wrong number on a screen — it
  * is the agency advertising a property it no longer has permission to sell.
  */
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 
 export const MANDATE_STATUSES = ['DRAFT', 'ACTIVE', 'EXPIRED', 'TERMINATED'] as const;
@@ -142,15 +142,8 @@ export async function decideMandate(input: DecideMandateInput) {
     `;
     if (!current) throw NotFound('Mandate');
 
-    if (!canTransition(current.status, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${current.status.toLowerCase()} mandate cannot become ${input.to.toLowerCase()}.`,
-        },
-      ]);
-    }
+    if (!canTransition(current.status, input.to))
+      throw IllegalTransition(`A ${current.status.toLowerCase()} mandate cannot become ${input.to.toLowerCase()}.`);
 
     if (input.to === 'ACTIVE') {
       if (current.expiresAt <= new Date()) {

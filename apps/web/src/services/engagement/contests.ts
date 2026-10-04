@@ -9,7 +9,7 @@
  * Standings are live while it runs and **frozen** when it closes. A booking
  * cancelled in March must not quietly change who won February.
  */
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
@@ -168,15 +168,8 @@ export async function decideContest(input: DecideContestInput) {
   if (!contest) throw NotFound('Contest');
 
   const from = contest.status as ContestStatus;
-  if (!canTransition(from, input.to)) {
-    throw Invalid([
-      {
-        field: 'status',
-        code: 'illegal_transition',
-        message: `A ${from.toLowerCase()} contest cannot become ${input.to.toLowerCase()}.`,
-      },
-    ]);
-  }
+  if (!canTransition(from, input.to))
+    throw IllegalTransition(`A ${from.toLowerCase()} contest cannot become ${input.to.toLowerCase()}.`);
 
   /**
    * Ranked *before* the transaction opens, not inside it.
