@@ -34,8 +34,7 @@ import { randomBytes } from 'node:crypto';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { env } from '@/lib/env';
-
-export const GRAPH_VERSION = 'v26.0';
+import { GRAPH_VERSION } from '@/lib/integrations/meta/send';
 
 /**
  * What the product actually needs, and nothing more.

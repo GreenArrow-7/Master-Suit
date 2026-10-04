@@ -11,6 +11,7 @@
  * it serves. No caller ever reaches it with a decision to make.
  */
 import { basic, vendorFetch } from './telephony/http';
+import { GRAPH_VERSION } from './meta/send';
 
 export type VerifyResult = { ok: true; detail?: string } | { ok: false; detail: string } | { ok: null; detail: string };
 
@@ -52,7 +53,7 @@ export async function verifyConnection(provider: string, c: Record<string, strin
       case 'meta': {
         const a = await vendorFetch<{ display_phone_number?: string }>({
           vendor: provider,
-          url: `https://graph.facebook.com/v21.0/${encodeURIComponent(c.phoneNumberId)}?fields=display_phone_number`,
+          url: `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(c.phoneNumberId)}?fields=display_phone_number`,
           headers: { Authorization: `Bearer ${c.accessToken}` },
         });
         return { ok: true, detail: a.display_phone_number };

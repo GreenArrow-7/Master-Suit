@@ -21,9 +21,7 @@ import { normalizePhone } from '@/services/leads/normalizePhone';
 import { nextReference } from '@/services/shared/reference';
 import { withTx } from '@/lib/db';
 import type { NormalizedMetaEvent } from '@/lib/integrations/meta/events';
-
-/** Pinned in one place; Meta sunsets a version roughly two years after release. */
-const GRAPH_VERSION = 'v26.0';
+import { graphGet } from '@/lib/integrations/meta/send';
 
 export interface ApplyMetaEventJob {
   tenantId: string;
@@ -232,15 +230,13 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
 }
 
 async function fetchLeadFields(leadgenId: string, accessToken: string) {
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(leadgenId)}?fields=field_data`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    // Thrown, so the queue retries: Meta rate-limits and tokens lapse, and both
-    // recover without anyone re-submitting the form.
-    throw new Error(`graph lead retrieval failed: HTTP ${res.status} ${body.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { field_data?: { name?: string; values?: string[] }[] };
+  // A refusal throws, so the queue retries: Meta rate-limits and tokens lapse,
+  // and both recover without anyone re-submitting the form.
+  const data = await graphGet<{ field_data?: { name?: string; values?: string[] }[] }>(
+    `${encodeURIComponent(leadgenId)}?fields=field_data`,
+    accessToken,
+    'graph lead retrieval failed',
+  );
   return (data.field_data ?? [])
     .map((f) => ({ name: String(f.name ?? ''), value: String(f.values?.[0] ?? '') }))
     .filter((f) => f.name && f.value);

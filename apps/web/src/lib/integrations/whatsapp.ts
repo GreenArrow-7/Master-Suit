@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { logger } from '../logger';
+import { GRAPH_VERSION } from './meta/send';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -121,13 +122,6 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
 //
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Graph API version, in one place because Meta sunsets each one roughly two
- * years after release. v26.0 shipped 2026-07-29; v25.0 runs to 2028-07-29.
- * Verified against developers.facebook.com/docs/graph-api/changelog.
- */
-const GRAPH_VERSION = 'v26.0';
 
 export interface MetaWhatsAppConfig {
   accessToken: string;
