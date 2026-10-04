@@ -69,7 +69,6 @@ const PLAN = {
   Typecheck: { run: true },
   Lint: { run: true },
   'Format check': { run: true },
-  'README schema counts': { run: true },
   'Observability drift': { run: true },
   'Redis auth': { run: true },
   'Face token gate': { run: true },

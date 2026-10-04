@@ -4,13 +4,6 @@ A multi-tenant CRM and HR platform: sales execution, call intelligence, HR and
 payroll for one workspace per customer, in one Next.js application. Original
 branding, interface, wording and source code.
 
-<!-- schema-stats:start -->
-
-220 models · 128 enums · 481 indexes · 115 unique constraints
-<!-- schema-stats:end -->
-
-_(generated — `node scripts/schema-stats.mjs --write`, checked in CI)_
-
 ## Getting started
 
 ```bash
