@@ -152,7 +152,7 @@ export const POST = route(
       throw Forbidden('WhatsApp is not connected for this workspace.');
     }
 
-    const provider = getWhatsAppProvider('meta', credentials);
+    const provider = getWhatsAppProvider(credentials);
 
     let result;
     let sentText: string;
