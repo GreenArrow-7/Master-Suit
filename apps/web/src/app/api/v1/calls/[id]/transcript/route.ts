@@ -2,9 +2,8 @@ import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
 import { NotFound, Forbidden, Invalid } from '@/lib/errors';
-import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { enqueue, enqueueOrRun } from '@/lib/queue';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { transcriptionProviderFor } from '@/lib/integrations/transcription';
@@ -110,15 +109,9 @@ export const POST = route(
     // A transcript arriving by any route starts the same chain. Otherwise a
     // workspace pasting transcripts from its own recorder would get no summary,
     // no audit and no coaching — the whole point of the transcript.
-    if (await queueHasWorkers('ai')) {
-      await enqueue('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id });
-    } else {
-      const tenantId = ctx.tenantId;
-      const callId = params.id;
-      void analyseAndAudit(tenantId, callId).catch((err) =>
-        logger.error({ err: (err as Error).message, callId }, 'inline analysis chain failed'),
-      );
-    }
+    await enqueueOrRun('ai', 'analyse', { tenantId: ctx.tenantId, callId: params.id }, () =>
+      analyseAndAudit(ctx.tenantId, params.id),
+    );
     return transcript;
   },
 );

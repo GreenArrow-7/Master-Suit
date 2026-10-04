@@ -82,7 +82,7 @@ export interface EnqueueOptions {
  * drain it (a dev box or demo without `npm run worker`). Errs on the side of
  * "a worker exists" so a Redis hiccup never triggers double execution.
  */
-export async function queueHasWorkers(name: QueueName): Promise<boolean> {
+async function queueHasWorkers(name: QueueName): Promise<boolean> {
   try {
     const workers = await queue(name).getWorkers();
     return workers.length > 0;
@@ -117,4 +117,24 @@ export async function enqueue(
     logger.error({ err, queue: name, jobName }, 'enqueue failed');
     return null;
   }
+}
+
+/**
+ * The queue when a worker is draining it; otherwise the same work, detached in
+ * this process, so a box without `npm run worker` still completes the chain.
+ * Nobody awaits the detached run, so its failure is logged rather than thrown.
+ */
+export async function enqueueOrRun(
+  name: QueueName,
+  jobName: string,
+  payload: Record<string, unknown>,
+  inline: () => Promise<unknown>,
+) {
+  if (await queueHasWorkers(name)) {
+    await enqueue(name, jobName, payload);
+    return;
+  }
+  void inline().catch((err) =>
+    logger.error({ err: (err as Error).message, queue: name, jobName, ...payload }, 'inline job failed'),
+  );
 }

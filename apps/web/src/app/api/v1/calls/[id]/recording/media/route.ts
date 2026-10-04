@@ -6,13 +6,12 @@ import { route, toResponse } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { getObject, putObject } from '@/lib/storage';
 import { scanBuffer } from '@/lib/antivirus';
 import { getNumericSetting } from '@/lib/platform-settings';
 import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
-import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { enqueueOrRun } from '@/lib/queue';
 import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
 import { assertCallInScope } from '@/lib/security/record-scope';
 
@@ -183,14 +182,9 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
      * racing a worker cannot produce two.
      */
     const language = String(form.get('language') ?? 'en').slice(0, 10);
-    if (await queueHasWorkers('ai')) {
-      await enqueue('ai', 'transcribe', { tenantId: ctx.tenantId, callId, language });
-    } else {
-      const tenantId = ctx.tenantId;
-      void transcribeCall({ tenantId, callId, language })
-        .then(() => analyseAndAudit(tenantId, callId))
-        .catch((err) => logger.error({ err: (err as Error).message, callId }, 'inline transcription chain failed'));
-    }
+    await enqueueOrRun('ai', 'transcribe', { tenantId: ctx.tenantId, callId, language }, () =>
+      transcribeCall({ tenantId: ctx.tenantId, callId, language }).then(() => analyseAndAudit(ctx.tenantId, callId)),
+    );
 
     return NextResponse.json({ ...recording, transcription: 'QUEUED' }, { headers: { 'x-request-id': requestId } });
   } catch (error) {
