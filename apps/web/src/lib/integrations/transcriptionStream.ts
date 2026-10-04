@@ -22,10 +22,7 @@ export const liveSttEndpoint = () =>
 
 export interface LiveSttOptions {
   apiKey: string;
-  /** Twilio media streams are 8kHz mulaw. */
-  encoding?: string;
   sampleRate?: number;
-  language?: string;
   /** Called with each FINAL transcript piece (interims are not surfaced). */
   onTranscript: (text: string) => void;
   onError?: (err: Error) => void;
@@ -36,17 +33,15 @@ export interface LiveSttConnection {
   close(): Promise<void>;
 }
 
-export type LiveSttFactory = (options: LiveSttOptions) => LiveSttConnection;
-
-export const openLiveStt: LiveSttFactory = (options) => {
+export function openLiveStt(options: LiveSttOptions): LiveSttConnection {
   const query = new URLSearchParams({
-    encoding: options.encoding ?? 'mulaw',
+    // Twilio media streams are 8kHz mulaw.
+    encoding: 'mulaw',
     sample_rate: String(options.sampleRate ?? 8000),
     channels: '1',
     model: 'nova-2',
     smart_format: 'true',
     interim_results: 'false',
-    ...(options.language ? { language: options.language } : {}),
   });
 
   const socket = new WebSocket(`${liveSttEndpoint()}?${query}`, {
@@ -101,4 +96,4 @@ export const openLiveStt: LiveSttFactory = (options) => {
       });
     },
   };
-};
+}
