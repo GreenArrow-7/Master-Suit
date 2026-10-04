@@ -75,10 +75,7 @@ describe('request → real worker → completion → revoked access', () => {
       email,
       fullName: 'Worker Path',
     });
-    const { platformUserId } = await prisma.workspaceMembership.findUniqueOrThrow({
-      where: { salesUserId: user.id },
-      select: { platformUserId: true },
-    });
+    const { platformUserId } = user;
     ownedPlatformUserIds.add(platformUserId);
     await prisma.platformUser.update({
       where: { id: platformUserId },

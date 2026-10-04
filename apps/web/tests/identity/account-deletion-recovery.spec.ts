@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import {
   ALREADY_PROCESSING,
   MAX_ATTEMPTS,
@@ -65,15 +64,9 @@ async function makePerson(label: string) {
     roleId: role.id,
     email: `recov-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true, platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
+  const membership = { id: user.membershipId, platformUserId: user.platformUserId };
   ownedPlatformUserIds.add(membership.platformUserId);
   return { user, ...membership, ctx: ctxFor(fixture.a.tenantId, user.id) };
 }

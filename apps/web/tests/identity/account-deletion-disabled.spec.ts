@@ -12,7 +12,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = '';
 
 const { prisma } = await import('@/lib/db');
-const { hashPassword } = await import('@/lib/auth/password');
 const { executionEnabled, processAccountDeletion, requestAccountDeletion, sweepAccountDeletions } =
   await import('@/services/identity/accountDeletion');
 const { handleMaintenanceJob } = await import('@/workers/maintenance');
@@ -42,16 +41,9 @@ async function makePerson() {
     roleId: role.id,
     email: `off-${Date.now()}@example.com`,
     fullName: 'Switch Off',
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
-  ownedPlatformUserIds.add(membership.platformUserId);
+  ownedPlatformUserIds.add(user.platformUserId);
   const ctx = {
     tenantId: fixture.a.tenantId,
     actor: { id: user.id, permissions: new Map() },
@@ -59,7 +51,7 @@ async function makePerson() {
     ip: '127.0.0.1',
     userAgent: 'vitest',
   } as unknown as Ctx;
-  return { platformUserId: membership.platformUserId, ctx };
+  return { platformUserId: user.platformUserId, ctx };
 }
 
 describe('with execution disabled (the default)', () => {

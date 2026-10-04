@@ -92,11 +92,8 @@ beforeAll(async () => {
   locationId = location.id;
 
   // The admin's own employee record, so the assignment can record who made it.
-  const membership = await prisma.workspaceMembership.findFirstOrThrow({
-    where: { tenantId, salesUserId: admin.id },
-  });
   await prisma.employeeProfile.create({
-    data: { tenantId, membershipId: membership.id, employeeNumber: `AF-${suffix}`, employmentStatus: 'ACTIVE' },
+    data: { tenantId, membershipId: admin.membershipId, employeeNumber: `AF-${suffix}`, employmentStatus: 'ACTIVE' },
   });
 });
 

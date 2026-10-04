@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import { cancelAccountDeletion, myDeletionRequest, requestAccountDeletion } from '@/services/identity/accountDeletion';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import type { Ctx } from '@/lib/security/rbac';
@@ -49,17 +48,10 @@ async function makeRep(tenantId: string, label: string) {
     roleId: role.id,
     email: `auth-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
-  ownedPlatformUserIds.add(membership.platformUserId);
-  return { user, platformUserId: membership.platformUserId, ctx: ctxFor(tenantId, user.id) };
+  ownedPlatformUserIds.add(user.platformUserId);
+  return { user, platformUserId: user.platformUserId, ctx: ctxFor(tenantId, user.id) };
 }
 
 beforeAll(async () => {

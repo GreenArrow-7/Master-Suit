@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import {
   processAccountDeletion,
   requestAccountDeletion,
@@ -63,15 +62,9 @@ async function makePerson(label: string) {
     roleId: role.id,
     email: `sweep-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true, platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
+  const membership = { id: user.membershipId, platformUserId: user.platformUserId };
   ownedPlatformUserIds.add(membership.platformUserId);
   return { user, ...membership, ctx: ctxFor(fixture.a.tenantId, user.id) };
 }

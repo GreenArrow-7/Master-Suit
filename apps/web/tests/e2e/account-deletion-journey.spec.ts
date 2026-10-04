@@ -85,13 +85,9 @@ for (const variant of variants) {
         email: address,
         fullName: `${label} ${run}`,
       });
-      const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-        where: { salesUserId: user.id },
-        select: { id: true, platformUserId: true },
-      });
-      owned.add(membership.platformUserId);
+      owned.add(user.platformUserId);
       await prisma.platformUser.update({
-        where: { id: membership.platformUserId },
+        where: { id: user.platformUserId },
         data: {
           passwordHash: await hashPassword(password),
           emailVerifiedAt: new Date(),
@@ -100,9 +96,9 @@ for (const variant of variants) {
         },
       });
       if (opts.primaryAdmin) {
-        await prisma.workspaceMembership.update({ where: { id: membership.id }, data: { isPrimaryAdmin: true } });
+        await prisma.workspaceMembership.update({ where: { id: user.membershipId }, data: { isPrimaryAdmin: true } });
       }
-      return { email: address, platformUserId: membership.platformUserId, membershipId: membership.id };
+      return { email: address, platformUserId: user.platformUserId, membershipId: user.membershipId };
     }
 
     async function open(browser: Browser, address: string): Promise<{ context: BrowserContext; page: Page }> {

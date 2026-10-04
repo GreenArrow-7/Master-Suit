@@ -7,6 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { PermissionAction, VisibilityScope } from '@prisma/client';
+import { hashPassword } from '@/lib/auth/password';
 import { prisma } from '@/lib/db';
 import { createSessionToken } from './session';
 
@@ -19,7 +20,8 @@ import { createSessionToken } from './session';
  * the test session helper wrote a legacy `Session` row keyed on it. That row
  * type is gone, and with it a resolveCtx branch that skipped the `tenant.status`
  * check — so fixtures now build the whole identity, and the tests authenticate
- * the way production does.
+ * the way production does. All three ids come back, so a spec never has to
+ * look the membership up again.
  */
 export async function createWorkspaceUser(input: {
   tenantId: string;
@@ -28,6 +30,8 @@ export async function createWorkspaceUser(input: {
   fullName: string;
   branchId?: string | null;
   regionId?: string | null;
+  /** Stored hashed on the identity, for specs that re-authenticate. */
+  password?: string;
 }) {
   const platformUser = await prisma.platformUser.create({
     data: {
@@ -35,6 +39,7 @@ export async function createWorkspaceUser(input: {
       normalizedEmail: input.email.toLowerCase(),
       fullName: input.fullName,
       status: 'ACTIVE',
+      ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
     },
   });
 
@@ -50,7 +55,7 @@ export async function createWorkspaceUser(input: {
     },
   });
 
-  await prisma.workspaceMembership.create({
+  const membership = await prisma.workspaceMembership.create({
     data: {
       tenantId: input.tenantId,
       platformUserId: platformUser.id,
@@ -58,9 +63,10 @@ export async function createWorkspaceUser(input: {
       status: 'ACTIVE',
       joinedAt: new Date(),
     },
+    select: { id: true },
   });
 
-  return user;
+  return { ...user, membershipId: membership.id, platformUserId: platformUser.id };
 }
 
 export interface TenantFixture {

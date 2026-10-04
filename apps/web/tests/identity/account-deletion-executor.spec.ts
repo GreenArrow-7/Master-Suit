@@ -58,10 +58,7 @@ async function makePerson(name: string) {
     email: `exec-${roleSeq}-${Date.now()}@example.com`,
     fullName: name,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true, platformUserId: true },
-  });
+  const membership = { id: user.membershipId, platformUserId: user.platformUserId };
   await prisma.platformUser.update({
     where: { id: membership.platformUserId },
     data: {

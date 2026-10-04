@@ -64,10 +64,9 @@ async function member(
   const user = await createWorkspaceUser({ tenantId, roleId: role.id, email, fullName: name });
   cookies[label] = await createSessionToken(tenantId, user.id);
   if (employee) {
-    const membership = await prisma.workspaceMembership.findFirstOrThrow({ where: { tenantId, salesUserId: user.id } });
     const number = `ES-${label}-${suffix}`;
     const profile = await prisma.employeeProfile.create({
-      data: { tenantId, membershipId: membership.id, employeeNumber: number, employmentStatus: employee.status },
+      data: { tenantId, membershipId: user.membershipId, employeeNumber: number, employmentStatus: employee.status },
     });
     people[label] = { employeeId: profile.id, email, number, name };
   }
