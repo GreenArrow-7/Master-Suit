@@ -118,7 +118,6 @@
      chrome, 700 is the brand, 500 is hover, the low numbers are tints — only
      the hues moved. */
   --lf-wine-900: var(--yh-midnight);
-  --lf-wine-800: var(--yh-navy);
   --lf-wine-700: var(--yh-primary);
   --lf-wine-600: #1c48d1;
   --lf-wine-500: var(--yh-primary-hover);
@@ -158,20 +157,6 @@
   --lf-slate: var(--yh-neutral);
   --lf-slate-sub: var(--yh-neutral-sub);
 
-  /* ── Chart / categorical ramp ─────────────────────────────────────────────
-     Ready for the tables and charts that come after this pass; nothing on the
-     three redesigned surfaces reads these yet. Brand blue leads and cyan
-     follows, then the widest-separated hues that still sit in one family.
-     Mid-tone on purpose: a series is a fill, so it needs 3:1 against its
-     ground, and one value that clears that on both white and midnight keeps
-     its identity when the theme changes. */
-  --lf-chart-1: #3b82f6; /* blue */
-  --lf-chart-2: #06b6d4; /* cyan */
-  --lf-chart-3: #10b981; /* green */
-  --lf-chart-4: #f59e0b; /* amber */
-  --lf-chart-5: #8b5cf6; /* violet */
-  --lf-chart-6: #64748b; /* slate */
-
   /* ── Type ───────────────────────────────────────────────────────────────
      Inter, everywhere in the product: headings, tables, controls, body. One
      face, chosen for small-size legibility and tabular figures. Manrope — the
@@ -202,7 +187,6 @@
   --lf-text-lg: 1.0625rem;
   --lf-text-xl: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem);
   --lf-text-2xl: clamp(1.375rem, 1.1rem + 1.35vw, 1.875rem);
-  --lf-text-hero: clamp(2rem, 1.5rem + 2.4vw, 2.75rem); /* display metrics only */
   /* Between base (0.9375) and lg (1.0625): seven call sites were already
      asking for this step; without it their font-size silently fell to inherit. */
   --lf-text-md: 1rem;
@@ -228,7 +212,6 @@
   --lf-space-6: 24px;
   --lf-space-8: 32px;
   --lf-space-10: 40px;
-  --lf-space-12: 48px;
 
   /* ── Responsive tiers ─────────────────────────────────────────────────────
      Three intentional experiences, not one layout scaled down. Every new
@@ -247,9 +230,6 @@
        @media (max-width: 1023px)                         phone + tablet
        @media (min-width: 1024px)                         desktop
      ─────────────────────────────────────────────────────────────────────── */
-  --lf-bp-phone: 760px;
-  --lf-bp-tablet: 1023px;
-  --lf-bp-desktop: 1024px;
 
   /* Controls at 6/8, cards at 12, the largest surfaces at 14. Nothing rounder:
      a 20px corner reads as a consumer app, and this is not one. */
@@ -259,19 +239,8 @@
   --lf-radius-xl: 14px;
 
   /* Commercial design-token aliases shared by Sales, People and Platform. */
-  --background: var(--yh-bg);
-  --surface: var(--yh-surface);
-  --surface-elevated: var(--yh-surface-elevated);
-  --border: var(--yh-border);
-  --text-primary: var(--yh-text);
-  --text-secondary: var(--yh-text-secondary);
-  --text-muted: var(--yh-text-muted);
   --primary: var(--yh-primary);
-  --primary-hover: var(--yh-primary-hover);
-  --success: var(--yh-success);
-  --warning: var(--yh-warning);
   --danger: var(--yh-danger);
-  --information: var(--yh-info);
 
   /* Shadows are midnight-tinted and faint. A card is defined by its border;
      the shadow is there only for the surfaces that float. */

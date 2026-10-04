@@ -645,19 +645,6 @@
   font-size: 12.5px;
   cursor: pointer;
 }
-.lf-auth-links {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--lf-space-5);
-  font-size: var(--lf-text-sm);
-}
-.lf-auth-links a {
-  color: var(--yh-azure);
-  text-decoration: none;
-}
-.lf-auth-links a:hover {
-  text-decoration: underline;
-}
 
 /* ── Widths ────────────────────────────────────────────────────────────────── */
 

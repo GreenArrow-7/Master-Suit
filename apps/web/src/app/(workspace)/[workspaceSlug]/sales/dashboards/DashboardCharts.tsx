@@ -4,13 +4,14 @@ import MetricCard from '@/components/ui/MetricCard';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 /**
- * The chart ramp, repeated as literals.
+ * The chart ramp, as literals.
  *
  * Recharts sets these as SVG presentation attributes (`fill`, `stroke`), and a
  * presentation attribute cannot resolve `var()` — this is the one place in the
- * product allowed to hold colour values rather than token names. They are the
- * same six as `--lf-chart-1…6` in tokens.css: brand blue leads, cyan follows,
- * then the widest-separated hues that still sit in one family. No rainbow.
+ * product allowed to hold colour values rather than token names. Brand blue
+ * leads, cyan follows, then the widest-separated hues that still sit in one
+ * family. No rainbow. Mid-tone on purpose: a series is a fill, so it needs 3:1
+ * against both white and midnight.
  */
 const BLUE = '#3B82F6';
 const CYAN = '#06B6D4';
