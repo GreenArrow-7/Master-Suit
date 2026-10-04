@@ -103,40 +103,25 @@ export async function GET(req: Request) {
      * names go in `metadata` — readable without the encryption key because the
      * admin screen shows them, and worthless to anyone who reads them.
      */
+    const connection = {
+      status: 'CONNECTED',
+      credentials: wrapCredentials({ accessToken: assets.accessToken }),
+      scopes: assets.scopes,
+      expiresAt: assets.expiresAt,
+      externalUserId: assets.pageId,
+      errorMessage: null,
+      metadata: {
+        pageId: assets.pageId,
+        pageName: assets.pageName,
+        instagramId: assets.instagramId ?? '',
+        instagramHandle: assets.instagramHandle ?? '',
+        businessName: assets.businessName ?? assets.pageName,
+      },
+    } as const;
     await prisma.integrationConnection.upsert({
       where: { tenantId_provider: { tenantId: ctx.tenantId, provider: 'meta' } },
-      create: {
-        tenantId: ctx.tenantId,
-        provider: 'meta',
-        status: 'CONNECTED',
-        credentials: wrapCredentials({ accessToken: assets.accessToken }),
-        scopes: assets.scopes,
-        expiresAt: assets.expiresAt,
-        externalUserId: assets.pageId,
-        metadata: {
-          pageId: assets.pageId,
-          pageName: assets.pageName,
-          instagramId: assets.instagramId ?? '',
-          instagramHandle: assets.instagramHandle ?? '',
-          businessName: assets.businessName ?? assets.pageName,
-        },
-        createdById: ctx.actor.id,
-      },
-      update: {
-        status: 'CONNECTED',
-        credentials: wrapCredentials({ accessToken: assets.accessToken }),
-        scopes: assets.scopes,
-        expiresAt: assets.expiresAt,
-        externalUserId: assets.pageId,
-        errorMessage: null,
-        metadata: {
-          pageId: assets.pageId,
-          pageName: assets.pageName,
-          instagramId: assets.instagramId ?? '',
-          instagramHandle: assets.instagramHandle ?? '',
-          businessName: assets.businessName ?? assets.pageName,
-        },
-      },
+      create: { ...connection, tenantId: ctx.tenantId, provider: 'meta', createdById: ctx.actor.id },
+      update: connection,
     });
 
     // Never the token, and never the secret — only that a connection changed and
