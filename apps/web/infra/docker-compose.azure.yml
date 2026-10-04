@@ -158,9 +158,9 @@ services:
       redis: { condition: service_healthy }
 
   # One-off, never started by `up`. The production image contains only the
-  # standalone build output — no Prisma CLI, no migrations runner — so the
-  # `build` stage is reused here because it already has the full source tree and
-  # node_modules. Run it before every rollout:
+  # standalone build output — no Prisma CLI, no migrations runner — so this
+  # builds the Dockerfile's `migrate` stage: node_modules, prisma/ and scripts/,
+  # without `next build`. Run it before every rollout:
   #
   #   docker compose ... run --rm migrate
   #
@@ -169,7 +169,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
-      target: build
+      target: migrate
     profiles: ['tools']
     # Plain, not tagged: this service exists only in this file, so there is
     # nothing underneath to merge with or replace.
