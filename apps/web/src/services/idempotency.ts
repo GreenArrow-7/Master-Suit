@@ -76,7 +76,6 @@ export interface IdempotencyRequest {
   input: Record<string, unknown>;
   /** What the operation is about — for triage assignment, the episode id. */
   scopeRef?: string | null;
-  ttlMs?: number;
 }
 
 export interface Replay<T> {
@@ -135,7 +134,7 @@ export async function findReplay<T>(req: IdempotencyRequest): Promise<Replay<T> 
  * and only one of them did the work.
  */
 export async function recordOutcome<T>(tx: TransactionClient, req: IdempotencyRequest, result: T): Promise<void> {
-  const expiresAt = new Date(Date.now() + (req.ttlMs ?? DEFAULT_TTL_MS));
+  const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
   const rows = await tx.$queryRaw<{ id: string }[]>`
     INSERT INTO "IdempotentRequest" (
       "id", "tenantId", "operation", "requestKey", "fingerprint", "actorUserId",

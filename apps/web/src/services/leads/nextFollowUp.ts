@@ -220,17 +220,13 @@ export interface ObligationAccess {
  * themselves. Otherwise a revoked grant would still leak through the personal
  * view, which is the sort of thing that is only ever noticed later.
  */
-export async function obligationAccess(
-  ctx: Ctx,
-  view: 'personal' | 'scope',
-  db: TxClient | typeof prisma = prisma,
-): Promise<ObligationAccess> {
+export async function obligationAccess(ctx: Ctx, view: 'personal' | 'scope'): Promise<ObligationAccess> {
   const resolve = async (permissionModule: string): Promise<OwnerSet> => {
     const scope = scopeFor(ctx, permissionModule, 'VIEW');
     if (scope === 'NONE') return { kind: 'none' };
     if (view === 'personal') return { kind: 'ids', ids: [ctx.actor.id] };
     if (scope === 'ORGANIZATION') return { kind: 'all' };
-    return { kind: 'ids', ids: await resolveOwnerIds(ctx, scope, db) };
+    return { kind: 'ids', ids: await resolveOwnerIds(ctx, scope) };
   };
   // `Task` is read under `tasks`, `FollowUpTask` under `leads` — see the header.
   const [task, followUp] = await Promise.all([resolve('tasks'), resolve('leads')]);
@@ -341,7 +337,6 @@ export async function scopedNextFollowUp(
   tenantId: string,
   leadIds: readonly string[],
   access: ObligationAccess,
-  db: TxClient | typeof prisma = prisma,
 ): Promise<Map<string, Date>> {
   const out = new Map<string, Date>();
   const ids = [...new Set(leadIds)];
@@ -362,14 +357,14 @@ export async function scopedNextFollowUp(
 
   const [tasks, followUps] = await Promise.all([
     t
-      ? (db.task.groupBy({
+      ? (prisma.task.groupBy({
           by: ['leadId'],
           where: { tenantId, ...(t as Prisma.TaskWhereInput) },
           _min: { dueAt: true },
         }) as unknown as Promise<Grouped[]>)
       : none,
     f
-      ? (db.followUpTask.groupBy({
+      ? (prisma.followUpTask.groupBy({
           by: ['leadId'],
           where: { tenantId, ...(f as Prisma.FollowUpTaskWhereInput) },
           _min: { dueAt: true },

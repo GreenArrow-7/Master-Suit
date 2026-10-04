@@ -66,7 +66,6 @@ export type IneligibilityCode =
   | 'NOT_ACTIVE'
   | 'MEMBERSHIP_INACTIVE'
   | 'EMPLOYMENT_ENDED'
-  | 'NOT_IN_TEAM'
   | 'MARKED_UNAVAILABLE'
   | 'ON_APPROVED_LEAVE'
   /** What an HR-sourced blocker becomes for a Sales viewer. See `redactForSales`. */
@@ -152,8 +151,6 @@ export interface EligibilityPolicy {
   respectLeave: boolean;
   respectQuotas: boolean;
   respectCapacity: boolean;
-  /** Candidates must belong to this team, when the rule scopes to one. */
-  requireTeamId?: string | null;
 }
 
 export const DEFAULT_POLICY: EligibilityPolicy = {
@@ -218,7 +215,6 @@ export async function assessEligibility(
       weeklyLeadQuota: true,
       monthlyLeadQuota: true,
       activeLeadCapacity: true,
-      teams: policy.requireTeamId ? { select: { teamId: true } } : false,
       workspaceMembership: {
         select: {
           status: true,
@@ -300,11 +296,6 @@ export async function assessEligibility(
           detail: ended ? 'employment ended' : `employment is ${employee.employmentStatus.toLowerCase()}`,
         });
       }
-    }
-
-    if (policy.requireTeamId) {
-      const inTeam = (u.teams as { teamId: string }[] | undefined)?.some((t) => t.teamId === policy.requireTeamId);
-      if (!inTeam) blockers.push({ code: 'NOT_IN_TEAM', detail: 'not a member of the routed team' });
     }
 
     if (policy.respectLeave) {

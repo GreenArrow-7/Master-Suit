@@ -49,14 +49,14 @@ export async function myEmployee(ctx: Ctx, db: Db = prisma) {
  * scope was shown every employee's name, work email and number, and everyone's
  * expiring identity documents.
  */
-export async function employeeRecordScope(ctx: Ctx, db: Db = prisma): Promise<{ id?: string }> {
+export async function employeeRecordScope(ctx: Ctx): Promise<{ id?: string }> {
   if (mayReadAllEmployees(ctx)) return {};
-  const self = await myEmployee(ctx, db);
+  const self = await myEmployee(ctx);
   return { id: self?.id ?? '' };
 }
 
-export async function requireEmployee(ctx: Ctx, employeeId: string, db: Db = prisma) {
-  const employee = await db.employeeProfile.findFirst({
+export async function requireEmployee(ctx: Ctx, employeeId: string) {
+  const employee = await prisma.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, id: employeeId, deletedAt: null },
   });
   if (!employee) throw NotFound('Employee');
@@ -72,10 +72,10 @@ export async function requireEmployee(ctx: Ctx, employeeId: string, db: Db = pri
  * Attendance exceptions and overtime both decide on it, and a second private
  * copy is how the two drifted apart in the first place.
  */
-export async function isLineManagerOf(ctx: Ctx, employeeId: string, db: Db = prisma) {
+export async function isLineManagerOf(ctx: Ctx, employeeId: string) {
   const [actor, target] = await Promise.all([
-    myEmployee(ctx, db),
-    db.employeeProfile.findFirst({
+    myEmployee(ctx),
+    prisma.employeeProfile.findFirst({
       where: { tenantId: ctx.tenantId, id: employeeId },
       select: { managerMembershipId: true },
     }),
@@ -87,10 +87,10 @@ export async function isLineManagerOf(ctx: Ctx, employeeId: string, db: Db = pri
  * The employees an actor may act on when their authority is their reporting
  * line: themselves, plus everyone who reports to them.
  */
-export async function reportingLine(ctx: Ctx, db: Db = prisma): Promise<string[]> {
-  const self = await myEmployee(ctx, db);
+export async function reportingLine(ctx: Ctx): Promise<string[]> {
+  const self = await myEmployee(ctx);
   if (!self) return [];
-  const reports = await db.employeeProfile.findMany({
+  const reports = await prisma.employeeProfile.findMany({
     where: { tenantId: ctx.tenantId, deletedAt: null, managerMembershipId: self.membershipId },
     select: { id: true },
   });
@@ -99,23 +99,16 @@ export async function reportingLine(ctx: Ctx, db: Db = prisma): Promise<string[]
 
 // ── Calendar ───────────────────────────────────────────────────────────────
 
-export async function holidaysFor(ctx: Ctx, start: Date, end: Date, db: Db = prisma) {
-  const rows = await db.hrHoliday.findMany({
+export async function holidaysFor(ctx: Ctx, start: Date, end: Date) {
+  const rows = await prisma.hrHoliday.findMany({
     where: { tenantId: ctx.tenantId, holidayDate: { gte: toDay(start), lte: toDay(end) } },
     orderBy: { holidayDate: 'asc' },
   });
   return rows;
 }
 
-export async function countLeaveDays(
-  ctx: Ctx,
-  start: Date,
-  end: Date,
-  halfDay: boolean,
-  db: Db = prisma,
-  known?: HrPolicy,
-) {
-  const [holidayRows, policy] = await Promise.all([holidaysFor(ctx, start, end, db), known ?? getHrPolicy(ctx)]);
+export async function countLeaveDays(ctx: Ctx, start: Date, end: Date, halfDay: boolean, known?: HrPolicy) {
+  const [holidayRows, policy] = await Promise.all([holidaysFor(ctx, start, end), known ?? getHrPolicy(ctx)]);
   const holidays = holidayRows.map((holiday) => holiday.holidayDate);
   if (halfDay) {
     if (dayKey(start) !== dayKey(end)) throw new Error('A half day must start and end on the same date.');
@@ -126,16 +119,10 @@ export async function countLeaveDays(
 
 // ── Balances ───────────────────────────────────────────────────────────────
 
-export async function ensureBalanceRow(
-  ctx: Ctx,
-  employeeId: string,
-  leaveTypeId: string,
-  year: number,
-  db: Db = prisma,
-) {
-  const leaveType = await db.hrLeaveType.findFirst({ where: { tenantId: ctx.tenantId, id: leaveTypeId } });
+export async function ensureBalanceRow(ctx: Ctx, employeeId: string, leaveTypeId: string, year: number) {
+  const leaveType = await prisma.hrLeaveType.findFirst({ where: { tenantId: ctx.tenantId, id: leaveTypeId } });
   if (!leaveType) throw NotFound('Leave type');
-  return db.hrLeaveBalance.upsert({
+  return prisma.hrLeaveBalance.upsert({
     where: { tenantId_employeeId_leaveTypeId_year: { tenantId: ctx.tenantId, employeeId, leaveTypeId, year } },
     update: {},
     create: { tenantId: ctx.tenantId, employeeId, leaveTypeId, year, entitledDays: leaveType.annualAllowance },
@@ -151,11 +138,10 @@ export async function recomputeAccrual(
   employee: { id: string; joinedOn: Date | null },
   leaveType: { id: string; accrues: boolean; annualAllowance: number },
   asOf: Date,
-  db: Db = prisma,
   known?: HrPolicy,
 ) {
   const year = toDay(asOf).getUTCFullYear();
-  await ensureBalanceRow(ctx, employee.id, leaveType.id, year, db);
+  await ensureBalanceRow(ctx, employee.id, leaveType.id, year);
   const policy = known ?? (await getHrPolicy(ctx));
   const accruedDays = leaveType.accrues
     ? employee.joinedOn
@@ -163,7 +149,7 @@ export async function recomputeAccrual(
       : 0
     : leaveType.annualAllowance;
 
-  return db.hrLeaveBalance.update({
+  return prisma.hrLeaveBalance.update({
     where: {
       tenantId_employeeId_leaveTypeId_year: {
         tenantId: ctx.tenantId,
@@ -182,13 +168,12 @@ export async function availableDays(
   employee: { id: string; joinedOn: Date | null },
   leaveType: { id: string; accrues: boolean; annualAllowance: number },
   asOf: Date = new Date(),
-  db: Db = prisma,
   known?: HrPolicy,
 ) {
   const year = toDay(asOf).getUTCFullYear();
-  const balance = await recomputeAccrual(ctx, employee, leaveType, asOf, db, known);
+  const balance = await recomputeAccrual(ctx, employee, leaveType, asOf, known);
 
-  const consuming = await db.hrLeaveRequest.findMany({
+  const consuming = await prisma.hrLeaveRequest.findMany({
     where: {
       tenantId: ctx.tenantId,
       employeeId: employee.id,
@@ -200,7 +185,7 @@ export async function availableDays(
   });
   const takenDays = consuming.reduce((total, row) => total + row.days, 0);
 
-  const updated = await db.hrLeaveBalance.update({
+  const updated = await prisma.hrLeaveBalance.update({
     where: {
       tenantId_employeeId_leaveTypeId_year: {
         tenantId: ctx.tenantId,
@@ -228,7 +213,7 @@ export async function balancesFor(ctx: Ctx, employeeId: string, asOf: Date = new
 
   return Promise.all(
     types.map(async (leaveType) => {
-      const { balance, available } = await availableDays(ctx, employee, leaveType, asOf, prisma, policy);
+      const { balance, available } = await availableDays(ctx, employee, leaveType, asOf, policy);
       return {
         leaveTypeId: leaveType.id,
         code: leaveType.code,
@@ -251,13 +236,9 @@ export async function balancesFor(ctx: Ctx, employeeId: string, asOf: Date = new
  * active administrator picks it up — a request with no approver can never be
  * decided, so falling back is not optional.
  */
-export async function approverFor(
-  ctx: Ctx,
-  employee: { id: string; managerMembershipId: string | null },
-  db: Db = prisma,
-) {
+export async function approverFor(ctx: Ctx, employee: { id: string; managerMembershipId: string | null }) {
   if (employee.managerMembershipId) {
-    const manager = await db.employeeProfile.findFirst({
+    const manager = await prisma.employeeProfile.findFirst({
       where: {
         tenantId: ctx.tenantId,
         membershipId: employee.managerMembershipId,
@@ -272,7 +253,7 @@ export async function approverFor(
   // Filtered and ordered in the database. Loading every active employee to pick
   // one administrator in JavaScript is fine at ten staff and a problem at a
   // thousand, and it is the same query either way.
-  return db.employeeProfile.findFirst({
+  return prisma.employeeProfile.findFirst({
     where: {
       tenantId: ctx.tenantId,
       deletedAt: null,
@@ -287,15 +268,8 @@ export async function approverFor(
   });
 }
 
-export async function findOverlap(
-  ctx: Ctx,
-  employeeId: string,
-  start: Date,
-  end: Date,
-  excludeId?: string,
-  db: Db = prisma,
-) {
-  return db.hrLeaveRequest.findFirst({
+export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date, excludeId?: string) {
+  return prisma.hrLeaveRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
       employeeId,
@@ -353,11 +327,11 @@ export async function applyForLeave(ctx: Ctx, input: ApplyLeaveInput) {
       `Leave already exists from ${dayKey(clash.startDate)} to ${dayKey(clash.endDate)}. Cancel it first.`,
     );
 
-  const days = await countLeaveDays(ctx, start, end, input.halfDay ?? false, prisma, policy);
+  const days = await countLeaveDays(ctx, start, end, input.halfDay ?? false, policy);
   if (days <= 0) throw Conflict('Those dates are all weekends or public holidays — no leave is needed.');
 
   if (leaveType.paid) {
-    const { available } = await availableDays(ctx, employee, leaveType, start, prisma, policy);
+    const { available } = await availableDays(ctx, employee, leaveType, start, policy);
     if (days > available)
       throw Conflict(`${available} days of ${leaveType.name} are available and ${days} were requested.`);
   }

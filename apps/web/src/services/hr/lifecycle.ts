@@ -130,8 +130,8 @@ export async function buildChecklist(
   return created.count as number;
 }
 
-export async function outstandingBlockers(ctx: Ctx, employeeId: string, phase: ChecklistPhase, db: any = prisma) {
-  return db.hrChecklistTask.findMany({
+export async function outstandingBlockers(ctx: Ctx, employeeId: string, phase: ChecklistPhase) {
+  return prisma.hrChecklistTask.findMany({
     where: { tenantId: ctx.tenantId, employeeId, phase, blocking: true, completedAt: null },
     orderBy: { sequence: 'asc' },
   });
