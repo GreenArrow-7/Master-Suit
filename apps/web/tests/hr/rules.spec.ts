@@ -8,6 +8,7 @@ import {
   serviceYears,
   workingDays,
 } from '@/services/hr/rules';
+import { DEFAULT_POLICY } from '@/services/hr/settings';
 
 /**
  * The UAE calculations are the part of the HRMS port where being wrong costs
@@ -18,48 +19,48 @@ const day = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 describe('working days', () => {
   it('counts Monday to Friday as five days', () => {
-    expect(workingDays(day('2026-01-05'), day('2026-01-09'))).toBe(5);
+    expect(workingDays(day('2026-01-05'), day('2026-01-09'), [], DEFAULT_POLICY.weekendDays)).toBe(5);
   });
 
   it('does not consume balance for the Saturday/Sunday weekend', () => {
     // Monday the 5th through Sunday the 11th: the weekend is not leave.
-    expect(workingDays(day('2026-01-05'), day('2026-01-11'))).toBe(5);
+    expect(workingDays(day('2026-01-05'), day('2026-01-11'), [], DEFAULT_POLICY.weekendDays)).toBe(5);
   });
 
   it('does not consume balance for a public holiday', () => {
-    expect(workingDays(day('2026-01-05'), day('2026-01-09'), [day('2026-01-07')])).toBe(4);
+    expect(workingDays(day('2026-01-05'), day('2026-01-09'), [day('2026-01-07')], DEFAULT_POLICY.weekendDays)).toBe(4);
   });
 
   it('rejects an end date before the start date', () => {
-    expect(() => workingDays(day('2026-01-09'), day('2026-01-05'))).toThrow();
+    expect(() => workingDays(day('2026-01-09'), day('2026-01-05'), [], DEFAULT_POLICY.weekendDays)).toThrow();
   });
 });
 
 describe('annual leave accrual', () => {
   it('earns nothing in the first six months', () => {
     expect(monthsOfService(day('2025-01-15'), day('2025-06-15'))).toBe(5);
-    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'))).toBe(0);
+    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'), DEFAULT_POLICY)).toBe(0);
   });
 
   it('earns two days a month between six and twelve months', () => {
-    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-09-15'))).toBe(16);
+    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-09-15'), DEFAULT_POLICY)).toBe(16);
   });
 
   it('earns 2.5 days a month after a full year, capped at thirty', () => {
-    expect(annualLeaveAccrued(day('2020-01-15'), day('2026-03-10'))).toBe(7.5);
-    expect(annualLeaveAccrued(day('2020-01-15'), day('2026-12-10'))).toBe(30);
+    expect(annualLeaveAccrued(day('2020-01-15'), day('2026-03-10'), DEFAULT_POLICY)).toBe(7.5);
+    expect(annualLeaveAccrued(day('2020-01-15'), day('2026-12-10'), DEFAULT_POLICY)).toBe(30);
   });
 });
 
 describe('end-of-service gratuity', () => {
   it('pays nothing under one year of service', () => {
-    const result = gratuityUae(10_000, day('2024-01-01'), day('2024-06-01'));
+    const result = gratuityUae(10_000, day('2024-01-01'), day('2024-06-01'), DEFAULT_POLICY);
     expect(result.days).toBe(0);
     expect(result.amount).toBe(0);
   });
 
   it('pays 21 days of basic pay per year for the first five years', () => {
-    const result = gratuityUae(10_000, day('2020-01-01'), day('2023-01-01'));
+    const result = gratuityUae(10_000, day('2020-01-01'), day('2023-01-01'), DEFAULT_POLICY);
     expect(serviceYears(day('2020-01-01'), day('2023-01-01'))).toBeCloseTo(3, 2);
     expect(result.days).toBeCloseTo(63, 0);
     expect(result.amount).toBeCloseTo(21_005, -1);
@@ -67,13 +68,13 @@ describe('end-of-service gratuity', () => {
 
   it('pays 30 days a year beyond the fifth year', () => {
     // Five years at 21 days plus one year at 30 = 135 days.
-    const result = gratuityUae(10_000, day('2018-01-01'), day('2024-01-01'));
+    const result = gratuityUae(10_000, day('2018-01-01'), day('2024-01-01'), DEFAULT_POLICY);
     expect(result.days).toBeCloseTo(135, 0);
     expect(result.cappedAtTwoYears).toBe(false);
   });
 
   it('caps total gratuity at two years of basic pay', () => {
-    const result = gratuityUae(10_000, day('1990-01-01'), day('2026-01-01'));
+    const result = gratuityUae(10_000, day('1990-01-01'), day('2026-01-01'), DEFAULT_POLICY);
     expect(result.amount).toBe(240_000);
     expect(result.cappedAtTwoYears).toBe(true);
   });

@@ -38,9 +38,6 @@ export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
  */
 export const AT_WORK_STATUSES: readonly EmploymentStatus[] = ['ONBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE'];
 
-/** UAE weekend, as JS `getUTCDay()` values: Sunday 0, Saturday 6. */
-export const UAE_WEEKEND = [0, 6] as const;
-
 /** Midnight UTC on the same calendar date — the canonical form for a leave day. */
 export function toDay(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
@@ -70,8 +67,9 @@ export function queryDate(value: string | undefined, fallback: Date): Date {
 export function workingDays(
   start: Date,
   end: Date,
-  holidays: Date[] = [],
-  weekend: readonly number[] = UAE_WEEKEND,
+  holidays: Date[],
+  /** As JS `getUTCDay()` values; the policy's `weekendDays`. */
+  weekend: readonly number[],
 ): number {
   const from = toDay(start);
   const to = toDay(end);
@@ -109,14 +107,7 @@ export interface AccrualPolicy {
   accrualAnnualCapDays: number;
 }
 
-const STATUTORY_ACCRUAL: AccrualPolicy = {
-  accrualMinMonthsService: 6,
-  accrualDaysPerMonthUnderYear: 2,
-  accrualDaysPerMonthAfterYear: 2.5,
-  accrualAnnualCapDays: 30,
-};
-
-export function annualLeaveAccrued(joined: Date, asOf: Date, policy: AccrualPolicy = STATUTORY_ACCRUAL): number {
+export function annualLeaveAccrued(joined: Date, asOf: Date, policy: AccrualPolicy): number {
   const months = monthsOfService(joined, asOf);
   if (months < policy.accrualMinMonthsService) return 0;
   if (months < 12) return round2(months * policy.accrualDaysPerMonthUnderYear);
@@ -145,28 +136,15 @@ export interface GratuityPolicy {
   gratuityCapMonths: number;
 }
 
-const STATUTORY_GRATUITY: GratuityPolicy = {
-  gratuityMinYears: 1,
-  gratuityFirstPeriodYears: 5,
-  gratuityDaysFirstPeriod: 21,
-  gratuityDaysAfterFirstPeriod: 30,
-  gratuityCapMonths: 24,
-};
-
 /**
- * End-of-service gratuity. The defaults are the Decree-Law 33/2021 baseline: 21
+ * End-of-service gratuity. The HR settings' defaults are the Decree-Law 33/2021 baseline: 21
  * days of basic pay per year for the first five years, 30 per year after that,
  * capped at two years' basic, and nothing at all under one year of service.
  *
  * The old unlimited-contract resignation reduction no longer applies under that
  * law, so there is deliberately no `resigned` discount here.
  */
-export function gratuityUae(
-  basicMonthly: number,
-  joined: Date,
-  exited: Date,
-  policy: GratuityPolicy = STATUTORY_GRATUITY,
-): Gratuity {
+export function gratuityUae(basicMonthly: number, joined: Date, exited: Date, policy: GratuityPolicy): Gratuity {
   const years = serviceYears(joined, exited);
   if (years < policy.gratuityMinYears) {
     return {
