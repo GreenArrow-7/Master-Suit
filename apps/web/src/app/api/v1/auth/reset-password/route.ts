@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { Invalid, Unauthorized } from '@/lib/errors';
-import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { Unauthorized } from '@/lib/errors';
+import { assertPasswordPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { assertDistinctFromOtherCredential, isPlatformStaff } from '@/lib/auth/credentials';
 import { writePrimaryPassword } from '@/services/identity/platformCredentials';
 import { passwordPolicy } from '@/services/identity/accounts';
@@ -35,10 +35,7 @@ export async function POST(req: Request) {
     // again below against the *workspace's* policy once the token has told us
     // which workspace this is. A reset must not be the one door through which a
     // password weaker than the company requires can be set.
-    const problems = checkPolicy(body.newPassword, DEFAULT_POLICY);
-    if (problems.length) {
-      throw Invalid(problems.map((message) => ({ field: 'newPassword', code: 'policy', message })));
-    }
+    assertPasswordPolicy(body.newPassword, DEFAULT_POLICY, 'newPassword');
 
     const record = await prisma.passwordResetToken.findUnique({
       where: { tokenHash: sha256(body.token) },
@@ -65,10 +62,7 @@ export async function POST(req: Request) {
     }
 
     const policy = tenant ? await passwordPolicy(tenant.id) : DEFAULT_POLICY;
-    const weak = checkPolicy(body.newPassword, policy);
-    if (weak.length) {
-      throw Invalid(weak.map((message) => ({ field: 'newPassword', code: 'policy', message })));
-    }
+    assertPasswordPolicy(body.newPassword, policy, 'newPassword');
     // The reuse window applies here too. A forgotten password is the most likely
     // moment for someone to reach for one they have used before, which is
     // precisely what the rule exists to prevent.

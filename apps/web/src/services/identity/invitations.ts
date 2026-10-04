@@ -14,10 +14,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
 import { audit } from '@/lib/security/audit';
-import { hashPassword, checkPolicy } from '@/lib/auth/password';
+import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
 import { passwordPolicy } from './accounts';
 import { buildChecklist, isAgent } from '@/services/hr/lifecycle';
@@ -224,10 +224,7 @@ export async function acceptInvitation(token: string, input: { password: string;
   });
   if (!role) throw invalid();
 
-  const problems = checkPolicy(input.password, await passwordPolicy(invitation.tenantId));
-  if (problems.length) {
-    throw Invalid(problems.map((message) => ({ field: 'password', code: 'weak-password', message })));
-  }
+  assertPasswordPolicy(input.password, await passwordPolicy(invitation.tenantId), 'password');
 
   const email = invitation.email;
   const fullName = (input.fullName ?? invitation.fullName).trim();

@@ -27,8 +27,8 @@
 import { prisma, withPlatformTx } from '@/lib/db';
 import { redis } from '@/lib/redis';
 import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
-import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { Conflict, NotFound } from '@/lib/errors';
+import { assertPasswordPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import {
   dropMonitoringCredential,
@@ -458,10 +458,7 @@ export async function resetPassword(
   const target = await loadTarget(userId);
   const password = options.password ?? generateTemporaryPassword();
 
-  const problems = checkPolicy(password, DEFAULT_POLICY);
-  if (problems.length) {
-    throw Invalid(problems.map((message) => ({ field: 'password', code: 'weak-password', message })));
-  }
+  assertPasswordPolicy(password, DEFAULT_POLICY, 'password');
 
   // Refuses a password equal to the target's monitoring credential, bumps the
   // version and cancels unfinished sign-ins; also clears the lock, so a reset

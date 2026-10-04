@@ -20,8 +20,14 @@
  */
 import { randomInt } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
-import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword, type PasswordPolicy } from '@/lib/auth/password';
+import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import {
+  assertPasswordPolicy,
+  DEFAULT_POLICY,
+  hashPassword,
+  verifyPassword,
+  type PasswordPolicy,
+} from '@/lib/auth/password';
 import { revokeAllSessions } from '@/lib/auth/session';
 import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import { writePrimaryPassword } from '@/services/identity/platformCredentials';
@@ -39,12 +45,6 @@ export async function passwordPolicy(tenantId: string): Promise<PasswordPolicy> 
   });
   const stored = (settings?.passwordPolicy ?? {}) as Partial<PasswordPolicy>;
   return { ...DEFAULT_POLICY, ...stored };
-}
-
-function assertPolicy(plain: string, policy: PasswordPolicy) {
-  const problems = checkPolicy(plain, policy);
-  if (problems.length)
-    throw Invalid(problems.map((message) => ({ field: 'newPassword', code: 'weak-password', message })));
 }
 
 /**
@@ -209,7 +209,7 @@ export async function changeOwnPassword(
   }
   if (currentPassword === newPassword) throw Conflict('The new password must be different from the current one.');
   const policy = await passwordPolicy(ctx.tenantId);
-  assertPolicy(newPassword, policy);
+  assertPasswordPolicy(newPassword, policy, 'newPassword');
   // Before the write, so a refused password never becomes the credential. The
   // check above only catches reusing the *current* one; this is the workspace's
   // `reuseWindow`, which nothing read until now.
@@ -265,7 +265,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   }
 
   const password = temporaryPassword ?? generateTemporaryPassword();
-  assertPolicy(password, await passwordPolicy(ctx.tenantId));
+  assertPasswordPolicy(password, await passwordPolicy(ctx.tenantId), 'newPassword');
 
   /**
    * The old hash is *recorded* but the reuse window is not *enforced* here.
@@ -717,7 +717,7 @@ export async function createStaffAccount(ctx: Ctx, input: NewStaffAccount) {
   if (input.managerEmployeeId && !manager) throw NotFound('Reporting manager');
 
   const temporaryPassword = generateTemporaryPassword();
-  assertPolicy(temporaryPassword, await passwordPolicy(ctx.tenantId));
+  assertPasswordPolicy(temporaryPassword, await passwordPolicy(ctx.tenantId), 'newPassword');
   const passwordHash = await hashPassword(temporaryPassword);
   const actingEmployee = await prisma.employeeProfile.findFirst({
     where: { tenantId: ctx.tenantId, membership: { salesUserId: ctx.actor.id } },
