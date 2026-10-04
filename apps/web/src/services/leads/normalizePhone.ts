@@ -32,5 +32,3 @@ export function normalizePhone(input: string, defaultCountry = 'AE'): string | n
   if (digits.startsWith(NATIONAL_TRUNK_PREFIX)) return `+${code}${digits.slice(1)}`;
   return `+${code}${digits}`;
 }
-
-export const lastNine = (e164: string) => e164.replace(/\D/g, '').slice(-9);

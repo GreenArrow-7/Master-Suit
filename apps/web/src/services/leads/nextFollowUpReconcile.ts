@@ -255,9 +255,3 @@ export async function sweepDriftCanary(now = new Date()): Promise<{ tenants: num
   if (disagreeing === 0) logger.info({ tenants: tenants.length }, 'next-follow-up drift canary: clean');
   return { tenants: tenants.length, disagreeing };
 }
-
-/** Count only, for a caller that just wants the number. */
-export async function driftCount(tenantId: string): Promise<number> {
-  const r = await reportDrift(tenantId);
-  return r.missing + r.stale + r.unexpected;
-}

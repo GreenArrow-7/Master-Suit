@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { socialSlaState, minutesRemaining, SOCIAL_SLA_DEFAULT_MINUTES } from '@/services/social/sla';
+import { socialSlaState, SOCIAL_SLA_DEFAULT_MINUTES } from '@/services/social/sla';
 
 /**
  * The SLA rules, without a database.
@@ -71,10 +71,9 @@ describe('social SLA state', () => {
   it('does not restart when the enquiry changes hands', () => {
     const reassignedAt = new Date('2026-08-17T10:07:00Z');
     const afterReassignment = { ...base, assignedAt: reassignedAt };
-    expect(socialSlaState(afterReassignment, new Date('2026-08-17T10:11:00Z'))).toBe('BREACHED');
     // Had the clock restarted at 10:07, the deadline would be 10:17 and this
     // would still read ON_TRACK.
-    expect(minutesRemaining(due, new Date('2026-08-17T10:11:00Z'))).toBe(-1);
+    expect(socialSlaState(afterReassignment, new Date('2026-08-17T10:11:00Z'))).toBe('BREACHED');
   });
 
   it('defaults to a target only for intents worth chasing', () => {

@@ -1,5 +1,5 @@
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AI_FEATURES, featureLabel } from '@/lib/ai/features';
+import { featureLabel } from '@/lib/ai/features';
 import { microsToAmount } from '@/lib/ai/pricing';
 import { periodStart } from '@/lib/ai/budgets';
 import { allowanceState, usageStatus, type AllowanceState, type UsageStatus } from '@/lib/ai/allowance';
@@ -531,5 +531,3 @@ export async function loadUser(tenantId: string, userId: string, now: Date = new
     chain: state.chain,
   };
 }
-
-export const AI_FEATURE_OPTIONS = AI_FEATURES.map((f) => ({ key: f.key, label: f.label }));

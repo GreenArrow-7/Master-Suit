@@ -11,7 +11,6 @@
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx, withPlatformTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { enqueue } from '@/lib/queue';
 import { audit } from '@/lib/security/audit';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -557,11 +556,6 @@ export async function sweepTriageNotifications(now = new Date(), tenantId?: stri
     notified += claimed;
   }
   return { notified };
-}
-
-/** Arm the sweeps. Called by the maintenance worker's scheduler. */
-export async function scheduleTriageSweeps() {
-  await enqueue('maintenance', 'triage-sweep', { at: new Date().toISOString() }, { fresh: true });
 }
 
 export type { TxClient };

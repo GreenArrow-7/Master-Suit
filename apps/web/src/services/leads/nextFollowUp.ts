@@ -381,28 +381,3 @@ export async function scopedNextFollowUp(
   for (const r of followUps) take(r.leadId, r._min.dueAt);
   return out;
 }
-
-/**
- * Deterministic ordering for a page of leads by their scoped follow-up.
- *
- * Unscheduled leads sort last in both directions — "nothing owed" is not an
- * early date, and floating it to the top of an ascending sort is how a lead
- * nobody scheduled anything for gets mistaken for the most urgent one. Ties
- * break on lead id so the order is stable across requests.
- */
-export function byScopedFollowUp<T extends { id: string }>(
-  rows: readonly T[],
-  due: ReadonlyMap<string, Date>,
-  dir: 'asc' | 'desc',
-): T[] {
-  return [...rows].sort((a, b) => {
-    const av = due.get(a.id);
-    const bv = due.get(b.id);
-    if (!av && !bv) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    if (!av) return 1;
-    if (!bv) return -1;
-    const cmp = av.getTime() - bv.getTime();
-    if (cmp !== 0) return dir === 'asc' ? cmp : -cmp;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-}

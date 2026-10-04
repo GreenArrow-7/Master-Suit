@@ -44,7 +44,7 @@
  * code, test or UI copy here claims exactly-once delivery.
  */
 import type { Priority } from '@prisma/client';
-import { prisma, withPlatformTx, withTx, type TxClient } from '@/lib/db';
+import { withPlatformTx, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 /** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
@@ -244,9 +244,4 @@ export async function deliverOutbox(
     logger.info({ delivered, abandoned, failed }, 'notification outbox sweep');
   }
   return { delivered, abandoned, failed };
-}
-
-/** How many notices are still owed. For the checkpoint, and for monitoring. */
-export async function pendingCount(tenantId: string): Promise<number> {
-  return prisma.notificationOutbox.count({ where: { tenantId, status: 'PENDING' } });
 }

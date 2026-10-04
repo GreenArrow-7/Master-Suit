@@ -12,7 +12,7 @@
  */
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { Forbidden, NotFound, Conflict } from '@/lib/errors';
+import { NotFound, Conflict } from '@/lib/errors';
 import { assertPermission } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { connectionCredentials } from '@/lib/integrations/connection';
@@ -180,28 +180,4 @@ export async function replyToSocialComment(ctx: Ctx, input: ReplyInput) {
     'social enquiry answered',
   );
   return { ...reply, firstResponse };
-}
-
-/** Guarded for the same reason the write is: a rep must not read another desk's enquiries. */
-export async function socialRepliesFor(ctx: Ctx, socialCommentId: string) {
-  const visible = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
-  const enquiry = await prisma.socialComment.findFirst({
-    where: { ...visible, id: socialCommentId },
-    select: { id: true },
-  });
-  if (!enquiry) throw Forbidden();
-  return prisma.socialReply.findMany({
-    where: { tenantId: ctx.tenantId, socialCommentId: enquiry.id },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      id: true,
-      kind: true,
-      channel: true,
-      body: true,
-      delivered: true,
-      aiAssisted: true,
-      sentById: true,
-      createdAt: true,
-    },
-  });
 }

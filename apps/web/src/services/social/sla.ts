@@ -123,8 +123,3 @@ export function socialSlaState(subject: SlaSubject, now: Date = new Date(), warn
   if (window <= 0) return 'BREACHED';
   return now.getTime() - start >= window * (warningPct / 100) ? 'AT_RISK' : 'ON_TRACK';
 }
-
-/** How late, or how long left. Negative means overdue. */
-export function minutesRemaining(slaDueAt: Date | null, now: Date = new Date()): number | null {
-  return slaDueAt ? Math.round((slaDueAt.getTime() - now.getTime()) / 60_000) : null;
-}

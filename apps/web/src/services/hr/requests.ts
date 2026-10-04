@@ -21,7 +21,7 @@ import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { haversineM, toDay } from './rules';
 import { isApprover, isHrAdmin } from './access';
-import { isLineManagerOf, myEmployee, requireEmployee } from './leave';
+import { isLineManagerOf, myEmployee } from './leave';
 import { upsertDay } from './attendance';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
@@ -423,8 +423,4 @@ export async function expireTemporaryRequests(ctx: Ctx) {
     data: { status: 'EXPIRED' },
   });
   return count;
-}
-
-export async function requireExceptionTarget(ctx: Ctx, employeeId: string) {
-  return requireEmployee(ctx, employeeId);
 }
