@@ -33,6 +33,10 @@ const price = z.object({
   effectiveFrom: z.coerce.date(),
 });
 
+const period = z.enum(['DAILY', 'MONTHLY']).default('MONTHLY');
+const thresholds = z.array(z.number().int().min(1).max(100)).max(5).default([70, 85, 95]);
+const BUDGET_ACTIONS = ['ALERT_ONLY', 'CHEAPER_MODEL', 'DISABLE_OPTIONAL', 'REQUIRE_APPROVAL', 'BLOCK'] as const;
+
 const budget = z.object({
   resource: z.literal('budget'),
   id: z.string().cuid().optional(),
@@ -42,11 +46,9 @@ const budget = z.object({
   tokenLimit: z.number().int().min(0).nullable().default(null),
   costLimit: z.number().min(0).nullable().default(null),
   currency: z.string().length(3).default('USD'),
-  period: z.enum(['DAILY', 'MONTHLY']).default('MONTHLY'),
-  thresholds: z.array(z.number().int().min(1).max(100)).max(5).default([70, 85, 95]),
-  action: z
-    .enum(['ALERT_ONLY', 'CHEAPER_MODEL', 'DISABLE_OPTIONAL', 'REQUIRE_APPROVAL', 'BLOCK'])
-    .default('ALERT_ONLY'),
+  period,
+  thresholds,
+  action: z.enum(BUDGET_ACTIONS).default('ALERT_ONLY'),
   hardLimit: z.boolean().default(false),
   enabled: z.boolean().default(true),
   note: z.string().max(500).nullable().default(null),
@@ -86,9 +88,9 @@ const userBudget = z.object({
   feature: z.string().min(1).max(120).nullable().default(null),
   tokenLimit: z.number().int().min(0).nullable().default(null),
   costLimit: z.number().min(0).nullable().default(null),
-  period: z.enum(['DAILY', 'MONTHLY']).default('MONTHLY'),
-  thresholds: z.array(z.number().int().min(1).max(100)).max(5).default([70, 85, 95]),
-  action: z.enum(['ALERT_ONLY', 'CHEAPER_MODEL', 'DISABLE_OPTIONAL', 'REQUIRE_APPROVAL', 'BLOCK']).default('BLOCK'),
+  period,
+  thresholds,
+  action: z.enum(BUDGET_ACTIONS).default('BLOCK'),
   hardLimit: z.boolean().default(false),
   effectiveFrom: z.coerce.date().nullable().default(null),
   effectiveTo: z.coerce.date().nullable().default(null),
@@ -105,11 +107,9 @@ const workspaceBudget = z.object({
   feature: z.string().min(1).max(120).nullable().default(null),
   tokenLimit: z.number().int().min(0).nullable().default(null),
   costLimit: z.number().min(0).nullable().default(null),
-  period: z.enum(['DAILY', 'MONTHLY']).default('MONTHLY'),
-  thresholds: z.array(z.number().int().min(1).max(100)).max(5).default([70, 85, 95]),
-  action: z
-    .enum(['ALERT_ONLY', 'CHEAPER_MODEL', 'DISABLE_OPTIONAL', 'REQUIRE_APPROVAL', 'BLOCK'])
-    .default('ALERT_ONLY'),
+  period,
+  thresholds,
+  action: z.enum(BUDGET_ACTIONS).default('ALERT_ONLY'),
   hardLimit: z.boolean().default(false),
   reset: z.boolean().default(false),
   reason: z.string().max(500).nullable().default(null),
@@ -121,8 +121,8 @@ const bulkUserBudget = z.object({
   tenantId: z.string().min(1).max(120),
   userIds: z.array(z.string().min(1).max(120)).min(1).max(500),
   tokenLimit: z.number().int().min(0).nullable().default(null),
-  period: z.enum(['DAILY', 'MONTHLY']).default('MONTHLY'),
-  action: z.enum(['ALERT_ONLY', 'CHEAPER_MODEL', 'DISABLE_OPTIONAL', 'REQUIRE_APPROVAL', 'BLOCK']).default('BLOCK'),
+  period,
+  action: z.enum(BUDGET_ACTIONS).default('BLOCK'),
   hardLimit: z.boolean().default(false),
   /** Removes every named person's override, returning them to the workspace default. */
   reset: z.boolean().default(false),
