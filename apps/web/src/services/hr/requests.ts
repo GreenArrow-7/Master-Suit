@@ -284,6 +284,11 @@ export async function requestAttendanceException(ctx: Ctx, input: ExceptionReque
  * at the client site; HR owns the attendance record. HR can act at either stage
  * so a request is never stuck behind an absent manager, but a manager cannot
  * reach into the HR stage.
+ *
+ * Except an early check-out (`work_pending`): it corrects nothing, it only lifts
+ * the day's work gate, and the employee still checks out with their face. So
+ * the line manager's or an administrator's decision is final, with no HR stage
+ * and no substitute punch.
  */
 export async function decideAttendanceException(ctx: Ctx, requestId: string, approve: boolean, comment: string) {
   if (!comment.trim()) throw Conflict('Give a comment so the employee knows the basis for the decision.');
@@ -309,7 +314,7 @@ export async function decideAttendanceException(ctx: Ctx, requestId: string, app
         managerId: actor?.id ?? null,
         managerComment: comment,
         managerAt: now,
-        status: approve ? 'PENDING_HR' : 'REJECTED',
+        status: !approve ? 'REJECTED' : request.reasonCode === 'work_pending' ? 'APPROVED' : 'PENDING_HR',
       },
     });
     await audit(ctx, {

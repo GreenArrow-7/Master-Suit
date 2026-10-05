@@ -101,6 +101,8 @@ export default function CheckInConsole({
   const [diagnosticBad, setDiagnosticBad] = useState(true);
   const [status, setStatus] = useState('Ready. Check in when you’re on site.');
   const [hint, setHint] = useState('Location not read yet');
+  const [pendingWork, setPendingWork] = useState(0);
+  const [askedEarly, setAskedEarly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [recent, setRecent] = useState<RecentPunch[]>(initialRecent);
@@ -138,6 +140,22 @@ export default function CheckInConsole({
     },
     [endpointBase],
   );
+
+  // The work gate holds the check-out until today's leads are worked; the line
+  // manager or an administrator can lift it for the day from Attendance. One
+  // tap — the server fixes the reason and the time.
+  const askEarlyCheckout = useCallback(async () => {
+    setBusy(true);
+    try {
+      await post('early-checkout-request', {});
+      setAskedEarly(true);
+      setStatus('Asked. Once your manager approves, check out here as usual.');
+    } catch (error) {
+      setStatus((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }, [post]);
 
   /** High-accuracy fix, then the server's read on where that puts us. */
   const readLocation = useCallback(
@@ -190,6 +208,7 @@ export default function CheckInConsole({
           setDiagnosticBad(true);
           setOnSite('FAIL');
         }
+        setPendingWork(pre.pendingWork);
         setHint(
           pre.pendingWork > 0
             ? `${pre.pendingWork} assigned lead${pre.pendingWork === 1 ? '' : 's'} still untouched today — check-out will be refused until ${pre.pendingWork === 1 ? 'it is' : 'they are'} worked.`
@@ -426,6 +445,16 @@ export default function CheckInConsole({
           {status}
         </p>
         <p className="lf-checkin__hint">{hint}</p>
+        {pendingWork > 0 && hasOpen && !askedEarly && (
+          <button
+            type="button"
+            className="lf-btn lf-btn--ghost lf-btn--sm"
+            disabled={busy}
+            onClick={() => void askEarlyCheckout()}
+          >
+            Ask my manager for an early check-out
+          </button>
+        )}
       </section>
 
       <section className="lf-card lf-checkin__recent">

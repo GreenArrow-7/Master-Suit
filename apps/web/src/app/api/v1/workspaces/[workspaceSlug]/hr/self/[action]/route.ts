@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import { grantConsent, myPunches, preflight, punch, requestChallenge, withdrawConsent } from '@/services/hr/attendance';
+import { requestAttendanceException } from '@/services/hr/requests';
 
 /**
  * The things an employee does to their own record: consent, and clocking in.
@@ -36,6 +37,7 @@ const paramsSchema = z.object({
     'attendance-preflight',
     'attendance-challenge',
     'attendance-punch',
+    'early-checkout-request',
   ]),
 });
 
@@ -102,6 +104,18 @@ export const POST = route(
           })
           .parse(body);
         return punch(ctx, input);
+      }
+      // Asked from the check-in screen when the work gate holds the check-out.
+      // The action, time and reason are fixed here, so the request says exactly
+      // what the gate refused; the line manager or an administrator decides.
+      case 'early-checkout-request': {
+        const input = z.object({ reasonText: z.string().max(500).optional() }).parse(body);
+        return requestAttendanceException(ctx, {
+          requestedAction: 'CHECK_OUT',
+          requestedFor: new Date(),
+          reasonCode: 'work_pending',
+          reasonText: input.reasonText,
+        });
       }
     }
   },

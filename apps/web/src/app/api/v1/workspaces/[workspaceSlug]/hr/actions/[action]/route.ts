@@ -213,8 +213,10 @@ const id = z.string().min(1).max(64);
 const note = z.string().max(1000).optional();
 
 /**
- * What check-in needs set up, which every workspace has: assignments, face
- * enrolment and the check-out rules. Every other verb here is HRMS.
+ * What check-in needs, which every workspace has: assignments, face enrolment,
+ * the check-out rules, and the two ways round the geofence and the work gate —
+ * exceptions (an early check-out among them) and temporary sites. Every other
+ * verb here is HRMS.
  */
 const ATTENDANCE_SETUP = new Set<string>([
   'location-revoke',
@@ -222,6 +224,10 @@ const ATTENDANCE_SETUP = new Set<string>([
   'face-reset',
   'consent-grant-supervised',
   'settings-update',
+  'exception-request',
+  'exception-decide',
+  'temporary-request',
+  'temporary-decide',
 ]);
 
 export const POST = route(
