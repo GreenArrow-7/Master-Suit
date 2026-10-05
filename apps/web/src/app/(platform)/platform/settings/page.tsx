@@ -46,7 +46,6 @@ export default async function PlatformSettingsPage() {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Platform"
         title="Platform settings"
         description="Operator settings apply immediately. Deployment configuration is read from the environment and needs a restart to change."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Settings' }]}

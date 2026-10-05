@@ -95,7 +95,6 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Identity & recovery"
         title="Platform users"
         description="Every login across every workspace. Inspect the real authentication state, unlock accounts, reset passwords and second factors, and repair workspace membership — without touching the database."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Platform users' }]}

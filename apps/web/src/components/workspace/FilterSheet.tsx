@@ -16,12 +16,10 @@ import { useEffect, useState, type ReactNode } from 'react';
  */
 export default function FilterSheet({
   children,
-  label = 'Filters',
   /** Shown on the trigger when filters are applied, so the state is visible while collapsed. */
   activeCount,
 }: {
   children: ReactNode;
-  label?: string;
   activeCount?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -49,7 +47,7 @@ export default function FilterSheet({
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {label}
+        Filters
         {activeCount ? ` · ${activeCount}` : ''}
       </button>
 
@@ -57,7 +55,7 @@ export default function FilterSheet({
 
       <div className="lf-filterbox" data-open={open || undefined}>
         <div className="lf-filterbox__head">
-          <h2>{label}</h2>
+          <h2>Filters</h2>
           <button type="button" className="lf-sheet__close" onClick={() => setOpen(false)} aria-label="Close filters">
             ✕
           </button>

@@ -15,7 +15,6 @@ export default function ListHeader({
   secondaryActions,
   description: override,
   help,
-  eyebrow,
 }: {
   title: ReactNode;
   /** Rows on screen. Omit for screens that are not a record list. */
@@ -32,8 +31,6 @@ export default function ListHeader({
    * destructive actions) do not belong here — keep those next to their control.
    */
   help?: ReactNode;
-  /** Off by default — the reference screen carries no eyebrow above its title. */
-  eyebrow?: string;
   /** The primary action, and anything that must always be visible. */
   actions?: ReactNode;
   /**
@@ -58,7 +55,6 @@ export default function ListHeader({
   return (
     <header className="lf-list-header">
       <div className="lf-list-header__copy">
-        {eyebrow && <div className="lf-eyebrow">{eyebrow}</div>}
         <h1 className="lf-list-header__title">{title}</h1>
         {description && <p className="lf-list-header__count">{description}</p>}
         {help && (

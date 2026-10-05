@@ -5,15 +5,7 @@
  * so a large export does not bloat the DOM, and no network call — the CSP is
  * connect-src 'self' and this needs to reach nothing.
  */
-export default function ExportCsv({
-  filename,
-  csv,
-  label = 'Export CSV',
-}: {
-  filename: string;
-  csv: string;
-  label?: string;
-}) {
+export default function ExportCsv({ filename, csv }: { filename: string; csv: string }) {
   function download() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -27,7 +19,7 @@ export default function ExportCsv({
   }
   return (
     <button type="button" className="lf-btn lf-btn--ghost lf-btn--sm" onClick={download} disabled={!csv}>
-      {label}
+      Export CSV
     </button>
   );
 }

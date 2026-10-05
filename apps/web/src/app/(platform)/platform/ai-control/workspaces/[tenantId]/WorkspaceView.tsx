@@ -67,7 +67,6 @@ export default function WorkspaceView(data: WorkspaceDetail) {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="AI Control Center"
         title={data.name}
         description={`AI consumption since the start of ${month}, UTC.${data.planName ? ` On the ${data.planName} plan.` : ''}`}
         breadcrumbs={[

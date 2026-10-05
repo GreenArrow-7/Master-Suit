@@ -4,6 +4,6 @@
  * so it costs nothing to reuse behind a hero, a loading screen or an empty
  * state, and it is inert — nothing here animates.
  */
-export default function BrandBackground({ className }: { className?: string }) {
-  return <div className={['lf-brandbg', className ?? ''].join(' ').trim()} aria-hidden="true" />;
+export default function BrandBackground() {
+  return <div className="lf-brandbg" aria-hidden="true" />;
 }

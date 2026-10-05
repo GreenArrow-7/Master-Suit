@@ -142,9 +142,3 @@
     order: 3;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .lf-row-more__summary::after {
-    transition: none;
-  }
-}

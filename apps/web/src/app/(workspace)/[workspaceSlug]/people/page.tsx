@@ -31,7 +31,6 @@ export default async function PeopleOverview({ params }: { params: Promise<{ wor
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="People / HRMS"
         title={dashboard.title}
         description={dashboard.lede}
         breadcrumbs={[{ label: 'Workspace', href: `/${workspaceSlug}/dashboard` }, { label: 'People' }]}

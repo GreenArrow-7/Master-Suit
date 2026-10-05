@@ -43,7 +43,6 @@ export default async function CompliancePage({
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="People / HRMS"
         title="Compliance register"
         description="Every work credential expiring soon — visa, Emirates ID, passport, labour card and RERA broker card — worst first. A lapsed credential can stop someone working or selling."
         breadcrumbs={[

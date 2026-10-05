@@ -24,15 +24,6 @@
   background: linear-gradient(168deg, var(--yh-midnight) 0%, var(--yh-navy) 58%, #0a1d3d 100%);
 }
 
-.lf-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 /* ── The brand side ────────────────────────────────────────────────────────── */
 
 .lf-auth-story {

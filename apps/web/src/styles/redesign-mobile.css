@@ -478,11 +478,6 @@
     border-radius: 999px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .lf-report-filters > summary::after {
-    transition: none;
-  }
-}
 
 /* ── Shared system: labels, pills, hints, sections (every width) ─────────── */
 

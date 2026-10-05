@@ -17,7 +17,6 @@ export default function AiUsageView({ table, totals, nearLimit, models, month, n
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Commercial"
         title={`AI usage · ${month}`}
         description="Tokens recorded this calendar month, UTC. Simulated answers cost nothing and are not counted."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'AI usage' }]}

@@ -48,7 +48,6 @@ export default function UserView(data: UserDetail) {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="AI usage and token settings"
         title={data.name}
         description={[data.workspaceName, data.roleName, data.planName ? `${data.planName} plan` : null]
           .filter(Boolean)
