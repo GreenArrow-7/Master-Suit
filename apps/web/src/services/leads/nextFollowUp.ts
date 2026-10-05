@@ -56,9 +56,6 @@ import { prisma, type TxClient } from '@/lib/db';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 /**
  * Open is `OPEN`, `IN_PROGRESS` **and** `RESCHEDULED`.
  *
@@ -121,7 +118,7 @@ export function emptyFollowUpLabel(access: ObligationAccess, view: 'personal' | 
  * leads block rather than deadlock.
  */
 export async function lockLeads(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadIds: readonly (string | null | undefined)[],
 ): Promise<string[]> {
@@ -145,11 +142,7 @@ export async function lockLeads(
  * Every writer takes it before touching that lead's obligations, which
  * serialises them per lead; contention is per-lead and low.
  */
-export async function recomputeNextFollowUp(
-  tx: TransactionClient,
-  tenantId: string,
-  leadId: string,
-): Promise<Date | null> {
+export async function recomputeNextFollowUp(tx: TxClient, tenantId: string, leadId: string): Promise<Date | null> {
   const rows = await tx.$queryRaw<{ nextFollowUpAt: Date | null }[]>`
     UPDATE "Lead" l
        SET "nextFollowUpAt" = (
@@ -178,7 +171,7 @@ export async function recomputeNextFollowUp(
  * not attached to a lead affects no stored column, and `lockLeads` drops them.
  */
 export async function withRecompute<T>(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadIds: readonly (string | null | undefined)[],
   mutate: () => Promise<T>,

@@ -4,7 +4,7 @@ import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import SignOff from './SignOff';
 import ListHeader from '@/components/workspace/ListHeader';
-import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { can, atLeast } from '@/lib/security/rbac';
 import TargetAdmin from './TargetAdmin';
 import EntityDelete from '@/components/sales/EntityDelete';
 import { METRICS } from './metrics';
@@ -101,7 +101,7 @@ export default async function TargetsPage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
   const now = new Date();
 
-  const managesTargets = can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const managesTargets = can(ctx, 'leads', 'ASSIGN') && atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   const [mine, teamTargets, users] = await Promise.all([
     prisma.employeeTarget.findMany({

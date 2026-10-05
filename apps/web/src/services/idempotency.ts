@@ -43,9 +43,6 @@ import { Conflict } from '@/lib/errors';
 import { prisma, withPlatformTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 /**
  * How long a retry is still recognised as one.
  *
@@ -133,7 +130,7 @@ export async function findReplay<T>(req: IdempotencyRequest): Promise<Replay<T> 
  * conflict, which is the honest answer: two identical requests genuinely raced
  * and only one of them did the work.
  */
-export async function recordOutcome<T>(tx: TransactionClient, req: IdempotencyRequest, result: T): Promise<void> {
+export async function recordOutcome<T>(tx: TxClient, req: IdempotencyRequest, result: T): Promise<void> {
   const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
   const rows = await tx.$queryRaw<{ id: string }[]>`
     INSERT INTO "IdempotentRequest" (

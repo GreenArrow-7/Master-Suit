@@ -20,10 +20,10 @@ import { prisma } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { getHrPolicy } from './settings';
 
-const mayExport = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'payroll', 'EXPORT')] >= SCOPE_RANK.ORGANIZATION;
+const mayExport = (ctx: Ctx) => atLeast(ctx, 'payroll', 'EXPORT', 'ORGANIZATION');
 
 export type SifLayoutKey = 'uae-sif-v1';
 

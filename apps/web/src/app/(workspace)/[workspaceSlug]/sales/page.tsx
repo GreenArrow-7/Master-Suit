@@ -1,7 +1,7 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
-import { SCOPE_RANK, scopeFor } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -198,7 +198,7 @@ function LeadList({
 
 export default async function HomePage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
-  const isManager = SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const isManager = atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   if (isManager) return <ManagerHome ctx={ctx} />;
   return <EmployeeHome ctx={ctx} />;

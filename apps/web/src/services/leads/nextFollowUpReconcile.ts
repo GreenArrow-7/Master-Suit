@@ -32,9 +32,6 @@ import { withPlatformTx, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { lockLeads, recomputeNextFollowUp } from './nextFollowUp';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 /** A lead whose stored value disagrees with its obligations. */
 export interface Disagreement {
   leadId: string;
@@ -209,7 +206,7 @@ export async function repairDrift(
 
   let repaired = 0;
   for (const { id } of ids) {
-    await withTx(tenantId, async (tx: TransactionClient) => {
+    await withTx(tenantId, async (tx: TxClient) => {
       await lockLeads(tx, tenantId, [id]);
       await recomputeNextFollowUp(tx, tenantId, id);
     });
@@ -229,8 +226,7 @@ export async function repairDrift(
  */
 export async function sweepDriftCanary(now = new Date()): Promise<{ tenants: number; disagreeing: number }> {
   const tenants = await withPlatformTx(
-    (tx: TransactionClient) =>
-      tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
+    (tx: TxClient) => tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
   );
 
   let disagreeing = 0;

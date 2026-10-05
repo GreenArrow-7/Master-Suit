@@ -241,16 +241,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
-  /**
-   * The credential lives on PlatformUser, reached through the membership — and
-   * `User.workspaceMembership` is genuinely optional (`salesUserId` is a
-   * nullable unique). A `!` here turned "this account has no login" into
-   * `Cannot read properties of undefined`, so an administrator pressing Reset
-   * password on such a row got a bare 500 instead of being told what is wrong.
-   */
-  if (!target.workspaceMembership) {
-    throw Conflict('That account has no login to reset. Invite them, or recreate the account.');
-  }
+  const login = loginOf(target);
   /**
    * A workspace administrator resets workspace sign-ins, not platform ones.
    *
@@ -260,7 +251,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
    * administrator could then replace and read back. A platform staff identity's
    * credentials are managed on the platform.
    */
-  if (isPrivilegedPlatformRole(target.workspaceMembership.platformUser.platformRole)) {
+  if (isPrivilegedPlatformRole(login.platformUser.platformRole)) {
     throw Forbidden("This person's sign-in is managed by the platform owner, not by a workspace.");
   }
 
@@ -280,12 +271,12 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   // out to account screens, and its comment says why `passwordHash` is kept out
   // of it. One narrow read is cheaper than a credential on every response.
   const previous = await prisma.platformUser.findUnique({
-    where: { id: target.workspaceMembership.platformUserId },
+    where: { id: login.platformUserId },
     select: { passwordHash: true },
   });
 
-  await writePrimaryPassword(target.workspaceMembership.platformUserId, password, { passwordChangedAt: null });
-  await recordPreviousPassword(target.workspaceMembership.platformUserId, previous?.passwordHash ?? null);
+  await writePrimaryPassword(login.platformUserId, password, { passwordChangedAt: null });
+  await recordPreviousPassword(login.platformUserId, previous?.passwordHash ?? null);
 
   await revokeAllSessions(target.id, undefined, 'PASSWORD_RESET');
   await audit(ctx, {

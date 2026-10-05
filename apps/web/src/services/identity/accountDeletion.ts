@@ -3,7 +3,7 @@ import { env } from '@/lib/env';
 import { audit, platformAudit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
 import { consume, limits } from '@/lib/security/ratelimit';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
 import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
 import { ADMIN_ROLE_RANK, otherActiveAdmins } from './accounts';
@@ -196,7 +196,7 @@ export async function requestAccountDeletion(ctx: Ctx, input: { password: string
   } catch (err) {
     // The partial unique index is what actually prevents a double request; two taps on a
     // slow connection reach here rather than creating a second row.
-    if ((err as { code?: string }).code === 'P2002') {
+    if (isUniqueViolation(err)) {
       throw Conflict('You already have a deletion request in progress.');
     }
     throw err;

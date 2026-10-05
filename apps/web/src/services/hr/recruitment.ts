@@ -20,12 +20,11 @@
  * edit, so what the candidate was actually sent stays readable after the terms
  * move.
  */
-import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { toDay } from './rules';
 import { myEmployee } from './leave';
 import { startOnboarding } from './lifecycle';
@@ -58,13 +57,11 @@ export type Stage =
 
 export type RequisitionStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'OPEN' | 'ON_HOLD' | 'CLOSED' | 'REJECTED';
 
-export const mayReadRecruitment = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW')] >= SCOPE_RANK.TEAM;
-export const isRecruiter = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'EDIT')] >= SCOPE_RANK.TEAM;
-export const isHiringApprover = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'recruitment', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadRecruitment = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'VIEW', 'TEAM');
+export const isRecruiter = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'EDIT', 'TEAM');
+export const isHiringApprover = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'APPROVE', 'ORGANIZATION');
 /** Reads salary bands and offered compensation. */
-export const mayReadBands = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW_SENSITIVE_FIELDS')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadBands = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'VIEW_SENSITIVE_FIELDS', 'ORGANIZATION');
 
 const requireRecruiter = (ctx: Ctx) => {
   if (!isRecruiter(ctx)) throw Forbidden('Your role does not allow changing recruitment records.');
@@ -312,8 +309,7 @@ export async function addCandidate(ctx: Ctx, input: CandidateInput) {
     });
     return candidate;
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
-      throw Conflict('That person has already applied to this role.');
+    if (isUniqueViolation(error)) throw Conflict('That person has already applied to this role.');
     throw error;
   }
 }

@@ -11,10 +11,9 @@
  * database row is not redeemable; a leaked *email* is, which is why it expires.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
 import { audit, platformAudit } from '@/lib/security/audit';
 import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
@@ -111,7 +110,7 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
       // open invitation to the same address; this turns its P2002 into a sentence
       // instead of a 500. Catching, rather than pre-reading, is also what holds
       // when two administrators invite the same person at the same moment.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+      if (isUniqueViolation(error))
         throw Conflict('An invitation to that address is already open. Resend or revoke it instead.');
       throw error;
     });

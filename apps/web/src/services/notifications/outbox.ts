@@ -47,9 +47,6 @@ import type { Priority } from '@prisma/client';
 import { withPlatformTx, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 export interface OutboxNotice {
   /**
    * Stable identity of the *logical* notification: one per thing that happened.
@@ -78,7 +75,7 @@ export interface OutboxNotice {
  * re-deciding the same thing is normal, and the second decision is the same
  * decision.
  */
-export async function enqueueNotice(tx: TransactionClient, tenantId: string, notice: OutboxNotice): Promise<void> {
+export async function enqueueNotice(tx: TxClient, tenantId: string, notice: OutboxNotice): Promise<void> {
   await tx.$executeRaw`
     INSERT INTO "NotificationOutbox" (
       "id", "tenantId", "eventKey", "userId", "kind", "title", "body",
@@ -102,7 +99,7 @@ export async function enqueueNotice(tx: TransactionClient, tenantId: string, not
  * not then tell them. Only `PENDING` rows are withdrawn: one already delivered
  * is a thing that happened, and deleting it would make the record lie.
  */
-export async function withdrawNotice(tx: TransactionClient, tenantId: string, eventKey: string): Promise<number> {
+export async function withdrawNotice(tx: TxClient, tenantId: string, eventKey: string): Promise<number> {
   return tx.$executeRaw`
     DELETE FROM "NotificationOutbox"
      WHERE "tenantId" = ${tenantId} AND "eventKey" = ${eventKey} AND "status" = 'PENDING'

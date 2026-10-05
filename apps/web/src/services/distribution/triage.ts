@@ -24,8 +24,6 @@
  */
 import { prisma, type TxClient } from '@/lib/db';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See eligibility.ts. */
-type TransactionClient = TxClient;
 import type { Ineligibility } from './eligibility';
 
 export type TriageReason =
@@ -170,7 +168,7 @@ export interface OpenTriageResult {
  * follows, so "we failed to assign" and "we recorded that we failed" commit
  * together or not at all.
  */
-export async function openTriageEntry(tx: TransactionClient, input: OpenTriageInput): Promise<OpenTriageResult> {
+export async function openTriageEntry(tx: TxClient, input: OpenTriageInput): Promise<OpenTriageResult> {
   const now = input.now ?? new Date();
   const { reviewDueAt, reviewPolicyMissing } = reviewDeadline(input.rule, now);
   const who = await resolveAccountability(
@@ -231,7 +229,7 @@ export async function openTriageEntry(tx: TransactionClient, input: OpenTriageIn
  * reports it, rather than resurrecting a terminal row.
  */
 export async function resolveTriageEntry(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadId: string,
   outcome: { status: 'ASSIGNED' | 'CANCELLED'; resolvedById?: string | null; resolution: string; now?: Date },

@@ -10,7 +10,7 @@
  */
 import { prisma } from '@/lib/db';
 import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
-import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { AppError, Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import {
@@ -732,9 +732,6 @@ async function record(
 
 const findByClientUid = (ctx: Ctx, employeeId: string, clientPunchUid: string) =>
   prisma.hrAttendancePunch.findFirst({ where: { tenantId: ctx.tenantId, employeeId, clientPunchUid } });
-
-const isUniqueViolation = (error: unknown) =>
-  typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
 
 /** Keeps the presented frame as encrypted evidence, for accepted and rejected punches alike. */
 async function keepCapture(ctx: Ctx, employeeId: string, punchId: string, frames: string[], when: Date) {

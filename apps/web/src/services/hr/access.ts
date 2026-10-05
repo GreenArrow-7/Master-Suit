@@ -21,10 +21,7 @@
  * having settings import leave while leave imports settings is a circular
  * dependency that works only until someone adds a top-level constant.
  */
-import { scopeFor, SCOPE_RANK, type Ctx, type Action, type Scope } from '@/lib/security/rbac';
-
-const atLeast = (ctx: Ctx, module: string, action: Action, minimum: Scope) =>
-  SCOPE_RANK[scopeFor(ctx, module, action)] >= SCOPE_RANK[minimum];
+import { type Ctx, atLeast } from '@/lib/security/rbac';
 
 /**
  * Manages employee records across the workspace: hiring, department structure,

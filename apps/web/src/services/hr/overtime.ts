@@ -26,9 +26,8 @@
  * employeeId, workDate, source])` will not let it. Two scans racing each other
  * resolve to one row and one audit line.
  */
-import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { dayKey, toDay, zonedParts } from './rules';
@@ -291,7 +290,7 @@ export async function detectOvertime(ctx: Ctx, range: { from: Date; to: Date }):
     } catch (error) {
       // Two scans racing over the same day. The constraint resolved it; the row
       // exists either way, which is the outcome this wanted.
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
+      if (!isUniqueViolation(error)) throw error;
     }
   }
 
@@ -418,7 +417,7 @@ export async function requestOvertime(ctx: Ctx, input: OvertimeRequestInput) {
     });
     return created;
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+    if (isUniqueViolation(error))
       throw Conflict('A claim for that date already exists. Amend or cancel it instead of raising a second one.');
     throw error;
   }

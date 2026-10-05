@@ -10,6 +10,7 @@ import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
+import { isUniqueViolation } from '@/lib/errors';
 
 /**
  * Every vendor's callbacks land here, keyed by the connection's `webhookKey` in
@@ -120,7 +121,7 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
       },
     });
   } catch (e) {
-    if ((e as { code?: string })?.code === 'P2002') return NextResponse.json({ ok: true, skipped: true });
+    if (isUniqueViolation(e)) return NextResponse.json({ ok: true, skipped: true });
     throw e;
   }
 

@@ -21,7 +21,7 @@ import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { addDays, dayKey, toDay } from './rules';
 import { myEmployee, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
@@ -29,10 +29,10 @@ import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyShiftChangeDecided, notifyShiftChangeRaised } from './notify';
 
 /** Publishes and edits the roster. */
-export const isRosterPlanner = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'shifts', 'EDIT')] >= SCOPE_RANK.TEAM;
+export const isRosterPlanner = (ctx: Ctx) => atLeast(ctx, 'shifts', 'EDIT', 'TEAM');
 
 /** Decides shift-change and swap requests. */
-export const isRosterApprover = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'shifts', 'APPROVE')] >= SCOPE_RANK.TEAM;
+export const isRosterApprover = (ctx: Ctx) => atLeast(ctx, 'shifts', 'APPROVE', 'TEAM');
 
 const DAY_MS = 86_400_000;
 
