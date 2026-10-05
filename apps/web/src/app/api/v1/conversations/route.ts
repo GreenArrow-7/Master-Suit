@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
+import { mergeWhere } from '@/lib/api/where';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 
@@ -26,24 +27,27 @@ const listQuery = z.object({
 export const GET = route({ module: 'communications', action: 'VIEW', query: listQuery }, async ({ ctx, query }) => {
   const visible = await visibilityWhere(ctx, 'communications', 'VIEW', { includeUnassigned: true });
 
-  const where: Record<string, unknown> = {
-    ...visible,
-    ...(query.channel ? { channel: query.channel } : {}),
-    ...(query.filter === 'unread' ? { unreadCount: { gt: 0 } } : {}),
-    ...(query.filter === 'mine' ? { ownerId: ctx.actor.id } : {}),
-    ...(query.filter === 'unassigned' ? { ownerId: null } : {}),
+  // mergeWhere, not object spread: `visible` carries the ownership restriction
+  // as a top-level `OR`, and the search's own `OR` used to replace it — so any
+  // search listed every matching thread in the workspace. See lib/api/where.ts.
+  const where = mergeWhere(
+    visible,
+    query.channel ? { channel: query.channel } : null,
+    query.filter === 'unread' ? { unreadCount: { gt: 0 } } : null,
+    query.filter === 'mine' ? { ownerId: ctx.actor.id } : null,
+    query.filter === 'unassigned' ? { ownerId: null } : null,
     // Archived is opt-in. Every other filter hides it, or the list fills with
     // threads somebody deliberately put away.
-    ...(query.filter === 'archived' ? { status: 'ARCHIVED' } : { status: { not: 'ARCHIVED' } }),
-    ...(query.search
+    query.filter === 'archived' ? { status: 'ARCHIVED' } : { status: { not: 'ARCHIVED' } },
+    query.search
       ? {
           OR: [
             { displayName: { contains: query.search, mode: 'insensitive' } },
             { externalId: { contains: query.search } },
           ],
         }
-      : {}),
-  };
+      : null,
+  );
 
   // One extra row decides whether there is a next page, without a second count
   // query over the same predicate.
