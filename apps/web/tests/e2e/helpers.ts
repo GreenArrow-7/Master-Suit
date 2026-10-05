@@ -464,7 +464,6 @@ export async function createWorkspaceViaWizard(page: Page, spec: NewWorkspace): 
 /** Asserts a 2xx (a failure names `what`, the status and the body) and returns the JSON. */
 export async function ok(res: APIResponse, what: string) {
   expect(res.ok(), `${what}: ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (await res.json()) as Record<string, any>;
 }
 

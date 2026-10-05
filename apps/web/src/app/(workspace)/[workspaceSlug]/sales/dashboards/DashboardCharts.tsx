@@ -92,12 +92,13 @@ function Bars({ rows }: { rows: Row[] }) {
 /** A conic-gradient donut; the legend beside it is the readable data. */
 function Donut({ rows }: { rows: Row[] }) {
   const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const stops: string[] = [];
   let at = 0;
-  const stops = rows.map((row) => {
+  for (const row of rows) {
     const from = at;
     at += (row.count / Math.max(total, 1)) * 100;
-    return `${row.color} ${from}% ${at}%`;
-  });
+    stops.push(`${row.color} ${from}% ${at}%`);
+  }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--lf-space-5)' }}>
       <div
