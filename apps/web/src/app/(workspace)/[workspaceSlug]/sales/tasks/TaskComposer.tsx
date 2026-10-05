@@ -5,13 +5,11 @@ import { useRouter } from 'next/navigation';
 import Field from '@/components/forms/Field';
 
 /**
- * Create a task from the standalone Tasks page — the button the page was
- * missing. The POST route already existed; this wires to it.
+ * Create a task: on the Tasks page, or on a lead's Tasks tab with `leadId`.
  *
- * An inline expanding card, matching the lead-detail Tasks tab rather than
- * inventing a modal the design system has no styles for. A task can be personal
- * (no lead) or handed to a teammate; the server decides whether the current
- * user may assign to others.
+ * An inline expanding card rather than a modal the design system has no styles
+ * for. A task can be personal (no lead) or handed to a teammate; the server
+ * decides whether the current user may assign to others.
  */
 export interface TaskType {
   id: string;
@@ -35,10 +33,12 @@ export default function TaskComposer({
   taskTypes,
   assignees,
   canAssignOthers,
+  leadId,
 }: {
   taskTypes: TaskType[];
   assignees: Assignee[];
   canAssignOthers: boolean;
+  leadId?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -62,6 +62,7 @@ export default function TaskComposer({
         body: JSON.stringify({
           typeId: form.typeId,
           title: form.title,
+          leadId,
           dueAt: new Date(form.dueAt).toISOString(),
           priority: form.priority,
           ...(form.ownerId ? { ownerId: form.ownerId } : {}),
