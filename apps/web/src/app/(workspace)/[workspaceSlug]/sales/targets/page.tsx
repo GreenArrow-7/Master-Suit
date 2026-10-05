@@ -5,7 +5,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import SignOff from './SignOff';
 import ListHeader from '@/components/workspace/ListHeader';
 import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import TargetAdmin, { TargetDelete } from './TargetAdmin';
+import TargetAdmin from './TargetAdmin';
+import EntityDelete from '@/components/sales/EntityDelete';
 import { METRICS } from './metrics';
 
 export const metadata = { title: 'My Targets' };
@@ -222,7 +223,7 @@ export default async function TargetsPage() {
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <TargetDelete id={t.id} />
+                          <EntityDelete endpoint={`/api/v1/targets/${t.id}`} label="target" />
                         </td>
                       </tr>
                     );
