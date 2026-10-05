@@ -574,24 +574,29 @@ export async function reevaluateCoverage(tx: TxClient, ctx: Ctx, bookingId: stri
     );
 
     if (commission.payout && commission.payout.status !== 'PAID' && commission.payout.status !== 'CANCELLED') {
-      const rows = await tx.commission.findMany({
-        where: { tenantId: ctx.tenantId, payoutId: commission.payout.id },
-        select: { amount: true },
-      });
-      const total = rows.reduce((sum, r) => sum.plus(r.amount), ZERO);
-      const note = `${commission.payout.note ? commission.payout.note + ' | ' : ''}Reopened: ${cause.why}; commission ${commission.id} removed.`;
-      await tx.payout.update({
-        where: { id: commission.payout.id, tenantId: ctx.tenantId },
-        data: {
-          totalAmount: total,
-          ...(commission.payout.status === 'APPROVED' ? { status: 'DRAFT', approvedById: null, approvedAt: null } : {}),
-          note,
-        },
-      });
+      await reopenPayout(tx, ctx.tenantId, commission.payout, `${cause.why}; commission ${commission.id} removed.`);
       result.detachedFromPayouts.push(commission.payout.id);
     }
   }
   return result;
+}
+
+/** Re-totals a payout whose commissions changed; an APPROVED one goes back to DRAFT to be approved again. */
+export async function reopenPayout(
+  tx: TxClient,
+  tenantId: string,
+  payout: { id: string; status: string; note: string | null },
+  why: string,
+) {
+  const rows = await tx.commission.findMany({ where: { tenantId, payoutId: payout.id }, select: { amount: true } });
+  await tx.payout.update({
+    where: { id: payout.id, tenantId },
+    data: {
+      totalAmount: rows.reduce((sum, r) => sum.plus(r.amount), ZERO),
+      ...(payout.status === 'APPROVED' ? { status: 'DRAFT', approvedById: null, approvedAt: null } : {}),
+      note: `${payout.note ? payout.note + ' | ' : ''}Reopened: ${why}`,
+    },
+  });
 }
 
 // ── Reading ──────────────────────────────────────────────────────────────────

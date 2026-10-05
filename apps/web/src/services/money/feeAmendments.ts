@@ -29,7 +29,15 @@ import { withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
 import { nextReference } from '@/services/shared/reference';
-import { assertBookingInScope, coverage, lockBooking, reevaluateCoverage, ZERO, type Coverage } from './collections';
+import {
+  assertBookingInScope,
+  coverage,
+  lockBooking,
+  reevaluateCoverage,
+  reopenPayout,
+  ZERO,
+  type Coverage,
+} from './collections';
 
 const D = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v);
 const money = (v: Prisma.Decimal) => v.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -442,21 +450,12 @@ export async function decideAmendment(input: DecideInput) {
         );
 
         if (commission.payout && (commission.payout.status === 'DRAFT' || commission.payout.status === 'APPROVED')) {
-          const rows = await tx.commission.findMany({
-            where: { tenantId: ctx.tenantId, payoutId: commission.payout.id },
-            select: { amount: true },
-          });
-          const total = rows.reduce((sum, r) => sum.plus(r.amount), ZERO);
-          await tx.payout.update({
-            where: { id: commission.payout.id, tenantId: ctx.tenantId },
-            data: {
-              totalAmount: total,
-              ...(commission.payout.status === 'APPROVED'
-                ? { status: 'DRAFT', approvedById: null, approvedAt: null }
-                : {}),
-              note: `${commission.payout.note ? commission.payout.note + ' | ' : ''}Reopened: agency fee amended (${amendment.reference}); commission ${commission.id} recalculated.`,
-            },
-          });
+          await reopenPayout(
+            tx,
+            ctx.tenantId,
+            commission.payout,
+            `agency fee amended (${amendment.reference}); commission ${commission.id} recalculated.`,
+          );
           reopened.add(commission.payout.id);
         }
         continue;
