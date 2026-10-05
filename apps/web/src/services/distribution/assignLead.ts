@@ -224,7 +224,7 @@ async function tryAssign(
      * the same transaction, is what makes "assigning a lead resolves its pending
      * escalation" true rather than eventually true.
      */
-    const closed = await resolveTriageEntry(tx, tenantId, leadId, {
+    await resolveTriageEntry(tx, tenantId, leadId, {
       status: 'ASSIGNED',
       resolution: `Automatically assigned by ${rule.name}`,
       now,
@@ -233,7 +233,6 @@ async function tryAssign(
     return {
       outcome: 'done' as const,
       result: { outcome: 'assigned' as const, userId, leadId },
-      escalationAnswered: closed.wasEscalated,
     };
   });
 }

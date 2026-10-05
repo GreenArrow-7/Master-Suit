@@ -77,28 +77,12 @@ const requireRecruiter = (ctx: Ctx) => {
  * un-rejected, because the pipeline metrics depend on terminals being final.
  */
 const TERMINAL: Stage[] = ['HIRED', 'REJECTED', 'WITHDRAWN'];
-const PROGRESSION: Stage[] = [
-  'APPLIED',
-  'SCREENING',
-  'SHORTLISTED',
-  'INTERVIEW',
-  'ASSESSMENT',
-  'FINAL_INTERVIEW',
-  'OFFER',
-  'HIRED',
-];
 
 export function mayMoveTo(from: Stage, to: Stage): boolean {
-  if (from === to) return false;
-  if (TERMINAL.includes(from)) return false;
-  if (to === 'HIRED') return from === 'OFFER';
-  // Rejection, withdrawal and a hold are reachable from anywhere still live.
-  if (['REJECTED', 'WITHDRAWN', 'ON_HOLD'].includes(to)) return true;
-  if (from === 'ON_HOLD') return PROGRESSION.includes(to);
-  const fromIndex = PROGRESSION.indexOf(from);
-  const toIndex = PROGRESSION.indexOf(to);
-  // Forwards by any number of steps, or back to an earlier stage for a re-screen.
-  return fromIndex >= 0 && toIndex >= 0;
+  if (from === to || TERMINAL.includes(from)) return false;
+  // From any live stage: forwards any number of steps, back for a re-screen, or
+  // out to a rejection, withdrawal or hold. Only HIRED is gated.
+  return to !== 'HIRED' || from === 'OFFER';
 }
 
 /** Strips salary figures for a caller who may not read them. */

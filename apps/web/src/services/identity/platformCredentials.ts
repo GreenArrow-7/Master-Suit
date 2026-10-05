@@ -10,7 +10,6 @@ import {
   invalidateMfaChallenges,
   isPlatformStaff,
   revokeSessionsForCredential,
-  type CredentialPurpose,
 } from '@/lib/auth/credentials';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
 import { platformAudit } from '@/lib/security/audit';
@@ -365,5 +364,3 @@ async function record(
     throw err;
   });
 }
-
-export type { CredentialPurpose };

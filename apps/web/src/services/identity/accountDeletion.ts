@@ -377,45 +377,36 @@ async function retentionManifest(
     hrStoredFiles += documents.filter((d) => d.storageKey).length;
   }
 
-  const retained: RetainedCategory[] = [];
-  if (attributedNames > 0) {
-    retained.push({
+  const retained: RetainedCategory[] = [
+    {
       category: 'workspace_attribution',
       count: attributedNames,
       reason:
         'Name and user id kept on the workspace record so the leads, calls, receipts and approvals this person entered stay attributable.',
-    });
-  }
-  if (auditEntries > 0) {
-    retained.push({
+    },
+    {
       category: 'audit_trail',
       count: auditEntries,
       reason: 'Audit entries keep the acting user id and event; IP address and user agent were cleared at completion.',
-    });
-  }
-  if (hrProfiles > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_employment_record',
       count: hrProfiles,
       reason:
         'Employment record retained: payroll runs, payslips and settlement snapshots reference it. Not erased by this request.',
-    });
-  }
-  if (hrFinancialIdentifiers > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_financial_identifiers',
       count: hrFinancialIdentifiers,
       reason:
         'IBAN, bank agent id, WPS person id and RERA BRN still on the employment record (expected 0: cleared at completion).',
-    });
-  }
-  if (hrDocuments > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_identity_documents',
       count: hrDocuments,
       reason: `Identity and visa documents: ${hrStoredFiles} stored file(s), scheduled for purge 15 days after completion by the retention job.`,
-    });
-  }
+    },
+  ].filter((c) => c.count > 0);
   // Always stated. It is never zero and it is never erasable in place, so leaving it out
   // when nothing else remains would read as "nothing is left", which is not true.
   retained.push({

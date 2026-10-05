@@ -183,7 +183,7 @@ export async function reportDrift(tenantId: string, now = new Date()): Promise<D
  */
 export async function repairDrift(
   tenantId: string,
-  opts: { apply?: boolean; limit?: number } = {},
+  opts: { apply?: boolean } = {},
 ): Promise<{ considered: number; repaired: number }> {
   const report = await reportDrift(tenantId);
   const disagreeing = report.missing + report.stale + report.unexpected;
@@ -192,14 +192,13 @@ export async function repairDrift(
     return { considered: disagreeing, repaired: 0 };
   }
 
-  const limit = opts.limit ?? 10_000;
   const ids = await withTx(tenantId, (tx) =>
     tx.$queryRawUnsafe<{ id: string }[]>(
       `SELECT l."id" FROM "Lead" l
         WHERE l."tenantId" = $1 AND l."deletedAt" IS NULL
           AND (l."nextFollowUpAt" IS DISTINCT FROM (${DERIVED}))
         ORDER BY l."id"
-        LIMIT ${limit}`,
+        LIMIT 10000`,
       tenantId,
     ),
   );

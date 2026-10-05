@@ -22,7 +22,7 @@
  * that as "already queued", which it is. A `findFirst` beforehand would take no
  * lock and both would insert.
  */
-import { prisma, type TxClient } from '@/lib/db';
+import type { TxClient } from '@/lib/db';
 
 import type { Ineligibility } from './eligibility';
 
@@ -99,7 +99,7 @@ export async function resolveAccountability(
   tenantId: string,
   rule: OpenTriageInput['rule'],
   leadTeamId: string | null | undefined,
-  client: Pick<typeof prisma, 'team' | 'user'> = prisma,
+  client: Pick<TxClient, 'team' | 'user'>,
 ): Promise<Accountability> {
   if (rule?.fallbackUserId) {
     const user = await client.user.findFirst({
@@ -171,12 +171,7 @@ export interface OpenTriageResult {
 export async function openTriageEntry(tx: TxClient, input: OpenTriageInput): Promise<OpenTriageResult> {
   const now = input.now ?? new Date();
   const { reviewDueAt, reviewPolicyMissing } = reviewDeadline(input.rule, now);
-  const who = await resolveAccountability(
-    input.tenantId,
-    input.rule,
-    input.leadTeamId,
-    tx as unknown as Pick<typeof prisma, 'team' | 'user'>,
-  );
+  const who = await resolveAccountability(input.tenantId, input.rule, input.leadTeamId, tx);
 
   /**
    * `MAX(episode) + 1` is read in the same statement that inserts, so it cannot

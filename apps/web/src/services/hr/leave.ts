@@ -268,7 +268,7 @@ export async function approverFor(ctx: Ctx, employee: { id: string; managerMembe
   });
 }
 
-export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date, excludeId?: string) {
+export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date) {
   return prisma.hrLeaveRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
@@ -276,7 +276,6 @@ export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end
       status: { in: [...BLOCKING_STATUSES] },
       startDate: { lte: toDay(end) },
       endDate: { gte: toDay(start) },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
     },
   });
 }
