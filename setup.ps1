@@ -2,13 +2,6 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $webRoot = Join-Path $projectRoot 'apps\web'
 
-function New-Secret([int]$bytes = 48) {
-  $buffer = New-Object byte[] $bytes
-  $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-  try { $generator.GetBytes($buffer) } finally { $generator.Dispose() }
-  return [Convert]::ToBase64String($buffer)
-}
-
 function Assert-NativeSuccess([string]$step) {
   if ($LASTEXITCODE -ne 0) { throw "$step failed with exit code $LASTEXITCODE. Review the output above and run setup again." }
 }
@@ -114,11 +107,13 @@ if (-not (Test-Path -LiteralPath $webEnv)) {
   $ownerPasswordSecure = Read-Host 'Initial platform owner password (16+ characters)' -AsSecureString
   $ownerPasswordPlain = [System.Net.NetworkCredential]::new('', $ownerPasswordSecure).Password
   if ($ownerPasswordPlain.Length -lt 16) { throw 'The platform owner password must contain at least 16 characters.' }
-  $template = Get-Content -LiteralPath (Join-Path $webRoot '.env.example') -Raw
-  $template = $template -replace 'FIELD_ENCRYPTION_KEY=.*', "FIELD_ENCRYPTION_KEY=$(New-Secret 32)"
-  $template = $template -replace 'WEBHOOK_SIGNING_PEPPER=.*', "WEBHOOK_SIGNING_PEPPER=$(New-Secret 32)"
-  $template = $template.Replace('PLATFORM_OWNER_PASSWORD=CHANGE_ME_AT_LEAST_16_CHARS', "PLATFORM_OWNER_PASSWORD=$ownerPasswordPlain")
-  Set-Content -LiteralPath $webEnv -Value $template -Encoding utf8
+  # Copies .env.example and fills its secrets, exactly as `npm run secrets` does.
+  node (Join-Path $webRoot 'scripts\generate-secrets.mjs') $webEnv
+  Assert-NativeSuccess 'Secret generation'
+  $template = (Get-Content -LiteralPath $webEnv -Raw).Replace('PLATFORM_OWNER_PASSWORD=CHANGE_ME_AT_LEAST_16_CHARS', "PLATFORM_OWNER_PASSWORD=$ownerPasswordPlain")
+  # Without a byte-order mark: Windows PowerShell's -Encoding utf8 writes one, and it would
+  # become part of the first key's name.
+  [IO.File]::WriteAllText($webEnv, $template)
   $ownerPasswordPlain = $null
 }
 
