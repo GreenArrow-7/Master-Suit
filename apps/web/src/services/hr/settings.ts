@@ -257,6 +257,18 @@ export const HR_SETTINGS: Definition[] = [
     label: "Check-out waits for the day's assigned leads",
     help: 'A seller who was handed leads today cannot check out while any of them is still untouched. The check-in screen warns as the day goes on; an approved attendance exception (reason work_pending) lets a manager override for that day.',
   },
+  {
+    key: 'checkoutWorkGateMaxHours',
+    group: 'attendance',
+    type: 'number',
+    default: 10,
+    min: 1,
+    max: 24,
+    step: 0.5,
+    unit: 'h',
+    label: 'Check-out is never held past',
+    help: 'After this long checked in, the two rules above stop holding the check-out, work done or not. Ten hours is the UAE ceiling of eight ordinary hours plus two of overtime (Decree-Law 33/2021, Arts. 17 and 19); a target is not a reason to keep someone at work beyond it.',
+  },
 
   // ── Leave ────────────────────────────────────────────────────────────────
   {
@@ -683,6 +695,7 @@ export type HrPolicy = {
   captureRetentionDays: number;
   checkoutRequiresLeadWork: boolean;
   checkoutRequiresDailyTarget: boolean;
+  checkoutWorkGateMaxHours: number;
   weekendDays: number[];
   leaveMaxBackdateDays: number;
   accrualMinMonthsService: number;
