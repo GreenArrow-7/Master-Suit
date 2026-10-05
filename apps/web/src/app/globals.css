@@ -4518,6 +4518,16 @@ a:hover {
   min-width: 180px;
   padding: 4px 0;
 }
+.lf-create-menu a {
+  display: block;
+  padding: 8px 16px;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink);
+  text-decoration: none;
+}
+.lf-create-menu a:hover {
+  background: var(--lf-surface-2);
+}
 
 /* On a phone a 380px panel hangs off the right edge of a 360px viewport.
    Pinned to the screen with a gutter either side instead. */
