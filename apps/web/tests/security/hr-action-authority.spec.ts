@@ -25,7 +25,7 @@ import { prisma } from '@/lib/db';
 import { POST as hrAction } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/actions/[action]/route';
 import { createSessionToken } from '../helpers/session';
 import { post } from '../helpers/request';
-import { grantPermissions } from '../helpers/fixtures';
+import { grantPermissions, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `hrauth-${suffix}`;
@@ -41,19 +41,11 @@ async function actor(label: string, grants: [string, PermissionAction][], scope:
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 40, defaultScope: scope },
   });
   await grantPermissions(tenantId, role.id, grants, scope);
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
+  const user = await createWorkspaceUser({ tenantId, roleId: role.id, email: email, fullName: label });
   const employee = await prisma.employeeProfile.create({
     data: {
       tenantId,
-      membershipId: membership.id,
+      membershipId: user.membershipId,
       employeeNumber: `E-${label}-${suffix}`,
       joinedOn: new Date('2026-01-01T00:00:00Z'),
       employmentStatus: 'ACTIVE',

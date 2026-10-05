@@ -18,7 +18,7 @@ import { buildActor, buildCtx } from '../helpers/ctx';
 import { fixtureUnit } from '../helpers/inventory';
 import { patch, post } from '../helpers/request';
 import type { Ctx } from '@/lib/security/rbac';
-import { grantPermissions } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `bookings-${suffix}`;
@@ -53,25 +53,10 @@ beforeAll(async () => {
   });
   await grantPermissions(tenantId, role.id, GRANTS, 'ORGANIZATION' as VisibilityScope);
 
-  const user = await prisma.user.create({
-    data: { tenantId, email: `seller-${suffix}@bk.test`, fullName: 'Seller', roleId: role.id, status: 'ACTIVE' },
-  });
-  userId = user.id;
-
-  // The session helper refuses without a membership, deliberately: a session
-  // minted for an unlinked user 401s fifty assertions later.
-  const platformUser = await prisma.platformUser.create({
-    data: {
-      email: `seller-${suffix}@bk.test`,
-      normalizedEmail: `seller-${suffix}@bk.test`,
-      fullName: 'Seller',
-      status: 'ACTIVE',
-    },
-  });
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  cookie = await createSessionToken(tenantId, user.id);
+  userId = (
+    await createWorkspaceUser({ tenantId, roleId: role.id, email: `seller-${suffix}@bk.test`, fullName: 'Seller' })
+  ).id;
+  cookie = await createSessionToken(tenantId, userId);
   ctx = buildCtx(
     buildActor({
       id: userId,
