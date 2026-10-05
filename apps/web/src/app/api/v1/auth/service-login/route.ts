@@ -21,6 +21,7 @@ import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { assertSameOrigin } from '@/lib/security/origin';
 import { toResponse, bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Interactive sign-in for an `AI_SERVICE` identity:
@@ -399,21 +400,10 @@ async function record(
   requestId: string,
   metadata: Record<string, unknown>,
 ) {
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: null,
-        actorUserId: platformUserId,
-        event,
-        objectType: 'platform_service_identity',
-        objectId: platformUserId,
-        ipAddress: ip,
-        userAgent: ua,
-        requestId,
-        metadata: metadata as never,
-      },
-    })
-    .catch((err) => logger.error({ err, requestId, event }, 'service auth audit write failed'));
+  await platformAudit(
+    { platformUserId, requestId, ip, userAgent: ua },
+    { event, objectType: 'platform_service_identity', objectId: platformUserId, metadata: metadata as never },
+  ).catch((err) => logger.error({ err, requestId, event }, 'service auth audit write failed'));
 }
 
 function recordFailure(

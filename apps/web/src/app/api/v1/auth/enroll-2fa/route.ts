@@ -12,6 +12,7 @@ import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { readJsonBody } from '@/lib/api/read-body';
 import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * First-run two-factor enrolment, reachable with an MFA_ENROLMENT grant.
@@ -139,21 +140,13 @@ export const POST = bareRoute('/api/v1/auth/enroll-2fa', async (req, requestId) 
     credentialVersion: ctx.credentialVersion,
   });
 
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: ctx.activeTenantId,
-        actorUserId: user.id,
-        event: 'MFA_ENROLLED',
-        objectType: 'platform_user',
-        objectId: user.id,
-        requestId,
-        ipAddress: ctx.ip,
-        userAgent: ctx.userAgent,
-        metadata: { action: 'mfa.enrolled.first_run' },
-      },
-    })
-    .catch(() => {});
+  await platformAudit(ctx, {
+    tenantId: ctx.activeTenantId,
+    event: 'MFA_ENROLLED',
+    objectType: 'platform_user',
+    objectId: user.id,
+    metadata: { action: 'mfa.enrolled.first_run' },
+  }).catch(() => {});
 
   return NextResponse.json({
     enabled: true,

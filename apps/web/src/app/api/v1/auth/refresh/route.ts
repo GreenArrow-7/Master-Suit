@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth/session';
 import { credentialRefusal } from '@/lib/auth/credentials';
 import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Rotates the session token.
@@ -59,21 +60,21 @@ export const POST = bareRoute('/api/v1/auth/refresh', async (req, requestId) => 
   if (session.revokedAt) {
     // A token that was already rotated away is being presented again.
     await revokeAllPlatformSessions(session.platformUserId, 'ROTATED_TOKEN_REPLAYED');
-    await prisma.platformAuditEvent
-      .create({
-        data: {
-          tenantId: session.activeTenantId,
-          actorUserId: session.platformUserId,
-          event: 'LOGIN_FAILED',
-          objectType: 'platform_session',
-          objectId: session.id,
-          ipAddress: clientIp(req),
-          userAgent: req.headers.get('user-agent'),
-          requestId,
-          metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
-        },
-      })
-      .catch(() => {});
+    await platformAudit(
+      {
+        platformUserId: session.platformUserId,
+        requestId,
+        ip: clientIp(req),
+        userAgent: req.headers.get('user-agent'),
+      },
+      {
+        tenantId: session.activeTenantId,
+        event: 'LOGIN_FAILED',
+        objectType: 'platform_session',
+        objectId: session.id,
+        metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
+      },
+    ).catch(() => {});
     jar.delete(SESSION_COOKIE);
     throw Unauthorized('Your session has expired.');
   }

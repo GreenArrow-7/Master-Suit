@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { prisma } from '@/lib/db';
 import { Unauthorized } from '@/lib/errors';
 import { SESSION_COOKIE, clientIp, loadSession, revokeAllPlatformSessions } from '@/lib/auth/session';
 import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Signs the account out of every device, including this one.
@@ -24,21 +24,16 @@ export const POST = bareRoute('/api/v1/auth/logout-all', async (req, requestId) 
 
   const signedOut = await revokeAllPlatformSessions(session.platformUserId, 'USER_LOGOUT_ALL');
 
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: session.activeTenantId,
-        actorUserId: session.platformUserId,
-        event: 'LOGOUT',
-        objectType: 'platform_user',
-        objectId: session.platformUserId,
-        ipAddress: clientIp(req),
-        userAgent: req.headers.get('user-agent'),
-        requestId,
-        metadata: { scope: 'all-devices', platformSessions: signedOut },
-      },
-    })
-    .catch(() => {});
+  await platformAudit(
+    { platformUserId: session.platformUserId, requestId, ip: clientIp(req), userAgent: req.headers.get('user-agent') },
+    {
+      tenantId: session.activeTenantId,
+      event: 'LOGOUT',
+      objectType: 'platform_user',
+      objectId: session.platformUserId,
+      metadata: { scope: 'all-devices', platformSessions: signedOut },
+    },
+  ).catch(() => {});
 
   jar.delete(SESSION_COOKIE);
   return NextResponse.json({ ok: true, signedOut });

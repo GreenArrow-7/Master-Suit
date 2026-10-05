@@ -16,7 +16,7 @@ import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
-import { audit } from '@/lib/security/audit';
+import { audit, platformAudit } from '@/lib/security/audit';
 import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
 import { passwordPolicy } from './accounts';
@@ -358,18 +358,16 @@ export async function acceptInvitation(token: string, input: { password: string;
     return { platformUserId: platformUser.id, reusedIdentity: Boolean(existing) };
   });
 
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: invitation.tenantId,
-        actorUserId: result.platformUserId,
-        event: 'RECORD_CREATED',
-        objectType: 'invitation',
-        objectId: invitation.id,
-        metadata: { action: 'user.invitation_accepted', email, reusedIdentity: result.reusedIdentity },
-      },
-    })
-    .catch(() => {});
+  await platformAudit(
+    { platformUserId: result.platformUserId },
+    {
+      tenantId: invitation.tenantId,
+      event: 'RECORD_CREATED',
+      objectType: 'invitation',
+      objectId: invitation.id,
+      metadata: { action: 'user.invitation_accepted', email, reusedIdentity: result.reusedIdentity },
+    },
+  ).catch(() => {});
 
   return {
     workspaceSlug: tenant.slug,

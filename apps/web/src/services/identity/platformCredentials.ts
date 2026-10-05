@@ -13,6 +13,7 @@ import {
   type CredentialPurpose,
 } from '@/lib/auth/credentials';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * The credential lifecycle for platform staff: setting, changing and revoking the
@@ -350,23 +351,19 @@ async function record(
   metadata: Record<string, unknown>,
 ) {
   // No password, hash, code or secret is ever part of `metadata`.
-  await db.platformAuditEvent
-    .create({
-      data: {
-        actorUserId: actor.platformUserId,
-        event,
-        objectType: 'platform_user',
-        objectId: target.id,
-        requestId: actor.requestId,
-        ipAddress: actor.ip,
-        userAgent: actor.userAgent,
-        metadata: { target: target.email, ...metadata },
-      },
-    })
-    .catch((err) => {
-      logger.error({ err, event, requestId: actor.requestId }, 'credential audit write failed');
-      throw err;
-    });
+  await platformAudit(
+    actor,
+    {
+      event,
+      objectType: 'platform_user',
+      objectId: target.id,
+      metadata: { target: target.email, ...metadata },
+    },
+    db,
+  ).catch((err) => {
+    logger.error({ err, event, requestId: actor.requestId }, 'credential audit write failed');
+    throw err;
+  });
 }
 
 export type { CredentialPurpose };

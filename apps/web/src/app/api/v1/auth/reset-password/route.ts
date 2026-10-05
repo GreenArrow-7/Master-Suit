@@ -11,6 +11,7 @@ import { assertNotReused, recordPreviousPassword } from '@/services/identity/pas
 import { revokeAllPlatformSessions } from '@/lib/auth/session';
 import { readJsonBody } from '@/lib/api/read-body';
 import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * No `tenantSlug`. The token names the workspace it was issued for; asking the
@@ -119,18 +120,15 @@ export const POST = bareRoute('/api/v1/auth/reset-password', async (req, request
   // Platform staff are recorded on the platform trail as well, naming the
   // credential the link set.
   if (staff || !(tenant && record.userId)) {
-    await prisma.platformAuditEvent.create({
-      data: {
-        actorUserId: platformUserId,
+    await platformAudit(
+      { platformUserId, requestId, ip: record.ipAddress, userAgent: record.userAgent },
+      {
         event: 'PASSWORD_RESET',
         objectType: 'platform_user',
         objectId: platformUserId,
-        requestId,
-        ipAddress: record.ipAddress,
-        userAgent: record.userAgent,
         metadata: { result: 'ok', via: 'reset-link', ...(staff ? { credentialPurpose: 'PLATFORM_ADMIN' } : {}) },
       },
-    });
+    );
   }
 
   return NextResponse.json({ ok: true });

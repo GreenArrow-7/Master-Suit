@@ -111,10 +111,11 @@ export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = pris
 /**
  * The platform audit trail: what a platform identity did, from where, on which
  * request. The actor and request fields come from the context, so a call site
- * states only the event.
+ * states only the event. A null actor is the system (an erasure); a caller with
+ * no request (an invitation accepted in a service) leaves those fields empty.
  */
 export async function platformAudit(
-  ctx: Pick<PlatformCtx, 'platformUserId' | 'requestId' | 'ip' | 'userAgent'>,
+  ctx: { platformUserId: string | null } & Partial<Pick<PlatformCtx, 'requestId' | 'ip' | 'userAgent'>>,
   event: {
     event: string;
     objectType: string;

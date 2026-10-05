@@ -1,6 +1,6 @@
 import { prisma, withPlatformTx } from '@/lib/db';
 import { env } from '@/lib/env';
-import { audit } from '@/lib/security/audit';
+import { audit, platformAudit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
@@ -270,16 +270,15 @@ export async function cancelAccountDeletion(ctx: Ctx) {
  * a workspace name, never anything the person wrote.
  */
 async function recordErasure(platformUserId: string, requestId: string, outcome: ErasureOutcome) {
-  await prisma.platformAuditEvent.create({
-    data: {
-      tenantId: null,
-      actorUserId: null,
+  await platformAudit(
+    { platformUserId: null },
+    {
       event: 'ACCOUNT_ERASED',
       objectType: 'account_deletion_request',
       objectId: requestId,
-      metadata: { platformUserId, ...outcome } as object,
+      metadata: { platformUserId, ...outcome } as never,
     },
-  });
+  );
 }
 
 /**
