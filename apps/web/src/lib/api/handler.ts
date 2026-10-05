@@ -12,7 +12,8 @@ import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
-import { assertAnyModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { assertAnyModuleEntitlement } from '../security/entitlements';
+import type { ProductModuleKey as ProductModule } from '../modules/catalogue';
 import { recordError, recordRequest } from '../metrics';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {

@@ -13,16 +13,7 @@ import { Stat } from '../ai-control/ui';
  */
 const nf = new Intl.NumberFormat('en-GB');
 
-export default function AiUsageView({
-  table,
-  totals,
-  nearLimit,
-  models,
-  month,
-  nameOf,
-  split,
-  estimatedCostUsd,
-}: AiUsageData) {
+export default function AiUsageView({ table, totals, nearLimit, models, month, nameOf, split }: AiUsageData) {
   return (
     <div className="lf-page-stack">
       <PageHeader
@@ -41,15 +32,6 @@ export default function AiUsageView({
           <Stat label="On workspaces’ own keys" value={nf.format(totals.workspace)} hint="billed to them" />
           <Stat label="Sent (input)" value={nf.format(split.input)} hint="shared key, this month" />
           <Stat label="Received (output)" value={nf.format(split.output)} hint="shared key, this month" />
-          <Stat
-            label="Estimated cost"
-            value={estimatedCostUsd === null ? '—' : `$${estimatedCostUsd.toFixed(2)}`}
-            hint={
-              estimatedCostUsd === null
-                ? 'set AI_COST_USD_PER_MILLION_INPUT / _OUTPUT to price it'
-                : 'from the stated per-million prices'
-            }
-          />
           {totals.unattributed > 0 && (
             <Stat
               label="Unattributed"

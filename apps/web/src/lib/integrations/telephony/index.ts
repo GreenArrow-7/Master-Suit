@@ -128,10 +128,6 @@ export class MockTelephonyProvider implements TelephonyProvider {
    * Mock callbacks are generated inside tests; they are never trusted as HTTP
    * webhooks. Returning false prevents development defaults becoming a bypass.
    */
-  verifyWebhookSignature(): boolean {
-    return false;
-  }
-
   validateWebhook(): boolean {
     return false;
   }

@@ -257,7 +257,7 @@ export async function removeTotpFor(ctx: Ctx, userId: string) {
   }
 
   await clearFactors(ctx, target.workspaceMembership.platformUserId);
-  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'MFA_RESET');
+  await revokeAllSessions(target.id, undefined, 'MFA_RESET');
   await audit(ctx, {
     event: 'MFA_ENROLLED',
     objectType: 'user',

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REALTY_SHARED_ROOTS, realtyEquivalent } from '@/lib/nav/realtyShared';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
  * Real Estate reuses Sales' client register rather than copying it.
@@ -187,10 +188,7 @@ describe('a refused module is named correctly', () => {
     const block = /const MODULE_LABEL: Record<ProductModule, string> = \{([^}]*)\}/.exec(source);
     expect(block).not.toBeNull();
     const labelled = [...block![1]!.matchAll(/^\s*([A-Z_]+):/gm)].map((m) => m[1]);
-    const declared = [.../const PRODUCT_MODULES = \[([^\]]+)\]/.exec(source)![1]!.matchAll(/'([A-Z_]+)'/g)].map(
-      (m) => m[1],
-    );
-    expect([...labelled].sort()).toEqual([...declared].sort());
+    expect([...labelled].sort()).toEqual([...PRODUCT_MODULE_KEYS].sort());
   });
 });
 

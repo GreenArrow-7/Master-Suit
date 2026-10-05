@@ -3,9 +3,10 @@ import { headers } from 'next/headers';
 import { forbidden } from 'next/navigation';
 import { resolveCtx } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
-import { assertPermission, type Action, type Ctx } from '@/lib/security/rbac';
+import { can, type Action, type Ctx } from '@/lib/security/rbac';
 import { recordPlatformAccess } from '@/lib/auth/service-identity';
-import { assertAnyModuleEntitlement, type ProductModule } from '@/lib/security/entitlements';
+import { assertAnyModuleEntitlement } from '@/lib/security/entitlements';
+import type { ProductModuleKey as ProductModule } from '@/lib/modules/catalogue';
 
 export interface WorkspacePageOptions {
   /**
@@ -190,38 +191,21 @@ async function assertPageAccess(ctx: Ctx, options: WorkspacePageOptions) {
    * and a break-glass owner is meant to reach them. The two screens that manage
    * a *credential* carry their own refusal; see profile/security/page.tsx.
    */
-  let refused = false;
-  if (options.permission === SELF_SERVICE) {
-    refused = ctx.actor.platformMode === 'monitoring';
-  } else {
-    try {
-      assertPermission(ctx, options.permission[0], options.permission[1]);
-    } catch {
-      refused = true;
-    }
-  }
+  const refused =
+    options.permission === SELF_SERVICE
+      ? ctx.actor.platformMode === 'monitoring'
+      : !can(ctx, options.permission[0], options.permission[1]);
+  // SELF_SERVICE screens carry no module/action pair to report. They are the
+  // viewer's own profile and notifications, so `self` is the honest label —
+  // and they are still recorded, because "which screens did they open" must
+  // not have holes in it.
+  const record = async (status: number) =>
+    recordPlatformAccess(ctx, { module: accessModule, action, method: 'GET', path: await pagePath(), status });
   if (refused) {
-    await recordPlatformAccess(ctx, {
-      module: accessModule,
-      action,
-      method: 'GET',
-      path: await pagePath(),
-      status: 403,
-    }).catch(() => {});
+    await record(403).catch(() => {});
     forbidden();
   }
-
-  await recordPlatformAccess(ctx, {
-    // SELF_SERVICE screens carry no module/action pair to report. They are the
-    // viewer's own profile and notifications, so `self` is the honest label —
-    // and they are still recorded, because "which screens did they open" must
-    // not have holes in it.
-    module: options.permission === SELF_SERVICE ? 'self' : options.permission[0],
-    action: options.permission === SELF_SERVICE ? 'VIEW' : options.permission[1],
-    method: 'GET',
-    path: await pagePath(),
-    status: 200,
-  });
+  await record(200);
 }
 
 /**

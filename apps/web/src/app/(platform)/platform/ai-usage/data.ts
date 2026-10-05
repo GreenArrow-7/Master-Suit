@@ -5,7 +5,6 @@ import {
   AI_MODEL_METRIC_PREFIX,
   AI_OUT_METRIC_PREFIX,
   AI_TOKEN_LIMIT_KEY,
-  estimateCostUsd,
   usageMetric,
 } from '@/lib/ai/usage';
 import { aggregate, aggregateModels } from './aggregate';
@@ -104,12 +103,11 @@ export async function loadAiUsage() {
   const { table, totals, nearLimit } = aggregate(rows.usage, allowanceOf);
   const models = aggregateModels(rows.modelUsage);
 
-  // Sent vs received on the shared key, and the estimate the stated prices give.
+  // Sent vs received on the shared key. Priced cost is the AI control centre's, from AiEvent.
   const sum = (prefix: string) =>
     rows.direction.filter((r) => r.metric.startsWith(`${prefix}deployment:`)).reduce((n, r) => n + r.used, 0);
   const split = { input: sum(AI_IN_METRIC_PREFIX), output: sum(AI_OUT_METRIC_PREFIX) };
-  const estimatedCostUsd = estimateCostUsd(split.input, split.output);
-  return { table, totals, nearLimit, models, month, nameOf, split, estimatedCostUsd };
+  return { table, totals, nearLimit, models, month, nameOf, split };
 }
 
 export type AiUsageData = Awaited<ReturnType<typeof loadAiUsage>>;

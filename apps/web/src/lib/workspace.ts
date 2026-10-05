@@ -15,7 +15,3 @@ export async function requireWorkspace(ctx: Ctx, workspaceSlug: string) {
   if (workspace.status !== 'ACTIVE') throw Forbidden('This workspace is suspended.');
   return workspace;
 }
-
-export function workspacePath(slug: string, path = '') {
-  return `/${slug}${path.startsWith('/') ? path : `/${path}`}`;
-}

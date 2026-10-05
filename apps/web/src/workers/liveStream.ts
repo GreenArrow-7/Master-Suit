@@ -28,12 +28,7 @@ import { connectionCredentials } from '@/lib/integrations/connection';
 import { parseStreamMessage, verifyStreamToken, liveChannel } from '@/lib/integrations/telephony/stream';
 import { openLiveStt, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
 import { coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
-import {
-  leadCallContext,
-  contextPromptBlock,
-  budgetMatchHint,
-  type LeadCallContext,
-} from '@/services/leads/callContext';
+import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 interface Session {
@@ -43,7 +38,6 @@ interface Session {
   lines: string[];
   customerTurns: number;
   stage: string;
-  context: LeadCallContext | null;
   contextBlock?: string;
   stt: Partial<Record<'inbound' | 'outbound', LiveSttConnection>>;
   finalised: boolean;
@@ -168,7 +162,6 @@ async function openSession(msg: {
     lines: [],
     customerTurns: 0,
     stage: 'INTRODUCTION',
-    context,
     contextBlock: context ? contextPromptBlock(context) : undefined,
     stt: {},
     finalised: false,
@@ -191,7 +184,7 @@ async function openSession(msg: {
   }
 
   await publish(msg.callId, { type: 'status', status: 'IN_PROGRESS' });
-  const opener = nextBestQuestion(session.context?.requirement ?? null);
+  const opener = nextBestQuestion(context?.requirement ?? null);
   await publish(msg.callId, { type: 'coach', kind: 'ASK', ...opener, source: 'simulated', at: 0 });
 
   return session;

@@ -262,11 +262,6 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
   ],
 };
 
-/** Keys that may be reordered or removed, in catalogue order. */
-export function optionalColumns(object: GridObject): ColumnDef[] {
-  return GRID_COLUMNS[object].filter((column) => !column.fixed);
-}
-
 /**
  * Turns a stored key list into columns to render.
  *

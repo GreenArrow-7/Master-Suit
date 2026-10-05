@@ -169,13 +169,11 @@ export async function revokeAllPlatformSessions(
   return count;
 }
 
-/** A password or role change invalidates every other session for that user. */
-export async function revokeAllSessions(
-  tenantId: string,
-  userId: string,
-  except?: string,
-  reason = 'CREDENTIAL_CHANGE',
-) {
+/**
+ * A password or role change invalidates every other session for that user's
+ * identity — platform-wide, since a session is not per workspace.
+ */
+export async function revokeAllSessions(userId: string, except?: string, reason = 'CREDENTIAL_CHANGE') {
   const membership = await prisma.workspaceMembership.findUnique({ where: { salesUserId: userId } });
   if (!membership) return;
   await prisma.platformSession.updateMany({

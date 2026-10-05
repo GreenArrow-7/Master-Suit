@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
-import { workspacePath } from '@/lib/workspace';
 import { AppError } from '@/lib/errors';
 import { proposalDetail } from '@/services/proposals/proposals';
 import Badge from '@/components/ui/Badge';
@@ -51,7 +50,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
           {proposal.owner && <span style={{ color: 'var(--lf-ink-3)' }}>{proposal.owner.fullName}</span>}
           {proposal.leadId && <SalesLink href={`/leads/${proposal.leadId}`}>Open the lead</SalesLink>}
           {proposal.contactId && contactsReachable && (
-            <Link href={workspacePath(workspaceSlug, `/sales/contacts/${proposal.contactId}`)}>Open the contact</Link>
+            <Link href={`/${workspaceSlug}/sales/contacts/${proposal.contactId}`}>Open the contact</Link>
           )}
         </div>
       </header>

@@ -5,13 +5,6 @@ import { generateStructured } from './provider';
 import { redact } from './redact';
 import { modelCascade, runCascade } from './cascade';
 
-/**
- * Hard ceiling on one provider round-trip. A hung provider must fail the one
- * feature that needed it, not hold a connection (and on the request path, a
- * request) open indefinitely — graceful degradation starts with a deadline.
- */
-const AI_TIMEOUT_MS = 60_000;
-
 export interface AuditInput {
   /** Whose key to run on. Absent falls back to the deployment key. */
   tenantId?: string;
@@ -129,7 +122,6 @@ export async function auditCall(input: AuditInput): Promise<AuditResult> {
         schema: AUDIT_SCHEMA,
         temperature: 0.1,
         maxOutputTokens: 4096,
-        timeoutMs: AI_TIMEOUT_MS,
       }),
     );
     const response = res.value;
