@@ -103,7 +103,7 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 Waiting on the owner:
 
 - **Lead Eagle inside YOUHAN ONE** — decided 5 Oct; the plan
-  (`changes/2026-10-05-lead-eagle-plan.md`) waits on six decisions at its end.
+  (`changes/2026-10-05-lead-eagle-plan.md`) is approved; phase 1 is next.
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams.
 - **Store submissions** — iOS and Android, in the owner's store consoles.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody

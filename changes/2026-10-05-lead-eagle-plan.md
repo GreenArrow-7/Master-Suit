@@ -1,7 +1,7 @@
 # Lead Eagle inside YOUHAN ONE — plan
 
-**Status: proposed, waiting on the owner's decisions below.** Follows the
-decision of 5 Oct ([decision](2026-10-05-lead-eagle-decision.md)).
+**Status: approved 5 Oct; the owner's decisions are recorded at the end.**
+Follows the decision of 5 Oct ([decision](2026-10-05-lead-eagle-decision.md)).
 
 ## The idea
 
@@ -68,34 +68,42 @@ one-line re-exports, the way `realty/` reuses `sales/`:
 
 ## Phases
 
-1. **The module, live in the platform portal.** Module key, catalogue,
-   entitlement set, API acceptance, nav, re-exported screens. The owner can sell
-   Lead Eagle, and a Lead-Eagle-only workspace works end to end on what exists.
-   Checked like Real Estate: route drift guard, page access, module entitlement,
-   and a browser pass as a Lead-Eagle-only workspace.
-2. **Inbound leads** from portals and ads (gap 1), then several phones and
-   duplicate matching (gap 2).
+1. **The module, live in the platform portal.** Module key, catalogue, a Lead
+   Eagle entitlement set for the API routes and shared screens in its scope
+   (leads, follow-ups, calls, tasks, assignment, projects, listings, reports —
+   not collections, commissions, proposals, portals or events), a "Lead Eagle"
+   menu section, re-exported screens, and Sales links redirected the way a
+   Real-Estate-only workspace's are. The owner can sell Lead Eagle, and a
+   Lead-Eagle-only workspace works end to end on what exists. Checked like Real
+   Estate: route drift guard, page access, module entitlement, and a browser
+   pass as a Lead-Eagle-only workspace.
+2. **Inbound leads** from Property Finder, Bayut and Dubizzle, and Google Ads
+   lead forms (gap 1), then several phones and duplicate matching (gap 2).
+   Needs each partner's access, which the owner obtains.
 3. **Statuses, QR capture, cold data** (gaps 3–5).
 4. **Assignment explanations and reports** (gaps 6–7).
-5. **Later, if wanted**: self-serve sign-up and the offline phone app (gaps 8–9).
+5. **Moving the standalone Lead Eagle's customers across.** After phases 2–3, so
+   every kind of record has somewhere to land (several phones, sub-statuses,
+   cold data). Per company: a dry run against a copy, a count-and-sample check
+   per table, then a cut-over while the standalone app is read-only. Bookings and
+   commissions move into YOUHAN ONE's shared tables; a migrated company that uses
+   them gets Real Estate switched on, so no data is hidden.
+6. **Later, if wanted**: self-serve sign-up and the offline phone app (gaps 8–9).
 
 Each phase is its own PR with its `changes/` entry, deployed when the owner says.
 
-## Decisions needed from the owner
+## The owner's decisions (5 Oct)
 
-1. **What Lead Eagle is next to Real Estate.**
-   - (a) A lighter, lead-management product: leads, intake, assignment,
-     follow-ups, calls, attendance, projects and listings. No collections,
-     commissions, proposals, portal publishing or events. *Recommended: it gives
-     the platform two distinct things to sell on the same records.*
-   - (b) The same features as Real Estate under the Lead Eagle name.
-2. **Name and branding** inside a Lead Eagle workspace: "Lead Eagle" in the
-   navigation, or YOUHAN ONE throughout.
-3. **A workspace with both** Lead Eagle and Real Estate shows Real Estate's
-   fuller navigation, not two sections — confirm.
-4. **Which lead sources first**, and whether partner credentials exist: Property
-   Finder, Bayut, Dubizzle, Google Ads.
-5. **Self-serve sign-up**: wanted, or the platform owner keeps creating
-   workspaces?
-6. **The standalone Lead Eagle**: does it hold real customers or data to bring
-   across? If not, it stays as history.
+1. **A lighter lead-management product**: leads, intake, assignment, follow-ups,
+   calls, attendance, projects and listings. No collections, commissions,
+   proposals, portal publishing or events.
+2. **"Lead Eagle" in the menu**: the YOUHAN ONE app and sign-in, with a Lead
+   Eagle section named as the product.
+3. **All three lead sources**: Property Finder, Bayut and Dubizzle, Google Ads.
+4. **Move the standalone Lead Eagle's data** (phase 5).
+5. Not yet asked, defaulted: a workspace with both Lead Eagle and Real Estate
+   shows Real Estate's fuller menu; self-serve sign-up waits for phase 6.
+
+Still needed for phase 5: where the standalone Lead Eagle runs and how its
+database is reached, how many companies, users and leads it holds, and when a
+cut-over may happen.
