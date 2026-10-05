@@ -5765,35 +5765,6 @@ a.lf-kpi:hover {
   margin-bottom: 8px;
 }
 
-/* ── Charts (recharts) ─────────────────────────────────────────────────────
-   Recharts writes colour as SVG presentation attributes, which cannot resolve
-   var(); `fill` and `stroke` are also CSS properties, so tokens work here.
-   Muted grid, slate labels; series colour is the component's (literal) ramp. */
-.recharts-cartesian-axis-tick-value,
-.recharts-polar-angle-axis-tick-value,
-.recharts-pie-label-text,
-.recharts-label {
-  fill: var(--lf-ink-2);
-  font-family: var(--lf-font-ui);
-  font-size: var(--lf-text-xs);
-}
-.recharts-cartesian-grid line,
-.recharts-cartesian-axis-line,
-.recharts-cartesian-axis-tick-line {
-  stroke: var(--lf-line);
-}
-.recharts-legend-item-text {
-  color: var(--lf-ink-2) !important;
-  font-size: var(--lf-text-xs);
-}
-.recharts-tooltip-cursor {
-  fill: color-mix(in srgb, var(--lf-ink) 6%, transparent);
-}
-.recharts-default-tooltip {
-  border-radius: var(--lf-radius) !important;
-  box-shadow: var(--lf-shadow-2);
-}
-
 /* Hero figures are the working face, not a display face. */
 .lf-hero-figure {
   font-size: 24px;
