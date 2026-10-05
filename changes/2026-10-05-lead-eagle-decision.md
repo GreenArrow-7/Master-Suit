@@ -13,6 +13,5 @@ portal feeds, lead recycling and branded proposals were ported into YOUHAN ONE's
 Real Estate module; its face attendance and live-call help were judged weaker
 than YOUHAN ONE's and were not. On 4 Oct it was made standalone again.
 
-**Next.** A plan for the owner to approve: what Lead Eagle has that YOUHAN ONE
-lacks, the module key and entitlement, which screens re-export existing ones,
-and what is new. Attendance needs nothing: it already covers every workspace.
+**Next.** The plan: [2026-10-05-lead-eagle-plan.md](2026-10-05-lead-eagle-plan.md),
+waiting on the owner's decisions listed at its end.
