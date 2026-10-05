@@ -6,8 +6,8 @@ import { can } from '@/lib/security/rbac';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import PermissionMatrix, { type MatrixRow } from '@/components/workspace/PermissionMatrix';
-import TableSearch from '@/components/workspace/TableSearch';
 import { listRoles, permissionMatrix, roleAssignmentHistory } from '@/services/identity/roles';
+import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 
 export const metadata = { title: 'Roles & permissions' };
 
@@ -323,32 +323,19 @@ export default async function Page({
         ) : holders.length === 0 ? (
           <div className="lf-card lf-leave__empty">Nobody currently holds this role.</div>
         ) : (
-          <TableSearch placeholder="Name or email…" label="Search the holders">
-            <div className="lf-table-wrap">
-              <table className="lf-table">
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Email</th>
-                    <th>Held as</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {holders.map((holder) => (
-                    <tr key={holder.id}>
-                      <td data-label="User">{holder.fullName}</td>
-                      <td data-label="Email">{holder.email}</td>
-                      <td data-label="Held as">
-                        <span className="lf-badge">
-                          {holder.roleId === selected.role.id ? 'primary role' : 'assignment'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </TableSearch>
+          <WorkspaceTable
+            headers={['User', 'Email', 'Held as']}
+            rows={holders.map((holder) => [
+              holder.fullName,
+              holder.email,
+              <span key="held" className="lf-badge">
+                {holder.roleId === selected.role.id ? 'primary role' : 'assignment'}
+              </span>,
+            ])}
+            searchable
+            searchPlaceholder="Name or email…"
+            searchLabel="Search the holders"
+          />
         )}
       </section>
 
@@ -358,52 +345,31 @@ export default async function Page({
           <div className="lf-card lf-leave__empty">No additional role assignments.</div>
         ) : (
           <div className="lf-card" style={{ padding: 'var(--lf-space-4)' }}>
-            <TableSearch placeholder="User, role, scope or status…" label="Search the history">
-              <div className="lf-table-wrap">
-                <table className="lf-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Scope</th>
-                      <th>Window</th>
-                      <th>Status</th>
-                      <th>When</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((assignment) => (
-                      <tr key={assignment.id}>
-                        <td data-label="User">{assignment.holder}</td>
-                        <td data-label="Role">{assignment.role.key}</td>
-                        <td data-label="Scope">{assignment.scopeType.toLowerCase()}</td>
-                        <td data-label="Window">
-                          {dayOnly(assignment.effectiveFrom) ?? '—'} → {dayOnly(assignment.effectiveTo) ?? 'open'}
-                        </td>
-                        <td data-label="Status">
-                          <span className="lf-badge">
-                            {assignment.inForce ? 'active' : assignment.status.toLowerCase()}
-                          </span>
-                        </td>
-                        <td data-label="When">{stamp(assignment.assignedAt)}</td>
-                        <td data-label="">
-                          {mayManage && assignment.status === 'ACTIVE' && (
-                            <WorkspaceActionButton
-                              endpoint={`${endpoint}/revoke`}
-                              body={{ assignmentId: assignment.id }}
-                              label="Revoke"
-                              variant="ghost"
-                              promptFor={{ name: 'reason', label: 'Reason', required: false }}
-                            />
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </TableSearch>
+            <WorkspaceTable
+              headers={['User', 'Role', 'Scope', 'Window', 'Status', 'When', { label: '', priority: 'secondary' }]}
+              rows={history.map((assignment) => [
+                assignment.holder,
+                assignment.role.key,
+                assignment.scopeType.toLowerCase(),
+                `${dayOnly(assignment.effectiveFrom) ?? '—'} → ${dayOnly(assignment.effectiveTo) ?? 'open'}`,
+                <span key="status" className="lf-badge">
+                  {assignment.inForce ? 'active' : assignment.status.toLowerCase()}
+                </span>,
+                stamp(assignment.assignedAt),
+                mayManage && assignment.status === 'ACTIVE' && (
+                  <WorkspaceActionButton
+                    endpoint={`${endpoint}/revoke`}
+                    body={{ assignmentId: assignment.id }}
+                    label="Revoke"
+                    variant="ghost"
+                    promptFor={{ name: 'reason', label: 'Reason', required: false }}
+                  />
+                ),
+              ])}
+              searchable
+              searchPlaceholder="User, role, scope or status…"
+              searchLabel="Search the history"
+            />
           </div>
         )}
       </section>
