@@ -64,8 +64,6 @@ export async function POST(req: Request) {
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const body = createSchema.parse(await req.json());
-    const existing = await prisma.tenant.findUnique({ where: { slug: body.slug } });
-    if (existing) throw Conflict('That workspace slug is already in use.');
     const plan = await prisma.subscriptionPlan.findFirst({ where: { code: body.planCode, active: true } });
     if (!plan) throw Conflict('The selected subscription plan is unavailable.');
 

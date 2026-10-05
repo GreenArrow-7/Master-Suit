@@ -3,7 +3,6 @@ import { ulid } from 'ulid';
 import { z } from 'zod';
 import { AI_TOKEN_LIMIT_KEY, USER_TOKEN_LIMIT_KEY, featureLimitKey } from '@/lib/ai/usage';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
@@ -54,9 +53,6 @@ export async function POST(req: Request) {
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const body = planSchema.parse(await req.json());
-    const exists = await prisma.subscriptionPlan.findUnique({ where: { code: body.code } });
-    if (exists) throw Conflict('That plan code is already in use.');
-
     const plan = await withPlatformTx(async (tx) => {
       const created = await tx.subscriptionPlan.create({
         data: {

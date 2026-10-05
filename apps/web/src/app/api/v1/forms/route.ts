@@ -57,9 +57,6 @@ export const POST = route(
   { module: 'forms', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const key = body.key ?? slugify(body.name);
-    const exists = await prisma.form.findFirst({ where: { tenantId: ctx.tenantId, key }, select: { id: true } });
-    if (exists) throw Conflict('A form with that key already exists.');
-
     const fields = body.fields ?? DEFAULT_FIELDS;
     // One mapped name field is what turns a submission into a lead; without it
     // every row would be an anonymous payload nobody can follow up.

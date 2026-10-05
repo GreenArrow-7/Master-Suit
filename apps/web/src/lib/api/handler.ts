@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Forbidden, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
+import { AppError, Conflict, Forbidden, Invalid, MethodNotAllowedError, NotFound, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
@@ -354,6 +355,15 @@ export function toResponse(err: unknown, requestId: string, meta: Record<string,
     if (err.status >= 500) logger.error({ err, requestId, ...meta }, 'request failed');
     else logger.warn({ requestId, code: err.code, status: err.status, ...meta }, 'request rejected');
     return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
+  }
+
+  // The database is the uniqueness and existence check, so a duplicate is the
+  // client's 409 and a missing row the client's 404, never our 500. Named after
+  // the model: the driver adapter does not report which field clashed.
+  if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2002' || err.code === 'P2025')) {
+    const model = String(err.meta?.modelName ?? 'record');
+    const noun = model === 'Tenant' ? 'workspace' : model.replace(/(?!^)([A-Z])/g, ' $1').toLowerCase();
+    return toResponse(err.code === 'P2002' ? Conflict(`This ${noun} already exists.`) : NotFound(), requestId, meta);
   }
 
   // A tenant guard trip is a bug in a repository, not a client error. Log loudly.
