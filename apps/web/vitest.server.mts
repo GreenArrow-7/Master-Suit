@@ -15,7 +15,6 @@ import base from './vitest.config.mts';
 export default defineConfig((env) => ({
   ...base(env),
   test: {
-    globals: true,
     include: ['tests/server/**/*.spec.ts'],
     globalSetup: ['tests/server/globalSetup.ts'],
     // One file at a time: both specs sign in repeatedly against one server and

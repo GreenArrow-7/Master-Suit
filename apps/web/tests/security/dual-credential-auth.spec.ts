@@ -56,6 +56,7 @@ import { POST as selfService } from '@/app/api/v1/workspaces/[workspaceSlug]/ide
 import { grantPermissions } from '../helpers/fixtures';
 import { freshTotp } from '../helpers/totp';
 import { buildCtx, buildActor } from '../helpers/ctx';
+import { createPlatformSessionToken } from '../helpers/session';
 
 const suffix = randomBytes(4).toString('hex');
 const PASSWORD_A = `Administration-${suffix}-Pass1`;
@@ -1227,35 +1228,16 @@ describe('customer sign-in and legacy sessions', () => {
   });
 
   it('a staff session with no credential purpose is refused and revoked; a customer one is not', async () => {
-    const legacyToken = randomBytes(32).toString('base64url');
-    await prisma.platformSession.create({
-      data: {
-        platformUserId: ownerId,
-        tokenHash: sha256(legacyToken),
-        mfaSatisfied: true,
-        purpose: 'FULL',
-        expiresAt: new Date(Date.now() + 600_000),
-      },
+    const legacy = await createPlatformSessionToken(ownerId, null, { credentialPurpose: null });
+    await expect(resolvePlatformCtx(request('http://internal/', 'GET', undefined, legacy), 'r')).rejects.toMatchObject({
+      status: 401,
     });
-    await expect(
-      resolvePlatformCtx(request('http://internal/', 'GET', undefined, cookieOf(legacyToken)), 'r'),
-    ).rejects.toMatchObject({ status: 401 });
-    expect((await sessionRow(legacyToken))!.revokedReason).toBe('LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE');
+    expect((await sessionRow(legacy.slice(SESSION_COOKIE.length + 1)))!.revokedReason).toBe(
+      'LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE',
+    );
 
-    const customerToken = randomBytes(32).toString('base64url');
-    await prisma.platformSession.create({
-      data: {
-        platformUserId: memberPlatformId,
-        activeTenantId: granted.id,
-        tokenHash: sha256(customerToken),
-        mfaSatisfied: false,
-        purpose: 'FULL',
-        expiresAt: new Date(Date.now() + 600_000),
-      },
-    });
-    await expect(
-      resolveCtx(request('http://internal/', 'GET', undefined, cookieOf(customerToken)), 'r'),
-    ).resolves.toBeTruthy();
+    const customer = await createPlatformSessionToken(memberPlatformId, granted.id, { mfaSatisfied: false });
+    await expect(resolveCtx(request('http://internal/', 'GET', undefined, customer), 'r')).resolves.toBeTruthy();
   });
 });
 

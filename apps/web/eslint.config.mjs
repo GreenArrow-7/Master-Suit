@@ -32,8 +32,6 @@ export default tseslint.config(
       '.next-preview/**',
       // Scratch verification scripts, already git-ignored.
       '.verify/**',
-      'node_modules/**',
-      'coverage/**',
       'src/generated/**',
       'next-env.d.ts',
       'eslint.config.mjs',

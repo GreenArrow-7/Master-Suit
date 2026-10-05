@@ -376,13 +376,6 @@ export async function seedTwoTenants(): Promise<Fixture> {
 }
 
 /**
- * Grants a role a set of permissions, creating the catalogue rows on demand.
- *
- * Extracted because six specs had their own copy of this loop, each typing the
- * pairs as `[string, string][]` — which only compiled because `tests` was
- * excluded from tsconfig, so `tsc --noEmit` had never checked the suite at all.
- */
-/**
  * `[module, action]` pairs for a role.
  *
  * Typed against Prisma's own enum so a misspelt action is a compile error. Six
@@ -392,6 +385,7 @@ export async function seedTwoTenants(): Promise<Fixture> {
  */
 export type Grants = readonly (readonly [string, PermissionAction])[];
 
+/** Grants a role a set of permissions, creating the catalogue rows on demand. */
 export async function grantPermissions(
   tenantId: string,
   roleId: string,
@@ -408,4 +402,49 @@ export async function grantPermissions(
       data: { tenantId, roleId, permissionId: permission.id, granted: true, scope },
     });
   }
+}
+
+/**
+ * Puts a Sales user on approved annual leave around now (or over `window`): the
+ * HR profile, leave type and request a distribution eligibility check reads.
+ * Returns the employee id.
+ */
+export async function grantApprovedLeave(tenantId: string, userId: string, window?: { start: Date; end: Date }) {
+  const email = `leave-${randomBytes(4).toString('hex')}@leave.test`;
+  const platformUser = await prisma.platformUser.create({
+    data: { email, normalizedEmail: email, fullName: 'Leave holder' },
+    select: { id: true },
+  });
+  const membership = await prisma.workspaceMembership.create({
+    data: { tenantId, platformUserId: platformUser.id, salesUserId: userId, status: 'ACTIVE', joinedAt: new Date() },
+    select: { id: true },
+  });
+  const employee = await prisma.employeeProfile.create({
+    data: {
+      tenantId,
+      membershipId: membership.id,
+      employeeNumber: `E-${randomBytes(3).toString('hex')}`,
+      employmentStatus: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  const type = await prisma.hrLeaveType.upsert({
+    where: { tenantId_code: { tenantId, code: 'ANNUAL' } },
+    update: {},
+    create: { tenantId, code: 'ANNUAL', name: 'Annual leave' },
+    select: { id: true },
+  });
+  await prisma.hrLeaveRequest.create({
+    data: {
+      tenantId,
+      employeeId: employee.id,
+      leaveTypeId: type.id,
+      startDate: window?.start ?? new Date(Date.now() - 86_400_000),
+      endDate: window?.end ?? new Date(Date.now() + 86_400_000),
+      days: 3,
+      status: 'APPROVED',
+      decidedAt: new Date(),
+    },
+  });
+  return employee.id;
 }
