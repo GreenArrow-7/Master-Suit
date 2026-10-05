@@ -44,6 +44,7 @@ export default function WorkspaceTable({
   rows,
   empty = 'No records yet.',
   searchPlaceholder,
+  searchLabel,
   /** Force the box on or off when the row count is a poor proxy for usefulness. */
   searchable,
 }: {
@@ -51,6 +52,8 @@ export default function WorkspaceTable({
   rows: ReactNode[][];
   empty?: string;
   searchPlaceholder?: string;
+  /** The search box's accessible name, when "Search" is not enough. */
+  searchLabel?: string;
   searchable?: boolean;
 }) {
   if (rows.length === 0) {
@@ -101,5 +104,9 @@ export default function WorkspaceTable({
 
   if (searchable === false || (searchable !== true && rows.length < SEARCHABLE_FROM)) return table;
 
-  return <TableSearch placeholder={searchPlaceholder ?? `Search these ${rows.length} rows…`}>{table}</TableSearch>;
+  return (
+    <TableSearch placeholder={searchPlaceholder ?? `Search these ${rows.length} rows…`} label={searchLabel}>
+      {table}
+    </TableSearch>
+  );
 }

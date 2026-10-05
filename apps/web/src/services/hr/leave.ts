@@ -119,50 +119,10 @@ export async function countLeaveDays(ctx: Ctx, start: Date, end: Date, halfDay: 
 
 // ── Balances ───────────────────────────────────────────────────────────────
 
-export async function ensureBalanceRow(ctx: Ctx, employeeId: string, leaveTypeId: string, year: number) {
-  const leaveType = await prisma.hrLeaveType.findFirst({ where: { tenantId: ctx.tenantId, id: leaveTypeId } });
-  if (!leaveType) throw NotFound('Leave type');
-  return prisma.hrLeaveBalance.upsert({
-    where: { tenantId_employeeId_leaveTypeId_year: { tenantId: ctx.tenantId, employeeId, leaveTypeId, year } },
-    update: {},
-    create: { tenantId: ctx.tenantId, employeeId, leaveTypeId, year, entitledDays: leaveType.annualAllowance },
-  });
-}
-
 /**
- * Accruing types (annual) build up month by month. Non-accruing types (sick,
- * maternity) are available in full from day one — they are event-driven, not earned.
+ * Accrued + carried forward − consumed, recomputed from the requests themselves
+ * and stored on the year's balance row.
  */
-export async function recomputeAccrual(
-  ctx: Ctx,
-  employee: { id: string; joinedOn: Date | null },
-  leaveType: { id: string; accrues: boolean; annualAllowance: number },
-  asOf: Date,
-  known?: HrPolicy,
-) {
-  const year = toDay(asOf).getUTCFullYear();
-  await ensureBalanceRow(ctx, employee.id, leaveType.id, year);
-  const policy = known ?? (await getHrPolicy(ctx));
-  const accruedDays = leaveType.accrues
-    ? employee.joinedOn
-      ? annualLeaveAccrued(employee.joinedOn, asOf, policy)
-      : 0
-    : leaveType.annualAllowance;
-
-  return prisma.hrLeaveBalance.update({
-    where: {
-      tenantId_employeeId_leaveTypeId_year: {
-        tenantId: ctx.tenantId,
-        employeeId: employee.id,
-        leaveTypeId: leaveType.id,
-        year,
-      },
-    },
-    data: { accruedDays },
-  });
-}
-
-/** Accrued + carried forward − consumed, recomputed from the requests themselves. */
 export async function availableDays(
   ctx: Ctx,
   employee: { id: string; joinedOn: Date | null },
@@ -171,9 +131,16 @@ export async function availableDays(
   known?: HrPolicy,
 ) {
   const year = toDay(asOf).getUTCFullYear();
-  const balance = await recomputeAccrual(ctx, employee, leaveType, asOf, known);
+  const policy = known ?? (await getHrPolicy(ctx));
+  // Accruing types (annual) build up month by month. Non-accruing types (sick,
+  // maternity) are available in full from day one — event-driven, not earned.
+  const accruedDays = leaveType.accrues
+    ? employee.joinedOn
+      ? annualLeaveAccrued(employee.joinedOn, asOf, policy)
+      : 0
+    : leaveType.annualAllowance;
 
-  const consuming = await prisma.hrLeaveRequest.findMany({
+  const consumed = await prisma.hrLeaveRequest.aggregate({
     where: {
       tenantId: ctx.tenantId,
       employeeId: employee.id,
@@ -181,11 +148,11 @@ export async function availableDays(
       status: { in: [...BLOCKING_STATUSES] },
       startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
     },
-    select: { days: true },
+    _sum: { days: true },
   });
-  const takenDays = consuming.reduce((total, row) => total + row.days, 0);
+  const takenDays = consumed._sum.days ?? 0;
 
-  const updated = await prisma.hrLeaveBalance.update({
+  const balance = await prisma.hrLeaveBalance.upsert({
     where: {
       tenantId_employeeId_leaveTypeId_year: {
         tenantId: ctx.tenantId,
@@ -194,13 +161,19 @@ export async function availableDays(
         year,
       },
     },
-    data: { takenDays },
+    update: { accruedDays, takenDays },
+    create: {
+      tenantId: ctx.tenantId,
+      employeeId: employee.id,
+      leaveTypeId: leaveType.id,
+      year,
+      entitledDays: leaveType.annualAllowance,
+      accruedDays,
+      takenDays,
+    },
   });
 
-  return {
-    balance: updated,
-    available: round2(balance.accruedDays + updated.carriedForwardDays - takenDays),
-  };
+  return { balance, available: round2(accruedDays + balance.carriedForwardDays - takenDays) };
 }
 
 /** Every leave type with the employee's live position against it. */
@@ -268,7 +241,7 @@ export async function approverFor(ctx: Ctx, employee: { id: string; managerMembe
   });
 }
 
-export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date, excludeId?: string) {
+export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end: Date) {
   return prisma.hrLeaveRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
@@ -276,7 +249,6 @@ export async function findOverlap(ctx: Ctx, employeeId: string, start: Date, end
       status: { in: [...BLOCKING_STATUSES] },
       startDate: { lte: toDay(end) },
       endDate: { gte: toDay(start) },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
     },
   });
 }
@@ -478,8 +450,7 @@ export async function runCarryForward(ctx: Ctx, fromYear: number) {
       const days = round2(Math.min(unused, leaveType.maxCarryForward));
       if (days <= 0) continue;
 
-      await ensureBalanceRow(ctx, employee.id, leaveType.id, fromYear + 1);
-      await prisma.hrLeaveBalance.update({
+      await prisma.hrLeaveBalance.upsert({
         where: {
           tenantId_employeeId_leaveTypeId_year: {
             tenantId: ctx.tenantId,
@@ -488,7 +459,15 @@ export async function runCarryForward(ctx: Ctx, fromYear: number) {
             year: fromYear + 1,
           },
         },
-        data: { carriedForwardDays: days },
+        update: { carriedForwardDays: days },
+        create: {
+          tenantId: ctx.tenantId,
+          employeeId: employee.id,
+          leaveTypeId: leaveType.id,
+          year: fromYear + 1,
+          entitledDays: leaveType.annualAllowance,
+          carriedForwardDays: days,
+        },
       });
       rolled.push({ employeeId: employee.id, leaveType: leaveType.code, days });
     }

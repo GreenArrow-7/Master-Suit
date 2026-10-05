@@ -144,8 +144,8 @@ test.describe('Deletes from lists and detail pages', () => {
     await admin.page.goto(at('/sales/tasks'));
     const row = admin.page.getByRole('row', { name: new RegExp(title) });
     await expect(row).toBeVisible({ timeout: 60_000 });
-    admin.page.once('dialog', (dialog) => void dialog.accept());
     await row.getByRole('button', { name: 'Delete', exact: true }).click();
+    await row.getByRole('button', { name: 'Delete task' }).click();
     await expect(admin.page.getByText(title)).toHaveCount(0, { timeout: 30_000 });
     expect(await prisma.task.count({ where: { tenantId, id: taskId, deletedAt: { not: null } } })).toBe(1);
     expect((await admin.page.request.delete(`/api/v1/tasks/${taskId}`)).status()).toBe(404);

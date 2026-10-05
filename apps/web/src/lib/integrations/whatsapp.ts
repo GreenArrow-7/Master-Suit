@@ -69,14 +69,6 @@ export interface WhatsAppProvider {
   sendTemplate(message: WhatsAppMessage): Promise<WhatsAppResult>;
   /** Free-form service message. Only legal inside the customer service window. */
   sendText(to: string, body: string): Promise<WhatsAppResult>;
-  /** Authenticates an event POST. Keyed with the app secret — see the class below. */
-  verifyWebhookSignature(payload: string, signature: string): boolean;
-  /**
-   * Answers Meta's GET subscription handshake. A separate secret from the one
-   * above and a separate question: this proves *we* configured the endpoint,
-   * signature verification proves *Meta* sent the payload.
-   */
-  verifySubscription(token: string): boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,14 +90,6 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
   async sendText(to: string, body: string): Promise<WhatsAppResult> {
     logger.info({ provider: 'mock', action: 'sendText', to, length: body.length }, 'whatsapp mock');
     return { externalMessageId: `mock_wa_${to}_${body.length}`, status: 'queued' };
-  }
-
-  verifyWebhookSignature(): boolean {
-    return true;
-  }
-
-  verifySubscription(): boolean {
-    return true;
   }
 }
 
@@ -224,6 +208,11 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     return supplied.length === expected.length && timingSafeEqual(supplied, expected);
   }
 
+  /**
+   * Answers Meta's GET subscription handshake. A separate secret and a separate
+   * question: this proves *we* configured the endpoint, the signature above
+   * proves *Meta* sent the payload.
+   */
   verifySubscription(token: string): boolean {
     if (!this.config.webhookVerifyToken) return false;
     const expected = Buffer.from(this.config.webhookVerifyToken);

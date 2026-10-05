@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Create a campaign — the front door the module was missing. Wires to
@@ -123,12 +124,9 @@ export default function CampaignComposer() {
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="c-name">
-          Name
-        </label>
+      <Field label="Name" htmlFor="c-name">
         <input id="c-name" className="lf-input" value={form.name} onChange={set('name')} required autoFocus />
-      </div>
+      </Field>
 
       <div
         style={{
@@ -137,10 +135,7 @@ export default function CampaignComposer() {
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="c-type">
-            Type
-          </label>
+        <Field label="Type" htmlFor="c-type">
           <select id="c-type" className="lf-input" value={form.campaignType} onChange={set('campaignType')}>
             {TYPES.map((t) => (
               <option key={t} value={t}>
@@ -148,7 +143,7 @@ export default function CampaignComposer() {
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
         <div className="lf-field">
           <label className="lf-label" htmlFor="c-channel">
@@ -166,24 +161,15 @@ export default function CampaignComposer() {
           </p>
         </div>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="c-start">
-            Starts
-          </label>
+        <Field label="Starts" htmlFor="c-start">
           <input id="c-start" className="lf-input" type="date" value={form.startDate} onChange={set('startDate')} />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="c-end">
-            Ends
-          </label>
+        <Field label="Ends" htmlFor="c-end">
           <input id="c-end" className="lf-input" type="date" value={form.endDate} onChange={set('endDate')} />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="c-budget">
-            Budget (AED)
-          </label>
+        <Field label="Budget (AED)" htmlFor="c-budget">
           <input
             id="c-budget"
             className="lf-input"
@@ -192,7 +178,7 @@ export default function CampaignComposer() {
             value={form.budget}
             onChange={set('budget')}
           />
-        </div>
+        </Field>
       </div>
 
       {form.channel === 'WHATSAPP' && (

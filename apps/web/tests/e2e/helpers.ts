@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import Redis from 'ioredis';
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { totp } from '@/lib/auth/mfa';
 import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
@@ -459,4 +459,15 @@ export async function createWorkspaceViaWizard(page: Page, spec: NewWorkspace): 
     await api.close();
   }
   return workspaceId.trim();
+}
+
+/** Asserts a 2xx (a failure names `what`, the status and the body) and returns the JSON. */
+export async function ok(res: APIResponse, what: string) {
+  expect(res.ok(), `${what}: ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy();
+  return (await res.json()) as Record<string, any>;
+}
+
+/** POSTs JSON to /api/v1/<path> and returns the body, failing on anything but a 2xx. */
+export async function post(request: APIRequestContext, path: string, data: Record<string, unknown>) {
+  return ok(await request.post(`/api/v1/${path}`, { data }), path);
 }

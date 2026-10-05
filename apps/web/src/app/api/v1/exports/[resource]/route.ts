@@ -1,14 +1,14 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
 
-import { ulid } from 'ulid';
+import { z } from 'zod';
 import { NotFound } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
 import { csvHeaders, csvStream, type CsvColumn } from '@/lib/csv';
-import { toResponse } from '@/lib/api/handler';
+import { route } from '@/lib/api/handler';
+import { assertPermission } from '@/lib/security/rbac';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -237,46 +237,44 @@ const RESOURCES: Record<string, Resource> = {
   },
 };
 
-export async function GET(req: Request, context: { params: Promise<{ resource: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    return await handle(req, await context.params, requestId);
-  } catch (err) {
-    return toResponse(err, requestId, { route: '/api/v1/exports/[resource]' });
-  }
-}
-
-async function handle(req: Request, params: { resource: string }, requestId: string) {
-  const resource = RESOURCES[params.resource];
-  if (!resource) throw NotFound('Export');
-
-  // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
-  // of the building are different authorities, and every module here already
-  // defines the second.
-  const ctx = await resolveGuardedCtx(req, requestId, {
+export const GET = route(
+  {
+    module: 'exports',
+    action: 'EXPORT',
     productModule: 'SALES',
-    permission: [resource.module, 'EXPORT'],
-  });
+    sessionOnly: true,
+    // EXPORT on the resource's own module, which only the resource names.
+    permissionInHandler: true,
+    params: z.object({ resource: z.string() }),
+  },
+  async ({ ctx, params }) => {
+    const resource = RESOURCES[params.resource];
+    if (!resource) throw NotFound('Export');
+    // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
+    // of the building are different authorities, and every module here already
+    // defines the second.
+    assertPermission(ctx, resource.module, 'EXPORT');
 
-  const where = await visibilityWhere(ctx, resource.module, 'VIEW', { ownerField: resource.ownerField });
+    const where = await visibilityWhere(ctx, resource.module, 'VIEW', { ownerField: resource.ownerField });
 
-  const PAGE = 500;
-  const stream = csvStream({
-    columns: resource.columns,
-    pageSize: PAGE,
-    // `take` comes from the stream rather than PAGE, so the final page is
-    // trimmed to land exactly on EXPORT_MAX_ROWS.
-    page: (cursor, take) => resource.page(where, cursor, take) as Promise<{ id: string }[]>,
-    onDone: async (rows, truncated) => {
-      await audit(ctx, {
-        event: 'EXPORT_REQUESTED',
-        objectType: resource.module,
-        // Recorded, because a reviewer reading this row must be able to tell a
-        // complete export from one the cap cut short.
-        metadata: { rows, truncated, ...(truncated ? { limit: env.EXPORT_MAX_ROWS } : {}) },
-      });
-    },
-  });
+    const PAGE = 500;
+    const stream = csvStream({
+      columns: resource.columns,
+      pageSize: PAGE,
+      // `take` comes from the stream rather than PAGE, so the final page is
+      // trimmed to land exactly on EXPORT_MAX_ROWS.
+      page: (cursor, take) => resource.page(where, cursor, take) as Promise<{ id: string }[]>,
+      onDone: async (rows, truncated) => {
+        await audit(ctx, {
+          event: 'EXPORT_REQUESTED',
+          objectType: resource.module,
+          // Recorded, because a reviewer reading this row must be able to tell a
+          // complete export from one the cap cut short.
+          metadata: { rows, truncated, ...(truncated ? { limit: env.EXPORT_MAX_ROWS } : {}) },
+        });
+      },
+    });
 
-  return new NextResponse(stream, { headers: csvHeaders(params.resource, requestId) });
-}
+    return new NextResponse(stream, { headers: csvHeaders(params.resource, ctx.requestId) });
+  },
+);

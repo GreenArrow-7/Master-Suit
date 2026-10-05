@@ -33,7 +33,7 @@ export interface CreateLeadInput {
  * 100 ms even when five automations are listening.
  */
 export async function createLead(ctx: Ctx, input: CreateLeadInput) {
-  const phoneNormalized = input.phone ? normalizePhone(input.phone, 'AE') : null;
+  const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
 
   // 1. Duplicate check ───────────────────────────────────────────────────────
   const duplicates = await findDuplicates(ctx.tenantId, {

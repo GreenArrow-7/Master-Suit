@@ -134,6 +134,10 @@ export function can(ctx: Ctx, module: string, action: Action): boolean {
   return scopeFor(ctx, module, action) !== 'NONE';
 }
 
+/** True when the actor's scope for this action reaches `minimum` (OWN < TEAM < … < ORGANIZATION). */
+export const atLeast = (ctx: Ctx, module: string, action: Action, minimum: Scope) =>
+  SCOPE_RANK[scopeFor(ctx, module, action)] >= SCOPE_RANK[minimum];
+
 /**
  * Called by the API kernel before the handler body runs. A handler that reaches
  * its first statement has already cleared this gate.

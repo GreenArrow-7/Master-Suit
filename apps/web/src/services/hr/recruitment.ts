@@ -20,12 +20,11 @@
  * edit, so what the candidate was actually sent stays readable after the terms
  * move.
  */
-import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { toDay } from './rules';
 import { myEmployee } from './leave';
 import { startOnboarding } from './lifecycle';
@@ -58,13 +57,11 @@ export type Stage =
 
 export type RequisitionStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'OPEN' | 'ON_HOLD' | 'CLOSED' | 'REJECTED';
 
-export const mayReadRecruitment = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW')] >= SCOPE_RANK.TEAM;
-export const isRecruiter = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'recruitment', 'EDIT')] >= SCOPE_RANK.TEAM;
-export const isHiringApprover = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'recruitment', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadRecruitment = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'VIEW', 'TEAM');
+export const isRecruiter = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'EDIT', 'TEAM');
+export const isHiringApprover = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'APPROVE', 'ORGANIZATION');
 /** Reads salary bands and offered compensation. */
-export const mayReadBands = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'recruitment', 'VIEW_SENSITIVE_FIELDS')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadBands = (ctx: Ctx) => atLeast(ctx, 'recruitment', 'VIEW_SENSITIVE_FIELDS', 'ORGANIZATION');
 
 const requireRecruiter = (ctx: Ctx) => {
   if (!isRecruiter(ctx)) throw Forbidden('Your role does not allow changing recruitment records.');
@@ -80,28 +77,12 @@ const requireRecruiter = (ctx: Ctx) => {
  * un-rejected, because the pipeline metrics depend on terminals being final.
  */
 const TERMINAL: Stage[] = ['HIRED', 'REJECTED', 'WITHDRAWN'];
-const PROGRESSION: Stage[] = [
-  'APPLIED',
-  'SCREENING',
-  'SHORTLISTED',
-  'INTERVIEW',
-  'ASSESSMENT',
-  'FINAL_INTERVIEW',
-  'OFFER',
-  'HIRED',
-];
 
 export function mayMoveTo(from: Stage, to: Stage): boolean {
-  if (from === to) return false;
-  if (TERMINAL.includes(from)) return false;
-  if (to === 'HIRED') return from === 'OFFER';
-  // Rejection, withdrawal and a hold are reachable from anywhere still live.
-  if (['REJECTED', 'WITHDRAWN', 'ON_HOLD'].includes(to)) return true;
-  if (from === 'ON_HOLD') return PROGRESSION.includes(to);
-  const fromIndex = PROGRESSION.indexOf(from);
-  const toIndex = PROGRESSION.indexOf(to);
-  // Forwards by any number of steps, or back to an earlier stage for a re-screen.
-  return fromIndex >= 0 && toIndex >= 0;
+  if (from === to || TERMINAL.includes(from)) return false;
+  // From any live stage: forwards any number of steps, back for a re-screen, or
+  // out to a rejection, withdrawal or hold. Only HIRED is gated.
+  return to !== 'HIRED' || from === 'OFFER';
 }
 
 /** Strips salary figures for a caller who may not read them. */
@@ -312,8 +293,7 @@ export async function addCandidate(ctx: Ctx, input: CandidateInput) {
     });
     return candidate;
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
-      throw Conflict('That person has already applied to this role.');
+    if (isUniqueViolation(error)) throw Conflict('That person has already applied to this role.');
     throw error;
   }
 }

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
@@ -20,7 +19,7 @@ import { toResponse } from '@/lib/api/handler';
  * a record of, even when it is the platform owner doing it.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformSupport(req, requestId);
     const { workspaceId } = await params;
@@ -83,7 +82,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
 
 /** Leaves the workspace and returns platform staff to the control plane. */
 export async function DELETE(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformSupport(req, requestId);
     await prisma.platformSession.update({

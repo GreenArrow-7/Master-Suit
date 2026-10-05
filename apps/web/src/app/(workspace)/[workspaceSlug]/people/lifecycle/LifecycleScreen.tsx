@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * People — joining and leaving, per the reference: the KPI row, the two mutually
@@ -167,10 +168,7 @@ export default function LifecycleScreen({
       {mode === 'onboarding' && (
         <form className="lf-card lf-life__form" onSubmit={createChecklist}>
           <h2>Start onboarding</h2>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="ob-emp">
-              Employee
-            </label>
+          <Field label="Employee" htmlFor="ob-emp">
             <select
               id="ob-emp"
               className="lf-input"
@@ -184,7 +182,7 @@ export default function LifecycleScreen({
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
           <p className="lf-life__helper">
             Builds the joining checklist from the employee&rsquo;s joining date. Running it twice will not duplicate
             tasks.
@@ -204,10 +202,7 @@ export default function LifecycleScreen({
         <form className="lf-card lf-life__form" onSubmit={startOffboarding}>
           <h2>Start offboarding</h2>
           <div className="lf-life__grid">
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-emp">
-                Employee
-              </label>
+            <Field label="Employee" htmlFor="of-emp">
               <select
                 id="of-emp"
                 className="lf-input"
@@ -221,11 +216,8 @@ export default function LifecycleScreen({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-notice">
-                Notice given on
-              </label>
+            </Field>
+            <Field label="Notice given on" htmlFor="of-notice">
               <input
                 id="of-notice"
                 className="lf-input"
@@ -234,11 +226,8 @@ export default function LifecycleScreen({
                 onChange={(e) => setOff((f) => ({ ...f, noticeGivenOn: e.target.value }))}
                 required
               />
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-period">
-                Notice period (days)
-              </label>
+            </Field>
+            <Field label="Notice period (days)" htmlFor="of-period">
               <input
                 id="of-period"
                 className="lf-input"
@@ -248,11 +237,8 @@ export default function LifecycleScreen({
                 value={off.noticePeriodDays}
                 onChange={(e) => setOff((f) => ({ ...f, noticePeriodDays: e.target.value }))}
               />
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-last">
-                Last working day (optional)
-              </label>
+            </Field>
+            <Field label="Last working day (optional)" htmlFor="of-last">
               <input
                 id="of-last"
                 className="lf-input"
@@ -260,11 +246,8 @@ export default function LifecycleScreen({
                 value={off.lastWorkingOn}
                 onChange={(e) => setOff((f) => ({ ...f, lastWorkingOn: e.target.value }))}
               />
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-type">
-                Type
-              </label>
+            </Field>
+            <Field label="Type" htmlFor="of-type">
               <select
                 id="of-type"
                 className="lf-input"
@@ -274,18 +257,15 @@ export default function LifecycleScreen({
                 <option value="RESIGNATION">Resignation</option>
                 <option value="TERMINATION">Termination</option>
               </select>
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="of-reason">
-                Reason
-              </label>
+            </Field>
+            <Field label="Reason" htmlFor="of-reason">
               <input
                 id="of-reason"
                 className="lf-input"
                 value={off.reason}
                 onChange={(e) => setOff((f) => ({ ...f, reason: e.target.value }))}
               />
-            </div>
+            </Field>
           </div>
           <p className="lf-life__helper">
             Leave the last working day blank to derive it from the notice period. This moves the employee to notice

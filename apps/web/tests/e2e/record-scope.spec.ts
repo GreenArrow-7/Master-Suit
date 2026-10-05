@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetLoginThrottle } from './helpers';
+import { resetLoginThrottle, ok } from './helpers';
 
 /**
  * Record scope on the routes that load one record by id.
@@ -20,14 +20,6 @@ const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
 const run = Date.now().toString(36);
-
-async function ok(
-  res: { ok(): boolean; status(): number; text(): Promise<string>; json(): Promise<unknown> },
-  what: string,
-) {
-  expect(res.ok(), `${what}: ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy();
-  return (await res.json()) as Record<string, any>;
-}
 
 test.describe('record scope: a call or event belongs to someone', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');

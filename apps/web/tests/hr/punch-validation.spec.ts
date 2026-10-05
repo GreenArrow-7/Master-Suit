@@ -11,7 +11,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { PunchRejected, validatePunch } from '@/services/hr/attendance';
+import { validatePunch } from '@/services/hr/attendance';
 import { buildActor, buildCtx } from '../helpers/ctx';
 
 const suffix = randomBytes(4).toString('hex');
@@ -28,16 +28,6 @@ let hqId = '';
 let branchId = '';
 
 const ctx = () => buildCtx(buildActor({ id: `actor-${suffix}`, tenantId }));
-
-const expectRejection = async (run: Promise<unknown>, code: string) => {
-  try {
-    await run;
-    expect.fail(`expected PunchRejected ${code}`);
-  } catch (error) {
-    expect(error).toBeInstanceOf(PunchRejected);
-    expect((error as PunchRejected).code).toBe(code);
-  }
-};
 
 const position = (at: { latitude: number; longitude: number }, gpsAccuracyM = 10) => ({ ...at, gpsAccuracyM });
 
@@ -101,22 +91,30 @@ function acceptedPunch(punchType: 'CHECK_IN' | 'CHECK_OUT', locationId: string) 
 
 describe('validatePunch sequencing', () => {
   it('refuses a check-in with no assignment at all: NO_ACTIVE_ASSIGNMENT', async () => {
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ)), 'NO_ACTIVE_ASSIGNMENT');
+    await expect(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ))).rejects.toMatchObject({
+      code: 'NO_ACTIVE_ASSIGNMENT',
+    });
   });
 
   it('refuses a position outside every assigned fence: OUTSIDE_APPROVED_LOCATION', async () => {
     await prisma.hrEmployeeLocationAssignment.create({
       data: { tenantId, employeeId: employee.id, locationId: hqId, status: 'ACTIVE', checkoutRule: 'SAME_LOCATION' },
     });
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_IN', position(FAR)), 'OUTSIDE_APPROVED_LOCATION');
+    await expect(validatePunch(ctx(), employee, 'CHECK_IN', position(FAR))).rejects.toMatchObject({
+      code: 'OUTSIDE_APPROVED_LOCATION',
+    });
   });
 
   it('refuses a weak GPS fix before measuring the fence: LOCATION_ACCURACY_TOO_LOW', async () => {
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ, 5_000)), 'LOCATION_ACCURACY_TOO_LOW');
+    await expect(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ, 5_000))).rejects.toMatchObject({
+      code: 'LOCATION_ACCURACY_TOO_LOW',
+    });
   });
 
   it('refuses a check-out when nothing is open: NO_OPEN_CHECKIN', async () => {
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ)), 'NO_OPEN_CHECKIN');
+    await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ))).rejects.toMatchObject({
+      code: 'NO_OPEN_CHECKIN',
+    });
   });
 
   it('accepts a good check-in inside the fence', async () => {
@@ -128,7 +126,9 @@ describe('validatePunch sequencing', () => {
 
   it('refuses a second check-in while one is open: ALREADY_CHECKED_IN', async () => {
     await acceptedPunch('CHECK_IN', hqId);
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ)), 'ALREADY_CHECKED_IN');
+    await expect(validatePunch(ctx(), employee, 'CHECK_IN', position(HQ))).rejects.toMatchObject({
+      code: 'ALREADY_CHECKED_IN',
+    });
   });
 
   it('refuses a SAME_LOCATION check-out from a different fence: CHECKOUT_WRONG_LOCATION', async () => {
@@ -147,7 +147,9 @@ describe('validatePunch sequencing', () => {
       where: { tenantId, employeeId: employee.id, locationId: hqId },
       data: { status: 'REVOKED' },
     });
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_OUT', position(BRANCH)), 'CHECKOUT_WRONG_LOCATION');
+    await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position(BRANCH))).rejects.toMatchObject({
+      code: 'CHECKOUT_WRONG_LOCATION',
+    });
   });
 
   it('accepts the check-out back inside the original fence', async () => {
@@ -165,13 +167,14 @@ describe('validatePunch sequencing', () => {
       where: { tenantId, employeeId: employee.id, locationId: hqId },
       data: { checkoutRule: 'EXCEPTION_ONLY' },
     });
-    await expectRejection(validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ)), 'CHECKOUT_REQUIRES_EXCEPTION');
+    await expect(validatePunch(ctx(), employee, 'CHECK_OUT', position(HQ))).rejects.toMatchObject({
+      code: 'CHECKOUT_REQUIRES_EXCEPTION',
+    });
   });
 
   it('refuses an employee with no active employment: EMPLOYMENT_INACTIVE', async () => {
-    await expectRejection(
+    await expect(
       validatePunch(ctx(), { ...employee, employmentStatus: 'EXITED' }, 'CHECK_IN', position(HQ)),
-      'EMPLOYMENT_INACTIVE',
-    );
+    ).rejects.toMatchObject({ code: 'EMPLOYMENT_INACTIVE' });
   });
 });

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { Conflict, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
+import { slugify } from '@/lib/slug';
 
 /**
  * Landing pages had a model and a list page; nothing could create or publish
@@ -26,23 +27,10 @@ const createBody = z
   })
   .strict();
 
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
-
 export const POST = route(
   { module: 'landingpages', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const slug = body.slug ?? slugify(body.name);
-    const exists = await prisma.landingPage.findFirst({
-      where: { tenantId: ctx.tenantId, slug },
-      select: { id: true },
-    });
-    if (exists) throw Conflict('A landing page with that slug already exists.');
-
     if (body.formId) {
       const form = await prisma.form.findFirst({
         where: { tenantId: ctx.tenantId, id: body.formId, deletedAt: null },

@@ -1,6 +1,5 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -29,7 +28,7 @@ const bodySchema = z.object({
   email: z.string().email().max(254),
 });
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 const RESET_TTL_MINUTES = 30;
 const SAME_ANSWER = {
   ok: true,
@@ -37,7 +36,7 @@ const SAME_ANSWER = {
 };
 
 export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const ip = clientIp(req) ?? 'unknown';
 
   try {

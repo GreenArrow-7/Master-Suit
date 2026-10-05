@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { problemSummary } from '@/components/forms/useFormErrors';
+import Field from '@/components/forms/Field';
 
 interface Option {
   id: string;
@@ -195,10 +196,7 @@ export default function NewUserForm({
             required
           />
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-phone">
-            Phone
-          </label>
+        <Field label="Phone" htmlFor="nu-phone">
           <input
             id="nu-phone"
             className="lf-input"
@@ -208,7 +206,7 @@ export default function NewUserForm({
             maxLength={32}
             placeholder="+971 50 000 0000"
           />
-        </div>
+        </Field>
         <div className="lf-field">
           <label className="lf-label" data-required htmlFor="nu-role">
             Role
@@ -227,10 +225,7 @@ export default function NewUserForm({
             ))}
           </select>
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-dept">
-            Department
-          </label>
+        <Field label="Department" htmlFor="nu-dept">
           <select
             id="nu-dept"
             className="lf-input"
@@ -244,11 +239,8 @@ export default function NewUserForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-desig">
-            Designation
-          </label>
+        </Field>
+        <Field label="Designation" htmlFor="nu-desig">
           <select
             id="nu-desig"
             className="lf-input"
@@ -262,11 +254,8 @@ export default function NewUserForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-branch">
-            Branch / office
-          </label>
+        </Field>
+        <Field label="Branch / office" htmlFor="nu-branch">
           <select
             id="nu-branch"
             className="lf-input"
@@ -280,11 +269,8 @@ export default function NewUserForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-manager">
-            Reporting manager
-          </label>
+        </Field>
+        <Field label="Reporting manager" htmlFor="nu-manager">
           <select
             id="nu-manager"
             className="lf-input"
@@ -298,7 +284,7 @@ export default function NewUserForm({
               </option>
             ))}
           </select>
-        </div>
+        </Field>
         <div className="lf-field">
           <label className="lf-label" data-required htmlFor="nu-joined">
             Joining date
@@ -312,10 +298,7 @@ export default function NewUserForm({
             required
           />
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-type">
-            Employment type
-          </label>
+        <Field label="Employment type" htmlFor="nu-type">
           <select
             id="nu-type"
             className="lf-input"
@@ -328,11 +311,8 @@ export default function NewUserForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="nu-status">
-            Account status
-          </label>
+        </Field>
+        <Field label="Account status" htmlFor="nu-status">
           <select
             id="nu-status"
             className="lf-input"
@@ -343,7 +323,7 @@ export default function NewUserForm({
             <option value="INVITED">Invited</option>
             <option value="SUSPENDED">Suspended</option>
           </select>
-        </div>
+        </Field>
       </div>
 
       <label className="lf-users__check">

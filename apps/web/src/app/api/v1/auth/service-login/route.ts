@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
+import { Forbidden, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { burnTiming, verifyPassword } from '@/lib/auth/password';
 import { cookies } from 'next/headers';
@@ -20,7 +19,8 @@ import { readJsonBody } from '@/lib/api/read-body';
 import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { assertSameOrigin } from '@/lib/security/origin';
-import { toResponse } from '@/lib/api/handler';
+import { toResponse, bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Interactive sign-in for an `AI_SERVICE` identity:
@@ -66,7 +66,7 @@ const bodySchema = z.object({
 const GENERIC = 'That username and password combination did not work.';
 
 export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const ip = clientIp(req) ?? 'unknown';
   const ua = req.headers.get('user-agent');
 
@@ -78,16 +78,9 @@ export async function POST(req: Request) {
     const body = await readJsonBody(req, bodySchema);
     const username = body.username.trim().toLowerCase();
 
-    try {
-      await consume(limits.loginPerIp(ip));
-      await consume(limits.serviceLogin(username));
-    } catch (limited) {
-      const err: Error & { retryAfter?: number } = TooManyRequests(
-        'Too many sign-in attempts for this service account. Wait and try again.',
-      );
-      err.retryAfter = (limited as { retryAfter?: number }).retryAfter;
-      throw err;
-    }
+    const throttled = 'Too many sign-in attempts for this service account. Wait and try again.';
+    await consume(limits.loginPerIp(ip), throttled);
+    await consume(limits.serviceLogin(username), throttled);
 
     /**
      * Username *or* email address.
@@ -309,47 +302,39 @@ async function readableWorkspaces(allowlist: string[]) {
  * selection rather than only at read time. `serviceSessionActor` checks it again
  * on every request — this is the friendly refusal, that one is the real gate.
  */
-export async function PATCH(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    assertSameOrigin(req);
-    const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
-    if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
+export const PATCH = bareRoute('/api/v1/auth/service-login', async (req, requestId) => {
+  assertSameOrigin(req);
+  const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
+  if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
 
-    const body = await readJsonBody(req, z.object({ workspaceId: z.string().min(1).max(64) }));
-    const identity = await prisma.platformUser.findUnique({
-      where: { id: ctx.platformUserId },
-      select: { serviceTenantAllowlist: true },
-    });
-    if (identity?.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(body.workspaceId)) {
-      throw Forbidden('This service identity is not permitted in that workspace.');
-    }
-    const workspace = await prisma.tenant.findFirst({
-      where: { id: body.workspaceId, status: 'ACTIVE', deletedAt: null },
-      select: { id: true, slug: true },
-    });
-    if (!workspace) throw Forbidden('That workspace is not available.');
-
-    await prisma.platformSession.update({
-      where: { id: ctx.sessionId },
-      data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
-    });
-    // Opening a customer's workspace is worth a record even before anything is
-    // read — the same reason the platform console audits WORKSPACE_OPENED.
-    await record(ctx.platformUserId, 'WORKSPACE_OPENED', ctx.ip, ctx.userAgent, requestId, {
-      workspaceId: workspace.id,
-      slug: workspace.slug,
-      mode: 'service_readonly',
-    });
-
-    return NextResponse.json(
-      { destination: `/${workspace.slug}/dashboard`, workspace },
-      { headers: { 'x-request-id': requestId } },
-    );
-  } catch (err) {
-    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
+  const body = await readJsonBody(req, z.object({ workspaceId: z.string().min(1).max(64) }));
+  const identity = await prisma.platformUser.findUnique({
+    where: { id: ctx.platformUserId },
+    select: { serviceTenantAllowlist: true },
+  });
+  if (identity?.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(body.workspaceId)) {
+    throw Forbidden('This service identity is not permitted in that workspace.');
   }
-}
+  const workspace = await prisma.tenant.findFirst({
+    where: { id: body.workspaceId, status: 'ACTIVE', deletedAt: null },
+    select: { id: true, slug: true },
+  });
+  if (!workspace) throw Forbidden('That workspace is not available.');
+
+  await prisma.platformSession.update({
+    where: { id: ctx.sessionId },
+    data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
+  });
+  // Opening a customer's workspace is worth a record even before anything is
+  // read — the same reason the platform console audits WORKSPACE_OPENED.
+  await record(ctx.platformUserId, 'WORKSPACE_OPENED', ctx.ip, ctx.userAgent, requestId, {
+    workspaceId: workspace.id,
+    slug: workspace.slug,
+    mode: 'service_readonly',
+  });
+
+  return NextResponse.json({ destination: `/${workspace.slug}/dashboard`, workspace });
+});
 
 /**
  * Ends the session that made the request, and optionally every other one.
@@ -357,39 +342,34 @@ export async function PATCH(req: Request) {
  * The `all` form is the credential-compromise path: one call and every browser
  * holding this identity is signed out.
  */
-export async function DELETE(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+export const DELETE = bareRoute('/api/v1/auth/service-login', async (req, requestId) => {
+  assertSameOrigin(req);
+  const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE', 'MFA_ENROLMENT']);
+  if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
+
+  const all = new URL(req.url).searchParams.get('all') === 'true';
+  const revoked = all
+    ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
+    : (
+        await prisma.platformSession.updateMany({
+          where: { id: ctx.sessionId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
+        })
+      ).count;
+
+  await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
+
+  // The service cookie specifically — clearing `lf_session` here would sign
+  // the operator out of the platform console instead, which is a different
+  // identity that happens to share the browser.
   try {
-    assertSameOrigin(req);
-    const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE', 'MFA_ENROLMENT']);
-    if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
-
-    const all = new URL(req.url).searchParams.get('all') === 'true';
-    const revoked = all
-      ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
-      : (
-          await prisma.platformSession.updateMany({
-            where: { id: ctx.sessionId, revokedAt: null },
-            data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
-          })
-        ).count;
-
-    await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
-
-    // The service cookie specifically — clearing `lf_session` here would sign
-    // the operator out of the platform console instead, which is a different
-    // identity that happens to share the browser.
-    try {
-      (await cookies()).delete(SERVICE_SESSION_COOKIE);
-    } catch {
-      /* no request scope */
-    }
-
-    return NextResponse.json({ signedOut: true, sessionsRevoked: revoked }, { headers: { 'x-request-id': requestId } });
-  } catch (err) {
-    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
+    (await cookies()).delete(SERVICE_SESSION_COOKIE);
+  } catch {
+    /* no request scope */
   }
-}
+
+  return NextResponse.json({ signedOut: true, sessionsRevoked: revoked });
+});
 
 /**
  * One audit row per authentication event, in the protected platform log.
@@ -412,21 +392,10 @@ async function record(
   requestId: string,
   metadata: Record<string, unknown>,
 ) {
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: null,
-        actorUserId: platformUserId,
-        event,
-        objectType: 'platform_service_identity',
-        objectId: platformUserId,
-        ipAddress: ip,
-        userAgent: ua,
-        requestId,
-        metadata: metadata as never,
-      },
-    })
-    .catch((err) => logger.error({ err, requestId, event }, 'service auth audit write failed'));
+  await platformAudit(
+    { platformUserId, requestId, ip, userAgent: ua },
+    { event, objectType: 'platform_service_identity', objectId: platformUserId, metadata: metadata as never },
+  ).catch((err) => logger.error({ err, requestId, event }, 'service auth audit write failed'));
 }
 
 function recordFailure(

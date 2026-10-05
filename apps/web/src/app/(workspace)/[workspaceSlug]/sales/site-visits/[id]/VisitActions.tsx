@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Everything that can be done to a visit, in the order it happens.
@@ -262,21 +263,15 @@ export default function VisitActions({
             if (ok) setAmending(false);
           }}
         >
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="amend-outcome">
-              Corrected outcome
-            </label>
+          <Field label="Corrected outcome" htmlFor="amend-outcome">
             <input
               id="amend-outcome"
               className="lf-input"
               value={outcome}
               onChange={(e) => setOutcome(e.target.value)}
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="amend-reason">
-              Why is this being corrected?
-            </label>
+          </Field>
+          <Field label="Why is this being corrected?" htmlFor="amend-reason">
             <input
               id="amend-reason"
               className="lf-input"
@@ -286,7 +281,7 @@ export default function VisitActions({
               placeholder="Recorded in the audit log alongside what changed"
               onChange={(e) => setReason(e.target.value)}
             />
-          </div>
+          </Field>
           <p className="lf-hint" style={{ margin: 0 }}>
             The visit goes back to the verification queue: the record changed after it was signed off, so the sign-off
             no longer covers it.

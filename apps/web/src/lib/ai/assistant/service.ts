@@ -7,13 +7,6 @@ import type { Ctx } from '@/lib/security/rbac';
 import { TOOLS, executeTool, type ProposedAction, type ToolSource } from './tools';
 
 /**
- * Hard ceiling on one provider round-trip. A hung provider must fail the one
- * feature that needed it, not hold a connection (and on the request path, a
- * request) open indefinitely — graceful degradation starts with a deadline.
- */
-const AI_TIMEOUT_MS = 60_000;
-
-/**
  * The assistant orchestration: user question → model picks approved CRM tools
  * → tools run under the caller's permissions → model answers grounded in the
  * returned data. With GEMINI_API_KEY the model is Gemini (function calling);
@@ -86,7 +79,6 @@ async function modelTurn(
     tools: declarations,
     temperature: 0.2,
     maxOutputTokens: 2048,
-    timeoutMs: AI_TIMEOUT_MS,
   });
   // Per round, not per query: the loop below can call the model six times, and
   // metering only the last one would under-count a multi-step answer fivefold.

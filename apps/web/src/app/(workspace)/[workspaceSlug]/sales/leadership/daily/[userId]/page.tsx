@@ -4,7 +4,7 @@ import { dailyCalls } from '@/services/targets/dailyBoard';
 import SalesLink from '@/components/workspace/SalesLink';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import LiveRefresh from '../../LiveRefresh';
 import { BOARD_COLUMNS, rowTone, targetStatus } from '../../DailyBoardView';
 
@@ -45,10 +45,9 @@ export default async function DailyTargetDetailPage({
   return (
     <div className="lf-page-stack">
       <LiveRefresh />
-      <PageIntro
-        eyebrow="Daily target"
+      <ListHeader
         title={row.name ?? 'Seller'}
-        summary={`${board.date} · ${row.leadsCalled} of ${row.target ?? '—'} leads called${
+        description={`Daily target · ${board.date} · ${row.leadsCalled} of ${row.target ?? '—'} leads called${
           row.completion !== null ? ` · ${row.completion}% · ${targetStatus(row).label}` : ''
         }`}
         actions={

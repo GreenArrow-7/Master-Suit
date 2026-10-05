@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import Field from '@/components/forms/Field';
+import TaskComposer from '../../tasks/TaskComposer';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -690,10 +692,7 @@ function TimelineTab({
               {err}
             </div>
           )}
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-type">
-              Type
-            </label>
+          <Field label="Type" htmlFor="activity-type">
             <select
               id="activity-type"
               className="lf-input"
@@ -706,11 +705,8 @@ function TimelineTab({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-outcome">
-              Outcome
-            </label>
+          </Field>
+          <Field label="Outcome" htmlFor="activity-outcome">
             <input
               id="activity-outcome"
               className="lf-input"
@@ -718,11 +714,8 @@ function TimelineTab({
               onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value }))}
               placeholder="e.g. Interested, No answer..."
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-notes">
-              Notes
-            </label>
+          </Field>
+          <Field label="Notes" htmlFor="activity-notes">
             <textarea
               id="activity-notes"
               className="lf-input"
@@ -730,11 +723,8 @@ function TimelineTab({
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-duration">
-              Duration (minutes)
-            </label>
+          </Field>
+          <Field label="Duration (minutes)" htmlFor="activity-duration">
             <input
               id="activity-duration"
               className="lf-input"
@@ -743,7 +733,7 @@ function TimelineTab({
               value={form.durationMins}
               onChange={(e) => setForm((f) => ({ ...f, durationMins: e.target.value }))}
             />
-          </div>
+          </Field>
           <button className="lf-btn lf-btn--sm" type="submit" disabled={saving}>
             {saving ? 'Saving...' : 'Log'}
           </button>
@@ -799,42 +789,7 @@ function TasksTab({
   taskTypes: TaskType[];
   router: ReturnType<typeof useRouter>;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    typeId: taskTypes[0]?.id ?? '',
-    title: '',
-    dueAt: '',
-    priority: 'MEDIUM',
-    description: '',
-  });
-  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title || !form.typeId || !form.dueAt) return;
-    setSaving(true);
-    setErr(null);
-    try {
-      await api('/api/v1/tasks', {
-        method: 'POST',
-        body: JSON.stringify({
-          typeId: form.typeId,
-          title: form.title,
-          leadId: lead.id,
-          dueAt: new Date(form.dueAt).toISOString(),
-          priority: form.priority,
-          description: form.description || undefined,
-        }),
-      });
-      setForm({ typeId: taskTypes[0]?.id ?? '', title: '', dueAt: '', priority: 'MEDIUM', description: '' });
-      setShowForm(false);
-      router.refresh();
-    } catch (e: any) {
-      setErr(e.message);
-    }
-    setSaving(false);
-  };
 
   const completeTask = async (taskId: string) => {
     try {
@@ -850,114 +805,16 @@ function TasksTab({
 
   return (
     <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--lf-space-4)',
-        }}
-      >
-        <div className="lf-eyebrow">Tasks</div>
-        <button className="lf-btn lf-btn--sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : 'Add task'}
-        </button>
+      <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
+        Tasks
       </div>
-
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            marginBottom: 'var(--lf-space-4)',
-            display: 'grid',
-            gap: 'var(--lf-space-3)',
-            padding: 'var(--lf-space-4)',
-            border: '1px solid var(--lf-line)',
-            borderRadius: 6,
-          }}
-        >
-          {err && (
-            <div className="lf-alert" style={{ fontSize: 'var(--lf-text-sm)' }}>
-              {err}
-            </div>
-          )}
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-title">
-              Title
-            </label>
-            <input
-              id="task-title"
-              className="lf-input"
-              required
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="task-type">
-                Type
-              </label>
-              <select
-                id="task-type"
-                className="lf-input"
-                value={form.typeId}
-                onChange={(e) => setForm((f) => ({ ...f, typeId: e.target.value }))}
-              >
-                {taskTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="task-priority">
-                Priority
-              </label>
-              <select
-                id="task-priority"
-                className="lf-input"
-                value={form.priority}
-                onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-              >
-                {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((p) => (
-                  <option key={p} value={p}>
-                    {p.toLowerCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-due">
-              Due date
-            </label>
-            <input
-              id="task-due"
-              className="lf-input"
-              type="date"
-              required
-              value={form.dueAt}
-              onChange={(e) => setForm((f) => ({ ...f, dueAt: e.target.value }))}
-            />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-description">
-              Description
-            </label>
-            <textarea
-              id="task-description"
-              className="lf-input"
-              rows={2}
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </div>
-          <button className="lf-btn lf-btn--sm" type="submit" disabled={saving}>
-            {saving ? 'Saving...' : 'Create'}
-          </button>
-        </form>
+      <div style={{ marginBottom: 'var(--lf-space-4)' }}>
+        <TaskComposer taskTypes={taskTypes} assignees={[]} canAssignOthers={false} leadId={lead.id} />
+      </div>
+      {err && (
+        <div className="lf-alert" role="alert" style={{ marginBottom: 'var(--lf-space-4)' }}>
+          {err}
+        </div>
       )}
 
       {lead.tasks.length === 0 ? (

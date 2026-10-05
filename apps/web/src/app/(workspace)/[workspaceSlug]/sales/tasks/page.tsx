@@ -6,7 +6,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import ListHeader from '@/components/workspace/ListHeader';
-import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { can, atLeast } from '@/lib/security/rbac';
 import TaskComposer from './TaskComposer';
 import TaskRowActions from './TaskRowActions';
 
@@ -58,7 +58,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const now = new Date();
 
   const canCreate = can(ctx, 'leads', 'EDIT');
-  const canAssignOthers = SCOPE_RANK[scopeFor(ctx, 'leads', 'EDIT')] >= SCOPE_RANK.TEAM;
+  const canAssignOthers = atLeast(ctx, 'leads', 'EDIT', 'TEAM');
 
   const [rows, taskTypes, assignees] = await Promise.all([
     prisma.task.findMany({

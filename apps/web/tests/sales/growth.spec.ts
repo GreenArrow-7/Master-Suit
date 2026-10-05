@@ -116,6 +116,12 @@ describe('forms — the lead-gen loop', () => {
     expect(fields).toBe(4);
   });
 
+  it('answers a second form with the same key as a 409, from the database itself', async () => {
+    const again = await post(formCreate, '/api/v1/forms', { name: `Enquiry ${suffix}`, key: formKey }, cookie);
+    expect(again.status, JSON.stringify(again.body)).toBe(409);
+    expect(again.body.detail).toBe('This form already exists.');
+  });
+
   it('serves the public definition without authentication', async () => {
     const res = await get(publicFormGet, `/api/v1/public/forms?workspace=${slug}&form=${formKey}`);
     expect(res.status).toBe(200);

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
 import { platformAudit } from '@/lib/security/audit';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 const updateSchema = z
   .object({
@@ -24,9 +23,9 @@ const updateSchema = z
  * because a subscription that says Business while the entitlements still say
  * HRMS-only is exactly the drift the control plane exists to prevent.
  */
-export async function PATCH(req: Request, { params }: { params: Promise<{ subscriptionId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const PATCH = bareRoute(
+  '/api/v1/platform/subscriptions/[subscriptionId]',
+  async (req, requestId, { params }: { params: Promise<{ subscriptionId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { subscriptionId } = await params;
     const body = updateSchema.parse(await req.json());
@@ -109,16 +108,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ subscr
     });
     await invalidateEntitlements(subscription.tenantId);
 
-    return NextResponse.json({ subscription }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/subscriptions/[subscriptionId]' });
-  }
-}
+    return NextResponse.json({ subscription });
+  },
+);
 
 /** Cancels the subscription. The row stays for billing history; access stops. */
-export async function DELETE(req: Request, { params }: { params: Promise<{ subscriptionId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const DELETE = bareRoute(
+  '/api/v1/platform/subscriptions/[subscriptionId]',
+  async (req, requestId, { params }: { params: Promise<{ subscriptionId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { subscriptionId } = await params;
     const now = new Date();
@@ -152,8 +149,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ subsc
     });
     await invalidateEntitlements(tenantId);
 
-    return NextResponse.json({ canceled: true, id: subscriptionId }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/subscriptions/[subscriptionId]' });
-  }
-}
+    return NextResponse.json({ canceled: true, id: subscriptionId });
+  },
+);

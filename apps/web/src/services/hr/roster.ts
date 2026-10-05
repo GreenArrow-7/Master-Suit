@@ -20,31 +20,23 @@ import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
-import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { addDays, dayKey, toDay } from './rules';
+import { atLeast, type Ctx } from '@/lib/security/rbac';
+import { addDays, dayKey, toDay, toMinutes } from './rules';
+import { shiftMinutes } from './overtime';
 import { myEmployee, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyShiftChangeDecided, notifyShiftChangeRaised } from './notify';
 
 /** Publishes and edits the roster. */
-export const isRosterPlanner = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'shifts', 'EDIT')] >= SCOPE_RANK.TEAM;
+export const isRosterPlanner = (ctx: Ctx) => atLeast(ctx, 'shifts', 'EDIT', 'TEAM');
 
 /** Decides shift-change and swap requests. */
-export const isRosterApprover = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'shifts', 'APPROVE')] >= SCOPE_RANK.TEAM;
+export const isRosterApprover = (ctx: Ctx) => atLeast(ctx, 'shifts', 'APPROVE', 'TEAM');
 
 const DAY_MS = 86_400_000;
 
 // ── Pure scheduling arithmetic ─────────────────────────────────────────────
-
-function minutesOf(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  return hours > 23 || minutes > 59 ? null : hours * 60 + minutes;
-}
 
 export interface ShiftWindow {
   /** Epoch milliseconds. */
@@ -55,19 +47,16 @@ export interface ShiftWindow {
 /**
  * When a rostered shift actually runs, as an absolute interval.
  *
- * An end at or before the start means the shift crosses midnight and belongs
- * partly to the next day — the same rule `shiftMinutes` applies in overtime.
- * Without it, a 22:00–06:00 shift looks like a negative-length event and never
- * overlaps anything.
+ * Its length is `shiftMinutes`, so an end at or before the start crosses
+ * midnight: a 22:00–06:00 shift is eight hours into the next day, not a
+ * negative-length event that never overlaps anything.
  */
 export function shiftWindow(workDate: Date, startTime: string, endTime: string): ShiftWindow | null {
-  const from = minutesOf(startTime);
-  const to = minutesOf(endTime);
-  if (from === null || to === null) return null;
-  const base = toDay(workDate).getTime();
-  const start = base + from * 60_000;
-  const end = base + (to > from ? to : to + 24 * 60) * 60_000;
-  return { start, end };
+  const from = toMinutes(startTime);
+  const length = shiftMinutes(startTime, endTime);
+  if (from === null || length === null) return null;
+  const start = toDay(workDate).getTime() + from * 60_000;
+  return { start, end: start + length * 60_000 };
 }
 
 export const windowsOverlap = (a: ShiftWindow, b: ShiftWindow) => a.start < b.end && b.start < a.end;

@@ -6,6 +6,7 @@ import { consume, limits } from '@/lib/security/ratelimit';
 import { decryptCredentials } from '@/lib/integrations/connection';
 import { MetaWhatsAppProvider } from '@/lib/integrations/whatsapp';
 import { normalizeMetaWebhook, type NormalizedMetaEvent } from '@/lib/integrations/meta/events';
+import { isUniqueViolation } from '@/lib/errors';
 
 /**
  * Meta's callbacks — WhatsApp, Lead Ads, Instagram — keyed by the connection's
@@ -114,7 +115,7 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
       });
       stored += 1;
     } catch (e) {
-      if ((e as { code?: string })?.code === 'P2002') {
+      if (isUniqueViolation(e)) {
         // Already seen. Not re-enqueued: the first delivery owns the CRM write,
         // and queuing it again is how one retried callback becomes two leads.
         duplicate += 1;

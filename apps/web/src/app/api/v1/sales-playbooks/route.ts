@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 
 /**
  * Buyer-type playbooks: how the workspace sells to one kind of customer.
@@ -42,12 +41,6 @@ export const POST = route(
   },
   async ({ ctx, body }) =>
     withTx(ctx.tenantId, async (tx) => {
-      const clash = await tx.salesPlaybook.findFirst({
-        where: { tenantId: ctx.tenantId, name: body.name, deletedAt: null },
-        select: { id: true },
-      });
-      if (clash) throw Conflict(`A playbook named "${body.name}" already exists.`);
-
       // One default at a time: making this one the fallback demotes the rest,
       // in the same transaction, so there is never a moment with two.
       if (body.isDefault) {

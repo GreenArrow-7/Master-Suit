@@ -5,22 +5,10 @@ import { activeModule } from '@/lib/nav/workspaceNav';
 import { PRODUCT_MODULE_CHOICES, PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
- * One product module, four declarations, and nothing making them agree.
- *
- * `ModuleKey` in the schema is authoritative, but the application restates it as
- * hand-maintained TypeScript in three more places: `ProductModule` and
- * `PRODUCT_MODULES` in lib/security/entitlements.ts, and the `Module` union in
- * lib/nav/workspaceNav.ts. Adding REAL_ESTATE meant editing all four, and the
- * typecheck only caught it because a route happened to reference the new value —
- * a module added to the schema and used nowhere yet would have drifted silently
- * until something refused at runtime.
- *
- * Read from source rather than imported, because `PRODUCT_MODULES` and `Module`
- * are not exported and should not become exported for a test's convenience. Same
- * approach as filter-field-maps.spec.ts, which checks its maps against this same
- * schema file.
- *
- * This is a drift check, not a type system. If the four lists agree, it passes.
+ * One product module list: `ModuleKey` in the schema, mirrored once as
+ * PRODUCT_MODULE_KEYS in lib/modules/catalogue.ts. The entitlement and navigation
+ * types derive from that tuple, so only the tuple and the screens can drift from
+ * the schema, and those are what this checks.
  */
 const root = path.join(__dirname, '..', '..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
@@ -35,16 +23,7 @@ function prismaEnum(schema: string, name: string): string[] {
     .filter((line) => /^[A-Z][A-Z0-9_]*$/.test(line));
 }
 
-/** The members of a single-line TypeScript string-literal union. */
-function tsUnion(source: string, declaration: RegExp): string[] {
-  const line = declaration.exec(source);
-  if (!line) throw new Error(`declaration ${declaration} not found`);
-  return [...line[1]!.matchAll(/'([A-Z][A-Z0-9_]*)'/g)].map((m) => m[1]!);
-}
-
 const schemaModules = prismaEnum(read('prisma/schema.prisma'), 'ModuleKey');
-const entitlements = read('src/lib/security/entitlements.ts');
-const nav = read('src/lib/nav/workspaceNav.ts');
 
 describe('the product module list does not drift', () => {
   it('finds a non-trivial list to check', () => {
@@ -52,21 +31,6 @@ describe('the product module list does not drift', () => {
     // pass against two empty arrays.
     expect(schemaModules.length).toBeGreaterThanOrEqual(2);
     expect(schemaModules).toContain('REAL_ESTATE');
-  });
-
-  it('ProductModule matches ModuleKey', () => {
-    const declared = tsUnion(entitlements, /export type ProductModule = ([^;]+);/);
-    expect([...declared].sort()).toEqual([...schemaModules].sort());
-  });
-
-  it('PRODUCT_MODULES matches ModuleKey', () => {
-    const declared = tsUnion(entitlements, /const PRODUCT_MODULES = \[([^\]]+)\]/);
-    expect([...declared].sort()).toEqual([...schemaModules].sort());
-  });
-
-  it("the navigation's Module union matches ModuleKey", () => {
-    const declared = tsUnion(nav, /type Module = ([^;]+);/);
-    expect([...declared].sort()).toEqual([...schemaModules].sort());
   });
 });
 

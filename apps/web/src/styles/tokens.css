@@ -238,10 +238,6 @@
   --lf-radius-lg: 12px;
   --lf-radius-xl: 14px;
 
-  /* Commercial design-token aliases shared by Sales, People and Platform. */
-  --primary: var(--yh-primary);
-  --danger: var(--yh-danger);
-
   /* Shadows are midnight-tinted and faint. A card is defined by its border;
      the shadow is there only for the surfaces that float. */
   --lf-shadow-1: 0 1px 2px rgb(17 24 39 / 0.05);
@@ -382,13 +378,4 @@ td[data-type='date'] {
   font-family: var(--lf-font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'zero' 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
 }

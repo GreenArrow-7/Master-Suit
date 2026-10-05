@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { prisma, prismaRead } from '@/lib/db';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
+import { classify } from '@/services/targets/dailyBoard';
 
 /** Display names by user id, nulls and repeats dropped. Read from the replica: a name can lag a moment. */
 export async function names(tenantId: string, ids: (string | null)[]) {
@@ -550,9 +551,9 @@ export async function productivity(tenantId: string, userIds: string[], range: R
   for (const g of calls) {
     const r = row(g.callerId);
     r.callsCompleted += g._count._all;
-    if (g.outcome === 'INTERESTED' || g.outcome === 'QUALIFIED' || g.outcome === 'CONVERTED')
-      r.interested += g._count._all;
-    if (g.outcome === 'NOT_INTERESTED' || g.outcome === 'WRONG_NUMBER') r.notInterested += g._count._all;
+    const kind = classify(g.outcome);
+    if (kind === 'interested') r.interested += g._count._all;
+    if (kind === 'cold') r.notInterested += g._count._all;
   }
   const touched = new Map<string, Set<string>>();
   for (const t of [...touchedByActivity, ...touchedByCall]) {

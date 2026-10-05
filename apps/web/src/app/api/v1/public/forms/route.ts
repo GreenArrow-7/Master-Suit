@@ -89,7 +89,7 @@ export const POST = route(
     });
     if (!stage) throw NotFound('Form');
 
-    const phoneNormalized = mapped.phone ? normalizePhone(mapped.phone, 'AE') : null;
+    const phoneNormalized = mapped.phone ? normalizePhone(mapped.phone) : null;
 
     /**
      * The same duplicate check every other entry point already runs.

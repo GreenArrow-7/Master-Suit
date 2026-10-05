@@ -1,7 +1,4 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
-import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { assertClean, scanBuffer } from '@/lib/antivirus';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -9,7 +6,7 @@ import { AppError } from '@/lib/errors';
 import { readUpload } from '@/lib/api/read-body';
 import { deleteObject, putObject } from '@/lib/storage';
 import { assertBookingInScope, EVIDENCE_CATEGORY, evidencePrefix } from '@/services/money/collections';
-import { toResponse } from '@/lib/api/handler';
+import { route } from '@/lib/api/handler';
 
 /** The only kinds of file a receipt is evidenced by, recognised by their first bytes rather than their name. */
 const SIGNATURES: { type: string; bytes: number[] }[] = [
@@ -30,15 +27,9 @@ const SIGNATURES: { type: string; bytes: number[] }[] = [
  * document id, which the receipt form then submits with the amount, date and
  * reference, and the receipt still waits for a second person.
  */
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  let storedKey = '';
-  try {
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: SALES_OR_REALTY,
-      permission: ['collections', 'CREATE'],
-    });
-
+export const POST = route(
+  { module: 'collections', action: 'CREATE', productModule: SALES_OR_REALTY, sessionOnly: true },
+  async ({ ctx, req }) => {
     const { form, file } = await readUpload(req);
 
     const bookingId = String(form.get('bookingId') ?? '');
@@ -53,30 +44,31 @@ export async function POST(req: Request) {
     assertClean(await scanBuffer(bytes));
 
     const safeName = file.name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'evidence';
-    storedKey = `${evidencePrefix(ctx.tenantId, booking.id)}${ulid()}-${safeName}`;
+    const storedKey = `${evidencePrefix(ctx.tenantId, booking.id)}${crypto.randomUUID()}-${safeName}`;
     await putObject(storedKey, bytes, kind.type);
 
-    const document = await prisma.document.create({
-      data: {
-        tenantId: ctx.tenantId,
-        name: file.name.slice(0, 200),
-        category: EVIDENCE_CATEGORY,
-        storageKey: storedKey,
-        storageBucket: env.S3_BUCKET,
-        mimeType: kind.type,
-        sizeBytes: bytes.length,
-        status: 'UPLOADED',
-        scanState: 'CLEAN',
-        ownerId: ctx.actor.id,
-        createdById: ctx.actor.id,
-      },
-      select: { id: true, name: true, sizeBytes: true, mimeType: true, createdAt: true },
-    });
-    return NextResponse.json(document, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
     // Stored but not recorded: take the object back out, so a failed upload
     // leaves nothing behind that no row points at.
-    if (storedKey) await deleteObject(storedKey).catch(() => {});
-    return toResponse(error, requestId, { route: '/api/v1/collections/receipts/evidence' });
-  }
-}
+    return prisma.document
+      .create({
+        data: {
+          tenantId: ctx.tenantId,
+          name: file.name.slice(0, 200),
+          category: EVIDENCE_CATEGORY,
+          storageKey: storedKey,
+          storageBucket: env.S3_BUCKET,
+          mimeType: kind.type,
+          sizeBytes: bytes.length,
+          status: 'UPLOADED',
+          scanState: 'CLEAN',
+          ownerId: ctx.actor.id,
+          createdById: ctx.actor.id,
+        },
+        select: { id: true, name: true, sizeBytes: true, mimeType: true, createdAt: true },
+      })
+      .catch(async (error: unknown) => {
+        await deleteObject(storedKey).catch(() => {});
+        throw error;
+      });
+  },
+);

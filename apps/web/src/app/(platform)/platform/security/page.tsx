@@ -20,7 +20,6 @@ export default async function PlatformSecurityPage() {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Platform"
         title="Sign-in and passwords"
         description={`${ctx.email} · administration session`}
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Sign-in and passwords' }]}

@@ -13,7 +13,7 @@ import { POST as createBooking, PATCH as patchBooking } from '@/app/api/v1/booki
 import { POST as recordReceipt } from '@/app/api/v1/collections/receipts/route';
 import { createSessionToken } from '../helpers/session';
 import { patch, post } from '../helpers/request';
-import { grantPermissions } from '../helpers/fixtures';
+import { grantPermissions, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const D = (n: number) => new Prisma.Decimal(n);
@@ -39,15 +39,7 @@ async function makeUser(label: string, grants: readonly (readonly [string, Permi
   await grantPermissions(tenantId, role.id, grants, 'ORGANIZATION' as VisibilityScope);
 
   const email = `${label}-${suffix}@diag.test`;
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
+  const user = await createWorkspaceUser({ tenantId, roleId: role.id, email: email, fullName: label });
   return { id: user.id, cookie: await createSessionToken(tenantId, user.id), email };
 }
 

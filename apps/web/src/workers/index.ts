@@ -1,16 +1,10 @@
 import type { Worker } from 'bullmq';
-import type { QueueName } from '@/lib/queue';
+import { QUEUE_NAMES } from '@/lib/queue';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import { startAiWorker } from './ai';
-import { startAutomationWorker } from './automation';
-import { armCampaignScheduler, startCampaignWorker } from './campaigns';
-import { startDistributionWorker } from './distribution';
-import { armMaintenanceScheduler, startMaintenanceWorker } from './maintenance';
-import { startMediaWorker } from './media';
-import { startNotificationsWorker } from './notifications';
-import { startSlaWorker } from './sla';
-import { startWebhookWorker } from './webhook';
+import { armCampaignScheduler } from './campaigns';
+import { startWorker } from './jobs';
+import { armMaintenanceScheduler } from './maintenance';
 
 /**
  * Entry point for the worker process (PROCESS_ROLE=worker) — `npm run worker`
@@ -39,33 +33,10 @@ import { startWebhookWorker } from './webhook';
  *      than sitting "up" and idle. This is the property that makes
  *      `restart: unless-stopped` mean something.
  *
- *   3. **Refuses to compile with a queue nobody drains.** `CONSUMERS` is keyed
- *      by `QueueName`, so adding a queue to lib/queue.ts without a worker here
- *      is a type error rather than jobs sitting in Redis forever. This replaced
- *      a start-up log that named three such queues — `messaging`, `import` and
- *      `export` — which were declared with retry policies, had no consumer, and
- *      stayed that way precisely because a log line is not a build failure.
- *      They have since been deleted; the type is what keeps the gap from
- *      reopening.
+ *   3. **Refuses to compile with a queue nobody drains.** `JOBS` (./jobs) is
+ *      keyed by `QueueName`, so adding a queue to lib/queue.ts without a
+ *      consumer is a type error rather than jobs sitting in Redis forever.
  */
-
-/**
- * Every queue lib/queue.ts can enqueue to, and who drains it.
- *
- * `Record<QueueName, ...>` is exhaustive both ways: a queue with no worker and a
- * worker for a queue that no longer exists are each a compile error.
- */
-const CONSUMERS: Record<QueueName, () => Worker> = {
-  automation: startAutomationWorker,
-  distribution: startDistributionWorker,
-  sla: startSlaWorker,
-  media: startMediaWorker,
-  ai: startAiWorker,
-  notifications: startNotificationsWorker,
-  campaign: startCampaignWorker,
-  webhook: startWebhookWorker,
-  maintenance: startMaintenanceWorker,
-};
 
 /** Redis answering should take milliseconds. Ten seconds is a dead dependency. */
 const READY_TIMEOUT_MS = 10_000;
@@ -90,9 +61,9 @@ async function ready(worker: Worker): Promise<void> {
 const workers: Worker[] = [];
 
 async function start() {
-  for (const [name, startWorker] of Object.entries(CONSUMERS)) {
-    workers.push(startWorker());
-    logger.debug({ queue: name }, 'worker constructed');
+  for (const queue of QUEUE_NAMES) {
+    workers.push(startWorker(queue));
+    logger.debug({ queue }, 'worker constructed');
   }
 
   const results = await Promise.allSettled(workers.map(ready));

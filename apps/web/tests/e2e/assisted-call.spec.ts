@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetLoginThrottle } from './helpers';
+import { resetLoginThrottle, ok } from './helpers';
 
 /**
  * §8/§9 the AI-assisted call as a seller starts it: Lead → "Call with AI
@@ -19,12 +19,6 @@ const base = () => process.env.APP_URL ?? 'http://localhost:3000';
 const run = Date.now().toString(36);
 // Leads are unique by phone in a workspace; the rig's demo workspace keeps every run's leads.
 const leadPhone = `+9715${Date.now().toString().slice(-8)}`;
-
-async function ok(res: { ok(): boolean; text(): Promise<string>; json(): Promise<unknown> }, what: string) {
-  expect(res.ok(), `${what}: ${await res.text().catch(() => '')}`).toBeTruthy();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await res.json()) as Record<string, any>;
-}
 
 test.describe('AI-assisted call from a lead', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');

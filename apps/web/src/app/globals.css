@@ -946,13 +946,6 @@ body {
   }
 }
 
-/* The drawer is a phone surface; on a tablet the rail is the navigation. */
-@media (min-width: 761px) {
-  .lf-tabbar {
-    display: none;
-  }
-}
-
 /* ── Layout primitives ────────────────────────────────────────────────────
    `.lf-stack` — a vertical grid that cannot outgrow its container.
 
@@ -3562,7 +3555,6 @@ a:hover {
 }
 .lf-filters .lf-field {
   margin: 0;
-  min-width: 130px;
   /* A field never outgrows the bar: a <select> sizes itself to its longest
      option (a long workspace name), and unchecked that pushed the platform
      Users bar 2px past a 390px screen. */
@@ -4526,6 +4518,16 @@ a:hover {
   min-width: 180px;
   padding: 4px 0;
 }
+.lf-create-menu a {
+  display: block;
+  padding: 8px 16px;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink);
+  text-decoration: none;
+}
+.lf-create-menu a:hover {
+  background: var(--lf-surface-2);
+}
 
 /* On a phone a 380px panel hangs off the right edge of a 360px viewport.
    Pinned to the screen with a gutter either side instead. */
@@ -5025,12 +5027,6 @@ a.lf-kpi:hover {
     align-items: stretch;
   }
 }
-/* Eyebrow + breadcrumb + title was three lines saying one thing. */
-.lf-page-header .lf-eyebrow,
-.lf-list-header .lf-eyebrow {
-  display: none;
-}
-
 /* ── One table ───────────────────────────────────────────────────────────── */
 .lf-table-wrap,
 .lf-grid-wrap {
@@ -5765,35 +5761,6 @@ a.lf-kpi:hover {
   margin-bottom: 8px;
 }
 
-/* ── Charts (recharts) ─────────────────────────────────────────────────────
-   Recharts writes colour as SVG presentation attributes, which cannot resolve
-   var(); `fill` and `stroke` are also CSS properties, so tokens work here.
-   Muted grid, slate labels; series colour is the component's (literal) ramp. */
-.recharts-cartesian-axis-tick-value,
-.recharts-polar-angle-axis-tick-value,
-.recharts-pie-label-text,
-.recharts-label {
-  fill: var(--lf-ink-2);
-  font-family: var(--lf-font-ui);
-  font-size: var(--lf-text-xs);
-}
-.recharts-cartesian-grid line,
-.recharts-cartesian-axis-line,
-.recharts-cartesian-axis-tick-line {
-  stroke: var(--lf-line);
-}
-.recharts-legend-item-text {
-  color: var(--lf-ink-2) !important;
-  font-size: var(--lf-text-xs);
-}
-.recharts-tooltip-cursor {
-  fill: color-mix(in srgb, var(--lf-ink) 6%, transparent);
-}
-.recharts-default-tooltip {
-  border-radius: var(--lf-radius) !important;
-  box-shadow: var(--lf-shadow-2);
-}
-
 /* Hero figures are the working face, not a display face. */
 .lf-hero-figure {
   font-size: 24px;
@@ -5939,7 +5906,7 @@ a.lf-kpi:hover {
   margin: 8px 0;
 }
 .lf-public a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure);
   text-decoration: none;
   border-bottom: 1px solid currentColor;
 }
@@ -5949,7 +5916,7 @@ a.lf-kpi:hover {
 .lf-privacy-header {
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid var(--lf-surface-3, #e8eaed);
+  border-bottom: 1px solid var(--lf-line);
 }
 .lf-privacy-header h1 {
   margin: 0 0 8px;
@@ -5959,20 +5926,20 @@ a.lf-kpi:hover {
 .lf-subtitle {
   margin: 4px 0 0;
   font-size: 1.1rem;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--lf-ink-2);
   font-weight: 500;
 }
 .lf-updated {
   margin: 8px 0 0;
   font-size: 0.95rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
+  color: var(--lf-ink-3);
 }
 .lf-privacy-summary {
-  background: var(--lf-surface-1, #f8f9fa);
+  background: var(--lf-surface-2);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
-  border-left: 4px solid var(--lf-blue-500, #4a90e2);
+  border-left: 4px solid var(--yh-azure);
 }
 .lf-privacy-summary h2 {
   margin-top: 0;
@@ -5984,11 +5951,11 @@ a.lf-kpi:hover {
 }
 .lf-summary-list li {
   margin: 8px 0;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--lf-ink-2);
 }
 .lf-privacy-nav {
-  background: var(--lf-surface-2, #ffffff);
-  border: 1px solid var(--lf-surface-3, #e8eaed);
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
@@ -6008,7 +5975,7 @@ a.lf-kpi:hover {
   margin: 6px 0;
 }
 .lf-privacy-nav a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure);
   text-decoration: none;
   border: none;
   font-size: 0.95rem;
@@ -6022,7 +5989,7 @@ a.lf-kpi:hover {
 .lf-privacy-page section > h2 {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
+  border-top: 1px solid var(--lf-line);
 }
 .lf-privacy-page section > h2:first-child {
   border-top: none;
@@ -6033,40 +6000,8 @@ a.lf-kpi:hover {
   margin-top: 40px;
   padding-top: 20px;
   font-size: 0.9rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .lf-privacy-header {
-    border-bottom-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-privacy-summary {
-    background: var(--lf-surface-1, #27292d);
-    border-left-color: var(--lf-blue-400, #5ba3f5);
-  }
-  .lf-subtitle,
-  .lf-summary-list li {
-    color: var(--lf-ink-secondary, #e0e0e0);
-  }
-  .lf-updated {
-    color: var(--lf-ink-tertiary, #9a9a9a);
-  }
-  .lf-privacy-nav {
-    background: var(--lf-surface-2, #2d3137);
-    border-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-privacy-nav a {
-    color: var(--lf-blue-400, #5ba3f5);
-  }
-  .lf-privacy-page section > h2 {
-    border-top-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-last-updated {
-    border-top-color: var(--lf-surface-3, #3a3f47);
-    color: var(--lf-ink-tertiary, #9a9a9a);
-  }
+  color: var(--lf-ink-3);
+  border-top: 1px solid var(--lf-line);
 }
 
 /* Mobile optimization */

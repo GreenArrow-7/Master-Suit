@@ -17,6 +17,7 @@ import { prisma } from '@/lib/db';
 import { openGrant } from '@/lib/auth/platform-access';
 import { createPlatformSessionToken } from '../helpers/session';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
+import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
@@ -82,13 +83,11 @@ const asMonitor = async () => ({
 describe('a protected read cannot outlive its audit row', () => {
   it('serves the record when the audit write succeeds — the control case', async () => {
     const { cookie } = await asMonitor();
-    const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const res = await get(listLeads, '/api/v1/leads', cookie);
     expect(res.status).toBe(200);
     // The fixture really is reachable, so the refusal below is the audit
     // failing and not the lead being invisible for some other reason.
-    expect(JSON.stringify(await res.json())).toContain(SECRET_LEAD_NAME);
+    expect(JSON.stringify(res.body)).toContain(SECRET_LEAD_NAME);
   });
 
   it('refuses, and returns no customer data, when the audit row cannot be written', async () => {
@@ -100,6 +99,7 @@ describe('a protected read cannot outlive its audit row', () => {
     });
 
     expect(res.status).toBeGreaterThanOrEqual(500);
+    // The raw text, not parsed JSON: a non-JSON error body must not leak it either.
     const body = await res.text();
     expect(body).not.toContain(SECRET_LEAD_NAME);
     expect(body).not.toContain(SECRET_LEAD_PHONE);
@@ -109,9 +109,7 @@ describe('a protected read cannot outlive its audit row', () => {
 describe('what the audit row is allowed to contain', () => {
   it('records the request, not the records', async () => {
     const { cookie } = await asMonitor();
-    await listLeads(new Request('http://localhost/api/v1/leads?q=' + SECRET_LEAD_NAME, { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    await get(listLeads, '/api/v1/leads?q=' + SECRET_LEAD_NAME, cookie, {});
 
     const rows = await prisma.platformAuditEvent.findMany({
       where: { tenantId, actorUserId: supportId, event: 'SUPPORT_READ' },

@@ -25,6 +25,9 @@ export interface Envelope {
   encrypt(plain: string): string;
   decrypt(stored: string): string;
   isEncrypted(stored: string): boolean;
+  /** Bytes in, `iv | ciphertext | tag` out: the binary form, for objects rather than columns. */
+  seal(plain: Buffer): Buffer;
+  open(payload: Buffer): Buffer;
 }
 
 export function envelope(domain: string): Envelope {
@@ -34,25 +37,25 @@ export function envelope(domain: string): Envelope {
   const key = () =>
     Buffer.from(hkdfSync('sha256', Buffer.from(env.FIELD_ENCRYPTION_KEY), Buffer.from(domain), Buffer.from(''), 32));
 
-  return {
-    encrypt(plain: string): string {
-      const iv = randomBytes(IV_BYTES);
-      const cipher = createCipheriv('aes-256-gcm', key(), iv);
-      const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final(), cipher.getAuthTag()]);
-      return PREFIX + Buffer.concat([iv, body]).toString('base64');
-    },
+  const seal = (plain: Buffer): Buffer => {
+    const iv = randomBytes(IV_BYTES);
+    const cipher = createCipheriv('aes-256-gcm', key(), iv);
+    return Buffer.concat([iv, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+  };
+  const open = (payload: Buffer): Buffer => {
+    const decipher = createDecipheriv('aes-256-gcm', key(), payload.subarray(0, IV_BYTES));
+    decipher.setAuthTag(payload.subarray(payload.length - TAG_BYTES));
+    return Buffer.concat([decipher.update(payload.subarray(IV_BYTES, payload.length - TAG_BYTES)), decipher.final()]);
+  };
 
+  return {
+    seal,
+    open,
+    encrypt: (plain: string) => PREFIX + seal(Buffer.from(plain, 'utf8')).toString('base64'),
     decrypt(stored: string): string {
       if (!stored.startsWith(PREFIX)) return stored; // pre-encryption value
-      const payload = Buffer.from(stored.slice(PREFIX.length), 'base64');
-      const decipher = createDecipheriv('aes-256-gcm', key(), payload.subarray(0, IV_BYTES));
-      decipher.setAuthTag(payload.subarray(payload.length - TAG_BYTES));
-      return Buffer.concat([
-        decipher.update(payload.subarray(IV_BYTES, payload.length - TAG_BYTES)),
-        decipher.final(),
-      ]).toString('utf8');
+      return open(Buffer.from(stored.slice(PREFIX.length), 'base64')).toString('utf8');
     },
-
     isEncrypted: (stored: string) => stored.startsWith(PREFIX),
   };
 }

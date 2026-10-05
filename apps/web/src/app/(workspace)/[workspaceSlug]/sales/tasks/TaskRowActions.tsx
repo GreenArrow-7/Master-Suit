@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import EntityDelete from '@/components/sales/EntityDelete';
 
 /** Complete / reopen / cancel / delete a task in place, against /api/v1/tasks/[id]. */
 export default function TaskRowActions({ id, status, canDelete }: { id: string; status: string; canDelete: boolean }) {
@@ -22,34 +23,9 @@ export default function TaskRowActions({ id, status, canDelete }: { id: string; 
     }
   }
 
-  /**
-   * Deleting is not cancelling. Cancelling keeps the task on the board as a
-   * decision someone took; this takes it off. It is a soft delete — every task
-   * list already filters `deletedAt` — but it is gone as far as the product is
-   * concerned, so it confirms first.
-   */
-  async function remove() {
-    if (!window.confirm('Delete this task? It will no longer appear in any list.')) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/v1/tasks/${id}`, { method: 'DELETE' });
-      if (res.ok) router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const deleteButton = canDelete ? (
-    <button
-      type="button"
-      className="lf-btn lf-btn--secondary lf-btn--sm"
-      style={{ color: 'var(--lf-vermillion)' }}
-      disabled={busy}
-      onClick={remove}
-    >
-      Delete
-    </button>
-  ) : null;
+  // Deleting is not cancelling: a cancelled task stays on the board as a decision
+  // someone took; a deleted one (soft, `deletedAt`) leaves every list.
+  const deleteButton = canDelete ? <EntityDelete endpoint={`/api/v1/tasks/${id}`} label="task" /> : null;
 
   if (status === 'COMPLETED' || status === 'CANCELLED') {
     return (

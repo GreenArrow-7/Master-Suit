@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * The two administrator actions the reference shows on each directory row.
@@ -134,10 +135,14 @@ export default function UserRowActions({
             audit history — are kept and still name them. Their HR record, if they have one, is untouched: end
             employment through offboarding. To suspend someone temporarily, deactivate the account instead.
           </p>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor={`confirm-name-${userId}`}>
-              Type <b>{userName}</b> to confirm
-            </label>
+          <Field
+            label={
+              <>
+                Type <b>{userName}</b> to confirm
+              </>
+            }
+            htmlFor={`confirm-name-${userId}`}
+          >
             <input
               id={`confirm-name-${userId}`}
               className="lf-input"
@@ -146,11 +151,15 @@ export default function UserRowActions({
               autoComplete="off"
               required
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor={`remove-reason-${userId}`}>
-              Reason <span style={{ color: 'var(--lf-ink-3)' }}>(optional, recorded in the audit log)</span>
-            </label>
+          </Field>
+          <Field
+            label={
+              <>
+                Reason <span style={{ color: 'var(--lf-ink-3)' }}>(optional, recorded in the audit log)</span>
+              </>
+            }
+            htmlFor={`remove-reason-${userId}`}
+          >
             <input
               id={`remove-reason-${userId}`}
               className="lf-input"
@@ -158,7 +167,7 @@ export default function UserRowActions({
               onChange={(event) => setReason(event.target.value)}
               maxLength={300}
             />
-          </div>
+          </Field>
           <div className="lf-users__actions">
             <button
               className="lf-btn lf-btn--sm"

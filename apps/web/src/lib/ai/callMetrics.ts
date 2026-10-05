@@ -1,3 +1,5 @@
+import type { DiarisedSegment } from '@/lib/integrations/transcription';
+
 /**
  * The two things about a call that are measured rather than inferred.
  *
@@ -53,18 +55,6 @@ function classify(speaker: string): TranscriptLine['side'] {
   if (REP_LABEL.test(speaker)) return 'REP';
   if (OTHER_LABEL.test(speaker)) return 'OTHER';
   return 'UNKNOWN';
-}
-
-/**
- * Diarised segments, as the transcription providers hand them over.
- *
- * `speaker` is whatever the vendor calls the channel — Deepgram numbers them
- * from 0, Google returns a speakerTag. Neither knows which one is the employee.
- */
-export interface DiarisedSegment {
-  speaker: string;
-  text: string;
-  startSec?: number;
 }
 
 /**

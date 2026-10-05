@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 
 /**
  * The objection playbook: what this workspace considers an objection, and what
@@ -28,14 +27,6 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
-    // `name` is unique per workspace, so a duplicate is a 409 rather than the
-    // 500 a raw unique-violation would surface as.
-    const clash = await prisma.objection.findFirst({
-      where: { tenantId: ctx.tenantId, name: body.name, deletedAt: null },
-      select: { id: true },
-    });
-    if (clash) throw Conflict('An objection with that name already exists.');
-
     return prisma.objection.create({
       data: { tenantId: ctx.tenantId, createdById: ctx.actor.id, updatedById: ctx.actor.id, ...body },
     });

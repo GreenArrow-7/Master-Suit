@@ -26,7 +26,7 @@ export function wrapCredentials(credentials: Record<string, string>): Record<str
   );
 }
 
-function unwrapCredentials(stored: Record<string, unknown>): Record<string, string> {
+export function decryptCredentials(stored: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(stored)) {
     if (typeof value !== 'string') continue;
@@ -49,7 +49,7 @@ export async function connectionCredentials(
     where: { tenantId_provider: { tenantId, provider } },
   });
   if (!conn || conn.status !== 'CONNECTED') return null;
-  return unwrapCredentials((conn.credentials ?? {}) as Record<string, unknown>);
+  return decryptCredentials((conn.credentials ?? {}) as Record<string, unknown>);
 }
 
 /** Non-secret operational settings stored beside the credentials. */
@@ -60,5 +60,3 @@ export async function connectionMetadata(tenantId: string, provider: string): Pr
   });
   return (conn?.metadata ?? {}) as Record<string, unknown>;
 }
-
-export const decryptCredentials = unwrapCredentials;

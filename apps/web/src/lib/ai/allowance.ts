@@ -1,6 +1,7 @@
 import type { AiBudget } from '@prisma/client';
 import { prisma } from '../db';
 import { budgetState, periodStart, type BudgetState } from './budgets';
+import { USER_TOKEN_LIMIT_KEY, planLimit } from './usage';
 
 /**
  * One person's AI allowance: where the number came from, what it is, and how
@@ -53,28 +54,6 @@ function inForce(budget: AiBudget, now: Date): boolean {
 const num = (v: bigint | null) => (v === null ? null : Number(v));
 
 /**
- * The plan's per-user token limit, which predates this table and is still the
- * answer for every deployment that has configured nothing here. Read from the
- * same `PlanLimit` key `lib/ai/usage.ts` enforces, so the two cannot disagree.
- */
-const PLAN_USER_TOKEN_KEY = 'ai_tokens:user';
-
-async function planUserLimit(tenantId: string): Promise<{ planId: string | null; tokens: number | null }> {
-  const subscription = await prisma.tenantSubscription.findUnique({
-    where: { tenantId },
-    select: {
-      planId: true,
-      plan: { select: { planLimits: { where: { key: PLAN_USER_TOKEN_KEY }, select: { value: true } } } },
-    },
-  });
-  const value = subscription?.plan?.planLimits[0]?.value;
-  return {
-    planId: subscription?.planId ?? null,
-    tokens: typeof value === 'number' && value > 0 ? value : null,
-  };
-}
-
-/**
  * Resolve one person's allowance. `feature` narrows it to a per-feature
  * override when the caller has one in mind; omit it for the person's overall
  * number, which is what the console shows.
@@ -85,7 +64,14 @@ export async function allowanceFor(
   feature?: string | null,
   now: Date = new Date(),
 ): Promise<Allowance> {
-  const { planId, tokens: planTokens } = await planUserLimit(tenantId);
+  // The plan's per-user limit predates this table and is still the answer for every
+  // deployment that has configured nothing here. Read through usage.ts's planLimit and
+  // key, so the two cannot disagree (this read 'ai_tokens:user', a key nothing writes).
+  const [subscription, planTokens] = await Promise.all([
+    prisma.tenantSubscription.findUnique({ where: { tenantId }, select: { planId: true } }),
+    planLimit(tenantId, USER_TOKEN_LIMIT_KEY),
+  ]);
+  const planId = subscription?.planId ?? null;
 
   const rows = await prisma.aiBudget.findMany({
     where: {

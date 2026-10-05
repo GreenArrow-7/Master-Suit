@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import Field from '@/components/forms/Field';
 
 export default function ContactForm({
   accounts,
@@ -72,10 +73,7 @@ export default function ContactForm({
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="fullName">
-          Full name
-        </label>
+      <Field label="Full name" htmlFor="fullName">
         <input
           id="fullName"
           className="lf-input"
@@ -84,33 +82,21 @@ export default function ContactForm({
           required
           autoFocus
         />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="jobTitle">
-          Job title
-        </label>
+      <Field label="Job title" htmlFor="jobTitle">
         <input id="jobTitle" className="lf-input" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="email">
-          Email
-        </label>
+      <Field label="Email" htmlFor="email">
         <input id="email" className="lf-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="phone">
-          Phone
-        </label>
+      <Field label="Phone" htmlFor="phone">
         <input id="phone" className="lf-input" value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="accountId">
-          Account
-        </label>
+      <Field label="Account" htmlFor="accountId">
         <select id="accountId" className="lf-input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
           <option value="">No account</option>
           {accounts.map((a) => (
@@ -119,7 +105,7 @@ export default function ContactForm({
             </option>
           ))}
         </select>
-      </div>
+      </Field>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>

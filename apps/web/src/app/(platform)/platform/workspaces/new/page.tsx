@@ -9,7 +9,6 @@ export default async function NewWorkspacePage() {
   return (
     <div className="lf-page-stack" style={{ maxWidth: 980 }}>
       <PageHeader
-        eyebrow="Customer provisioning"
         title="Create workspace"
         description="Provision the company, administrator, subscription and product access in five reviewed steps."
         breadcrumbs={[

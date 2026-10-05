@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import Field from '@/components/forms/Field';
 
 export default function AccountForm({
   accountId,
@@ -72,10 +73,7 @@ export default function AccountForm({
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="name">
-          Account name
-        </label>
+      <Field label="Account name" htmlFor="name">
         <input
           id="name"
           className="lf-input"
@@ -84,12 +82,9 @@ export default function AccountForm({
           required
           autoFocus
         />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="accountType">
-          Type
-        </label>
+      <Field label="Type" htmlFor="accountType">
         <input
           id="accountType"
           className="lf-input"
@@ -97,19 +92,13 @@ export default function AccountForm({
           onChange={(e) => setAccountType(e.target.value)}
           placeholder="e.g. Enterprise"
         />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="industry">
-          Industry
-        </label>
+      <Field label="Industry" htmlFor="industry">
         <input id="industry" className="lf-input" value={industry} onChange={(e) => setIndustry(e.target.value)} />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="website">
-          Website
-        </label>
+      <Field label="Website" htmlFor="website">
         <input
           id="website"
           className="lf-input"
@@ -118,19 +107,13 @@ export default function AccountForm({
           onChange={(e) => setWebsite(e.target.value)}
           placeholder="https://"
         />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="mainPhone">
-          Phone
-        </label>
+      <Field label="Phone" htmlFor="mainPhone">
         <input id="mainPhone" className="lf-input" value={mainPhone} onChange={(e) => setMainPhone(e.target.value)} />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="mainEmail">
-          Email
-        </label>
+      <Field label="Email" htmlFor="mainEmail">
         <input
           id="mainEmail"
           className="lf-input"
@@ -138,7 +121,7 @@ export default function AccountForm({
           value={mainEmail}
           onChange={(e) => setMainEmail(e.target.value)}
         />
-      </div>
+      </Field>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>

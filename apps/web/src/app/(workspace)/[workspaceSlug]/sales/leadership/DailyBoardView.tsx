@@ -110,30 +110,21 @@ export default function DailyBoardView({
       </form>
 
       <div className="lf-kpi-grid lf-daily-board__totals">
-        <div className="lf-kpi">
-          <span className="lf-kpi__label">Target today</span>
-          <strong className="lf-kpi__value lf-num">{totals.target}</strong>
-        </div>
-        <div className="lf-kpi">
-          <span className="lf-kpi__label">Leads called</span>
-          <strong className="lf-kpi__value lf-num">{totals.called}</strong>
-        </div>
-        <div className="lf-kpi">
-          <span className="lf-kpi__label">Connected</span>
-          <strong className="lf-kpi__value lf-num">{totals.connected}</strong>
-        </div>
-        <div className="lf-kpi">
-          <span className="lf-kpi__label">Interested</span>
-          <strong className="lf-kpi__value lf-num">{totals.interested}</strong>
-        </div>
-        <div className="lf-kpi">
-          <span className="lf-kpi__label">Deals</span>
-          <strong className="lf-kpi__value lf-num">{totals.deals}</strong>
-        </div>
-        <div className="lf-kpi" data-tone={totals.behind ? 'vermillion' : 'viridian'}>
-          <span className="lf-kpi__label">Behind target</span>
-          <strong className="lf-kpi__value lf-num">{totals.behind}</strong>
-        </div>
+        {(
+          [
+            ['Target today', totals.target, undefined],
+            ['Leads called', totals.called, undefined],
+            ['Connected', totals.connected, undefined],
+            ['Interested', totals.interested, undefined],
+            ['Deals', totals.deals, undefined],
+            ['Behind target', totals.behind, totals.behind ? 'vermillion' : 'viridian'],
+          ] as const
+        ).map(([label, value, tone]) => (
+          <div className="lf-kpi" key={label} data-tone={tone}>
+            <span className="lf-kpi__label">{label}</span>
+            <strong className="lf-kpi__value lf-num">{value}</strong>
+          </div>
+        ))}
       </div>
 
       {board.rows.length === 0 ? (

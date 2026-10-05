@@ -259,12 +259,8 @@ function buildClause(cmp: string, value: unknown, type: string): unknown {
       const [a, b] = value as [unknown, unknown];
       return { gte: coerce(a, type), lte: coerce(b, type) };
     }
-    // is_null and is_not_null never reach here — compileFilterTree answers both
-    // before a clause is built, because both need the field's *path*, not just
-    // a comparison to graft onto it.
-    case 'is_null':
-    case 'is_not_null':
-      throw new Error(`${cmp} is handled in compileFilterTree`);
+    // is_null and is_not_null never reach here: compileFilterTree answers both,
+    // because both need the field's path, not a comparison to graft onto it.
     case 'relative':
       return relativeRange(String(value));
     default:
@@ -317,11 +313,7 @@ function coerce(value: unknown, type: string) {
 
 /** 'stage.key' → { stage: { key: <clause> } } */
 function nest(path: string, clause: unknown): Record<string, unknown> {
-  const parts = path.split('.');
-  return parts.reduceRight<unknown>(
-    (acc, part, i) => (i === parts.length - 1 ? { [part]: clause } : { [part]: acc }),
-    {},
-  ) as Record<string, unknown>;
+  return path.split('.').reduceRight<unknown>((acc, part) => ({ [part]: acc }), clause) as Record<string, unknown>;
 }
 
 /**
@@ -354,23 +346,11 @@ export function decodeFilterTree(raw: string): FilterNode {
   try {
     parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
   } catch {
-    throw Invalid([
-      {
-        field: 'filter',
-        code: 'invalid',
-        message: 'filter must be a base64url-encoded filter tree.',
-      },
-    ]);
+    // Unparseable falls through to the schema, which refuses undefined the same way.
   }
   const result = filterTreeSchema.safeParse(parsed);
   if (!result.success) {
-    throw Invalid([
-      {
-        field: 'filter',
-        code: 'invalid',
-        message: 'filter is not a valid filter tree.',
-      },
-    ]);
+    throw Invalid([{ field: 'filter', code: 'invalid', message: 'filter must be a base64url-encoded filter tree.' }]);
   }
   return result.data;
 }

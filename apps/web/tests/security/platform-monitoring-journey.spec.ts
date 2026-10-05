@@ -39,6 +39,7 @@ import { authorizedTenantIds } from '@/lib/auth/platform-access';
 import { assertSensitiveAccess } from '@/lib/auth/sensitive-access';
 import { resolveCtx } from '@/lib/auth/session';
 import type { Ctx } from '@/lib/security/rbac';
+import { post, del, get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const PASSWORD = 'Correct-Horse-Battery-9!';
@@ -204,11 +205,9 @@ describe('2 — the workspace list shows only what was authorised', () => {
 describe('3 — selecting a workspace', () => {
   it('opens the granted workspace and reports where to go', async () => {
     const cookie = await createPlatformSessionToken(supportId, null);
-    const res = await enterWorkspace(new Request('http://localhost/enter', { method: 'POST', headers: { cookie } }), {
-      params: Promise.resolve({ workspaceId: granted.id }),
-    });
+    const res = await post(enterWorkspace, '/enter', {}, cookie, { workspaceId: granted.id });
     expect(res.status).toBe(200);
-    expect((await res.json()).destination).toBe(`/${granted.slug}/dashboard`);
+    expect(res.body.destination).toBe(`/${granted.slug}/dashboard`);
   });
 
   it('records the entry on the customer’s trail', async () => {
@@ -226,9 +225,7 @@ describe('3 — selecting a workspace', () => {
    */
   it('refuses a workspace that was never granted, as a 404 rather than a 403', async () => {
     const cookie = await createPlatformSessionToken(supportId, null);
-    const res = await enterWorkspace(new Request('http://localhost/enter', { method: 'POST', headers: { cookie } }), {
-      params: Promise.resolve({ workspaceId: ungranted.id }),
-    });
+    const res = await post(enterWorkspace, '/enter', {}, cookie, { workspaceId: ungranted.id });
     // 404, so the endpoint cannot be used to enumerate the platform's customers.
     expect(res.status).toBe(404);
   });
@@ -245,15 +242,13 @@ describe('3 — selecting a workspace', () => {
       },
     });
     const cookie = await createPlatformSessionToken(member.id, null);
-    const res = await enterWorkspace(new Request('http://localhost/enter', { method: 'POST', headers: { cookie } }), {
-      params: Promise.resolve({ workspaceId: granted.id }),
-    });
+    const res = await post(enterWorkspace, '/enter', {}, cookie, { workspaceId: granted.id });
     expect(res.status).toBe(403);
   });
 
   it('leaves again, clearing the workspace from the session', async () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
-    const res = await leaveWorkspace(new Request('http://localhost/enter', { method: 'DELETE', headers: { cookie } }));
+    const res = await del(leaveWorkspace, '/enter', cookie);
     expect(res.status).toBe(200);
   });
 });
@@ -261,9 +256,7 @@ describe('3 — selecting a workspace', () => {
 describe('4 — inside the workspace, read-only', () => {
   it('reads leads', async () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
-    const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const res = await get(listLeads, '/api/v1/leads', cookie);
     expect(res.status).toBe(200);
   });
 
@@ -299,9 +292,7 @@ describe('5 — revocation takes effect on the next request', () => {
   it('the owner revokes, and the very next request with the same cookie is refused', async () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
 
-    const before = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const before = await get(listLeads, '/api/v1/leads', cookie);
     expect(before.status).toBe(200);
 
     const res = await revokeMonitoring(
@@ -322,9 +313,7 @@ describe('5 — revocation takes effect on the next request', () => {
     // Same cookie, same session, no sign-out. If this passed, revocation would
     // only mean "cannot sign in again", which is not what anybody asks for when
     // they revoke access.
-    const after = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const after = await get(listLeads, '/api/v1/leads', cookie);
     expect(after.status).toBe(403);
     expect(await authorizedTenantIds(supportId)).toEqual([]);
   });
@@ -351,9 +340,7 @@ describe('6 — company-wide coverage is explicit, bounded and separate', () => 
   it('opens every workspace, including the one never granted by name', async () => {
     expect(await authorizedTenantIds(supportId)).toBeNull();
     const cookie = await createPlatformSessionToken(supportId, null);
-    const res = await enterWorkspace(new Request('http://localhost/enter', { method: 'POST', headers: { cookie } }), {
-      params: Promise.resolve({ workspaceId: ungranted.id }),
-    });
+    const res = await post(enterWorkspace, '/enter', {}, cookie, { workspaceId: ungranted.id });
     expect(res.status).toBe(200);
   });
 
@@ -381,9 +368,7 @@ describe('6 — company-wide coverage is explicit, bounded and separate', () => 
     expect(res.status).toBe(200);
 
     const cookie = await createPlatformSessionToken(supportId, ungranted.id);
-    const after = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const after = await get(listLeads, '/api/v1/leads', cookie);
     expect(after.status).toBe(403);
   });
 });
@@ -437,9 +422,7 @@ describe('8 — sensitive data needs its own grant', () => {
 
   it('still allows everything the grant is for', async () => {
     const cookie = await createPlatformSessionToken(supportId, granted.id);
-    const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const res = await get(listLeads, '/api/v1/leads', cookie);
     expect(res.status).toBe(200);
   });
 
@@ -526,9 +509,7 @@ describe('7 — the owner-only boundary holds', () => {
     );
     expect(entered.status).toBe(200);
     const inside = await createPlatformSessionToken(ownerId, ungranted.id);
-    const read = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: inside } }), {
-      params: Promise.resolve({}),
-    });
+    const read = await get(listLeads, '/api/v1/leads', inside);
     expect(read.status).toBe(200);
     const row = await prisma.platformAuditEvent.findFirst({
       where: { tenantId: ungranted.id, actorUserId: ownerId, event: 'SUPPORT_READ' },
@@ -544,9 +525,7 @@ describe('7 — the owner-only boundary holds', () => {
       params,
     );
     expect(closed.status).toBe(200);
-    const after = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: inside } }), {
-      params: Promise.resolve({}),
-    });
+    const after = await get(listLeads, '/api/v1/leads', inside);
     expect(after.status).toBe(403);
   });
   it('nor a workspace grant — sensitive or not — to themselves', async () => {

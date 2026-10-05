@@ -1,26 +1,25 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
-import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
 import { AppError } from '@/lib/errors';
 import { readUpload } from '@/lib/api/read-body';
+import { requireWorkspace } from '@/lib/workspace';
 import { uploadDocument } from '@/services/hr/documents';
-import { toResponse } from '@/lib/api/handler';
 
 /**
- * Multipart upload. This cannot go through the API kernel, which parses every
- * body as JSON — so it reproduces the kernel's security order by hand:
- * authenticate, check the module entitlement, assert the permission, and only
- * then read the payload.
+ * Multipart upload. The kernel leaves a body that is not JSON unread, so the
+ * file reaches readUpload untouched, after authentication, entitlement,
+ * permission and the rate limit.
  */
-export async function POST(req: Request, context: { params: Promise<{ workspaceSlug: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug } = await context.params;
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'HRMS',
-      workspaceSlug,
-      permission: ['hr_documents', 'CREATE'],
-    });
+export const POST = route(
+  {
+    module: 'hr_documents',
+    action: 'CREATE',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    params: z.object({ workspaceSlug: z.string() }),
+  },
+  async ({ ctx, params, req }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
 
     // Refused on its declared size before anything is read; uploadDocument
     // counts the real bytes too.
@@ -62,8 +61,6 @@ export async function POST(req: Request, context: { params: Promise<{ workspaceS
       bytes: Buffer.from(await file.arrayBuffer()),
     });
 
-    return NextResponse.json(document, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/workspaces/[workspaceSlug]/hr/documents/upload' });
-  }
-}
+    return document;
+  },
+);

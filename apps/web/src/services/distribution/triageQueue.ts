@@ -9,7 +9,7 @@
  * escalated to whoever happens to hold a broad permission.
  */
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
-import { prisma, withTx, withPlatformTx, type TxClient } from '@/lib/db';
+import { prisma, withTx, withPlatformTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { audit } from '@/lib/security/audit';
 import { assertPermission, type Ctx } from '@/lib/security/rbac';
@@ -552,5 +552,3 @@ export async function sweepTriageNotifications(now = new Date(), tenantId?: stri
   }
   return { notified };
 }
-
-export type { TxClient };

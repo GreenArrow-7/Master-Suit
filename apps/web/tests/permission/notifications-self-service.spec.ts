@@ -20,7 +20,7 @@ import { prisma } from '@/lib/db';
 import { GET as listNotifications, PATCH as markRead } from '@/app/api/v1/notifications/route';
 import { createSessionToken } from '../helpers/session';
 import { get, patch } from '../helpers/request';
-import { grantPermissions, type Grants } from '../helpers/fixtures';
+import { grantPermissions, type Grants, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `notif-${suffix}`;
@@ -34,19 +34,11 @@ async function member(label: string, grants: Grants) {
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
   });
   await grantPermissions(tenantId, role.id, grants);
-  const user = await prisma.user.create({
-    data: { tenantId, email: `${label}-${suffix}@notif.test`, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: {
-      email: `${label}-${suffix}@notif.test`,
-      normalizedEmail: `${label}-${suffix}@notif.test`,
-      fullName: label,
-      status: 'ACTIVE',
-    },
-  });
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `${label}-${suffix}@notif.test`,
+    fullName: label,
   });
   users[label] = { id: user.id, cookie: await createSessionToken(tenantId, user.id) };
 }

@@ -243,7 +243,6 @@ export default async function SocialLeadsPage({
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Engage"
         title="Social Leads"
         description="Review and respond to sales enquiries coming from Facebook and Instagram."
         breadcrumbs={[{ label: 'Engage' }, { label: 'Social Leads' }]}

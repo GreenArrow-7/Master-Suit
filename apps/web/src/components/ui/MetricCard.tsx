@@ -51,11 +51,24 @@ export default function MetricCard({ label, value, tone = 'slate', href }: Metri
 }
 
 /** A compact label-and-value tile, for record detail pages and consoles. */
-export function Metric({ label, value }: { label: string; value: ReactNode }) {
+export function Metric({
+  label,
+  value,
+  color,
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  color?: string;
+  hint?: ReactNode;
+}) {
   return (
     <article className="lf-metric-card">
       <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
+      <div className="lf-metric-card__value" style={color ? { color } : undefined}>
+        {value}
+      </div>
+      {hint && <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>{hint}</div>}
     </article>
   );
 }

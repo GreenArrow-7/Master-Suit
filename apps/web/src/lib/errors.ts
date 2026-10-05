@@ -79,3 +79,7 @@ export const IllegalTransition = (message: string) =>
  * record exists, which is itself a cross-tenant leak. See docs/03-API.md §3.
  */
 export const NotFound = (what = 'Record') => new AppError(404, 'not-found', `${what} not found.`);
+
+/** Postgres refused a duplicate on a unique index (Prisma's P2002). */
+export const isUniqueViolation = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';

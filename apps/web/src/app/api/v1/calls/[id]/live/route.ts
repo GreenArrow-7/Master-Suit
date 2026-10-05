@@ -1,15 +1,16 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Invalid } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { demoScript, coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 import { liveChannel } from '@/lib/integrations/telephony/stream';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { seesWholeWorkspace } from '@/lib/security/record-scope';
 
 /**
  * Relay mode: the call is live at a telephony vendor and the realtime engine
@@ -68,8 +69,6 @@ function relayStream(callId: string, initialStatus: string): Response {
 
 const params = z.object({ id: z.string().cuid() });
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
  * The live-call stream: Server-Sent Events carrying transcript segments,
  * coaching hints and status changes for the live workspace.
@@ -94,8 +93,7 @@ export const GET = route(
     });
     if (!call) throw NotFound('Call');
 
-    const scope = scopeFor(ctx, 'calls', 'EDIT');
-    if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Call');
+    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
 
     if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
       throw Invalid([

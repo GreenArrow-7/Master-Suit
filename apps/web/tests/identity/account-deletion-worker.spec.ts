@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  *
  * Every other suite calls the sweep or the handler directly. This one enqueues an
  * `account-deletions` job on the `maintenance` queue and lets a real BullMQ Worker built by
- * `startMaintenanceWorker` pick it up — the path production takes — then reads the database
+ * `startWorker('maintenance')` pick it up — the path production takes — then reads the database
  * back and tries to sign in. It runs on its own Redis database index so it can neither
  * consume nor disturb the shared queue's scheduled jobs.
  */
@@ -23,7 +23,7 @@ const { redis } = await import('@/lib/redis');
 const { hashPassword } = await import('@/lib/auth/password');
 const { issueApiKey } = await import('@/lib/auth/apiKey');
 const { requestAccountDeletion } = await import('@/services/identity/accountDeletion');
-const { startMaintenanceWorker } = await import('@/workers/maintenance');
+const { startWorker } = await import('@/workers/jobs');
 const { POST: login } = await import('@/app/api/v1/auth/login/route');
 const { post } = await import('../helpers/request');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
@@ -35,7 +35,7 @@ type RetainedCategory = { category: string; count: number; reason: string };
 const PASSWORD = 'Correct-Horse-Battery-9!';
 const ownedPlatformUserIds = new Set<string>();
 let fixture: Fixture;
-let worker: ReturnType<typeof startMaintenanceWorker>;
+let worker: ReturnType<typeof startWorker>;
 let queue: InstanceType<typeof Queue>;
 let events: InstanceType<typeof QueueEvents>;
 
@@ -45,7 +45,7 @@ beforeAll(async () => {
   queue = new Queue('maintenance', { connection: redis });
   events = new QueueEvents('maintenance', { connection: redis });
   await events.waitUntilReady();
-  worker = startMaintenanceWorker();
+  worker = startWorker('maintenance');
   await worker.waitUntilReady();
 });
 
