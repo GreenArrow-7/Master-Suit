@@ -22,9 +22,6 @@ export const PRODUCT_SHORT_NAME =
 /** The parent company. Used sparingly — the auth screens and the About panel. */
 export const COMPANY_NAME = process.env.NEXT_PUBLIC_COMPANY_NAME || 'YOUHAN';
 
-/** Product positioning line. One place, so it cannot drift between screens. */
-export const PRODUCT_TAGLINE = 'Your business. Working as one.';
-
 /** The one-sentence description, for metadata, the manifest and the auth pane. */
 export const PRODUCT_DESCRIPTION = 'Sales, people, operations and intelligence connected in one platform.';
 

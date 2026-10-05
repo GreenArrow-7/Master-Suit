@@ -50,10 +50,8 @@ if ($dockerExitCode -ne 0) {
 
 Push-Location $webRoot
 try {
-  docker compose -p master-saas -f infra/docker-compose.yml up -d postgres redis minio
+  docker compose -p master-saas -f infra/docker-compose.yml up -d --wait postgres redis minio
   Assert-NativeSuccess 'Docker infrastructure startup'
-  node scripts/wait-for-db.mjs
-  Assert-NativeSuccess 'PostgreSQL readiness check'
   npm run db:deploy
   Assert-NativeSuccess 'Database migration'
 } finally { Pop-Location }

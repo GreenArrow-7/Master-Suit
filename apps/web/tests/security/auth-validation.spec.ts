@@ -19,13 +19,18 @@ import { post } from '../helpers/request';
 import { prisma } from '@/lib/db';
 
 /** POST a raw (possibly malformed) body straight to a route handler. */
-async function raw(handler: (r: Request) => Promise<Response>, path: string, body: string) {
+async function raw(
+  handler: (r: Request, c: { params: Promise<Record<string, string>> }) => Promise<Response>,
+  path: string,
+  body: string,
+) {
   const res = await handler(
     new Request(`http://localhost${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,
     }),
+    { params: Promise.resolve({}) },
   );
   return { status: res.status, body: await res.json().catch(() => null) };
 }

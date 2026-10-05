@@ -6,6 +6,7 @@ import {
   conversion,
   funnel,
   interactionFeed,
+  names,
   performerBoard,
   subtree,
   productivity,
@@ -19,7 +20,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
 import { obligationAccess } from '@/services/leads/nextFollowUp';
 
-import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { can, atLeast } from '@/lib/security/rbac';
 import DailyBoardView from './DailyBoardView';
 import LiveRefresh from './LiveRefresh';
 import { dailyBoard } from '@/services/targets/dailyBoard';
@@ -130,8 +131,7 @@ export default async function LeadershipPage({
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['reports', 'VIEW'] });
   const view = TABS.some(([, k]) => k === params.view) ? (params.view ?? '') : '';
-  const canAssignTargets =
-    can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const canAssignTargets = can(ctx, 'leads', 'ASSIGN') && atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   const period = (PERIODS.some(([k]) => k === params.period) ? params.period : 'mtd') as PeriodKey;
   const custom = Boolean(params.from);
@@ -190,23 +190,18 @@ export default async function LeadershipPage({
     ],
   );
 
-  // Only when there is something to name — an `in: []` lookup is a wasted round
-  // trip on the four tabs that never render compliance.
-  const complianceUserIds = [...new Set(compliance.map((c) => c.userId))];
-  const names = complianceUserIds.length
-    ? await prisma.user.findMany({
-        where: { tenantId: ctx.tenantId, id: { in: complianceUserIds } },
-        select: { id: true, fullName: true },
-      })
-    : [];
+  // names() makes no query for an empty list, which is what the four tabs that
+  // never render compliance pass it.
+  const nameBy = await names(
+    ctx.tenantId,
+    compliance.map((c) => c.userId),
+  );
   // A seller with nothing in the range is noise on a list meant to be read top to
   // bottom (and 40 of them made the phone view a screen-height per person).
   const activeRows = productivityRows.filter((r) =>
     Object.entries(r).some(([k, v]) => k !== 'userId' && k !== 'name' && typeof v === 'number' && v > 0),
   );
   const quietCount = productivityRows.length - activeRows.length;
-
-  const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
 
   /** Filters travel with the tab, so switching view never silently resets them. */
   const filterQuery = (() => {

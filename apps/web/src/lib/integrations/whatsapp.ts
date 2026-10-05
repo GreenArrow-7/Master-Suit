@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { logger } from '../logger';
+import { GRAPH_VERSION } from './meta/send';
 
 /**
  * Hard ceiling on one provider round-trip. A hung provider must fail the one
@@ -42,13 +43,6 @@ export interface WhatsAppResult {
   errorMessage?: string;
 }
 
-export interface WhatsAppStatusUpdate {
-  externalMessageId: string;
-  status: 'sent' | 'delivered' | 'read' | 'failed';
-  timestamp: Date;
-  errorCode?: string;
-}
-
 /**
  * How long after the customer's last inbound message a free-form reply is
  * permitted (§32).
@@ -75,15 +69,6 @@ export interface WhatsAppProvider {
   sendTemplate(message: WhatsAppMessage): Promise<WhatsAppResult>;
   /** Free-form service message. Only legal inside the customer service window. */
   sendText(to: string, body: string): Promise<WhatsAppResult>;
-  getMessageStatus(externalId: string): Promise<WhatsAppResult | null>;
-  /** Authenticates an event POST. Keyed with the app secret — see the class below. */
-  verifyWebhookSignature(payload: string, signature: string): boolean;
-  /**
-   * Answers Meta's GET subscription handshake. A separate secret from the one
-   * above and a separate question: this proves *we* configured the endpoint,
-   * signature verification proves *Meta* sent the payload.
-   */
-  verifySubscription(token: string): boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,18 +91,6 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
     logger.info({ provider: 'mock', action: 'sendText', to, length: body.length }, 'whatsapp mock');
     return { externalMessageId: `mock_wa_${to}_${body.length}`, status: 'queued' };
   }
-
-  async getMessageStatus(externalId: string): Promise<WhatsAppResult | null> {
-    return { externalMessageId: externalId, status: 'delivered' };
-  }
-
-  verifyWebhookSignature(): boolean {
-    return true;
-  }
-
-  verifySubscription(): boolean {
-    return true;
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,13 +106,6 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
 //
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Graph API version, in one place because Meta sunsets each one roughly two
- * years after release. v26.0 shipped 2026-07-29; v25.0 runs to 2028-07-29.
- * Verified against developers.facebook.com/docs/graph-api/changelog.
- */
-const GRAPH_VERSION = 'v26.0';
 
 export interface MetaWhatsAppConfig {
   accessToken: string;
@@ -214,11 +180,6 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     return { externalMessageId: data.messages?.[0]?.id ?? '', status: 'queued' };
   }
 
-  async getMessageStatus(externalId: string): Promise<WhatsAppResult | null> {
-    // Meta doesn't have a GET status endpoint; status comes via webhooks.
-    return { externalMessageId: externalId, status: 'queued' };
-  }
-
   /**
    * Keyed with the **app secret**, not the verify token.
    *
@@ -247,6 +208,11 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     return supplied.length === expected.length && timingSafeEqual(supplied, expected);
   }
 
+  /**
+   * Answers Meta's GET subscription handshake. A separate secret and a separate
+   * question: this proves *we* configured the endpoint, the signature above
+   * proves *Meta* sent the payload.
+   */
   verifySubscription(token: string): boolean {
     if (!this.config.webhookVerifyToken) return false;
     const expected = Buffer.from(this.config.webhookVerifyToken);
@@ -259,8 +225,8 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 // Factory
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getWhatsAppProvider(provider: string, config?: Partial<MetaWhatsAppConfig>): WhatsAppProvider {
-  if (provider === 'meta' && config?.accessToken && config?.phoneNumberId) {
+export function getWhatsAppProvider(config?: Partial<MetaWhatsAppConfig>): WhatsAppProvider {
+  if (config?.accessToken && config?.phoneNumberId) {
     return new MetaWhatsAppProvider({
       ...config,
       accessToken: config.accessToken,

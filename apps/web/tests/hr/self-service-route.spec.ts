@@ -40,11 +40,13 @@ async function workspaceWithEmployee(key: string, modules: ('HRMS' | 'SALES')[])
     email: `staff-${key}@example.com`,
     fullName: 'Plain Staff',
   });
-  const membership = await prisma.workspaceMembership.findFirstOrThrow({
-    where: { tenantId: tenant.id, salesUserId: user.id },
-  });
   await prisma.employeeProfile.create({
-    data: { tenantId: tenant.id, membershipId: membership.id, employeeNumber: `SS-${key}`, employmentStatus: 'ACTIVE' },
+    data: {
+      tenantId: tenant.id,
+      membershipId: user.membershipId,
+      employeeNumber: `SS-${key}`,
+      employmentStatus: 'ACTIVE',
+    },
   });
   return { tenantId: tenant.id, cookie: await createSessionToken(tenant.id, user.id) };
 }
@@ -65,9 +67,8 @@ beforeAll(async () => {
     email: `staff-${suffix}@example.com`,
     fullName: 'Plain Staff',
   });
-  const membership = await prisma.workspaceMembership.findFirstOrThrow({ where: { tenantId, salesUserId: user.id } });
   await prisma.employeeProfile.create({
-    data: { tenantId, membershipId: membership.id, employeeNumber: `SS-${suffix}`, employmentStatus: 'ACTIVE' },
+    data: { tenantId, membershipId: user.membershipId, employeeNumber: `SS-${suffix}`, employmentStatus: 'ACTIVE' },
   });
   cookie = await createSessionToken(tenantId, user.id);
 

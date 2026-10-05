@@ -76,14 +76,12 @@ beforeEach(async () => {
   bucket.clear();
   putShouldFail = false;
   legacyRoot = mkdtempSync(join(tmpdir(), 'captures-'));
-  process.env.ATTENDANCE_CAPTURE_DIR = legacyRoot;
+  vi.stubEnv('ATTENDANCE_CAPTURE_DIR', legacyRoot);
   vi.resetModules();
   vault = await import('@/services/hr/captureVault');
 });
 
-afterEach(() => {
-  delete process.env.ATTENDANCE_CAPTURE_DIR;
-});
+afterEach(() => vi.unstubAllEnvs());
 
 describe('storing a capture', () => {
   it('returns the same relative path shape the punch column already holds', async () => {
@@ -146,6 +144,29 @@ describe('reading a capture', () => {
   it('round-trips the exact bytes', async () => {
     const relative = await vault.storeCapture('t1', 'emp1', 'punch1', FRAME);
     expect(await vault.loadCapture(relative!)).toEqual(FRAME);
+  });
+
+  it('reads a capture sealed the way the vault always wrote them', async () => {
+    // Built by hand with the original construction (HKDF over FIELD_ENCRYPTION_KEY
+    // with the capture salt, then iv | ciphertext | tag), so moving the crypto into
+    // lib/security/envelope cannot strand a single stored capture.
+    const { createCipheriv, hkdfSync, randomBytes } = await import('node:crypto');
+    const { env } = await import('@/lib/env');
+    const key = Buffer.from(
+      hkdfSync(
+        'sha256',
+        Buffer.from(env.FIELD_ENCRYPTION_KEY),
+        Buffer.from('master-saas-attendance-capture-v1'),
+        Buffer.from(''),
+        32,
+      ),
+    );
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const old = Buffer.concat([iv, cipher.update(FRAME), cipher.final(), cipher.getAuthTag()]);
+    bucket.set('attendance/t-t1/emp-emp1/2026-01/punch-old.jpg.enc', { body: old, lastModified: new Date() });
+
+    expect(await vault.loadCapture('t-t1/emp-emp1/2026-01/punch-old.jpg.enc')).toEqual(FRAME);
   });
 
   it('still reads a capture written before the move, from the old directory', async () => {

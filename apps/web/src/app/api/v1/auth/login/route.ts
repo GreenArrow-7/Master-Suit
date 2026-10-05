@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { isPrivilegedPlatformRole, isPlatformServiceRole } from '@/lib/auth/platform-policy';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import type { PlatformUser } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
-import { AppError, Unauthorized, TooManyRequests, Invalid } from '@/lib/errors';
+import { Unauthorized, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -24,6 +23,10 @@ import {
   recordMfaChallengeFailure,
   type CredentialPurpose,
 } from '@/lib/auth/credentials';
+import { toResponse } from '@/lib/api/handler';
+import { consumeTotp } from '@/lib/auth/totp-consume';
+import { consumeRecoveryCode } from '@/services/identity/twoFactor';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Two shapes, one endpoint.
@@ -51,7 +54,7 @@ const bodySchema = z
 
 type Body = z.infer<typeof bodySchema>;
 
-type RequestInfo = { requestId: string; ip: string; ua: string | null };
+type RequestInfo = { requestId: string; ip: string; userAgent: string | null };
 
 /**
  * Login is not routed through the API kernel: there is no Ctx to resolve yet and no
@@ -64,9 +67,9 @@ type RequestInfo = { requestId: string; ip: string; ua: string | null };
  */
 export async function POST(req: Request) {
   const info: RequestInfo = {
-    requestId: req.headers.get('x-request-id') ?? ulid(),
+    requestId: req.headers.get('x-request-id') ?? crypto.randomUUID(),
     ip: clientIp(req) ?? 'unknown',
-    ua: req.headers.get('user-agent'),
+    userAgent: req.headers.get('user-agent'),
   };
 
   try {
@@ -79,13 +82,7 @@ export async function POST(req: Request) {
     if (body.challenge) return await challengeStep(body.challenge, body, info);
     throw Invalid([{ field: 'password', code: 'required', message: 'Enter your password.' }]);
   } catch (err) {
-    if (err instanceof AppError) {
-      const headers: Record<string, string> = { 'x-request-id': info.requestId };
-      if ((err as any).retryAfter) headers['retry-after'] = String((err as any).retryAfter);
-      return NextResponse.json(err.toProblem(info.requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId: info.requestId }, 'login failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId: info.requestId }, { status: 500 });
+    return toResponse(err, info.requestId, { route: '/api/v1/auth/login' });
   }
 }
 
@@ -96,20 +93,11 @@ export async function POST(req: Request) {
  * attempt, and so is each second-factor try. There is no allowance that exists
  * only because an identity has two credentials.
  */
+// A throttled login must not read as wrong credentials: the form shows this verbatim.
+const THROTTLED = 'Too many sign-in attempts. Wait a few minutes and try again.';
 async function throttle(ip: string, email: string) {
-  try {
-    await consume(limits.loginPerIp(ip));
-    await consume(limits.loginPerAccount(email));
-  } catch (limited) {
-    // A throttled login must not read as wrong credentials: rethrow with a
-    // message the form shows verbatim.
-    const retryAfter = (limited as { retryAfter?: number }).retryAfter;
-    const err: Error & { retryAfter?: number } = TooManyRequests(
-      'Too many sign-in attempts. Wait a few minutes and try again.',
-    );
-    err.retryAfter = retryAfter;
-    throw err;
-  }
+  await consume(limits.loginPerIp(ip), THROTTLED);
+  await consume(limits.loginPerAccount(email), THROTTLED);
 }
 
 async function loadIdentity(normalizedEmail: string) {
@@ -225,20 +213,7 @@ async function passwordStep(body: Body & { email: string; password: string }, in
    * No session is created, so there is nothing doomed to revoke.
    */
   if (isPlatformServiceRole(user.platformRole)) {
-    await prisma.platformAuditEvent
-      .create({
-        data: {
-          actorUserId: user.id,
-          event: 'LOGIN_FAILED',
-          objectType: 'platform_user',
-          objectId: user.id,
-          ipAddress: info.ip,
-          userAgent: info.ua,
-          requestId: info.requestId,
-          metadata: { reason: 'SERVICE_IDENTITY_WRONG_ROUTE' },
-        },
-      })
-      .catch(() => {});
+    await recordFailure(null, user.id, info, 'SERVICE_IDENTITY_WRONG_ROUTE');
     return NextResponse.json(
       {
         serviceIdentity: true,
@@ -293,27 +268,22 @@ async function passwordStep(body: Body & { email: string; password: string }, in
       platformUserId: user.id,
       activeTenantId: activeMembership?.tenantId ?? null,
       ip: info.ip,
-      userAgent: info.ua,
+      userAgent: info.userAgent,
       mfaSatisfied: false,
       purpose: 'MFA_ENROLMENT',
       credentialPurpose,
       credentialVersion: credentialPurpose ? credentialVersion : null,
     });
-    await prisma.platformAuditEvent
-      .create({
-        data: {
-          tenantId: activeMembership?.tenantId,
-          actorUserId: user.id,
-          event: 'LOGIN',
-          objectType: 'platform_user',
-          objectId: user.id,
-          ipAddress: info.ip,
-          userAgent: info.ua,
-          requestId: info.requestId,
-          metadata: { mfa: false, purpose: 'MFA_ENROLMENT', ...(credentialPurpose ? { credentialPurpose } : {}) },
-        },
-      })
-      .catch(() => {});
+    await platformAudit(
+      { ...info, platformUserId: user.id },
+      {
+        tenantId: activeMembership?.tenantId,
+        event: 'LOGIN',
+        objectType: 'platform_user',
+        objectId: user.id,
+        metadata: { mfa: false, purpose: 'MFA_ENROLMENT', ...(credentialPurpose ? { credentialPurpose } : {}) },
+      },
+    ).catch(() => {});
 
     return NextResponse.json(
       {
@@ -346,7 +316,7 @@ async function passwordStep(body: Body & { email: string; password: string }, in
     credentialPurpose,
     credentialVersion,
     ip: info.ip,
-    userAgent: info.ua,
+    userAgent: info.userAgent,
   });
 
   if (body.mfaCode || body.recoveryCode) {
@@ -409,9 +379,6 @@ async function completeChallenge(challengeId: string, body: Body, info: RequestI
   if (!body.mfaCode && !body.recoveryCode) {
     throw Invalid([{ field: 'mfaCode', code: 'required', message: 'Enter the code from your authenticator.' }]);
   }
-
-  const { consumeTotp } = await import('@/lib/auth/totp-consume');
-  const { consumeRecoveryCode } = await import('@/services/identity/twoFactor');
 
   // The secret is stored encrypted; values enrolled before that change are
   // passed through unchanged by decryptSecret.
@@ -488,7 +455,7 @@ async function signedIn(
     platformUserId: user.id,
     activeTenantId: activeMembership?.tenantId ?? null,
     ip: info.ip,
-    userAgent: info.ua,
+    userAgent: info.userAgent,
     mfaSatisfied,
     credentialPurpose,
     credentialVersion: credentialPurpose ? credentialVersion : null,
@@ -504,16 +471,13 @@ async function signedIn(
       ? passwordExpired(user.passwordChangedAt, await passwordPolicy(activeMembership.tenantId))
       : user.passwordChangedAt === null;
 
-  await prisma.platformAuditEvent.create({
-    data: {
+  await platformAudit(
+    { ...info, platformUserId: user.id },
+    {
       tenantId: activeMembership?.tenantId,
-      actorUserId: user.id,
       event: 'LOGIN',
       objectType: 'platform_user',
       objectId: user.id,
-      ipAddress: info.ip,
-      userAgent: info.ua,
-      requestId: info.requestId,
       metadata: {
         mfa: mfaSatisfied,
         platformRole: user.platformRole,
@@ -521,7 +485,7 @@ async function signedIn(
         ...(viaRecoveryCode ? { viaRecoveryCode: true } : {}),
       },
     },
-  });
+  );
 
   return NextResponse.json(
     {
@@ -604,38 +568,17 @@ async function recordFailure(
   reason: string,
   extra: Record<string, unknown> = {},
 ) {
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId,
-        actorUserId: userId,
-        event: 'LOGIN_FAILED',
-        objectType: 'platform_user',
-        objectId: userId,
-        ipAddress: info.ip,
-        userAgent: info.ua,
-        requestId: info.requestId,
-        metadata: { reason, ...extra },
-      },
-    })
-    .catch(() => {});
+  await platformAudit(
+    { ...info, platformUserId: userId },
+    { tenantId, event: 'LOGIN_FAILED', objectType: 'platform_user', objectId: userId, metadata: { reason, ...extra } },
+  ).catch(() => {});
 }
 
 /** A security-relevant anomaly: written for review, never shown to the caller. */
 async function securityEvent(userId: string, info: RequestInfo, event: string, metadata: Record<string, unknown>) {
   logger.warn({ platformUserId: userId, event, ...metadata, requestId: info.requestId }, 'sign-in security event');
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        actorUserId: userId,
-        event,
-        objectType: 'platform_user',
-        objectId: userId,
-        ipAddress: info.ip,
-        userAgent: info.ua,
-        requestId: info.requestId,
-        metadata,
-      },
-    })
-    .catch(() => {});
+  await platformAudit(
+    { ...info, platformUserId: userId },
+    { event, objectType: 'platform_user', objectId: userId, metadata: metadata as never },
+  ).catch(() => {});
 }

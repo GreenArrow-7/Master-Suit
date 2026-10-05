@@ -13,9 +13,9 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
-  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
+  paginateListObjectsV2,
 } from '@aws-sdk/client-s3';
 import { env } from './env';
 import { logger } from './logger';
@@ -63,9 +63,7 @@ export async function putObject(key: string, body: Buffer, contentType: string) 
 export async function getObject(key: string): Promise<Buffer> {
   await ensureBucket();
   const result = await s3.send(new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key }));
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of result.Body as AsyncIterable<Uint8Array>) chunks.push(chunk);
-  return Buffer.concat(chunks);
+  return Buffer.from(await result.Body!.transformToByteArray());
 }
 
 export async function deleteObject(key: string) {
@@ -96,27 +94,21 @@ export interface StoredObject {
 }
 
 /**
- * Every object under a prefix, following continuation tokens.
+ * Every object under a prefix, every page.
  *
- * `IsTruncated` is the trap here: a single ListObjectsV2 returns at most 1,000
- * keys and says so in a field it is easy not to read. A retention sweep that
- * ignores it silently stops deleting once a workspace passes a thousand
- * captures — which is the point at which deleting them starts to matter.
+ * A single ListObjectsV2 returns at most 1,000 keys and says so in a field it is
+ * easy not to read. A retention sweep that read one page silently stopped
+ * deleting once a workspace passed a thousand captures — which is the point at
+ * which deleting them starts to matter. The SDK's paginator follows the tokens.
  */
 export async function listObjects(prefix: string): Promise<StoredObject[]> {
   await ensureBucket();
   const objects: StoredObject[] = [];
-  let token: string | undefined;
-  do {
-    const page = await s3.send(
-      new ListObjectsV2Command({ Bucket: env.S3_BUCKET, Prefix: prefix, ContinuationToken: token }),
-    );
+  for await (const page of paginateListObjectsV2({ client: s3 }, { Bucket: env.S3_BUCKET, Prefix: prefix })) {
     for (const item of page.Contents ?? []) {
-      if (!item.Key) continue;
-      objects.push({ key: item.Key, lastModified: item.LastModified ?? null, size: item.Size ?? 0 });
+      if (item.Key) objects.push({ key: item.Key, lastModified: item.LastModified ?? null, size: item.Size ?? 0 });
     }
-    token = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (token);
+  }
   return objects;
 }
 
@@ -130,19 +122,10 @@ export async function listObjects(prefix: string): Promise<StoredObject[]> {
 export async function listPrefixes(prefix: string): Promise<string[]> {
   await ensureBucket();
   const prefixes: string[] = [];
-  let token: string | undefined;
-  do {
-    const page = await s3.send(
-      new ListObjectsV2Command({
-        Bucket: env.S3_BUCKET,
-        Prefix: prefix,
-        Delimiter: '/',
-        ContinuationToken: token,
-      }),
-    );
+  const pages = paginateListObjectsV2({ client: s3 }, { Bucket: env.S3_BUCKET, Prefix: prefix, Delimiter: '/' });
+  for await (const page of pages) {
     for (const item of page.CommonPrefixes ?? []) if (item.Prefix) prefixes.push(item.Prefix);
-    token = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (token);
+  }
   return prefixes;
 }
 

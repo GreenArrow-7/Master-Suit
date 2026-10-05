@@ -146,8 +146,7 @@
 
   /* Page header: title, one line of context, the actions on their own row. */
   html:not(#_) .lf-list-header__title,
-  html:not(#_) .lf-page-title,
-  html:not(#_) .lf-page-intro__title {
+  html:not(#_) .lf-page-title {
     font-size: 24px;
     line-height: 1.2;
   }
@@ -155,8 +154,7 @@
     gap: 10px;
     margin-bottom: 8px;
   }
-  .lf-list-header__count,
-  .lf-page-intro__summary {
+  .lf-list-header__count {
     margin-top: 2px;
     font-size: 13px;
   }
@@ -480,11 +478,6 @@
     border-radius: 999px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .lf-report-filters > summary::after {
-    transition: none;
-  }
-}
 
 /* ── Shared system: labels, pills, hints, sections (every width) ─────────── */
 
@@ -492,7 +485,6 @@
 .lf-label,
 .lf-field > .lf-eyebrow,
 .lf-kpi__label,
-.lf-metric-card__label,
 .lf-page-main .lf-eyebrow {
   text-transform: none;
   letter-spacing: 0.01em;

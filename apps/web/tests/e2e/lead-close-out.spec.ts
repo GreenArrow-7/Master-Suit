@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 /**
  * Closing a lead out from the detail screen: More → Archive removes it from the
@@ -12,7 +12,6 @@ const password = process.env.E2E_DEMO_PASSWORD;
 
 test.describe('lead close-out from the detail screen', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
-  test.beforeEach(resetLoginThrottle);
 
   test('archive, see it under Closed out, reopen', async ({ page }) => {
     await login(page, email!, password!);

@@ -40,7 +40,7 @@
  * caught here. That needs one live call with a real key and is recorded as
  * exactly that.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
@@ -78,13 +78,12 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  process.env.AI_GOOGLE_BASE_URL = `${base}/v1beta/models`;
-  process.env.AI_OPENROUTER_URL = `${base}/api/v1/chat/completions`;
+  vi.stubEnv('AI_GOOGLE_BASE_URL', `${base}/v1beta/models`);
+  vi.stubEnv('AI_OPENROUTER_URL', `${base}/api/v1/chat/completions`);
 });
 
 afterAll(async () => {
-  delete process.env.AI_GOOGLE_BASE_URL;
-  delete process.env.AI_OPENROUTER_URL;
+  vi.unstubAllEnvs();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 

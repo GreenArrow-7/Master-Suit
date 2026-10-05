@@ -56,9 +56,6 @@ import { prisma, type TxClient } from '@/lib/db';
 import { scopeFor, type Ctx } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 /**
  * Open is `OPEN`, `IN_PROGRESS` **and** `RESCHEDULED`.
  *
@@ -121,7 +118,7 @@ export function emptyFollowUpLabel(access: ObligationAccess, view: 'personal' | 
  * leads block rather than deadlock.
  */
 export async function lockLeads(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadIds: readonly (string | null | undefined)[],
 ): Promise<string[]> {
@@ -145,11 +142,7 @@ export async function lockLeads(
  * Every writer takes it before touching that lead's obligations, which
  * serialises them per lead; contention is per-lead and low.
  */
-export async function recomputeNextFollowUp(
-  tx: TransactionClient,
-  tenantId: string,
-  leadId: string,
-): Promise<Date | null> {
+export async function recomputeNextFollowUp(tx: TxClient, tenantId: string, leadId: string): Promise<Date | null> {
   const rows = await tx.$queryRaw<{ nextFollowUpAt: Date | null }[]>`
     UPDATE "Lead" l
        SET "nextFollowUpAt" = (
@@ -178,7 +171,7 @@ export async function recomputeNextFollowUp(
  * not attached to a lead affects no stored column, and `lockLeads` drops them.
  */
 export async function withRecompute<T>(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadIds: readonly (string | null | undefined)[],
   mutate: () => Promise<T>,
@@ -220,17 +213,13 @@ export interface ObligationAccess {
  * themselves. Otherwise a revoked grant would still leak through the personal
  * view, which is the sort of thing that is only ever noticed later.
  */
-export async function obligationAccess(
-  ctx: Ctx,
-  view: 'personal' | 'scope',
-  db: TxClient | typeof prisma = prisma,
-): Promise<ObligationAccess> {
+export async function obligationAccess(ctx: Ctx, view: 'personal' | 'scope'): Promise<ObligationAccess> {
   const resolve = async (permissionModule: string): Promise<OwnerSet> => {
     const scope = scopeFor(ctx, permissionModule, 'VIEW');
     if (scope === 'NONE') return { kind: 'none' };
     if (view === 'personal') return { kind: 'ids', ids: [ctx.actor.id] };
     if (scope === 'ORGANIZATION') return { kind: 'all' };
-    return { kind: 'ids', ids: await resolveOwnerIds(ctx, scope, db) };
+    return { kind: 'ids', ids: await resolveOwnerIds(ctx, scope) };
   };
   // `Task` is read under `tasks`, `FollowUpTask` under `leads` — see the header.
   const [task, followUp] = await Promise.all([resolve('tasks'), resolve('leads')]);
@@ -341,7 +330,6 @@ export async function scopedNextFollowUp(
   tenantId: string,
   leadIds: readonly string[],
   access: ObligationAccess,
-  db: TxClient | typeof prisma = prisma,
 ): Promise<Map<string, Date>> {
   const out = new Map<string, Date>();
   const ids = [...new Set(leadIds)];
@@ -362,14 +350,14 @@ export async function scopedNextFollowUp(
 
   const [tasks, followUps] = await Promise.all([
     t
-      ? (db.task.groupBy({
+      ? (prisma.task.groupBy({
           by: ['leadId'],
           where: { tenantId, ...(t as Prisma.TaskWhereInput) },
           _min: { dueAt: true },
         }) as unknown as Promise<Grouped[]>)
       : none,
     f
-      ? (db.followUpTask.groupBy({
+      ? (prisma.followUpTask.groupBy({
           by: ['leadId'],
           where: { tenantId, ...(f as Prisma.FollowUpTaskWhereInput) },
           _min: { dueAt: true },
@@ -380,29 +368,4 @@ export async function scopedNextFollowUp(
   for (const r of tasks) take(r.leadId, r._min.dueAt);
   for (const r of followUps) take(r.leadId, r._min.dueAt);
   return out;
-}
-
-/**
- * Deterministic ordering for a page of leads by their scoped follow-up.
- *
- * Unscheduled leads sort last in both directions — "nothing owed" is not an
- * early date, and floating it to the top of an ascending sort is how a lead
- * nobody scheduled anything for gets mistaken for the most urgent one. Ties
- * break on lead id so the order is stable across requests.
- */
-export function byScopedFollowUp<T extends { id: string }>(
-  rows: readonly T[],
-  due: ReadonlyMap<string, Date>,
-  dir: 'asc' | 'desc',
-): T[] {
-  return [...rows].sort((a, b) => {
-    const av = due.get(a.id);
-    const bv = due.get(b.id);
-    if (!av && !bv) return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    if (!av) return 1;
-    if (!bv) return -1;
-    const cmp = av.getTime() - bv.getTime();
-    if (cmp !== 0) return dir === 'asc' ? cmp : -cmp;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
 }

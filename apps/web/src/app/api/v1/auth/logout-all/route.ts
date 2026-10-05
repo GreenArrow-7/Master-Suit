@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
-import { prisma } from '@/lib/db';
-import { AppError, Unauthorized } from '@/lib/errors';
-import { logger } from '@/lib/logger';
-import { SESSION_COOKIE, clientIp } from '@/lib/auth/session';
+import { Unauthorized } from '@/lib/errors';
+import { SESSION_COOKIE, clientIp, loadSession, revokeAllPlatformSessions } from '@/lib/auth/session';
+import { bareRoute } from '@/lib/api/handler';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * Signs the account out of every device, including this one.
@@ -16,60 +14,27 @@ import { SESSION_COOKIE, clientIp } from '@/lib/auth/session';
  * and would also leave the attacker's alive if the caller is the attacker's
  * victim on a different device.
  */
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const jar = await cookies();
-    const token = jar.get(SESSION_COOKIE)?.value;
-    if (!token) throw Unauthorized();
+export const POST = bareRoute('/api/v1/auth/logout-all', async (req, requestId) => {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) throw Unauthorized();
 
-    const session = await prisma.platformSession.findUnique({
-      where: { tokenHash: createHash('sha256').update(token).digest('hex') },
-      select: { platformUserId: true, activeTenantId: true, revokedAt: true, expiresAt: true },
-    });
-    if (!session || session.revokedAt || session.expiresAt < new Date())
-      throw Unauthorized('Your session has expired.');
+  const session = await loadSession(token, new Date());
+  if (!session) throw Unauthorized('Your session has expired.');
 
-    const platform = await prisma.platformSession.updateMany({
-      where: { platformUserId: session.platformUserId, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: 'USER_LOGOUT_ALL' },
-    });
+  const signedOut = await revokeAllPlatformSessions(session.platformUserId, 'USER_LOGOUT_ALL');
 
-    // The legacy per-workspace sweep that used to run here read every
-    // membership and then revoked rows in a table nothing creates.
-    // PlatformSession is the only session store and was cleared above, so the
-    // query and the count it produced were both dead weight.
-    const workspace = 0;
+  await platformAudit(
+    { platformUserId: session.platformUserId, requestId, ip: clientIp(req), userAgent: req.headers.get('user-agent') },
+    {
+      tenantId: session.activeTenantId,
+      event: 'LOGOUT',
+      objectType: 'platform_user',
+      objectId: session.platformUserId,
+      metadata: { scope: 'all-devices', platformSessions: signedOut },
+    },
+  ).catch(() => {});
 
-    await prisma.platformAuditEvent
-      .create({
-        data: {
-          tenantId: session.activeTenantId,
-          actorUserId: session.platformUserId,
-          event: 'LOGOUT',
-          objectType: 'platform_user',
-          objectId: session.platformUserId,
-          ipAddress: clientIp(req),
-          userAgent: req.headers.get('user-agent'),
-          requestId,
-          metadata: { scope: 'all-devices', platformSessions: platform.count, workspaceSessions: workspace },
-        },
-      })
-      .catch(() => {});
-
-    jar.delete(SESSION_COOKIE);
-    return NextResponse.json(
-      { ok: true, signedOut: platform.count + workspace },
-      { headers: { 'x-request-id': requestId } },
-    );
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'logout-all failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+  jar.delete(SESSION_COOKIE);
+  return NextResponse.json({ ok: true, signedOut });
+});

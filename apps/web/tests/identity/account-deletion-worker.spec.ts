@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  *
  * Every other suite calls the sweep or the handler directly. This one enqueues an
  * `account-deletions` job on the `maintenance` queue and lets a real BullMQ Worker built by
- * `startMaintenanceWorker` pick it up — the path production takes — then reads the database
+ * `startWorker('maintenance')` pick it up — the path production takes — then reads the database
  * back and tries to sign in. It runs on its own Redis database index so it can neither
  * consume nor disturb the shared queue's scheduled jobs.
  */
@@ -23,18 +23,19 @@ const { redis } = await import('@/lib/redis');
 const { hashPassword } = await import('@/lib/auth/password');
 const { issueApiKey } = await import('@/lib/auth/apiKey');
 const { requestAccountDeletion } = await import('@/services/identity/accountDeletion');
-const { startMaintenanceWorker } = await import('@/workers/maintenance');
+const { startWorker } = await import('@/workers/jobs');
 const { POST: login } = await import('@/app/api/v1/auth/login/route');
 const { post } = await import('../helpers/request');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
+const { buildActor, buildCtx } = await import('../helpers/ctx');
+const { createPlatformSessionToken } = await import('../helpers/session');
 type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
-type Ctx = Parameters<typeof requestAccountDeletion>[0];
 type RetainedCategory = { category: string; count: number; reason: string };
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
 const ownedPlatformUserIds = new Set<string>();
 let fixture: Fixture;
-let worker: ReturnType<typeof startMaintenanceWorker>;
+let worker: ReturnType<typeof startWorker>;
 let queue: InstanceType<typeof Queue>;
 let events: InstanceType<typeof QueueEvents>;
 
@@ -44,7 +45,7 @@ beforeAll(async () => {
   queue = new Queue('maintenance', { connection: redis });
   events = new QueueEvents('maintenance', { connection: redis });
   await events.waitUntilReady();
-  worker = startMaintenanceWorker();
+  worker = startWorker('maintenance');
   await worker.waitUntilReady();
 });
 
@@ -75,10 +76,7 @@ describe('request → real worker → completion → revoked access', () => {
       email,
       fullName: 'Worker Path',
     });
-    const { platformUserId } = await prisma.workspaceMembership.findUniqueOrThrow({
-      where: { salesUserId: user.id },
-      select: { platformUserId: true },
-    });
+    const { platformUserId } = user;
     ownedPlatformUserIds.add(platformUserId);
     await prisma.platformUser.update({
       where: { id: platformUserId },
@@ -86,13 +84,7 @@ describe('request → real worker → completion → revoked access', () => {
     });
     // Things that must stop working: a live session, an API key, a service credential,
     // an access grant, and an open invitation to the same address.
-    await prisma.platformSession.create({
-      data: {
-        platformUserId,
-        tokenHash: `wk-${Math.random().toString(36).slice(2)}`,
-        expiresAt: new Date(Date.now() + 86_400_000),
-      },
-    });
+    await createPlatformSessionToken(platformUserId);
     const { key } = await issueApiKey(fixture.a.tenantId, 'worker-path', role.id, [], user.id);
     await prisma.platformServiceCredential.create({
       data: {
@@ -127,13 +119,7 @@ describe('request → real worker → completion → revoked access', () => {
     const before = await post(login, '/api/v1/auth/login', { email, password: PASSWORD });
     expect(before.status, JSON.stringify(before.body)).toBeLessThan(300);
 
-    const ctx = {
-      tenantId: fixture.a.tenantId,
-      actor: { id: user.id, permissions: new Map() },
-      requestId: 'wk',
-      ip: '127.0.0.1',
-      userAgent: 'vitest',
-    } as unknown as Ctx;
+    const ctx = buildCtx(buildActor({ id: user.id, tenantId: fixture.a.tenantId }));
     const request = await requestAccountDeletion(ctx, { password: PASSWORD, reason: 'worker path' });
     expect(request.status).toBe('REQUESTED');
 

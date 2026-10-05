@@ -4,7 +4,6 @@ import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
-import { emit } from '../shared/events';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
 
@@ -162,7 +161,6 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     });
   }
 
-  emit(ctx, 'lead.updated', { leadId: id });
   return updated;
 }
 

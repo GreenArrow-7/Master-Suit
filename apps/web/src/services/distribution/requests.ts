@@ -7,12 +7,12 @@
  * their quota, and a request that reads APPROVED with nothing attached is
  * indistinguishable from one nobody has looked at.
  */
-import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, isUniqueViolation } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { allocate, headroom, type AllocateInput } from './allocation';
+import { names } from '@/services/leadership/rollups';
 
 export const REQUEST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
@@ -56,7 +56,7 @@ export async function askForLeads(input: AskInput) {
       return request;
     } catch (err) {
       // The index is the real guard; this turns it into a sentence.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isUniqueViolation(err)) {
         throw Conflict('You already have a request waiting. Cancel it first if you want to change the number.');
       }
       throw err;
@@ -195,11 +195,10 @@ export async function pendingRequests(tenantId: string, limit = 50) {
   const room = await headroom(tenantId, [...new Set(requests.map((r) => r.requesterId))]);
   const roomBy = new Map(room.map((r) => [r.userId, r]));
 
-  const names = await prisma.user.findMany({
-    where: { tenantId, id: { in: requests.map((r) => r.requesterId) } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(names.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    tenantId,
+    requests.map((r) => r.requesterId),
+  );
 
   return requests.map((r) => ({
     ...r,

@@ -190,7 +190,7 @@
 }
 
 /* Glass: the sheet is a surface, not a pane of glass over the list — the rows behind it
-   read through a translucent card. Same treatment the theme gives .lf-sheet. */
+   read through a translucent card. */
 [data-theme='glass'] .lf-colmenu {
   background: color-mix(in srgb, var(--lf-surface) 88%, rgb(8 10 18));
   -webkit-backdrop-filter: blur(var(--lf-glass-blur, 16px)) saturate(1.25);

@@ -14,6 +14,7 @@
 import { connect } from 'node:net';
 import { env } from './env';
 import { logger } from './logger';
+import { AppError } from './errors';
 
 export type ScanVerdict = 'CLEAN' | 'INFECTED' | 'ERROR';
 
@@ -33,7 +34,7 @@ async function clamavScan(payload: Buffer): Promise<ScanResult> {
   const base = { provider: 'clamav', scannedAt };
 
   try {
-    const [reply, version] = await Promise.all([instream(payload), clamdVersion().catch(() => null)]);
+    const [reply, version] = await Promise.all([clamd('INSTREAM', payload), clamd('VERSION').catch(() => null)]);
 
     // clamd answers "stream: OK" or "stream: <Name> FOUND" or "... ERROR".
     if (/\bOK\s*$/.test(reply)) return { ...base, verdict: 'CLEAN', signature: version, detail: null };
@@ -58,14 +59,16 @@ async function clamavScan(payload: Buffer): Promise<ScanResult> {
   }
 }
 
-function instream(payload: Buffer): Promise<string> {
+/** One clamd command over TCP: INSTREAM with the payload, or VERSION. */
+function clamd(command: 'INSTREAM' | 'VERSION', payload?: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = connect({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT });
     socket.setTimeout(env.ANTIVIRUS_TIMEOUT_MS);
 
     let reply = '';
     socket.on('connect', () => {
-      socket.write('zINSTREAM\0');
+      socket.write(`z${command}\0`);
+      if (!payload) return;
       // Chunked, each chunk preceded by its length; a zero-length chunk ends it.
       const CHUNK = 64 * 1024;
       for (let offset = 0; offset < payload.length; offset += CHUNK) {
@@ -84,24 +87,6 @@ function instream(payload: Buffer): Promise<string> {
     socket.on('timeout', () => {
       socket.destroy();
       reject(new Error(`clamd did not answer within ${env.ANTIVIRUS_TIMEOUT_MS} ms`));
-    });
-    socket.on('error', reject);
-  });
-}
-
-function clamdVersion(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const socket = connect({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT });
-    socket.setTimeout(env.ANTIVIRUS_TIMEOUT_MS);
-    let reply = '';
-    socket.on('connect', () => socket.write('zVERSION\0'));
-    socket.on('data', (chunk) => {
-      reply += chunk.toString('utf8');
-    });
-    socket.on('end', () => resolve(reply.replace(/\0/g, '').trim()));
-    socket.on('timeout', () => {
-      socket.destroy();
-      reject(new Error('clamd version timeout'));
     });
     socket.on('error', reject);
   });
@@ -135,6 +120,18 @@ function mockScan(payload: Buffer): ScanResult {
  * In production the env schema forbids `mock`, so a deployment cannot
  * accidentally run with the test provider and believe it is scanning.
  */
+/** Refuses a payload the scan did not pass, so nothing unscanned is stored. */
+export function assertClean(scan: ScanResult) {
+  if (scan.verdict === 'CLEAN') return;
+  throw new AppError(
+    422,
+    'validation-failed',
+    scan.verdict === 'INFECTED'
+      ? 'The file failed the malware scan and was not stored.'
+      : 'The malware scanner was unavailable; try again.',
+  );
+}
+
 export async function scanBuffer(payload: Buffer): Promise<ScanResult> {
   switch (env.ANTIVIRUS_PROVIDER.toLowerCase()) {
     case 'clamav':
@@ -150,30 +147,5 @@ export async function scanBuffer(payload: Buffer): Promise<ScanResult> {
         detail: 'No malware scanner is configured.',
         scannedAt: new Date(),
       };
-  }
-}
-
-/** Whether a scanner is reachable right now — for the readiness endpoint. */
-export async function antivirusHealth(): Promise<{ ready: boolean; provider: string; detail: string }> {
-  const provider = env.ANTIVIRUS_PROVIDER.toLowerCase();
-  if (provider === 'mock') {
-    return { ready: true, provider, detail: 'Test provider: recognises the EICAR test file only. Not protection.' };
-  }
-  if (provider !== 'clamav') {
-    return {
-      ready: false,
-      provider,
-      detail: 'No malware scanner is configured. Uploads will be quarantined and cannot be downloaded.',
-    };
-  }
-  try {
-    const version = await clamdVersion();
-    return { ready: true, provider, detail: version };
-  } catch (error) {
-    return {
-      ready: false,
-      provider,
-      detail: `clamd at ${env.CLAMAV_HOST}:${env.CLAMAV_PORT} is unreachable: ${(error as Error).message}`,
-    };
   }
 }

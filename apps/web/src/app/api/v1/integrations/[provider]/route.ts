@@ -88,27 +88,25 @@ export const PUT = route(
       ? ({ ok: null, detail: 'Saved without verification.' } as const)
       : await verifyConnection(params.provider, verifyInput(credentials, metadata));
 
+    const data = {
+      credentials: wrapCredentials(credentials),
+      metadata,
+      // `null` means unverifiable, not failed: Knowlarity has no read-only
+      // endpoint, so refusing to connect it would make the vendor unusable.
+      status: verdict.ok === false ? ('ERROR' as const) : ('CONNECTED' as const),
+      errorMessage: verdict.ok === false ? verdict.detail : null,
+    };
     const connection = await prisma.integrationConnection.upsert({
       where: { tenantId_provider: { tenantId: ctx.tenantId, provider: params.provider } },
       create: {
+        ...data,
         tenantId: ctx.tenantId,
         provider: params.provider,
-        credentials: wrapCredentials(credentials),
-        metadata,
-        // `null` means unverifiable, not failed: Knowlarity has no read-only
-        // endpoint, so refusing to connect it would make the vendor unusable.
-        status: verdict.ok === false ? 'ERROR' : 'CONNECTED',
-        errorMessage: verdict.ok === false ? verdict.detail : null,
         lastSyncAt: verdict.ok === true ? new Date() : null,
         createdById: ctx.actor.id,
       },
-      update: {
-        credentials: wrapCredentials(credentials),
-        metadata,
-        status: verdict.ok === false ? 'ERROR' : 'CONNECTED',
-        errorMessage: verdict.ok === false ? verdict.detail : null,
-        lastSyncAt: verdict.ok === true ? new Date() : undefined,
-      },
+      // An unverified save keeps the last successful sync time.
+      update: { ...data, lastSyncAt: verdict.ok === true ? new Date() : undefined },
       select: { id: true, provider: true, status: true, webhookKey: true, metadata: true, lastSyncAt: true },
     });
 

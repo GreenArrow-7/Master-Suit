@@ -17,7 +17,6 @@ export const GRID_OBJECTS = [
   'CONTACT',
   'OPPORTUNITY',
   'ACTIVITY',
-  'TASK',
   'CALL',
   'CAMPAIGN',
   'COMMUNICATION',
@@ -137,16 +136,6 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'outcome', label: 'Outcome', byDefault: true, hideMobile: true },
     { key: 'durationSecs', label: 'Duration', byDefault: true, align: 'right', hideMobile: true },
     { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
-  ],
-  TASK: [
-    { key: 'title', label: 'Title', fixed: true, primary: true },
-    { key: 'type', label: 'Type', byDefault: true, hideMobile: true },
-    { key: 'lead', label: 'Lead', byDefault: true },
-    { key: 'dueAt', label: 'Due date', byDefault: true },
-    { key: 'priority', label: 'Priority', byDefault: true, hideMobile: true },
-    { key: 'status', label: 'Status', byDefault: true },
-    { key: 'owner', label: 'Owner', byDefault: true, hideMobile: true },
-    { key: 'completedAt', label: 'Completed', hideMobile: true },
   ],
   CALL: [
     // The person called is the identity of a call; when it is on the desk the
@@ -272,15 +261,6 @@ export const GRID_COLUMNS: Record<GridObject, ColumnDef[]> = {
     { key: 'updatedAt', label: 'Updated', hideMobile: true },
   ],
 };
-
-export function isGridObject(value: string): value is GridObject {
-  return (GRID_OBJECTS as readonly string[]).includes(value);
-}
-
-/** Keys that may be reordered or removed, in catalogue order. */
-export function optionalColumns(object: GridObject): ColumnDef[] {
-  return GRID_COLUMNS[object].filter((column) => !column.fixed);
-}
 
 /**
  * Turns a stored key list into columns to render.

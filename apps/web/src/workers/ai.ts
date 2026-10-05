@@ -1,17 +1,6 @@
-import { DelayedError, Worker } from 'bullmq';
-import { redis } from '@/lib/redis';
-import { logger } from '@/lib/logger';
+import { DelayedError, type Job } from 'bullmq';
 import { acquireSlot, releaseSlot } from '@/lib/queueFairness';
 import { recordQueueDeferred } from '@/lib/metrics';
-import {
-  analyseCall,
-  runCallAudit,
-  transcribeCall,
-  type AuditJob,
-  type CallJob,
-  type TranscribeJob,
-} from '@/services/shared/callIntelligence';
-import { scorePracticeSession, type PracticeScoreJob } from '@/services/shared/practiceScoring';
 
 /**
  * ── Concurrency, and why it is now two numbers ──────────────────────────────
@@ -28,10 +17,10 @@ import { scorePracticeSession, type PracticeScoreJob } from '@/services/shared/p
  * FIFO out of one tenant's backlog are six slots that tenant holds.
  *
  * So the global number rises and a per-tenant ceiling goes underneath it. One
- * workspace can occupy at most `PER_TENANT` of `GLOBAL` slots however long its
+ * workspace can occupy at most `PER_TENANT` of `AI_CONCURRENCY` slots however long its
  * backlog is; the rest stay available to whoever else has work.
  */
-const GLOBAL = 6;
+export const AI_CONCURRENCY = 6;
 const PER_TENANT = 2;
 
 /**
@@ -45,56 +34,37 @@ const PER_TENANT = 2;
 const DEFER_MS = 5_000;
 const defer = () => DEFER_MS + Math.floor(Math.random() * DEFER_MS);
 
-export function startAiWorker() {
-  return new Worker(
-    'ai',
-    async (job, token) => {
-      const tenantId = (job.data as { tenantId?: string }).tenantId;
+/** Wraps the ai queue's dispatch in the per-tenant ceiling. */
+export function fairShare(run: (job: Job) => Promise<unknown>) {
+  return async (job: Job, token?: string) => {
+    const tenantId = (job.data as { tenantId?: string }).tenantId;
 
-      /**
-       * No tenant means no fairness question to answer, and refusing the job
-       * would be worse than running it: this is a platform-wide queue, and a
-       * payload that has lost its tenantId is a bug to find, not a job to drop.
-       */
-      if (tenantId) {
-        const slot = `${job.id}`;
-        if (!(await acquireSlot('ai', tenantId, PER_TENANT, slot))) {
-          // Back to the delayed set rather than failing. `DelayedError` is how a
-          // BullMQ processor says "not now" — it does not count as an attempt,
-          // so a busy tenant's job never exhausts its retries by waiting.
-          recordQueueDeferred('ai');
-          await job.moveToDelayed(Date.now() + defer(), token);
-          throw new DelayedError();
-        }
-        try {
-          return await dispatch(job);
-        } finally {
-          // In a `finally`, so a thrown job frees its slot. A crash that skips
-          // this is covered too — a slot older than the maximum hold is pruned
-          // on the next acquire, so a killed worker heals rather than
-          // permanently costing that tenant a slot.
-          await releaseSlot('ai', tenantId, slot);
-        }
+    /**
+     * No tenant means no fairness question to answer, and refusing the job
+     * would be worse than running it: this is a platform-wide queue, and a
+     * payload that has lost its tenantId is a bug to find, not a job to drop.
+     */
+    if (tenantId) {
+      const slot = `${job.id}`;
+      if (!(await acquireSlot('ai', tenantId, PER_TENANT, slot))) {
+        // Back to the delayed set rather than failing. `DelayedError` is how a
+        // BullMQ processor says "not now" — it does not count as an attempt,
+        // so a busy tenant's job never exhausts its retries by waiting.
+        recordQueueDeferred('ai');
+        await job.moveToDelayed(Date.now() + defer(), token);
+        throw new DelayedError();
       }
+      try {
+        return await run(job);
+      } finally {
+        // In a `finally`, so a thrown job frees its slot. A crash that skips
+        // this is covered too — a slot older than the maximum hold is pruned
+        // on the next acquire, so a killed worker heals rather than
+        // permanently costing that tenant a slot.
+        await releaseSlot('ai', tenantId, slot);
+      }
+    }
 
-      return dispatch(job);
-    },
-    { connection: redis, concurrency: GLOBAL },
-  );
-}
-
-async function dispatch(job: { name: string; data: unknown }) {
-  switch (job.name) {
-    case 'transcribe':
-      return transcribeCall(job.data as TranscribeJob);
-    case 'analyse':
-      return analyseCall(job.data as CallJob);
-    case 'audit':
-      return runCallAudit(job.data as AuditJob);
-    case 'practice-score':
-      return scorePracticeSession(job.data as PracticeScoreJob);
-    default:
-      logger.warn({ jobName: job.name }, 'unknown ai job');
-      return undefined;
-  }
+    return run(job);
+  };
 }

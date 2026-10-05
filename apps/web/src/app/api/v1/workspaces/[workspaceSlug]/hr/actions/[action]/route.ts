@@ -88,99 +88,6 @@ import {
 } from '@/services/hr/requests';
 
 /**
- * Every HR workflow verb. The reads live in `../[resource]`; anything that moves
- * an employee, a request or a checklist through its lifecycle lands here.
- *
- * The kernel gate is `hrms:EDIT` for all of them — they all mutate HR state. The
- * finer rules (HR only, approver only, never your own leave) are enforced in the
- * service layer, because they depend on the record, not just the role.
- */
-const paramsSchema = z.object({
-  workspaceSlug: z.string().min(2).max(64),
-  action: z.enum([
-    'leave-apply',
-    'leave-approve',
-    'leave-reject',
-    'leave-cancel',
-    'leave-carry-forward',
-    'onboarding-start',
-    'employee-activate',
-    'checklist-complete',
-    'checklist-reopen',
-    'checklist-add',
-    'offboarding-start',
-    'employee-exit',
-    'consent-grant',
-    'consent-grant-supervised',
-    'consent-withdraw',
-    'face-enrol',
-    'face-reset',
-    'attendance-preflight',
-    'attendance-challenge',
-    'attendance-punch',
-    'location-revoke',
-    'settings-update',
-    'temporary-request',
-    'temporary-decide',
-    'exception-request',
-    'exception-decide',
-    'document-delete',
-    'overtime-request',
-    'overtime-decide',
-    'overtime-cancel',
-    'overtime-detect',
-    'compensation-set',
-    'payroll-adjustment-add',
-    'payroll-run-create',
-    'payroll-run-calculate',
-    'payroll-run-submit',
-    'payroll-run-decide',
-    'payroll-run-lock',
-    'payroll-run-paid',
-    'roster-assign',
-    'roster-bulk-assign',
-    'roster-copy-week',
-    'roster-remove',
-    'shift-change-request',
-    'shift-change-decide',
-    'shift-change-cancel',
-    'requisition-create',
-    'requisition-submit',
-    'requisition-decide',
-    'requisition-status',
-    'candidate-add',
-    'candidate-move',
-    'interview-schedule',
-    'interview-feedback',
-    'offer-create',
-    'offer-decide',
-    'offer-send',
-    'offer-response',
-    'candidate-hire',
-    'candidate-onboard',
-    'cycle-create',
-    'cycle-open',
-    'cycle-status',
-    'competencies-seed',
-    'goal-set',
-    'goal-update',
-    'review-self',
-    'review-manager',
-    'review-calibrate',
-    'review-acknowledge',
-    'pip-create',
-    'pip-activate',
-    'pip-acknowledge',
-    'pip-checkpoint',
-    'pip-close',
-  ]),
-});
-
-const id = z.string().min(1).max(64);
-const note = z.string().max(1000).optional();
-
-/** Verbs that need more than "may reach HR". Self-service verbs are absent. */
-/**
  * "This action acts only on the caller's own record, deliberately."
  *
  * The nineteen actions marked with it are self-service writes — applying for
@@ -193,7 +100,6 @@ const note = z.string().max(1000).optional();
  */
 const SELF = Symbol("acts on the caller's own record");
 
-type HrAction = z.infer<typeof paramsSchema>['action'];
 type ActionPermission = readonly [string, 'CREATE' | 'EDIT' | 'APPROVE' | 'MANAGE_CONFIGURATION'];
 
 /**
@@ -205,10 +111,10 @@ type ActionPermission = readonly [string, 'CREATE' | 'EDIT' | 'APPROVE' | 'MANAG
  * gate alone — `employee:VIEW`, a *read* permission — so any employee who could
  * open the HR module could have driven it.
  *
- * Keyed by the action union, every one must now declare itself or the object
- * fails to compile.
+ * The action list is this map's keys, so an action cannot exist without
+ * declaring its permission here.
  */
-const ACTION_PERMISSION: Record<HrAction, ActionPermission | typeof SELF> = {
+const ACTION_PERMISSION = {
   'leave-apply': SELF,
   'leave-approve': ['leave', 'APPROVE'],
   'leave-reject': ['leave', 'APPROVE'],
@@ -284,7 +190,25 @@ const ACTION_PERMISSION: Record<HrAction, ActionPermission | typeof SELF> = {
   'pip-acknowledge': SELF,
   'pip-checkpoint': ['performance', 'EDIT'],
   'pip-close': ['performance', 'EDIT'],
-};
+} as const satisfies Record<string, ActionPermission | typeof SELF>;
+
+/**
+ * Every HR workflow verb. The reads live in `../[resource]`; anything that moves
+ * an employee, a request or a checklist through its lifecycle lands here.
+ *
+ * The kernel gate is `hrms:EDIT` for all of them — they all mutate HR state. The
+ * finer rules (HR only, approver only, never your own leave) are enforced in the
+ * service layer, because they depend on the record, not just the role.
+ */
+type HrAction = keyof typeof ACTION_PERMISSION;
+
+const paramsSchema = z.object({
+  workspaceSlug: z.string().min(2).max(64),
+  action: z.enum(Object.keys(ACTION_PERMISSION) as [HrAction, ...HrAction[]]),
+});
+
+const id = z.string().min(1).max(64);
+const note = z.string().max(1000).optional();
 
 export const POST = route(
   {
@@ -318,7 +242,7 @@ export const POST = route(
      *   * a verb with a permission asserts exactly that permission, below;
      *   * a SELF verb asserts `employee:VIEW`, which is precisely the floor the
      *     kernel used to apply — self-service behaviour is unchanged;
-     *   * `requireWorkspace(..., 'HRMS')` and the HRMS module entitlement are
+     *   * the kernel's HRMS entitlement check and `requireWorkspace` are
      *     unchanged and still run first.
      *
      * An API key reaching a `selfService` route inherits its creator's identity
@@ -330,7 +254,7 @@ export const POST = route(
     body: z.record(z.string(), z.unknown()),
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'HRMS');
+    await requireWorkspace(ctx, params.workspaceSlug);
 
     // Each verb asserts the authority it actually needs: `hrms:EDIT` used to
     // cover all of them, so approving another person's leave and applying for

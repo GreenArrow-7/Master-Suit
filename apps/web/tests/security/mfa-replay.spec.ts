@@ -254,7 +254,9 @@ describe('credential management', () => {
     return `${SESSION_COOKIE}=${res.token}`;
   }
   const credentials = (cookie: string, body: unknown) =>
-    credentialsPost(request('http://localhost/api/v1/platform/credentials', 'POST', body, cookie));
+    credentialsPost(request('http://localhost/api/v1/platform/credentials', 'POST', body, cookie), {
+      params: Promise.resolve({}),
+    });
 
   it('the code that signed in cannot also confirm a credential change; the next one can', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -352,11 +354,13 @@ describe('enrolment', () => {
     jar.set(SESSION_COOKIE, grant.token!);
     const begin = await enroll2fa(
       request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, grantCookie),
+      { params: Promise.resolve({}) },
     );
     const secret = (await begin.json()).secret as string;
     const code = codeAt(secret);
     const confirm = await enroll2fa(
       request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'confirm', code }, grantCookie),
+      { params: Promise.resolve({}) },
     );
     expect(confirm.status, await confirm.clone().text()).toBe(200);
     jar.clear();
@@ -445,18 +449,14 @@ describe('workspace two-factor management and recovery codes', () => {
 
 describe('no path accepts a code without spending it', () => {
   it('only lib/auth/totp-consume.ts calls the step matcher', async () => {
-    const { readdirSync, readFileSync, statSync } = await import('node:fs');
+    const { readdirSync, readFileSync } = await import('node:fs');
     const path = await import('node:path');
     const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (/\.(ts|tsx)$/.test(entry) && /matchTotpStep|verifyTotp/.test(readFileSync(full, 'utf8')))
-          offenders.push(full);
-      }
-    };
-    walk(path.resolve(__dirname, '../../src'));
+    const src = path.resolve(__dirname, '../../src');
+    for (const rel of readdirSync(src, { recursive: true }) as string[]) {
+      const full = path.join(src, rel);
+      if (/\.(ts|tsx)$/.test(rel) && /matchTotpStep|verifyTotp/.test(readFileSync(full, 'utf8'))) offenders.push(full);
+    }
     const normalised = offenders
       .map((file) =>
         file

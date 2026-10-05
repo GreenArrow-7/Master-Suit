@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
+import { pageQuery, cursorWhere, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
 import { compileFilterTree, decodeFilterTree, referencedFields } from '@/lib/api/filterTree';
 import { prisma } from '@/lib/db';
@@ -47,8 +47,6 @@ export const GET = route(
 
     const tree = query.filter ? decodeFilterTree(query.filter) : null;
     if (tree) assertFilterableFields(rules, referencedFields(tree));
-
-    const cursor = decodeCursor(query.cursor);
     // mergeWhere, not object spread: three of these four fragments can carry a
     // top-level `OR`, and a spread would keep only the last of them — which used
     // to drop the ownership restriction on every paginated request. See
@@ -57,7 +55,7 @@ export const GET = route(
       scopeWhere,
       tree ? compileFilterTree('OPPORTUNITY', tree, ctx) : null,
       query.q ? { name: { contains: query.q, mode: 'insensitive' as const } } : null,
-      cursorWhere(cursor),
+      cursorWhere(query.cursor),
     );
 
     const rows = await prisma.opportunity.findMany({

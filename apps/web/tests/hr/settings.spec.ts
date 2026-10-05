@@ -88,14 +88,14 @@ describe('policy actually changes the outcome', () => {
       accrualDaysPerMonthAfterYear: 3,
       accrualAnnualCapDays: 40,
     };
-    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'))).toBe(0);
+    expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'), DEFAULT_POLICY)).toBe(0);
     expect(annualLeaveAccrued(day('2025-01-15'), day('2025-06-15'), generous)).toBe(15);
   });
 
   it('changes gratuity when the rate or cap is edited', () => {
     const joined = day('2018-01-01');
     const exited = day('2024-01-01');
-    const statutory = gratuityUae(10_000, joined, exited);
+    const statutory = gratuityUae(10_000, joined, exited, DEFAULT_POLICY);
     const richer = gratuityUae(10_000, joined, exited, {
       gratuityMinYears: 1,
       gratuityFirstPeriodYears: 5,

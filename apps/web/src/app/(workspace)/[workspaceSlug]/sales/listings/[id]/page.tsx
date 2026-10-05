@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
-import { workspacePath } from '@/lib/workspace';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
@@ -12,6 +11,7 @@ import { requirementsWanting } from '@/services/inventory/demand';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import MandatePanel from './MandatePanel';
+import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Listing' };
 
@@ -260,7 +260,7 @@ export default async function ListingDetailPage({
                           <SalesLink href={`/leads/${r.leadId}`}>Lead</SalesLink>
                         ) : r.contactId ? (
                           contactsReachable ? (
-                            <Link href={workspacePath(workspaceSlug, `/sales/contacts/${r.contactId}`)}>Contact</Link>
+                            <Link href={`/${workspaceSlug}/sales/contacts/${r.contactId}`}>Contact</Link>
                           ) : (
                             'Contact'
                           )
@@ -289,15 +289,6 @@ export default async function ListingDetailPage({
         </section>
       )}
     </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="lf-metric-card">
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
-    </article>
   );
 }
 

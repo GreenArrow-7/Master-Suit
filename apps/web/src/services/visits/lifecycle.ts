@@ -11,7 +11,7 @@
  * well as here, because a correction made by a direct UPDATE is exactly the one
  * nobody would otherwise see.
  */
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
@@ -71,17 +71,10 @@ export async function transition(input: TransitionInput) {
 
     const from = visit.status as VisitStatus;
     if (from === input.to) throw Conflict(`This visit is already ${input.to.toLowerCase().replace('_', ' ')}.`);
-    if (!canTransition(from, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${from.toLowerCase().replace('_', ' ')} visit cannot become ${input.to
-            .toLowerCase()
-            .replace('_', ' ')}.`,
-        },
-      ]);
-    }
+    if (!canTransition(from, input.to))
+      throw IllegalTransition(
+        `A ${from.toLowerCase().replace('_', ' ')} visit cannot become ${input.to.toLowerCase().replace('_', ' ')}.`,
+      );
 
     if (LEADER_ONLY.includes(input.to)) {
       if (!can(ctx, 'visits', 'APPROVE')) throw Forbidden('Approving a visit is a leader decision.');

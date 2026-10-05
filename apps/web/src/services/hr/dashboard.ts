@@ -14,7 +14,7 @@
  */
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
-import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
+import { can, scopeFor, SCOPE_RANK, type Action, atLeast } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 import { isApprover, isAttendanceApprover, isHrAdmin, mayReadAllEmployees } from './access';
 import { myEmployee } from './leave';
@@ -49,8 +49,7 @@ export function resolvePersona(ctx: Ctx): Persona {
    * promises ("only reads what that persona is entitled to see, at the scope
    * they hold it").
    */
-  const orgWide = (module: string, action: Action) =>
-    SCOPE_RANK[scopeFor(ctx, module, action)] >= SCOPE_RANK.ORGANIZATION;
+  const orgWide = (module: string, action: Action) => atLeast(ctx, module, action, 'ORGANIZATION');
 
   if (isHrAdmin(ctx)) return 'hr_admin';
   if (orgWide('payroll', 'VIEW')) return 'payroll';

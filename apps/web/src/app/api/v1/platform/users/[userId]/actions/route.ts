@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AppError } from '@/lib/errors';
+
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   changeWorkspaceRole,
@@ -13,6 +12,7 @@ import {
   setPlatformRole,
   unlockAccount,
 } from '@/services/platform/identity';
+import { bareRoute } from '@/lib/api/handler';
 
 /**
  * Every privileged recovery action on one account, behind one owner-only gate.
@@ -48,9 +48,9 @@ const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('membership-role'), membershipId: z.string().min(1), roleId: z.string().min(1) }),
 ]);
 
-export async function POST(req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const POST = bareRoute(
+  '/api/v1/platform/users/[userId]/actions',
+  async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
     const body = bodySchema.parse(await req.json());
@@ -61,22 +61,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
       // or a proxy log on the way back to the browser.
       headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { status: 422, title: 'Validation failed', requestId, errors: error.flatten() },
-        { status: 422 },
-      );
-    }
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+  },
+);
 
 type Ctx = Awaited<ReturnType<typeof requirePlatformOwner>>;
 

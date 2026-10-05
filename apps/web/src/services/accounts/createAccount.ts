@@ -1,7 +1,6 @@
 import { withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { nextReference } from '../shared/reference';
-import { emit } from '../shared/events';
 import type { Ctx } from '@/lib/security/rbac';
 
 export interface CreateAccountInput {
@@ -52,6 +51,5 @@ export async function createAccount(ctx: Ctx, input: CreateAccountInput) {
     return created;
   });
 
-  emit(ctx, 'account.created', { accountId: account.id });
   return account;
 }

@@ -18,12 +18,11 @@
  * acknowledges last so nothing is closed behind their back. `advance` is the
  * only thing that moves the status, and it refuses to skip.
  */
-import { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { toDay } from './rules';
 import { isLineManagerOf, myEmployee, reportingLine, requireEmployee } from './leave';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
@@ -32,12 +31,10 @@ import { notifyPipOpened, notifyReviewCycleOpened, notifyReviewReleased, notifyS
 export type ReviewStatus = 'PENDING_SELF' | 'PENDING_MANAGER' | 'CALIBRATION' | 'AWAITING_ACKNOWLEDGEMENT' | 'COMPLETE';
 
 /** Reads everyone's performance data and runs calibration. HR, in practice. */
-export const isPerformanceAdmin = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'performance', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
+export const isPerformanceAdmin = (ctx: Ctx) => atLeast(ctx, 'performance', 'APPROVE', 'ORGANIZATION');
 
 /** May run cycles and see performance beyond their own reporting line. */
-export const mayReadAllPerformance = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'performance', 'VIEW')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadAllPerformance = (ctx: Ctx) => atLeast(ctx, 'performance', 'VIEW', 'ORGANIZATION');
 
 /** The default competency framework a workspace starts from. Editable afterwards. */
 export const DEFAULT_COMPETENCIES = [
@@ -104,8 +101,7 @@ export async function createCycle(ctx: Ctx, input: CycleInput) {
     });
     return cycle;
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
-      throw Conflict('A cycle with that name already exists.');
+    if (isUniqueViolation(error)) throw Conflict('A cycle with that name already exists.');
     throw error;
   }
 }

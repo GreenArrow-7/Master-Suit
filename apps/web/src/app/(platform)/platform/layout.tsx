@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import PlatformSidebar from '@/components/platform/PlatformSidebar';
@@ -40,7 +39,10 @@ export const dynamic = 'force-dynamic';
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   let owner;
   try {
-    owner = await requirePlatformOwner(new Request('http://internal/platform', { headers: await headers() }), ulid());
+    owner = await requirePlatformOwner(
+      new Request('http://internal/platform', { headers: await headers() }),
+      crypto.randomUUID(),
+    );
   } catch (error) {
     // 401: no session, or an expired one. Signing in is the answer.
     if (error instanceof AppError && error.status === 401) redirect('/login');

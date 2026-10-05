@@ -16,7 +16,7 @@
  * reverses; the original is left exactly as it was.
  */
 import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { assertCovered, lockBooking } from '@/services/money/collections';
@@ -231,15 +231,10 @@ export async function transitionCommission(input: TransitionInput) {
 
     const from = commission.status as CommissionStatus;
     if (from === input.to) throw Conflict(`This commission is already ${input.to.toLowerCase()}.`);
-    if (!canTransition(from, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${from.toLowerCase()} commission cannot become ${input.to.toLowerCase().replace('_', ' ')}.`,
-        },
-      ]);
-    }
+    if (!canTransition(from, input.to))
+      throw IllegalTransition(
+        `A ${from.toLowerCase()} commission cannot become ${input.to.toLowerCase().replace('_', ' ')}.`,
+      );
 
     if (input.to === 'CONFIRMED' && !can(ctx, 'commissions', 'APPROVE')) {
       throw Forbidden('Confirming a commission is an approval.');

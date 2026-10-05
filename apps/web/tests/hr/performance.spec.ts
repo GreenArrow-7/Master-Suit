@@ -34,6 +34,7 @@ import {
   submitSelfReview,
 } from '@/services/hr/performance';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { createEmployee } from '../helpers/fixtures';
 import type { PermissionMap } from '@/lib/security/rbac';
 
 const suffix = randomBytes(4).toString('hex');
@@ -67,29 +68,10 @@ const MANAGER = [
 const STAFF = [['employee', 'VIEW']] as const;
 
 async function makeEmployee(label: string, managerMembershipId?: string) {
-  const email = `${label}-${suffix}@perf.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId,
-      membershipId: membership.id,
-      employeeNumber: `${label.toUpperCase()}-${suffix}`,
-      employmentStatus: 'ACTIVE',
-      joinedOn: new Date('2020-01-01'),
-      managerMembershipId: managerMembershipId ?? null,
-    },
-  });
-  employees[label] = employee.id;
-  userIds[label] = user.id;
-  return membership.id;
+  const e = await createEmployee({ tenantId, label, suffix, roleId, managerMembershipId });
+  employees[label] = e.employeeId;
+  userIds[label] = e.userId;
+  return e.membershipId;
 }
 
 beforeAll(async () => {

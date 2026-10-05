@@ -16,21 +16,11 @@
  * as the owner would quietly skip the policy and report a number the real
  * server never achieves.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import pg from 'pg';
 
-for (const file of ['.env.test', '.env']) {
-  if (!existsSync(file)) continue;
-  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    if (process.env[key] === undefined) process.env[key] = line.slice(eq + 1).trim();
-  }
-  break;
-}
+const envFile = ['.env.test', '.env'].find((file) => existsSync(file));
+if (envFile) process.loadEnvFile(envFile);
 
 const args = process.argv.slice(2);
 const rows = Number(args[args.indexOf('--rows') + 1]) || 100_000;

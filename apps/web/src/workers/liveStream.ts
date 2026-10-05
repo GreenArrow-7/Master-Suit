@@ -26,14 +26,9 @@ import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { parseStreamMessage, verifyStreamToken, liveChannel } from '@/lib/integrations/telephony/stream';
-import { openLiveStt, type LiveSttFactory, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
+import { openLiveStt, type LiveSttConnection } from '@/lib/integrations/transcriptionStream';
 import { coachTick, heuristicHints, nextBestQuestion, detectStage } from '@/lib/ai/liveCoach';
-import {
-  leadCallContext,
-  contextPromptBlock,
-  budgetMatchHint,
-  type LeadCallContext,
-} from '@/services/leads/callContext';
+import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
 
 interface Session {
@@ -43,7 +38,6 @@ interface Session {
   lines: string[];
   customerTurns: number;
   stage: string;
-  context: LeadCallContext | null;
   contextBlock?: string;
   stt: Partial<Record<'inbound' | 'outbound', LiveSttConnection>>;
   finalised: boolean;
@@ -126,15 +120,12 @@ async function finalise(session: Session) {
   await publish(session.callId, { type: 'done', callId: session.callId });
 }
 
-async function openSession(
-  msg: {
-    tenantId: string;
-    callId: string;
-    token: string;
-    mediaFormat: { sampleRate: number };
-  },
-  stt: LiveSttFactory,
-): Promise<Session | { refused: string }> {
+async function openSession(msg: {
+  tenantId: string;
+  callId: string;
+  token: string;
+  mediaFormat: { sampleRate: number };
+}): Promise<Session | { refused: string }> {
   if (!msg.tenantId || !msg.callId || !verifyStreamToken(msg.tenantId, msg.callId, msg.token)) {
     return { refused: 'bad token' };
   }
@@ -171,7 +162,6 @@ async function openSession(
     lines: [],
     customerTurns: 0,
     stage: 'INTRODUCTION',
-    context,
     contextBlock: context ? contextPromptBlock(context) : undefined,
     stt: {},
     finalised: false,
@@ -185,7 +175,7 @@ async function openSession(
     ['inbound', 'Agent'],
     ['outbound', 'Customer'],
   ] as const) {
-    session.stt[track] = stt({
+    session.stt[track] = openLiveStt({
       apiKey,
       sampleRate: msg.mediaFormat.sampleRate,
       onTranscript: (text) => void onSegment(session, speaker, text),
@@ -194,14 +184,14 @@ async function openSession(
   }
 
   await publish(msg.callId, { type: 'status', status: 'IN_PROGRESS' });
-  const opener = nextBestQuestion(session.context?.requirement ?? null);
+  const opener = nextBestQuestion(context?.requirement ?? null);
   await publish(msg.callId, { type: 'coach', kind: 'ASK', ...opener, source: 'simulated', at: 0 });
 
   return session;
 }
 
-export function startLiveStreamServer(stt: LiveSttFactory = openLiveStt, port = env.LIVE_STREAM_PORT) {
-  const server = new WebSocketServer({ port, path: '/twilio-media' });
+export function startLiveStreamServer() {
+  const server = new WebSocketServer({ port: env.LIVE_STREAM_PORT, path: '/twilio-media' });
 
   server.on('connection', (socket: WebSocket) => {
     let session: Session | null = null;
@@ -217,7 +207,7 @@ export function startLiveStreamServer(stt: LiveSttFactory = openLiveStt, port = 
         }
 
         if (msg.event === 'start') {
-          const opened = await openSession(msg, stt);
+          const opened = await openSession(msg);
           if ('refused' in opened) {
             logger.warn({ reason: opened.refused }, 'live stream refused');
             socket.close(1008, opened.refused);
@@ -240,6 +230,6 @@ export function startLiveStreamServer(stt: LiveSttFactory = openLiveStt, port = 
     socket.on('error', () => socket.close());
   });
 
-  server.on('listening', () => logger.info({ port }, 'realtime call engine listening'));
+  server.on('listening', () => logger.info({ port: env.LIVE_STREAM_PORT }, 'realtime call engine listening'));
   return server;
 }

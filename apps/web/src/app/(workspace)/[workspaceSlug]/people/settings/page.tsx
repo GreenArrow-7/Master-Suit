@@ -1,5 +1,5 @@
 import { resolveWorkspacePage } from '@/lib/workspace-page';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import HrPolicyForm from '@/components/workspace/HrPolicyForm';
 import { isHrAdmin } from '@/services/hr/leave';
 import { getHrPolicy, GROUP_LABELS, HR_SETTINGS, type SettingGroup } from '@/services/hr/settings';
@@ -20,10 +20,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <PageIntro
-        eyebrow="People"
+      <ListHeader
         title="HR policy"
-        summary="Manage attendance, leave and payroll policies."
+        description="Manage attendance, leave and payroll policies."
         help={
           <p>
             Every tunable parameter behind attendance, leave and settlement, editable for this workspace. Anything left

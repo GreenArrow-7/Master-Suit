@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * The Leave screen, built to the reference: the balance cards with their
@@ -146,10 +147,7 @@ export default function LeaveScreen({
       <h2 className="lf-leave__section">Apply</h2>
       <form className="lf-card lf-leave__apply" onSubmit={apply}>
         <div className="lf-leave__fields">
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="lv-type">
-              Leave type
-            </label>
+          <Field label="Leave type" htmlFor="lv-type">
             <select
               id="lv-type"
               className="lf-input"
@@ -163,11 +161,8 @@ export default function LeaveScreen({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="lv-from">
-              First day
-            </label>
+          </Field>
+          <Field label="First day" htmlFor="lv-from">
             <input
               id="lv-from"
               className="lf-input"
@@ -176,11 +171,8 @@ export default function LeaveScreen({
               onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
               required
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="lv-to">
-              Last day
-            </label>
+          </Field>
+          <Field label="Last day" htmlFor="lv-to">
             <input
               id="lv-to"
               className="lf-input"
@@ -188,7 +180,7 @@ export default function LeaveScreen({
               value={form.endDate}
               onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
             />
-          </div>
+          </Field>
         </div>
         <label className="lf-leave__half">
           <input
@@ -198,10 +190,7 @@ export default function LeaveScreen({
           />
           Half day
         </label>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="lv-reason">
-            Reason (optional)
-          </label>
+        <Field label="Reason (optional)" htmlFor="lv-reason">
           <textarea
             id="lv-reason"
             className="lf-input"
@@ -209,7 +198,7 @@ export default function LeaveScreen({
             value={form.reason}
             onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
           />
-        </div>
+        </Field>
         {note && (
           <p className="lf-security__note" data-bad={note.bad} role="status">
             {note.text}

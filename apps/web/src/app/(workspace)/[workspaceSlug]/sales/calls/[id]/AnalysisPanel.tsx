@@ -1,5 +1,3 @@
-'use client';
-
 interface AnalysisData {
   status: string;
   summary: string | null;
@@ -53,41 +51,30 @@ function Section({ title, items, tone }: { title: string; items: string[]; tone?
   );
 }
 
+/** The panel before there is an analysis to show: one line, in the tone of its state. */
+function StatusCard({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+      <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
+        AI analysis
+      </div>
+      <p style={{ fontSize: 'var(--lf-text-sm)', color }}>{children}</p>
+    </section>
+  );
+}
+
 export default function AnalysisPanel({ analysis }: { analysis: AnalysisData | null }) {
   if (!analysis) {
     return (
-      <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI analysis
-        </div>
-        <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>
-          No analysis yet. Upload a transcript and trigger analysis from the Actions panel.
-        </p>
-      </section>
+      <StatusCard color="var(--lf-ink-3)">
+        No analysis yet. Upload a transcript and trigger analysis from the Actions panel.
+      </StatusCard>
     );
   }
-
-  if (analysis.status === 'PROCESSING') {
-    return (
-      <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI analysis
-        </div>
-        <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-brass)' }}>Analysis in progress…</p>
-      </section>
-    );
-  }
-
+  if (analysis.status === 'PROCESSING') return <StatusCard color="var(--lf-brass)">Analysis in progress…</StatusCard>;
   if (analysis.status === 'FAILED') {
     return (
-      <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-        <div className="lf-ai-label" style={{ marginBottom: 'var(--lf-space-3)' }}>
-          AI analysis
-        </div>
-        <p style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-vermillion)' }}>
-          Analysis failed: {analysis.errorMessage ?? 'Unknown error'}
-        </p>
-      </section>
+      <StatusCard color="var(--lf-vermillion)">Analysis failed: {analysis.errorMessage ?? 'Unknown error'}</StatusCard>
     );
   }
 

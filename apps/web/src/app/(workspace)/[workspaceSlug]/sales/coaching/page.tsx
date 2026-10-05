@@ -1,6 +1,6 @@
 import { requirePageAccess, pageLoad } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { coachingCallList, coachingAnalytics, coachingCounts } from '@/services/shared/coachingInsights';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -60,7 +60,7 @@ export default async function CoachingPage({
     analysedOnly,
   };
 
-  const isManager = SCOPE_RANK[scopeFor(ctx, 'calls', 'VIEW')] >= SCOPE_RANK.TEAM;
+  const isManager = atLeast(ctx, 'calls', 'VIEW', 'TEAM');
 
   const [calls, analytics, counts, reps, stages] = await pageLoad(
     Promise.all([

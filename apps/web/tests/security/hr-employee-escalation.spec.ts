@@ -14,10 +14,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { POST as hrPost } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { post } from '../helpers/request';
-import type { VisibilityScope } from '@prisma/client';
-import type { Grants } from '../helpers/fixtures';
 
 /**
  * Pinned here rather than imported from the route, so the test asserts the
@@ -27,20 +25,6 @@ const DEFAULT_EMPLOYEE_ROLE_RANK = 100;
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `escalation-${suffix}`;
-
-/** Permissions granted at a scope, created on demand so the catalogue need not be seeded. */
-async function grant(tenantId: string, roleId: string, pairs: Grants, scope: VisibilityScope) {
-  for (const [module, action] of pairs) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId, permissionId: permission.id, granted: true, scope },
-    });
-  }
-}
 
 let tenantId = '';
 let hrAdminCookie = '';
@@ -66,7 +50,7 @@ beforeAll(async () => {
   const hrAdminRole = await prisma.role.create({
     data: { tenantId, key: `hr_admin-${suffix}`, name: 'HR Administrator', rank: 10, defaultScope: 'ORGANIZATION' },
   });
-  await grant(
+  await grantPermissions(
     tenantId,
     hrAdminRole.id,
     [
@@ -88,7 +72,7 @@ beforeAll(async () => {
       defaultScope: 'OWN',
     },
   });
-  await grant(
+  await grantPermissions(
     tenantId,
     employeeRole.id,
     [

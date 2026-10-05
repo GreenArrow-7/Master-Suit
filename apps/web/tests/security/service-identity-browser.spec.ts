@@ -30,6 +30,7 @@ import { POST as serviceLogin, PATCH as selectWorkspace } from '@/app/api/v1/aut
 import { POST as humanLogin } from '@/app/api/v1/auth/login/route';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
 import { freshTotp } from '../helpers/totp';
+import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const username = `ai.browser.${suffix}`;
@@ -139,9 +140,7 @@ describe('two identities in one browser', () => {
     const serviceCookie = await createPlatformSessionToken(identityId, fx.a.tenantId, { purpose: 'AI_SERVICE' });
 
     const both = `${ownerCookie}; ${serviceCookie.replace(SESSION_COOKIE, SERVICE_SESSION_COOKIE)}`;
-    const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: both } }), {
-      params: Promise.resolve({}),
-    });
+    const res = await get(listLeads, '/api/v1/leads', both);
     // Resolving to the owner — who holds no membership here — used to 401.
     expect(res.status).toBe(200);
   });

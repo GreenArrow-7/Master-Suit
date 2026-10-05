@@ -308,5 +308,4 @@ function simulatedScore(
   };
 }
 
-export const practiceRubric = (scenario: PracticeScenario) => RUBRIC[scenario];
 export const practiceMaxScore = (scenario: PracticeScenario) => RUBRIC[scenario].length * MAX_PER_CRITERION;

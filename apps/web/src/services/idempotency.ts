@@ -38,13 +38,10 @@
  * a record-keeping decision. The durable record of what happened is the
  * assignment history and the audit log, which have their own retention.
  */
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { Conflict } from '@/lib/errors';
 import { prisma, withPlatformTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
-
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
 
 /**
  * How long a retry is still recognised as one.
@@ -64,7 +61,7 @@ export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
  */
 export function fingerprint(input: Record<string, unknown>): string {
   const canonical = JSON.stringify(input, Object.keys(input).sort());
-  return createHash('sha256').update(canonical).digest('hex');
+  return hash('sha256', canonical);
 }
 
 export interface IdempotencyRequest {
@@ -76,7 +73,6 @@ export interface IdempotencyRequest {
   input: Record<string, unknown>;
   /** What the operation is about — for triage assignment, the episode id. */
   scopeRef?: string | null;
-  ttlMs?: number;
 }
 
 export interface Replay<T> {
@@ -134,22 +130,26 @@ export async function findReplay<T>(req: IdempotencyRequest): Promise<Replay<T> 
  * conflict, which is the honest answer: two identical requests genuinely raced
  * and only one of them did the work.
  */
-export async function recordOutcome<T>(tx: TransactionClient, req: IdempotencyRequest, result: T): Promise<void> {
-  const expiresAt = new Date(Date.now() + (req.ttlMs ?? DEFAULT_TTL_MS));
-  const rows = await tx.$queryRaw<{ id: string }[]>`
-    INSERT INTO "IdempotentRequest" (
-      "id", "tenantId", "operation", "requestKey", "fingerprint", "actorUserId",
-      "scopeRef", "result", "createdAt", "expiresAt"
-    )
-    VALUES (
-      gen_random_uuid()::text, ${req.tenantId}, ${req.operation}, ${req.requestKey},
-      ${fingerprint({ ...req.input, actorUserId: req.actorUserId })}, ${req.actorUserId},
-      ${req.scopeRef ?? null}, ${JSON.stringify(result)}::jsonb, NOW(), ${expiresAt}
-    )
-    ON CONFLICT ("tenantId", "operation", "requestKey") DO NOTHING
-    RETURNING "id"
-  `;
-  if (rows.length === 0) {
+export async function recordOutcome<T>(tx: TxClient, req: IdempotencyRequest, result: T): Promise<void> {
+  const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
+  // skipDuplicates (ON CONFLICT DO NOTHING), not create(): a unique violation would
+  // abort the operation's transaction, where a skipped row is a count of zero.
+  const { count } = await tx.idempotentRequest.createMany({
+    data: [
+      {
+        tenantId: req.tenantId,
+        operation: req.operation,
+        requestKey: req.requestKey,
+        fingerprint: fingerprint({ ...req.input, actorUserId: req.actorUserId }),
+        actorUserId: req.actorUserId,
+        scopeRef: req.scopeRef ?? null,
+        result: JSON.parse(JSON.stringify(result)),
+        expiresAt,
+      },
+    ],
+    skipDuplicates: true,
+  });
+  if (count === 0) {
     // Somebody else recorded this key between our lookup and here. Both attempts
     // cannot have done the work — the operation's own guards saw to that — so
     // the loser rolls back and says so.

@@ -6,19 +6,14 @@
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-const original = process.env.SHADOW_DATABASE_URL;
-
 async function shadowUrlFor(value: string) {
   vi.resetModules();
-  process.env.SHADOW_DATABASE_URL = value;
+  vi.stubEnv('SHADOW_DATABASE_URL', value);
   const config = (await import('../../prisma.config')).default;
   return config.datasource?.shadowDatabaseUrl;
 }
 
-afterAll(() => {
-  if (original === undefined) delete process.env.SHADOW_DATABASE_URL;
-  else process.env.SHADOW_DATABASE_URL = original;
-});
+afterAll(() => vi.unstubAllEnvs());
 
 describe('prisma.config shadowDatabaseUrl', () => {
   it('omits an empty SHADOW_DATABASE_URL instead of passing an empty string', async () => {

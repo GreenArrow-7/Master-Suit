@@ -24,15 +24,6 @@
   background: linear-gradient(168deg, var(--yh-midnight) 0%, var(--yh-navy) 58%, #0a1d3d 100%);
 }
 
-.lf-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 /* ── The brand side ────────────────────────────────────────────────────────── */
 
 .lf-auth-story {
@@ -644,19 +635,6 @@
   font-weight: 600;
   font-size: 12.5px;
   cursor: pointer;
-}
-.lf-auth-links {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--lf-space-5);
-  font-size: var(--lf-text-sm);
-}
-.lf-auth-links a {
-  color: var(--yh-azure);
-  text-decoration: none;
-}
-.lf-auth-links a:hover {
-  text-decoration: underline;
 }
 
 /* ── Widths ────────────────────────────────────────────────────────────────── */

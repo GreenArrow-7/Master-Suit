@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { budgetsFor, budgetState, checkBudget, periodStart } from '@/lib/ai/budgets';
+import { budgetState } from '@/lib/ai/budgets';
 import { effectiveGuardrails, applyGuardrails } from '@/lib/ai/guardrails';
 import { validateSteps, routeFor } from '@/lib/ai/routing';
 import { costMicros, priceFor, resetPriceCache } from '@/lib/ai/pricing';
@@ -79,39 +79,6 @@ describe('tokenomics', () => {
 });
 
 describe('budgets', () => {
-  it('the narrowest ceiling that names the request wins, and the rest are shadowed', async () => {
-    await prisma.aiBudget.createMany({
-      data: [
-        { scope: 'TENANT', scopeId: tenantId, tokenLimit: BigInt(1000), period: 'MONTHLY' },
-        { scope: 'TENANT', scopeId: tenantId, feature, tokenLimit: BigInt(10), period: 'MONTHLY' },
-      ],
-    });
-    const ordered = await budgetsFor({ tenantId, feature });
-    expect(ordered[0]?.feature, 'the feature-narrowed budget binds first').toBe(feature);
-    expect(
-      ordered.some((b) => b.feature === null),
-      'the wider one is still listed as shadowed',
-    ).toBe(true);
-  });
-
-  it('an alert-only budget warns and never refuses; a blocking one refuses', async () => {
-    const since = periodStart('MONTHLY');
-    await prisma.aiEvent.create({
-      data: { tenantId, feature, inputTokens: 40, outputTokens: 10, occurredAt: new Date(since.getTime() + 1000) },
-    });
-
-    const alerting = await checkBudget({ tenantId, feature });
-    expect(alerting.state?.exceeded, '50 tokens against a ceiling of 10').toBe(true);
-    expect(alerting.allowed, 'alert-only lets the work through').toBe(true);
-
-    await prisma.aiBudget.updateMany({ where: { scopeId: tenantId, feature }, data: { action: 'BLOCK' } });
-    const blocking = await checkBudget({ tenantId, feature });
-    expect(blocking.allowed).toBe(false);
-    expect(blocking.message).toMatch(/budget/i);
-
-    await prisma.aiEvent.deleteMany({ where: { tenantId } });
-  });
-
   it('a platform-wide ceiling, which names no company, can still be read', async () => {
     // The console's own case, and the one that fails silently: a PLATFORM budget
     // sums AiEvent across every tenant. AiEvent is under FORCE row-level
@@ -129,27 +96,6 @@ describe('budgets', () => {
     } finally {
       await prisma.aiBudget.delete({ where: { id: platform.id } });
       await prisma.aiEvent.deleteMany({ where: { tenantId } });
-    }
-  });
-
-  it('a request nobody set a ceiling for is allowed', async () => {
-    const verdict = await checkBudget({ tenantId: `no-such-${suffix}`, feature: 'social-draft' });
-    expect(verdict.allowed).toBe(true);
-  });
-
-  it('a per-person default is not an aggregate ceiling', async () => {
-    // The two live in one table and only `appliesPerUser` separates them. Read
-    // as a ceiling, a 100k-per-person default would refuse the whole company at
-    // 100k of combined spend, which is the opposite of what it was set for.
-    const perUser = await prisma.aiBudget.create({
-      data: { scope: 'PLATFORM', scopeId: null, appliesPerUser: true, tokenLimit: BigInt(1), action: 'BLOCK' },
-    });
-    try {
-      const verdict = await checkBudget({ tenantId: `no-such-${suffix}`, feature: 'social-draft' });
-      expect(verdict.allowed, 'a per-person default never refuses an aggregate check').toBe(true);
-      expect(verdict.state).toBeNull();
-    } finally {
-      await prisma.aiBudget.delete({ where: { id: perUser.id } });
     }
   });
 });

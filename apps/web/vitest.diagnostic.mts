@@ -1,9 +1,5 @@
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { defineConfig } from 'vitest/config';
-import { loadEnv } from 'vite';
-
-const rootDir = fileURLToPath(new URL('.', import.meta.url));
+import base from './vitest.config.mts';
 
 /**
  * Baseline-validation diagnostics. NOT part of any CI gate.
@@ -17,17 +13,16 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url));
  *
  * Each assertion states the behaviour a reviewer would expect. A FAILING
  * assertion here is the evidence for a finding, not a broken test.
+ *
+ * The base config's environment and `@` alias are reused; its `test` block is
+ * replaced, not merged.
  */
-export default defineConfig(({ mode }) => {
-  for (const [k, v] of Object.entries(loadEnv(mode, rootDir, ''))) process.env[k] ??= v;
-  return {
-    resolve: { alias: { '@': path.resolve(rootDir, 'src') } },
-    test: {
-      globals: true,
-      include: ['tests/diagnostic/**/*.diag.ts'],
-      testTimeout: 60_000,
-      hookTimeout: 120_000,
-      fileParallelism: false,
-    },
-  };
-});
+export default defineConfig((env) => ({
+  ...base(env),
+  test: {
+    include: ['tests/diagnostic/**/*.diag.ts'],
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
+    fileParallelism: false,
+  },
+}));

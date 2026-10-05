@@ -29,6 +29,7 @@ import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { GET as listAccounts } from '@/app/api/v1/accounts/route';
 import { GET as identity } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/[action]/route';
 import { POST as login } from '@/app/api/v1/auth/login/route';
+import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const email = `svc.${suffix}@platform.test`;
@@ -394,14 +395,12 @@ describe('invisible to the tenant, by absence rather than by filter', () => {
   });
 
   it('does not appear in the workspace user directory the admin actually sees', async () => {
-    const res = await identity(
-      new Request(`http://localhost/api/v1/workspaces/${fx.a.slug}/identity/accounts`, {
-        headers: { cookie: fx.a.cookie },
-      }),
-      { params: Promise.resolve({ workspaceSlug: fx.a.slug, action: 'accounts' }) },
-    );
+    const res = await get(identity, `/api/v1/workspaces/${fx.a.slug}/identity/accounts`, fx.a.cookie, {
+      workspaceSlug: fx.a.slug,
+      action: 'accounts',
+    });
     expect(res.status).toBe(200);
-    expect(JSON.stringify(await res.json())).not.toContain(email);
+    expect(JSON.stringify(res.body)).not.toContain(email);
   });
 });
 

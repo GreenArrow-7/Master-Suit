@@ -12,7 +12,8 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting, settingCacheKey } from '@/lib/platform-settings';
+import { redis } from '@/lib/redis';
 import { createPlatformSessionToken } from '../helpers/session';
 import { patch, del } from '../helpers/request';
 import { lockShared, UPLOAD_LIMIT_LOCK, type Release } from '../helpers/serialize';
@@ -134,6 +135,9 @@ afterAll(async () => {
   await prisma.subscriptionPlan.deleteMany({ where: { code: { contains: suffix } } }).catch(() => {});
   await prisma.platformUser.deleteMany({ where: { normalizedEmail: { contains: suffix } } }).catch(() => {});
   await prisma.platformSetting.deleteMany({ where: { key: 'uploadMaxMb' } }).catch(() => {});
+  // The setting is read through a one-minute cache; the console clears it on
+  // write, and so must a cleanup that deletes the row behind its back.
+  await redis.del(settingCacheKey('uploadMaxMb')).catch(() => {});
   // Released only after the row is back to its default, so the next reader
   // never sees this file's value.
   await releaseUploadLimit();
@@ -269,7 +273,7 @@ describe('operator settings', () => {
       ownerCookie,
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(await getUploadMaxMb()).toBe(10);
+    expect(await getNumericSetting('uploadMaxMb')).toBe(10);
   });
 
   it("refuses a value outside the setting's own rule", async () => {
@@ -288,7 +292,7 @@ describe('operator settings', () => {
     );
     expect(garbage.status).toBe(422);
     // The stored value is untouched by the refused writes.
-    expect(await getUploadMaxMb()).toBe(10);
+    expect(await getNumericSetting('uploadMaxMb')).toBe(10);
   });
 
   it('refuses a key that is not an editable setting', async () => {

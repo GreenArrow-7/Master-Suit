@@ -30,7 +30,6 @@ export default async function SubscriptionsPage() {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Commercial"
         title="Subscriptions"
         description="Change a customer's plan or state here; module entitlements follow the subscription automatically."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Subscriptions' }]}

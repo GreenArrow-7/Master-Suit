@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { POST as hrCreate } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { post } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
@@ -38,20 +38,11 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `hr-${suffix}`, name: 'HR', rank: 10, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of [
+  await grantPermissions(tenantId, role.id, [
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
     ['employee', 'CREATE'],
-  ] as const) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  ] as const);
   const admin = await createWorkspaceUser({
     tenantId,
     roleId: role.id,

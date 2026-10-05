@@ -11,8 +11,8 @@
  * a proxy that rewrites the host breaks the signature, and that is the intended
  * behaviour rather than something to work around.
  */
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { basic, vendorFetch, xml } from './http';
+import { createHmac, timingSafeEqual, hash } from 'node:crypto';
+import { basic, vendorFetch, xml, num } from './http';
 import type {
   CallEvent,
   CallEventKind,
@@ -149,7 +149,7 @@ export class TwilioProvider implements TelephonyProvider {
       const params = new URLSearchParams(request.rawBody);
       for (const key of [...params.keys()].sort()) payload += key + params.getAll(key).join('');
     } else {
-      const digest = createHash('sha256').update(request.rawBody).digest('hex');
+      const digest = hash('sha256', request.rawBody);
       const url = new URL(request.url);
       if (url.searchParams.get('bodySHA256') !== digest) return false;
     }
@@ -203,9 +203,3 @@ export class TwilioProvider implements TelephonyProvider {
     return ['api.twilio.com', '.twiliocdn.com'];
   }
 }
-
-const num = (value: string | null): number | undefined => {
-  if (value == null || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-};

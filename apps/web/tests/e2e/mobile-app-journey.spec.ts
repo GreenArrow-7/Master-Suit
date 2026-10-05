@@ -15,7 +15,7 @@
  */
 import { test, expect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 const slug = process.env.MOBILE_JOURNEY_SLUG ?? '';
 const user = process.env.MOBILE_JOURNEY_USER ?? '';
@@ -41,7 +41,6 @@ test.describe('Mobile app journey (web layer of the development shell)', () => {
   async function signedIn(browser: Browser, email: string) {
     const context = await browser.newContext(phone);
     const page = await context.newPage();
-    await resetLoginThrottle();
     await login(page, email, password);
     return { context, page };
   }

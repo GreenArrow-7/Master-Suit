@@ -38,18 +38,6 @@
  */
 import { prisma, type TxClient } from '@/lib/db';
 
-/**
- * What `withTx` hands its callback, under the name
- * `scripts/check-raw-sql-scope.mjs` looks for.
- *
- * That checker reads the parameter's *annotation* to decide whether a raw
- * statement runs inside a tenant transaction — and a raw statement it cannot
- * classify is one nobody is checking. `TxClient` is the right type and does not
- * say so in text the checker can see, so it is named here rather than left
- * ambiguous.
- */
-type TransactionClient = TxClient;
-
 /** A read-only client: the request-scoped one, or a transaction. */
 type Reader = Pick<typeof prisma, 'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest'>;
 
@@ -66,7 +54,6 @@ export type IneligibilityCode =
   | 'NOT_ACTIVE'
   | 'MEMBERSHIP_INACTIVE'
   | 'EMPLOYMENT_ENDED'
-  | 'NOT_IN_TEAM'
   | 'MARKED_UNAVAILABLE'
   | 'ON_APPROVED_LEAVE'
   /** What an HR-sourced blocker becomes for a Sales viewer. See `redactForSales`. */
@@ -152,8 +139,6 @@ export interface EligibilityPolicy {
   respectLeave: boolean;
   respectQuotas: boolean;
   respectCapacity: boolean;
-  /** Candidates must belong to this team, when the rule scopes to one. */
-  requireTeamId?: string | null;
 }
 
 export const DEFAULT_POLICY: EligibilityPolicy = {
@@ -218,7 +203,6 @@ export async function assessEligibility(
       weeklyLeadQuota: true,
       monthlyLeadQuota: true,
       activeLeadCapacity: true,
-      teams: policy.requireTeamId ? { select: { teamId: true } } : false,
       workspaceMembership: {
         select: {
           status: true,
@@ -302,11 +286,6 @@ export async function assessEligibility(
       }
     }
 
-    if (policy.requireTeamId) {
-      const inTeam = (u.teams as { teamId: string }[] | undefined)?.some((t) => t.teamId === policy.requireTeamId);
-      if (!inTeam) blockers.push({ code: 'NOT_IN_TEAM', detail: 'not a member of the routed team' });
-    }
-
     if (policy.respectLeave) {
       const until = employee ? leaveByEmployee.get(employee.id) : undefined;
       if (until) {
@@ -384,7 +363,7 @@ async function counts(client: Reader, tenantId: string, userIds: string[], since
  * where the obligation subsystem's opposite ordering is reconciled with this one.
  */
 export async function lockAndVerify(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   userId: string,
   policy: EligibilityPolicy,

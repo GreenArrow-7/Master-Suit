@@ -18,7 +18,7 @@
  *     one like it might hit a table whose policy is wrong. That has happened
  *     once already, on HrOvertimeRequest.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetMetricsForTests,
   increment,
@@ -40,9 +40,7 @@ const scrape = (token?: string) =>
   );
 
 beforeEach(() => __resetMetricsForTests());
-afterEach(() => {
-  delete process.env.METRICS_TOKEN;
-});
+afterEach(() => vi.unstubAllEnvs());
 
 describe('the endpoint', () => {
   it('is absent when no token is configured, rather than refusing', async () => {
@@ -54,19 +52,19 @@ describe('the endpoint', () => {
   });
 
   it('refuses a wrong token', async () => {
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     expect((await scrape('not-the-token')).status).toBe(404);
     expect((await scrape()).status).toBe(404);
   });
 
   it('refuses a token that is merely a prefix of the real one', async () => {
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     expect((await scrape('the-real-toke')).status).toBe(404);
     expect((await scrape('the-real-token-and-more')).status).toBe(404);
   });
 
   it('serves the exposition format to a correct token', async () => {
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const response = await scrape('the-real-token');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/plain');
@@ -75,7 +73,7 @@ describe('the endpoint', () => {
   });
 
   it('always emits masterapp_up, so an empty scrape is distinguishable from a dead process', async () => {
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
     expect(body).toContain('masterapp_up 1');
   });
@@ -85,24 +83,19 @@ describe('the endpoint', () => {
     // answer at all: images were built from the working tree on the VM, so the
     // only record of what was running was `git log` on the host — which is the
     // next release the moment somebody pulls.
-    process.env.METRICS_TOKEN = 'the-real-token';
-    process.env.BUILD_COMMIT = 'abc123def456';
-    process.env.BUILD_TIME = '2026-08-20T12:00:00Z';
-    try {
-      const body = await (await scrape('the-real-token')).text();
-      expect(body).toContain('commit="abc123def456"');
-      expect(body).toContain('built_at="2026-08-20T12:00:00Z"');
-    } finally {
-      delete process.env.BUILD_COMMIT;
-      delete process.env.BUILD_TIME;
-    }
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
+    vi.stubEnv('BUILD_COMMIT', 'abc123def456');
+    vi.stubEnv('BUILD_TIME', '2026-08-20T12:00:00Z');
+    const body = await (await scrape('the-real-token')).text();
+    expect(body).toContain('commit="abc123def456"');
+    expect(body).toContain('built_at="2026-08-20T12:00:00Z"');
   });
 
   it('says unknown rather than nothing for an image built outside the release script', async () => {
     // Absence would look like the metric was not implemented. `unknown` is a
     // fact worth seeing: this image did not come through scripts/release.sh.
-    process.env.METRICS_TOKEN = 'the-real-token';
-    delete process.env.BUILD_COMMIT;
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
+    vi.stubEnv('BUILD_COMMIT', undefined);
     const body = await (await scrape('the-real-token')).text();
     expect(body).toContain('commit="unknown"');
   });
@@ -112,7 +105,7 @@ describe('the endpoint', () => {
     // retention job does not touch them — deleting an audit trail is a
     // compliance decision, not an engineering one. So growth is reported rather
     // than assumed away, which makes "when do we need to partition" a graph.
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
     for (const table of ['AuditLog', 'HrAttendancePunch', 'PlatformAuditEvent']) {
       expect(body).toContain(`masterapp_table_rows_estimate{table="${table}"}`);
@@ -125,7 +118,7 @@ describe('the endpoint', () => {
     // could accept an outgoing token alongside the current one there was no way
     // to change it without failing every check-in mid-shift. The mechanism
     // exists; this gauge and FaceServiceTokenStale are what make anyone use it.
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
     expect(body).toContain('masterapp_secret_age_days{secret="face_service_token"}');
     // The threshold travels with the metric so the rule file — mounted read-only
@@ -139,7 +132,7 @@ describe('the endpoint', () => {
     // compliance answer. "Nobody has decided" is a real state; this is what
     // stops it being an invisible one. Zero is unambiguous because the schema
     // floors a real window at 30 days.
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
     for (const table of ['AuditLog', 'HrAttendancePunch', 'PlatformAuditEvent']) {
       expect(body).toContain(`masterapp_retention_window_days{table="${table}"}`);
@@ -151,7 +144,7 @@ describe('the endpoint', () => {
     // estimate the headroom at roughly a thousand organizations. An estimate is
     // what you use when nothing measures — so turning it on, or leaving it off,
     // was a guess in both directions until this.
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
     expect(body).toMatch(/masterapp_db_connections_total \d+/);
     // The limit travels with the reading so the alert carries no hard-coded
@@ -162,7 +155,7 @@ describe('the endpoint', () => {
   });
 
   it('reports every queue, including the ones with no consumer', async () => {
-    process.env.METRICS_TOKEN = 'the-real-token';
+    vi.stubEnv('METRICS_TOKEN', 'the-real-token');
     const body = await (await scrape('the-real-token')).text();
 
     // The signal that would have caught the dead worker. `ai`, `media` and

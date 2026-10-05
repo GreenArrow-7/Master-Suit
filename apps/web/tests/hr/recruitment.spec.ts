@@ -33,7 +33,7 @@ import {
   submitRequisition,
 } from '@/services/hr/recruitment';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import type { PermissionMap } from '@/lib/security/rbac';
+import { createEmployee, createWorkspaceUser } from '../helpers/fixtures';
 
 // ── Pure pipeline rules ────────────────────────────────────────────────────
 
@@ -79,11 +79,8 @@ let roleId = '';
 const employees: Record<string, string> = {};
 const userIds: Record<string, string> = {};
 
-const permissions = (grants: readonly (readonly [string, string])[], scope = 'ORGANIZATION') =>
-  new Map(grants.map(([module, action]) => [`${module}:${action}`, scope])) as PermissionMap;
-
 const ctxFor = (label: string, grants: readonly (readonly [string, string])[]) =>
-  buildCtx(buildActor({ id: userIds[label]!, tenantId, roleRank: 0, permissions: permissions(grants) }));
+  buildCtx(buildActor({ id: userIds[label]!, tenantId, grants }));
 
 const RECRUITER = [
   ['recruitment', 'VIEW'],
@@ -109,27 +106,9 @@ const APPROVER = [
 const OUTSIDER = [['employee', 'VIEW']] as const;
 
 async function makeEmployee(label: string) {
-  const email = `${label}-${suffix}@ats.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId,
-      membershipId: membership.id,
-      employeeNumber: `${label.toUpperCase()}-${suffix}`,
-      employmentStatus: 'ACTIVE',
-      joinedOn: new Date('2020-01-01'),
-    },
-  });
-  employees[label] = employee.id;
-  userIds[label] = user.id;
+  const e = await createEmployee({ tenantId, label, suffix, roleId });
+  employees[label] = e.employeeId;
+  userIds[label] = e.userId;
 }
 
 const future = (days: number) => new Date(Date.now() + days * 86_400_000);
@@ -406,24 +385,16 @@ describe('offers and the hire', () => {
   it('links the employee back to the application once accepted, and onboards', async () => {
     // Standing in for acceptance, which is an unauthenticated flow with its own
     // suite: what matters here is that an employee carrying the link onboards.
-    const platformUser = await prisma.platformUser.create({
-      data: {
-        email: `joiner-${suffix}@example.test`,
-        normalizedEmail: `joiner2-${suffix}@example.test`,
-        fullName: 'New Joiner',
-        status: 'ACTIVE',
-      },
-    });
-    const user = await prisma.user.create({
-      data: { tenantId, email: `joiner2-${suffix}@example.test`, fullName: 'New Joiner', roleId, status: 'ACTIVE' },
-    });
-    const membership = await prisma.workspaceMembership.create({
-      data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId,
+      email: `joiner2-${suffix}@example.test`,
+      fullName: 'New Joiner',
     });
     await prisma.employeeProfile.create({
       data: {
         tenantId,
-        membershipId: membership.id,
+        membershipId: user.membershipId,
         employeeNumber: `NEW-${suffix}`,
         employmentStatus: 'ONBOARDING',
         joinedOn: future(30),

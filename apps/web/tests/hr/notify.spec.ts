@@ -17,7 +17,7 @@ import { notifyHr } from '@/services/hr/notify';
 import { entityRoute } from '@/lib/nav/entityRoute';
 import { decideOvertime, requestOvertime } from '@/services/hr/overtime';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import type { PermissionMap } from '@/lib/security/rbac';
+import { grantPermissions, createEmployee } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `ntf-${suffix}`;
@@ -27,11 +27,8 @@ let approverRoleId = '';
 const employees: Record<string, string> = {};
 const userIds: Record<string, string> = {};
 
-const permissions = (grants: readonly (readonly [string, string])[]) =>
-  new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap;
-
 const ctxFor = (label: string, grants: readonly (readonly [string, string])[]) =>
-  buildCtx(buildActor({ id: userIds[label]!, tenantId, permissions: permissions(grants) }));
+  buildCtx(buildActor({ id: userIds[label]!, tenantId, grants }));
 
 const STAFF = [['employee', 'VIEW']] as const;
 const APPROVER = [
@@ -40,27 +37,9 @@ const APPROVER = [
 ] as const;
 
 async function makeEmployee(label: string, roleId: string) {
-  const email = `${label}-${suffix}@notify.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId,
-      membershipId: membership.id,
-      employeeNumber: `${label.toUpperCase()}-${suffix}`,
-      employmentStatus: 'ACTIVE',
-      joinedOn: new Date('2020-01-01'),
-    },
-  });
-  employees[label] = employee.id;
-  userIds[label] = user.id;
+  const e = await createEmployee({ tenantId, label, suffix, roleId });
+  employees[label] = e.employeeId;
+  userIds[label] = e.userId;
 }
 
 const inboxOf = (label: string) =>
@@ -83,14 +62,7 @@ beforeAll(async () => {
     data: { tenantId, key: `approver-${suffix}`, name: 'Overtime Approver', rank: 20, defaultScope: 'ORGANIZATION' },
   });
   approverRoleId = approverRole.id;
-  const permission = await prisma.permission.upsert({
-    where: { module_action: { module: 'overtime', action: 'APPROVE' } },
-    update: {},
-    create: { module: 'overtime', action: 'APPROVE' },
-  });
-  await prisma.rolePermission.create({
-    data: { tenantId, roleId: approverRole.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-  });
+  await grantPermissions(tenantId, approverRole.id, [['overtime', 'APPROVE']]);
 
   await makeEmployee('worker', plain.id);
   await makeEmployee('manager', approverRole.id);
@@ -196,14 +168,9 @@ describe('permission-resolved audiences', () => {
     const newRole = await prisma.role.create({
       data: { tenantId, key: `moved-${suffix}`, name: 'Moved', rank: 20, defaultScope: 'ORGANIZATION' },
     });
-    const permission = await prisma.permission.findFirstOrThrow({
-      where: { module: 'overtime', action: 'APPROVE' },
-    });
     // Take the authority off the original role and give it to a new one.
     await prisma.rolePermission.deleteMany({ where: { tenantId, roleId: approverRoleId } });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: newRole.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
+    await grantPermissions(tenantId, newRole.id, [['overtime', 'APPROVE']]);
     await prisma.user.update({ where: { tenantId, id: userIds.bystander! }, data: { roleId: newRole.id } });
 
     await requestOvertime(ctxFor('worker', STAFF), {

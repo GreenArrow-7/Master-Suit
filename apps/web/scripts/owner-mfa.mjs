@@ -17,17 +17,16 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
-import dotenv from 'dotenv';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, '..');
 
-// dotenv, not a hand-rolled reader: the previous loop split on '\n' and kept the
-// trailing '\r' from this repo's CRLF .env, so DATABASE_URL/MIGRATION_DATABASE_URL
-// arrived with a stray carriage return and every Prisma query threw. dotenv strips
-// line endings and, like the old loop, does not override anything already exported.
-dotenv.config({ path: path.join(appRoot, '.env') });
+// Node's loader, not a hand-rolled one: the old loop split on '\n' and kept the
+// trailing '\r' from this repo's CRLF .env, so every Prisma query threw. It strips
+// line endings and does not override anything already exported.
+if (existsSync(path.join(appRoot, '.env'))) process.loadEnvFile(path.join(appRoot, '.env'));
 
 if (process.env.NODE_ENV === 'production') {
   console.error('Refusing to run against production. Enroll through /enroll-2fa.');

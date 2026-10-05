@@ -32,6 +32,7 @@ import { POST as humanLogin } from '@/app/api/v1/auth/login/route';
 import { GET as listLeads, POST as createLead } from '@/app/api/v1/leads/route';
 import { GET as listAccounts } from '@/app/api/v1/accounts/route';
 import { freshTotp } from '../helpers/totp';
+import { del, get, post } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 const username = `ai.reader.${suffix}`;
@@ -73,23 +74,6 @@ async function login(body: Record<string, unknown>, origin?: string) {
  */
 const sessionFor = (tenantId: string | null = null) =>
   createPlatformSessionToken(identityId, tenantId, { purpose: 'AI_SERVICE' });
-
-async function callWithCookie(
-  handler: (req: Request, ctx: { params: Promise<any> }) => Promise<Response>,
-  path: string,
-  cookie: string,
-  options: { method?: string; body?: unknown } = {},
-) {
-  const res = await handler(
-    new Request(`http://localhost${path}`, {
-      method: options.method ?? 'GET',
-      headers: { cookie, ...(options.body !== undefined ? { 'content-type': 'application/json' } : {}) },
-      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-    }),
-    { params: Promise.resolve({}) },
-  );
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
 
 /** A minimal owner context for the platform recovery services. */
 const ownerCtx = () =>
@@ -271,7 +255,7 @@ describe('username + password + MFA', () => {
       purpose: 'MFA_ENROLMENT',
       mfaSatisfied: false,
     });
-    expect((await callWithCookie(listLeads, '/api/v1/leads', grantCookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', grantCookie)).status).toBe(401);
 
     await prisma.platformUser.delete({ where: { id: created.id } });
   });
@@ -322,10 +306,10 @@ describe('account standing', () => {
 
   it('a deactivated identity cannot use an already-issued session either', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
 
     await prisma.platformUser.update({ where: { id: identityId }, data: { status: 'DEACTIVATED' } });
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
     await prisma.platformUser.update({ where: { id: identityId }, data: { status: 'ACTIVE' } });
   });
 
@@ -346,7 +330,7 @@ describe('account standing', () => {
     });
     if (full) {
       const cookie = await createPlatformSessionToken(identityId, fx.a.tenantId, { purpose: 'FULL' });
-      expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+      expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
     }
   });
 });
@@ -356,17 +340,19 @@ describe('account standing', () => {
 describe('the session buys no authority', () => {
   it('reads only what the identity scopes allow', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
     // accounts:read was never granted.
-    expect((await callWithCookie(listAccounts, '/api/v1/accounts', cookie)).status).toBe(403);
+    expect((await get(listAccounts, '/api/v1/accounts', cookie)).status).toBe(403);
   });
 
   it('still cannot write tenant data', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    const res = await callWithCookie(createLead, '/api/v1/leads', cookie, {
-      method: 'POST',
-      body: { fullName: 'Interactive Should Not Write', phone: '+971500000009', stageId: fx.a.stageId },
-    });
+    const res = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Interactive Should Not Write', phone: '+971500000009', stageId: fx.a.stageId },
+      cookie,
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(
       await prisma.lead.findFirst({ where: { tenantId: fx.a.tenantId, fullName: 'Interactive Should Not Write' } }),
@@ -383,10 +369,12 @@ describe('the session buys no authority', () => {
       },
     });
     const cookie = await sessionFor(fx.a.tenantId);
-    const res = await callWithCookie(createLead, '/api/v1/leads', cookie, {
-      method: 'POST',
-      body: { fullName: 'Elevated Should Not Write', phone: '+971500000010', stageId: fx.a.stageId },
-    });
+    const res = await post(
+      createLead,
+      '/api/v1/leads',
+      { fullName: 'Elevated Should Not Write', phone: '+971500000010', stageId: fx.a.stageId },
+      cookie,
+    );
     expect(res.status).toBe(403);
     await prisma.platformAccessGrant.deleteMany({ where: { platformUserId: identityId } });
   });
@@ -398,21 +386,21 @@ describe('the session buys no authority', () => {
     });
     const allowed = await sessionFor(fx.a.tenantId);
     const refused = await sessionFor(fx.b.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', allowed)).status).toBe(200);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', refused)).status).toBe(403);
+    expect((await get(listLeads, '/api/v1/leads', allowed)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', refused)).status).toBe(403);
     await prisma.platformUser.update({ where: { id: identityId }, data: { serviceTenantAllowlist: [] } });
   });
 
   it('an empty scope list reads nothing at all', async () => {
     await prisma.platformUser.update({ where: { id: identityId }, data: { serviceScopes: [] } });
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(403);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(403);
     await prisma.platformUser.update({ where: { id: identityId }, data: { serviceScopes: ['leads:read'] } });
   });
 
   it('a FULL session for this identity is refused and revoked on sight', async () => {
     const cookie = await createPlatformSessionToken(identityId, fx.a.tenantId, { purpose: 'FULL' });
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
 
     const row = await prisma.platformSession.findFirst({
       where: { platformUserId: identityId, purpose: 'FULL' },
@@ -424,7 +412,7 @@ describe('the session buys no authority', () => {
 
   it('an AI_SERVICE session on a human account is refused too', async () => {
     const cookie = await createPlatformSessionToken(ownerId, fx.a.tenantId, { purpose: 'AI_SERVICE' });
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
   });
 });
 
@@ -444,7 +432,7 @@ describe('session security', () => {
 
   it('revoking a session stops it immediately', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
 
     const session = await prisma.platformSession.findFirst({
       where: { platformUserId: identityId, revokedAt: null },
@@ -454,7 +442,20 @@ describe('session security', () => {
       where: { id: session!.id },
       data: { revokedAt: new Date(), revokedReason: 'TEST' },
     });
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+  });
+
+  it('a plain logout ends only the session that asked', async () => {
+    const cookie = await sessionFor(null);
+    await sessionFor(null);
+    const live = () => prisma.platformSession.count({ where: { platformUserId: identityId, revokedAt: null } });
+    const before = await live();
+
+    const res = await del(serviceLogout, '/api/v1/auth/service-login', cookie, {});
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.sessionsRevoked).toBe(1);
+    // It used to revoke every session the identity held and report 1.
+    expect(await live()).toBe(before - 1);
   });
 
   it('logout-all ends every live session', async () => {
@@ -464,24 +465,19 @@ describe('session security', () => {
       await prisma.platformSession.count({ where: { platformUserId: identityId, revokedAt: null } }),
     ).toBeGreaterThan(1);
 
-    const res = await serviceLogout(
-      new Request('http://localhost/api/v1/auth/service-login?all=true', {
-        method: 'DELETE',
-        headers: { cookie },
-      }),
-    );
-    expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+    const res = await del(serviceLogout, '/api/v1/auth/service-login?all=true', cookie, {});
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await prisma.platformSession.count({ where: { platformUserId: identityId, revokedAt: null } })).toBe(0);
   });
 
   it('a password reset invalidates existing sessions', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
 
     const { resetPassword } = await import('@/services/platform/identity');
     await resetPassword(ownerCtx(), identityId, { password: 'BrandNew-Password-2026', requireChange: false });
 
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
     await prisma.platformUser.update({
       where: { id: identityId },
       data: { passwordHash: await hashPassword(PASSWORD) },
@@ -490,12 +486,12 @@ describe('session security', () => {
 
   it('an MFA reset invalidates existing sessions and forces re-enrolment', async () => {
     const cookie = await sessionFor(fx.a.tenantId);
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(200);
 
     const { resetMfa } = await import('@/services/platform/identity');
     await resetMfa(ownerCtx(), identityId);
 
-    expect((await callWithCookie(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
+    expect((await get(listLeads, '/api/v1/leads', cookie)).status).toBe(401);
     const row = await prisma.platformUser.findUnique({ where: { id: identityId } });
     expect(row?.mfaEnabled).toBe(false);
     expect(row?.mfaSecret).toBeNull();

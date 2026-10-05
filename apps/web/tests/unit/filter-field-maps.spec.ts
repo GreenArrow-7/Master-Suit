@@ -140,22 +140,13 @@ let scanned: Map<string, string[]> | undefined;
 function compiledObjects(): Map<string, string[]> {
   if (scanned) return scanned;
   const found = new Map<string, string[]>();
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
-      if (!/\.tsx?$/.test(entry.name)) continue;
-      const source = readFileSync(full, 'utf8');
-      for (const call of source.matchAll(/compileFilterTree\(\s*'(\w+)'/g)) {
-        const rel = path.relative(root, full);
-        found.set(call[1]!, [...(found.get(call[1]!) ?? []), rel]);
-      }
+  for (const file of readdirSync(path.join(root, 'src'), { recursive: true }) as string[]) {
+    if (!/\.tsx?$/.test(file)) continue;
+    const rel = path.join('src', file);
+    for (const call of readFileSync(path.join(root, rel), 'utf8').matchAll(/compileFilterTree\(\s*'(\w+)'/g)) {
+      found.set(call[1]!, [...(found.get(call[1]!) ?? []), rel]);
     }
-  };
-  walk(path.join(root, 'src'));
+  }
   scanned = found;
   return found;
 }

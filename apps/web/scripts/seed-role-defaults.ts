@@ -23,7 +23,7 @@
  *
  * Dry run is the default because this widens what people may do.
  */
-import 'dotenv/config';
+import './env.mjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { ROLES } from '../prisma/seed/roles';

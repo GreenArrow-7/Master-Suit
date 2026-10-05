@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { csv } from './catalogue';
 
 export const LISTING_TYPES = ['SALE', 'RENT'] as const;
 export const LISTING_STATUSES = ['DRAFT', 'ACTIVE', 'UNDER_OFFER', 'SOLD', 'RENTED', 'WITHDRAWN', 'EXPIRED'] as const;
@@ -24,21 +25,6 @@ export const PROPERTY_TYPES = [
 export const FURNISHINGS = ['UNFURNISHED', 'SEMI_FURNISHED', 'FURNISHED'] as const;
 export const RENT_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'YEARLY'] as const;
 export const MANDATE_TYPES = ['EXCLUSIVE', 'NON_EXCLUSIVE', 'OPEN'] as const;
-
-const csv = (max = 20) =>
-  z
-    .string()
-    .max(500)
-    .optional()
-    .transform((v) =>
-      v
-        ? v
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-            .slice(0, max)
-        : undefined,
-    );
 
 export const listingFilters = z.object({
   q: z.string().max(120).optional(),

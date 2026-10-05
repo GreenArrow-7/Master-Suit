@@ -15,9 +15,9 @@
  *      unlogged read of one is not acceptable, and a public URL would be exactly
  *      that the moment it leaked.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import { prisma } from '@/lib/db';
-import { getUploadMaxMb } from '@/lib/platform-settings';
+import { getNumericSetting } from '@/lib/platform-settings';
 import { AppError, Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
@@ -64,7 +64,7 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   const employee = await requireEmployee(ctx, input.employeeId);
 
   if (!input.bytes.length) throw Conflict('That file is empty.');
-  const uploadMaxMb = await getUploadMaxMb();
+  const uploadMaxMb = await getNumericSetting('uploadMaxMb');
   const maxBytes = uploadMaxMb * 1024 * 1024;
   if (input.bytes.length > maxBytes)
     throw new AppError(413, 'file-too-large', `Files must be under ${uploadMaxMb} MB.`);
@@ -76,7 +76,7 @@ export async function uploadDocument(ctx: Ctx, input: UploadInput) {
   if (!detected)
     throw Conflict('Upload a PDF or an image (JPEG, PNG, WebP or HEIC). The file contents did not match any of those.');
 
-  const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+  const sha256 = hash('sha256', input.bytes);
   const leaf = `${randomBytes(18).toString('hex')}${ALLOWED[detected]}`;
   // Both separators: a Windows client sends `C:\Users\...\passport.pdf`, and
   // splitting on `/` alone would keep the whole path as the "filename".
@@ -240,7 +240,7 @@ export async function downloadDocument(ctx: Ctx, documentId: string) {
 
   // The integrity check is cheap and catches silent corruption in the object
   // store, which otherwise surfaces as an unopenable passport scan months later.
-  if (document.sha256 && createHash('sha256').update(bytes).digest('hex') !== document.sha256) {
+  if (document.sha256 && hash('sha256', bytes) !== document.sha256) {
     logger.error({ documentId }, 'document checksum mismatch');
     throw new AppError(
       409,

@@ -11,7 +11,7 @@
  * Knowlarity does not sign its callbacks. Authentication is the secret in the
  * URL, exactly as for Exotel, and is documented as weaker than a signature.
  */
-import { urlTokenValid, vendorFetch } from './http';
+import { urlTokenValid, vendorFetch, num } from './http';
 import type {
   CallEvent,
   CallEventKind,
@@ -139,9 +139,3 @@ export class KnowlarityProvider implements TelephonyProvider {
     return ['.knowlarity.com'];
   }
 }
-
-const num = (value: unknown): number | undefined => {
-  if (value == null || value === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-};

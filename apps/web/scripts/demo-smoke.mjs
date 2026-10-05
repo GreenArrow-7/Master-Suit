@@ -15,15 +15,11 @@
  * login page plus the database identity the local .env points at — so a
  * mismatch between "what was seeded" and "what is running" is visible at once.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-for (const line of fs.readFileSync(path.join(appRoot, '.env'), 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
-}
+process.loadEnvFile(path.join(appRoot, '.env'));
 
 const BASE = process.env.DEMO_URL ?? 'http://localhost:3000';
 const EMAIL = process.env.DEMO_EMAIL ?? 'demo@manathhomes.ae';

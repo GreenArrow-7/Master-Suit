@@ -22,6 +22,8 @@
 import { Conflict, Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { names } from '@/services/leadership/rollups';
+import { ANSWERED } from '@/services/targets/dailyBoard';
 
 /** A session idle longer than this has its claim released. */
 const STALE_AFTER_MS = 15 * 60_000;
@@ -464,16 +466,8 @@ export async function advance(input: AdvanceInput): Promise<SessionView> {
   return view(input.tenantId, input.sessionId);
 }
 
-/** Outcomes that mean a human actually spoke. Everything else is a retry. */
-const CONNECTED_OUTCOMES = new Set([
-  'CONNECTED',
-  'INTERESTED',
-  'NOT_INTERESTED',
-  'QUALIFIED',
-  'CONVERTED',
-  'CALLBACK_REQUESTED',
-  'WRONG_NUMBER',
-]);
+/** Outcomes that mean a human actually spoke (the daily board's ANSWERED). Everything else is a retry. */
+const CONNECTED_OUTCOMES = new Set<string>(ANSWERED);
 
 /** Records the call the agent just placed against the session and the contact. */
 export async function attachCall(tenantId: string, sessionId: string, callId: string, userId: string) {
@@ -561,11 +555,11 @@ export async function teamSessions(tenantId: string, campaignId: string) {
   });
   if (sessions.length === 0) return [];
 
-  const [users, contacts] = await Promise.all([
-    prisma.user.findMany({
-      where: { tenantId, id: { in: sessions.map((s) => s.userId) } },
-      select: { id: true, fullName: true },
-    }),
+  const [name, contacts] = await Promise.all([
+    names(
+      tenantId,
+      sessions.map((s) => s.userId),
+    ),
     prisma.campaignContact.findMany({
       where: {
         tenantId,
@@ -575,7 +569,6 @@ export async function teamSessions(tenantId: string, campaignId: string) {
     }),
   ]);
 
-  const name = new Map(users.map((u) => [u.id, u.fullName]));
   const onNow = new Map(contacts.map((c) => [c.id, c]));
 
   return sessions.map((s) => ({

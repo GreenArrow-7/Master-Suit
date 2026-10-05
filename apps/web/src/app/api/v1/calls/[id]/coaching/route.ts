@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK, type Ctx } from '@/lib/security/rbac';
+import { scopeFor, SCOPE_RANK, type Ctx, atLeast } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
 
 const params = z.object({ id: z.string().cuid() });
@@ -66,7 +66,7 @@ export const POST = route(
       throw Forbidden('Coaching notes are written by managers. Use the call notes for your own remarks.');
     }
     // TEAM or wider — the same line that separates "my calls" from "my team's".
-    if (SCOPE_RANK[scopeFor(ctx, 'calls', 'VIEW')] < SCOPE_RANK.TEAM) throw Forbidden();
+    if (!atLeast(ctx, 'calls', 'VIEW', 'TEAM')) throw Forbidden();
 
     return prisma.coachingNote.create({
       data: { tenantId: ctx.tenantId, callId: params.id, authorId: ctx.actor.id, body: body.body },

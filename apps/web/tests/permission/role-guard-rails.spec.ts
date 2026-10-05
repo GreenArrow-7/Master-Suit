@@ -13,7 +13,7 @@ import { prisma } from '@/lib/db';
 import { POST as rolesPost } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
 import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get, post } from '../helpers/request';
 import type { PermissionAction } from '@prisma/client';
 
@@ -33,14 +33,7 @@ const at = (action: string) => ({
 });
 
 async function grantOn(roleId: string, module: string, action: PermissionAction, scope = 'ORGANIZATION') {
-  const permission = await prisma.permission.upsert({
-    where: { module_action: { module, action } },
-    update: {},
-    create: { module, action },
-  });
-  await prisma.rolePermission.create({
-    data: { tenantId, roleId, permissionId: permission.id, granted: true, scope: scope as never },
-  });
+  await grantPermissions(tenantId, roleId, [[module, action]], scope as never);
 }
 
 const membershipOf = (userId: string) =>

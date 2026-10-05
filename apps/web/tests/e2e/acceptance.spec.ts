@@ -68,7 +68,6 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
 
   test('a workspace runs both modules against one tenant, and cannot see another', async ({ page }) => {
     await test.step('1. the platform owner signs in', async () => {
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
     });
 
@@ -84,7 +83,6 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
 
     await test.step('5-6. its administrator signs in and reaches the workspace', async () => {
       await logout(page);
-      await resetLoginThrottle();
       await login(page, manath.adminEmail, manath.adminPassword);
       await page.goto(`/${manath.slug}/dashboard`);
       await expect(page).toHaveURL(new RegExp(`/${manath.slug}/dashboard`));
@@ -129,7 +127,6 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
       await expect(page.getByRole('heading', { name: 'You are in' })).toBeVisible({ timeout: 60_000 });
 
       await logout(page);
-      await resetLoginThrottle();
       await login(page, manath.adminEmail, manath.adminPassword);
       await page.goto(`/${manath.slug}/people/employees`);
       await expect(page.getByText(employeeName).first()).toBeVisible();
@@ -162,11 +159,9 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
 
     await test.step('13-14. a second workspace is created and its administrator signs in', async () => {
       await logout(page);
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, leadersfort);
       await logout(page);
-      await resetLoginThrottle();
       await login(page, leadersfort.adminEmail, leadersfort.adminPassword);
       await page.goto(`/${leadersfort.slug}/dashboard`);
       await expect(page).toHaveURL(new RegExp(`/${leadersfort.slug}/dashboard`));
@@ -192,7 +187,6 @@ test.describe('Acceptance: one workspace, two modules, isolated from the next', 
 
     await test.step('18-20. the first administrator still has their own workspace intact', async () => {
       await logout(page);
-      await resetLoginThrottle();
       await login(page, manath.adminEmail, manath.adminPassword);
 
       await page.goto(`/${manath.slug}/sales/leads`);

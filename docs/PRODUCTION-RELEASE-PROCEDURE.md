@@ -24,7 +24,7 @@ pass adds **[C18]**…**[C21]** for what the host contradicted.
 | Database | container `infra-postgres-1`, volume `infra_pgdata`, db `leadflow`, 65 migrations applied | container `youhan-ios-staging-postgres-1`, volume `youhan-ios-staging_pgdata`, db `youhan_ios_demo`, 78 applied |
 | Postgres published port | **none** | **none** |
 | Migrations | inside the `migrate` service (gate + `prisma migrate deploy`) | **from the host**: `/home/deploy/ios-staging/prisma/{schema,migrations}` + `prisma.config.ts`, `npx prisma migrate deploy` |
-| Deploy tooling | `apps/web/scripts/release.sh` (Option B, root) or `deploy.yml` over SSH (needs `DEPLOY_*` secrets — **not present**) | plain `docker compose … up -d`; `release.sh` does **not** control this stack **[C19]** |
+| Deploy tooling | `apps/web/scripts/release.sh` (Option B, root) | plain `docker compose … up -d`; `release.sh` does **not** control this stack **[C19]** |
 | Required Compose interpolation variables (prod) | `POSTGRES_PASSWORD`, `ALERT_EMAIL_TO`, `APP_DOMAIN`, `ACME_EMAIL` (rehearsed, §9.4) | `REDIS_PASSWORD`, `IMAGE_SHA` (`:?` in the file) |
 
 **Database isolation — verified, not inferred [C21]:** two containers, two named volumes, two

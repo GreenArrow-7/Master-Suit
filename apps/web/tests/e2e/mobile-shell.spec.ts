@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 /**
  * Phone-shell regressions reproduced from the owner's iPhone screenshots of
@@ -66,7 +66,6 @@ async function columnsSheetFits(page: Page, path: string) {
 test.describe('phone shell', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  test.beforeEach(resetLoginThrottle);
 
   for (const theme of ['light', 'dark', 'glass'] as const) {
     test(`${theme}: no sideways scroll, padded top bar, no edge glyphs, help folded`, async ({ page }) => {

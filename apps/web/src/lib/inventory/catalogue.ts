@@ -27,7 +27,7 @@ export const PROJECT_STATUSES = [
 export const POSSESSION_STATUSES = ['READY_TO_MOVE', 'UNDER_CONSTRUCTION', 'NEW_LAUNCH'] as const;
 
 /** Comma-separated in the query string, because these are checkbox facets. */
-const csv = (max = 20) =>
+export const csv = (max = 20) =>
   z
     .string()
     .max(500)

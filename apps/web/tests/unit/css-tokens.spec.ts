@@ -125,15 +125,8 @@ describe('button variants', () => {
   function usedVariants(): Map<string, Set<string>> {
     const used = new Map<string, Set<string>>();
 
-    const walk = (dir: string): string[] => {
-      const out: string[] = [];
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = join(dir, entry.name);
-        if (entry.isDirectory()) out.push(...walk(full));
-        else if (entry.name.endsWith('.tsx')) out.push(full);
-      }
-      return out;
-    };
+    const walk = (dir: string) =>
+      (readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith('.tsx')).map((f) => join(dir, f));
 
     for (const file of [...walk(componentDir), ...walk(join(root, 'components'))]) {
       const text = readFileSync(file, 'utf8');

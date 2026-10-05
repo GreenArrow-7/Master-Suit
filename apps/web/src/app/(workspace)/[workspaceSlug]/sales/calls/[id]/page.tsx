@@ -1,14 +1,13 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
-import { can } from '@/lib/security/rbac';
+import { can, atLeast } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Badge, { type Tone } from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import CallLink from '@/components/workspace/CallLink';
 import CallActions from './CallActions';
-import AuditDelete from './AuditDelete';
 import EntityDelete from '@/components/sales/EntityDelete';
 import AnalysisPanel from './AnalysisPanel';
 import FollowUpComposer from './FollowUpComposer';
@@ -17,7 +16,6 @@ import CoachingNotes, { type CoachingNoteView } from './CoachingNotes';
 import RequirementSuggestion, { type DetectedRequirementView } from './RequirementSuggestion';
 import TemperaturePanel from './TemperaturePanel';
 import { temperatureFromAnalysis } from '@/lib/ai/temperature';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 
 export const metadata = { title: 'Call Detail' };
 
@@ -299,7 +297,7 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
               createdAt: n.createdAt.toISOString(),
               author: n.author,
             }))}
-            canCoach={SCOPE_RANK[scopeFor(ctx, 'calls', 'VIEW')] >= SCOPE_RANK.TEAM && call.callerId !== ctx.actor.id}
+            canCoach={atLeast(ctx, 'calls', 'VIEW', 'TEAM') && call.callerId !== ctx.actor.id}
             viewerId={ctx.actor.id}
             repId={call.callerId}
           />
@@ -353,7 +351,12 @@ export default async function CallDetailPage({ params: paramsPromise }: { params
                             {pct}%
                           </span>
                         )}
-                        {canDeleteAudits && <AuditDelete callId={call.id} auditId={a.id} />}
+                        {canDeleteAudits && (
+                          <EntityDelete
+                            endpoint={`/api/v1/calls/${call.id}/audit?auditId=${encodeURIComponent(a.id)}`}
+                            label="audit"
+                          />
+                        )}
                       </span>
                     </div>
 

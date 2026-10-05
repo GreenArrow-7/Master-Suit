@@ -54,14 +54,10 @@ async function makeEmployee(label: string, managerId: string | null, roleId: str
   });
   if (managerId) await prisma.user.update({ where: { id: user.id, tenantId }, data: { managerId } });
 
-  const membership = await prisma.workspaceMembership.findFirstOrThrow({
-    where: { tenantId, salesUserId: user.id },
-    select: { id: true },
-  });
   await prisma.employeeProfile.create({
     data: {
       tenantId,
-      membershipId: membership.id,
+      membershipId: user.membershipId,
       employeeNumber: `${label}-${suffix}`.slice(0, 24),
       employmentStatus: 'ACTIVE',
     },

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { login, resetLoginThrottle } from './helpers';
+import { login, resetLoginThrottle, ok } from './helpers';
 
 /**
  * §3 face attendance against the real face engine: supervised consent →
@@ -43,12 +43,6 @@ const turn = (person: 'a' | 'b', direction: string) =>
   direction === 'left'
     ? [frame(`${person}-turned-right`), frame(`${person}-turned-left`)]
     : [frame(`${person}-turned-left`), frame(`${person}-turned-right`)];
-
-async function ok(res: { ok(): boolean; text(): Promise<string>; json(): Promise<unknown> }, what: string) {
-  expect(res.ok(), `${what}: ${await res.text().catch(() => '')}`).toBeTruthy();
-
-  return (await res.json()) as Record<string, any>;
-}
 
 test.describe('Face attendance', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');

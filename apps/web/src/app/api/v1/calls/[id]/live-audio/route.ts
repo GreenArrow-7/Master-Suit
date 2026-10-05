@@ -1,9 +1,9 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound, Forbidden, Invalid } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
@@ -11,6 +11,7 @@ import { coachTick, heuristicHints, detectStage, type CoachHint } from '@/lib/ai
 import { parseAmounts } from '@/lib/ai/simulated';
 import { leadCallContext, contextPromptBlock, budgetMatchHint } from '@/services/leads/callContext';
 import { analyseAndAudit } from '@/services/shared/callIntelligence';
+import { seesWholeWorkspace } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -66,8 +67,7 @@ export const POST = route(
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
     });
     if (!call) throw NotFound('Call');
-    const scope = scopeFor(ctx, 'calls', 'EDIT');
-    if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Call');
+    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
 
     const consent = await prisma.recordingConsent.findFirst({
       where: { callId: call.id, tenantId: ctx.tenantId },
@@ -149,7 +149,7 @@ export const POST = route(
         mimeType: req.headers.get('content-type') ?? 'audio/webm',
         language: query.language ?? 'en',
       }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), LIVE_CHUNK_DEADLINE_MS)),
+      sleep(LIVE_CHUNK_DEADLINE_MS, null),
     ]).catch((err: unknown) => {
       logger.warn(
         { err: (err as Error).message, callId: call.id },

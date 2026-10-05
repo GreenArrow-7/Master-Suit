@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import { mayEnterWorkspace } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Opens a customer workspace for platform staff.
@@ -18,7 +19,7 @@ import { mayEnterWorkspace } from '@/lib/auth/platform-access';
  * a record of, even when it is the platform owner doing it.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformSupport(req, requestId);
     const { workspaceId } = await params;
@@ -52,16 +53,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
         where: { id: ctx.sessionId },
         data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
       });
-      await tx.platformAuditEvent.create({
-        data: {
+      await platformAudit(
+        ctx,
+        {
           tenantId: workspace.id,
-          actorUserId: ctx.platformUserId,
           event: 'WORKSPACE_OPENED',
           objectType: 'workspace',
           objectId: workspace.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
           // Read-only is now the truth for every platform role, including
           // OWNER. It was not before: this same line recorded
           // `platform_support_readonly` for a session that could delete the
@@ -69,7 +67,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
           // the sibling `access` route.
           metadata: { slug: workspace.slug, mode: 'platform_readonly' },
         },
-      });
+        tx,
+      );
     });
 
     return NextResponse.json(
@@ -77,16 +76,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    }
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/enter' });
   }
 }
 
 /** Leaves the workspace and returns platform staff to the control plane. */
 export async function DELETE(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformSupport(req, requestId);
     await prisma.platformSession.update({
@@ -95,9 +91,6 @@ export async function DELETE(req: Request) {
     });
     return NextResponse.json({ destination: '/platform' }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    }
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/enter' });
   }
 }

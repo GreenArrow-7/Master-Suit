@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
+import { slugify } from '@/lib/slug';
 
 /**
  * Forms had models, a list page and nothing else — no way to create one, no way
@@ -46,20 +47,10 @@ const createBody = z
   })
   .strict();
 
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
-
 export const POST = route(
   { module: 'forms', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
     const key = body.key ?? slugify(body.name);
-    const exists = await prisma.form.findFirst({ where: { tenantId: ctx.tenantId, key }, select: { id: true } });
-    if (exists) throw Conflict('A form with that key already exists.');
-
     const fields = body.fields ?? DEFAULT_FIELDS;
     // One mapped name field is what turns a submission into a lead; without it
     // every row would be an anonymous payload nobody can follow up.

@@ -38,7 +38,7 @@ import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resou
 import EmployeesPage from '@/app/(workspace)/[workspaceSlug]/people/employees/page';
 import LifecyclePage from '@/app/(workspace)/[workspaceSlug]/people/lifecycle/page';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
@@ -58,25 +58,15 @@ async function member(
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 20, defaultScope: 'OWN' },
   });
-  for (const [module, action, scope] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
+  for (const [module, action, scope] of grants) await grantPermissions(tenantId, role.id, [[module, action]], scope);
   const email = `${label}-${suffix}@empscope.test`;
   const name = `Scope ${label} ${suffix}`;
   const user = await createWorkspaceUser({ tenantId, roleId: role.id, email, fullName: name });
   cookies[label] = await createSessionToken(tenantId, user.id);
   if (employee) {
-    const membership = await prisma.workspaceMembership.findFirstOrThrow({ where: { tenantId, salesUserId: user.id } });
     const number = `ES-${label}-${suffix}`;
     const profile = await prisma.employeeProfile.create({
-      data: { tenantId, membershipId: membership.id, employeeNumber: number, employmentStatus: employee.status },
+      data: { tenantId, membershipId: user.membershipId, employeeNumber: number, employmentStatus: employee.status },
     });
     people[label] = { employeeId: profile.id, email, number, name };
   }

@@ -37,6 +37,7 @@
  * string to `host:port/name`, and that is what every message carries.
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 
 export type TestProfile = 'mock' | 'local-capture';
@@ -95,19 +96,7 @@ export class UnsafeTestEnvironment extends Error {
 /** An env file as the *application* will read it. */
 export function readEnvFile(file: string): Record<string, string> {
   const full = path.isAbsolute(file) ? file : path.join(process.cwd(), file);
-  if (!existsSync(full)) return {};
-  const out: Record<string, string> = {};
-  for (const raw of readFileSync(full, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    out[line.slice(0, eq).trim()] = line
-      .slice(eq + 1)
-      .trim()
-      .replace(/^["']|["']$/g, '');
-  }
-  return out;
+  return existsSync(full) ? (parseEnv(readFileSync(full, 'utf8')) as Record<string, string>) : {};
 }
 
 /**
@@ -124,11 +113,6 @@ export function effective(key: string, file: Record<string, string>): string | u
 }
 
 export interface IsolationOptions {
-  /**
-   * The env file the application under test reads. `.env` for the server and
-   * browser suites, whose server is started from it.
-   */
-  appEnvFile?: string;
   /** Suite name, for messages. */
   suite: string;
 }
@@ -305,7 +289,7 @@ export function assertDisposableEnvironment(opts: IsolationOptions): Targets {
    * a configuration nothing is using — the guard would pass while the server ran
    * on something else entirely. `E2E_APP_ENV_FILE` names the real one.
    */
-  const file = readEnvFile(process.env.E2E_APP_ENV_FILE ?? opts.appEnvFile ?? '.env');
+  const file = readEnvFile(process.env.E2E_APP_ENV_FILE ?? '.env');
 
   const databaseUrl = process.env.E2E_DATABASE_URL;
   const redisUrl = process.env.E2E_REDIS_URL;

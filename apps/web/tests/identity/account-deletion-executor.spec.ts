@@ -8,7 +8,8 @@ import {
   requestAccountDeletion,
 } from '@/services/identity/accountDeletion';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
+import { createPlatformSessionToken } from '../helpers/session';
 
 /**
  * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
@@ -28,15 +29,7 @@ const ownedPlatformUserIds = new Set<string>();
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
 
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 let fixture: Fixture;
 let roleSeq = 0;
@@ -58,10 +51,7 @@ async function makePerson(name: string) {
     email: `exec-${roleSeq}-${Date.now()}@example.com`,
     fullName: name,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true, platformUserId: true },
-  });
+  const membership = { id: user.membershipId, platformUserId: user.platformUserId };
   await prisma.platformUser.update({
     where: { id: membership.platformUserId },
     data: {
@@ -73,13 +63,7 @@ async function makePerson(name: string) {
       mfaRecoveryCodes: ['code-one', 'code-two'],
     },
   });
-  await prisma.platformSession.create({
-    data: {
-      platformUserId: membership.platformUserId,
-      tokenHash: `hash-${Math.random().toString(36).slice(2)}`,
-      expiresAt: new Date(Date.now() + 86_400_000),
-    },
-  });
+  await createPlatformSessionToken(membership.platformUserId);
   await prisma.passwordHistory.create({
     data: { platformUserId: membership.platformUserId, passwordHash: await hashPassword('old-password-1') },
   });

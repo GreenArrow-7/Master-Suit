@@ -1,8 +1,7 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
+import { requireWorkspace } from '@/lib/workspace';
 import { renderPdf, type PdfLine } from '@/lib/pdf';
 import { payslipDetail } from '@/services/hr/payroll';
 
@@ -16,15 +15,18 @@ import { payslipDetail } from '@/services/hr/payroll';
  * step, and §47's "payslips must not be publicly accessible by guessable URLs"
  * is satisfied by the id being a cuid behind that check rather than by secrecy.
  */
-export async function GET(req: Request, context: { params: Promise<{ workspaceSlug: string; payslipId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug, payslipId } = await context.params;
-    // No `permission` here on purpose: authorisation is `payslipDetail`'s —
-    // "your own, or payroll:VIEW for anyone else's" — and it also hides a
-    // payslip from an unapproved run and writes the DOCUMENT_ACCESSED row.
-    // The rate limit is not optional, and this route had none.
-    const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'HRMS', workspaceSlug });
+export const GET = route(
+  {
+    module: 'payroll',
+    action: 'VIEW',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    // `payslipDetail` decides, as above: your own, or payroll:VIEW for anyone else's.
+    permissionInHandler: true,
+    params: z.object({ workspaceSlug: z.string(), payslipId: z.string() }),
+  },
+  async ({ ctx, params: { workspaceSlug, payslipId } }) => {
+    await requireWorkspace(ctx, workspaceSlug);
 
     const payslip = await payslipDetail(ctx, payslipId);
     const money = (value: { toString(): string }) =>
@@ -82,17 +84,7 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
         'content-length': String(pdf.length),
         'content-disposition': `attachment; filename="${filename}"`,
         'cache-control': 'private, no-store',
-        'x-request-id': requestId,
       },
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'payslip pdf failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+  },
+);

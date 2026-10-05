@@ -1,16 +1,14 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ZodError } from 'zod';
-import { ulid } from 'ulid';
-import { AppError, Invalid, NotFound } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+
+import { z } from 'zod';
+import { NotFound } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { prismaRead } from '@/lib/db';
-import { assertPermission, type Ctx } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { audit } from '@/lib/security/audit';
-import { consume, limits } from '@/lib/security/ratelimit';
 import { csvHeaders, csvStream, type CsvColumn } from '@/lib/csv';
+import { route } from '@/lib/api/handler';
+import { assertPermission } from '@/lib/security/rbac';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -50,11 +48,17 @@ interface Resource {
   /** Rows are scoped exactly as the list route scopes them. */
   ownerField?: string;
   columns: CsvColumn<any>[];
-  page: (ctx: Ctx, where: Record<string, unknown>, cursor: string | null, take: number) => Promise<{ id: string }[]>;
+  page: (where: Record<string, unknown>, cursor: string | null, take: number) => Promise<{ id: string }[]>;
 }
 
 const date = (value: Date | null | undefined) => value?.toISOString().slice(0, 10) ?? null;
 const decimal = (value: { toString(): string } | null | undefined) => value?.toString() ?? null;
+/** One page of a keyset walk in id order: `take` rows after `cursor`. */
+const keyset = (cursor: string | null, take: number) => ({
+  orderBy: { id: 'asc' as const },
+  take,
+  ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+});
 
 const RESOURCES: Record<string, Resource> = {
   listings: {
@@ -71,12 +75,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.ownerId ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.listing.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -102,12 +104,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Possession', value: (r) => r.possessionStatus },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.project.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: { id: true, code: true, name: true, status: true, possessionStatus: true, createdAt: true },
       }),
   },
@@ -124,12 +124,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.contact.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -154,12 +152,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
       { label: 'Created', value: (r) => date(r.createdAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.account.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -185,12 +181,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Expected close', value: (r) => date(r.expectedCloseDate) },
       { label: 'Owner', value: (r) => r.owner?.fullName ?? 'Unassigned' },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.opportunity.findMany({
         where: { ...where, deletedAt: null },
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           reference: true,
@@ -222,12 +216,10 @@ const RESOURCES: Record<string, Resource> = {
       { label: 'Reversal', value: (r) => (r.reversesId ? 'yes' : 'no') },
       { label: 'Paid', value: (r) => date(r.paidAt) },
     ],
-    page: (ctx, where, cursor, take) =>
+    page: (where, cursor, take) =>
       prismaRead.commission.findMany({
         where,
-        orderBy: { id: 'asc' },
-        take,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        ...keyset(cursor, take),
         select: {
           id: true,
           userId: true,
@@ -245,60 +237,44 @@ const RESOURCES: Record<string, Resource> = {
   },
 };
 
-export async function GET(req: Request, context: { params: Promise<{ resource: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    return await handle(req, await context.params, requestId);
-  } catch (err) {
-    // Outside the API kernel, so errors have to be translated the way it would.
-    // Without this an unauthorised export answers 500 and reads as a fault
-    // rather than a refusal.
-    const headers = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
-    if (err instanceof ZodError) {
-      const invalid = Invalid(err.issues.map((i) => ({ field: i.path.join('.'), code: i.code, message: i.message })));
-      return NextResponse.json(invalid.toProblem(requestId), { status: invalid.status, headers });
-    }
-    if (err instanceof AppError) {
-      if (err.status >= 500) logger.error({ err, requestId }, 'export failed');
-      else logger.warn({ requestId, code: err.code, status: err.status }, 'export rejected');
-      return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId }, 'export failed');
-    const problem = new AppError(500, 'internal-error', 'Something went wrong on our side.', [], false);
-    return NextResponse.json(problem.toProblem(requestId), { status: 500, headers });
-  }
-}
+export const GET = route(
+  {
+    module: 'exports',
+    action: 'EXPORT',
+    productModule: 'SALES',
+    sessionOnly: true,
+    // EXPORT on the resource's own module, which only the resource names.
+    permissionInHandler: true,
+    params: z.object({ resource: z.string() }),
+  },
+  async ({ ctx, params }) => {
+    const resource = RESOURCES[params.resource];
+    if (!resource) throw NotFound('Export');
+    // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
+    // of the building are different authorities, and every module here already
+    // defines the second.
+    assertPermission(ctx, resource.module, 'EXPORT');
 
-async function handle(req: Request, params: { resource: string }, requestId: string) {
-  const resource = RESOURCES[params.resource];
-  if (!resource) throw NotFound('Export');
+    const where = await visibilityWhere(ctx, resource.module, 'VIEW', { ownerField: resource.ownerField });
 
-  const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'SALES' });
-  // EXPORT, not VIEW. Reading a list on screen and taking the whole thing out
-  // of the building are different authorities, and every module here already
-  // defines the second.
-  assertPermission(ctx, resource.module, 'EXPORT');
-  await consume(limits.sessionUser(ctx.actor.id));
+    const PAGE = 500;
+    const stream = csvStream({
+      columns: resource.columns,
+      pageSize: PAGE,
+      // `take` comes from the stream rather than PAGE, so the final page is
+      // trimmed to land exactly on EXPORT_MAX_ROWS.
+      page: (cursor, take) => resource.page(where, cursor, take) as Promise<{ id: string }[]>,
+      onDone: async (rows, truncated) => {
+        await audit(ctx, {
+          event: 'EXPORT_REQUESTED',
+          objectType: resource.module,
+          // Recorded, because a reviewer reading this row must be able to tell a
+          // complete export from one the cap cut short.
+          metadata: { rows, truncated, ...(truncated ? { limit: env.EXPORT_MAX_ROWS } : {}) },
+        });
+      },
+    });
 
-  const where = await visibilityWhere(ctx, resource.module, 'VIEW', { ownerField: resource.ownerField });
-
-  const PAGE = 500;
-  const stream = csvStream({
-    columns: resource.columns,
-    pageSize: PAGE,
-    // `take` comes from the stream rather than PAGE, so the final page is
-    // trimmed to land exactly on EXPORT_MAX_ROWS.
-    page: (cursor, take) => resource.page(ctx, where, cursor, take) as Promise<{ id: string }[]>,
-    onDone: async (rows, truncated) => {
-      await audit(ctx, {
-        event: 'EXPORT_REQUESTED',
-        objectType: resource.module,
-        // Recorded, because a reviewer reading this row must be able to tell a
-        // complete export from one the cap cut short.
-        metadata: { rows, truncated, ...(truncated ? { limit: env.EXPORT_MAX_ROWS } : {}) },
-      });
-    },
-  });
-
-  return new NextResponse(stream, { headers: csvHeaders(params.resource, requestId) });
-}
+    return new NextResponse(stream, { headers: csvHeaders(params.resource, ctx.requestId) });
+  },
+);

@@ -1,6 +1,7 @@
 import type { AiBudget } from '@prisma/client';
 import { prisma } from '../db';
-import { budgetState, periodStart, spendFor, type BudgetState } from './budgets';
+import { budgetState, periodStart, type BudgetState } from './budgets';
+import { USER_TOKEN_LIMIT_KEY, planLimit } from './usage';
 
 /**
  * One person's AI allowance: where the number came from, what it is, and how
@@ -53,28 +54,6 @@ function inForce(budget: AiBudget, now: Date): boolean {
 const num = (v: bigint | null) => (v === null ? null : Number(v));
 
 /**
- * The plan's per-user token limit, which predates this table and is still the
- * answer for every deployment that has configured nothing here. Read from the
- * same `PlanLimit` key `lib/ai/usage.ts` enforces, so the two cannot disagree.
- */
-const PLAN_USER_TOKEN_KEY = 'ai_tokens:user';
-
-async function planUserLimit(tenantId: string): Promise<{ planId: string | null; tokens: number | null }> {
-  const subscription = await prisma.tenantSubscription.findUnique({
-    where: { tenantId },
-    select: {
-      planId: true,
-      plan: { select: { planLimits: { where: { key: PLAN_USER_TOKEN_KEY }, select: { value: true } } } },
-    },
-  });
-  const value = subscription?.plan?.planLimits[0]?.value;
-  return {
-    planId: subscription?.planId ?? null,
-    tokens: typeof value === 'number' && value > 0 ? value : null,
-  };
-}
-
-/**
  * Resolve one person's allowance. `feature` narrows it to a per-feature
  * override when the caller has one in mind; omit it for the person's overall
  * number, which is what the console shows.
@@ -85,7 +64,14 @@ export async function allowanceFor(
   feature?: string | null,
   now: Date = new Date(),
 ): Promise<Allowance> {
-  const { planId, tokens: planTokens } = await planUserLimit(tenantId);
+  // The plan's per-user limit predates this table and is still the answer for every
+  // deployment that has configured nothing here. Read through usage.ts's planLimit and
+  // key, so the two cannot disagree (this read 'ai_tokens:user', a key nothing writes).
+  const [subscription, planTokens] = await Promise.all([
+    prisma.tenantSubscription.findUnique({ where: { tenantId }, select: { planId: true } }),
+    planLimit(tenantId, USER_TOKEN_LIMIT_KEY),
+  ]);
+  const planId = subscription?.planId ?? null;
 
   const rows = await prisma.aiBudget.findMany({
     where: {
@@ -299,7 +285,7 @@ export async function enforceBudgets(
     if (!budget || !inForce(budget, now)) continue;
     const state = await budgetState(budget, now);
     if (!state.exceeded) continue;
-    const verdict = decide(budget, level, state, now);
+    const verdict = decide(budget, level, state);
     if (verdict) return verdict;
   }
 
@@ -352,19 +338,14 @@ export async function enforceBudgets(
     if (!budget || !inForce(budget, now)) continue;
     const state = await budgetState(budget, now);
     if (!state.exceeded) continue;
-    const verdict = decide(budget, 'feature', state, now);
+    const verdict = decide(budget, 'feature', state);
     if (verdict) return verdict;
   }
 
   return { ...ALLOWED };
 }
 
-function decide(
-  budget: AiBudget,
-  level: EnforcementVerdict['level'],
-  state: BudgetState,
-  _now: Date,
-): EnforcementVerdict | null {
+function decide(budget: AiBudget, level: EnforcementVerdict['level'], state: BudgetState): EnforcementVerdict | null {
   if (budget.action === 'BLOCK' || budget.hardLimit) {
     const period = budget.period === 'DAILY' ? "today's" : "this month's";
     const name =
@@ -392,46 +373,3 @@ function decide(
   // what they asked for, and the other two need a surface that does not exist yet.
   return null;
 }
-
-/** Everything the per-user spend/usage helpers need, kept in one place. */
-export async function workspaceSpend(
-  tenantId: string,
-  period: 'DAILY' | 'MONTHLY' = 'MONTHLY',
-  now: Date = new Date(),
-) {
-  const since = periodStart(period, now);
-  const [agg, users, byFeature, byModel, fallbacks, last] = await Promise.all([
-    prisma.aiEvent.aggregate({
-      where: { tenantId, occurredAt: { gte: since } },
-      _count: { _all: true },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['userId'],
-      where: { tenantId, occurredAt: { gte: since }, userId: { not: null } },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['feature'],
-      where: { tenantId, occurredAt: { gte: since } },
-      _sum: { inputTokens: true, outputTokens: true, costMicros: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.groupBy({
-      by: ['provider', 'model'],
-      where: { tenantId, occurredAt: { gte: since } },
-      _sum: { inputTokens: true, outputTokens: true },
-      _count: { _all: true },
-    }),
-    prisma.aiEvent.count({ where: { tenantId, occurredAt: { gte: since }, outcome: 'FELL_BACK' } }),
-    prisma.aiEvent.findFirst({
-      where: { tenantId },
-      orderBy: { occurredAt: 'desc' },
-      select: { occurredAt: true },
-    }),
-  ]);
-  return { agg, users, byFeature, byModel, fallbacks, lastActivityAt: last?.occurredAt ?? null, since };
-}
-
-export { spendFor };

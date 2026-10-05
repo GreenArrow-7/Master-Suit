@@ -17,7 +17,6 @@ export default function WorkspacesView({ rows, since }: { rows: WorkspaceRow[]; 
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="AI Control Center"
         title="AI usage by workspace"
         description={`Counted from every AI request made since the start of ${month}, UTC.`}
         breadcrumbs={[

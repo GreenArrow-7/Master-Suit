@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REALTY_SHARED_ROOTS, realtyEquivalent } from '@/lib/nav/realtyShared';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 
 /**
  * Real Estate reuses Sales' client register rather than copying it.
@@ -35,14 +36,9 @@ function pages(moduleRoot: string): string[] {
   const root = path.join(APP, moduleRoot);
   if (!existsSync(root)) return [];
   const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      const full = path.join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (entry === 'page.tsx') out.push(path.relative(root, full).split(path.sep).join('/'));
-    }
-  };
-  walk(root);
+  for (const rel of readdirSync(root, { recursive: true }) as string[]) {
+    if (path.basename(rel) === 'page.tsx') out.push(rel.split(path.sep).join('/'));
+  }
   return out;
 }
 
@@ -117,14 +113,9 @@ describe('the APIs behind the shared screens admit a Real Estate workspace', () 
     const root = path.join(API, prefix);
     if (!existsSync(root)) return [];
     const out: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (entry === 'route.ts') out.push(path.relative(API, full).split(path.sep).join('/'));
-      }
-    };
-    walk(root);
+    for (const rel of readdirSync(root, { recursive: true }) as string[]) {
+      if (path.basename(rel) === 'route.ts') out.push(path.join(prefix, rel).split(path.sep).join('/'));
+    }
     return out;
   });
 
@@ -197,10 +188,7 @@ describe('a refused module is named correctly', () => {
     const block = /const MODULE_LABEL: Record<ProductModule, string> = \{([^}]*)\}/.exec(source);
     expect(block).not.toBeNull();
     const labelled = [...block![1]!.matchAll(/^\s*([A-Z_]+):/gm)].map((m) => m[1]);
-    const declared = [.../const PRODUCT_MODULES = \[([^\]]+)\]/.exec(source)![1]!.matchAll(/'([A-Z_]+)'/g)].map(
-      (m) => m[1],
-    );
-    expect([...labelled].sort()).toEqual([...declared].sort());
+    expect([...labelled].sort()).toEqual([...PRODUCT_MODULE_KEYS].sort());
   });
 });
 

@@ -1,5 +1,3 @@
-// Sets this process's execution switch; see enable-deletion-execution.ts.
-import './enable-deletion-execution';
 import { randomBytes } from 'node:crypto';
 import { test, expect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import type { Queue, QueueEvents, Worker } from 'bullmq';
@@ -10,6 +8,12 @@ import { encryptSecret } from '@/services/identity/secrets';
 import { createWorkspaceUser } from '../helpers/fixtures';
 import { readEnvFile } from '../helpers/isolation';
 import { login, resetLoginThrottle, uniq } from './helpers';
+import { env } from '@/lib/env';
+
+// Execution on for THIS Playwright process: the raw variable for anything parsed later,
+// and the env this worker already parsed. The dev server keeps its own switch.
+process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = 'true';
+env.ACCOUNT_DELETION_EXECUTION_ENABLED = true;
 
 /**
  * Account deletion, the way a person meets it: through the sign-in form, the
@@ -85,13 +89,9 @@ for (const variant of variants) {
         email: address,
         fullName: `${label} ${run}`,
       });
-      const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-        where: { salesUserId: user.id },
-        select: { id: true, platformUserId: true },
-      });
-      owned.add(membership.platformUserId);
+      owned.add(user.platformUserId);
       await prisma.platformUser.update({
-        where: { id: membership.platformUserId },
+        where: { id: user.platformUserId },
         data: {
           passwordHash: await hashPassword(password),
           emailVerifiedAt: new Date(),
@@ -100,9 +100,9 @@ for (const variant of variants) {
         },
       });
       if (opts.primaryAdmin) {
-        await prisma.workspaceMembership.update({ where: { id: membership.id }, data: { isPrimaryAdmin: true } });
+        await prisma.workspaceMembership.update({ where: { id: user.membershipId }, data: { isPrimaryAdmin: true } });
       }
-      return { email: address, platformUserId: membership.platformUserId, membershipId: membership.id };
+      return { email: address, platformUserId: user.platformUserId, membershipId: user.membershipId };
     }
 
     async function open(browser: Browser, address: string): Promise<{ context: BrowserContext; page: Page }> {
@@ -199,8 +199,8 @@ for (const variant of variants) {
         await queue.getJobSchedulers(),
         'job schedulers are armed on this Redis index; the in-process worker would run them with execution on',
       ).toEqual([]);
-      const { startMaintenanceWorker } = await import('@/workers/maintenance');
-      const w = startMaintenanceWorker();
+      const { startWorker } = await import('@/workers/jobs');
+      const w = startWorker('maintenance');
       await w.waitUntilReady();
       worker = w;
     });

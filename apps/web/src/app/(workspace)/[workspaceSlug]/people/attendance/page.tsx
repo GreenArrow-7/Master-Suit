@@ -5,6 +5,7 @@ import { isAttendanceApprover, mayReadAllEmployees } from '@/services/hr/access'
 import { myEmployee } from '@/services/hr/leave';
 import { productivity, type ProductivityRow } from '@/services/leadership/rollups';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import { csvCell } from '@/lib/csv';
 import TableSearch from '@/components/workspace/TableSearch';
 import PageHeader from '@/components/ui/PageHeader';
 import Badge from '@/components/ui/Badge';
@@ -25,7 +26,6 @@ const timeLabel = (value: Date | null) =>
     : '—';
 const hhmm = (minutes: number) => `${Math.floor(minutes / 60)}h ${String(Math.round(minutes % 60)).padStart(2, '0')}m`;
 const iso = (value: Date) => value.toISOString().slice(0, 10);
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 /**
  * The attendance report, per the reference: one row per day built from accepted

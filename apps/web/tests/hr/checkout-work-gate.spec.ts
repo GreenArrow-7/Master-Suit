@@ -5,6 +5,7 @@ import { pendingLeadWork, startOfLocalDay, validatePunch } from '@/services/hr/a
 import { DEFAULT_POLICY } from '@/services/hr/settings';
 import { dailyTargetShortfall } from '@/services/targets/dailyBoard';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { createWorkspaceUser } from '../helpers/fixtures';
 
 /**
  * §5: a seller handed leads today cannot check out while any is untouched — when
@@ -30,23 +31,15 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `rep-${suffix}`, name: 'Rep', rank: 60, defaultScope: 'OWN' },
   });
-  const user = await prisma.user.create({
-    data: { tenantId, email: `rep-${suffix}@example.com`, fullName: 'Gate Rep', roleId: role.id, status: 'ACTIVE' },
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `rep-${suffix}@example.com`,
+    fullName: 'Gate Rep',
   });
   userId = user.id;
-  const platformUser = await prisma.platformUser.create({
-    data: {
-      email: `rep-${suffix}@example.com`,
-      normalizedEmail: `rep-${suffix}@example.com`,
-      fullName: 'Gate Rep',
-      status: 'ACTIVE',
-    },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
   const profile = await prisma.employeeProfile.create({
-    data: { tenantId, membershipId: membership.id, employeeNumber: `WG-${suffix}`, employmentStatus: 'ACTIVE' },
+    data: { tenantId, membershipId: user.membershipId, employeeNumber: `WG-${suffix}`, employmentStatus: 'ACTIVE' },
   });
   employee = { id: profile.id, employmentStatus: profile.employmentStatus };
   const hq = await prisma.hrWorkLocation.create({

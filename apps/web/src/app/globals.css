@@ -81,8 +81,6 @@ body {
 /* The one place a display serif is allowed in the product. */
 .lf-hero-figure {
   font-family: var(--lf-font-display);
-  font-weight: 650;
-  font-size: var(--lf-text-hero);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: var(--lf-track-tight);
@@ -201,9 +199,6 @@ body {
   background: var(--yh-midnight);
   color: var(--yh-on-midnight);
   border-right: 1px solid rgb(255 255 255 / 0.06);
-  transition:
-    width 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 180ms ease;
 }
 .lf-workspace-sidebar[data-collapsed='true'] {
   width: 64px;
@@ -282,46 +277,6 @@ body {
   color: rgb(255 255 255 / 0.55);
   cursor: pointer;
 }
-.lf-module-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  margin: 0 12px 18px;
-  padding: 3px;
-  border: 1px solid rgb(255 255 255 / 0.11);
-  border-radius: 8px;
-  background: rgb(0 0 0 / 0.16);
-}
-.lf-module-switch a {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
-  border-radius: 5px;
-  color: rgb(255 255 255 / 0.62);
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 600;
-  transition:
-    color 120ms ease,
-    background 120ms ease;
-}
-.lf-module-switch a[aria-current='page'] {
-  color: #fff;
-  background: rgb(255 255 255 / 0.09);
-}
-.lf-module-switch a[aria-current='page']::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -4px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--yh-cyan);
-}
 .lf-sidebar-nav {
   flex: 1;
   overflow-y: auto;
@@ -334,24 +289,12 @@ body {
 .lf-nav-section {
   margin-bottom: 18px;
 }
-.lf-nav-label {
-  padding: 0 16px 6px;
-  color: rgb(255 255 255 / 0.34);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
 .lf-nav-link {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 34px;
-  padding: 7px 16px;
-  color: rgb(255 255 255 / 0.67);
   text-decoration: none;
-  font-size: 12px;
   white-space: nowrap;
   transition:
     color 100ms ease,
@@ -359,18 +302,13 @@ body {
 }
 .lf-nav-link:hover {
   color: #fff;
-  background: rgb(255 255 255 / 0.045);
 }
 .lf-nav-link[aria-current='page'] {
   color: #fff;
-  background: rgb(255 255 255 / 0.09);
-  font-weight: 600;
 }
 .lf-nav-link[aria-current='page']::before {
   content: '';
   position: absolute;
-  inset: 6px auto 6px 0;
-  width: 3px;
   border-radius: 0 2px 2px 0;
   /* The cyan indicator, and only the indicator: the row itself is a lift in
      the surface, so the accent is spent three pixels at a time. */
@@ -380,7 +318,6 @@ body {
   width: 16px;
   height: 16px;
   flex: none;
-  opacity: 0.72;
 }
 .lf-sidebar-account {
   flex: none;
@@ -453,7 +390,6 @@ body {
 
 .lf-page-header {
   display: flex;
-  align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
 }
@@ -472,17 +408,6 @@ body {
   color: inherit;
   text-decoration: none;
 }
-.lf-page-title {
-  margin: 0;
-  color: var(--lf-ink);
-  font: 650 26px/1.2 var(--lf-font-ui);
-  letter-spacing: -0.025em;
-}
-.lf-page-description {
-  margin: 5px 0 0;
-  color: var(--lf-ink-3);
-  font-size: 13px;
-}
 .lf-page-actions {
   display: flex;
   align-items: center;
@@ -496,23 +421,10 @@ body {
    dropped to the baseline — so every Sales list reads the same. */
 .lf-list-header {
   display: flex;
-  align-items: center;
   gap: var(--lf-space-4);
-  margin-bottom: var(--lf-space-4);
 }
 .lf-list-header__copy {
   min-width: 0;
-}
-.lf-list-header__title {
-  margin: 0;
-  font: 600 var(--lf-text-2xl)/1.25 var(--lf-font-ui);
-  letter-spacing: var(--lf-track-tight);
-  color: var(--lf-ink);
-}
-.lf-list-header__count {
-  margin: 2px 0 0;
-  font-size: var(--lf-text-sm);
-  color: var(--lf-ink-3);
 }
 .lf-list-header__actions {
   margin-left: auto;
@@ -564,45 +476,21 @@ body {
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
-  box-shadow: var(--lf-shadow-1);
 }
 .lf-table {
   width: 100%;
   min-width: 720px;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
 }
 .lf-table th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  height: 36px;
-  padding: 0 14px;
   text-align: left;
-  background: var(--lf-surface-2);
-  border-bottom: 1px solid var(--lf-line);
-  color: var(--lf-ink-2);
-  font: 650 9px/1 var(--lf-font-ui);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.lf-table td {
-  height: 42px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--lf-line);
-  color: var(--lf-ink-2);
-  vertical-align: middle;
 }
 .lf-table tr:last-child td {
   border-bottom: 0;
 }
 .lf-table tbody tr {
   transition: background 90ms ease;
-}
-.lf-table tbody tr:hover {
-  background: var(--lf-wine-050);
 }
 .lf-table td > strong {
   color: var(--lf-ink);
@@ -620,18 +508,6 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-}
-.lf-target-form {
-  display: none;
-  scroll-margin-top: 76px;
-}
-.lf-target-form:target {
-  display: block;
-}
-.lf-target-form__close {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
 }
 .lf-form-section {
   display: grid;
@@ -792,29 +668,6 @@ body {
   background: rgb(15 10 12 / 0.45);
   backdrop-filter: blur(1.5px);
 }
-.lf-sheet {
-  position: fixed;
-  z-index: 61;
-  display: flex;
-  flex-direction: column;
-  background: var(--lf-surface);
-  box-shadow: var(--lf-shadow-3);
-  /* Desktop: a right-hand drawer. */
-  inset: 0 0 0 auto;
-  width: min(460px, 100%);
-  border-left: 1px solid var(--lf-line);
-}
-.lf-sheet__head {
-  display: flex;
-  align-items: center;
-  gap: var(--lf-space-3);
-  padding: var(--lf-space-4) var(--lf-space-5);
-  border-bottom: 1px solid var(--lf-line);
-}
-.lf-sheet__head h2 {
-  margin: 0;
-  font: 600 var(--lf-text-lg)/1.2 var(--lf-font-ui);
-}
 .lf-sheet__close {
   margin-left: auto;
   display: grid;
@@ -828,54 +681,6 @@ body {
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
-}
-.lf-sheet__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--lf-space-5);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--lf-space-4);
-  align-content: start;
-}
-.lf-sheet__foot {
-  display: flex;
-  gap: var(--lf-space-2);
-  padding: var(--lf-space-4) var(--lf-space-5);
-  border-top: 1px solid var(--lf-line);
-  /* Above the home indicator, not under it. */
-  padding-bottom: calc(var(--lf-space-4) + env(safe-area-inset-bottom, 0px));
-}
-.lf-sheet__foot > * {
-  flex: 1;
-  min-height: 44px;
-}
-
-@media (max-width: 760px) {
-  .lf-sheet {
-    inset: auto 0 0 0;
-    width: 100%;
-    max-height: 88dvh;
-    border-left: 0;
-    border-top: 1px solid var(--lf-line);
-    border-radius: var(--lf-radius-xl) var(--lf-radius-xl) 0 0;
-    animation: lf-sheet-rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  /* The grab handle says "drag me down" before any label does. */
-  .lf-sheet::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 36px;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--lf-line-2);
-  }
-  .lf-sheet__head {
-    padding-top: var(--lf-space-5);
-  }
 }
 
 @keyframes lf-sheet-rise {
@@ -1100,11 +905,8 @@ body {
   }
   /* One row, never three: the bar is chrome, not content. */
   .lf-shell-topbar {
-    height: 56px;
-    min-height: 0;
     flex-wrap: nowrap;
     gap: 4px;
-    padding: 0 8px 0 52px;
   }
   /*
    * Below the status bar and notch. The page sets viewport-fit=cover, so in the iOS
@@ -1113,14 +915,12 @@ body {
    * nothing changes. The bar grows by the inset rather than losing height to it.
    */
   .lf-shell-topbar {
-    height: calc(56px + env(safe-area-inset-top, 0px));
     padding-top: env(safe-area-inset-top, 0px);
   }
   .lf-workspace-sidebar {
     padding-top: env(safe-area-inset-top, 0px);
   }
   .lf-shell-actions {
-    flex-wrap: nowrap;
     gap: 2px;
   }
   /* Search lives on the list screens it filters; on a phone the bar cannot
@@ -1143,20 +943,6 @@ body {
   /* Anything below the touch floor gets a hit area without growing visually. */
   .lf-shell-actions .lf-btn--sm {
     min-height: 44px;
-  }
-  .lf-mobile-nav-button {
-    width: 44px;
-    height: 44px;
-    top: calc(8px + env(safe-area-inset-top, 0px));
-    left: 8px;
-    border-radius: var(--lf-radius);
-  }
-}
-
-/* The drawer is a phone surface; on a tablet the rail is the navigation. */
-@media (min-width: 761px) {
-  .lf-tabbar {
-    display: none;
   }
 }
 
@@ -1279,11 +1065,9 @@ body {
     padding-top: 20px;
   }
   .lf-page-header {
-    align-items: flex-start;
     flex-direction: column;
   }
   .lf-list-header {
-    align-items: flex-start;
     flex-direction: column;
   }
   .lf-list-header__actions {
@@ -1416,9 +1200,6 @@ a:hover {
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
   box-shadow: var(--lf-shadow-1);
-}
-.lf-card--raised {
-  box-shadow: var(--lf-shadow-2);
 }
 
 /* ── Form controls ───────────────────────────────────────────────────────── */
@@ -1650,46 +1431,19 @@ a:hover {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: var(--lf-text-sm);
 }
 .lf-grid thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  height: 36px;
-  padding: 0 var(--lf-space-3);
   text-align: left;
-  background: var(--lf-surface-2);
-  border-bottom: 1px solid var(--lf-line);
-  font: 600 var(--lf-text-2xs)/1 var(--lf-font-ui);
-  letter-spacing: var(--lf-track-wide);
-  text-transform: uppercase;
-  color: var(--lf-ink-2);
-  white-space: nowrap;
   user-select: none;
 }
 .lf-grid thead th[aria-sort] {
   cursor: pointer;
 }
-.lf-grid thead th[aria-sort]:hover {
-  color: var(--lf-wine-700);
-}
 .lf-grid tbody td {
-  height: var(--lf-row);
-  padding: 0 var(--lf-space-3);
-  border-bottom: 1px solid var(--lf-line);
-  color: var(--lf-ink);
-  vertical-align: middle;
   white-space: nowrap;
 }
 .lf-grid tbody tr {
   transition: background 90ms ease;
-}
-.lf-grid tbody tr:hover {
-  background: var(--lf-wine-050);
-}
-.lf-grid tbody tr[aria-selected='true'] {
-  background: var(--lf-wine-100);
 }
 /* Sticky first column: the name stays put while you scroll 14 columns right. */
 .lf-grid .lf-sticky {
@@ -1698,9 +1452,6 @@ a:hover {
   z-index: 1;
   background: inherit;
   box-shadow: 1px 0 0 var(--lf-line);
-}
-.lf-grid tbody tr:hover .lf-sticky {
-  background: var(--lf-wine-050);
 }
 
 .lf-score {
@@ -1765,7 +1516,6 @@ a:hover {
 }
 .lf-tab:hover {
   color: var(--lf-ink);
-  background: var(--lf-wine-050);
 }
 .lf-tab[aria-selected='true'],
 .lf-tab[aria-current='page'] {
@@ -1845,18 +1595,9 @@ a:hover {
   height: 44px;
   margin: 0 auto var(--lf-space-4);
   border-radius: var(--lf-radius);
-  background: var(--lf-wine-050);
   border: 1px solid var(--lf-wine-200);
   display: grid;
   place-items: center;
-  color: var(--lf-wine-700);
-}
-
-.lf-skeleton {
-  border-radius: var(--lf-radius-sm);
-  background: linear-gradient(90deg, var(--lf-line) 25%, var(--lf-surface-2) 37%, var(--lf-line) 63%);
-  background-size: 400% 100%;
-  animation: lf-shimmer 1.3s ease-in-out infinite;
 }
 @keyframes lf-shimmer {
   from {
@@ -1896,12 +1637,7 @@ a:hover {
     display: none;
   }
   .lf-grid tbody tr {
-    display: block;
-    padding: 10px 12px;
     border-bottom: 1px solid var(--lf-line);
-  }
-  .lf-grid tbody tr:last-child {
-    border-bottom: 0;
   }
   .lf-grid tbody td {
     display: grid;
@@ -2153,32 +1889,6 @@ a:hover {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* The HR breadcrumb, ahead of the operational controls in the top bar.
-
-   It truncates rather than pushing the page wider. `flex: none` with
-   `white-space: nowrap` meant the crumb's own text was a floor on the width of
-   the top bar, and so on the width of the page: "Workspace · Work locations" —
-   the longest People page title — overflowed a 375px phone by a pixel or two
-   depending on the font metrics of the machine rendering it, and a 320px phone
-   by nearly thirty. The whole document scrolled sideways to fit a label.
-
-   `min-width: 0` is the part that does the work: a flex item's automatic
-   minimum size is its content, so without it `overflow: hidden` has nothing to
-   clip against and the ellipsis never appears. */
-.lf-shell-crumb {
-  flex: 0 1 auto;
-  min-width: 0;
-  font: 400 12px/1 var(--lf-font-ui);
-  color: var(--lf-ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.lf-shell-crumb b {
-  color: var(--lf-ink);
-  font-weight: 500;
 }
 
 /* ── Attendance console (People › Check in) ───────────────────────────────────
@@ -2626,18 +2336,6 @@ a:hover {
   .lf-life__split {
     grid-template-columns: 1fr;
   }
-}
-
-/* Attendance report filter bar: From, To, Apply, Export CSV in one row. */
-.lf-att__filters {
-  padding: 16px 18px;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.lf-att__filters .lf-field {
-  margin: 0;
 }
 
 /* ── User directory ──────────────────────────────────────────────────────── */
@@ -3333,7 +3031,6 @@ a:hover {
   border: 0;
   border-radius: var(--lf-radius-sm);
   background: transparent;
-  color: var(--lf-ink-3);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -3858,7 +3555,6 @@ a:hover {
 }
 .lf-filters .lf-field {
   margin: 0;
-  min-width: 130px;
   /* A field never outgrows the bar: a <select> sizes itself to its longest
      option (a long workspace name), and unchecked that pushed the platform
      Users bar 2px past a 390px screen. */
@@ -3911,29 +3607,14 @@ a:hover {
   color: var(--lf-ink-3);
   font-size: var(--lf-text-xs);
 }
-
-.lf-drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-}
 .lf-drawer__scrim {
-  position: absolute;
-  inset: 0;
-  background: rgb(46 11 22 / 0.34);
   backdrop-filter: blur(1.5px);
 }
 .lf-drawer__panel {
-  position: absolute;
   top: 0;
   right: 0;
-  display: flex;
-  flex-direction: column;
-  width: min(560px, 100%);
   height: 100%;
-  background: var(--lf-surface);
   border-left: 1px solid var(--lf-line);
-  box-shadow: var(--lf-shadow-3);
   animation: lf-drawer-in 160ms ease-out;
 }
 @keyframes lf-drawer-in {
@@ -3943,11 +3624,7 @@ a:hover {
   }
 }
 .lf-drawer__head {
-  display: flex;
   align-items: start;
-  gap: var(--lf-space-3);
-  padding: var(--lf-space-5) var(--lf-space-5) var(--lf-space-4);
-  border-bottom: 1px solid var(--lf-line);
   background: var(--lf-wine-050);
 }
 .lf-drawer__head h2 {
@@ -3961,11 +3638,6 @@ a:hover {
   font-size: var(--lf-text-sm);
 }
 .lf-drawer__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--lf-space-5);
-  display: grid;
-  gap: var(--lf-space-5);
   align-content: start;
 }
 .lf-drawer__close {
@@ -4018,13 +3690,6 @@ a:hover {
   color: var(--lf-ink);
   font-size: var(--lf-text-sm);
   overflow-wrap: anywhere;
-}
-
-.lf-actionrow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--lf-space-2);
-  align-items: center;
 }
 .lf-actionbox {
   display: grid;
@@ -4114,70 +3779,10 @@ a:hover {
   color: var(--lf-ink-3);
 }
 
-/* What needs me: one clickable chip per overdue queue, tone by urgency.
-   Rendered only when the count is non-zero, so a quiet day shows nothing. */
-.lf-attention {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--lf-space-3);
-}
-.lf-attention__item {
-  display: flex;
-  align-items: center;
-  gap: var(--lf-space-3);
-  padding: var(--lf-space-3) var(--lf-space-4);
-  border: 1px solid var(--lf-line);
-  border-radius: var(--lf-radius-lg);
-  background: var(--lf-surface);
-  box-shadow: var(--lf-shadow-1);
-  color: var(--lf-ink);
-  text-decoration: none;
-  transition:
-    box-shadow 120ms ease,
-    transform 120ms ease,
-    border-color 120ms ease;
-}
-.lf-attention__item:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--lf-shadow-2);
-  border-color: var(--lf-line-2);
-}
-.lf-attention__count {
-  min-width: 34px;
-  padding: 4px 8px;
-  border-radius: var(--lf-radius-sm);
-  text-align: center;
-  font: 650 var(--lf-text-lg)/1.2 var(--lf-font-ui);
-  font-variant-numeric: tabular-nums;
-  background: var(--lf-slate-sub);
-  color: var(--lf-slate);
-}
-.lf-attention__item[data-tone='vermillion'] .lf-attention__count {
-  background: var(--lf-vermillion-sub);
-  color: var(--lf-vermillion);
-}
-.lf-attention__item[data-tone='brass'] .lf-attention__count {
-  background: var(--lf-brass-sub);
-  color: var(--lf-brass);
-}
-.lf-attention__label {
-  display: block;
-  font-size: var(--lf-text-sm);
-  font-weight: 600;
-  line-height: 1.25;
-}
-.lf-attention__hint {
-  display: block;
-  margin-top: 1px;
-  font-size: var(--lf-text-xs);
-  color: var(--lf-ink-3);
-}
-
 /* Two quiet panels sharing a row on wide screens; stacking below. */
 .lf-panel-duo {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: 22px;
   align-items: start;
 }
 .lf-panel-duo .lf-metric-grid {
@@ -4913,6 +4518,16 @@ a:hover {
   min-width: 180px;
   padding: 4px 0;
 }
+.lf-create-menu a {
+  display: block;
+  padding: 8px 16px;
+  font-size: var(--lf-text-sm);
+  color: var(--lf-ink);
+  text-decoration: none;
+}
+.lf-create-menu a:hover {
+  background: var(--lf-surface-2);
+}
 
 /* On a phone a 380px panel hangs off the right edge of a 360px viewport.
    Pinned to the screen with a gutter either side instead. */
@@ -4978,7 +4593,6 @@ a:hover {
 [data-theme='glass'] .lf-card,
 [data-theme='glass'] .lf-workspace-sidebar,
 [data-theme='glass'] .lf-shell-topbar,
-[data-theme='glass'] .lf-sheet,
 [data-theme='glass'] .lf-drawer__panel {
   background: var(--lf-surface);
   -webkit-backdrop-filter: blur(var(--lf-glass-blur)) saturate(1.25);
@@ -4989,7 +4603,6 @@ a:hover {
 
 /* Panels that float above the page get the stronger blur: there is more behind
    them to separate from, and they are on screen briefly. */
-[data-theme='glass'] .lf-sheet,
 [data-theme='glass'] .lf-drawer__panel,
 [data-theme='glass'] .lf-pop,
 [data-theme='glass'] .lf-overflow__menu {
@@ -5054,7 +4667,6 @@ a:hover {
   [data-theme='glass'] .lf-card,
   [data-theme='glass'] .lf-workspace-sidebar,
   [data-theme='glass'] .lf-shell-topbar,
-  [data-theme='glass'] .lf-sheet,
   [data-theme='glass'] .lf-drawer__panel,
   [data-theme='glass'] .lf-pop {
     background: var(--lf-glass-solid);
@@ -5073,7 +4685,6 @@ a:hover {
   [data-theme='glass'] .lf-card,
   [data-theme='glass'] .lf-workspace-sidebar,
   [data-theme='glass'] .lf-shell-topbar,
-  [data-theme='glass'] .lf-sheet,
   [data-theme='glass'] .lf-drawer__panel {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -5289,7 +4900,6 @@ body,
 }
 .lf-kpi {
   display: block;
-  padding: var(--lf-space-4) var(--lf-space-5);
   background: var(--lf-surface);
   border: 1px solid var(--lf-line);
   border-radius: var(--lf-radius-lg);
@@ -5312,22 +4922,10 @@ a.lf-kpi:hover {
 }
 .lf-kpi__value {
   display: block;
-  margin-top: 8px;
   font: 650 28px / 1.1 var(--lf-font-ui);
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   color: var(--lf-ink);
-}
-
-/* Two more attention tones, so a queue can be informational or resolved
-   without borrowing the brand colour. */
-.lf-attention__item[data-tone='info'] .lf-attention__count {
-  background: var(--lf-info-sub);
-  color: var(--lf-info);
-}
-.lf-attention__item[data-tone='viridian'] .lf-attention__count {
-  background: var(--lf-viridian-sub);
-  color: var(--lf-viridian);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5379,30 +4977,7 @@ a.lf-kpi:hover {
   border-radius: 999px;
   background: var(--yh-cyan);
 }
-.lf-ai-confidence {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font: 500 var(--lf-text-2xs) / 1 var(--lf-font-mono);
-  color: var(--lf-ink-3);
-}
-.lf-ai-confidence__bar {
-  width: 34px;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--lf-line);
-  overflow: hidden;
-}
-.lf-ai-confidence__fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--yh-signal-edge);
-}
 /* Low confidence leaves the brand ramp for amber: "verify this" is a warning. */
-.lf-ai-confidence[data-level='low'] .lf-ai-confidence__fill {
-  background: var(--yh-warning);
-}
 .lf-ai-disclaimer {
   margin: 0 0 var(--lf-space-3);
   padding: var(--lf-space-2) var(--lf-space-3);
@@ -5452,12 +5027,6 @@ a.lf-kpi:hover {
     align-items: stretch;
   }
 }
-/* Eyebrow + breadcrumb + title was three lines saying one thing. */
-.lf-page-header .lf-eyebrow,
-.lf-list-header .lf-eyebrow {
-  display: none;
-}
-
 /* ── One table ───────────────────────────────────────────────────────────── */
 .lf-table-wrap,
 .lf-grid-wrap {
@@ -5556,9 +5125,6 @@ a.lf-kpi:hover {
 .lf-toolbar .lf-input {
   height: 34px;
   font-size: var(--lf-text-sm);
-}
-.lf-toolbar__spacer {
-  flex: 1 1 auto;
 }
 .lf-chips {
   display: flex;
@@ -6195,35 +5761,6 @@ a.lf-kpi:hover {
   margin-bottom: 8px;
 }
 
-/* ── Charts (recharts) ─────────────────────────────────────────────────────
-   Recharts writes colour as SVG presentation attributes, which cannot resolve
-   var(); `fill` and `stroke` are also CSS properties, so tokens work here.
-   Muted grid, slate labels; series colour is the component's (literal) ramp. */
-.recharts-cartesian-axis-tick-value,
-.recharts-polar-angle-axis-tick-value,
-.recharts-pie-label-text,
-.recharts-label {
-  fill: var(--lf-ink-2);
-  font-family: var(--lf-font-ui);
-  font-size: var(--lf-text-xs);
-}
-.recharts-cartesian-grid line,
-.recharts-cartesian-axis-line,
-.recharts-cartesian-axis-tick-line {
-  stroke: var(--lf-line);
-}
-.recharts-legend-item-text {
-  color: var(--lf-ink-2) !important;
-  font-size: var(--lf-text-xs);
-}
-.recharts-tooltip-cursor {
-  fill: color-mix(in srgb, var(--lf-ink) 6%, transparent);
-}
-.recharts-default-tooltip {
-  border-radius: var(--lf-radius) !important;
-  box-shadow: var(--lf-shadow-2);
-}
-
 /* Hero figures are the working face, not a display face. */
 .lf-hero-figure {
   font-size: 24px;
@@ -6369,7 +5906,7 @@ a.lf-kpi:hover {
   margin: 8px 0;
 }
 .lf-public a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure);
   text-decoration: none;
   border-bottom: 1px solid currentColor;
 }
@@ -6379,7 +5916,7 @@ a.lf-kpi:hover {
 .lf-privacy-header {
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid var(--lf-surface-3, #e8eaed);
+  border-bottom: 1px solid var(--lf-line);
 }
 .lf-privacy-header h1 {
   margin: 0 0 8px;
@@ -6389,20 +5926,20 @@ a.lf-kpi:hover {
 .lf-subtitle {
   margin: 4px 0 0;
   font-size: 1.1rem;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--lf-ink-2);
   font-weight: 500;
 }
 .lf-updated {
   margin: 8px 0 0;
   font-size: 0.95rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
+  color: var(--lf-ink-3);
 }
 .lf-privacy-summary {
-  background: var(--lf-surface-1, #f8f9fa);
+  background: var(--lf-surface-2);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
-  border-left: 4px solid var(--lf-blue-500, #4a90e2);
+  border-left: 4px solid var(--yh-azure);
 }
 .lf-privacy-summary h2 {
   margin-top: 0;
@@ -6414,11 +5951,11 @@ a.lf-kpi:hover {
 }
 .lf-summary-list li {
   margin: 8px 0;
-  color: var(--lf-ink-secondary, #5f6368);
+  color: var(--lf-ink-2);
 }
 .lf-privacy-nav {
-  background: var(--lf-surface-2, #ffffff);
-  border: 1px solid var(--lf-surface-3, #e8eaed);
+  background: var(--lf-surface-2);
+  border: 1px solid var(--lf-line);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 32px;
@@ -6438,7 +5975,7 @@ a.lf-kpi:hover {
   margin: 6px 0;
 }
 .lf-privacy-nav a {
-  color: var(--lf-blue-500, #4a90e2);
+  color: var(--yh-azure);
   text-decoration: none;
   border: none;
   font-size: 0.95rem;
@@ -6452,7 +5989,7 @@ a.lf-kpi:hover {
 .lf-privacy-page section > h2 {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
+  border-top: 1px solid var(--lf-line);
 }
 .lf-privacy-page section > h2:first-child {
   border-top: none;
@@ -6463,40 +6000,8 @@ a.lf-kpi:hover {
   margin-top: 40px;
   padding-top: 20px;
   font-size: 0.9rem;
-  color: var(--lf-ink-tertiary, #9aa0a6);
-  border-top: 1px solid var(--lf-surface-3, #e8eaed);
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .lf-privacy-header {
-    border-bottom-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-privacy-summary {
-    background: var(--lf-surface-1, #27292d);
-    border-left-color: var(--lf-blue-400, #5ba3f5);
-  }
-  .lf-subtitle,
-  .lf-summary-list li {
-    color: var(--lf-ink-secondary, #e0e0e0);
-  }
-  .lf-updated {
-    color: var(--lf-ink-tertiary, #9a9a9a);
-  }
-  .lf-privacy-nav {
-    background: var(--lf-surface-2, #2d3137);
-    border-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-privacy-nav a {
-    color: var(--lf-blue-400, #5ba3f5);
-  }
-  .lf-privacy-page section > h2 {
-    border-top-color: var(--lf-surface-3, #3a3f47);
-  }
-  .lf-last-updated {
-    border-top-color: var(--lf-surface-3, #3a3f47);
-    color: var(--lf-ink-tertiary, #9a9a9a);
-  }
+  color: var(--lf-ink-3);
+  border-top: 1px solid var(--lf-line);
 }
 
 /* Mobile optimization */

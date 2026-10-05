@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 /**
  * §8/§9 live guidance through the real route: consent gate, audio chunks →
@@ -17,7 +17,6 @@ const base = () => process.env.APP_URL ?? 'http://localhost:3000';
 
 test.describe('live call guidance', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
-  test.beforeEach(resetLoginThrottle);
   test.setTimeout(4 * 60_000);
 
   test('consent gate → ticks return transcript, stage and hints → objection guidance → finalise → analysis', async ({

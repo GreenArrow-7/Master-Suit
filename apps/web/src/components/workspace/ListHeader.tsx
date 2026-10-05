@@ -14,7 +14,7 @@ export default function ListHeader({
   actions,
   secondaryActions,
   description: override,
-  eyebrow,
+  help,
 }: {
   title: ReactNode;
   /** Rows on screen. Omit for screens that are not a record list. */
@@ -25,8 +25,12 @@ export default function ListHeader({
   capped?: boolean;
   /** Replaces the generated count line where a screen has something better to say. */
   description?: ReactNode;
-  /** Off by default — the reference screen carries no eyebrow above its title. */
-  eyebrow?: string;
+  /**
+   * The long explanation, folded into a native <details>: there when wanted, out
+   * of the way when not. Decision-point warnings (consent, approval rules,
+   * destructive actions) do not belong here — keep those next to their control.
+   */
+  help?: ReactNode;
   /** The primary action, and anything that must always be visible. */
   actions?: ReactNode;
   /**
@@ -51,9 +55,14 @@ export default function ListHeader({
   return (
     <header className="lf-list-header">
       <div className="lf-list-header__copy">
-        {eyebrow && <div className="lf-eyebrow">{eyebrow}</div>}
         <h1 className="lf-list-header__title">{title}</h1>
         {description && <p className="lf-list-header__count">{description}</p>}
+        {help && (
+          <details className="lf-help">
+            <summary>How this works</summary>
+            <div className="lf-help__body">{help}</div>
+          </details>
+        )}
       </div>
       {(actions || secondaryActions) && (
         <div className="lf-list-header__actions">

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Forbidden, NotFound } from '@/lib/errors';
+import { prisma } from '@/lib/db';
+import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_GRANT_MINUTES,
@@ -12,6 +11,8 @@ import {
   openGrant,
   revokeGrants,
 } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Break-glass: write access into one customer workspace, for a stated reason and
@@ -44,7 +45,7 @@ async function workspaceOr404(workspaceId: string) {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -69,33 +70,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
       requestId,
     });
 
-    await withPlatformTx(async (tx) => {
-      await tx.platformAuditEvent.create({
-        data: {
-          tenantId: workspace.id,
-          actorUserId: ctx.platformUserId,
-          event: 'PLATFORM_WRITE_ACCESS_OPENED',
-          objectType: 'workspace',
-          objectId: workspace.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
-          // The reason is the point of the record. A grant whose justification
-          // lives only in somebody's memory is the thing this replaces.
-          metadata: { slug: workspace.slug, reason: grant.reason, expiresAt: grant.expiresAt.toISOString() },
-        },
-      });
+    await platformAudit(ctx, {
+      tenantId: workspace.id,
+      event: 'PLATFORM_WRITE_ACCESS_OPENED',
+      objectType: 'workspace',
+      objectId: workspace.id,
+      // The reason is the point of the record. A grant whose justification
+      // lives only in somebody's memory is the thing this replaces.
+      metadata: { slug: workspace.slug, reason: grant.reason, expiresAt: grant.expiresAt.toISOString() },
     });
 
     return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -119,13 +111,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ workspac
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -141,26 +132,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
     // is idempotency, not an event, and a trail full of no-ops is a trail nobody
     // reads.
     if (closed > 0) {
-      await withPlatformTx(async (tx) => {
-        await tx.platformAuditEvent.create({
-          data: {
-            tenantId: workspace.id,
-            actorUserId: ctx.platformUserId,
-            event: 'PLATFORM_WRITE_ACCESS_CLOSED',
-            objectType: 'workspace',
-            objectId: workspace.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
-            metadata: { slug: workspace.slug, closed },
-          },
-        });
+      await platformAudit(ctx, {
+        tenantId: workspace.id,
+        event: 'PLATFORM_WRITE_ACCESS_CLOSED',
+        objectType: 'workspace',
+        objectId: workspace.id,
+        metadata: { slug: workspace.slug, closed },
       });
     }
 
     return NextResponse.json({ closed }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]/access' });
   }
 }

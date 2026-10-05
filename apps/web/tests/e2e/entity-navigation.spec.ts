@@ -40,15 +40,19 @@ test.describe('Clicking a record opens that record', () => {
   };
 
   /**
-   * The three things that independently decide "which module is this", each
-   * asserted where it is actually decided.
-   *
-   * `data-lf-module` is stamped by ModuleTheme in an effect, so it appears only
-   * once the page has hydrated; the other two are server-rendered markup. An
-   * auto-retrying assertion covers both without a sleep.
+   * Which module the top bar decided this is, read from what it offers: + Create
+   * lists Sales records first in Sales and an Employee in People. The menu is
+   * client-rendered, so this also waits for hydration.
    */
+  async function expectModule(page: Page, firstCreate: 'Lead' | 'Employee') {
+    const create = page.getByRole('button', { name: 'Create', exact: true });
+    await create.click();
+    await expect(page.getByRole('menu').getByRole('link').first()).toHaveText(firstCreate);
+    await create.click();
+  }
+
   async function expectSalesShell(page: Page) {
-    await expect(page.locator('html')).toHaveAttribute('data-lf-module', 'sales');
+    await expectModule(page, 'Lead');
     // One shell for both modules now: the ⌘K trigger renders everywhere, and
     // the rail carries the Sales group whatever the module.
     await expect(page.getByRole('button', { name: 'Search and jump to any page' })).toBeVisible();
@@ -140,7 +144,7 @@ test.describe('Clicking a record opens that record', () => {
     // The People module still resolves as People — this is a narrower test, not
     // a disabled one.
     await page.goto(`/${workspace.slug}/people/leave`);
-    await expect(page.locator('html')).toHaveAttribute('data-lf-module', 'people');
+    await expectModule(page, 'Employee');
     // The rail no longer swaps per module; the People group is simply there.
     await expect(page.getByRole('link', { name: 'Employees', exact: true })).toBeVisible();
 

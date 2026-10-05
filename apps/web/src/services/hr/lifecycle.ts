@@ -130,8 +130,8 @@ export async function buildChecklist(
   return created.count as number;
 }
 
-export async function outstandingBlockers(ctx: Ctx, employeeId: string, phase: ChecklistPhase, db: any = prisma) {
-  return db.hrChecklistTask.findMany({
+export async function outstandingBlockers(ctx: Ctx, employeeId: string, phase: ChecklistPhase) {
+  return prisma.hrChecklistTask.findMany({
     where: { tenantId: ctx.tenantId, employeeId, phase, blocking: true, completedAt: null },
     orderBy: { sequence: 'asc' },
   });
@@ -555,7 +555,7 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
   });
 
   if (employee.membership.salesUserId) {
-    await revokeAllSessions(ctx.tenantId, employee.membership.salesUserId, undefined, 'EMPLOYMENT_ENDED');
+    await revokeAllSessions(employee.membership.salesUserId, undefined, 'EMPLOYMENT_ENDED');
   }
 
   await audit(ctx, {

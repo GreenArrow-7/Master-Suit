@@ -17,7 +17,7 @@ const body = z
   .strict();
 
 /** ponytail: capped per request; re-run to queue the next slice. Batch it through the
- *  distribution worker in src/workers/distribution.ts if events grow past a few hundred. */
+ *  distribution job (src/workers/jobs.ts) if events grow past a few hundred. */
 const BATCH_LIMIT = 200;
 
 /**

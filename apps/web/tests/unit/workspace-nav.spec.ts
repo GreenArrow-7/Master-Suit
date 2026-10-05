@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   activeModule,
@@ -179,14 +179,14 @@ describe('moving between tabs of one screen', () => {
 describe('every existing workspace screen has a place', () => {
   const root = join(__dirname, '..', '..', 'src', 'app', '(workspace)', '[workspaceSlug]');
   const pages: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (name === 'page.tsx') pages.push(relative(root, dir).split(sep).join('/'));
-    }
-  };
-  walk(root);
+  for (const rel of readdirSync(root, { recursive: true }) as string[]) {
+    if (basename(rel) === 'page.tsx')
+      pages.push(
+        relative(root, dirname(join(root, rel)))
+          .split(sep)
+          .join('/'),
+      );
+  }
 
   // admin/[section] serves these four sections; any other value is not found.
   const concrete = pages.flatMap((route) =>

@@ -126,9 +126,7 @@ cd apps/web && npm ci && npx tsc --noEmit && npx vitest run
 
 - **Tags are rewritten too.** `hrms-28of28-baseline` and
   `hrms-28of28-hardening-wip` will point at new commit hashes. Re-verify they
-  still mark the intended state, and update any document quoting a commit SHA —
-  including `docs/evidence/baseline-28of28/baseline-commit.txt`, which records
-  `8d42c51`.
+  still mark the intended state, and update any document quoting a commit SHA.
 - **Every existing clone becomes incompatible.** Anyone holding one must delete
   it and re-clone; pulling will not converge. With no remote and one other known
   participant, that is a single conversation.

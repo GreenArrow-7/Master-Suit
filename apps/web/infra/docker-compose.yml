@@ -70,7 +70,9 @@ services:
     ports: ['127.0.0.1:5432:5432']
     volumes: ['pgdata:/var/lib/postgresql/data']
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U leadflow']
+      # Over TCP: while initdb runs, the server listens on its socket only, so a
+      # socket check passes before the database can take a connection.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U leadflow']
       interval: 5s
       retries: 10
 

@@ -1,18 +1,14 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
-import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
-import { logger } from '@/lib/logger';
 import { getObject, putObject } from '@/lib/storage';
-import { scanBuffer } from '@/lib/antivirus';
-import { getUploadMaxMb } from '@/lib/platform-settings';
-import { resolveGuardedCtx } from '@/lib/api/guarded';
+import { assertClean, scanBuffer } from '@/lib/antivirus';
+import { readUpload } from '@/lib/api/read-body';
 import { audit } from '@/lib/security/audit';
-import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { enqueueOrRun } from '@/lib/queue';
 import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
 import { assertCallInScope } from '@/lib/security/record-scope';
 
@@ -81,12 +77,9 @@ export const GET = route(
 /**
  * Uploads the recording itself — audio or video — for a call.
  *
- * Multipart, so it cannot go through the JSON kernel in lib/api/handler.ts.
- * `resolveGuardedCtx` runs the kernel's order for it — authenticate, entitle,
- * permit, throttle — rather than the prologue being retyped here. That matters
- * for the fourth step: the hand-written version of this had no rate limit, which
- * is the same omission the five HR bypasses had and for the same reason. There
- * is no way to ask that function for no limit.
+ * Multipart: the kernel leaves the body unread until readUpload, after the
+ * prologue. The hand-written version of this had no rate limit, the same
+ * omission the five HR downloads had; the kernel cannot leave it out.
  *
  * Consent is checked after the prologue and before a byte of the body is read.
  *
@@ -99,22 +92,10 @@ export const GET = route(
  * an object that was never stored is worse than no row — the transcription job
  * would retry against it forever.
  */
-export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: SALES_OR_REALTY,
-      permission: ['calls', 'EDIT'],
-    });
-
-    const { id: callId } = await context.params;
+export const PUT = route(
+  { module: 'calls', action: 'EDIT', productModule: SALES_OR_REALTY, sessionOnly: true, params },
+  async ({ ctx, params: { id: callId }, req }) => {
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
-
-    const uploadMaxMb = await getUploadMaxMb();
-    const maxBytes = uploadMaxMb * 1024 * 1024;
-    const tooLarge = () => new AppError(413, 'file-too-large', `Recordings must be under ${uploadMaxMb} MB.`);
-    const declared = Number(req.headers.get('content-length') ?? 0);
-    if (declared > maxBytes + 64 * 1024) throw tooLarge();
 
     const [call, consent] = await Promise.all([
       prisma.call.findFirst({ where: { id: callId, tenantId: ctx.tenantId, deletedAt: null }, select: { id: true } }),
@@ -127,10 +108,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
       throw new AppError(403, 'forbidden', 'Cannot store a recording without active consent.');
     }
 
-    const form = await req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw new AppError(422, 'validation-failed', 'Attach a recording to upload.');
-    if (file.size > maxBytes) throw tooLarge();
+    const { form, file } = await readUpload(req, 'recording');
 
     const mimeType = (file.type || 'application/octet-stream').split(';')[0].trim().toLowerCase();
     if (!ACCEPTED_MEDIA.test(mimeType)) {
@@ -138,19 +116,10 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const scan = await scanBuffer(bytes);
-    if (scan.verdict !== 'CLEAN') {
-      throw new AppError(
-        422,
-        'validation-failed',
-        scan.verdict === 'INFECTED'
-          ? 'The file failed the malware scan and was not stored.'
-          : 'The malware scanner was unavailable; try again.',
-      );
-    }
+    assertClean(await scanBuffer(bytes));
 
     const durationSecs = Number(form.get('durationSecs') ?? 0) || null;
-    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${ulid()}`;
+    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${crypto.randomUUID()}`;
     await putObject(storageKey, bytes, mimeType);
 
     const recording = await prisma.recording.upsert({
@@ -183,27 +152,13 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
      * racing a worker cannot produce two.
      */
     const language = String(form.get('language') ?? 'en').slice(0, 10);
-    if (await queueHasWorkers('ai')) {
-      await enqueue('ai', 'transcribe', { tenantId: ctx.tenantId, callId, language });
-    } else {
-      const tenantId = ctx.tenantId;
-      void transcribeCall({ tenantId, callId, language })
-        .then(() => analyseAndAudit(tenantId, callId))
-        .catch((err) => logger.error({ err: (err as Error).message, callId }, 'inline transcription chain failed'));
-    }
+    await enqueueOrRun('ai', 'transcribe', { tenantId: ctx.tenantId, callId, language }, () =>
+      transcribeCall({ tenantId: ctx.tenantId, callId, language }).then(() => analyseAndAudit(ctx.tenantId, callId)),
+    );
 
-    return NextResponse.json({ ...recording, transcription: 'QUEUED' }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'call recording upload failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+    return { ...recording, transcription: 'QUEUED' };
+  },
+);
 
 /** Audio and video only. A transcription provider rejects anything else anyway. */
 const ACCEPTED_MEDIA = /^(audio|video)\//;

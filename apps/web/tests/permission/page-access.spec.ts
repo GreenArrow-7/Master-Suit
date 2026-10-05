@@ -22,6 +22,7 @@ import { Forbidden } from '@/lib/errors';
 import { assertPermission } from '@/lib/security/rbac';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { Grants } from '../helpers/fixtures';
+import { grantPermissions } from '../helpers/fixtures';
 
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const pagesDir = path.join(root, 'src', 'app', '(workspace)');
@@ -105,20 +106,11 @@ beforeAll(async () => {
     data: { tenantId, key: `admin-${suffix}`, name: 'Admin', rank: 10, defaultScope: 'ORGANIZATION' },
   });
   adminRoleId = admin.id;
-  for (const [module, action] of [
+  await grantPermissions(tenantId, admin.id, [
     ['settings', 'VIEW'],
     ['auditlogs', 'VIEW'],
     ['users', 'VIEW'],
-  ] as Grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: admin.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  ] as Grants);
 
   const plain = await prisma.role.create({
     data: { tenantId, key: `plain-${suffix}`, name: 'Plain', rank: 100, defaultScope: 'OWN' },

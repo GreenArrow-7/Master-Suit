@@ -23,4 +23,3 @@ const authenticator = envelope('master-saas-authenticator-secret-v1');
 
 export const encryptSecret = (plain: string) => authenticator.encrypt(plain);
 export const decryptSecret = (stored: string) => authenticator.decrypt(stored);
-export const isEncrypted = (stored: string) => authenticator.isEncrypted(stored);

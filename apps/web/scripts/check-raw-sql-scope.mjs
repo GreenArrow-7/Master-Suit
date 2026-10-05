@@ -50,7 +50,7 @@
  * Exit 0 clean · 1 a raw statement is outside a transaction · 2 misconfigured.
  */
 import { Client } from 'pg';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -155,7 +155,7 @@ function transactionalNames(source) {
     names.add(match[1]);
   }
 
-  const aliases = new Set(['Prisma.TransactionClient', 'TransactionClient']);
+  const aliases = new Set(['Prisma.TransactionClient', 'TransactionClient', 'TxClient']);
   for (const match of source.matchAll(/\btype\s+(\w+)\s*=[^;]*TransactionClient/g)) aliases.add(match[1]);
   const aliasPattern = [...aliases].map((a) => a.replace(/[.$]/g, '\\$&')).join('|');
   for (const match of source.matchAll(new RegExp(`\\(\\s*(\\w+)\\s*:\\s*(?:${aliasPattern})\\b`, 'g'))) {
@@ -168,15 +168,10 @@ function transactionalNames(source) {
   return names;
 }
 
-function sources(dir) {
-  const out = [];
-  for (const entry of readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...sources(full));
-    else if (/\.tsx?$/.test(entry)) out.push(full);
-  }
-  return out;
-}
+const sources = (dir) =>
+  readdirSync(dir, { recursive: true })
+    .filter((file) => /\.tsx?$/.test(file))
+    .map((file) => path.join(dir, file));
 
 const url = process.env.RLS_DATABASE_URL || process.env.DATABASE_URL;
 if (!url) {

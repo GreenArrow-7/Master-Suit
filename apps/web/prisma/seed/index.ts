@@ -8,7 +8,7 @@
  *   ALLOW_DEMO_SEED=yes npm run db:seed
  *   ALLOW_DEMO_SEED=yes npm run db:seed -- --reset     drop and rebuild
  */
-import 'dotenv/config';
+import '../../scripts/env.mjs';
 import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';

@@ -32,8 +32,6 @@ export default tseslint.config(
       '.next-preview/**',
       // Scratch verification scripts, already git-ignored.
       '.verify/**',
-      'node_modules/**',
-      'coverage/**',
       'src/generated/**',
       'next-env.d.ts',
       'eslint.config.mjs',
@@ -108,10 +106,10 @@ export default tseslint.config(
      * state, context or cached RSC payload from the authenticated session
      * survives in memory. A soft navigation would leave all of it.
      *
-     * Scoped to the three files that sign a user out; the rule stays on
-     * everywhere else.
+     * Scoped to the file that signs a user out; the rule stays on everywhere
+     * else.
      */
-    files: ['src/components/nav/TopBar.tsx', 'src/components/workspace/SecurityPanel.tsx', 'src/lib/auth/client.ts'],
+    files: ['src/components/nav/TopBar.tsx'],
     rules: { '@next/next/no-location-assign-relative-destination': 'off' },
   },
 

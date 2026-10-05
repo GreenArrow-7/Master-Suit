@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import { issueApiKey } from '@/lib/auth/apiKey';
 import { GET, POST } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { get, post } from '../helpers/request';
@@ -41,20 +40,13 @@ async function makeRep(label: string) {
     roleId: role.id,
     email: `http-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
-  ownedPlatformUserIds.add(membership.platformUserId);
+  ownedPlatformUserIds.add(user.platformUserId);
   return {
     user,
     roleId: role.id,
-    platformUserId: membership.platformUserId,
+    platformUserId: user.platformUserId,
     cookie: await createSessionToken(fixture.a.tenantId, user.id),
   };
 }

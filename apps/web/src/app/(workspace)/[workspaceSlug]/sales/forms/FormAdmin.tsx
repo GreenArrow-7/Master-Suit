@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Create and publish lead-capture forms. Creation uses the standard contact
@@ -100,10 +101,7 @@ export function FormComposer() {
         </p>
       </div>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="f-success">
-          Thank-you message
-        </label>
+      <Field label="Thank-you message" htmlFor="f-success">
         <input
           id="f-success"
           className="lf-input"
@@ -111,7 +109,7 @@ export function FormComposer() {
           placeholder="Thank you — we will be in touch shortly."
           onChange={(e) => setForm((f) => ({ ...f, successMessage: e.target.value }))}
         />
-      </div>
+      </Field>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
         <input

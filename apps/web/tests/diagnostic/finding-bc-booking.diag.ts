@@ -13,6 +13,7 @@ import { POST as createBooking, PATCH as patchBooking } from '@/app/api/v1/booki
 import { POST as recordReceipt } from '@/app/api/v1/collections/receipts/route';
 import { createSessionToken } from '../helpers/session';
 import { patch, post } from '../helpers/request';
+import { grantPermissions, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const D = (n: number) => new Prisma.Decimal(n);
@@ -35,33 +36,10 @@ async function makeUser(label: string, grants: readonly (readonly [string, Permi
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: {
-        tenantId,
-        roleId: role.id,
-        permissionId: permission.id,
-        granted: true,
-        scope: 'ORGANIZATION' as VisibilityScope,
-      },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants, 'ORGANIZATION' as VisibilityScope);
 
   const email = `${label}-${suffix}@diag.test`;
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
+  const user = await createWorkspaceUser({ tenantId, roleId: role.id, email: email, fullName: label });
   return { id: user.id, cookie: await createSessionToken(tenantId, user.id), email };
 }
 

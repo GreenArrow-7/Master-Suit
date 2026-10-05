@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import { cancelAccountDeletion, myDeletionRequest, requestAccountDeletion } from '@/services/identity/accountDeletion';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 
 /**
  * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
@@ -28,15 +27,7 @@ const ownedPlatformUserIds = new Set<string>();
 const PASSWORD = 'Correct-Horse-Battery-9!';
 let seq = 0;
 
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 let fixture: Fixture;
 
@@ -49,17 +40,10 @@ async function makeRep(tenantId: string, label: string) {
     roleId: role.id,
     email: `auth-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
-  ownedPlatformUserIds.add(membership.platformUserId);
-  return { user, platformUserId: membership.platformUserId, ctx: ctxFor(tenantId, user.id) };
+  ownedPlatformUserIds.add(user.platformUserId);
+  return { user, platformUserId: user.platformUserId, ctx: ctxFor(tenantId, user.id) };
 }
 
 beforeAll(async () => {

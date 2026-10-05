@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { createServer } from 'node:net';
 import path from 'node:path';
-import { assertDisposableEnvironment } from './environment';
+import { assertDisposableEnvironment } from '../helpers/isolation';
 
 /**
  * Starts the application for the specs in this directory, and stops it again.
@@ -41,10 +42,7 @@ function serverEnv(): NodeJS.ProcessEnv {
   const testEnvFile = path.join(process.cwd(), '.env.test');
   if (!existsSync(testEnvFile)) return env;
 
-  for (const line of readFileSync(testEnvFile, 'utf8').split('\n')) {
-    const key = /^\s*([A-Z0-9_]+)\s*=/.exec(line)?.[1];
-    if (key) delete env[key];
-  }
+  for (const key of Object.keys(parseEnv(readFileSync(testEnvFile, 'utf8')))) delete env[key];
   return env;
 }
 
@@ -89,7 +87,7 @@ export default async function setup() {
   // Before anything is started or written. The suites assert this too — they
   // open their own client — but doing it here means an unsafe configuration
   // costs nothing rather than a server boot and a partial fixture run.
-  assertDisposableEnvironment();
+  assertDisposableEnvironment({ suite: 'server integration' });
 
   // An externally supplied URL wins, so CI can point these at a deployed
   // instance without this file having to know about it.

@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { requirePlatformOwner } from '@/lib/auth/platform';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+
 import { runRetentionCleanup } from '@/lib/jobs/retention';
 import { readJsonBody } from '@/lib/api/read-body';
+import { bareRoute } from '@/lib/api/handler';
 
 const body = z.object({ dryRun: z.boolean().default(true) }).strict();
 
@@ -19,21 +18,9 @@ const body = z.object({ dryRun: z.boolean().default(true) }).strict();
  * that permission was granted to any workspace admin it would have handed a
  * single tenant an all-tenant delete. Owner-only closes that latent hole.
  */
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    await requirePlatformOwner(req, requestId);
-    const { dryRun } = await readJsonBody(req, body).catch(() => ({ dryRun: true }));
-    const result = await runRetentionCleanup(dryRun);
-    return NextResponse.json(result, { headers: { 'x-request-id': requestId } });
-  } catch (err) {
-    if (err instanceof AppError) {
-      return NextResponse.json(err.toProblem(requestId), {
-        status: err.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err, requestId }, 'retention cleanup failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+export const POST = bareRoute('/api/v1/admin/retention', async (req, requestId) => {
+  await requirePlatformOwner(req, requestId);
+  const { dryRun } = await readJsonBody(req, body).catch(() => ({ dryRun: true }));
+  const result = await runRetentionCleanup(dryRun);
+  return NextResponse.json(result);
+});

@@ -7,6 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { PermissionAction, VisibilityScope } from '@prisma/client';
+import { hashPassword } from '@/lib/auth/password';
 import { prisma } from '@/lib/db';
 import { createSessionToken } from './session';
 
@@ -19,7 +20,8 @@ import { createSessionToken } from './session';
  * the test session helper wrote a legacy `Session` row keyed on it. That row
  * type is gone, and with it a resolveCtx branch that skipped the `tenant.status`
  * check — so fixtures now build the whole identity, and the tests authenticate
- * the way production does.
+ * the way production does. All three ids come back, so a spec never has to
+ * look the membership up again.
  */
 export async function createWorkspaceUser(input: {
   tenantId: string;
@@ -28,6 +30,8 @@ export async function createWorkspaceUser(input: {
   fullName: string;
   branchId?: string | null;
   regionId?: string | null;
+  /** Stored hashed on the identity, for specs that re-authenticate. */
+  password?: string;
 }) {
   const platformUser = await prisma.platformUser.create({
     data: {
@@ -35,6 +39,7 @@ export async function createWorkspaceUser(input: {
       normalizedEmail: input.email.toLowerCase(),
       fullName: input.fullName,
       status: 'ACTIVE',
+      ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
     },
   });
 
@@ -50,7 +55,7 @@ export async function createWorkspaceUser(input: {
     },
   });
 
-  await prisma.workspaceMembership.create({
+  const membership = await prisma.workspaceMembership.create({
     data: {
       tenantId: input.tenantId,
       platformUserId: platformUser.id,
@@ -58,9 +63,58 @@ export async function createWorkspaceUser(input: {
       status: 'ACTIVE',
       joinedAt: new Date(),
     },
+    select: { id: true },
   });
 
-  return user;
+  return { ...user, membershipId: membership.id, platformUserId: platformUser.id };
+}
+
+/**
+ * An ACTIVE employee who joined on 2020-01-01: a workspace user plus their
+ * EmployeeProfile. Without `roleId` they get a role of their own that carries
+ * no grants — HR specs state the permissions they exercise on the Ctx
+ * (buildActor's `grants`) rather than inheriting them from a fixture.
+ */
+export async function createEmployee(input: {
+  tenantId: string;
+  label: string;
+  suffix: string;
+  roleId?: string;
+  defaultScope?: VisibilityScope;
+  joinedOn?: Date;
+  managerMembershipId?: string | null;
+}) {
+  const { tenantId, label, suffix } = input;
+  const roleId =
+    input.roleId ??
+    (
+      await prisma.role.create({
+        data: {
+          tenantId,
+          key: `${label}-${suffix}`,
+          name: label,
+          rank: 50,
+          defaultScope: input.defaultScope ?? 'ORGANIZATION',
+        },
+      })
+    ).id;
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId,
+    email: `${label}-${suffix}@employee.test`,
+    fullName: label,
+  });
+  const employee = await prisma.employeeProfile.create({
+    data: {
+      tenantId,
+      membershipId: user.membershipId,
+      employeeNumber: `${label.toUpperCase()}-${suffix}`,
+      employmentStatus: 'ACTIVE',
+      joinedOn: input.joinedOn ?? new Date('2020-01-01'),
+      managerMembershipId: input.managerMembershipId ?? null,
+    },
+  });
+  return { employeeId: employee.id, userId: user.id, membershipId: user.membershipId };
 }
 
 export interface TenantFixture {
@@ -96,18 +150,11 @@ async function createAdminRole(tenantId: string, suffix: string) {
     },
   });
 
-  for (const permissionModule of MODULES) {
-    for (const action of ALL_ACTIONS) {
-      const permission = await prisma.permission.upsert({
-        where: { module_action: { module: permissionModule, action } },
-        update: {},
-        create: { module: permissionModule, action },
-      });
-      await prisma.rolePermission.create({
-        data: { tenantId, roleId: role.id, permissionId: permission.id, scope: 'ORGANIZATION' },
-      });
-    }
-  }
+  await grantPermissions(
+    tenantId,
+    role.id,
+    MODULES.flatMap((module) => ALL_ACTIONS.map((action) => [module, action] as const)),
+  );
   return role;
 }
 
@@ -235,17 +282,15 @@ export async function seedHierarchy(): Promise<Hierarchy> {
     const role = await prisma.role.create({
       data: { tenantId, key: `${key}-${suffix}`, name: key, rank, defaultScope: scope },
     });
-    for (const action of ALL_ACTIONS) {
-      // Reps may not ASSIGN: claiming another owner's record is the escalation
-      // the scope tests probe for.
-      if (action === 'ASSIGN' && scope === 'OWN') continue;
-      const permission = await prisma.permission.upsert({
-        where: { module_action: { module: 'leads', action } },
-        update: {},
-        create: { module: 'leads', action },
-      });
-      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, permissionId: permission.id, scope } });
-    }
+    // Reps may not ASSIGN: claiming another owner's record is the escalation
+    // the scope tests probe for.
+    const actions = ALL_ACTIONS.filter((action) => !(action === 'ASSIGN' && scope === 'OWN'));
+    await grantPermissions(
+      tenantId,
+      role.id,
+      actions.map((action) => ['leads', action] as const),
+      scope,
+    );
     return role;
   }
 
@@ -331,13 +376,6 @@ export async function seedTwoTenants(): Promise<Fixture> {
 }
 
 /**
- * Grants a role a set of permissions, creating the catalogue rows on demand.
- *
- * Extracted because six specs had their own copy of this loop, each typing the
- * pairs as `[string, string][]` — which only compiled because `tests` was
- * excluded from tsconfig, so `tsc --noEmit` had never checked the suite at all.
- */
-/**
  * `[module, action]` pairs for a role.
  *
  * Typed against Prisma's own enum so a misspelt action is a compile error. Six
@@ -347,6 +385,7 @@ export async function seedTwoTenants(): Promise<Fixture> {
  */
 export type Grants = readonly (readonly [string, PermissionAction])[];
 
+/** Grants a role a set of permissions, creating the catalogue rows on demand. */
 export async function grantPermissions(
   tenantId: string,
   roleId: string,
@@ -363,4 +402,49 @@ export async function grantPermissions(
       data: { tenantId, roleId, permissionId: permission.id, granted: true, scope },
     });
   }
+}
+
+/**
+ * Puts a Sales user on approved annual leave around now (or over `window`): the
+ * HR profile, leave type and request a distribution eligibility check reads.
+ * Returns the employee id.
+ */
+export async function grantApprovedLeave(tenantId: string, userId: string, window?: { start: Date; end: Date }) {
+  const email = `leave-${randomBytes(4).toString('hex')}@leave.test`;
+  const platformUser = await prisma.platformUser.create({
+    data: { email, normalizedEmail: email, fullName: 'Leave holder' },
+    select: { id: true },
+  });
+  const membership = await prisma.workspaceMembership.create({
+    data: { tenantId, platformUserId: platformUser.id, salesUserId: userId, status: 'ACTIVE', joinedAt: new Date() },
+    select: { id: true },
+  });
+  const employee = await prisma.employeeProfile.create({
+    data: {
+      tenantId,
+      membershipId: membership.id,
+      employeeNumber: `E-${randomBytes(3).toString('hex')}`,
+      employmentStatus: 'ACTIVE',
+    },
+    select: { id: true },
+  });
+  const type = await prisma.hrLeaveType.upsert({
+    where: { tenantId_code: { tenantId, code: 'ANNUAL' } },
+    update: {},
+    create: { tenantId, code: 'ANNUAL', name: 'Annual leave' },
+    select: { id: true },
+  });
+  await prisma.hrLeaveRequest.create({
+    data: {
+      tenantId,
+      employeeId: employee.id,
+      leaveTypeId: type.id,
+      startDate: window?.start ?? new Date(Date.now() - 86_400_000),
+      endDate: window?.end ?? new Date(Date.now() + 86_400_000),
+      days: 3,
+      status: 'APPROVED',
+      decidedAt: new Date(),
+    },
+  });
+  return employee.id;
 }

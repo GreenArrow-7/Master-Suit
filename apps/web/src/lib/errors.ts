@@ -70,8 +70,16 @@ export const Invalid = (errors: FieldError[]) =>
     errors,
   );
 
+/** A status change the record's workflow does not allow, reported on `status`. */
+export const IllegalTransition = (message: string) =>
+  Invalid([{ field: 'status', code: 'illegal_transition', message }]);
+
 /**
  * Out-of-tenant and out-of-visibility both return 404. A 403 would confirm the
  * record exists, which is itself a cross-tenant leak. See docs/03-API.md §3.
  */
 export const NotFound = (what = 'Record') => new AppError(404, 'not-found', `${what} not found.`);
+
+/** Postgres refused a duplicate on a unique index (Prisma's P2002). */
+export const isUniqueViolation = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';

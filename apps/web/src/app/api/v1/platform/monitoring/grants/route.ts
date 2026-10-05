@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withPlatformTx } from '@/lib/db';
-import { AppError, Forbidden, NotFound } from '@/lib/errors';
+import { prisma } from '@/lib/db';
+import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
   DEFAULT_COVERAGE_MINUTES,
@@ -15,6 +14,8 @@ import {
   revokeCoverage,
   revokeGrants,
 } from '@/lib/auth/platform-access';
+import { platformAudit } from '@/lib/security/audit';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Who may monitor which customers.
@@ -67,7 +68,7 @@ async function subjectOr404(platformUserId: string) {
 }
 
 export async function POST(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const input = body.parse(await req.json());
@@ -95,29 +96,21 @@ export async function POST(req: Request) {
         requestId,
       });
 
-      await withPlatformTx((tx) =>
-        tx.platformAuditEvent.create({
-          data: {
-            // The customer's own trail. Somebody being authorised to watch their
-            // workspace is their business before it is ours.
-            tenantId: workspace.id,
-            actorUserId: ctx.platformUserId,
-            event: 'MONITORING_ACCESS_GRANTED',
-            objectType: 'platform_user',
-            objectId: subject.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
-            metadata: {
-              slug: workspace.slug,
-              subject: subject.email,
-              reason: grant.reason,
-              sensitive: input.sensitive ?? false,
-              expiresAt: grant.expiresAt.toISOString(),
-            },
-          },
-        }),
-      );
+      await platformAudit(ctx, {
+        // The customer's own trail. Somebody being authorised to watch their
+        // workspace is their business before it is ours.
+        tenantId: workspace.id,
+        event: 'MONITORING_ACCESS_GRANTED',
+        objectType: 'platform_user',
+        objectId: subject.id,
+        metadata: {
+          slug: workspace.slug,
+          subject: subject.email,
+          reason: grant.reason,
+          sensitive: input.sensitive ?? false,
+          expiresAt: grant.expiresAt.toISOString(),
+        },
+      });
       return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
     }
 
@@ -130,31 +123,22 @@ export async function POST(req: Request) {
       requestId,
     });
 
-    await withPlatformTx((tx) =>
-      tx.platformAuditEvent.create({
-        data: {
-          // No tenantId: coverage names no workspace, so there is no single
-          // customer trail this belongs on. It is a platform-level act and lives
-          // in the platform-level stream.
-          actorUserId: ctx.platformUserId,
-          event: 'MONITORING_COVERAGE_GRANTED',
-          objectType: 'platform_user',
-          objectId: subject.id,
-          requestId,
-          ipAddress: ctx.ip,
-          userAgent: ctx.userAgent,
-          metadata: {
-            subject: subject.email,
-            reason: coverage.reason,
-            expiresAt: coverage.expiresAt.toISOString(),
-          },
-        },
-      }),
-    );
+    await platformAudit(ctx, {
+      // No tenantId: coverage names no workspace, so there is no single
+      // customer trail this belongs on. It is a platform-level act and lives
+      // in the platform-level stream.
+      event: 'MONITORING_COVERAGE_GRANTED',
+      objectType: 'platform_user',
+      objectId: subject.id,
+      metadata: {
+        subject: subject.email,
+        reason: coverage.reason,
+        expiresAt: coverage.expiresAt.toISOString(),
+      },
+    });
     return NextResponse.json({ coverage }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }
 
@@ -166,7 +150,7 @@ export async function POST(req: Request) {
  * is the property that makes this a revocation rather than a note to self.
  */
 export async function DELETE(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const input = revokeBody.parse(await req.json());
@@ -178,33 +162,24 @@ export async function DELETE(req: Request) {
       : await revokeCoverage(subject.id, reason);
 
     if (closed > 0) {
-      await withPlatformTx((tx) =>
-        tx.platformAuditEvent.create({
-          data: {
-            tenantId: input.workspaceId ?? null,
-            actorUserId: ctx.platformUserId,
-            event: input.workspaceId ? 'MONITORING_ACCESS_REVOKED' : 'MONITORING_COVERAGE_REVOKED',
-            objectType: 'platform_user',
-            objectId: subject.id,
-            requestId,
-            ipAddress: ctx.ip,
-            userAgent: ctx.userAgent,
-            metadata: { subject: subject.email, reason, closed },
-          },
-        }),
-      );
+      await platformAudit(ctx, {
+        tenantId: input.workspaceId ?? null,
+        event: input.workspaceId ? 'MONITORING_ACCESS_REVOKED' : 'MONITORING_COVERAGE_REVOKED',
+        objectType: 'platform_user',
+        objectId: subject.id,
+        metadata: { subject: subject.email, reason, closed },
+      });
     }
 
     return NextResponse.json({ closed }, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }
 
 /** What the console needs to render the form without hardcoding the same numbers. */
 export async function GET(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     await requirePlatformOwner(req, requestId);
     return NextResponse.json(
@@ -216,7 +191,6 @@ export async function GET(req: Request) {
       { headers: { 'x-request-id': requestId } },
     );
   } catch (err) {
-    if (err instanceof AppError) return NextResponse.json(err.toProblem(requestId), { status: err.status });
-    throw err;
+    return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
   }
 }

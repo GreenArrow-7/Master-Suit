@@ -18,7 +18,7 @@ import {
   DELETE as hrArchive,
 } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get, post, patch, del } from '../helpers/request';
 import type { VisibilityScope } from '@prisma/client';
 import type { Grants } from '../helpers/fixtures';
@@ -34,16 +34,7 @@ async function member(label: string, grants: Grants, scope: VisibilityScope) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 20, defaultScope: scope },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants, scope);
   const user = await createWorkspaceUser({
     tenantId,
     roleId: role.id,

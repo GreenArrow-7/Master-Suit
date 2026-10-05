@@ -5,10 +5,13 @@
  * tests/helpers/fixtures.ts instead — these objects are not backed by rows, and
  * building suites on them is what made the old isolation tests meaningless.
  */
-import { ulid } from 'ulid';
 import type { Ctx, Actor, PermissionMap } from '@/lib/security/rbac';
 
-export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: string }): Actor {
+/** `grants` is shorthand for `permissions`: each `[module, action]` pair at ORGANIZATION scope. */
+export function buildActor({
+  grants = [],
+  ...overrides
+}: Partial<Actor> & { id: string; tenantId: string; grants?: readonly (readonly [string, string])[] }): Actor {
   return {
     fullName: 'Test Actor',
     email: 'actor@test.local',
@@ -21,11 +24,11 @@ export function buildActor(overrides: Partial<Actor> & { id: string; tenantId: s
     grantedRegionIds: [],
     teamIds: [],
     managedUserIds: [],
-    permissions: new Map() as PermissionMap,
+    permissions: new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap,
     ...overrides,
   };
 }
 
 export function buildCtx(actor: Actor): Ctx {
-  return { tenantId: actor.tenantId, actor, requestId: ulid(), ip: '127.0.0.1', userAgent: 'vitest' };
+  return { tenantId: actor.tenantId, actor, requestId: crypto.randomUUID(), ip: '127.0.0.1', userAgent: 'vitest' };
 }

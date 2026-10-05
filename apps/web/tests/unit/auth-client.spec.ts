@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { __resetAuthClientForTests, authFetch, onSessionEnded, refreshSession } from '@/lib/auth/client';
+import { __resetAuthClientForTests, authFetch, refreshSession } from '@/lib/auth/client';
 
 /**
  * The browser half of session refresh.
@@ -133,14 +133,11 @@ describe('single flight', () => {
 });
 
 describe('failing closed', () => {
-  it('notifies listeners and stops when refresh is refused', async () => {
-    const { calls } = stubFetch((url) => ({ status: url.includes('/auth/refresh') ? 401 : 401 }));
-    const ended = vi.fn();
-    onSessionEnded(ended);
+  it('returns the 401 and stops when refresh is refused', async () => {
+    const { calls } = stubFetch(() => ({ status: 401 }));
 
     const response = await authFetch('/api/v1/thing');
     expect(response.status).toBe(401);
-    expect(ended).toHaveBeenCalledTimes(1);
     // The original request is not replayed when the refresh itself failed.
     expect(calls.filter((call) => call.url === '/api/v1/thing')).toHaveLength(1);
   });
@@ -153,39 +150,8 @@ describe('failing closed', () => {
         return new Response(null, { status: 401 });
       }),
     );
-    const ended = vi.fn();
-    onSessionEnded(ended);
 
     const response = await authFetch('/api/v1/thing');
     expect(response.status).toBe(401);
-    expect(ended).toHaveBeenCalledTimes(1);
-  });
-
-  it('notifies listeners when the replayed request is still unauthorised', async () => {
-    stubFetch((url) => (url.includes('/auth/refresh') ? { status: 200 } : { status: 401 }));
-    const ended = vi.fn();
-    onSessionEnded(ended);
-    await authFetch('/api/v1/thing');
-    expect(ended).toHaveBeenCalledTimes(1);
-  });
-
-  it('survives a listener that throws', async () => {
-    stubFetch(() => ({ status: 401 }));
-    onSessionEnded(() => {
-      throw new Error('bad listener');
-    });
-    const good = vi.fn();
-    onSessionEnded(good);
-    await expect(authFetch('/api/v1/thing')).resolves.toBeDefined();
-    expect(good).toHaveBeenCalled();
-  });
-
-  it('stops notifying once a listener unsubscribes', async () => {
-    stubFetch(() => ({ status: 401 }));
-    const ended = vi.fn();
-    const off = onSessionEnded(ended);
-    off();
-    await authFetch('/api/v1/thing');
-    expect(ended).not.toHaveBeenCalled();
   });
 });
