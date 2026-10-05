@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import { getCalendarProvider } from '@/lib/integrations/calendar';
+import { createGoogleCalendarEvent } from '@/lib/integrations/calendar';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { eventScopeFilter, seesWholeWorkspace } from '@/lib/security/record-scope';
 
@@ -49,7 +49,7 @@ export const POST = route(
     if (!credentials?.accessToken) return event;
 
     try {
-      const created = await getCalendarProvider('google', credentials.accessToken).createEvent({
+      const created = await createGoogleCalendarEvent(credentials.accessToken, {
         title: event.title,
         description: event.description ?? undefined,
         startAt: event.startAt,

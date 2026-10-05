@@ -1,13 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {
-  createWorkspaceViaWizard,
-  login,
-  loginPlatformOwner,
-  logout,
-  resetLoginThrottle,
-  strongPassword,
-  uniq,
-} from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, logout, strongPassword, uniq } from './helpers';
 
 /**
  * The platform administration area used to be output only: it listed workspaces
@@ -33,8 +25,6 @@ test.describe('Platform workspace editing', () => {
 
   const renamed = `Renamed Workspace ${run}`;
   let workspaceId = '';
-
-  test.beforeAll(resetLoginThrottle);
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();

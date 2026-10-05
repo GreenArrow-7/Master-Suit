@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
+import { call } from '../call';
 
 interface CaseRow {
   id: string;
@@ -36,21 +37,6 @@ const money = (amount: string | null, currency: string) =>
   amount === null
     ? '—'
     : `${currency} ${Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-async function call(url: string, body: Record<string, unknown>): Promise<string | null> {
-  const res = await fetch(url, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.ok) return null;
-  try {
-    const problem = await res.json();
-    return problem.detail ?? problem.errors?.[0]?.message ?? problem.title ?? `Request failed (${res.status})`;
-  } catch {
-    return `Request failed (${res.status})`;
-  }
-}
 
 export default function RecoveryCaseList({
   cases,
@@ -136,7 +122,7 @@ export default function RecoveryCaseList({
                   disabled={busy}
                   onClick={() =>
                     run(() =>
-                      call('/api/v1/collections/recovery', {
+                      call('/api/v1/collections/recovery', 'PATCH', {
                         action: 'ASSIGN',
                         caseId: k.id,
                         assigneeId: perms.userId,
@@ -198,7 +184,7 @@ export default function RecoveryCaseList({
                 disabled={busy}
                 onClick={() =>
                   run(() =>
-                    call('/api/v1/collections/recovery/approve', {
+                    call('/api/v1/collections/recovery/approve', 'PATCH', {
                       caseId: k.id,
                       approve: true,
                       ...(text.length >= 4 ? { note: text } : {}),
@@ -213,7 +199,9 @@ export default function RecoveryCaseList({
                 className="lf-btn lf-btn--secondary lf-btn--sm"
                 disabled={busy || text.length < 4}
                 onClick={() =>
-                  run(() => call('/api/v1/collections/recovery/approve', { caseId: k.id, approve: false, note: text }))
+                  run(() =>
+                    call('/api/v1/collections/recovery/approve', 'PATCH', { caseId: k.id, approve: false, note: text }),
+                  )
                 }
               >
                 Decline
@@ -238,7 +226,13 @@ export default function RecoveryCaseList({
                   className="lf-btn lf-btn--sm"
                   disabled={busy || text.length < 4}
                   onClick={() =>
-                    run(() => call('/api/v1/collections/recovery', { action: 'ACKNOWLEDGE', caseId: k.id, note: text }))
+                    run(() =>
+                      call('/api/v1/collections/recovery', 'PATCH', {
+                        action: 'ACKNOWLEDGE',
+                        caseId: k.id,
+                        note: text,
+                      }),
+                    )
                   }
                 >
                   Save acknowledgement
@@ -284,7 +278,7 @@ export default function RecoveryCaseList({
                   disabled={busy || !amount || reference.length < 2 || txn.length < 4}
                   onClick={() =>
                     run(() =>
-                      call('/api/v1/collections/recovery', {
+                      call('/api/v1/collections/recovery', 'PATCH', {
                         action: 'RECOVER',
                         caseId: k.id,
                         recoveredAmount: amount,
@@ -328,7 +322,12 @@ export default function RecoveryCaseList({
                   disabled={busy || text.length < 4}
                   onClick={() =>
                     run(() =>
-                      call('/api/v1/collections/recovery', { action: 'PROPOSE', caseId: k.id, outcome, reason: text }),
+                      call('/api/v1/collections/recovery', 'PATCH', {
+                        action: 'PROPOSE',
+                        caseId: k.id,
+                        outcome,
+                        reason: text,
+                      }),
                     )
                   }
                 >

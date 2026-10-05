@@ -26,6 +26,7 @@ import { buildActor, buildCtx } from '../helpers/ctx';
 import { get, post } from '../helpers/request';
 import type { VisibilityScope } from '@prisma/client';
 import type { Grants } from '../helpers/fixtures';
+import { grantPermissions, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `granular-${suffix}`;
@@ -53,34 +54,17 @@ async function member(label: string, grants: Grants, scope: VisibilityScope = 'O
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: scope },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
-  const user = await prisma.user.create({
-    data: { tenantId, email: `${label}-${suffix}@granular.test`, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: {
-      email: `${label}-${suffix}@granular.test`,
-      normalizedEmail: `${label}-${suffix}@granular.test`,
-      fullName: label,
-      status: 'ACTIVE',
-    },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+  await grantPermissions(tenantId, role.id, grants, scope);
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `${label}-${suffix}@granular.test`,
+    fullName: label,
   });
   const employee = await prisma.employeeProfile.create({
     data: {
       tenantId,
-      membershipId: membership.id,
+      membershipId: user.membershipId,
       employeeNumber: `${label.toUpperCase()}-${suffix}`,
       employmentStatus: 'ACTIVE',
       joinedOn: new Date(),

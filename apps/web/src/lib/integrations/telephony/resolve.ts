@@ -17,7 +17,7 @@ import { prisma } from '@/lib/db';
 import { connectionCredentials } from '../connection';
 import { telephonyProvider } from './index';
 import { TELEPHONY_VENDORS, TelephonyConfigError } from './types';
-import type { TelephonyProvider, TelephonyVendor } from './types';
+import type { TelephonyProvider } from './types';
 
 export interface ResolvedTelephony {
   provider: TelephonyProvider;
@@ -120,6 +120,3 @@ export async function resolveTelephony(tenantId: string): Promise<ResolvedTeleph
     consentRequired: settings.consentRequired !== false,
   };
 }
-
-export const isTelephonyVendorName = (value: string): value is TelephonyVendor =>
-  (TELEPHONY_VENDORS as readonly string[]).includes(value);

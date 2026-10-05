@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /** Create and publish landing pages; embed a published form to capture leads. */
 export function LandingComposer({ forms }: { forms: { id: string; name: string }[] }) {
@@ -95,16 +96,10 @@ export function LandingComposer({ forms }: { forms: { id: string; name: string }
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="lp-name">
-            Internal name
-          </label>
+        <Field label="Internal name" htmlFor="lp-name">
           <input id="lp-name" className="lf-input" value={form.name} onChange={set('name')} required autoFocus />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="lp-form">
-            Embedded form
-          </label>
+        </Field>
+        <Field label="Embedded form" htmlFor="lp-form">
           <select id="lp-form" className="lf-input" value={form.formId} onChange={set('formId')}>
             <option value="">None — page only</option>
             {forms.map((f) => (
@@ -113,22 +108,16 @@ export function LandingComposer({ forms }: { forms: { id: string; name: string }
               </option>
             ))}
           </select>
-        </div>
+        </Field>
       </div>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="lp-headline">
-          Headline
-        </label>
+      <Field label="Headline" htmlFor="lp-headline">
         <input id="lp-headline" className="lf-input" value={form.headline} onChange={set('headline')} required />
-      </div>
+      </Field>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="lp-body">
-          Supporting copy
-        </label>
+      <Field label="Supporting copy" htmlFor="lp-body">
         <textarea id="lp-body" className="lf-input" rows={4} value={form.body} onChange={set('body')} />
-      </div>
+      </Field>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
         <input type="checkbox" checked={form.publish} onChange={set('publish')} />

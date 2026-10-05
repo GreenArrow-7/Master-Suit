@@ -10,8 +10,9 @@
 import { test, expect, type Browser } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
-import { createWorkspaceViaWizard, login, loginPlatformOwner, resetLoginThrottle, strongPassword } from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } from './helpers';
 import { RUN_TAG } from './run-tag';
+import { grantPermissions } from '../helpers/fixtures';
 
 const workspace = {
   displayName: `Deletes ${RUN_TAG}`,
@@ -38,7 +39,6 @@ const at = (path: string) => `/${workspace.slug}${path}`;
 async function signedIn(browser: Browser, email: string, password: string) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
-  await resetLoginThrottle();
   await login(page, email, password);
   return { context, page };
 }
@@ -50,7 +50,6 @@ test.describe('Deletes from lists and detail pages', () => {
   test('a workspace with an administrator and a rep who cannot delete', async ({ browser }) => {
     if (!(await prisma.tenant.findUnique({ where: { slug: workspace.slug } }))) {
       const page = await browser.newPage();
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, workspace);
       await page.close();
@@ -61,17 +60,12 @@ test.describe('Deletes from lists and detail pages', () => {
     const role = await prisma.role.create({
       data: { tenantId, key: `del-rep-${RUN_TAG}`, name: 'Delete-less rep', rank: 60, defaultScope: 'ORGANIZATION' },
     });
-    for (const [module, action] of [
+    await grantPermissions(tenantId, role.id, [
       ['leads', 'VIEW'],
       ['leads', 'EDIT'],
       ['tasks', 'VIEW'],
       ['calls', 'VIEW'],
-    ] as const) {
-      const permission = await prisma.permission.findUniqueOrThrow({ where: { module_action: { module, action } } });
-      await prisma.rolePermission.create({
-        data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-      });
-    }
+    ] as const);
     const identity = await prisma.platformUser.create({
       data: {
         email: repEmail,
@@ -150,8 +144,8 @@ test.describe('Deletes from lists and detail pages', () => {
     await admin.page.goto(at('/sales/tasks'));
     const row = admin.page.getByRole('row', { name: new RegExp(title) });
     await expect(row).toBeVisible({ timeout: 60_000 });
-    admin.page.once('dialog', (dialog) => void dialog.accept());
     await row.getByRole('button', { name: 'Delete', exact: true }).click();
+    await row.getByRole('button', { name: 'Delete task' }).click();
     await expect(admin.page.getByText(title)).toHaveCount(0, { timeout: 30_000 });
     expect(await prisma.task.count({ where: { tenantId, id: taskId, deletedAt: { not: null } } })).toBe(1);
     expect((await admin.page.request.delete(`/api/v1/tasks/${taskId}`)).status()).toBe(404);
@@ -196,7 +190,6 @@ test.describe('Deletes from lists and detail pages', () => {
     // in their tenant — telling them "forbidden" would confirm the id exists.
     if (!(await prisma.tenant.findUnique({ where: { slug: other.slug } }))) {
       const page = await browser.newPage();
-      await resetLoginThrottle();
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, other);
       await page.close();

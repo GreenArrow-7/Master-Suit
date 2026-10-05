@@ -11,6 +11,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import SalesLink from '@/components/workspace/SalesLink';
 import { can } from '@/lib/security/rbac';
 import SendShortlist from './SendShortlist';
+import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Requirement' };
 
@@ -183,15 +184,6 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
         )}
       </section>
     </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="lf-metric-card">
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
-    </article>
   );
 }
 

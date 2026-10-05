@@ -27,7 +27,6 @@ import {
   stateOf,
   lockLeads,
   recomputeNextFollowUp,
-  byScopedFollowUp,
 } from '@/services/leads/nextFollowUp';
 import { reportDrift, repairDrift } from '@/services/leads/nextFollowUpReconcile';
 import { chasingQueue } from '@/services/leadership/rollups';
@@ -640,17 +639,6 @@ describe('a screen agrees with itself', () => {
     expect(rows.map((r) => r.id)).toEqual([late]);
     // Every row the filter returned renders a date that is genuinely overdue.
     for (const r of rows) expect(stateOf(due.get(r.id) ?? null, now)).toBe('overdue');
-  });
-
-  it('unscheduled sorts last in both directions, and ties break on id', () => {
-    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
-    const due = new Map([
-      ['a', new Date('2026-10-02T00:00:00Z')],
-      ['b', new Date('2026-10-01T00:00:00Z')],
-      ['c', new Date('2026-10-01T00:00:00Z')],
-    ]);
-    expect(byScopedFollowUp(rows, due, 'asc').map((r) => r.id)).toEqual(['b', 'c', 'a', 'd']);
-    expect(byScopedFollowUp(rows, due, 'desc').map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('the chasing queue reports the viewer’s own date, and skips closed leads', async () => {

@@ -5,6 +5,7 @@ import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { myEmployee } from '@/services/hr/leave';
 import AiInsight from '@/components/ui/AiInsight';
+import { names } from '@/services/leadership/rollups';
 import { isEntitlementUsable } from '@/lib/security/entitlements';
 
 /**
@@ -169,11 +170,11 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
         // Two lookups for the whole list rather than a join per row. Both are
         // tenant-scoped explicitly, which is what lets the guard set
         // `app.tenant_id` for them — see runPinned in lib/db.ts.
-        const [owners, leads] = await Promise.all([
-          prisma.user.findMany({
-            where: { tenantId: ctx.tenantId, id: { in: [...new Set(rows.map((row) => row.ownerId))] } },
-            select: { id: true, fullName: true },
-          }),
+        const [ownerName, leads] = await Promise.all([
+          names(
+            ctx.tenantId,
+            rows.map((row) => row.ownerId),
+          ),
           prisma.lead.findMany({
             where: {
               tenantId: ctx.tenantId,
@@ -182,7 +183,6 @@ export default async function WorkspaceDashboard({ params }: { params: Promise<{
             select: { id: true, fullName: true },
           }),
         ]);
-        const ownerName = new Map(owners.map((owner) => [owner.id, owner.fullName]));
         const leadName = new Map(leads.map((lead) => [lead.id, lead.fullName]));
         return rows.map((row) => ({
           id: row.id,

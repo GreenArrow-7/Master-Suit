@@ -1,7 +1,7 @@
 import { requirePageAccess } from '@/lib/workspace-page';
 import { prisma } from '@/lib/db';
 import EmptyState from '@/components/ui/EmptyState';
-import TableSearch from '@/components/workspace/TableSearch';
+import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 
 export default async function PeoplePage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['users', 'VIEW'] });
@@ -48,39 +48,28 @@ export default async function PeoplePage() {
           />
         ) : (
           <div style={{ padding: 'var(--lf-space-4)' }}>
-            <TableSearch placeholder="Name, email, number or designation…" label="Search the directory">
-              <div className="lf-table-scroll">
-                <table className="lf-table">
-                  <thead>
-                    <tr>
-                      <th>Employee</th>
-                      <th>Number</th>
-                      <th>Designation</th>
-                      <th>Status</th>
-                      <th>Access</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {employees.map((employee) => (
-                      <tr key={employee.id}>
-                        <td>
-                          <strong>{employee.membership.platformUser.fullName}</strong>
-                          <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
-                            {employee.membership.platformUser.email}
-                          </div>
-                        </td>
-                        <td className="lf-num">{employee.employeeNumber}</td>
-                        <td>{employee.designation ?? '—'}</td>
-                        <td>
-                          <span className="lf-badge">{employee.employmentStatus}</span>
-                        </td>
-                        <td>{employee.membership.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </TableSearch>
+            <WorkspaceTable
+              headers={['Employee', 'Number', 'Designation', 'Status', 'Access']}
+              rows={employees.map((employee) => [
+                <div key="who">
+                  <strong>{employee.membership.platformUser.fullName}</strong>
+                  <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-xs)' }}>
+                    {employee.membership.platformUser.email}
+                  </div>
+                </div>,
+                <span key="number" className="lf-num">
+                  {employee.employeeNumber}
+                </span>,
+                employee.designation ?? '—',
+                <span key="status" className="lf-badge">
+                  {employee.employmentStatus}
+                </span>,
+                employee.membership.status,
+              ])}
+              searchable
+              searchPlaceholder="Name, email, number or designation…"
+              searchLabel="Search the directory"
+            />
           </div>
         )}
       </section>

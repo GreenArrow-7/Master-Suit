@@ -1,16 +1,16 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { AppError } from '@/lib/errors';
+
 import { logger } from '@/lib/logger';
 import { clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { sendMail } from '@/lib/mailer';
 import { readJsonBody } from '@/lib/api/read-body';
 import { isPlatformStaff } from '@/lib/auth/credentials';
+import { toResponse } from '@/lib/api/handler';
 
 /**
  * Email only.
@@ -28,7 +28,7 @@ const bodySchema = z.object({
   email: z.string().email().max(254),
 });
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 const RESET_TTL_MINUTES = 30;
 const SAME_ANSWER = {
   ok: true,
@@ -36,7 +36,7 @@ const SAME_ANSWER = {
 };
 
 export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const ip = clientIp(req) ?? 'unknown';
 
   try {
@@ -103,12 +103,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(SAME_ANSWER, { headers: { 'x-request-id': requestId } });
   } catch (err) {
-    if (err instanceof AppError) {
-      const headers: Record<string, string> = { 'x-request-id': requestId };
-      if ((err as any).retryAfter) headers['retry-after'] = String((err as any).retryAfter);
-      return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
-    }
-    logger.error({ err, requestId }, 'forgot-password failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
+    return toResponse(err, requestId, { route: '/api/v1/auth/forgot-password' });
   }
 }

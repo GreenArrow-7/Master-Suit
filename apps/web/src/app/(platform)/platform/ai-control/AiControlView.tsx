@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import type { AiControlData } from './data';
+import { Field, Stat, nf, money } from './ui';
 
 /**
  * The AI Control Center's presentation.
@@ -19,9 +20,6 @@ import type { AiControlData } from './data';
  * Pure presentation plus form submission: it reads no database and makes no
  * authorization decision. Every write goes to `/api/v1/platform/ai`, which does.
  */
-const nf = new Intl.NumberFormat('en-GB');
-const money = (n: number, currency = 'USD') =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
 
 type Tab = 'tokenomics' | 'budgets' | 'guardrails' | 'routing';
 
@@ -63,7 +61,6 @@ export default function AiControlView(data: AiControlData) {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Commercial"
         title="AI Control Center"
         description={`Prices, budgets, guardrails and model routing. Figures cover the last ${data.summary.days} days.`}
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'AI Control Center' }]}
@@ -71,14 +68,14 @@ export default function AiControlView(data: AiControlData) {
 
       <section className="lf-card" style={{ padding: 18 }}>
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', fontVariantNumeric: 'tabular-nums' }}>
-          <Stat label="Requests" value={nf.format(data.summary.requests)} hint={`last ${data.summary.days} days`} />
-          <Stat label="Tokens" value={nf.format(data.summary.tokens)} hint="sent and received" />
+          <Stat label="Requests" value={nf(data.summary.requests)} hint={`last ${data.summary.days} days`} />
+          <Stat label="Tokens" value={nf(data.summary.tokens)} hint="sent and received" />
           <Stat label="Cost" value={money(data.summary.amount, data.summary.currency)} hint="at the prices in force" />
-          <Stat label="Fell back" value={nf.format(data.summary.fallbacks)} hint="answered on a later model" />
-          <Stat label="Failed" value={nf.format(data.summary.failures)} hint="no answer from any model" />
-          <Stat label="Refused" value={nf.format(data.summary.blocked)} hint="by a guardrail or a budget" />
+          <Stat label="Fell back" value={nf(data.summary.fallbacks)} hint="answered on a later model" />
+          <Stat label="Failed" value={nf(data.summary.failures)} hint="no answer from any model" />
+          <Stat label="Refused" value={nf(data.summary.blocked)} hint="by a guardrail or a budget" />
           {data.summary.unpriced > 0 && (
-            <Stat label="Unpriced" value={nf.format(data.summary.unpriced)} hint="no price set for that model" />
+            <Stat label="Unpriced" value={nf(data.summary.unpriced)} hint="no price set for that model" />
           )}
         </div>
       </section>
@@ -132,11 +129,11 @@ function Tokenomics({ data, send, busy }: SectionProps) {
           headers={['Feature', 'Requests', 'Tokens', 'Cost', 'Fell back', 'Failed']}
           rows={data.bySpend.map((r) => [
             r.label,
-            nf.format(r.requests),
-            nf.format(r.tokens),
+            nf(r.requests),
+            nf(r.tokens),
             money(r.amount),
-            nf.format(r.fallbacks),
-            nf.format(r.failures),
+            nf(r.fallbacks),
+            nf(r.failures),
           ])}
         />
       </Card>
@@ -243,12 +240,12 @@ function Budgets({ data, send, busy }: SectionProps) {
           b.feature ?? 'all',
           b.period.toLowerCase(),
           [
-            b.tokenLimit === null ? null : `${nf.format(b.tokenLimit)} tokens`,
+            b.tokenLimit === null ? null : `${nf(b.tokenLimit)} tokens`,
             b.costLimit === null ? null : money(b.costLimit, b.currency),
           ]
             .filter(Boolean)
             .join(' · '),
-          `${nf.format(b.usedTokens)} · ${money(b.usedAmount, b.currency)}`,
+          `${nf(b.usedTokens)} · ${money(b.usedAmount, b.currency)}`,
           b.percent === null ? '—' : `${b.percent}%${b.exceeded ? ' — reached' : ''}`,
           b.hardLimit ? 'block (hard)' : b.action.replace(/_/g, ' ').toLowerCase(),
           <button
@@ -486,25 +483,3 @@ function Card({ title, help, children }: { title: string; help: string; children
  * invalid state and the dark theme the rest of the platform already has, rather
  * than growing a second set beside them.
  */
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="lf-field" style={{ minWidth: 150 }}>
-      <span className="lf-label">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div>
-      <div className="lf-muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 600 }}>{value}</div>
-      <div className="lf-muted" style={{ fontSize: 12 }}>
-        {hint}
-      </div>
-    </div>
-  );
-}

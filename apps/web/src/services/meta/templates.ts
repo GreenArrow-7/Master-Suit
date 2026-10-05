@@ -17,8 +17,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
-
-const GRAPH_VERSION = 'v26.0';
+import { graphGet } from '@/lib/integrations/meta/send';
 
 /**
  * Meta's status vocabulary, kept verbatim rather than collapsed to a boolean.
@@ -58,16 +57,11 @@ export async function syncWhatsAppTemplates(tenantId: string) {
     throw new Error('No WhatsApp Business Account ID configured. Add it in Settings → Integrations.');
   }
 
-  const url =
-    `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(credentials.wabaId)}` +
-    `/message_templates?fields=id,name,status,language,category,components&limit=200`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${credentials.accessToken}` } });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Template sync failed: HTTP ${res.status} ${body.slice(0, 200)}`);
-  }
-
-  const payload = (await res.json()) as { data?: GraphTemplate[] };
+  const payload = await graphGet<{ data?: GraphTemplate[] }>(
+    `${encodeURIComponent(credentials.wabaId)}/message_templates?fields=id,name,status,language,category,components&limit=200`,
+    credentials.accessToken,
+    'Template sync failed',
+  );
   const templates = payload.data ?? [];
   let written = 0;
 

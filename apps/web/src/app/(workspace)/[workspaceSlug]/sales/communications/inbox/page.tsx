@@ -25,7 +25,6 @@ export default async function InboxPage({ params }: { params: Promise<{ workspac
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Communications"
         title="Inbox"
         description="Live customer conversations, with the CRM record beside them."
         breadcrumbs={[{ label: 'Communications' }, { label: 'Inbox' }]}

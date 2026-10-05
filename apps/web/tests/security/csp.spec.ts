@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import proxy from '@/proxy';
 
@@ -11,23 +11,21 @@ import proxy from '@/proxy';
  * `<script>` simply runs.
  */
 function policy(nodeEnv: 'development' | 'production'): Record<string, string> {
-  const original = process.env.NODE_ENV;
   // The middleware reads NODE_ENV at call time, so both branches are reachable.
-  // `process.env` rejects defineProperty; plain assignment is the way in.
-  (process.env as Record<string, string | undefined>).NODE_ENV = nodeEnv;
-  try {
-    const response = proxy(new NextRequest('https://example.test/login'));
-    const header = response.headers.get('content-security-policy') ?? '';
-    return Object.fromEntries(
-      header.split('; ').map((directive) => {
-        const [name, ...rest] = directive.split(' ');
-        return [name, rest.join(' ')];
-      }),
-    );
-  } finally {
-    (process.env as Record<string, string | undefined>).NODE_ENV = original;
-  }
+  vi.stubEnv('NODE_ENV', nodeEnv);
+  const response = proxy(new NextRequest('https://example.test/login'));
+  const header = response.headers.get('content-security-policy') ?? '';
+  return Object.fromEntries(
+    header.split('; ').map((directive) => {
+      const [name, ...rest] = directive.split(' ');
+      return [name, rest.join(' ')];
+    }),
+  );
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('Content-Security-Policy', () => {
   /**

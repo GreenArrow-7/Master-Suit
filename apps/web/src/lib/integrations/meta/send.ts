@@ -11,7 +11,25 @@
  */
 import { logger } from '@/lib/logger';
 
+/**
+ * The Graph API version, for every Meta call in the product. In one place because
+ * Meta sunsets each one roughly two years after release. v26.0 shipped
+ * 2026-07-29; v25.0 runs to 2028-07-29. Verified against
+ * developers.facebook.com/docs/graph-api/changelog.
+ */
 export const GRAPH_VERSION = 'v26.0';
+
+/** GET a Graph path with a bearer token. A refusal throws `failure` with Meta's status and the start of its body. */
+export async function graphGet<T>(path: string, accessToken: string, failure: string): Promise<T> {
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${failure}: HTTP ${res.status} ${body.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
+}
 
 export type ReplyKind = 'PUBLIC' | 'PRIVATE';
 

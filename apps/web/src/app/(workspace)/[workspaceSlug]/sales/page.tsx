@@ -1,7 +1,7 @@
 import { requirePageAccess, SELF_SERVICE } from '@/lib/workspace-page';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { obligationAccess, obligationWhere } from '@/services/leads/nextFollowUp';
-import { SCOPE_RANK, scopeFor } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -134,9 +134,71 @@ function LedgerRow({
   );
 }
 
+const LEAD_ROW = {
+  id: true,
+  reference: true,
+  fullName: true,
+  company: true,
+  stage: { select: { key: true } },
+} as const;
+
+/** Leads as linked rows: initials, name, reference and company, stage. */
+function LeadList({
+  leads,
+}: {
+  leads: { id: string; reference: string; fullName: string; company: string | null; stage: { key: string } }[];
+}) {
+  return (
+    <div style={{ display: 'grid' }}>
+      {leads.map((lead) => (
+        <SalesLink
+          key={lead.id}
+          href={`/leads/${lead.id}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--lf-space-3)',
+            padding: '9px 0',
+            borderBottom: '1px solid var(--lf-line)',
+            textDecoration: 'none',
+            color: 'inherit',
+          }}
+        >
+          <span className="lf-avatar">
+            {lead.fullName
+              .split(' ')
+              .slice(0, 2)
+              .map((p) => p[0])
+              .join('')}
+          </span>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span
+              style={{
+                display: 'block',
+                fontSize: 'var(--lf-text-sm)',
+                fontWeight: 500,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {lead.fullName}
+            </span>
+            <span className="lf-num" style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
+              {lead.reference}
+              {lead.company ? ` · ${lead.company}` : ''}
+            </span>
+          </span>
+          <Badge value={lead.stage.key} />
+        </SalesLink>
+      ))}
+    </div>
+  );
+}
+
 export default async function HomePage() {
   const ctx = await requirePageAccess({ module: 'SALES', permission: SELF_SERVICE });
-  const isManager = SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const isManager = atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   if (isManager) return <ManagerHome ctx={ctx} />;
   return <EmployeeHome ctx={ctx} />;
@@ -180,26 +242,13 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
       where: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
       take: 8,
-      select: {
-        id: true,
-        reference: true,
-        fullName: true,
-        company: true,
-        score: true,
-        slaState: true,
-        stage: { select: { name: true, key: true } },
-      },
+      select: LEAD_ROW,
     }),
   ]);
 
   return (
     <>
-      <h1
-        className="sr-only"
-        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}
-      >
-        My day
-      </h1>
+      <h1 className="lf-visually-hidden">My day</h1>
       <DayBrief eyebrow={briefDate()}>
         {overdueFollowUps > 0 ? (
           <>
@@ -329,50 +378,7 @@ async function EmployeeHome({ ctx }: { ctx: any }) {
         {recentLeads.length === 0 ? (
           <EmptyState title="No leads assigned" description="Your manager will assign leads to you." />
         ) : (
-          <div style={{ display: 'grid' }}>
-            {recentLeads.map((lead) => (
-              <SalesLink
-                key={lead.id}
-                href={`/leads/${lead.id}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--lf-space-3)',
-                  padding: '9px 0',
-                  borderBottom: '1px solid var(--lf-line)',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                }}
-              >
-                <span className="lf-avatar">
-                  {lead.fullName
-                    .split(' ')
-                    .slice(0, 2)
-                    .map((p) => p[0])
-                    .join('')}
-                </span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: 'var(--lf-text-sm)',
-                      fontWeight: 500,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {lead.fullName}
-                  </span>
-                  <span className="lf-num" style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
-                    {lead.reference}
-                    {lead.company ? ` · ${lead.company}` : ''}
-                  </span>
-                </span>
-                <Badge value={lead.stage.key} />
-              </SalesLink>
-            ))}
-          </div>
+          <LeadList leads={recentLeads} />
         )}
       </section>
     </>
@@ -404,15 +410,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
       where,
       orderBy: { updatedAt: 'desc' },
       take: 8,
-      select: {
-        id: true,
-        reference: true,
-        fullName: true,
-        company: true,
-        score: true,
-        slaState: true,
-        stage: { select: { name: true, key: true } },
-      },
+      select: LEAD_ROW,
     }),
   ]);
 
@@ -433,12 +431,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
 
   return (
     <>
-      <h1
-        className="sr-only"
-        style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}
-      >
-        The floor
-      </h1>
+      <h1 className="lf-visually-hidden">The floor</h1>
       <DayBrief eyebrow={`${briefDate()} · scoped to your ${ctx.actor.roleKey.replace(/_/g, ' ')} visibility`}>
         <BriefFigure href="/leads" n={total} label="leads in scope" tone="neutral" />
         {breached > 0 && (
@@ -552,50 +545,7 @@ async function ManagerHome({ ctx }: { ctx: any }) {
           <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
             Recently updated
           </div>
-          <div style={{ display: 'grid' }}>
-            {recent.map((lead) => (
-              <SalesLink
-                key={lead.id}
-                href={`/leads/${lead.id}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--lf-space-3)',
-                  padding: '9px 0',
-                  borderBottom: '1px solid var(--lf-line)',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                }}
-              >
-                <span className="lf-avatar">
-                  {lead.fullName
-                    .split(' ')
-                    .slice(0, 2)
-                    .map((p) => p[0])
-                    .join('')}
-                </span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: 'var(--lf-text-sm)',
-                      fontWeight: 500,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {lead.fullName}
-                  </span>
-                  <span className="lf-num" style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>
-                    {lead.reference}
-                    {lead.company ? ` · ${lead.company}` : ''}
-                  </span>
-                </span>
-                <Badge value={lead.stage.key} />
-              </SalesLink>
-            ))}
-          </div>
+          <LeadList leads={recent} />
         </section>
       </div>
 

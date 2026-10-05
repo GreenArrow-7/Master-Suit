@@ -13,7 +13,7 @@
  * is visible, reversible and audited.
  */
 import { randomInt } from 'node:crypto';
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
@@ -223,15 +223,8 @@ export async function progressReferral(input: ProgressInput) {
     if (!existing) throw NotFound('Referral');
 
     const from = existing.status as ReferralStatus;
-    if (!canTransition(from, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${from.toLowerCase()} referral cannot become ${input.to.toLowerCase()}.`,
-        },
-      ]);
-    }
+    if (!canTransition(from, input.to))
+      throw IllegalTransition(`A ${from.toLowerCase()} referral cannot become ${input.to.toLowerCase()}.`);
     if (input.to === 'REJECTED' && !input.reason?.trim()) {
       throw Invalid([{ field: 'reason', code: 'required', message: 'Say why it was rejected.' }]);
     }

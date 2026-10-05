@@ -3,7 +3,8 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
-import { PRODUCT_MODULES } from '@/lib/security/entitlements';
+import { assertModuleEntitlement } from '@/lib/security/entitlements';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { assertPermission } from '@/lib/security/rbac';
 import { audit } from '@/lib/security/audit';
 import { applyForLeave, myEmployee } from '@/services/hr/leave';
@@ -114,12 +115,12 @@ const RESOURCE_PERMISSION: Record<HrResource, ExtraPermission | typeof FLOOR> = 
  * who is assigned to them — does too. Everything else here is HRMS.
  */
 const ATTENDANCE_SETUP = new Set<string>(['work-locations', 'location-assignments']);
-const moduleFor = (resource: string) => (ATTENDANCE_SETUP.has(resource) ? undefined : 'HRMS');
 
 export const GET = route(
-  { module: 'employee', productModule: PRODUCT_MODULES, action: 'VIEW', params: paramsSchema, query: querySchema },
+  { module: 'employee', productModule: PRODUCT_MODULE_KEYS, action: 'VIEW', params: paramsSchema, query: querySchema },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
+    await requireWorkspace(ctx, params.workspaceSlug);
+    if (!ATTENDANCE_SETUP.has(params.resource)) await assertModuleEntitlement(ctx.tenantId, 'HRMS');
     const extra = RESOURCE_PERMISSION[params.resource];
     if (extra !== FLOOR) assertPermission(ctx, extra[0], extra[1]);
 
@@ -134,14 +135,15 @@ const createBody = z.record(z.string(), z.unknown());
 export const POST = route(
   {
     module: 'employee',
-    productModule: PRODUCT_MODULES,
+    productModule: PRODUCT_MODULE_KEYS,
     action: 'CREATE',
     params: paramsSchema,
     body: createBody,
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    const workspace = await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
+    const workspace = await requireWorkspace(ctx, params.workspaceSlug);
+    if (!ATTENDANCE_SETUP.has(params.resource)) await assertModuleEntitlement(ctx.tenantId, 'HRMS');
     switch (params.resource) {
       case 'departments': {
         if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change the department structure.');
@@ -450,7 +452,7 @@ const idParam = z.object({ id: z.string().min(1).max(64) });
 export const PATCH = route(
   {
     module: 'employee',
-    productModule: PRODUCT_MODULES,
+    productModule: PRODUCT_MODULE_KEYS,
     action: 'EDIT',
     params: paramsSchema,
     query: idParam,
@@ -458,7 +460,8 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
+    await requireWorkspace(ctx, params.workspaceSlug);
+    if (!ATTENDANCE_SETUP.has(params.resource)) await assertModuleEntitlement(ctx.tenantId, 'HRMS');
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can change HR records.');
     const { id } = query;
 
@@ -467,7 +470,6 @@ export const PATCH = route(
         const input = z
           .object({ name: z.string().min(2).max(120).optional(), code: z.string().min(2).max(30).optional() })
           .parse(body);
-        await ensureOwned(prisma.department, ctx.tenantId, id);
         return prisma.department.update({
           where: { tenantId: ctx.tenantId, id },
           data: { ...input, code: input.code?.trim().toUpperCase(), updatedById: ctx.actor.id },
@@ -478,7 +480,6 @@ export const PATCH = route(
         const input = z
           .object({ name: z.string().min(2).max(120).optional(), code: z.string().min(2).max(30).optional() })
           .parse(body);
-        await ensureOwned(prisma.designation, ctx.tenantId, id);
         return prisma.designation.update({
           where: { tenantId: ctx.tenantId, id },
           data: { ...input, code: input.code?.trim().toUpperCase() },
@@ -501,7 +502,6 @@ export const PATCH = route(
             isActive: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrShift, ctx.tenantId, id);
         return prisma.hrShift.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -513,7 +513,6 @@ export const PATCH = route(
             confirmed: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrHoliday, ctx.tenantId, id);
         return prisma.hrHoliday.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -582,7 +581,6 @@ export const PATCH = route(
             isActive: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrLeaveType, ctx.tenantId, id);
         return prisma.hrLeaveType.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -620,14 +618,15 @@ export const PATCH = route(
 export const DELETE = route(
   {
     module: 'employee',
-    productModule: PRODUCT_MODULES,
+    productModule: PRODUCT_MODULE_KEYS,
     action: 'DELETE',
     params: paramsSchema,
     query: idParam,
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, moduleFor(params.resource));
+    await requireWorkspace(ctx, params.workspaceSlug);
+    if (!ATTENDANCE_SETUP.has(params.resource)) await assertModuleEntitlement(ctx.tenantId, 'HRMS');
     if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can archive HR records.');
     const { id } = query;
 
@@ -635,7 +634,6 @@ export const DELETE = route(
       // Soft-deleted: referenced by employment history, and the reads above
       // already exclude `deletedAt`.
       case 'departments': {
-        await ensureOwned(prisma.department, ctx.tenantId, id);
         const inUse = await prisma.employeeProfile.count({
           where: { tenantId: ctx.tenantId, departmentId: id, deletedAt: null },
         });
@@ -646,7 +644,6 @@ export const DELETE = route(
         return prisma.department.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
       }
       case 'designations': {
-        await ensureOwned(prisma.designation, ctx.tenantId, id);
         return prisma.designation.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
       }
       case 'employees': {
@@ -660,15 +657,12 @@ export const DELETE = route(
       // Deactivated rather than removed: attendance and leave rows point at
       // these, and the flag is what the reads filter on.
       case 'shifts': {
-        await ensureOwned(prisma.hrShift, ctx.tenantId, id);
         return prisma.hrShift.update({ where: { tenantId: ctx.tenantId, id }, data: { isActive: false } });
       }
       case 'leave-types': {
-        await ensureOwned(prisma.hrLeaveType, ctx.tenantId, id);
         return prisma.hrLeaveType.update({ where: { tenantId: ctx.tenantId, id }, data: { isActive: false } });
       }
       case 'work-locations': {
-        await ensureOwned(prisma.hrWorkLocation, ctx.tenantId, id);
         return prisma.hrWorkLocation.update({
           where: { tenantId: ctx.tenantId, id },
           data: { status: 'RETIRED', isActive: false },
@@ -678,7 +672,6 @@ export const DELETE = route(
       // A holiday is referenced by nothing, so it really is removed. Entering
       // the wrong date is the common case and a tombstone helps nobody.
       case 'holidays': {
-        await ensureOwned(prisma.hrHoliday, ctx.tenantId, id);
         return prisma.hrHoliday.delete({ where: { tenantId: ctx.tenantId, id } });
       }
 
@@ -687,9 +680,3 @@ export const DELETE = route(
     }
   },
 );
-
-/** Confirms the row exists in this workspace before an update names it. */
-async function ensureOwned(model: { findFirst: (args: any) => Promise<unknown> }, tenantId: string, id: string) {
-  const found = await model.findFirst({ where: { tenantId, id } });
-  if (!found) throw NotFound('Record');
-}

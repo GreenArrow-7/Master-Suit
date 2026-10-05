@@ -17,7 +17,7 @@ rem      npm run start:local -- --build     (from apps\web)
 rem ────────────────────────────────────────────────────────────────────────────
 cd /d "%~dp0apps\web"
 
-echo [1/4] Checking Docker...
+echo [1/3] Checking Docker...
 docker info >nul 2>&1
 if errorlevel 1 (
   echo        Docker engine is not running - starting Docker Desktop...
@@ -30,23 +30,16 @@ if errorlevel 1 (
 )
 echo        Docker is up.
 
-echo [2/4] Starting database containers...
+echo [2/3] Starting the database containers and waiting until they are healthy...
 call npm run --silent docker:up
 if errorlevel 1 (
-  echo        Failed to start containers. Is another program using port 5432?
+  echo        They did not come up healthy. Is another program using port 5432?
+  echo        Check: docker compose -p master-saas logs postgres
   pause
   exit /b 1
 )
 
-echo [3/4] Waiting for PostgreSQL...
-node scripts\wait-for-db.mjs
-if errorlevel 1 (
-  echo        The database did not come up. Check: docker compose -p master-saas logs postgres
-  pause
-  exit /b 1
-)
-
-echo [4/4] Starting the app on http://localhost:3000 ...
+echo [3/3] Starting the app on http://localhost:3000 ...
 echo        (first run builds the production bundle - a few minutes)
 call npm run start:local
 pause

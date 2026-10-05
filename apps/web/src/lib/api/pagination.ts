@@ -7,10 +7,7 @@ import { z } from 'zod';
 export const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().optional(),
-  sort: z.string().optional(),
 });
-
-export type PageQuery = z.infer<typeof pageQuery>;
 
 export interface Cursor {
   updatedAt: string;
@@ -19,7 +16,7 @@ export interface Cursor {
 
 export const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString('base64url');
 
-export function decodeCursor(raw?: string): Cursor | null {
+function decodeCursor(raw?: string): Cursor | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString());
@@ -29,8 +26,9 @@ export function decodeCursor(raw?: string): Cursor | null {
   }
 }
 
-/** Keyset predicate for a stable (updatedAt DESC, id DESC) ordering. */
-export function cursorWhere(cursor: Cursor | null) {
+/** Keyset predicate for a stable (updatedAt DESC, id DESC) ordering, from the query's cursor. */
+export function cursorWhere(raw?: string) {
+  const cursor = decodeCursor(raw);
   if (!cursor) return {};
   const at = new Date(cursor.updatedAt);
   return { OR: [{ updatedAt: { lt: at } }, { updatedAt: at, id: { lt: cursor.id } }] };
@@ -39,8 +37,6 @@ export function cursorWhere(cursor: Cursor | null) {
 export interface Page<T> {
   data: T[];
   nextCursor: string | null;
-  /** Estimated when the filtered set is large; see docs/02-DATA-MODEL.md §5. */
-  totalEstimate?: number;
 }
 
 export function toPage<T extends { id: string; updatedAt: Date }>(rows: T[], limit: number): Page<T> {

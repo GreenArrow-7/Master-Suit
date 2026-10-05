@@ -187,28 +187,6 @@ export function renderCell(object: GridObject, key: string, row: GridRow): React
           return dash;
       }
 
-    case 'TASK':
-      switch (key) {
-        case 'title':
-          return <span style={{ fontWeight: 500 }}>{row.title}</span>;
-        case 'type':
-          return row.type ? <Badge value={row.type.key}>{row.type.name}</Badge> : dash;
-        case 'lead':
-          return leadCell(row);
-        case 'dueAt':
-          return <span style={{ color: overdue(row.dueAt) }}>{date(row.dueAt)}</span>;
-        case 'priority':
-          return <Badge value={row.priority} />;
-        case 'status':
-          return <Badge value={row.status} />;
-        case 'owner':
-          return row.owner?.fullName ?? dash;
-        case 'completedAt':
-          return date(row.completedAt);
-        default:
-          return dash;
-      }
-
     case 'CALL':
       switch (key) {
         case 'createdAt':

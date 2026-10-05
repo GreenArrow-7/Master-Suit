@@ -9,11 +9,11 @@
  * Standings are live while it runs and **frozen** when it closes. A booking
  * cancelled in March must not quietly change who won February.
  */
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
-import { rank, type BoardMetric } from '@/services/leadership/rollups';
+import { names, rank, type BoardMetric } from '@/services/leadership/rollups';
 
 export const CONTEST_METRICS = ['bookings', 'revenue', 'leads', 'activities'] as const;
 export const CONTEST_STATUSES = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED'] as const;
@@ -138,11 +138,10 @@ export async function leaderboard(
 }
 
 async function withNames(tenantId: string, rows: { rank: number; userId: string; value: string }[]) {
-  const users = await prisma.user.findMany({
-    where: { tenantId, id: { in: rows.map((r) => r.userId) } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(users.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    tenantId,
+    rows.map((r) => r.userId),
+  );
   return rows.map((r) => ({ ...r, name: nameBy.get(r.userId) ?? null }));
 }
 
@@ -168,15 +167,8 @@ export async function decideContest(input: DecideContestInput) {
   if (!contest) throw NotFound('Contest');
 
   const from = contest.status as ContestStatus;
-  if (!canTransition(from, input.to)) {
-    throw Invalid([
-      {
-        field: 'status',
-        code: 'illegal_transition',
-        message: `A ${from.toLowerCase()} contest cannot become ${input.to.toLowerCase()}.`,
-      },
-    ]);
-  }
+  if (!canTransition(from, input.to))
+    throw IllegalTransition(`A ${from.toLowerCase()} contest cannot become ${input.to.toLowerCase()}.`);
 
   /**
    * Ranked *before* the transaction opens, not inside it.

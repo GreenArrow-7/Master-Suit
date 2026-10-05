@@ -6,7 +6,6 @@ import { can } from '@/lib/security/rbac';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
-import { emit } from '../shared/events';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
@@ -34,7 +33,7 @@ export interface CreateLeadInput {
  * 100 ms even when five automations are listening.
  */
 export async function createLead(ctx: Ctx, input: CreateLeadInput) {
-  const phoneNormalized = input.phone ? normalizePhone(input.phone, 'AE') : null;
+  const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
 
   // 1. Duplicate check ───────────────────────────────────────────────────────
   const duplicates = await findDuplicates(ctx.tenantId, {
@@ -170,7 +169,6 @@ export async function createLead(ctx: Ctx, input: CreateLeadInput) {
 
   if (ownerId) await recordTargetProgress(ctx, ownerId, 'LEADS_ASSIGNED');
 
-  emit(ctx, 'lead.created', { leadId: lead.id, duplicates: duplicates.length });
   return lead;
 }
 

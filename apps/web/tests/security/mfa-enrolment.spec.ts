@@ -23,6 +23,7 @@ import { POST as login } from '@/app/api/v1/auth/login/route';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
 import { freshTotp } from '../helpers/totp';
+import { grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(5).toString('hex');
 const slug = `mfa-${suffix}`;
@@ -68,19 +69,10 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `hr-${suffix}`, name: 'HR', rank: 10, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of [
+  await grantPermissions(tenantId, role.id, [
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
-  ] as Grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  ] as Grants);
 
   const salesUser = await prisma.user.create({
     data: { tenantId, email, fullName: 'Enrol Me', roleId: role.id, status: 'ACTIVE' },

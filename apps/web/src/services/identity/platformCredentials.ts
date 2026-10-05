@@ -1,7 +1,7 @@
 import { prisma, withPlatformTx } from '@/lib/db';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { checkPolicy, DEFAULT_POLICY, hashPassword, verifyPassword } from '@/lib/auth/password';
+import { assertPasswordPolicy, DEFAULT_POLICY, hashPassword, verifyPassword } from '@/lib/auth/password';
 import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { isPlatformServiceRole } from '@/lib/auth/platform-policy';
@@ -10,9 +10,9 @@ import {
   invalidateMfaChallenges,
   isPlatformStaff,
   revokeSessionsForCredential,
-  type CredentialPurpose,
 } from '@/lib/auth/credentials';
 import { assertNotReused, recordPreviousPassword } from '@/services/identity/passwordHistory';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * The credential lifecycle for platform staff: setting, changing and revoking the
@@ -129,11 +129,6 @@ function monitoringEligibility(identity: StaffIdentity): string | null {
   return null;
 }
 
-function assertStrong(password: string, field: string) {
-  const problems = checkPolicy(password, DEFAULT_POLICY);
-  if (problems.length) throw Invalid(problems.map((message) => ({ field, code: 'weak-password', message })));
-}
-
 /** Sets, or replaces, the signed-in identity's monitoring password. */
 export async function setOwnMonitoringCredential(
   actor: CredentialActor,
@@ -144,7 +139,7 @@ export async function setOwnMonitoringCredential(
   if (ineligible) throw Forbidden(ineligible);
   await reauthenticate(identity, actor, input, 'set-monitoring-credential');
 
-  assertStrong(input.newPassword, 'newPassword');
+  assertPasswordPolicy(input.newPassword, DEFAULT_POLICY, 'newPassword');
   await assertDistinctFromOtherCredential(identity, input.newPassword, 'MONITORING');
   if (identity.monitoringPasswordHash && (await verifyPassword(identity.monitoringPasswordHash, input.newPassword))) {
     throw Conflict('That is already your monitoring password. Choose a different one.');
@@ -292,7 +287,7 @@ export async function changeOwnAdministrationPassword(
   if (input.newPassword === input.currentPassword) {
     throw Conflict('The new password must be different from the current one.');
   }
-  assertStrong(input.newPassword, 'newPassword');
+  assertPasswordPolicy(input.newPassword, DEFAULT_POLICY, 'newPassword');
   await assertNotReused(identity.id, input.newPassword, DEFAULT_POLICY);
   await writePrimaryPassword(identity.id, input.newPassword, { passwordChangedAt: new Date() });
   await recordPreviousPassword(identity.id, identity.passwordHash);
@@ -355,23 +350,17 @@ async function record(
   metadata: Record<string, unknown>,
 ) {
   // No password, hash, code or secret is ever part of `metadata`.
-  await db.platformAuditEvent
-    .create({
-      data: {
-        actorUserId: actor.platformUserId,
-        event,
-        objectType: 'platform_user',
-        objectId: target.id,
-        requestId: actor.requestId,
-        ipAddress: actor.ip,
-        userAgent: actor.userAgent,
-        metadata: { target: target.email, ...metadata },
-      },
-    })
-    .catch((err) => {
-      logger.error({ err, event, requestId: actor.requestId }, 'credential audit write failed');
-      throw err;
-    });
+  await platformAudit(
+    actor,
+    {
+      event,
+      objectType: 'platform_user',
+      objectId: target.id,
+      metadata: { target: target.email, ...metadata },
+    },
+    db,
+  ).catch((err) => {
+    logger.error({ err, event, requestId: actor.requestId }, 'credential audit write failed');
+    throw err;
+  });
 }
-
-export type { CredentialPurpose };

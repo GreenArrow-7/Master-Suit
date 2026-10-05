@@ -1,5 +1,6 @@
 import { hash, verify } from '@node-rs/argon2';
 import { env } from '../env';
+import { Invalid } from '../errors';
 
 const opts = {
   memoryCost: env.ARGON2_MEMORY_KIB,
@@ -61,4 +62,10 @@ export function checkPolicy(plain: string, policy: PasswordPolicy): string[] {
   if (policy.requireNumber && !/[0-9]/.test(plain)) problems.push('Include a number.');
   if (policy.requireSymbol && !/[^A-Za-z0-9]/.test(plain)) problems.push('Include a symbol.');
   return problems;
+}
+
+/** Refuses `plain` with every way it falls short of `policy`, as validation problems on `field`. */
+export function assertPasswordPolicy(plain: string, policy: PasswordPolicy, field: string) {
+  const problems = checkPolicy(plain, policy);
+  if (problems.length) throw Invalid(problems.map((message) => ({ field, code: 'weak-password', message })));
 }

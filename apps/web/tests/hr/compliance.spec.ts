@@ -14,19 +14,43 @@ import type { Scope } from '@/lib/security/rbac';
 const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
 let brokerId = '';
+let managerUserId = '';
+let managerEmployeeId = '';
+let reportId = '';
 
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000);
 
 const hrCtx = () =>
   buildCtx(
-    buildActor({ id: `hr-${suffix}`, tenantId, permissions: new Map([['employee:EDIT', 'ORGANIZATION']]) as never }),
+    buildActor({
+      id: `hr-${suffix}`,
+      tenantId,
+      permissions: new Map([
+        ['employee:EDIT', 'ORGANIZATION'],
+        ['hr_documents:VIEW_SENSITIVE_FIELDS', 'ORGANIZATION'],
+      ]) as never,
+    }),
+  );
+/** Employee:VIEW at TEAM — a line manager, who may read their own reporting line. */
+const managerCtx = () =>
+  buildCtx(
+    buildActor({ id: managerUserId, tenantId, permissions: new Map([['employee:VIEW', 'TEAM' as Scope]]) as never }),
   );
 const plainCtx = () =>
   buildCtx(
     buildActor({ id: `p-${suffix}`, tenantId, permissions: new Map([['attendance:VIEW', 'OWN' as Scope]]) as never }),
   );
 
-async function employee(name: string, opts: { employmentType?: string; reraExpiry?: Date; reraBrn?: string } = {}) {
+async function employee(
+  name: string,
+  opts: {
+    employmentType?: string;
+    reraExpiry?: Date;
+    reraBrn?: string;
+    salesUserId?: string;
+    managerMembershipId?: string;
+  } = {},
+) {
   const platformUser = await prisma.platformUser.create({
     data: {
       email: `${name}-${suffix}@comp.test`,
@@ -36,7 +60,13 @@ async function employee(name: string, opts: { employmentType?: string; reraExpir
     },
   });
   const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, status: 'ACTIVE', joinedAt: new Date() },
+    data: {
+      tenantId,
+      platformUserId: platformUser.id,
+      salesUserId: opts.salesUserId,
+      status: 'ACTIVE',
+      joinedAt: new Date(),
+    },
   });
   return prisma.employeeProfile.create({
     data: {
@@ -47,6 +77,7 @@ async function employee(name: string, opts: { employmentType?: string; reraExpir
       employmentType: opts.employmentType ?? 'full_time',
       reraExpiry: opts.reraExpiry ?? null,
       reraBrn: opts.reraBrn ?? null,
+      managerMembershipId: opts.managerMembershipId ?? null,
     },
   });
 }
@@ -96,6 +127,38 @@ beforeAll(async () => {
       expiresAt: inDays(400),
     },
   });
+
+  // A line manager and one direct report, each with a document expiring in 120
+  // days: past the 90- and 30-day windows the cases above read.
+  const role = await prisma.role.create({ data: { tenantId, key: `mgr-${suffix}`, name: 'Manager', rank: 20 } });
+  const user = await prisma.user.create({
+    data: { tenantId, email: `mgr-${suffix}@comp.test`, fullName: 'Manager', roleId: role.id, status: 'ACTIVE' },
+  });
+  managerUserId = user.id;
+  const manager = await employee('Manager', { salesUserId: user.id });
+  const report = await employee('Report', { managerMembershipId: manager.membershipId });
+  managerEmployeeId = manager.id;
+  reportId = report.id;
+  await prisma.hrEmployeeDocument.createMany({
+    data: [
+      {
+        tenantId,
+        employeeId: manager.id,
+        kind: 'Residence visa',
+        name: 'Residence visa',
+        number: `M${suffix}`,
+        expiresAt: inDays(120),
+      },
+      {
+        tenantId,
+        employeeId: report.id,
+        kind: 'Emirates ID',
+        name: 'Emirates ID',
+        number: `R${suffix}`,
+        expiresAt: inDays(120),
+      },
+    ],
+  });
 });
 
 afterAll(async () => {
@@ -123,6 +186,22 @@ describe('complianceRegister', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].credential).toBe('Labour card');
     expect(rows[0].isContractor).toBe(true);
+  });
+
+  it('shows a team-scoped manager their reporting line, not the whole workspace', async () => {
+    const rows = await complianceRegister(managerCtx(), { withinDays: 150 });
+    // The expired RERA card, the visa and the labour card belong to people
+    // outside this manager's line; they used to be listed here too.
+    expect(new Set(rows.map((r) => r.employeeId))).toEqual(new Set([managerEmployeeId, reportId]));
+  });
+
+  it('shows a document number only to someone who may read identity documents, or on their own', async () => {
+    const hr = await complianceRegister(hrCtx(), { withinDays: 150 });
+    expect(hr.find((r) => r.employeeId === reportId)?.reference).toBe(`R${suffix}`);
+
+    const manager = await complianceRegister(managerCtx(), { withinDays: 150 });
+    expect(manager.find((r) => r.employeeId === reportId)?.reference).toBeNull();
+    expect(manager.find((r) => r.employeeId === managerEmployeeId)?.reference).toBe(`M${suffix}`);
   });
 
   it('refuses someone without authority to read employees', async () => {

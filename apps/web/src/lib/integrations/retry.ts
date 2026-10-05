@@ -2,20 +2,18 @@ import { logger } from '../logger';
 
 export interface RetryOptions {
   maxAttempts?: number;
-  baseDelayMs?: number;
-  maxDelayMs?: number;
   retryOn?: (error: unknown) => boolean;
 }
 
 const DEFAULTS: Required<RetryOptions> = {
   maxAttempts: 3,
-  baseDelayMs: 500,
-  maxDelayMs: 30_000,
   retryOn: () => true,
 };
+const BASE_DELAY_MS = 500;
+const MAX_DELAY_MS = 30_000;
 
 export async function withRetry<T>(label: string, fn: () => Promise<T>, opts?: RetryOptions): Promise<T> {
-  const { maxAttempts, baseDelayMs, maxDelayMs, retryOn } = { ...DEFAULTS, ...opts };
+  const { maxAttempts, retryOn } = { ...DEFAULTS, ...opts };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -23,7 +21,7 @@ export async function withRetry<T>(label: string, fn: () => Promise<T>, opts?: R
     } catch (err) {
       if (attempt === maxAttempts || !retryOn(err)) throw err;
 
-      const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+      const delay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
       const jitter = delay * (0.5 + Math.random() * 0.5);
       logger.warn({ label, attempt, maxAttempts, nextRetryMs: Math.round(jitter) }, 'retrying');
       await new Promise((r) => setTimeout(r, jitter));

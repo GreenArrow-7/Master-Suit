@@ -116,7 +116,6 @@ test.describe('Each HR module opens and does its job', () => {
 
   async function signIn(page: Page, email: string, password: string) {
     await logout(page);
-    await resetLoginThrottle();
     await login(page, email, password);
   }
 
@@ -129,7 +128,6 @@ test.describe('Each HR module opens and does its job', () => {
       await loginPlatformOwner(page);
       await createWorkspaceViaWizard(page, workspace);
       await logout(page);
-      await resetLoginThrottle();
       await login(page, workspace.adminEmail, workspace.adminPassword);
       await page.goto(`/${workspace.slug}/dashboard`);
       await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/dashboard`));

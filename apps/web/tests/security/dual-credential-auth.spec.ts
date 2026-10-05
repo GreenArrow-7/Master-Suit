@@ -56,6 +56,7 @@ import { POST as selfService } from '@/app/api/v1/workspaces/[workspaceSlug]/ide
 import { grantPermissions } from '../helpers/fixtures';
 import { freshTotp } from '../helpers/totp';
 import { buildCtx, buildActor } from '../helpers/ctx';
+import { createPlatformSessionToken } from '../helpers/session';
 
 const suffix = randomBytes(4).toString('hex');
 const PASSWORD_A = `Administration-${suffix}-Pass1`;
@@ -282,6 +283,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status).toBe(403);
     const row = await prisma.platformUser.findUnique({
@@ -305,6 +307,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status).toBe(409);
   });
@@ -330,6 +333,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(409);
     const row = await prisma.platformUser.findUnique({
@@ -354,6 +358,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -379,6 +384,7 @@ describe('setting the monitoring password', () => {
     const admin = await signIn(ownerEmail, PASSWORD_A);
     const res = await credentialsGet(
       request('http://localhost/api/v1/platform/credentials', 'GET', undefined, admin.cookie),
+      { params: Promise.resolve({}) },
     );
     const text = await res.text();
     expect(res.status).toBe(200);
@@ -503,10 +509,13 @@ describe('enrolment-only sessions and invalid credential data', () => {
     ).rejects.toMatchObject({ status: 401 });
     const creds = await credentialsGet(
       request('http://localhost/api/v1/platform/credentials', 'GET', undefined, cookie),
+      { params: Promise.resolve({}) },
     );
     expect(creds.status).toBe(401);
     jar.set(SESSION_COOKIE, res.token!);
-    const rotated = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, cookie));
+    const rotated = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, cookie), {
+      params: Promise.resolve({}),
+    });
     expect(rotated.status).toBe(401);
   });
 
@@ -564,6 +573,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(viaConsole.status).toBe(409);
 
@@ -596,6 +606,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
     });
     const viaReset = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: PASSWORD_B }),
+      { params: Promise.resolve({}) },
     );
     expect(viaReset.status).toBe(409);
 
@@ -620,6 +631,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
           token,
           newPassword: `Brand-new-${suffix}-Pass9`,
         }),
+        { params: Promise.resolve({}) },
       );
       expect(res.status).toBe(401);
     }
@@ -728,11 +740,15 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
     const member = await callLogin({ email: memberEmail, password: OTHER_PASSWORD });
     const allowed = await exportLeads(
       request('http://localhost/api/v1/leads/export', 'GET', undefined, cookieOf(member.token!)),
+      { params: Promise.resolve({}) },
     );
     expect(allowed.status).toBe(200);
     expect(await allowed.text()).toContain(LEAD_NAME);
 
-    const refused = await exportLeads(request('http://localhost/api/v1/leads/export', 'GET', undefined, monitorCookie));
+    const refused = await exportLeads(
+      request('http://localhost/api/v1/leads/export', 'GET', undefined, monitorCookie),
+      { params: Promise.resolve({}) },
+    );
     expect(refused.status).toBe(403);
     expect(await refused.text()).not.toContain(LEAD_NAME);
   });
@@ -781,6 +797,7 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
             },
             monitorCookie,
           ),
+          { params: Promise.resolve({}) },
         ),
       ],
       [
@@ -813,7 +830,9 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
       ],
       [
         'credentials read',
-        credentialsGet(request('http://localhost/api/v1/platform/credentials', 'GET', undefined, monitorCookie)),
+        credentialsGet(request('http://localhost/api/v1/platform/credentials', 'GET', undefined, monitorCookie), {
+          params: Promise.resolve({}),
+        }),
       ],
       [
         'credentials write',
@@ -828,16 +847,20 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
             },
             monitorCookie,
           ),
+          { params: Promise.resolve({}) },
         ),
       ],
       [
         'two-factor',
-        enroll2fa(request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, monitorCookie)),
+        enroll2fa(request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, monitorCookie), {
+          params: Promise.resolve({}),
+        }),
       ],
       [
         'membership switch',
         switchWorkspace(
           request('http://localhost/api/v1/auth/workspaces', 'POST', { workspaceId: granted.id }, monitorCookie),
+          { params: Promise.resolve({}) },
         ),
       ],
     ];
@@ -1005,6 +1028,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -1042,6 +1066,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(back.status).toBe(200);
   });
@@ -1100,6 +1125,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(restored.status).toBe(200);
   });
@@ -1174,7 +1200,9 @@ describe('separate sessions keep their own mode', () => {
   it('refreshing a monitoring session keeps it a monitoring session', async () => {
     const monitor = await signIn(ownerEmail, PASSWORD_B);
     jar.set(SESSION_COOKIE, monitor.token);
-    const res = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, monitor.cookie));
+    const res = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, monitor.cookie), {
+      params: Promise.resolve({}),
+    });
     expect(res.status).toBe(200);
     const rotated = jar.get(SESSION_COOKIE)!;
     expect(rotated).not.toBe(monitor.token);
@@ -1200,35 +1228,16 @@ describe('customer sign-in and legacy sessions', () => {
   });
 
   it('a staff session with no credential purpose is refused and revoked; a customer one is not', async () => {
-    const legacyToken = randomBytes(32).toString('base64url');
-    await prisma.platformSession.create({
-      data: {
-        platformUserId: ownerId,
-        tokenHash: sha256(legacyToken),
-        mfaSatisfied: true,
-        purpose: 'FULL',
-        expiresAt: new Date(Date.now() + 600_000),
-      },
+    const legacy = await createPlatformSessionToken(ownerId, null, { credentialPurpose: null });
+    await expect(resolvePlatformCtx(request('http://internal/', 'GET', undefined, legacy), 'r')).rejects.toMatchObject({
+      status: 401,
     });
-    await expect(
-      resolvePlatformCtx(request('http://internal/', 'GET', undefined, cookieOf(legacyToken)), 'r'),
-    ).rejects.toMatchObject({ status: 401 });
-    expect((await sessionRow(legacyToken))!.revokedReason).toBe('LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE');
+    expect((await sessionRow(legacy.slice(SESSION_COOKIE.length + 1)))!.revokedReason).toBe(
+      'LEGACY_SESSION_WITHOUT_CREDENTIAL_PURPOSE',
+    );
 
-    const customerToken = randomBytes(32).toString('base64url');
-    await prisma.platformSession.create({
-      data: {
-        platformUserId: memberPlatformId,
-        activeTenantId: granted.id,
-        tokenHash: sha256(customerToken),
-        mfaSatisfied: false,
-        purpose: 'FULL',
-        expiresAt: new Date(Date.now() + 600_000),
-      },
-    });
-    await expect(
-      resolveCtx(request('http://internal/', 'GET', undefined, cookieOf(customerToken)), 'r'),
-    ).resolves.toBeTruthy();
+    const customer = await createPlatformSessionToken(memberPlatformId, granted.id, { mfaSatisfied: false });
+    await expect(resolveCtx(request('http://internal/', 'GET', undefined, customer), 'r')).resolves.toBeTruthy();
   });
 });
 
@@ -1251,6 +1260,7 @@ describe('an emailed reset of the administration password', () => {
     });
     const res = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: NEW_A }),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -1264,6 +1274,7 @@ describe('an emailed reset of the administration password', () => {
     // Single use.
     const again = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: `${NEW_A}x` }),
+      { params: Promise.resolve({}) },
     );
     expect(again.status).toBe(401);
 

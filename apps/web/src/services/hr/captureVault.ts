@@ -31,19 +31,17 @@
  * unreadable on deploy day. `scripts/migrate-attendance-captures.mjs` copies
  * them across; the fallback can go once it has run everywhere.
  */
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import { readFile, readdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
+import { envelope } from '@/lib/security/envelope';
 import { deleteObjects, getObject, listObjects, listPrefixes, putObject } from '@/lib/storage';
 import { resolvePolicy } from './settings';
 
 const SUFFIX = '.jpg.enc';
-const IV_BYTES = 12;
-const TAG_BYTES = 16;
 
 /**
  * Everything this vault owns lives under one prefix, so a retention sweep can
@@ -55,20 +53,11 @@ const PREFIX = 'attendance/';
 const root = () => path.resolve(env.ATTENDANCE_CAPTURE_DIR);
 
 /**
- * Derived with a capture-specific salt so a capture key and a field-encryption
- * key are never the same value even though both come from one secret.
+ * Its own HKDF domain, so a capture key and a field-encryption key are never the
+ * same value even though both come from one secret. The binary layout is what
+ * this vault always wrote, so every stored capture stays readable.
  */
-function key(): Buffer {
-  return Buffer.from(
-    hkdfSync(
-      'sha256',
-      Buffer.from(env.FIELD_ENCRYPTION_KEY),
-      Buffer.from('master-saas-attendance-capture-v1'),
-      Buffer.from(''),
-      32,
-    ),
-  );
-}
+const sealed = envelope('master-saas-attendance-capture-v1');
 
 /**
  * Sharded tenant, then employee, then month.
@@ -124,9 +113,7 @@ export async function storeCapture(
   try {
     const relative = pathFor(tenantId, employeeId, punchId, when);
 
-    const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', key(), iv);
-    const payload = Buffer.concat([iv, cipher.update(frame), cipher.final(), cipher.getAuthTag()]);
+    const payload = sealed.seal(frame);
 
     // A single PUT is atomic — there is no half-written object for a reader to
     // find, which is what the old write-then-rename dance bought on a filesystem.
@@ -136,12 +123,6 @@ export async function storeCapture(
     logger.error({ err: error, tenantId, employeeId, punchId }, 'attendance capture could not be stored');
     return null;
   }
-}
-
-function decrypt(payload: Buffer): Buffer {
-  const decipher = createDecipheriv('aes-256-gcm', key(), payload.subarray(0, IV_BYTES));
-  decipher.setAuthTag(payload.subarray(payload.length - TAG_BYTES));
-  return Buffer.concat([decipher.update(payload.subarray(IV_BYTES, payload.length - TAG_BYTES)), decipher.final()]);
 }
 
 /**
@@ -155,7 +136,7 @@ function decrypt(payload: Buffer): Buffer {
  */
 export async function loadCapture(relative: string): Promise<Buffer> {
   try {
-    return decrypt(await getObject(objectKey(relative)));
+    return sealed.open(await getObject(objectKey(relative)));
   } catch (error) {
     const full = path.resolve(root(), relative);
     if (full !== root() && !full.startsWith(root() + path.sep)) {
@@ -171,7 +152,7 @@ export async function loadCapture(relative: string): Promise<Buffer> {
       throw error;
     }
     logger.info({ relative }, 'attendance capture served from the legacy on-disk vault');
-    return decrypt(payload);
+    return sealed.open(payload);
   }
 }
 

@@ -1,8 +1,6 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import { generateSif, type SifLayoutKey } from '@/services/hr/wps';
 
@@ -17,22 +15,22 @@ import { generateSif, type SifLayoutKey } from '@/services/hr/wps';
  * Employees the file cannot carry (no IBAN, no labour-card identifier) are
  * reported in a response header rather than silently dropped: a short file that
  * looks successful is how somebody does not get paid.
+ *
+ * It bulk-exports every employee's IBAN and labour-card number, and once had no
+ * rate limit at all; the kernel's per-session limit cannot be left out.
  */
-export async function GET(req: Request, context: { params: Promise<{ workspaceSlug: string; runId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug, runId } = await context.params;
-    // This one had no rate limit at all, and it bulk-exports every employee's
-    // IBAN and labour-card number. `resolveGuardedCtx` applies the per-session
-    // bucket unless a route asks for another, so it cannot be omitted again.
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'HRMS',
-      permission: ['payroll', 'EXPORT'],
-    });
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
-
+export const GET = route(
+  {
+    module: 'payroll',
+    action: 'EXPORT',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    params: z.object({ workspaceSlug: z.string(), runId: z.string() }),
+  },
+  async ({ ctx, params, req }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
     const layout = (new URL(req.url).searchParams.get('layout') ?? 'uae-sif-v1') as SifLayoutKey;
-    const file = await generateSif(ctx, runId, layout);
+    const file = await generateSif(ctx, params.runId, layout);
 
     return new NextResponse(file.content, {
       headers: {
@@ -41,17 +39,7 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
         'cache-control': 'private, no-store',
         'x-wps-included': String(file.included),
         'x-wps-excluded': String(file.excluded.length),
-        'x-request-id': requestId,
       },
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'wps export failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+  },
+);

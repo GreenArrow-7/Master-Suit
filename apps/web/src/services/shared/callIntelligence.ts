@@ -19,7 +19,7 @@ import { analyzeTranscript } from '@/lib/ai/analysis';
 import { auditCall } from '@/lib/ai/audit';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { getTranscriptionProvider, transcriptionProviderFor } from '@/lib/integrations/transcription';
-import { matchObjections, segmentsToTranscript, talkToListen, type DiarisedSegment } from '@/lib/ai/callMetrics';
+import { matchObjections, segmentsToTranscript, talkToListen } from '@/lib/ai/callMetrics';
 import { ANALYSIS_PROMPT_VERSION } from '@/lib/ai/analysis';
 
 export interface CallJob {
@@ -94,7 +94,7 @@ export async function transcribeCall(job: TranscribeJob): Promise<Outcome> {
    * transcript and per-speaker segments, so the attributed rendering becomes the
    * stored `content` and the raw segments are kept beside it.
    */
-  const segments = (result.segments ?? []) as DiarisedSegment[];
+  const segments = result.segments ?? [];
   const call = await prisma.call.findFirst({ where: { id: callId, tenantId }, select: { direction: true } });
   const content = segments.length ? segmentsToTranscript(segments, call?.direction) : result.text;
 

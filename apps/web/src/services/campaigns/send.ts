@@ -96,7 +96,7 @@ export async function sendCampaignBatch(input: {
     take: BATCH_LIMIT,
   });
 
-  const provider = getWhatsAppProvider('meta', credentials);
+  const provider = getWhatsAppProvider(credentials);
   let sent = 0;
   let failed = 0;
 

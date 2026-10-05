@@ -2,15 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
- * Create a task from the standalone Tasks page — the button the page was
- * missing. The POST route already existed; this wires to it.
+ * Create a task: on the Tasks page, or on a lead's Tasks tab with `leadId`.
  *
- * An inline expanding card, matching the lead-detail Tasks tab rather than
- * inventing a modal the design system has no styles for. A task can be personal
- * (no lead) or handed to a teammate; the server decides whether the current
- * user may assign to others.
+ * An inline expanding card rather than a modal the design system has no styles
+ * for. A task can be personal (no lead) or handed to a teammate; the server
+ * decides whether the current user may assign to others.
  */
 export interface TaskType {
   id: string;
@@ -34,10 +33,12 @@ export default function TaskComposer({
   taskTypes,
   assignees,
   canAssignOthers,
+  leadId,
 }: {
   taskTypes: TaskType[];
   assignees: Assignee[];
   canAssignOthers: boolean;
+  leadId?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -61,6 +62,7 @@ export default function TaskComposer({
         body: JSON.stringify({
           typeId: form.typeId,
           title: form.title,
+          leadId,
           dueAt: new Date(form.dueAt).toISOString(),
           priority: form.priority,
           ...(form.ownerId ? { ownerId: form.ownerId } : {}),
@@ -128,12 +130,9 @@ export default function TaskComposer({
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="t-title">
-          Title
-        </label>
+      <Field label="Title" htmlFor="t-title">
         <input id="t-title" className="lf-input" value={form.title} onChange={set('title')} required autoFocus />
-      </div>
+      </Field>
 
       <div
         style={{
@@ -142,10 +141,7 @@ export default function TaskComposer({
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="t-type">
-            Type
-          </label>
+        <Field label="Type" htmlFor="t-type">
           <select id="t-type" className="lf-input" value={form.typeId} onChange={set('typeId')} required>
             {taskTypes.map((t) => (
               <option key={t.id} value={t.id}>
@@ -153,12 +149,9 @@ export default function TaskComposer({
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="t-due">
-            Due
-          </label>
+        <Field label="Due" htmlFor="t-due">
           <input
             id="t-due"
             className="lf-input"
@@ -167,25 +160,19 @@ export default function TaskComposer({
             onChange={set('dueAt')}
             required
           />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="t-priority">
-            Priority
-          </label>
+        <Field label="Priority" htmlFor="t-priority">
           <select id="t-priority" className="lf-input" value={form.priority} onChange={set('priority')}>
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
             <option value="HIGH">High</option>
             <option value="URGENT">Urgent</option>
           </select>
-        </div>
+        </Field>
 
         {canAssignOthers && (
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="t-owner">
-              Assign to
-            </label>
+          <Field label="Assign to" htmlFor="t-owner">
             <select id="t-owner" className="lf-input" value={form.ownerId} onChange={set('ownerId')}>
               <option value="">Myself</option>
               {assignees.map((a) => (
@@ -194,16 +181,13 @@ export default function TaskComposer({
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
         )}
       </div>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="t-desc">
-          Notes
-        </label>
+      <Field label="Notes" htmlFor="t-desc">
         <textarea id="t-desc" className="lf-input" rows={3} value={form.description} onChange={set('description')} />
-      </div>
+      </Field>
 
       <div>
         <button className="lf-btn" type="submit" disabled={busy}>

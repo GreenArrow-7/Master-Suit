@@ -43,7 +43,7 @@
  *
  * Recovery: run again with --from/--to swapped. Sessions stay revoked either way.
  */
-import 'dotenv/config';
+import './env.mjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 

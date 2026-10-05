@@ -27,7 +27,7 @@ import {
 } from '@/services/hr/roster';
 import { DEFAULT_POLICY } from '@/services/hr/settings';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import type { PermissionMap } from '@/lib/security/rbac';
+import { createEmployee } from '../helpers/fixtures';
 
 const day = (value: string) => new Date(`${value}T00:00:00Z`);
 
@@ -172,11 +172,8 @@ const employees: Record<string, string> = {};
 const userIds: Record<string, string> = {};
 const shifts: Record<string, string> = {};
 
-const permissions = (grants: readonly (readonly [string, string])[]) =>
-  new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap;
-
 const ctxFor = (label: string, grants: readonly (readonly [string, string])[]) =>
-  buildCtx(buildActor({ id: userIds[label]!, tenantId, permissions: permissions(grants) }));
+  buildCtx(buildActor({ id: userIds[label]!, tenantId, grants }));
 
 const PLANNER = [
   ['shifts', 'EDIT'],
@@ -186,30 +183,9 @@ const PLANNER = [
 const STAFF = [['employee', 'VIEW']] as const;
 
 async function makeEmployee(label: string) {
-  const email = `${label}-${suffix}@roster.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const role = await prisma.role.create({
-    data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId,
-      membershipId: membership.id,
-      employeeNumber: `${label.toUpperCase()}-${suffix}`,
-      employmentStatus: 'ACTIVE',
-      joinedOn: new Date('2020-01-01'),
-    },
-  });
-  employees[label] = employee.id;
-  userIds[label] = user.id;
+  const e = await createEmployee({ tenantId, label, suffix });
+  employees[label] = e.employeeId;
+  userIds[label] = e.userId;
 }
 
 beforeAll(async () => {

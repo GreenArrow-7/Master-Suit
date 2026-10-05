@@ -17,7 +17,7 @@
 import { assertDisposableEnvironment, assertRuntimeIsolation } from '../helpers/isolation';
 
 export default async function globalSetup() {
-  const targets = assertDisposableEnvironment({ suite: 'browser (e2e)', appEnvFile: '.env' });
+  const targets = assertDisposableEnvironment({ suite: 'browser (e2e)' });
   await assertRuntimeIsolation(targets);
 
   // Said out loud, because a guard that passes silently teaches nobody what it

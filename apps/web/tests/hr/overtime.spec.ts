@@ -32,7 +32,7 @@ import {
 } from '@/services/hr/overtime';
 import { DEFAULT_POLICY } from '@/services/hr/settings';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import type { PermissionMap } from '@/lib/security/rbac';
+import { createEmployee } from '../helpers/fixtures';
 
 // ── Pure calculation ───────────────────────────────────────────────────────
 
@@ -195,12 +195,9 @@ let tenantId = '';
 const employees: Record<string, string> = {};
 const userIds: Record<string, string> = {};
 
-const permissions = (grants: readonly (readonly [string, string])[]) =>
-  new Map(grants.map(([module, action]) => [`${module}:${action}`, 'ORGANIZATION'])) as PermissionMap;
-
 /** A Ctx whose actor is backed by a real membership, so `myEmployee` resolves. */
 const ctxFor = (label: string, grants: readonly (readonly [string, string])[]) =>
-  buildCtx(buildActor({ id: userIds[label]!, tenantId, permissions: permissions(grants) }));
+  buildCtx(buildActor({ id: userIds[label]!, tenantId, grants }));
 
 const APPROVER = [
   ['overtime', 'APPROVE'],
@@ -209,34 +206,10 @@ const APPROVER = [
 const STAFF = [['employee', 'VIEW']] as const;
 
 async function makeEmployee(label: string) {
-  const email = `${label}-${suffix}@overtime.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  // The role is required by `User` but carries no grants here: authorization in
-  // these cases comes from the Ctx built by `ctxFor`, so each test states the
-  // permissions it is exercising instead of inheriting them from a fixture.
-  const role = await prisma.role.create({
-    data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId,
-      membershipId: membership.id,
-      employeeNumber: `${label.toUpperCase()}-${suffix}`,
-      employmentStatus: 'ACTIVE',
-      joinedOn: new Date('2020-01-01'),
-    },
-  });
-  employees[label] = employee.id;
-  userIds[label] = user.id;
-  return employee.id;
+  const e = await createEmployee({ tenantId, label, suffix });
+  employees[label] = e.employeeId;
+  userIds[label] = e.userId;
+  return e.employeeId;
 }
 
 /** A closed attendance day of `worked` minutes on `day`. */

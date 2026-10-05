@@ -131,7 +131,6 @@ export default async function CollectionsBookingPage({ params }: { params: Promi
     <div className="lf-stack">
       <ListHeader
         title={`Collections · ${booking.reference}`}
-        eyebrow="Agency fee"
         description={REASON[c.reason]}
         actions={
           <SalesLink href="/collections" className="lf-btn lf-btn--secondary">

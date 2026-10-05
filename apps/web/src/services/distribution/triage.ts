@@ -22,10 +22,8 @@
  * that as "already queued", which it is. A `findFirst` beforehand would take no
  * lock and both would insert.
  */
-import { prisma, type TxClient } from '@/lib/db';
+import type { TxClient } from '@/lib/db';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See eligibility.ts. */
-type TransactionClient = TxClient;
 import type { Ineligibility } from './eligibility';
 
 export type TriageReason =
@@ -101,7 +99,7 @@ export async function resolveAccountability(
   tenantId: string,
   rule: OpenTriageInput['rule'],
   leadTeamId: string | null | undefined,
-  client: Pick<typeof prisma, 'team' | 'user'> = prisma,
+  client: Pick<TxClient, 'team' | 'user'>,
 ): Promise<Accountability> {
   if (rule?.fallbackUserId) {
     const user = await client.user.findFirst({
@@ -170,15 +168,10 @@ export interface OpenTriageResult {
  * follows, so "we failed to assign" and "we recorded that we failed" commit
  * together or not at all.
  */
-export async function openTriageEntry(tx: TransactionClient, input: OpenTriageInput): Promise<OpenTriageResult> {
+export async function openTriageEntry(tx: TxClient, input: OpenTriageInput): Promise<OpenTriageResult> {
   const now = input.now ?? new Date();
   const { reviewDueAt, reviewPolicyMissing } = reviewDeadline(input.rule, now);
-  const who = await resolveAccountability(
-    input.tenantId,
-    input.rule,
-    input.leadTeamId,
-    tx as unknown as Pick<typeof prisma, 'team' | 'user'>,
-  );
+  const who = await resolveAccountability(input.tenantId, input.rule, input.leadTeamId, tx);
 
   /**
    * `MAX(episode) + 1` is read in the same statement that inserts, so it cannot
@@ -231,7 +224,7 @@ export async function openTriageEntry(tx: TransactionClient, input: OpenTriageIn
  * reports it, rather than resurrecting a terminal row.
  */
 export async function resolveTriageEntry(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   leadId: string,
   outcome: { status: 'ASSIGNED' | 'CANCELLED'; resolvedById?: string | null; resolution: string; now?: Date },

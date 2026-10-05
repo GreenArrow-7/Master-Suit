@@ -21,21 +21,20 @@
  * else, and is revoked on completion, so demanding the password a second time
  * would only strand the person the workspace is compelling to enrol.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import { issueApiKey } from '@/lib/auth/apiKey';
-import { SESSION_COOKIE } from '@/lib/auth/session';
 import { POST as selfAction } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { POST as enroll2fa } from '@/app/api/v1/auth/enroll-2fa/route';
 import { post } from '../helpers/request';
+import { createPlatformSessionToken } from '../helpers/session';
+import { createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(5).toString('hex');
 const slug = `reauth-${suffix}`;
 const email = `reauth-${suffix}@mfa.test`;
 const PASSWORD = 'ReauthPassword1!';
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 let tenantId = '';
 let platformUserId = '';
@@ -47,20 +46,7 @@ const params = { workspaceSlug: slug, action: 'two-factor-begin' };
 const path = `/api/v1/workspaces/${slug}/identity/self/two-factor-begin`;
 
 async function session(purpose: 'FULL' | 'MFA_ENROLMENT') {
-  const token = randomBytes(32).toString('base64url');
-  await prisma.platformSession.create({
-    data: {
-      platformUserId,
-      activeTenantId: tenantId,
-      tokenHash: sha256(token),
-      mfaSatisfied: false,
-      purpose,
-      expiresAt: new Date(Date.now() + 30 * 60_000),
-      ipAddress: '127.0.0.1',
-      userAgent: 'vitest',
-    },
-  });
-  return `${SESSION_COOKIE}=${token}`;
+  return createPlatformSessionToken(platformUserId, tenantId, { mfaSatisfied: false, purpose });
 }
 
 /** enroll-2fa is a bare handler, not a kernel route, so it is called directly. */
@@ -71,12 +57,12 @@ async function callEnroll(cookie: string, body: Record<string, unknown>) {
       headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
+    { params: Promise.resolve({}) },
   );
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
 beforeAll(async () => {
-  const passwordHash = await hashPassword(PASSWORD);
   const tenant = await prisma.tenant.create({
     data: { slug, legalName: 'Reauth LLC', displayName: 'Reauth', status: 'ACTIVE' },
   });
@@ -86,17 +72,15 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `admin-${suffix}`, name: 'Admin', rank: 10, defaultScope: 'ORGANIZATION' },
   });
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: 'Reauth Person', status: 'ACTIVE', passwordHash },
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email,
+    fullName: 'Reauth Person',
+    password: PASSWORD,
   });
-  platformUserId = platformUser.id;
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: 'Reauth Person', roleId: role.id, status: 'ACTIVE' },
-  });
+  platformUserId = user.platformUserId;
   salesUserId = user.id;
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId, salesUserId, status: 'ACTIVE', joinedAt: new Date() },
-  });
 
   sessionCookie = await session('FULL');
   apiKey = (await issueApiKey(tenantId, 'reauth-key', role.id, [], salesUserId)).key;

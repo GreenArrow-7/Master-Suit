@@ -3,7 +3,6 @@ import { NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import type { Ctx } from '@/lib/security/rbac';
-import { emit } from '../shared/events';
 import { normalizePhone } from '../leads/normalizePhone';
 
 export interface UpdateContactInput {
@@ -29,7 +28,7 @@ export async function updateContact(ctx: Ctx, id: string, input: UpdateContactIn
         ...(input.fullName !== undefined && { fullName: input.fullName }),
         ...(input.jobTitle !== undefined && { jobTitle: input.jobTitle }),
         ...(input.email !== undefined && { email: input.email.toLowerCase() }),
-        ...(input.phone !== undefined && { phone: input.phone, phoneNormalized: normalizePhone(input.phone, 'AE') }),
+        ...(input.phone !== undefined && { phone: input.phone, phoneNormalized: normalizePhone(input.phone) }),
         ...(input.accountId !== undefined && { accountId: input.accountId }),
         ...(input.ownerId !== undefined && { ownerId: input.ownerId }),
         ...(input.tags !== undefined && { tags: input.tags }),
@@ -41,7 +40,6 @@ export async function updateContact(ctx: Ctx, id: string, input: UpdateContactIn
     return after;
   });
 
-  emit(ctx, 'contact.updated', { contactId: id });
   return updated;
 }
 

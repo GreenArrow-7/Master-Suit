@@ -21,6 +21,7 @@ import { GET as hrGet } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resour
 import { createSessionToken } from '../helpers/session';
 import { get } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
+import { grantPermissions } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `egress-${suffix}`;
@@ -81,23 +82,14 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: `hr-${suffix}`, name: 'HR', rank: 10, defaultScope: 'ORGANIZATION' },
   });
-  for (const [module, action] of [
+  await grantPermissions(tenantId, role.id, [
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
     ['hr_documents', 'VIEW'],
     ['hr_documents', 'VIEW_SENSITIVE_FIELDS'],
     ['leave', 'APPROVE'],
     ['attendance', 'APPROVE'],
-  ] as Grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope: 'ORGANIZATION' },
-    });
-  }
+  ] as Grants);
 
   // A person carrying every secret the leak exposed, so an unfiltered read has
   // something real to expose.

@@ -11,7 +11,7 @@
  * builds the run is not whoever releases the money.
  */
 import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
@@ -179,15 +179,8 @@ export async function decidePayout(input: DecidePayoutInput) {
     if (!payout) throw NotFound('Payout');
 
     const from = payout.status as PayoutStatus;
-    if (!canTransition(from, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${from.toLowerCase()} payout cannot become ${input.to.toLowerCase()}.`,
-        },
-      ]);
-    }
+    if (!canTransition(from, input.to))
+      throw IllegalTransition(`A ${from.toLowerCase()} payout cannot become ${input.to.toLowerCase()}.`);
 
     if ((input.to === 'APPROVED' || input.to === 'PAID') && !can(ctx, 'payouts', 'APPROVE')) {
       throw Forbidden('Releasing money is an approval.');

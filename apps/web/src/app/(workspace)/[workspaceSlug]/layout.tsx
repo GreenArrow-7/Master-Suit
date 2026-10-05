@@ -2,16 +2,15 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
-import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
+import { can, type Action, atLeast } from '@/lib/security/rbac';
 import { NAV_PERMISSIONS, parsePermission } from '@/lib/nav/workspaceNav';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
 import WorkspaceSidebar from '@/components/workspace/WorkspaceSidebar';
 import MobileTabBar from '@/components/workspace/MobileTabBar';
-import WorkspaceTopBar from '@/components/workspace/WorkspaceTopBar';
+import TopBar from '@/components/nav/TopBar';
 import WorkAreaTabs from '@/components/workspace/WorkAreaTabs';
 import SupportModeBanner from '@/components/platform/SupportModeBanner';
-import ModuleTheme from '@/components/workspace/ModuleTheme';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
@@ -78,7 +77,6 @@ export default async function WorkspaceLayout({
 
   return (
     <div className="lf-app-frame" data-lf-surface="workspace">
-      <ModuleTheme />
       <WorkspaceSidebar
         slug={shell.slug}
         name={shell.displayName}
@@ -98,8 +96,8 @@ export default async function WorkspaceLayout({
             readOnly={shell.supportReadOnly}
           />
         )}
-        <WorkspaceTopBar
-          slug={shell.slug}
+        <TopBar
+          basePath={`/${shell.slug}`}
           workspaceName={shell.displayName}
           plan={shell.plan}
           creatable={shell.creatable}
@@ -233,7 +231,7 @@ async function loadShell(workspaceSlug: string) {
       }),
       // Whether People screens show this person's own records or other people's;
       // decides "My Leave" versus "Leave Requests" for the same route.
-      peopleOversight: SCOPE_RANK[scopeFor(ctx, 'employee', 'VIEW')] >= SCOPE_RANK.TEAM,
+      peopleOversight: atLeast(ctx, 'employee', 'VIEW', 'TEAM'),
       // Same trick for the + Create menu: entries whose module the role cannot
       // CREATE never render (a read-only executive gets no menu at all). Nor do
       // entries the workspace has not bought: leads, calls and events are shared

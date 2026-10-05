@@ -8,7 +8,7 @@
  * a cancellation is a decision with money attached — M9's problem, not a
  * dropdown).
  */
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { withTx, type TxClient } from '@/lib/db';
 import { recalculateProjectRollups } from './rollups';
 
@@ -95,15 +95,8 @@ export async function moveUnitIn(tx: TxClient, input: MoveUnitInput) {
   if (!current) throw NotFound('Unit');
 
   if (current.status === input.to) throw Conflict(`This unit is already ${input.to.toLowerCase()}.`);
-  if (!canTransition(current.status, input.to)) {
-    throw Invalid([
-      {
-        field: 'status',
-        code: 'illegal_transition',
-        message: `A unit cannot move from ${current.status.toLowerCase()} to ${input.to.toLowerCase()}.`,
-      },
-    ]);
-  }
+  if (!canTransition(current.status, input.to))
+    throw IllegalTransition(`A unit cannot move from ${current.status.toLowerCase()} to ${input.to.toLowerCase()}.`);
 
   const heldByAnother = current.status === 'HELD' && Boolean(current.heldById) && current.heldById !== input.actorId;
 

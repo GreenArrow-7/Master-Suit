@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { GET as hrRead, PATCH as hrUpdate } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
 import { createSessionToken } from '../helpers/session';
-import { createWorkspaceUser } from '../helpers/fixtures';
+import { createWorkspaceUser, grantPermissions } from '../helpers/fixtures';
 import { get, patch } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
 import type { VisibilityScope } from '@prisma/client';
@@ -37,16 +37,7 @@ async function member(label: string, grants: Grants, scope: VisibilityScope) {
   const role = await prisma.role.create({
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 20, defaultScope: scope },
   });
-  for (const [module, action] of grants) {
-    const permission = await prisma.permission.upsert({
-      where: { module_action: { module, action } },
-      update: {},
-      create: { module, action },
-    });
-    await prisma.rolePermission.create({
-      data: { tenantId, roleId: role.id, permissionId: permission.id, granted: true, scope },
-    });
-  }
+  await grantPermissions(tenantId, role.id, grants, scope);
   const user = await createWorkspaceUser({
     tenantId,
     roleId: role.id,

@@ -10,7 +10,7 @@ import {
   requestAccountDeletion,
 } from '@/services/identity/accountDeletion';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 
 /**
  * Accounts this file created. Teardown removes only these: `deleteMany({})` wiped the
@@ -32,15 +32,7 @@ const ownedPlatformUserIds = new Set<string>();
 const PASSWORD = 'Correct-Horse-Battery-9!';
 
 /** A Ctx shaped like the one `route()` builds, for the fields these services read. */
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 /** Gives an existing fixture user a real credential, so reauthentication can be exercised. */
 async function withPassword(salesUserId: string, password = PASSWORD) {

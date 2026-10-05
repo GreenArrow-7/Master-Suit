@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { UsageStatus } from '@/lib/ai/allowance';
 
 /**
@@ -77,3 +78,26 @@ export const SOURCE_LABEL: Record<string, string> = {
   'plan-limit': 'plan limit',
   none: 'nobody has set one',
 };
+
+export function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="lf-field" style={{ minWidth: 150 }}>
+      <span className="lf-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div>
+      <div className="lf-muted" style={{ fontSize: 12 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 600 }}>{value}</div>
+      <div className="lf-muted" style={{ fontSize: 12 }}>
+        {hint}
+      </div>
+    </div>
+  );
+}

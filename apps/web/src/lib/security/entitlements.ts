@@ -1,19 +1,7 @@
 import { prisma } from '../db';
 import { cached, redis } from '../redis';
 import { AppError, Forbidden } from '../errors';
-
-export type ProductModule = 'HRMS' | 'SALES' | 'REAL_ESTATE';
-
-/**
- * Every module, so invalidation can name its keys instead of searching for them.
- *
- * `satisfies` rather than a plain annotation: adding a third module to the union
- * without adding it here is a compile error, which is the only thing that stops
- * a new module's entitlement surviving a revoke for up to a TTL. Same idiom as
- * `RESOURCE_PERMISSION` in lib/security/rbac.ts, and for the same reason — a
- * list that has to be kept in step by hand eventually is not.
- */
-export const PRODUCT_MODULES = ['HRMS', 'SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
+import { PRODUCT_MODULE_KEYS, type ProductModuleKey as ProductModule } from '../modules/catalogue';
 
 /**
  * What each module is called when we have to tell somebody they cannot use it.
@@ -71,14 +59,9 @@ export async function assertModuleEntitlement(tenantId: string, module: ProductM
     return row ? { state: row.state, endsAt: row.endsAt?.toISOString() ?? null } : null;
   });
 
-  const usable =
-    entitlement &&
-    ['TRIAL', 'ACTIVE', 'GRACE'].includes(entitlement.state) &&
-    (!entitlement.endsAt || new Date(entitlement.endsAt) > new Date());
-  if (!usable) {
+  if (!isEntitlementUsable(entitlement)) {
     throw Forbidden(`${MODULE_LABEL[module]} is not enabled for this company.`);
   }
-  return entitlement;
 }
 
 /**
@@ -138,7 +121,7 @@ export async function assertAnyModuleEntitlement(tenantId: string, module: Produ
  * counter, and leaves nothing to go stale.
  */
 export async function invalidateEntitlements(tenantId: string) {
-  await redis.del(...PRODUCT_MODULES.map((module) => key(tenantId, module)));
+  await redis.del(...PRODUCT_MODULE_KEYS.map((module) => key(tenantId, module)));
 }
 
 /** The states an entitlement can be usable in. Expiry is decided separately. */

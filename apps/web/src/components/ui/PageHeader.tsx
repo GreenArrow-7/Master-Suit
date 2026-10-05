@@ -2,13 +2,11 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 export default function PageHeader({
-  eyebrow,
   title,
   description,
   breadcrumbs,
   actions,
 }: {
-  eyebrow?: string;
   title: string;
   description?: string;
   breadcrumbs?: { label: string; href?: string }[];
@@ -27,7 +25,6 @@ export default function PageHeader({
             ))}
           </nav>
         )}
-        {eyebrow && <div className="lf-eyebrow">{eyebrow}</div>}
         <h1 className="lf-page-title">{title}</h1>
         {description && <p className="lf-page-description">{description}</p>}
       </div>

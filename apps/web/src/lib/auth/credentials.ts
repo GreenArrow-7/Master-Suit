@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import type { PlatformCredentialPurpose } from '@prisma/client';
 import { prisma } from '../db';
 import { Conflict } from '../errors';
@@ -144,7 +144,7 @@ export const MFA_CHALLENGE_TTL_MINUTES = 5;
 /** Wrong codes a single challenge absorbs before it is spent. */
 export const MFA_CHALLENGE_MAX_ATTEMPTS = 5;
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 
 export async function createMfaChallenge(input: {
   platformUserId: string;

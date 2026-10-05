@@ -10,8 +10,7 @@ import { logger } from '@/lib/logger';
 import { connectionCredentials } from '@/lib/integrations/connection';
 import { metaOAuthConfigured } from '@/services/meta/oauth';
 import { PRODUCT_NAME } from '@/lib/branding';
-
-const GRAPH_VERSION = 'v26.0';
+import { GRAPH_VERSION, graphGet } from '@/lib/integrations/meta/send';
 
 export type MetaMode = 'LIVE' | 'SIMULATED' | 'NOT_CONFIGURED';
 
@@ -201,13 +200,11 @@ export async function syncMetaLeadForms(tenantId: string) {
   if (mode === 'LIVE') {
     pageId = metadata.pageId ?? '';
     if (!pageId) throw new Error('No Facebook Page is selected for this connection.');
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/leadgen_forms?fields=id,name,status&limit=200`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${credentials!.accessToken}` } });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Meta refused the lead form request: HTTP ${res.status} ${body.slice(0, 160)}`);
-    }
-    const data = (await res.json()) as { data?: { id?: string; name?: string; status?: string }[] };
+    const data = await graphGet<{ data?: { id?: string; name?: string; status?: string }[] }>(
+      `${encodeURIComponent(pageId)}/leadgen_forms?fields=id,name,status&limit=200`,
+      credentials!.accessToken,
+      'Meta refused the lead form request',
+    );
     forms = (data.data ?? [])
       .filter((f) => f.id && f.name)
       .map((f) => ({ id: String(f.id), name: String(f.name), status: String(f.status ?? 'ACTIVE') }));

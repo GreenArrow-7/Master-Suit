@@ -1,35 +1,5 @@
 /* pages-copy: phone-first corrections (2026-09-20). Imported by the workspace layout. */
 
-/* ── Page intro: title + one sentence, the rest behind a disclosure ─────── */
-.lf-page-intro {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--lf-space-3);
-  flex-wrap: wrap;
-}
-.lf-page-intro__copy {
-  min-width: 0;
-  flex: 1 1 260px;
-}
-.lf-page-intro__title {
-  margin: 0;
-}
-.lf-eyebrow + .lf-page-intro__title {
-  margin-top: 8px;
-}
-.lf-page-intro__summary {
-  margin: 6px 0 0;
-  color: var(--lf-ink-2);
-  font-size: var(--lf-text-sm);
-  max-width: 60ch;
-}
-.lf-page-intro__actions {
-  display: flex;
-  gap: var(--lf-space-2);
-  flex-wrap: wrap;
-}
-
 /* .lf-help: native <details>, so it is keyboard reachable with no JS. */
 .lf-help {
   margin-top: 6px;

@@ -26,6 +26,7 @@ import { isSupportRole } from '@/lib/auth/support-actor';
 import { mayReadPayroll } from '@/services/hr/payroll';
 import { createPlatformSessionToken } from '../helpers/session';
 import { GET as listLeads } from '@/app/api/v1/leads/route';
+import { get } from '../helpers/request';
 
 const suffix = randomBytes(4).toString('hex');
 let tenantId = '';
@@ -189,8 +190,7 @@ describe('platform support access', () => {
       });
       return (row?.metadata as { mode?: string } | null)?.mode;
     };
-    const read = () =>
-      listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), { params: Promise.resolve({}) });
+    const read = () => get(listLeads, '/api/v1/leads', cookie);
 
     await read();
     expect(await latestMode()).toBe('monitoring');
@@ -353,9 +353,7 @@ describe('platform support access', () => {
       where: { tenantId, actorUserId: supportId, event: 'SUPPORT_READ' },
     });
 
-    const res = await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    const res = await get(listLeads, '/api/v1/leads', cookie);
     expect(res.status).toBe(200);
 
     const rows = await prisma.platformAuditEvent.findMany({
@@ -385,9 +383,7 @@ describe('platform support access', () => {
     // matters, and must not be duplicated into the platform trail.
     const before = await prisma.platformAuditEvent.count({ where: { tenantId, event: 'SUPPORT_READ' } });
     const cookie = await createPlatformSessionToken(supportId, tenantId);
-    await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie } }), {
-      params: Promise.resolve({}),
-    });
+    await get(listLeads, '/api/v1/leads', cookie);
     const afterStaff = await prisma.platformAuditEvent.count({ where: { tenantId, event: 'SUPPORT_READ' } });
     expect(afterStaff).toBe(before + 1);
 
@@ -395,9 +391,7 @@ describe('platform support access', () => {
     // the route at all — which is itself the assertion that support access is
     // not a fallback. The absence of a SUPPORT_READ row for it follows.
     const memberCookie = await createPlatformSessionToken(memberId, tenantId);
-    await listLeads(new Request('http://localhost/api/v1/leads', { headers: { cookie: memberCookie } }), {
-      params: Promise.resolve({}),
-    }).catch(() => undefined);
+    await get(listLeads, '/api/v1/leads', memberCookie).catch(() => undefined);
     expect(await prisma.platformAuditEvent.count({ where: { tenantId, actorUserId: memberId } })).toBe(0);
   });
 

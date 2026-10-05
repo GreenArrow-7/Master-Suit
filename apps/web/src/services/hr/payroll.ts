@@ -23,10 +23,10 @@
 import { Prisma } from '@prisma/client';
 import { historicalPlacement } from '@/services/leadership/placement';
 import { prisma, withTx } from '@/lib/db';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { atLeast } from '@/lib/security/rbac';
 import { dayKey, toDay } from './rules';
 import { myEmployee, requireEmployee } from './leave';
 import { approvedOvertimeMinutes } from './overtime';
@@ -35,14 +35,13 @@ import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 import { notifyPayrollDecided, notifyPayrollSubmitted, notifyPayslipsAvailable } from './notify';
 
 /** Prepares runs and enters compensation. Does not approve them. */
-export const isPayrollOfficer = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'payroll', 'EDIT')] >= SCOPE_RANK.ORGANIZATION;
+export const isPayrollOfficer = (ctx: Ctx) => atLeast(ctx, 'payroll', 'EDIT', 'ORGANIZATION');
 
 /** Signs a run off. Deliberately separate from preparing it — see `approveRun`. */
-export const isPayrollApprover = (ctx: Ctx) =>
-  SCOPE_RANK[scopeFor(ctx, 'payroll', 'APPROVE')] >= SCOPE_RANK.ORGANIZATION;
+export const isPayrollApprover = (ctx: Ctx) => atLeast(ctx, 'payroll', 'APPROVE', 'ORGANIZATION');
 
 /** Reads other people's pay. Everyone can read their own without this. */
-export const mayReadPayroll = (ctx: Ctx) => SCOPE_RANK[scopeFor(ctx, 'payroll', 'VIEW')] >= SCOPE_RANK.ORGANIZATION;
+export const mayReadPayroll = (ctx: Ctx) => atLeast(ctx, 'payroll', 'VIEW', 'ORGANIZATION');
 
 const money = (value: Prisma.Decimal | number | string | null | undefined) => new Prisma.Decimal(value ?? 0);
 
@@ -238,7 +237,7 @@ export async function createRun(ctx: Ctx, periodStart: Date, periodEnd: Date, no
     });
     return run;
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+    if (isUniqueViolation(error))
       throw Conflict('A run already exists for that period. Open it instead of creating a second one.');
     throw error;
   }

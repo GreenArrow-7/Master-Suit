@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '@/lib/auth/password';
-import { assertDisposableEnvironment } from './environment';
+import { assertDisposableEnvironment } from '../helpers/isolation';
 
 /**
  * Session rotation, replay and logout, against a running server.
@@ -18,7 +18,7 @@ import { assertDisposableEnvironment } from './environment';
  * developer's own database.
  */
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-const targets = assertDisposableEnvironment();
+const targets = assertDisposableEnvironment({ suite: 'server integration' });
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: targets.databaseUrl }),
 });

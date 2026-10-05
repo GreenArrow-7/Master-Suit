@@ -10,6 +10,7 @@ That is the same path insightface used, so an existing download is reused.
 """
 import os
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -33,22 +34,16 @@ def main() -> int:
         print(f"Models already present in {dest}. Nothing to do.")
         return 0
 
-    try:
-        import requests
-    except ImportError:
-        print("Install the face extras first:\n"
-              "    pip install -r requirements-face.txt", file=sys.stderr)
-        return 1
-
     zip_path = dest / "buffalo_l.zip"
     print(f"Downloading buffalo_l (~275 MB) to {dest} ...")
     try:
-        with requests.get(URL, stream=True, timeout=60) as r:
-            r.raise_for_status()
+        # urlopen raises on an HTTP error status and follows the redirect GitHub
+        # answers release downloads with.
+        with urllib.request.urlopen(URL, timeout=60) as r:
             total = int(r.headers.get("content-length", 0))
             done = 0
             with open(zip_path, "wb") as fh:
-                for chunk in r.iter_content(1 << 20):
+                while chunk := r.read(1 << 20):
                     fh.write(chunk)
                     done += len(chunk)
                     if total:

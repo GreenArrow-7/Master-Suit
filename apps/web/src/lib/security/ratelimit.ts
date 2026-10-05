@@ -47,7 +47,8 @@ export async function clear(limit: Limit): Promise<void> {
   await redis.del(windowKey(limit, window), windowKey(limit, window - 1));
 }
 
-export async function consume(limit: Limit): Promise<{ remaining: number; resetAt: number }> {
+/** `message` is what the refusal says, where the default would mislead (a sign-in form shows it verbatim). */
+export async function consume(limit: Limit, message?: string): Promise<{ remaining: number; resetAt: number }> {
   const windowMs = limit.windowSeconds * 1000;
   const window = Math.floor(Date.now() / windowMs);
   const redisKey = windowKey(limit, window);
@@ -60,7 +61,7 @@ export async function consume(limit: Limit): Promise<{ remaining: number; resetA
     await redis.decr(redisKey);
     // Carried on the error so the route kernel can set Retry-After. Declared
     // rather than cast, so the kernel's read of the same field is checked.
-    const err: Error & { retryAfter?: number } = TooManyRequests();
+    const err: Error & { retryAfter?: number } = TooManyRequests(message);
     err.retryAfter = Math.max(Math.ceil((resetAt - Date.now()) / 1000), 1);
     throw err;
   }

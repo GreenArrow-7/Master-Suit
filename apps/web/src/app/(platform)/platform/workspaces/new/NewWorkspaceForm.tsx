@@ -60,10 +60,10 @@ export default function NewWorkspaceForm({ plans }: { plans: { code: string; nam
       });
       const data = await response.json();
       if (!response.ok) {
-        // A 422 carries Zod's flattened fieldErrors and no `detail`, so the
-        // wizard used to answer five steps of typing with the bare words
-        // "Validation failed" — which field, on which step, it did not say.
-        const fields = Object.keys(data.errors?.fieldErrors ?? {});
+        // A 422 lists the fields that failed. Named here, because the wizard used
+        // to answer five steps of typing with the bare words "Validation failed"
+        // — which field, on which step, it did not say.
+        const fields = [...new Set(((data.errors ?? []) as { field: string }[]).map((e) => e.field))];
         setError(
           fields.length
             ? `${data.title ?? 'Validation failed'}: check ${fields.join(', ')}.`

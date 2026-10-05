@@ -34,7 +34,7 @@ const stageBody = z.object({
 export const GET = route(
   { module: 'settings', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     return prisma.leadStage.findMany({
       where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
@@ -52,12 +52,7 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, params, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
-    const clash = await prisma.leadStage.findFirst({
-      where: { tenantId: ctx.tenantId, key: body.key, deletedAt: null },
-    });
-    if (clash) throw Conflict('A stage with that key already exists.');
-
+    await requireWorkspace(ctx, params.workspaceSlug);
     // Exactly one default, or a new lead has nowhere to land.
     if (body.isDefault) await clearDefault(ctx.tenantId);
     return prisma.leadStage.create({ data: { tenantId: ctx.tenantId, ...body } });
@@ -75,7 +70,7 @@ export const PATCH = route(
     auditEvent: 'RECORD_UPDATED',
   },
   async ({ ctx, params, query, body }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const stage = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, id: query.id, deletedAt: null },
     });
@@ -96,7 +91,7 @@ export const DELETE = route(
     auditEvent: 'RECORD_DELETED',
   },
   async ({ ctx, params, query }) => {
-    await requireWorkspace(ctx, params.workspaceSlug, 'SALES');
+    await requireWorkspace(ctx, params.workspaceSlug);
     const stage = await prisma.leadStage.findFirst({
       where: { tenantId: ctx.tenantId, id: query.id, deletedAt: null },
     });

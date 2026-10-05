@@ -10,16 +10,14 @@
  * Deliberately blocky rather than an exact replica of any one page: a skeleton
  * that promises a layout it does not deliver is its own kind of lie.
  */
-export default function PageSkeleton({ rows = 6 }: { rows?: number }) {
+export default function PageSkeleton() {
   return (
     <div className="lf-page-stack" aria-busy="true" aria-live="polite">
-      <span className="sr-only" style={SR_ONLY}>
-        Loading
-      </span>
+      <span className="lf-visually-hidden">Loading</span>
       <div style={{ ...BLOCK, width: 180, height: 12 }} />
       <div style={{ ...BLOCK, width: 320, height: 26 }} />
       <div className="lf-table-wrap" style={{ padding: 'var(--lf-space-4)', display: 'grid', gap: 10 }}>
-        {Array.from({ length: rows }, (_, index) => (
+        {Array.from({ length: 6 }, (_, index) => (
           <div key={index} style={{ ...BLOCK, height: 14, width: `${92 - index * 6}%` }} />
         ))}
       </div>
@@ -35,16 +33,4 @@ const BLOCK: React.CSSProperties = {
   background: 'var(--lf-line, #e2e8f0)',
   // No animation: `prefers-reduced-motion` would have to switch it off again,
   // and a static block already says "not ready yet".
-};
-
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clip: 'rect(0 0 0 0)',
-  whiteSpace: 'nowrap',
-  border: 0,
 };

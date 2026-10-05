@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { ulid } from 'ulid';
 import { prisma } from '@/lib/db';
 import { resolvePlatformCtx } from '@/lib/auth/session';
 import { isPlatformOwner } from '@/lib/auth/platform-policy';
@@ -17,7 +16,10 @@ export default async function Root() {
   let destination = '/login';
 
   try {
-    const ctx = await resolvePlatformCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+    const ctx = await resolvePlatformCtx(
+      new Request('http://internal/', { headers: await headers() }),
+      crypto.randomUUID(),
+    );
     if (ctx.activeTenantId) {
       const workspace = await prisma.tenant.findUnique({
         where: { id: ctx.activeTenantId },

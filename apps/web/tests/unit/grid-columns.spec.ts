@@ -5,7 +5,7 @@
  * a blank strip, or a lead row with no link back to its record.
  */
 import { describe, expect, it } from 'vitest';
-import { GRID_COLUMNS, resolveColumns, optionalColumns, storedColumnsFor } from '@/lib/grid/columns';
+import { GRID_COLUMNS, resolveColumns, storedColumnsFor } from '@/lib/grid/columns';
 
 const keys = (stored: unknown) => resolveColumns('LEAD', stored).map((column) => column.key);
 const FIXED = GRID_COLUMNS.LEAD.filter((column) => column.fixed).map((column) => column.key);
@@ -42,10 +42,6 @@ describe('resolveColumns', () => {
 
   it('deduplicates repeated keys', () => {
     expect(keys(['stage', 'stage', 'score'])).toEqual([...FIXED, 'stage', 'score']);
-  });
-
-  it('never offers a fixed column as removable', () => {
-    expect(optionalColumns('LEAD').some((column) => column.fixed)).toBe(false);
   });
 });
 

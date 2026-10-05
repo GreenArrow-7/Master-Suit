@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
-import { login, resetLoginThrottle } from './helpers';
+import { login } from './helpers';
 
 /**
  * Spreadsheet import through the real screen: an Excel file with customer-style
@@ -15,7 +15,6 @@ const password = process.env.E2E_DEMO_PASSWORD;
 
 test.describe('lead import from a spreadsheet', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');
-  test.beforeEach(resetLoginThrottle);
 
   test('detects columns, previews problems, imports the good rows', async ({ page }) => {
     await login(page, email!, password!);

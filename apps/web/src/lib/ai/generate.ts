@@ -60,9 +60,6 @@ export interface GenerateResult<T> {
   processingMs: number;
 }
 
-/** Hard ceiling on one round-trip; a hung provider fails its one feature. */
-const DEFAULT_TIMEOUT_MS = 60_000;
-
 export async function generateJson<T>(request: GenerateRequest): Promise<GenerateResult<T> | null> {
   const credential = await geminiCredential(request.tenantId);
   if (!credential.key) return null;
@@ -145,7 +142,8 @@ export async function generateJson<T>(request: GenerateRequest): Promise<Generat
         schema: request.schema,
         temperature: request.temperature,
         maxOutputTokens: request.maxOutputTokens,
-        timeoutMs: step?.timeoutMs ?? request.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        // Unset falls to the provider's own 60-second ceiling.
+        timeoutMs: step?.timeoutMs ?? request.timeoutMs,
       });
     });
 

@@ -9,11 +9,11 @@
  * index rather than a check in this file, because two taps racing each other is
  * exactly when a read-then-write loses.
  */
-import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, isUniqueViolation } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { names } from '@/services/leadership/rollups';
 
 export const NOMINATION_STATUSES = ['OPEN', 'WITHDRAWN', 'WON'] as const;
 export type NominationStatus = (typeof NOMINATION_STATUSES)[number];
@@ -79,7 +79,7 @@ export async function nominate(input: NominateInput) {
       return nomination;
     } catch (err) {
       // The unique index is the real guard; this turns it into a sentence.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isUniqueViolation(err)) {
         throw Conflict('They have already been nominated in that category.');
       }
       throw err;
@@ -188,11 +188,10 @@ export async function results(ctx: Ctx, eventId: string): Promise<CategoryResult
     orderBy: { category: 'asc' },
   });
 
-  const users = await prisma.user.findMany({
-    where: { tenantId: ctx.tenantId, id: { in: [...new Set(nominations.map((n) => n.nomineeId))] } },
-    select: { id: true, fullName: true },
-  });
-  const nameBy = new Map(users.map((u) => [u.id, u.fullName]));
+  const nameBy = await names(
+    ctx.tenantId,
+    nominations.map((n) => n.nomineeId),
+  );
 
   const byCategory = new Map<string, CategoryResult>();
   for (const n of nominations) {

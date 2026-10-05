@@ -1,3 +1,4 @@
+import type { ProductModuleKey } from '@/lib/modules/catalogue';
 /**
  * The workspace navigation model: the sidebar lists work areas, and the screens
  * inside an area are its tabs.
@@ -39,7 +40,7 @@ export type IconName =
   | 'settings'
   | 'shield';
 
-type Module = 'SALES' | 'HRMS' | 'REAL_ESTATE';
+type Module = ProductModuleKey;
 
 /**
  * Who a People screen is for. The HR screens serve both an employee and HR from

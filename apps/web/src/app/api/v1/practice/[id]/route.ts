@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { resolveOwnerIds } from '@/lib/security/visibility';
-import { enqueue, queueHasWorkers } from '@/lib/queue';
+import { enqueueOrRun } from '@/lib/queue';
 import { prospectReply, type PracticeTurn } from '@/lib/ai/practice';
 import { scorePracticeSession } from '@/services/shared/practiceScoring';
 import type { Ctx } from '@/lib/security/rbac';
@@ -139,15 +138,9 @@ export const PATCH = route(
         update: { status: 'PENDING', errorMessage: null },
       });
 
-      if (await queueHasWorkers('ai')) {
-        await enqueue('ai', 'practice-score', { tenantId: ctx.tenantId, sessionId: params.id });
-      } else {
-        const tenantId = ctx.tenantId;
-        const sessionId = params.id;
-        void scorePracticeSession({ tenantId, sessionId }).catch((err) =>
-          logger.error({ err: (err as Error).message, sessionId }, 'inline practice scoring failed'),
-        );
-      }
+      await enqueueOrRun('ai', 'practice-score', { tenantId: ctx.tenantId, sessionId: params.id }, () =>
+        scorePracticeSession({ tenantId: ctx.tenantId, sessionId: params.id }),
+      );
     }
 
     return prisma.practiceSession.findFirst({

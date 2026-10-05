@@ -94,11 +94,8 @@ export async function vendorFetch<T = any>(req: VendorRequest): Promise<T> {
     return (text ? JSON.parse(text) : {}) as T;
   };
 
-  return req.retry ? withRetry(`telephony:${req.vendor}`, call, { retryOn: transientHttp }) : call();
+  return req.retry ? withRetry(`telephony:${req.vendor}`, call, { retryOn: isTransient }) : call();
 }
-
-const transientHttp = (err: unknown) =>
-  (err instanceof TelephonyApiError && [429, 502, 503, 504].includes(err.status)) || isTransient(err);
 
 /** Basic auth for the vendors that use it (Twilio, Plivo, Exotel). */
 export const basic = (user: string, pass: string) => `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
@@ -130,3 +127,10 @@ export function urlTokenValid(url: string, expectedToken: string): boolean {
 /** XML text escaping for the inline call-control documents Twilio and Plivo accept. */
 export const xml = (value: string) =>
   value.replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c]!);
+
+/** A non-negative number from a vendor field, or undefined for an empty or unusable one. */
+export const num = (value: unknown): number | undefined => {
+  if (value == null || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};

@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { AppError, Forbidden } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { Forbidden } from '@/lib/errors';
 import { resolvePlatformCtx, type PlatformCtx } from '@/lib/auth/session';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import { readJsonBody } from '@/lib/api/read-body';
@@ -12,6 +10,7 @@ import {
   revokeOwnMonitoringCredential,
   setOwnMonitoringCredential,
 } from '@/services/identity/platformCredentials';
+import { bareRoute } from '@/lib/api/handler';
 
 /**
  * A platform staff member's own two passwords.
@@ -47,48 +46,28 @@ async function requireAdministrationSession(req: Request, requestId: string): Pr
   return ctx;
 }
 
-export async function GET(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const ctx = await requireAdministrationSession(req, requestId);
-    return NextResponse.json(await credentialStatus(ctx.platformUserId), {
-      headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
-    });
-  } catch (error) {
-    return problem(error, requestId);
-  }
-}
+export const GET = bareRoute('/api/v1/platform/credentials', async (req, requestId) => {
+  const ctx = await requireAdministrationSession(req, requestId);
+  return NextResponse.json(await credentialStatus(ctx.platformUserId), {
+    headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
+  });
+});
 
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const ctx = await requireAdministrationSession(req, requestId);
-    const body = await readJsonBody(req, bodySchema);
-    const actor = {
-      platformUserId: ctx.platformUserId,
-      sessionId: ctx.sessionId,
-      requestId,
-      ip: ctx.ip,
-      userAgent: ctx.userAgent,
-    };
-    const result =
-      body.action === 'set-monitoring'
-        ? await setOwnMonitoringCredential(actor, body)
-        : body.action === 'revoke-monitoring'
-          ? await revokeOwnMonitoringCredential(actor, body)
-          : await changeOwnAdministrationPassword(actor, body);
-    return NextResponse.json(result, { headers: { 'x-request-id': requestId, 'cache-control': 'no-store' } });
-  } catch (error) {
-    return problem(error, requestId);
-  }
-}
-
-function problem(error: unknown, requestId: string) {
-  if (error instanceof AppError) {
-    const headers: Record<string, string> = { 'x-request-id': requestId };
-    if ((error as { retryAfter?: number }).retryAfter) headers['retry-after'] = String((error as any).retryAfter);
-    return NextResponse.json(error.toProblem(requestId), { status: error.status, headers });
-  }
-  logger.error({ err: error, requestId }, 'credential management failed');
-  return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-}
+export const POST = bareRoute('/api/v1/platform/credentials', async (req, requestId) => {
+  const ctx = await requireAdministrationSession(req, requestId);
+  const body = await readJsonBody(req, bodySchema);
+  const actor = {
+    platformUserId: ctx.platformUserId,
+    sessionId: ctx.sessionId,
+    requestId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+  };
+  const result =
+    body.action === 'set-monitoring'
+      ? await setOwnMonitoringCredential(actor, body)
+      : body.action === 'revoke-monitoring'
+        ? await revokeOwnMonitoringCredential(actor, body)
+        : await changeOwnAdministrationPassword(actor, body);
+  return NextResponse.json(result, { headers: { 'x-request-id': requestId, 'cache-control': 'no-store' } });
+});

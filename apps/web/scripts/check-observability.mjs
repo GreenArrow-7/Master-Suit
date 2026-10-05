@@ -15,7 +15,7 @@
  *
  * Run:  node scripts/check-observability.mjs
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const INFRA = 'infra';
@@ -105,14 +105,18 @@ for (const m of inhibitSection.matchAll(/alertname(?:!?=|=~)"([^"]+)"/g)) {
 // A hand-written list drifts. This is the drift that matters most: a queue
 // missing here is a queue whose worker can exit without anything noticing,
 // which is the exact failure the whole metrics endpoint was built for.
-const consumed = new Set();
-for (const file of readdirSync('src/workers')) {
-  if (!file.endsWith('.ts') || file === 'index.ts') continue;
-  const body = readFileSync(join('src/workers', file), 'utf8');
-  for (const m of body.matchAll(/new Worker\(\s*'([^']+)'/g)) consumed.add(m[1]);
-}
+//
+// The consumed queues are the top-level keys of JOBS in src/workers/jobs.ts:
+// src/workers/index.ts starts one worker per queue, and each runs its queue's
+// row of that table.
+const jobsTable = must(
+  read(join('src/workers', 'jobs.ts')),
+  'src/workers/jobs.ts',
+  /export const JOBS\b[^=]*=\s*\{([\s\S]*?)^\};/m,
+);
+const consumed = new Set(jobsTable ? [...jobsTable.matchAll(/^ {2}'?([a-z][\w-]*)'?:/gm)].map((m) => m[1]) : []);
 if (consumed.size === 0)
-  fail('found no `new Worker(...)` call in src/workers — the consumed-queue list could not be derived.');
+  fail('found no queue keys in JOBS (src/workers/jobs.ts) — the consumed-queue list could not be derived.');
 
 const watched = must(alertsYml, 'prometheus-alerts.yml', /alert: QueueHasNoConsumer[\s\S]*?queue=~"([^"]+)"/);
 if (watched) {

@@ -26,6 +26,7 @@
  */
 import { readdir, readFile, unlink } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import path from 'node:path';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
@@ -38,9 +39,8 @@ const PREFIX = 'attendance/';
 function env(name, fallback = '') {
   if (process.env[name]) return process.env[name];
   for (const file of ['.env.production', '.env']) {
-    if (!existsSync(file)) continue;
-    const match = new RegExp(`^${name}=(.*)$`, 'm').exec(readFileSync(file, 'utf8'));
-    if (match) return match[1].trim();
+    const value = existsSync(file) ? parseEnv(readFileSync(file, 'utf8'))[name] : undefined;
+    if (value) return value;
   }
   return fallback;
 }
@@ -66,21 +66,6 @@ async function readObject(key) {
   return Buffer.concat(chunks);
 }
 
-/** Every capture under the legacy root, as paths relative to it. */
-async function* walk(directory) {
-  let entries;
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (entry.name.endsWith(SUFFIX)) yield path.relative(root, full);
-  }
-}
-
 let copied = 0;
 let skipped = 0;
 let deleted = 0;
@@ -95,7 +80,8 @@ console.log(`Legacy vault : ${root}`);
 console.log(`Bucket       : ${bucket} (prefix ${PREFIX})`);
 console.log(`Mode         : ${DRY_RUN ? 'dry run' : DELETE_AFTER ? 'copy, verify, delete' : 'copy, keep originals'}\n`);
 
-for await (const relative of walk(root)) {
+// Every capture under the legacy root, as paths relative to it.
+for (const relative of (await readdir(root, { recursive: true })).filter((file) => file.endsWith(SUFFIX))) {
   const key = PREFIX + relative.split(path.sep).join('/');
   const local = await readFile(path.join(root, relative));
 

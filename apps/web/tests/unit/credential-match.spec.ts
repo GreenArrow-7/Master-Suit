@@ -123,18 +123,14 @@ describe('credentialRefusal', () => {
 
 describe('the application defines no server actions', () => {
   it('has none, so every mutation goes through a route that enforces the session mode', async () => {
-    const { readdirSync, readFileSync, statSync } = await import('node:fs');
+    const { readdirSync, readFileSync } = await import('node:fs');
     const path = await import('node:path');
     const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir)) {
-        const full = path.join(dir, entry);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (/\.(ts|tsx)$/.test(entry) && /^\s*['"]use server['"]/m.test(readFileSync(full, 'utf8')))
-          offenders.push(full);
-      }
-    };
-    walk(path.resolve(__dirname, '../../src'));
+    const src = path.resolve(__dirname, '../../src');
+    for (const rel of readdirSync(src, { recursive: true }) as string[]) {
+      const full = path.join(src, rel);
+      if (/\.(ts|tsx)$/.test(rel) && /^\s*['"]use server['"]/m.test(readFileSync(full, 'utf8'))) offenders.push(full);
+    }
     // A server action added later must be reviewed for monitoring sessions — this
     // fails until it is, and until it carries the same read-only guard.
     expect(offenders).toEqual([]);

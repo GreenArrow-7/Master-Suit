@@ -155,7 +155,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
-      target: build
+      target: migrate
     profiles: ['tools']
     env_file: ['../.env.staging']
     environment:

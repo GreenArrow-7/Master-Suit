@@ -70,7 +70,7 @@ export const POST = route(
     });
     if (invitees.length === 0) return { sent: 0, failed: 0, remaining: 0 };
 
-    const provider = getWhatsAppProvider('meta', credentials);
+    const provider = getWhatsAppProvider(credentials);
     const when = event.startAt.toLocaleString('en-GB', {
       dateStyle: 'full',
       timeStyle: 'short',

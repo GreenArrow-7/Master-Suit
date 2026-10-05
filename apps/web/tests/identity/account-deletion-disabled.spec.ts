@@ -12,13 +12,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = '';
 
 const { prisma } = await import('@/lib/db');
-const { hashPassword } = await import('@/lib/auth/password');
 const { executionEnabled, processAccountDeletion, requestAccountDeletion, sweepAccountDeletions } =
   await import('@/services/identity/accountDeletion');
-const { handleMaintenanceJob } = await import('@/workers/maintenance');
+const { handleJob } = await import('@/workers/jobs');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
+const { buildActor, buildCtx } = await import('../helpers/ctx');
 type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
-type Ctx = Parameters<typeof requestAccountDeletion>[0];
 
 const PASSWORD = 'Correct-Horse-Battery-9!';
 const ownedPlatformUserIds = new Set<string>();
@@ -42,24 +41,11 @@ async function makePerson() {
     roleId: role.id,
     email: `off-${Date.now()}@example.com`,
     fullName: 'Switch Off',
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
-  ownedPlatformUserIds.add(membership.platformUserId);
-  const ctx = {
-    tenantId: fixture.a.tenantId,
-    actor: { id: user.id, permissions: new Map() },
-    requestId: 'off',
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-  return { platformUserId: membership.platformUserId, ctx };
+  ownedPlatformUserIds.add(user.platformUserId);
+  const ctx = buildCtx(buildActor({ id: user.id, tenantId: fixture.a.tenantId }));
+  return { platformUserId: user.platformUserId, ctx };
 }
 
 describe('with execution disabled (the default)', () => {
@@ -78,7 +64,7 @@ describe('with execution disabled (the default)', () => {
     const direct = await processAccountDeletion(request.id);
     expect(direct).toMatchObject({ status: 'SKIPPED', reason: 'execution disabled' });
 
-    const viaWorker = (await handleMaintenanceJob({
+    const viaWorker = (await handleJob('maintenance', {
       name: 'account-deletions',
       data: { platformUserIds: [person.platformUserId] },
     })) as { disabled: boolean };

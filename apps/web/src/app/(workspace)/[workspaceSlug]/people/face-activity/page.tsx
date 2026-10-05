@@ -4,8 +4,9 @@ import { queryDate } from '@/services/hr/rules';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { isHrAdmin } from '@/services/hr/access';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import { csvCell } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
-import TableSearch from '@/components/workspace/TableSearch';
+import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 
 export const metadata = { title: 'Face recognition activity' };
 
@@ -20,7 +21,6 @@ const stamp = (value: Date) =>
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(value);
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 /** What each punch result means in plain words, for the activity log. */
 const OUTCOME: Record<string, { label: string; ok: boolean; reason?: string }> = {
@@ -241,89 +241,65 @@ export default async function Page({
       {consents.length === 0 ? (
         <div className="lf-card lf-leave__empty">No biometric consent has been recorded.</div>
       ) : (
-        <TableSearch placeholder="Employee or policy version…" label="Search the register">
-          <div className="lf-table-wrap">
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Granted</th>
-                  <th>Withdrawn</th>
-                  <th>Policy</th>
-                </tr>
-              </thead>
-              <tbody>
-                {consents.map((consent, index) => {
-                  const person = employees.find((employee) => employee.id === consent.employeeId);
-                  return (
-                    <tr key={index}>
-                      <td data-label="Employee">{person?.membership.platformUser.fullName ?? consent.employeeId}</td>
-                      <td data-label="Granted">{consent.grantedAt ? stamp(consent.grantedAt) : '—'}</td>
-                      <td data-label="Withdrawn">{consent.withdrawnAt ? stamp(consent.withdrawnAt) : '—'}</td>
-                      <td data-label="Policy">{consent.policyVersion ?? '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </TableSearch>
+        <WorkspaceTable
+          headers={['Employee', 'Granted', 'Withdrawn', 'Policy']}
+          rows={consents.map((consent) => [
+            employees.find((employee) => employee.id === consent.employeeId)?.membership.platformUser.fullName ??
+              consent.employeeId,
+            consent.grantedAt ? stamp(consent.grantedAt) : '—',
+            consent.withdrawnAt ? stamp(consent.withdrawnAt) : '—',
+            consent.policyVersion ?? '—',
+          ])}
+          searchable
+          searchPlaceholder="Employee or policy version…"
+          searchLabel="Search the register"
+        />
       )}
 
       <h2 className="lf-leave__section">Verification events</h2>
       {rows.length === 0 ? (
         <div className="lf-card lf-leave__empty">No face recognition activity in this period.</div>
       ) : (
-        <TableSearch placeholder="Employee, location, status or reason…" label="Search these events">
-          <div className="lf-table-wrap">
-            <table className="lf-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>When</th>
-                  <th>Event</th>
-                  <th>Liveness</th>
-                  <th>Match</th>
-                  <th>Location</th>
-                  <th>Distance</th>
-                  <th>Accuracy</th>
-                  <th>Geofence</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td data-label="Employee">
-                      {row.employee}
-                      <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>
-                        {row.employeeNumber}
-                      </div>
-                    </td>
-                    <td data-label="When">{row.at}</td>
-                    <td data-label="Event">{row.event}</td>
-                    <td data-label="Liveness">{row.liveness}</td>
-                    <td data-label="Match">{row.match}</td>
-                    <td data-label="Location">{row.location}</td>
-                    <td data-label="Distance">{row.distance}</td>
-                    <td data-label="Accuracy">{row.accuracy}</td>
-                    <td data-label="Geofence">{row.inside}</td>
-                    <td data-label="Status">
-                      <span
-                        className="lf-badge"
-                        style={{ color: row.ok ? 'var(--lf-viridian)' : 'var(--lf-vermillion, #b3261e)' }}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td data-label="Reason">{row.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </TableSearch>
+        <WorkspaceTable
+          headers={[
+            'Employee',
+            'When',
+            'Event',
+            'Liveness',
+            'Match',
+            'Location',
+            'Distance',
+            'Accuracy',
+            'Geofence',
+            'Status',
+            'Reason',
+          ]}
+          rows={rows.map((row) => [
+            <div key="who">
+              {row.employee}
+              <div style={{ color: 'var(--lf-ink-3)', fontSize: 'var(--lf-text-2xs)' }}>{row.employeeNumber}</div>
+            </div>,
+            row.at,
+            row.event,
+            row.liveness,
+            row.match,
+            row.location,
+            row.distance,
+            row.accuracy,
+            row.inside,
+            <span
+              key="status"
+              className="lf-badge"
+              style={{ color: row.ok ? 'var(--lf-viridian)' : 'var(--lf-vermillion, #b3261e)' }}
+            >
+              {row.status}
+            </span>,
+            row.reason,
+          ])}
+          searchable
+          searchPlaceholder="Employee, location, status or reason…"
+          searchLabel="Search these events"
+        />
       )}
     </div>
   );

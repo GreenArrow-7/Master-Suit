@@ -186,7 +186,7 @@ export async function updateRole(
       ...holders.map((holder) => holder.id),
       ...assigned.map((row) => row.membership.salesUserId).filter((id): id is string => !!id),
     ]);
-    for (const userId of userIds) await revokeAllSessions(ctx.tenantId, userId, undefined, 'PERMISSIONS_CHANGED');
+    for (const userId of userIds) await revokeAllSessions(userId, undefined, 'PERMISSIONS_CHANGED');
   }
 
   await audit(ctx, {
@@ -353,7 +353,7 @@ export async function updatePermissionMatrix(ctx: Ctx, roleId: string, changes: 
     where: { tenantId: ctx.tenantId, roleId, deletedAt: null },
     select: { id: true },
   });
-  for (const holder of holders) await revokeAllSessions(ctx.tenantId, holder.id, undefined, 'PERMISSIONS_CHANGED');
+  for (const holder of holders) await revokeAllSessions(holder.id, undefined, 'PERMISSIONS_CHANGED');
 
   await audit(ctx, {
     event: 'PERMISSION_CHANGED',
@@ -427,7 +427,7 @@ export async function assignRole(
         },
       });
 
-  if (membership.salesUserId) await revokeAllSessions(ctx.tenantId, membership.salesUserId, undefined, 'ROLE_ASSIGNED');
+  if (membership.salesUserId) await revokeAllSessions(membership.salesUserId, undefined, 'ROLE_ASSIGNED');
   await audit(ctx, {
     event: 'PERMISSION_CHANGED',
     objectType: 'membership_role',
@@ -473,7 +473,7 @@ export async function revokeRoleAssignment(ctx: Ctx, assignmentId: string, reaso
   });
 
   if (assignment.membership.salesUserId) {
-    await revokeAllSessions(ctx.tenantId, assignment.membership.salesUserId, undefined, 'ROLE_REVOKED');
+    await revokeAllSessions(assignment.membership.salesUserId, undefined, 'ROLE_REVOKED');
   }
   await audit(ctx, {
     event: 'PERMISSION_CHANGED',

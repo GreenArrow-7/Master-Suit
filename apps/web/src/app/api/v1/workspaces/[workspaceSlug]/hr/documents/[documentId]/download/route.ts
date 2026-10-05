@@ -1,8 +1,6 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-import { AppError } from '@/lib/errors';
-import { logger } from '@/lib/logger';
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
 import { requireWorkspace } from '@/lib/workspace';
 import { downloadDocument } from '@/services/hr/documents';
 
@@ -14,17 +12,17 @@ import { downloadDocument } from '@/services/hr/documents';
  * record of who did. Streaming through here keeps the permission check and the
  * audit row on the same path as the bytes.
  */
-export async function GET(req: Request, context: { params: Promise<{ workspaceSlug: string; documentId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug, documentId } = await context.params;
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'HRMS',
-      permission: ['hr_documents', 'VIEW'],
-    });
-    await requireWorkspace(ctx, workspaceSlug, 'HRMS');
-
-    const file = await downloadDocument(ctx, documentId);
+export const GET = route(
+  {
+    module: 'hr_documents',
+    action: 'VIEW',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    params: z.object({ workspaceSlug: z.string(), documentId: z.string() }),
+  },
+  async ({ ctx, params }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
+    const file = await downloadDocument(ctx, params.documentId);
 
     return new NextResponse(new Uint8Array(file.bytes), {
       headers: {
@@ -33,17 +31,7 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
         // `attachment` so a malicious upload cannot execute in the workspace origin.
         'content-disposition': `attachment; filename="${file.filename.replace(/"/g, '')}"`,
         'cache-control': 'private, no-store',
-        'x-request-id': requestId,
       },
     });
-  } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(error.toProblem(requestId), {
-        status: error.status,
-        headers: { 'x-request-id': requestId },
-      });
-    }
-    logger.error({ err: error, requestId }, 'document download failed');
-    return NextResponse.json({ status: 500, title: 'Internal error', requestId }, { status: 500 });
-  }
-}
+  },
+);

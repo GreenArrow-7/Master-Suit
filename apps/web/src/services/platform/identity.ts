@@ -27,8 +27,8 @@
 import { prisma, withPlatformTx } from '@/lib/db';
 import { redis } from '@/lib/redis';
 import { clear as clearLimit, limits } from '@/lib/security/ratelimit';
-import { Conflict, Invalid, NotFound } from '@/lib/errors';
-import { checkPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
+import { Conflict, NotFound } from '@/lib/errors';
+import { assertPasswordPolicy, DEFAULT_POLICY } from '@/lib/auth/password';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import {
   dropMonitoringCredential,
@@ -38,6 +38,7 @@ import {
 import { generateTemporaryPassword } from '@/services/identity/accounts';
 import { isPrivilegedPlatformRole } from '@/lib/auth/platform-policy';
 import type { PlatformCtx } from '@/lib/auth/session';
+import { platformAudit } from '@/lib/security/audit';
 
 export type MfaState = 'ENABLED' | 'ENROLMENT_PENDING' | 'ENROLMENT_REQUIRED' | 'NOT_CONFIGURED' | 'RECOVERY_REQUIRED';
 
@@ -398,7 +399,7 @@ export async function refuseOwnerLockout(
   target: { id: string; platformRole: string; status: string },
 ) {
   if (target.id === ctx.platformUserId) {
-    throw Conflict('You cannot disable or demote your own platform account. Ask another platform owner.');
+    throw Conflict('You cannot change or remove your own platform account. Ask another platform owner.');
   }
   if (target.platformRole === 'OWNER' && target.status === 'ACTIVE') {
     const others = await prisma.platformUser.count({
@@ -426,21 +427,15 @@ async function record(
   metadata: Record<string, unknown>,
   tenantId?: string | null,
 ) {
-  await prisma.platformAuditEvent.create({
-    data: {
-      tenantId: tenantId ?? null,
-      actorUserId: ctx.platformUserId,
-      event,
-      objectType: 'platform_user',
-      objectId: target.id,
-      requestId: ctx.requestId,
-      ipAddress: ctx.ip,
-      userAgent: ctx.userAgent,
-      // `target` and `result` only. No password, temporary or otherwise, and no
-      // hash — see SECRET_KEYS in lib/security/audit.ts for the same rule on the
-      // workspace side.
-      metadata: { target: target.email, ...metadata },
-    },
+  await platformAudit(ctx, {
+    tenantId: tenantId ?? null,
+    event,
+    objectType: 'platform_user',
+    objectId: target.id,
+    // `target` and `result` only. No password, temporary or otherwise, and no
+    // hash — see SECRET_KEYS in lib/security/audit.ts for the same rule on the
+    // workspace side.
+    metadata: { target: target.email, ...metadata },
   });
 }
 
@@ -463,10 +458,7 @@ export async function resetPassword(
   const target = await loadTarget(userId);
   const password = options.password ?? generateTemporaryPassword();
 
-  const problems = checkPolicy(password, DEFAULT_POLICY);
-  if (problems.length) {
-    throw Invalid(problems.map((message) => ({ field: 'password', code: 'weak-password', message })));
-  }
+  assertPasswordPolicy(password, DEFAULT_POLICY, 'password');
 
   // Refuses a password equal to the target's monitoring credential, bumps the
   // version and cancels unfinished sign-ins; also clears the lock, so a reset

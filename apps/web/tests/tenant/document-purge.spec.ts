@@ -33,12 +33,8 @@ async function employeeIn(tenantId: string) {
     email: `dp-${seq}-${Date.now()}@example.com`,
     fullName: 'Doc Purge',
   });
-  const m = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true },
-  });
   return prisma.employeeProfile.create({
-    data: { tenantId, membershipId: m.id, employeeNumber: `DP-${seq}-${Date.now()}` },
+    data: { tenantId, membershipId: user.membershipId, employeeNumber: `DP-${seq}-${Date.now()}` },
     select: { id: true, tenantId: true },
   });
 }

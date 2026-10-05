@@ -2,7 +2,7 @@ import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
-import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
+import { pageQuery, cursorWhere, toPage } from '@/lib/api/pagination';
 import { prisma, withTx } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import { nextReference } from '@/services/shared/reference';
@@ -34,9 +34,7 @@ export const GET = route(
     // looks. Doing it here rather than on a schedule means the book is never
     // read in a state where an expired agreement still shows as live.
     await expireLapsedMandates(ctx.tenantId);
-
-    const cursor = decodeCursor(query.cursor);
-    const where = mergeWhere(listingWhere(ctx.tenantId, query, ctx.actor.id), cursorWhere(cursor));
+    const where = mergeWhere(listingWhere(ctx.tenantId, query, ctx.actor.id), cursorWhere(query.cursor));
 
     const rows = await prisma.listing.findMany({
       where,

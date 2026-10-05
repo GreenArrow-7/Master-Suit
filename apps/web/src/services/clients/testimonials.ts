@@ -10,7 +10,7 @@
  * path sets `body`, `rating` or `consentToPublish`. A testimonial staff can
  * write on a client's behalf is not a testimonial.
  */
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, IllegalTransition } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
@@ -173,15 +173,8 @@ export async function decideTestimonial(input: DecideInput) {
     await assertRecordVisible(ctx, 'testimonials', existing, tx, 'EDIT');
 
     const from = existing.status as TestimonialStatus;
-    if (!canTransition(from, input.to)) {
-      throw Invalid([
-        {
-          field: 'status',
-          code: 'illegal_transition',
-          message: `A ${from.toLowerCase()} testimonial cannot become ${input.to.toLowerCase()}.`,
-        },
-      ]);
-    }
+    if (!canTransition(from, input.to))
+      throw IllegalTransition(`A ${from.toLowerCase()} testimonial cannot become ${input.to.toLowerCase()}.`);
 
     if (input.to === 'SUBMITTED') {
       // The client's words arrive through the public link and nowhere else.

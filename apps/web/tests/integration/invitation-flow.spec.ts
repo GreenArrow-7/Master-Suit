@@ -24,6 +24,7 @@ import {
   previewInvitation,
 } from '@/services/identity/invitations';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `invite-${suffix}`;
@@ -293,31 +294,11 @@ describe('seat limits', () => {
       const inviteeRole = await prisma.role.create({
         data: { tenantId: capped.id, key: `inv-${suffix}`, name: 'Member', rank: 60, defaultScope: 'OWN' },
       });
-      const owner = await prisma.user.create({
-        data: {
-          tenantId: capped.id,
-          email: `owner-${suffix}@capped.test`,
-          fullName: 'Owner',
-          roleId: ownerRole.id,
-          status: 'ACTIVE',
-        },
-      });
-      const platformOwner = await prisma.platformUser.create({
-        data: {
-          email: `owner-${suffix}@capped.test`,
-          normalizedEmail: `owner-${suffix}@capped.test`,
-          fullName: 'Owner',
-          status: 'ACTIVE',
-        },
-      });
-      await prisma.workspaceMembership.create({
-        data: {
-          tenantId: capped.id,
-          platformUserId: platformOwner.id,
-          salesUserId: owner.id,
-          status: 'ACTIVE',
-          joinedAt: new Date(),
-        },
+      const owner = await createWorkspaceUser({
+        tenantId: capped.id,
+        roleId: ownerRole.id,
+        email: `owner-${suffix}@capped.test`,
+        fullName: 'Owner',
       });
       const ctx = buildCtx(
         buildActor({

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK, type Action, type Ctx } from '@/lib/security/rbac';
+import { atLeast, type Action, type Ctx } from '@/lib/security/rbac';
 
 /**
  * Record scope for the routes that load one record by id.
@@ -23,7 +23,7 @@ import { scopeFor, SCOPE_RANK, type Action, type Ctx } from '@/lib/security/rbac
  * "does not exist" tells a caller which ids are real.
  */
 export async function assertCallInScope(ctx: Ctx, callId: string, action: Action = 'VIEW'): Promise<void> {
-  if (SCOPE_RANK[scopeFor(ctx, 'calls', action)] >= SCOPE_RANK.TEAM) return;
+  if (atLeast(ctx, 'calls', action, 'TEAM')) return;
   const own = await prisma.call.findFirst({
     where: { id: callId, tenantId: ctx.tenantId, deletedAt: null, callerId: ctx.actor.id },
     select: { id: true },
@@ -38,7 +38,7 @@ export async function assertCallInScope(ctx: Ctx, callId: string, action: Action
  * (read only — the write routes keep their own checks).
  */
 export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action = 'VIEW'): Promise<void> {
-  if (SCOPE_RANK[scopeFor(ctx, 'events', action)] >= SCOPE_RANK.TEAM) return;
+  if (atLeast(ctx, 'events', action, 'TEAM')) return;
   const visible = await prisma.event.findFirst({
     where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id) },
     select: { id: true },
@@ -55,5 +55,5 @@ export function eventScopeFilter(actorId: string) {
 
 /** True when the caller sees every record of this kind in the workspace. */
 export function seesWholeWorkspace(ctx: Ctx, module: string, action: Action = 'VIEW'): boolean {
-  return SCOPE_RANK[scopeFor(ctx, module, action)] >= SCOPE_RANK.TEAM;
+  return atLeast(ctx, module, action, 'TEAM');
 }

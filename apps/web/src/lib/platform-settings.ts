@@ -54,32 +54,13 @@ export const EDITABLE_SETTINGS = {
     fallback: () => env.UPLOAD_MAX_MB,
     // 1 MB floor keeps uploads possible; 500 MB ceiling keeps a typo from
     // letting someone stream a disk image into object storage.
-    parse: (raw: string): number => {
-      const value = Number(raw);
-      if (!Number.isInteger(value) || value < 1 || value > 500) {
-        throw new Error('Upload limit must be a whole number between 1 and 500 MB.');
-      }
-      return value;
-    },
+    parse: (raw: string) => wholeNumber(raw, 1, 500, 'Upload limit (MB)'),
   },
 } as const;
 
 export type EditableSettingKey = keyof typeof EDITABLE_SETTINGS;
 
 export const isEditableSetting = (key: string): key is EditableSettingKey => key in EDITABLE_SETTINGS;
-
-/** The effective value: DB override when present and valid, env default otherwise. */
-export async function getUploadMaxMb(): Promise<number> {
-  const row = await prisma.platformSetting.findUnique({ where: { key: 'uploadMaxMb' } }).catch(() => null);
-  if (!row) return env.UPLOAD_MAX_MB;
-  try {
-    return EDITABLE_SETTINGS.uploadMaxMb.parse(row.value);
-  } catch {
-    // A hand-edited bad row must not brick uploads; fall back and let the
-    // console show the stored value for correction.
-    return env.UPLOAD_MAX_MB;
-  }
-}
 
 /**
  * The effective value of any numeric operator setting: the stored override when

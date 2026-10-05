@@ -8,7 +8,7 @@ kernel (`src/lib/api/handler.ts`); a route that does not is a review blocker.
 
 ```
 request
-  → requestId (ULID, echoed as X-Request-Id, stamped on every audit + log line)
+  → requestId (a UUID, echoed as X-Request-Id, stamped on every audit + log line)
   → rate limit (Redis sliding window; per API key, per user, per IP)
   → authenticate (session cookie | Bearer API key | OIDC bearer)
   → resolve Ctx (tenant, actor, role, permission map, visibility sets)

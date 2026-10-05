@@ -62,7 +62,7 @@
  * identity with none reads nothing.
  */
 import { randomBytes } from 'node:crypto';
-import 'dotenv/config';
+import './env.mjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { hash } from '@node-rs/argon2';

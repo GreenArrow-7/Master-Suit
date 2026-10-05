@@ -1,14 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { hashPassword } from '@/lib/auth/password';
 import {
   processAccountDeletion,
   requestAccountDeletion,
   sweepAccountDeletions,
 } from '@/services/identity/accountDeletion';
-import { handleMaintenanceJob } from '@/workers/maintenance';
+import { handleJob } from '@/workers/jobs';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
-import type { Ctx } from '@/lib/security/rbac';
+import { buildActor, buildCtx } from '../helpers/ctx';
 
 /**
  * The consumer, and what survives the thing it runs.
@@ -36,15 +35,7 @@ function mine() {
 }
 let seq = 0;
 
-function ctxFor(tenantId: string, userId: string): Ctx {
-  return {
-    tenantId,
-    actor: { id: userId, permissions: new Map() },
-    requestId: `test-${Math.random().toString(36).slice(2)}`,
-    ip: '127.0.0.1',
-    userAgent: 'vitest',
-  } as unknown as Ctx;
-}
+const ctxFor = (tenantId: string, id: string) => buildCtx(buildActor({ id, tenantId }));
 
 let fixture: Fixture;
 
@@ -63,15 +54,9 @@ async function makePerson(label: string) {
     roleId: role.id,
     email: `sweep-${seq}-${Date.now()}@example.com`,
     fullName: label,
+    password: PASSWORD,
   });
-  const membership = await prisma.workspaceMembership.findUniqueOrThrow({
-    where: { salesUserId: user.id },
-    select: { id: true, platformUserId: true },
-  });
-  await prisma.platformUser.update({
-    where: { id: membership.platformUserId },
-    data: { passwordHash: await hashPassword(PASSWORD) },
-  });
+  const membership = { id: user.membershipId, platformUserId: user.platformUserId };
   ownedPlatformUserIds.add(membership.platformUserId);
   return { user, ...membership, ctx: ctxFor(fixture.a.tenantId, user.id) };
 }
@@ -111,9 +96,9 @@ describe('the sweep that drives the executor', () => {
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
 
     // The job name the scheduler registers. A handler that silently does not recognise it
-    // would log "unknown maintenance job" and return undefined, which is the failure this
+    // would log "unknown job" and return undefined, which is the failure this
     // asserts against.
-    const result = (await handleMaintenanceJob({
+    const result = (await handleJob('maintenance', {
       name: 'account-deletions',
       data: { platformUserIds: mine() },
     })) as {

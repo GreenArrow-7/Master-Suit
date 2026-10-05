@@ -1,9 +1,9 @@
-import { timingSafeEqual } from 'node:crypto';
 import { stuckAccountDeletions } from '@/services/identity/accountDeletion';
 import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { prisma } from '@/lib/db';
 import { liveGrantCount } from '@/lib/auth/platform-access';
+import { safeCompare } from '@/lib/auth/session';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { increment, render, secretAgeDays, setBuildInfo, setGauge } from '@/lib/metrics';
@@ -47,12 +47,7 @@ const COLLECT_TIMEOUT_MS = 3_000;
 function authorised(req: Request): boolean {
   const expected = process.env.METRICS_TOKEN;
   if (!expected) return false;
-  const supplied = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-  const a = Buffer.from(supplied);
-  const b = Buffer.from(expected);
-  // Length is compared first because timingSafeEqual throws on a mismatch; that
-  // leaks the length and nothing else, which the header already does.
-  return a.length === b.length && timingSafeEqual(a, b);
+  return safeCompare((req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, ''), expected);
 }
 
 /**

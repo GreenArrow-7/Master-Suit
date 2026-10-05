@@ -24,6 +24,7 @@ import { prisma } from '@/lib/db';
 import { availableReports, exportReportCsv, runReport } from '@/services/hr/reports';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { Ctx } from '@/lib/security/rbac';
+import { createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `reportscope-${suffix}`;
@@ -54,28 +55,13 @@ async function person(label: string, place: Placement = {}) {
   const role = await prisma.role.create({
     data: { tenantId: tid, key: `${label}-${suffix}`, name: label, rank: 60, defaultScope: 'OWN' },
   });
-  const user = await prisma.user.create({
-    data: {
-      tenantId: tid,
-      email,
-      fullName: label,
-      roleId: role.id,
-      status: 'ACTIVE',
-      branchId: place.branch ?? null,
-      regionId: place.region ?? null,
-    },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: label, status: 'ACTIVE' },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: {
-      tenantId: tid,
-      platformUserId: platformUser.id,
-      salesUserId: user.id,
-      status: 'ACTIVE',
-      joinedAt: new Date(),
-    },
+  const user = await createWorkspaceUser({
+    tenantId: tid,
+    roleId: role.id,
+    email: email,
+    fullName: label,
+    branchId: place.branch ?? null,
+    regionId: place.region ?? null,
   });
   const number = `E-${label}-${suffix}`;
   // `unlinked` skips the EmployeeProfile: a sales user with no HR record, which
@@ -85,7 +71,7 @@ async function person(label: string, place: Placement = {}) {
     : await prisma.employeeProfile.create({
         data: {
           tenantId: tid,
-          membershipId: membership.id,
+          membershipId: user.membershipId,
           employeeNumber: number,
           joinedOn: new Date('2026-01-01T00:00:00Z'),
           employmentStatus: 'ACTIVE',

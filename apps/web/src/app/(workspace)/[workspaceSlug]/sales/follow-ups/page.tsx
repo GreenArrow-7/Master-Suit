@@ -9,6 +9,7 @@ import ColumnEditor from '@/components/workspace/ColumnEditor';
 import FollowUpComposer from './FollowUpComposer';
 import { columnsFor } from '@/lib/grid/resolve';
 import { can } from '@/lib/security/rbac';
+import { names } from '@/services/leadership/rollups';
 
 export const metadata = { title: 'Follow-ups' };
 
@@ -70,13 +71,12 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   const leadById = new Map(leads.map((lead) => [lead.id, lead]));
 
   // Owner names, only when the list spans people. One lookup for the page.
-  const owners = orgWide
-    ? await prisma.user.findMany({
-        where: { tenantId: ctx.tenantId, id: { in: [...new Set(rows.map((row) => row.ownerId))] } },
-        select: { id: true, fullName: true },
-      })
-    : [];
-  const ownerById = new Map(owners.map((owner) => [owner.id, owner.fullName]));
+  const ownerById = orgWide
+    ? await names(
+        ctx.tenantId,
+        rows.map((row) => row.ownerId),
+      )
+    : new Map<string, string>();
 
   const followUps = rows.map((row) => ({
     ...row,

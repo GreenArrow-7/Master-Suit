@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
+import { slugify } from '@/lib/slug';
 
 /**
  * Campaigns could be sent, dialled and reported on, but never created — every
@@ -44,17 +45,10 @@ const createBody = z
     path: ['startDate'],
   });
 
-const slug = (name: string) =>
-  name
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 32);
-
 export const POST = route(
   { module: 'campaigns', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },
   async ({ ctx, body }) => {
-    const base = body.code?.toUpperCase() ?? slug(body.name);
+    const base = (body.code ?? slugify(body.name, 32)).toUpperCase();
     // The code is the human handle on reports and the dialer; collide politely
     // rather than 500 on the unique index.
     const taken = await prisma.campaign.findFirst({

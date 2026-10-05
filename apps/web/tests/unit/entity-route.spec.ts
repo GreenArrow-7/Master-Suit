@@ -93,21 +93,14 @@ describe('every notification a service writes can be opened', () => {
 
     collect(readFileSync(path.join(root, 'src/services/hr/notify.ts'), 'utf8'));
 
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(full);
-          continue;
-        }
-        if (!entry.name.endsWith('.ts')) continue;
-        const source = readFileSync(full, 'utf8');
-        for (const write of source.matchAll(/prisma\s*\.\s*notification\s*\n?\s*\.\s*create(?:Many)?\(/g)) {
-          collect(source.slice(write.index!, write.index! + 800));
-        }
+    const services = path.join(root, 'src/services');
+    for (const rel of readdirSync(services, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue;
+      const source = readFileSync(path.join(services, rel), 'utf8');
+      for (const write of source.matchAll(/prisma\s*\.\s*notification\s*\n?\s*\.\s*create(?:Many)?\(/g)) {
+        collect(source.slice(write.index!, write.index! + 800));
       }
-    };
-    walk(path.join(root, 'src/services'));
+    }
     return [...found];
   }
 

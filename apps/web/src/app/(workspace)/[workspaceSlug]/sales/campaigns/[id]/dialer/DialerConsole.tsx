@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
+import { Metric } from '@/components/ui/MetricCard';
 
 interface Contact {
   id: string;
@@ -321,14 +322,5 @@ export default function DialerConsole({ campaignId, initial }: { campaignId: str
         )}
       </section>
     </>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <article className="lf-metric-card">
-      <div className="lf-eyebrow">{label}</div>
-      <div className="lf-metric-card__value">{value}</div>
-    </article>
   );
 }

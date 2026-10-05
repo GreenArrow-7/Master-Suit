@@ -1,9 +1,9 @@
 import { prisma, withPlatformTx } from '@/lib/db';
 import { env } from '@/lib/env';
-import { audit } from '@/lib/security/audit';
+import { audit, platformAudit } from '@/lib/security/audit';
 import { logger } from '@/lib/logger';
 import { consume, limits } from '@/lib/security/ratelimit';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
 import { consumeTotp, REPLAYED_CODE } from '@/lib/auth/totp-consume';
 import { ADMIN_ROLE_RANK, otherActiveAdmins } from './accounts';
@@ -196,7 +196,7 @@ export async function requestAccountDeletion(ctx: Ctx, input: { password: string
   } catch (err) {
     // The partial unique index is what actually prevents a double request; two taps on a
     // slow connection reach here rather than creating a second row.
-    if ((err as { code?: string }).code === 'P2002') {
+    if (isUniqueViolation(err)) {
       throw Conflict('You already have a deletion request in progress.');
     }
     throw err;
@@ -270,16 +270,15 @@ export async function cancelAccountDeletion(ctx: Ctx) {
  * a workspace name, never anything the person wrote.
  */
 async function recordErasure(platformUserId: string, requestId: string, outcome: ErasureOutcome) {
-  await prisma.platformAuditEvent.create({
-    data: {
-      tenantId: null,
-      actorUserId: null,
+  await platformAudit(
+    { platformUserId: null },
+    {
       event: 'ACCOUNT_ERASED',
       objectType: 'account_deletion_request',
       objectId: requestId,
-      metadata: { platformUserId, ...outcome } as object,
+      metadata: { platformUserId, ...outcome } as never,
     },
-  });
+  );
 }
 
 /**
@@ -378,45 +377,36 @@ async function retentionManifest(
     hrStoredFiles += documents.filter((d) => d.storageKey).length;
   }
 
-  const retained: RetainedCategory[] = [];
-  if (attributedNames > 0) {
-    retained.push({
+  const retained: RetainedCategory[] = [
+    {
       category: 'workspace_attribution',
       count: attributedNames,
       reason:
         'Name and user id kept on the workspace record so the leads, calls, receipts and approvals this person entered stay attributable.',
-    });
-  }
-  if (auditEntries > 0) {
-    retained.push({
+    },
+    {
       category: 'audit_trail',
       count: auditEntries,
       reason: 'Audit entries keep the acting user id and event; IP address and user agent were cleared at completion.',
-    });
-  }
-  if (hrProfiles > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_employment_record',
       count: hrProfiles,
       reason:
         'Employment record retained: payroll runs, payslips and settlement snapshots reference it. Not erased by this request.',
-    });
-  }
-  if (hrFinancialIdentifiers > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_financial_identifiers',
       count: hrFinancialIdentifiers,
       reason:
         'IBAN, bank agent id, WPS person id and RERA BRN still on the employment record (expected 0: cleared at completion).',
-    });
-  }
-  if (hrDocuments > 0) {
-    retained.push({
+    },
+    {
       category: 'hr_identity_documents',
       count: hrDocuments,
       reason: `Identity and visa documents: ${hrStoredFiles} stored file(s), scheduled for purge 15 days after completion by the retention job.`,
-    });
-  }
+    },
+  ].filter((c) => c.count > 0);
   // Always stated. It is never zero and it is never erasable in place, so leaving it out
   // when nothing else remains would read as "nothing is left", which is not true.
   retained.push({

@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 
 /**
- * Two-step delete for a detail page: a quiet button that asks before it commits,
- * then sends the viewer back to the list the record came from.
+ * Two-step delete: a quiet button that asks before it commits, then sends the
+ * viewer back to the list the record came from — or, for a row inside a page
+ * (no `backHref`), refreshes that page in place.
  */
 export default function EntityDelete({
   endpoint,
@@ -15,8 +16,8 @@ export default function EntityDelete({
 }: {
   /** Absolute API path, e.g. `/api/v1/accounts/${id}`. */
   endpoint: string;
-  /** Module-relative list path to return to, e.g. `/accounts`. */
-  backHref: string;
+  /** Module-relative list path to return to, e.g. `/accounts`. Absent: stay and refresh. */
+  backHref?: string;
   /** Lower-case noun for the buttons, e.g. "account". */
   label: string;
 }) {
@@ -36,7 +37,7 @@ export default function EntityDelete({
         setError(data.detail ?? data.title ?? `Could not delete this ${label}.`);
         return;
       }
-      router.push(`${base}${backHref}`);
+      if (backHref) router.push(`${base}${backHref}`);
       router.refresh();
     } catch {
       setError('Could not reach the server. Try again.');
@@ -47,7 +48,11 @@ export default function EntityDelete({
 
   if (!confirming) {
     return (
-      <button type="button" className="lf-btn lf-btn--secondary lf-btn--sm" onClick={() => setConfirming(true)}>
+      <button
+        type="button"
+        className={`lf-btn ${backHref ? 'lf-btn--secondary' : 'lf-btn--ghost'} lf-btn--sm`}
+        onClick={() => setConfirming(true)}
+      >
         Delete
       </button>
     );

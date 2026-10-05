@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Administrator-supervised face enrolment.
@@ -237,10 +238,7 @@ export default function FaceEnrolmentConsole({
             This deletes every stored template for {employeeName}. Face check-in stops working immediately and they must
             be enrolled again in person. Their consent is left alone — only the employee can withdraw that.
           </p>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="face-reason">
-              Reason (recorded in the audit trail)
-            </label>
+          <Field label="Reason (recorded in the audit trail)" htmlFor="face-reason">
             <input
               id="face-reason"
               className="lf-input"
@@ -251,7 +249,7 @@ export default function FaceEnrolmentConsole({
               required
               placeholder="Poor sample quality, appearance changed, suspected misuse…"
             />
-          </div>
+          </Field>
           <div className="lf-face__actions">
             <button className="lf-btn" type="submit" disabled={busy || reason.trim().length < 5}>
               {busy ? 'Resetting…' : 'Reset enrollment'}

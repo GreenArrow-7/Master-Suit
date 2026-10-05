@@ -1,4 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
+import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can } from '@/lib/security/rbac';
 import { prisma } from '@/lib/db';
@@ -68,11 +69,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     callScope
       ? prisma.call.findMany({
           // A completed call sits at its start time; one not yet dialled at its creation.
-          where: {
-            ...callScope,
+          // mergeWhere, not spread: callScope's ownership `OR` would otherwise be
+          // replaced by this date `OR`, showing a rep every colleague's calls.
+          where: mergeWhere(callScope, {
             deletedAt: null,
             OR: [{ startedAt: inMonth }, { startedAt: null, createdAt: inMonth }],
-          },
+          }),
           take: 300,
           select: { id: true, startedAt: true, createdAt: true, direction: true, status: true },
         })

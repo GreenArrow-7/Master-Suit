@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
-import { PRODUCT_MODULES } from '@/lib/security/entitlements';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import HrPolicyForm from '@/components/workspace/HrPolicyForm';
 import { CHECKOUT_RULE_KEYS, getHrPolicy, HR_SETTINGS } from '@/services/hr/settings';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -8,15 +8,15 @@ import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
 import LocationMapForm from './LocationMapForm';
 import ExportCsv from '@/components/workspace/ExportCsv';
+import { csvCell } from '@/lib/csv';
 import { isHrAdmin, myEmployee } from '@/services/hr/leave';
 
 /** RFC 4180-ish: quote every field and double any embedded quote. */
-const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const { ctx } = await resolveWorkspacePage(workspaceSlug, {
-    module: PRODUCT_MODULES,
+    module: PRODUCT_MODULE_KEYS,
     permission: ['employee', 'VIEW'],
   });
   const base = `/api/v1/workspaces/${workspaceSlug}/hr`;

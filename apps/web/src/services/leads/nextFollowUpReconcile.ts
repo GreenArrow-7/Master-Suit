@@ -32,9 +32,6 @@ import { withPlatformTx, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { lockLeads, recomputeNextFollowUp } from './nextFollowUp';
 
-/** Named for `scripts/check-raw-sql-scope.mjs`. See distribution/eligibility.ts. */
-type TransactionClient = TxClient;
-
 /** A lead whose stored value disagrees with its obligations. */
 export interface Disagreement {
   leadId: string;
@@ -186,7 +183,7 @@ export async function reportDrift(tenantId: string, now = new Date()): Promise<D
  */
 export async function repairDrift(
   tenantId: string,
-  opts: { apply?: boolean; limit?: number } = {},
+  opts: { apply?: boolean } = {},
 ): Promise<{ considered: number; repaired: number }> {
   const report = await reportDrift(tenantId);
   const disagreeing = report.missing + report.stale + report.unexpected;
@@ -195,21 +192,20 @@ export async function repairDrift(
     return { considered: disagreeing, repaired: 0 };
   }
 
-  const limit = opts.limit ?? 10_000;
   const ids = await withTx(tenantId, (tx) =>
     tx.$queryRawUnsafe<{ id: string }[]>(
       `SELECT l."id" FROM "Lead" l
         WHERE l."tenantId" = $1 AND l."deletedAt" IS NULL
           AND (l."nextFollowUpAt" IS DISTINCT FROM (${DERIVED}))
         ORDER BY l."id"
-        LIMIT ${limit}`,
+        LIMIT 10000`,
       tenantId,
     ),
   );
 
   let repaired = 0;
   for (const { id } of ids) {
-    await withTx(tenantId, async (tx: TransactionClient) => {
+    await withTx(tenantId, async (tx: TxClient) => {
       await lockLeads(tx, tenantId, [id]);
       await recomputeNextFollowUp(tx, tenantId, id);
     });
@@ -229,8 +225,7 @@ export async function repairDrift(
  */
 export async function sweepDriftCanary(now = new Date()): Promise<{ tenants: number; disagreeing: number }> {
   const tenants = await withPlatformTx(
-    (tx: TransactionClient) =>
-      tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
+    (tx: TxClient) => tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Tenant" WHERE "status" = 'ACTIVE' ORDER BY "id"`,
   );
 
   let disagreeing = 0;
@@ -254,10 +249,4 @@ export async function sweepDriftCanary(now = new Date()): Promise<{ tenants: num
   }
   if (disagreeing === 0) logger.info({ tenants: tenants.length }, 'next-follow-up drift canary: clean');
   return { tenants: tenants.length, disagreeing };
-}
-
-/** Count only, for a caller that just wants the number. */
-export async function driftCount(tenantId: string): Promise<number> {
-  const r = await reportDrift(tenantId);
-  return r.missing + r.stale + r.unexpected;
 }

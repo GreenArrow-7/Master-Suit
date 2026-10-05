@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { mergeWhere } from '@/lib/api/where';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { can, type Ctx } from '@/lib/security/rbac';
+import { names } from '@/services/leadership/rollups';
 
 /**
  * The brokerage dashboard, counted from rows.
@@ -170,14 +171,7 @@ export async function realtyDashboard(ctx: Ctx, now = new Date()): Promise<Realt
   // Names in a second query rather than a join: groupBy cannot include a
   // relation, and five ids is a cheaper lookup than widening the aggregate.
   const topAgentRows = deals ? deals[4] : null;
-  const agents =
-    topAgentRows && topAgentRows.length
-      ? await prisma.user.findMany({
-          where: { tenantId: ctx.tenantId, id: { in: topAgentRows.map((row) => row.ownerId) } },
-          select: { id: true, fullName: true },
-        })
-      : [];
-  const nameOf = new Map(agents.map((agent) => [agent.id, agent.fullName]));
+  const nameOf = await names(ctx.tenantId, topAgentRows?.map((row) => row.ownerId) ?? []);
 
   return {
     today: { newLeads, callbacks, followUps, siteVisits: visits ? visits[0] : null },

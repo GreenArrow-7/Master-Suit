@@ -11,7 +11,7 @@ import {
   sweepTriageNotifications,
 } from '@/services/distribution/triageQueue';
 import { deliverOutbox } from '@/services/notifications/outbox';
-import { seedTwoTenants, type Fixture } from '../helpers/fixtures';
+import { seedTwoTenants, type Fixture, grantApprovedLeave } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import type { Ctx, Scope } from '@/lib/security/rbac';
 
@@ -235,7 +235,7 @@ describe('eligibility is one rule, and a deactivated employee never gets a lead'
   it('blocks somebody on approved HR leave, which the old check never saw', async () => {
     const away = await makeAgent('On leave agent');
     const covering = await makeAgent('Covering agent');
-    await grantApprovedLeave(away);
+    await grantApprovedLeave(fixture.a.tenantId, away);
     await setRule({ pool: [away, covering] });
     const leadId = await makeLead();
 
@@ -249,7 +249,7 @@ describe('eligibility is one rule, and a deactivated employee never gets a lead'
 
   it('honours respectLeave = false, because that is the workspace saying so', async () => {
     const away = await makeAgent('Working through leave');
-    await grantApprovedLeave(away);
+    await grantApprovedLeave(fixture.a.tenantId, away);
     await setRule({ pool: [away], respectLeave: false });
     const leadId = await makeLead();
 
@@ -686,42 +686,3 @@ describe('the queue is scoped like every other lead surface', () => {
 });
 
 /** An approved leave request covering right now, through the real HR tables. */
-async function grantApprovedLeave(userId: string) {
-  const T = fixture.a.tenantId;
-  const email = `leave-${randomBytes(4).toString('hex')}@triage.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email.toLowerCase(), fullName: 'Leave holder' },
-    select: { id: true },
-  });
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId: T, platformUserId: platformUser.id, salesUserId: userId, status: 'ACTIVE', joinedAt: new Date() },
-    select: { id: true },
-  });
-  const employee = await prisma.employeeProfile.create({
-    data: {
-      tenantId: T,
-      membershipId: membership.id,
-      employeeNumber: `E-${randomBytes(3).toString('hex')}`,
-      employmentStatus: 'ACTIVE',
-    },
-    select: { id: true },
-  });
-  const type = await prisma.hrLeaveType.upsert({
-    where: { tenantId_code: { tenantId: T, code: 'ANNUAL' } },
-    update: {},
-    create: { tenantId: T, code: 'ANNUAL', name: 'Annual leave' },
-    select: { id: true },
-  });
-  await prisma.hrLeaveRequest.create({
-    data: {
-      tenantId: T,
-      employeeId: employee.id,
-      leaveTypeId: type.id,
-      startDate: new Date(Date.now() - 86_400_000),
-      endDate: new Date(Date.now() + 86_400_000),
-      days: 3,
-      status: 'APPROVED',
-      decidedAt: new Date(),
-    },
-  });
-}

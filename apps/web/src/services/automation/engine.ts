@@ -1,4 +1,3 @@
-import { ulid } from 'ulid';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
@@ -94,7 +93,7 @@ export async function runEnrollmentNode(tenantId: string, enrollmentId: string) 
   if (!record) return exit(tenantId, enrollment.id, 'record_not_found');
 
   if (!enrollment.automation.createdById) return exit(tenantId, enrollment.id, 'no_owning_user');
-  const ctx = await ctxForUser(enrollment.automation.createdById, tenantId, ulid());
+  const ctx = await ctxForUser(enrollment.automation.createdById, tenantId, crypto.randomUUID());
 
   const started = Date.now();
   const execution = await prisma.automationExecution.create({
