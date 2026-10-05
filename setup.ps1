@@ -141,10 +141,8 @@ rebuilds node_modules from package-lock.json on every run.
     Assert-NativeSuccess 'npm dependency installation'
     Set-Content -LiteralPath $stampFile -Value (Get-LockHash) -Encoding ascii
   }
-  docker compose -p master-saas -f infra/docker-compose.yml up -d postgres redis minio
+  docker compose -p master-saas -f infra/docker-compose.yml up -d --wait postgres redis minio
   Assert-NativeSuccess 'Docker infrastructure startup'
-  node scripts/wait-for-db.mjs
-  Assert-NativeSuccess 'PostgreSQL readiness check'
   npm run db:deploy
   Assert-NativeSuccess 'Database migration'
 
