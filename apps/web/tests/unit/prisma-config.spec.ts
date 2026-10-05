@@ -6,6 +6,11 @@
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+// What is under test is the expression in prisma.config.ts, and `defineConfig`
+// hands it through. The real package loads a large dependency tree on a cold
+// import, which under a full parallel run took more than the 30 s test timeout.
+vi.mock('prisma/config', () => ({ defineConfig: <T>(config: T) => config }));
+
 async function shadowUrlFor(value: string) {
   vi.resetModules();
   vi.stubEnv('SHADOW_DATABASE_URL', value);

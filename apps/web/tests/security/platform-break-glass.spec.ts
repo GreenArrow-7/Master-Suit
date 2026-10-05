@@ -132,12 +132,13 @@ describe('the operator-facing count', () => {
     // the count returns 0 under RLS — which is also the healthy value, so the
     // gauge would read "nobody has write access into a customer's data" while
     // being blind to all of them.
-    const before = await liveGrantCount();
+    //
+    // "At least this grant", not a before/after delta: the count spans the whole
+    // platform, and other spec files open and revoke grants in parallel, which
+    // moved a delta by one either way. A blind gauge still fails here — it reads 0.
     await openGrant({ platformUserId: ownerId, tenantId, reason: 'Repairing a duplicated payroll run' });
-    expect(await liveGrantCount()).toBe(before + 1);
-
+    expect(await liveGrantCount()).toBeGreaterThanOrEqual(1);
     await revokeGrants(ownerId, tenantId);
-    expect(await liveGrantCount()).toBe(before);
   });
 });
 
