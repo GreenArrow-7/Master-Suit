@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth/platform-access';
 import { GET as accessGet } from '@/app/api/v1/platform/workspaces/[workspaceId]/access/route';
 import { createPlatformSessionToken } from '../helpers/session';
+import { get } from '../helpers/request';
 
 /**
  * Platform write access into a customer workspace must not be ambient.
@@ -217,15 +218,15 @@ describe('the contract the console reads', () => {
    * rejects, or a button shown to somebody it will 403.
    */
   const read = async (platformUserId: string) =>
-    accessGet(
-      new Request(`http://localhost/api/v1/platform/workspaces/${tenantId}/access`, {
-        headers: { cookie: await createPlatformSessionToken(platformUserId, tenantId) },
-      }),
-      { params: Promise.resolve({ workspaceId: tenantId }) },
+    get(
+      accessGet,
+      `/api/v1/platform/workspaces/${tenantId}/access`,
+      await createPlatformSessionToken(platformUserId, tenantId),
+      { workspaceId: tenantId },
     );
 
   it('tells the console the same minimum the API enforces', async () => {
-    const body = await (await read(ownerId)).json();
+    const { body } = await read(ownerId);
     expect(body.minReason).toBe(MIN_REASON);
     expect(body.defaultMinutes).toBe(DEFAULT_GRANT_MINUTES);
     expect(body.maxMinutes).toBe(MAX_GRANT_MINUTES);
@@ -250,7 +251,7 @@ describe('the contract the console reads', () => {
     try {
       const response = await read(auditor.id);
       expect(response.status).toBe(403);
-      expect((await response.json()).detail).toMatch(/platform-owner access is required/i);
+      expect(response.body.detail).toMatch(/platform-owner access is required/i);
     } finally {
       await withPlatformTx((tx) => tx.platformUser.delete({ where: { id: auditor.id } }));
     }
@@ -264,7 +265,7 @@ describe('the contract the console reads', () => {
       minutes: 15,
       requestId: 'test',
     });
-    const body = await (await read(ownerId)).json();
+    const { body } = await read(ownerId);
     expect(body.grant.reason).toContain('Ticket 8812');
     expect(Date.parse(body.grant.expiresAt)).toBeGreaterThan(Date.now());
   });
