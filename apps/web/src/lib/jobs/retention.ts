@@ -45,32 +45,43 @@ const TX_TIMEOUT_MS = 120_000;
 const MAX_BATCHES = 200;
 
 /**
- * The append-only tables, their timestamp, and where their window comes from.
+ * The tables swept by age, their timestamp, and where their window comes from.
  *
  * `days()` is a function rather than a value because `env` is parsed once at
  * module load and this list is built at module load too — reading the number
  * here would freeze whatever was set when the file was first imported, which is
- * the same shape of bug as a config value captured in a closure.
+ * the same shape of bug as a config value captured in a closure. `days: () => 0`
+ * sweeps a row once its own timestamp passes; a NULL never matches `< now`.
  *
- * `objectColumn` names a column holding an object key that must be deleted with
- * the row. Only attendance punches have one; a punch carries the encrypted frame
- * that is the evidence for it.
+ * `object` is an SQL expression for an object key that must be deleted with the
+ * row: a punch carries the encrypted frame that is the evidence for it.
  */
-const AUDIT_TABLES: {
+const RETENTION_TABLES: {
   name: string;
   column: string;
-  objectColumn?: string;
-  /** How the object named by objectColumn is removed; attendance captures by default. */
+  object?: string;
+  /** How the object is removed; attendance captures by default. */
   removeObject?: (key: string) => Promise<void>;
   /** Keep the row when its object could not be removed, so the next run retries it. */
   keepRowOnObjectFailure?: boolean;
   days: () => number | undefined;
 }[] = [
+  // First, before the soft-delete purge below cascades a call's recordings away
+  // with their objects still in the bucket. A provider recording's storageKey is
+  // the vendor's URL, not a key of ours: the media worker never ingested it.
+  {
+    name: 'Recording',
+    column: 'retainUntil',
+    object: `CASE WHEN "storageBucket" = 'provider' THEN NULL ELSE "storageKey" END`,
+    removeObject: deleteObject,
+    keepRowOnObjectFailure: true,
+    days: () => 0,
+  },
   { name: 'AuditLog', column: 'occurredAt', days: () => env.AUDIT_LOG_RETENTION_DAYS },
   {
     name: 'HrAttendancePunch',
     column: 'serverTime',
-    objectColumn: 'capturePath',
+    object: '"capturePath"',
     days: () => env.ATTENDANCE_PUNCH_RETENTION_DAYS,
   },
   { name: 'PlatformAuditEvent', column: 'occurredAt', days: () => env.PLATFORM_AUDIT_RETENTION_DAYS },
@@ -84,7 +95,7 @@ const AUDIT_TABLES: {
   {
     name: 'HrEmployeeDocument',
     column: 'purgeAt',
-    objectColumn: 'storageKey',
+    object: '"storageKey"',
     removeObject: deleteObject,
     keepRowOnObjectFailure: true,
     days: () => 0,
@@ -92,20 +103,15 @@ const AUDIT_TABLES: {
 ];
 
 export interface RetentionResult {
-  expiredRecordings: number;
-  /** Objects removed from the bucket. Lower than expiredRecordings when a
-   *  recording was still hosted by the telephony vendor and we never ingested it. */
-  recordingObjects: number;
   oldWebhookEvents: number;
   expiredSessions: number;
   attendanceCaptures: number;
   purgeSummary: Record<string, number>;
   /**
-   * The three append-only tables, kept apart from `purgeSummary` on purpose.
-   *
-   * Those are soft-deleted business rows aging out; these are an audit trail
-   * being destroyed under a policy somebody chose. A number in the same bag as
-   * "old cancelled tasks" is a number nobody looks at twice.
+   * Rows deleted per RETENTION_TABLES entry, kept apart from `purgeSummary` on
+   * purpose: those are soft-deleted business rows aging out; these include an
+   * audit trail destroyed under a policy somebody chose. A number in the same bag
+   * as "old cancelled tasks" is a number nobody looks at twice.
    */
   auditSummary: Record<string, number>;
   /** True when a sweep hit MAX_BATCHES with work still queued. */
@@ -115,8 +121,6 @@ export interface RetentionResult {
 export async function runRetentionCleanup(dryRun = false): Promise<RetentionResult> {
   const now = new Date();
   const result: RetentionResult = {
-    expiredRecordings: 0,
-    recordingObjects: 0,
     oldWebhookEvents: 0,
     expiredSessions: 0,
     attendanceCaptures: 0,
@@ -125,66 +129,107 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     truncated: false,
   };
 
-  // ── 1. Recordings past retainUntil ─────────────────────────────────────────
+  // ── 1. Rows past their window: RETENTION_TABLES ─────────────────────────────
   //
-  // Batched to exhaustion rather than one `LIMIT 1000`. The old cap meant a
-  // backlog larger than a thousand could never drain: every run cleared the same
-  // thousand-row slice and the tail stayed forever.
-  let batches = 0;
-  for (;;) {
-    if (batches++ >= MAX_BATCHES) {
-      result.truncated = true;
-      logger.warn({ batches, removed: result.expiredRecordings }, 'retention: recording sweep hit its batch ceiling');
-      break;
-    }
-
-    const due = await withPlatformTx(
-      (tx) =>
-        tx.$queryRawUnsafe<{ id: string; storageKey: string; storageBucket: string | null }[]>(
-          `SELECT id, "storageKey", "storageBucket" FROM "Recording"
-            WHERE "retainUntil" IS NOT NULL AND "retainUntil" < $1
-            ORDER BY "retainUntil" ASC
-            LIMIT ${BATCH}`,
-          now,
-        ),
-      { timeoutMs: TX_TIMEOUT_MS },
-    );
-
-    if (due.length === 0) break;
-    result.expiredRecordings += due.length;
-
-    if (dryRun) {
-      // Counting only. A dry run must not touch the bucket either — that was
-      // never true of the object half, because the object half did not exist.
-      if (due.length < BATCH) break;
+  // Batched to exhaustion: a single `LIMIT` meant a backlog larger than one batch
+  // could never drain.
+  //
+  // `AuditLog`, `HrAttendancePunch` and `PlatformAuditEvent` had nothing deleting
+  // from them at all — the assessment records the growth as W-7 and the
+  // metrics endpoint has been measuring it since. What was missing was never the
+  // sweep; it was the number, and the number is a compliance answer rather than
+  // an engineering one.
+  //
+  // So each window is opt-in and **absent means keep**. A deployment that has
+  // not decided deletes nothing here and says so once per run, which is the
+  // honest state — rather than a default quietly destroying a trail on the
+  // strength of a number nobody picked.
+  for (const table of RETENTION_TABLES) {
+    const days = table.days();
+    if (days === undefined) {
+      // Logged every run, not once at boot. "No retention policy" is a standing
+      // condition somebody should keep meeting rather than a fact that scrolled
+      // past on a restart six months ago.
+      logger.info({ table: table.name }, 'retention: no policy set, keeping every row');
       continue;
     }
 
-    // Object first, outside the transaction: an S3 round trip has no business
-    // holding a database connection, and a failure here must not roll back a
-    // delete that already happened in the bucket.
-    for (const recording of due) {
-      // `storageBucket === 'provider'` marks a recording the media worker has
-      // not ingested yet: the bytes are still on the vendor's servers and
-      // `storageKey` is their URL, not a key of ours. Nothing to delete.
-      if (recording.storageBucket === 'provider' || !recording.storageKey) continue;
-      try {
-        await deleteObject(recording.storageKey);
-        result.recordingObjects += 1;
-      } catch (err) {
-        // Logged and skipped, not thrown. One unreachable object must not stop
-        // the sweep; the row stays and the next run tries again.
-        logger.error({ err, recordingId: recording.id }, 'retention: could not delete recording object');
+    const cutoff = new Date(now.getTime() - days * 86_400_000);
+    let deleted = 0;
+    let sweeps = 0;
+
+    for (;;) {
+      if (sweeps++ >= MAX_BATCHES) {
+        result.truncated = true;
+        logger.warn({ table: table.name, deleted }, 'retention: sweep hit its batch ceiling');
+        break;
       }
+
+      // Selected then deleted by id, rather than `DELETE … WHERE occurredAt < $1
+      // LIMIT`, which Postgres does not accept — and a bare DELETE with no limit
+      // on a table that has never been swept is one statement holding a lock over
+      // millions of rows on the first run after a policy is set.
+      const due = await withPlatformTx(
+        (tx) =>
+          tx.$queryRawUnsafe<{ id: string; object: string | null }[]>(
+            `SELECT id${table.object ? `, ${table.object} AS object` : ''} FROM "${table.name}"
+              WHERE "${table.column}" < $1
+              ORDER BY "${table.column}" ASC
+              LIMIT ${BATCH}`,
+            cutoff,
+          ),
+        { timeoutMs: TX_TIMEOUT_MS },
+      );
+
+      if (due.length === 0) break;
+      deleted += due.length;
+
+      if (dryRun) {
+        if (due.length < BATCH) break;
+        continue;
+      }
+
+      // Object before row (see the header), outside the transaction: an S3 round
+      // trip has no business holding a database connection.
+      const failed = new Set<string>();
+      if (table.object) {
+        const remove = table.removeObject ?? deleteCapture;
+        for (const row of due) {
+          if (!row.object) continue;
+          try {
+            await remove(row.object);
+          } catch (err) {
+            logger.error({ err, table: table.name, id: row.id }, 'retention: could not delete object');
+            if (table.keepRowOnObjectFailure) failed.add(row.id);
+          }
+        }
+      }
+      // A row whose object survived is kept so the next run retries it: deleting the row
+      // would orphan the file where nothing can find it again.
+      // ponytail: if a full batch of rows at the head of the order fails persistently, the
+      // same batch is retried up to MAX_BATCHES and everything behind it waits until
+      // storage recovers; bounded and logged. Upgrade path: per-row backoff column.
+      const ids = due.filter((row) => !failed.has(row.id)).map((row) => row.id);
+      deleted -= failed.size;
+      if (ids.length === 0) {
+        if (due.length < BATCH) break;
+        continue;
+      }
+      await withPlatformTx(
+        (tx) => tx.$executeRawUnsafe(`DELETE FROM "${table.name}" WHERE id = ANY($1::text[])`, ids),
+        { timeoutMs: TX_TIMEOUT_MS },
+      );
+
+      if (due.length < BATCH) break;
     }
 
-    const ids = due.map((r) => r.id);
-    await withPlatformTx((tx) => tx.$executeRawUnsafe(`DELETE FROM "Recording" WHERE id = ANY($1::text[])`, ids), {
-      timeoutMs: TX_TIMEOUT_MS,
-    });
-    logger.info({ count: ids.length }, 'retention: deleted expired recordings');
-
-    if (due.length < BATCH) break;
+    result.auditSummary[table.name] = deleted;
+    if (deleted > 0) {
+      logger.warn(
+        { table: table.name, count: deleted, retentionDays: days, dryRun },
+        'retention: deleted rows past their window',
+      );
+    }
   }
 
   // ── 2. Processed webhook events older than 30 days ─────────────────────────
@@ -257,108 +302,6 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     const captures = await purgeExpiredCaptures();
     result.attendanceCaptures = captures.removed;
     if (captures.removed > 0) logger.info({ ...captures }, 'retention: purged attendance captures');
-  }
-
-  // ── 6. The three append-only tables ────────────────────────────────────────
-  //
-  // `AuditLog`, `HrAttendancePunch` and `PlatformAuditEvent` had nothing deleting
-  // from them at all — the assessment records the growth as W-7 and the
-  // metrics endpoint has been measuring it since. What was missing was never the
-  // sweep; it was the number, and the number is a compliance answer rather than
-  // an engineering one.
-  //
-  // So each window is opt-in and **absent means keep**. A deployment that has
-  // not decided deletes nothing here and says so once per run, which is the
-  // honest state — rather than a default quietly destroying a trail on the
-  // strength of a number nobody picked.
-  for (const table of AUDIT_TABLES) {
-    const days = table.days();
-    if (days === undefined) {
-      // Logged every run, not once at boot. "No retention policy" is a standing
-      // condition somebody should keep meeting rather than a fact that scrolled
-      // past on a restart six months ago.
-      logger.info({ table: table.name }, 'retention: no policy set, keeping every row');
-      continue;
-    }
-
-    const cutoff = new Date(now.getTime() - days * 86_400_000);
-    let deleted = 0;
-    let sweeps = 0;
-
-    for (;;) {
-      if (sweeps++ >= MAX_BATCHES) {
-        result.truncated = true;
-        logger.warn({ table: table.name, deleted }, 'retention: audit sweep hit its batch ceiling');
-        break;
-      }
-
-      // Selected then deleted by id, rather than `DELETE … WHERE occurredAt < $1
-      // LIMIT`, which Postgres does not accept — and a bare DELETE with no limit
-      // on a table that has never been swept is one statement holding a lock over
-      // millions of rows on the first run after a policy is set.
-      const due = await withPlatformTx(
-        (tx) =>
-          tx.$queryRawUnsafe<{ id: string; object: string | null }[]>(
-            `SELECT id${table.objectColumn ? `, "${table.objectColumn}" AS object` : ''} FROM "${table.name}"
-              WHERE "${table.column}" < $1
-              ORDER BY "${table.column}" ASC
-              LIMIT ${BATCH}`,
-            cutoff,
-          ),
-        { timeoutMs: TX_TIMEOUT_MS },
-      );
-
-      if (due.length === 0) break;
-      deleted += due.length;
-
-      if (dryRun) {
-        if (due.length < BATCH) break;
-        continue;
-      }
-
-      // Object before row, the same ordering and for the same reason as the
-      // recordings sweep above. A punch carries the encrypted frame that is the
-      // evidence for it; deleting the row first leaves the capture in the bucket
-      // with nothing pointing at it.
-      const failed = new Set<string>();
-      if (table.objectColumn) {
-        const remove = table.removeObject ?? deleteCapture;
-        for (const row of due) {
-          if (!row.object) continue;
-          try {
-            await remove(row.object);
-          } catch (err) {
-            logger.error({ err, table: table.name, id: row.id }, 'retention: could not delete object');
-            if (table.keepRowOnObjectFailure) failed.add(row.id);
-          }
-        }
-      }
-      // A row whose object survived is kept so the next run retries it: deleting the row
-      // would orphan the file where nothing can find it again.
-      // ponytail: if a full batch of rows at the head of the order fails persistently, the
-      // same batch is retried up to MAX_BATCHES and everything behind it waits until
-      // storage recovers; bounded and logged. Upgrade path: per-row backoff column.
-      const ids = due.filter((row) => !failed.has(row.id)).map((row) => row.id);
-      deleted -= failed.size;
-      if (ids.length === 0) {
-        if (due.length < BATCH) break;
-        continue;
-      }
-      await withPlatformTx(
-        (tx) => tx.$executeRawUnsafe(`DELETE FROM "${table.name}" WHERE id = ANY($1::text[])`, ids),
-        { timeoutMs: TX_TIMEOUT_MS },
-      );
-
-      if (due.length < BATCH) break;
-    }
-
-    result.auditSummary[table.name] = deleted;
-    if (deleted > 0) {
-      logger.warn(
-        { table: table.name, count: deleted, retentionDays: days, dryRun },
-        'retention: deleted audit rows under a configured policy',
-      );
-    }
   }
 
   logger.info({ dryRun, ...result }, 'retention cleanup complete');

@@ -174,11 +174,11 @@ describe('with no policy set', () => {
 
     expect(await auditRows()).toBe(before);
     expect(await platformRows()).toBe(4);
-    // HrEmployeeDocument has a fixed policy (purge when purgeAt passes), so it is
-    // always reported; with no policy elsewhere nothing else appears and it deleted nothing.
-    // Only the always-on document purge may appear; its count depends on whether a
-    // sibling suite left due rows, so the key set is asserted, not its value.
-    expect(Object.keys(result.auditSummary)).toEqual(['HrEmployeeDocument']);
+    // Recording and HrEmployeeDocument have fixed policies (purge when their own
+    // timestamp passes), so they are always reported; with no policy elsewhere nothing
+    // else appears. Their counts depend on whether a sibling suite left due rows, so
+    // the key set is asserted, not the values.
+    expect(Object.keys(result.auditSummary)).toEqual(['Recording', 'HrEmployeeDocument']);
   });
 });
 

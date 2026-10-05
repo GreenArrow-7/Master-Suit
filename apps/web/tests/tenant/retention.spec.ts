@@ -144,7 +144,7 @@ describe('retention sweep', () => {
 
     // Other suites may leave their own expired rows behind, so these are floors
     // rather than equalities — the point is that the count is not zero.
-    expect(result.expiredRecordings).toBeGreaterThanOrEqual(4);
+    expect(result.auditSummary.Recording).toBeGreaterThanOrEqual(4);
     expect(result.oldWebhookEvents).toBeGreaterThanOrEqual(2);
 
     const after = await withPlatformTx((tx) =>
@@ -186,7 +186,7 @@ describe('retention sweep', () => {
     });
 
     const result = await runRetentionCleanup(true);
-    expect(result.expiredRecordings).toBeGreaterThanOrEqual(1);
+    expect(result.auditSummary.Recording).toBeGreaterThanOrEqual(1);
 
     // tenantId as well as callId: the tenant guard refuses an unscoped read even
     // under the platform flag, which is the layer-2 half of the isolation doing
