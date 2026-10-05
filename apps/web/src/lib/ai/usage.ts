@@ -170,7 +170,7 @@ export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
  * a platform that has not decided on a number must not refuse work because of a
  * default somebody guessed.
  */
-async function planLimit(tenantId: string, key: string): Promise<number | null> {
+export async function planLimit(tenantId: string, key: string): Promise<number | null> {
   const subscription = await prisma.tenantSubscription.findUnique({
     where: { tenantId },
     select: { plan: { select: { planLimits: { where: { key }, select: { value: true } } } } },
