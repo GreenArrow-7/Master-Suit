@@ -16,7 +16,8 @@ import { prisma } from '@/lib/db';
 import type { Ctx } from '@/lib/security/rbac';
 import { Forbidden } from '@/lib/errors';
 import { daysBetween, expirySeverity } from './rules';
-import { isHrAdmin, mayReadEmployees } from './access';
+import { isHrAdmin, mayReadAllEmployees, mayReadEmployees, mayReadSensitiveDocuments } from './access';
+import { myEmployee, reportingLine } from './leave';
 import { EMPLOYEE_WITH_PERSON } from './publicSelect';
 
 export type Severity = ReturnType<typeof expirySeverity>;
@@ -41,6 +42,11 @@ const isContractorType = (type: string | null) => (type ?? '').toLowerCase().inc
  * workforce the caller may read, worst first. HR sees everyone; a scoped
  * manager sees their reporting line; anyone else is refused — expiry data is
  * personal and identity-document adjacent.
+ *
+ * The document number — a passport, visa or Emirates ID number — follows the
+ * rule `expiringDocuments` applies to the same rows: only for someone who may
+ * read identity documents, or on their own. A team-scoped manager used to get
+ * every employee in the workspace, numbers included, on screen and in the CSV.
  */
 export async function complianceRegister(
   ctx: Ctx,
@@ -52,10 +58,16 @@ export async function complianceRegister(
   const days = options.withinDays ?? 90;
   const horizon = new Date(Date.now() + days * 86_400_000);
   const now = new Date();
+  const [line, self] = await Promise.all([
+    isHrAdmin(ctx) || mayReadAllEmployees(ctx) ? null : reportingLine(ctx),
+    myEmployee(ctx),
+  ]);
+  const mayReadNumbers = mayReadSensitiveDocuments(ctx);
 
   const employeeFilter = {
     deletedAt: null,
     employmentStatus: { notIn: ['EXITED'] },
+    ...(line ? { id: { in: line } } : {}),
     ...(options.contractorsOnly ? { employmentType: { contains: 'contract', mode: 'insensitive' as const } } : {}),
   };
 
@@ -82,7 +94,7 @@ export async function complianceRegister(
         employmentType: document.employee.employmentType,
         isContractor: isContractorType(document.employee.employmentType),
         credential: document.kind,
-        reference: document.number,
+        reference: mayReadNumbers || document.employeeId === self?.id ? document.number : null,
         expiresAt: document.expiresAt!,
         daysRemaining,
         severity: expirySeverity(daysRemaining),
