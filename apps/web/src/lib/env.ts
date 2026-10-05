@@ -92,6 +92,8 @@ export const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'demo', 'staging', 'production']).default('development'),
   PROCESS_ROLE: z.enum(['web', 'worker']).default('web'),
   APP_URL: z.string().url(),
+  /** Where Lead Eagle runs, for workspaces entitled to LEAD_EAGLE. https only; unset says so on screen. */
+  LEAD_EAGLE_URL: z.string().url().startsWith('https://').optional(),
   /**
    * Extra origins accepted by `assertSameOrigin`, comma-separated.
    *

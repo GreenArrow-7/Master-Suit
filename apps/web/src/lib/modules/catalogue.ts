@@ -30,7 +30,7 @@
  * Estate, the API refused the request, workspace creation failed, and the E2E
  * suite saw every subsequent sign-in return 401 with nothing naming the cause.
  */
-export const PRODUCT_MODULE_KEYS = ['HRMS', 'SALES', 'REAL_ESTATE'] as const;
+export const PRODUCT_MODULE_KEYS = ['HRMS', 'SALES', 'REAL_ESTATE', 'LEAD_EAGLE'] as const;
 
 export type ProductModuleKey = (typeof PRODUCT_MODULE_KEYS)[number];
 
@@ -58,5 +58,10 @@ export const PRODUCT_MODULE_CHOICES: readonly ModuleChoice[] = [
     value: 'REAL_ESTATE',
     label: 'Real Estate',
     description: 'Brokerage leads, property inventory, site visits, bookings and commissions.',
+  },
+  {
+    value: 'LEAD_EAGLE',
+    label: 'Lead Eagle',
+    description: 'The standalone UAE real-estate CRM and its phone app, opened in its own window.',
   },
 ];

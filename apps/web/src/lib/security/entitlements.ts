@@ -16,6 +16,7 @@ const MODULE_LABEL: Record<ProductModule, string> = {
   HRMS: 'HR',
   SALES: 'Sales',
   REAL_ESTATE: 'Real Estate',
+  LEAD_EAGLE: 'Lead Eagle',
 };
 
 /**

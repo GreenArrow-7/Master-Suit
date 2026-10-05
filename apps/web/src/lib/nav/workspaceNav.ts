@@ -127,6 +127,7 @@ function definitions(slug: string): SectionDef[] {
   const S = 'SALES' as const;
   const H = 'HRMS' as const;
   const R = 'REAL_ESTATE' as const;
+  const L = 'LEAD_EAGLE' as const;
 
   return [
     {
@@ -158,6 +159,8 @@ function definitions(slug: string): SectionDef[] {
               aliases: [p('/check-in')],
               keywords: 'punch clock face attendance',
             },
+            // A separate application: the route redirects to LEAD_EAGLE_URL.
+            { label: 'Lead Eagle', href: `/${slug}/lead-eagle`, module: L, keywords: 'crm app real estate' },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
               label: 'Team Work',

@@ -21,7 +21,7 @@ const everything: NavInput = {
   slug: SLUG,
   // Every module, or the screen-coverage check below silently skips a whole
   // product's routes — which is how a Real Estate screen could ship unreachable.
-  modules: ['SALES', 'HRMS', 'REAL_ESTATE'],
+  modules: ['SALES', 'HRMS', 'REAL_ESTATE', 'LEAD_EAGLE'],
   permitted: NAV_PERMISSIONS,
   peopleOversight: true,
 };
@@ -106,6 +106,12 @@ describe('what a role sees', () => {
     expect(salesOnly.map((s) => s.key)).not.toContain('people');
     expect(tabsOf(salesOnly, 'reports')).not.toContain('HR');
     expect(tabsOf(salesOnly, 'settings')).not.toContain('HR Policies');
+  });
+
+  it('offers Lead Eagle only to a workspace entitled to it', () => {
+    expect(tabsOf(buildNavigation(everything), 'my-workspace')).toContain('Lead Eagle');
+    const salesOnly = buildNavigation({ ...everything, modules: ['SALES'] });
+    expect(tabsOf(salesOnly, 'my-workspace')).not.toContain('Lead Eagle');
   });
 
   it('gives a platform service identity no personal areas', () => {

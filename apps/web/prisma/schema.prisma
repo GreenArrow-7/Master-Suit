@@ -638,10 +638,13 @@ model Tenant {
 /// another. REAL_ESTATE is a brokerage experience over the same authoritative
 /// entities SALES uses — Lead, Call, Project, Listing, UnitInventory, SiteVisit,
 /// Booking — not a second copy of them. A workspace may hold any combination.
+/// LEAD_EAGLE is the opposite: a separate application with its own data, sold
+/// and switched on here and opened at LEAD_EAGLE_URL.
 enum ModuleKey {
   HRMS
   SALES
   REAL_ESTATE
+  LEAD_EAGLE
 }
 
 enum SubscriptionState {
