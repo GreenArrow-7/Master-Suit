@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { Conflict, NotFound } from '@/lib/errors';
+import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { refuseOwnerLockout } from '@/services/platform/identity';
 import { isPlatformStaff } from '@/lib/auth/credentials';
@@ -17,31 +17,18 @@ const updateSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, 'At least one change is required.');
 
-/**
- * The one rule both handlers share: the owner cannot edit themselves out of the
- * platform. Demoting or deleting your own account leaves nobody able to undo
- * it — the classic locked-out-admin incident — so self-changes to role, status
- * and existence are refused, not confirmed.
- */
-function refuseSelfLockout(actorId: string, targetId: string) {
-  if (actorId === targetId) {
-    throw Conflict('You cannot change or remove your own platform account. Ask another platform owner.');
-  }
-}
-
 export const PATCH = bareRoute(
   '/api/v1/platform/users/[userId]',
   async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
     const body = updateSchema.parse(await req.json());
-    if (body.platformRole || body.status) refuseSelfLockout(ctx.platformUserId, userId);
 
     const current = await prisma.platformUser.findFirst({ where: { id: userId, deletedAt: null } });
     if (!current) throw NotFound('User');
-    // Same rule the recovery console enforces: the platform must never be left
-    // without a usable owner. Applied here too, because two write paths for one
-    // field with two different safety checks is one write path too many.
+    // Same rule the recovery console enforces: nobody edits themselves out of the
+    // platform, and it is never left without a usable owner. Two write paths for
+    // one field with two different safety checks is one write path too many.
     if (body.platformRole || body.status) await refuseOwnerLockout(ctx, current);
 
     const user = await withPlatformTx(async (tx) => {
@@ -60,8 +47,6 @@ export const PATCH = bareRoute(
           where: { platformUserId: current.id, revokedAt: null },
           data: { revokedAt: new Date(), revokedReason: 'ACCOUNT_STATUS_CHANGE' },
         });
-      }
-      if (body.status && body.status !== 'ACTIVE') {
         await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: current.id, consumedAt: null } });
       }
       await platformAudit(
@@ -100,30 +85,27 @@ export const DELETE = bareRoute(
   async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
-    refuseSelfLockout(ctx.platformUserId, userId);
-
     const current = await prisma.platformUser.findFirst({ where: { id: userId, deletedAt: null } });
     if (!current) throw NotFound('User');
+    await refuseOwnerLockout(ctx, current);
 
     const now = new Date();
     await withPlatformTx(async (tx) => {
       await tx.platformUser.update({
         where: { id: current.id },
-        data: { deletedAt: now, status: 'DEACTIVATED' },
+        data: {
+          deletedAt: now,
+          status: 'DEACTIVATED',
+          monitoringPasswordHash: null,
+          monitoringPasswordVersion: { increment: 1 },
+          monitoringPasswordSetAt: null,
+        },
       });
       await tx.platformSession.updateMany({
         where: { platformUserId: current.id, revokedAt: null },
         data: { revokedAt: now, revokedReason: 'ACCOUNT_DELETED' },
       });
       await tx.platformMfaChallenge.deleteMany({ where: { platformUserId: current.id, consumedAt: null } });
-      await tx.platformUser.update({
-        where: { id: current.id },
-        data: {
-          monitoringPasswordHash: null,
-          monitoringPasswordVersion: { increment: 1 },
-          monitoringPasswordSetAt: null,
-        },
-      });
       await tx.workspaceMembership.updateMany({
         where: { platformUserId: current.id },
         data: { status: 'SUSPENDED' },

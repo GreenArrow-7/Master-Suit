@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
@@ -34,7 +34,7 @@ export const POST = bareRoute('/api/v1/auth/refresh', async (req, requestId) => 
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) throw Unauthorized();
 
-  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const tokenHash = hash('sha256', token);
   const session = await prisma.platformSession.findUnique({
     where: { tokenHash },
     // Only what the checks below read. `true` would pull the credential

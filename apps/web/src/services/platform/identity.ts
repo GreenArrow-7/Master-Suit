@@ -399,7 +399,7 @@ export async function refuseOwnerLockout(
   target: { id: string; platformRole: string; status: string },
 ) {
   if (target.id === ctx.platformUserId) {
-    throw Conflict('You cannot disable or demote your own platform account. Ask another platform owner.');
+    throw Conflict('You cannot change or remove your own platform account. Ask another platform owner.');
   }
   if (target.platformRole === 'OWNER' && target.status === 'ACTIVE') {
     const others = await prisma.platformUser.count({

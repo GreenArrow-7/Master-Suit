@@ -38,7 +38,7 @@
  * a record-keeping decision. The durable record of what happened is the
  * assignment history and the audit log, which have their own retention.
  */
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { Conflict } from '@/lib/errors';
 import { prisma, withPlatformTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
@@ -61,7 +61,7 @@ export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
  */
 export function fingerprint(input: Record<string, unknown>): string {
   const canonical = JSON.stringify(input, Object.keys(input).sort());
-  return createHash('sha256').update(canonical).digest('hex');
+  return hash('sha256', canonical);
 }
 
 export interface IdempotencyRequest {

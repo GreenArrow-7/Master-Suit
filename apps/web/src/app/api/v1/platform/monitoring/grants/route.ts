@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma, withPlatformTx } from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
@@ -96,27 +96,21 @@ export async function POST(req: Request) {
         requestId,
       });
 
-      await withPlatformTx((tx) =>
-        platformAudit(
-          ctx,
-          {
-            // The customer's own trail. Somebody being authorised to watch their
-            // workspace is their business before it is ours.
-            tenantId: workspace.id,
-            event: 'MONITORING_ACCESS_GRANTED',
-            objectType: 'platform_user',
-            objectId: subject.id,
-            metadata: {
-              slug: workspace.slug,
-              subject: subject.email,
-              reason: grant.reason,
-              sensitive: input.sensitive ?? false,
-              expiresAt: grant.expiresAt.toISOString(),
-            },
-          },
-          tx,
-        ),
-      );
+      await platformAudit(ctx, {
+        // The customer's own trail. Somebody being authorised to watch their
+        // workspace is their business before it is ours.
+        tenantId: workspace.id,
+        event: 'MONITORING_ACCESS_GRANTED',
+        objectType: 'platform_user',
+        objectId: subject.id,
+        metadata: {
+          slug: workspace.slug,
+          subject: subject.email,
+          reason: grant.reason,
+          sensitive: input.sensitive ?? false,
+          expiresAt: grant.expiresAt.toISOString(),
+        },
+      });
       return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
     }
 
@@ -129,25 +123,19 @@ export async function POST(req: Request) {
       requestId,
     });
 
-    await withPlatformTx((tx) =>
-      platformAudit(
-        ctx,
-        {
-          // No tenantId: coverage names no workspace, so there is no single
-          // customer trail this belongs on. It is a platform-level act and lives
-          // in the platform-level stream.
-          event: 'MONITORING_COVERAGE_GRANTED',
-          objectType: 'platform_user',
-          objectId: subject.id,
-          metadata: {
-            subject: subject.email,
-            reason: coverage.reason,
-            expiresAt: coverage.expiresAt.toISOString(),
-          },
-        },
-        tx,
-      ),
-    );
+    await platformAudit(ctx, {
+      // No tenantId: coverage names no workspace, so there is no single
+      // customer trail this belongs on. It is a platform-level act and lives
+      // in the platform-level stream.
+      event: 'MONITORING_COVERAGE_GRANTED',
+      objectType: 'platform_user',
+      objectId: subject.id,
+      metadata: {
+        subject: subject.email,
+        reason: coverage.reason,
+        expiresAt: coverage.expiresAt.toISOString(),
+      },
+    });
     return NextResponse.json({ coverage }, { status: 201, headers: { 'x-request-id': requestId } });
   } catch (err) {
     return toResponse(err, requestId, { route: '/api/v1/platform/monitoring/grants' });
@@ -174,19 +162,13 @@ export async function DELETE(req: Request) {
       : await revokeCoverage(subject.id, reason);
 
     if (closed > 0) {
-      await withPlatformTx((tx) =>
-        platformAudit(
-          ctx,
-          {
-            tenantId: input.workspaceId ?? null,
-            event: input.workspaceId ? 'MONITORING_ACCESS_REVOKED' : 'MONITORING_COVERAGE_REVOKED',
-            objectType: 'platform_user',
-            objectId: subject.id,
-            metadata: { subject: subject.email, reason, closed },
-          },
-          tx,
-        ),
-      );
+      await platformAudit(ctx, {
+        tenantId: input.workspaceId ?? null,
+        event: input.workspaceId ? 'MONITORING_ACCESS_REVOKED' : 'MONITORING_COVERAGE_REVOKED',
+        objectType: 'platform_user',
+        objectId: subject.id,
+        metadata: { subject: subject.email, reason, closed },
+      });
     }
 
     return NextResponse.json({ closed }, { headers: { 'x-request-id': requestId } });

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
@@ -28,7 +28,7 @@ const bodySchema = z.object({
   email: z.string().email().max(254),
 });
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 const RESET_TTL_MINUTES = 30;
 const SAME_ANSWER = {
   ok: true,

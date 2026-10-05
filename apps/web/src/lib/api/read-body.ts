@@ -1,4 +1,4 @@
-import { ZodError, type ZodTypeAny, type z } from 'zod';
+import type { ZodTypeAny, z } from 'zod';
 import { AppError, Invalid } from '@/lib/errors';
 import { getNumericSetting } from '@/lib/platform-settings';
 
@@ -19,14 +19,8 @@ export async function readJsonBody<T extends ZodTypeAny>(req: Request, schema: T
   } catch {
     throw Invalid([{ field: 'body', code: 'invalid_json', message: 'Request body must be valid JSON.' }]);
   }
-  try {
-    return schema.parse(raw);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      throw Invalid(err.issues.map((i) => ({ field: i.path.join('.'), code: i.code, message: i.message })));
-    }
-    throw err;
-  }
+  // A schema violation throws a ZodError, which toResponse answers as the same 422.
+  return schema.parse(raw);
 }
 
 /**

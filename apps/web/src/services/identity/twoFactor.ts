@@ -16,7 +16,7 @@
  *    someone no longer has is a real support case; being able to *see* the secret
  *    would let HR mint that person's codes indefinitely.
  */
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, hash } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, NotFound } from '@/lib/errors';
 import { verifyPassword } from '@/lib/auth/password';
@@ -59,7 +59,7 @@ const RECOVERY_CODE_BYTES = 10;
  * Normalisation is what lets a person type the code back with or without the
  * grouping hyphens, and it must stay identical on both sides of the comparison.
  */
-const hashCode = (code: string) => createHash('sha256').update(code.replace(/\s|-/g, '').toUpperCase()).digest('hex');
+const hashCode = (code: string) => hash('sha256', code.replace(/\s|-/g, '').toUpperCase());
 
 /** Grouped for legibility when read aloud down a phone line. */
 export function generateRecoveryCodes() {

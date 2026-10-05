@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
+import { slugify } from '@/lib/slug';
 
 /**
  * Landing pages had a model and a list page; nothing could create or publish
@@ -25,13 +26,6 @@ const createBody = z
     publish: z.boolean().default(false),
   })
   .strict();
-
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
 
 export const POST = route(
   { module: 'landingpages', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },

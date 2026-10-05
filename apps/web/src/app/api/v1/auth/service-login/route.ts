@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { Forbidden, TooManyRequests, Unauthorized } from '@/lib/errors';
+import { Forbidden, Unauthorized } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { burnTiming, verifyPassword } from '@/lib/auth/password';
 import { cookies } from 'next/headers';
@@ -78,16 +78,9 @@ export async function POST(req: Request) {
     const body = await readJsonBody(req, bodySchema);
     const username = body.username.trim().toLowerCase();
 
-    try {
-      await consume(limits.loginPerIp(ip));
-      await consume(limits.serviceLogin(username));
-    } catch (limited) {
-      const err: Error & { retryAfter?: number } = TooManyRequests(
-        'Too many sign-in attempts for this service account. Wait and try again.',
-      );
-      err.retryAfter = (limited as { retryAfter?: number }).retryAfter;
-      throw err;
-    }
+    const throttled = 'Too many sign-in attempts for this service account. Wait and try again.';
+    await consume(limits.loginPerIp(ip), throttled);
+    await consume(limits.serviceLogin(username), throttled);
 
     /**
      * Username *or* email address.

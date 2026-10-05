@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
@@ -75,7 +75,7 @@ export async function POST(req: Request, context: { params: Promise<{ key: strin
       'content-type': 'text/xml; charset=utf-8',
       // Call control is per-call and must never be served from a cache.
       'cache-control': 'no-store',
-      etag: `"${createHash('sha256').update(document).digest('hex').slice(0, 16)}"`,
+      etag: `"${hash('sha256', document).slice(0, 16)}"`,
     },
   });
 }

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { PlatformUser } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getNumericSetting } from '@/lib/platform-settings';
-import { Unauthorized, TooManyRequests, Invalid } from '@/lib/errors';
+import { Unauthorized, Invalid } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { createPlatformSession, clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
@@ -93,20 +93,11 @@ export async function POST(req: Request) {
  * attempt, and so is each second-factor try. There is no allowance that exists
  * only because an identity has two credentials.
  */
+// A throttled login must not read as wrong credentials: the form shows this verbatim.
+const THROTTLED = 'Too many sign-in attempts. Wait a few minutes and try again.';
 async function throttle(ip: string, email: string) {
-  try {
-    await consume(limits.loginPerIp(ip));
-    await consume(limits.loginPerAccount(email));
-  } catch (limited) {
-    // A throttled login must not read as wrong credentials: rethrow with a
-    // message the form shows verbatim.
-    const retryAfter = (limited as { retryAfter?: number }).retryAfter;
-    const err: Error & { retryAfter?: number } = TooManyRequests(
-      'Too many sign-in attempts. Wait a few minutes and try again.',
-    );
-    err.retryAfter = retryAfter;
-    throw err;
-  }
+  await consume(limits.loginPerIp(ip), THROTTLED);
+  await consume(limits.loginPerAccount(email), THROTTLED);
 }
 
 async function loadIdentity(normalizedEmail: string) {

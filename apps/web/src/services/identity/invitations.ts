@@ -10,7 +10,7 @@
  * The token is 256 bits of randomness, stored only as a SHA-256 hash. A leaked
  * database row is not redeemable; a leaked *email* is, which is why it expires.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, hash } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
 import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
@@ -24,7 +24,7 @@ import { resolvePolicy } from '@/services/hr/settings';
 
 export const INVITE_TTL_HOURS = 72;
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 
 export interface InviteInput {
   email: string;

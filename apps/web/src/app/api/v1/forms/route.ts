@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict } from '@/lib/errors';
+import { slugify } from '@/lib/slug';
 
 /**
  * Forms had models, a list page and nothing else — no way to create one, no way
@@ -45,13 +46,6 @@ const createBody = z
     publish: z.boolean().default(false),
   })
   .strict();
-
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
 
 export const POST = route(
   { module: 'forms', productModule: 'SALES', action: 'CREATE', body: createBody, auditEvent: 'RECORD_CREATED' },

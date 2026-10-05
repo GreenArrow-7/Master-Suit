@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
@@ -22,7 +22,7 @@ const bodySchema = z.object({
   newPassword: z.string().min(1).max(512),
 });
 
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const sha256 = (s: string) => hash('sha256', s);
 
 export const POST = bareRoute('/api/v1/auth/reset-password', async (req, requestId) => {
   const body = await readJsonBody(req, bodySchema);
