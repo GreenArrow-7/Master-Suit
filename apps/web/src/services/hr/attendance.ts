@@ -762,6 +762,19 @@ export async function punch(ctx: Ctx, input: PunchInput) {
   assertFrameSizes(input.frames);
   const policy = await getHrPolicy(ctx);
 
+  // Every refusal is a punch row, answered the same way; once the camera is
+  // involved the presented frame is kept with it as evidence.
+  const reject = async (
+    result: PunchResult,
+    detail: Parameters<typeof record>[4],
+    message: string,
+    capture = false,
+  ) => {
+    const row = await record(ctx, employee.id, input, result, detail);
+    if (capture) await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
+    return { result: row.result, message, serverTime: row.serverTime, distanceM: detail.distanceM ?? null };
+  };
+
   // 1. The same queued punch synced twice is one row, not two.
   if (input.clientPunchUid) {
     const existing = await findByClientUid(ctx, employee.id, input.clientPunchUid);
@@ -779,16 +792,11 @@ export async function punch(ctx: Ctx, input: PunchInput) {
   if (input.syncedOffline && input.clientTime) {
     const ageHours = (Date.now() - input.clientTime.getTime()) / 3_600_000;
     if (ageHours > policy.maxOfflineSyncHours) {
-      const row = await record(ctx, employee.id, input, 'REJECTED_STALE_SYNC', {
-        rejectCode: 'STALE_SYNC',
-        rejectReason: `Offline punch ${Math.round(ageHours)}h old`,
-      });
-      return {
-        result: row.result,
-        message: 'This queued check-in is too old to sync. Ask HR to record it manually.',
-        serverTime: row.serverTime,
-        distanceM: null,
-      };
+      return reject(
+        'REJECTED_STALE_SYNC',
+        { rejectCode: 'STALE_SYNC', rejectReason: `Offline punch ${Math.round(ageHours)}h old` },
+        'This queued check-in is too old to sync. Ask HR to record it manually.',
+      );
     }
   }
 
@@ -801,16 +809,11 @@ export async function punch(ctx: Ctx, input: PunchInput) {
     },
   });
   if (recent) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_DUPLICATE', {
-      rejectCode: 'MIN_INTERVAL',
-      rejectReason: 'Within minimum interval',
-    });
-    return {
-      result: row.result,
-      message: 'You just checked in. Wait a moment and retry.',
-      serverTime: row.serverTime,
-      distanceM: null,
-    };
+    return reject(
+      'REJECTED_DUPLICATE',
+      { rejectCode: 'MIN_INTERVAL', rejectReason: 'Within minimum interval' },
+      'You just checked in. Wait a moment and retry.',
+    );
   }
 
   let context: PunchContext;
@@ -818,18 +821,11 @@ export async function punch(ctx: Ctx, input: PunchInput) {
     context = await validatePunch(ctx, employee, input.punchType, input, false, policy);
   } catch (error) {
     if (!(error instanceof PunchRejected)) throw error;
-    const row = await record(ctx, employee.id, input, error.result, {
-      rejectCode: error.code,
-      rejectReason: error.message,
-      distanceM: error.distanceM,
-      location: error.location,
-    });
-    return {
-      result: row.result,
-      message: error.message,
-      serverTime: row.serverTime,
-      distanceM: error.distanceM ?? null,
-    };
+    return reject(
+      error.result,
+      { rejectCode: error.code, rejectReason: error.message, distanceM: error.distanceM, location: error.location },
+      error.message,
+    );
   }
 
   // 3. Spend the nonce. From here a replayed payload is worthless.
@@ -837,17 +833,12 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 
   // A resent still image is caught before any model runs.
   if (new Set(input.frames).size < input.frames.length) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', {
-      rejectCode: 'IDENTICAL_FRAMES',
-      rejectReason: 'Identical frames',
-    });
-    await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return {
-      result: row.result,
-      message: 'Identical frames — send live camera frames.',
-      serverTime: row.serverTime,
-      distanceM: null,
-    };
+    return reject(
+      'REJECTED_LIVENESS',
+      { rejectCode: 'IDENTICAL_FRAMES', rejectReason: 'Identical frames' },
+      'Identical frames — send live camera frames.',
+      true,
+    );
   }
 
   // An engine outage is an operational fault, not the employee's doing: this
@@ -858,13 +849,12 @@ export async function punch(ctx: Ctx, input: PunchInput) {
 
   const liveness = verifyLiveness(detections, direction, policy);
   if (!liveness.passed) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_LIVENESS', {
-      rejectCode: 'LIVENESS',
-      rejectReason: liveness.reason,
-      livenessScore: liveness.score,
-    });
-    await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return { result: row.result, message: liveness.reason, serverTime: row.serverTime, distanceM: null };
+    return reject(
+      'REJECTED_LIVENESS',
+      { rejectCode: 'LIVENESS', rejectReason: liveness.reason, livenessScore: liveness.score },
+      liveness.reason,
+      true,
+    );
   }
 
   const templates = await prisma.hrFaceTemplate.findMany({
@@ -879,34 +869,35 @@ export async function punch(ctx: Ctx, input: PunchInput) {
     templates.map((template) => template.embedding),
   );
   if (score < policy.faceMatchThreshold) {
-    const row = await record(ctx, employee.id, input, 'REJECTED_FACE', {
-      rejectCode: 'FACE_MISMATCH',
-      rejectReason: `Score ${score.toFixed(3)}`,
-      faceScore: score,
-      livenessScore: liveness.score,
-    });
-    await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return {
-      result: row.result,
-      message: 'We could not confirm it is you. Try again or contact HR.',
-      serverTime: row.serverTime,
-      distanceM: null,
-    };
+    return reject(
+      'REJECTED_FACE',
+      {
+        rejectCode: 'FACE_MISMATCH',
+        rejectReason: `Score ${score.toFixed(3)}`,
+        faceScore: score,
+        livenessScore: liveness.score,
+      },
+      'We could not confirm it is you. Try again or contact HR.',
+      true,
+    );
   }
 
   // 4. Geofence last, now that the nonce is spent.
   if (!context.inside) {
     const rejection = geofenceRejection(context.assignment.location, context.distanceM);
-    const row = await record(ctx, employee.id, input, rejection.result, {
-      rejectCode: rejection.code,
-      rejectReason: rejection.message,
-      faceScore: score,
-      livenessScore: liveness.score,
-      distanceM: context.distanceM,
-      location: context.assignment.location,
-    });
-    await keepCapture(ctx, employee.id, row.id, input.frames, row.serverTime);
-    return { result: row.result, message: rejection.message, serverTime: row.serverTime, distanceM: context.distanceM };
+    return reject(
+      rejection.result,
+      {
+        rejectCode: rejection.code,
+        rejectReason: rejection.message,
+        faceScore: score,
+        livenessScore: liveness.score,
+        distanceM: context.distanceM,
+        location: context.assignment.location,
+      },
+      rejection.message,
+      true,
+    );
   }
 
   const result: PunchResult = input.mockLocationFlag ? 'FLAGGED_REVIEW' : 'ACCEPTED';

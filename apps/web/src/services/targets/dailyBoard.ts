@@ -231,13 +231,8 @@ export async function dailyBoard(ctx: Ctx, date?: string): Promise<DailyBoard> {
     r.targetId = t.id;
   }
   for (const g of assigned) if (g.ownerId) row(g.ownerId).leadsAssigned += g._count._all;
-  const called = new Map<string, Set<string>>();
-  for (const c of distinctCalled) {
-    if (!c.leadId) continue;
-    if (!called.has(c.callerId)) called.set(c.callerId, new Set());
-    called.get(c.callerId)!.add(c.leadId);
-  }
-  for (const [userId, leads] of called) row(userId).leadsCalled = leads.size;
+  // One row per (caller, lead) already: the query asks for them distinct.
+  for (const c of distinctCalled) row(c.callerId).leadsCalled += 1;
   for (const c of calls) {
     const r = row(c.callerId);
     if (c.status === 'COMPLETED') {

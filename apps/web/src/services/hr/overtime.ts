@@ -30,7 +30,7 @@ import { prisma } from '@/lib/db';
 import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { audit } from '@/lib/security/audit';
 import type { Ctx } from '@/lib/security/rbac';
-import { dayKey, toDay, zonedParts } from './rules';
+import { dayKey, toDay, toMinutes, zonedParts } from './rules';
 import { isHrAdmin, isOvertimeAdmin, isOvertimeApprover } from './access';
 import { holidaysFor, isLineManagerOf, myEmployee, reportingLine, requireEmployee } from './leave';
 import { getHrPolicy, type HrPolicy } from './settings';
@@ -52,16 +52,6 @@ const DEFAULT_SCHEDULED_MINUTES = 8 * 60;
 // ── Pure calculation ───────────────────────────────────────────────────────
 // Everything below this line is testable without a database, and is tested that
 // way. The rate rules are the part a labour inspector would ask about.
-
-/** "HH:MM" to minutes past midnight, or null when unparseable. */
-function toMinutes(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours > 23 || minutes > 59) return null;
-  return hours * 60 + minutes;
-}
 
 /**
  * Rostered length of a shift in minutes, handling the overnight case.
