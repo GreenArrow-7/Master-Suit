@@ -158,6 +158,21 @@ function definitions(slug: string): SectionDef[] {
               aliases: [p('/check-in')],
               keywords: 'punch clock face attendance',
             },
+            // Its record and its requests, for the same reason: your own days, or a
+            // manager's reporting line; early check-outs are asked and decided there.
+            {
+              label: 'Attendance',
+              href: `/${slug}/attendance`,
+              unlessModule: H,
+              keywords: 'attendance hours days check-out team early',
+            },
+            {
+              label: 'Attendance Requests',
+              href: `/${slug}/attendance/requests`,
+              permission: 'employee:VIEW',
+              unlessModule: H,
+              keywords: 'exception early check-out temporary site approve',
+            },
             { label: 'Sales Overview', href: s(''), module: S, keywords: 'sales desk overdue sla' },
             {
               label: 'Team Work',
@@ -659,7 +674,13 @@ function definitions(slug: string): SectionDef[] {
           label: 'Attendance & Leave',
           icon: 'attendance',
           tabs: [
-            { label: 'Attendance', href: p('/attendance'), module: H, audience: 'oversight' },
+            {
+              label: 'Attendance',
+              href: p('/attendance'),
+              module: H,
+              audience: 'oversight',
+              aliases: [`/${slug}/attendance`],
+            },
             { label: 'Leave Requests', href: p('/leave'), module: H, audience: 'oversight' },
             { label: 'Shifts', href: p('/shifts'), permission: 'employee', module: H, audience: 'oversight' },
             { label: 'Rosters', href: p('/roster'), permission: 'employee', module: H, audience: 'oversight' },
@@ -670,7 +691,8 @@ function definitions(slug: string): SectionDef[] {
               permission: 'employee',
               module: H,
               audience: 'oversight',
-              keywords: 'attendance exceptions temporary work location',
+              aliases: [`/${slug}/attendance/requests`],
+              keywords: 'attendance exceptions temporary work location early check-out',
             },
             { label: 'Overtime', href: p('/overtime'), permission: 'employee', module: H, audience: 'oversight' },
             {

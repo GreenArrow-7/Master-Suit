@@ -58,6 +58,7 @@ async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES' | 'REAL_E
     ['roles', 'MANAGE_CONFIGURATION'],
     ['employee', 'VIEW'],
     ['employee', 'EDIT'],
+    ['attendance', 'APPROVE'],
     ['leads', 'VIEW'],
     ['opportunities', 'VIEW'],
   ];
@@ -153,6 +154,13 @@ describe('check-in setup is open to every workspace; the rest of HR is not', () 
       select: { hrPolicy: true },
     });
     expect(stored?.hrPolicy).toEqual({ checkoutRequiresLeadWork: true });
+  });
+
+  it('a Sales-only workspace raises and decides attendance requests, an early check-out among them', async () => {
+    for (const name of ['exception-request', 'exception-decide', 'temporary-request', 'temporary-decide']) {
+      // Past the module gate and the permission: refused for the empty body, never for HRMS.
+      expect((await action(salesOnly, name, {})).status, name).toBe(422);
+    }
   });
 
   it('a Sales-only workspace is still refused every other HR action', async () => {

@@ -28,8 +28,8 @@
  */
 import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
-import { type Ctx } from '@/lib/security/rbac';
-import { balancesFor, employeeRecordScope, myEmployee, teamCalendar } from '@/services/hr/leave';
+import { atLeast, type Ctx } from '@/lib/security/rbac';
+import { balancesFor, employeeRecordScope, myEmployee, reportingLine, teamCalendar } from '@/services/hr/leave';
 import { isApprover, isAttendanceApprover, isHrAdmin, mayReadAllEmployees } from '@/services/hr/access';
 import { checklistFor, expiringDocuments, lifecycleDashboard, settlementFor } from '@/services/hr/lifecycle';
 import { attendanceDays, faceStatus, myPunches, reviewQueue } from '@/services/hr/attendance';
@@ -78,9 +78,15 @@ async function resolveEmployeeId(ctx: Ctx, requested?: string) {
   return requested;
 }
 
-/** Attendance follows the employee records the actor may read. */
-async function attendanceScope(ctx: Ctx) {
-  if (mayReadAllEmployees(ctx) || isAttendanceApprover(ctx)) return {};
+/**
+ * Whose attendance the actor may read: everyone for an organisation-wide reader,
+ * the reporting line for a manager who approves attendance, otherwise their own.
+ * A team approver used to read the whole workspace here, while their decisions
+ * and the exception list already stopped at their reporting line.
+ */
+export async function attendanceScope(ctx: Ctx): Promise<{ employeeId?: string | { in: string[] } }> {
+  if (mayReadAllEmployees(ctx) || atLeast(ctx, 'attendance', 'APPROVE', 'ORGANIZATION')) return {};
+  if (isAttendanceApprover(ctx)) return { employeeId: { in: await reportingLine(ctx) } };
   const self = await myEmployee(ctx);
   return { employeeId: self?.id ?? '' };
 }

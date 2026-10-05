@@ -122,6 +122,8 @@ const WORKSPACE_LEVEL = [
   // Moved out of people/ so a workspace without HRMS can still clock in: that
   // folder's layout asserts the entitlement for everything beneath it.
   'check-in',
+  'attendance',
+  'attendance/requests',
   // `profile` itself is deliberately absent: the directory holds only `security`
   // and `role`, nothing links to the bare path, and it correctly 404s.
   'dashboard',

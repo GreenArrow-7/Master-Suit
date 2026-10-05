@@ -1,22 +1,31 @@
 import { prisma } from '@/lib/db';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
 import WorkspaceActionButton from '@/components/workspace/WorkspaceActionButton';
-import { isApprover, isHrAdmin } from '@/services/hr/access';
+import { isAttendanceApprover, isHrAdmin } from '@/services/hr/access';
 import { myEmployee } from '@/services/hr/leave';
 import { EXCEPTION_REASONS, listExceptionRequests, listTemporaryRequests } from '@/services/hr/requests';
 
+/**
+ * Attendance requests: exceptions and temporary sites. Every workspace has them,
+ * because check-in works everywhere; `attendance/requests/page.tsx` renders this
+ * outside the People layout for a workspace without HRMS.
+ */
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'VIEW'] });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULE_KEYS,
+    permission: ['employee', 'VIEW'],
+  });
   const actions = `/api/v1/workspaces/${workspaceSlug}/hr/actions`;
 
   const self = await myEmployee(ctx);
   if (!self) {
     return (
       <section className="lf-card" style={{ padding: 'var(--lf-space-6)' }}>
-        <div className="lf-eyebrow">People</div>
+        <div className="lf-eyebrow">Attendance</div>
         <h1 style={{ margin: '8px 0 0' }}>Requests</h1>
         <p style={{ color: 'var(--lf-ink-2)' }}>
           Your account has no employee record in this workspace, so there is nothing to raise a request against.
@@ -26,7 +35,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   }
 
   const hr = isHrAdmin(ctx);
-  const reviewer = hr || isApprover(ctx);
+  // The permission exception-decide asserts. Leave approval (`isApprover`) gated
+  // these buttons before, so the screen and the API disagreed about who decides.
+  const reviewer = hr || isAttendanceApprover(ctx);
 
   const [temporary, exceptions, employees] = await Promise.all([
     listTemporaryRequests(ctx),
@@ -41,7 +52,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
       <section>
-        <div className="lf-eyebrow">People</div>
+        <div className="lf-eyebrow">Attendance</div>
         <h1 style={{ margin: '8px 0 0' }}>Requests</h1>
         <details className="lf-help">
           <summary>How this works</summary>
@@ -59,7 +70,8 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       <section>
         <h2 style={{ fontSize: 'var(--lf-text-lg)', margin: '0 0 10px' }}>Raise an attendance exception</h2>
         <p style={{ margin: '0 0 10px', color: 'var(--lf-ink-2)', fontSize: 'var(--lf-text-sm)' }}>
-          For a check-in or check-out that could not happen normally. Your line manager decides first, then HR.
+          For a check-in or check-out that could not happen normally. Your line manager decides first, then HR. An early
+          check-out (work pending) needs only your line manager or an administrator.
         </p>
         <WorkspaceRecordForm
           endpoint={`${actions}/exception-request`}
@@ -124,7 +136,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
                   <WorkspaceActionButton
                     endpoint={`${actions}/exception-decide`}
                     body={{ requestId: request.id, approve: true }}
-                    label={atManagerStage ? 'Endorse' : 'Approve'}
+                    label={atManagerStage && request.reasonCode !== 'work_pending' ? 'Endorse' : 'Approve'}
                     promptFor={{ name: 'comment', label: 'Comment' }}
                   />
                   <WorkspaceActionButton
