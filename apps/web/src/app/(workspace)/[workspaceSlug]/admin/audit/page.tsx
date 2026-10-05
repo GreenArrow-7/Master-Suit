@@ -4,7 +4,7 @@ import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
 import EmptyState from '@/components/ui/EmptyState';
 import WorkspaceTable from '@/components/workspace/WorkspaceTable';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 
 export const metadata = { title: 'Audit log' };
 
@@ -216,10 +216,9 @@ export default async function Page({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-5)' }}>
-      <PageIntro
-        eyebrow="Administration"
+      <ListHeader
         title="Audit log"
-        summary="Review account activity and changes."
+        description="Review account activity and changes."
         help={
           <p>
             Who did what, and from where. Sign-in events are merged in from the platform log so this reads as one

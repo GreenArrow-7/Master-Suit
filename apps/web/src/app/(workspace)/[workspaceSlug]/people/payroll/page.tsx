@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -42,10 +42,9 @@ export default async function Page({
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <PageIntro
-        eyebrow="People"
+      <ListHeader
         title="Payroll"
-        summary="Create and manage payroll runs."
+        description="Create and manage payroll runs."
         help={
           <p>
             A run is calculated from approved HR state only — effective-dated pay, approved overtime, approved unpaid

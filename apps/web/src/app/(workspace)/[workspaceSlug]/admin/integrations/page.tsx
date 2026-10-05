@@ -1,5 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { can } from '@/lib/security/rbac';
@@ -66,13 +66,11 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ w
 
   return (
     <>
-      <div style={{ marginBottom: 'var(--lf-space-4)' }}>
-        <PageIntro
-          title="Integrations"
-          summary="Connect your business tools and channels."
-          help={<p>Credentials are encrypted before they are stored and are never shown again.</p>}
-        />
-      </div>
+      <ListHeader
+        title="Integrations"
+        description="Connect your business tools and channels."
+        help={<p>Credentials are encrypted before they are stored and are never shown again.</p>}
+      />
 
       <ChannelOverview cards={channels} />
 

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage, pageLoad } from '@/lib/workspace-page';
 import WorkspaceRecordForm from '@/components/workspace/WorkspaceRecordForm';
@@ -43,10 +43,9 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
 
   return (
     <div style={{ display: 'grid', gap: 'var(--lf-space-6)' }}>
-      <PageIntro
-        eyebrow="People"
+      <ListHeader
         title="Recruitment"
-        summary="Manage vacancies, candidates and offers."
+        description="Manage vacancies, candidates and offers."
         help={
           <p>
             A hire is completed from an accepted offer, not by moving a stage. Doing it issues the joiner an invitation,

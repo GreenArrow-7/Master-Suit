@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import PageIntro from '@/components/workspace/PageIntro';
+import ListHeader from '@/components/workspace/ListHeader';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
 import { can } from '@/lib/security/rbac';
@@ -119,10 +119,9 @@ export default async function Page({
 
   return (
     <div className="lf-page-stack">
-      <PageIntro
-        eyebrow="Administration"
+      <ListHeader
         title={<>Roles &amp; permissions</>}
-        summary="Manage what each role can access."
+        description="Manage what each role can access."
         help={
           <p>
             Roles are data, not code. Users can hold several roles at once, scoped to a department, location, project or

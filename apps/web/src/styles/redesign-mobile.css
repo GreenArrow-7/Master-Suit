@@ -146,8 +146,7 @@
 
   /* Page header: title, one line of context, the actions on their own row. */
   html:not(#_) .lf-list-header__title,
-  html:not(#_) .lf-page-title,
-  html:not(#_) .lf-page-intro__title {
+  html:not(#_) .lf-page-title {
     font-size: 24px;
     line-height: 1.2;
   }
@@ -155,8 +154,7 @@
     gap: 10px;
     margin-bottom: 8px;
   }
-  .lf-list-header__count,
-  .lf-page-intro__summary {
+  .lf-list-header__count {
     margin-top: 2px;
     font-size: 13px;
   }
