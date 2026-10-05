@@ -15,8 +15,8 @@
  * Runs against whatever `APP_URL` points at, which for release evidence is the
  * standalone artifact behind TLS, with a real sign-in.
  */
-import { test, expect, devices, type APIRequestContext } from '@playwright/test';
-import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
+import { test, expect, devices } from '@playwright/test';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq, post } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -32,11 +32,6 @@ let leadId = '';
 const at = (path: string) => `/${workspace.slug}${path}`;
 
 /** POST through the API, failing with the server's own message. */
-async function post(request: APIRequestContext, path: string, data: Record<string, unknown>) {
-  const response = await request.post(`/api/v1/${path}`, { data });
-  expect(response.status(), `${path}: ${await response.text()}`).toBeLessThan(300);
-  return response.json();
-}
 
 test.describe('Follow-up work on a phone', () => {
   test.describe.configure({ mode: 'serial' });

@@ -7,14 +7,7 @@
  * sidebar, tabs, search, notifications and drawer; role visibility; and it
  * checks what a visual change can break — overflow, focus, contrast on the
  * frosted surfaces, and console errors.
- *
- * Before/after comparison across builds (local, optional):
- *   SUMMARY_PHASE=before  SUMMARY_SNAPSHOT_OUT=file  records values on the old build
- *   SUMMARY_SNAPSHOT_IN=file                         asserts the new build matches
- * With E2E_RUN_TAG fixed and E2E_KEEP_DATA=true on the first run, both runs read
- * the same workspace; the second run's teardown removes it.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
 import { test, expect, devices, type Browser, type Page } from '@playwright/test';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
@@ -22,7 +15,6 @@ import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword } f
 import { RUN_TAG } from './run-tag';
 import { grantPermissions } from '../helpers/fixtures';
 
-const before = process.env.SUMMARY_PHASE === 'before';
 const workspace = {
   displayName: `Summary ${RUN_TAG}`,
   slug: `sum${RUN_TAG}`.toLowerCase(),
@@ -248,7 +240,7 @@ test.describe('Workspace Summary sample', () => {
     }
   });
 
-  test('the same values, sections, links and rows as before, and no new console errors', async ({ browser }) => {
+  test('values, sections, links and rows render, with no console errors', async ({ browser }) => {
     const { page, errors, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
     try {
       await openSummary(page);
@@ -258,20 +250,8 @@ test.describe('Workspace Summary sample', () => {
         expect.arrayContaining(['Overdue follow-ups', 'Unassigned leads']),
       );
       expect(now.tableRows.length).toBeGreaterThan(0);
-      if (process.env.SUMMARY_SHOT) await page.screenshot({ path: process.env.SUMMARY_SHOT, fullPage: true });
-      const record = { ...now, consoleErrors: errors };
-      if (process.env.SUMMARY_SNAPSHOT_OUT)
-        writeFileSync(process.env.SUMMARY_SNAPSHOT_OUT, JSON.stringify(record, null, 2));
-      if (process.env.SUMMARY_SNAPSHOT_IN) {
-        const earlier = JSON.parse(readFileSync(process.env.SUMMARY_SNAPSHOT_IN, 'utf8'));
-        const { consoleErrors: earlierErrors, ...earlierContent } = earlier;
-        expect(now).toEqual(earlierContent);
-        expect(errors.length).toBeLessThanOrEqual(earlierErrors.length);
-      }
-      if (!before) {
-        await expect(page.locator('.lf-app-frame[data-lf-surface="workspace"]')).toHaveCount(1);
-        expect(errors).toEqual([]);
-      }
+      await expect(page.locator('.lf-app-frame[data-lf-surface="workspace"]')).toHaveCount(1);
+      expect(errors).toEqual([]);
     } finally {
       await close();
     }
@@ -295,7 +275,6 @@ test.describe('Workspace Summary sample', () => {
   });
 
   test('the shell still works: sidebar, tabs, search, notifications', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
     try {
       await openSummary(page);
@@ -351,7 +330,6 @@ test.describe('Workspace Summary sample', () => {
   });
 
   test('readable, focusable and not wider than the screen at every width', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     const desktop = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
     try {
       await openSummary(desktop.page);
@@ -371,8 +349,6 @@ test.describe('Workspace Summary sample', () => {
       ])
         expect(await contrastOf(desktop.page, selector), selector).toBeGreaterThanOrEqual(4.5);
 
-      if (process.env.SUMMARY_SHOT_AFTER)
-        await desktop.page.screenshot({ path: process.env.SUMMARY_SHOT_AFTER, fullPage: true });
       // The sample applies to the default light theme only; Dark and Glassy keep their own look.
       const tabRadius = () =>
         desktop.page
@@ -417,8 +393,6 @@ test.describe('Workspace Summary sample', () => {
         .first()
         .evaluate((el) => el.getBoundingClientRect().height);
       expect(rowHeight).toBeGreaterThanOrEqual(44);
-      if (process.env.SUMMARY_SHOT_MOBILE)
-        await phone.page.screenshot({ path: process.env.SUMMARY_SHOT_MOBILE, fullPage: false });
       await phone.page.locator('.lf-mobile-nav-button').click();
       await expect(phone.page.locator('.lf-workspace-sidebar')).toBeInViewport();
       await phone.page
@@ -433,7 +407,6 @@ test.describe('Workspace Summary sample', () => {
   });
 
   test('Inbox: its own title, the caught-up message only when empty, and the Summary shell', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     const agent = await signedIn(browser, agentEmail, agentPassword);
     try {
       await openSummary(agent.page);
@@ -475,7 +448,6 @@ test.describe('Workspace Summary sample', () => {
   });
 
   test('one shell on list, detail and form screens; the platform console keeps its own', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     const desktop = await signedIn(browser, workspace.adminEmail, workspace.adminPassword);
     const shot = (name: string) =>
       process.env.SURFACE_SHOT_DIR
@@ -548,7 +520,6 @@ test.describe('Workspace Summary sample', () => {
   });
 
   test('every work area opens inside the same shell, without sideways scrolling', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     test.setTimeout(300_000);
     const areas: [string, string][] = [
       ['crm-accounts', '/sales/accounts'],
@@ -673,7 +644,6 @@ test.describe('Workspace on a phone', () => {
   }
 
   test('the assistant never covers View all, date fields or Remove, and still opens', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     test.setTimeout(300_000);
     for (const width of PHONES) {
       const { page, errors, close } = await signedIn(
@@ -743,7 +713,6 @@ test.describe('Workspace on a phone', () => {
   });
 
   test('secondary view tabs and header actions stay inside the content edges', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     test.setTimeout(300_000);
     const sizes = [
       ...PHONES.map(phone),
@@ -834,7 +803,6 @@ test.describe('Workspace on a phone', () => {
   test('Settings tabs: the active tab is in view on direct links, clicks and back/forward, without page scroll', async ({
     browser,
   }) => {
-    test.skip(before, 'recorded on the new build only');
     test.setTimeout(240_000);
     for (const profile of [
       phone(360),
@@ -901,7 +869,6 @@ test.describe('Workspace on a phone', () => {
   });
 
   test('Coaching filters and Roles assignment history sit on panels', async ({ browser }) => {
-    test.skip(before, 'recorded on the new build only');
     const { page, close } = await signedIn(browser, workspace.adminEmail, workspace.adminPassword, phone(390));
     try {
       await page.goto(at('/sales/coaching'));

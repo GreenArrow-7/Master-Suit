@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
-import { login, resetLoginThrottle } from './helpers';
+import { login, resetLoginThrottle, ok } from './helpers';
 
 /**
  * The YOUHAN ONE business journey, end to end, on the demo workspace with the
@@ -20,12 +20,6 @@ const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
 const run = Date.now().toString(36);
-
-async function ok(res: { ok(): boolean; text(): Promise<string>; json(): Promise<unknown> }, what: string) {
-  expect(res.ok(), `${what}: ${await res.text().catch(() => '')}`).toBeTruthy();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await res.json()) as Record<string, any>;
-}
 
 async function poll<T>(fn: () => Promise<T | null>, label: string, timeoutMs = 90_000): Promise<T> {
   const until = Date.now() + timeoutMs;

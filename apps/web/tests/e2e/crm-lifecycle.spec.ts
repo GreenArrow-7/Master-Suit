@@ -13,7 +13,7 @@
  * uses. Everything is tagged with a per-run token so a failed run leaves
  * evidence behind without colliding with the next one.
  */
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   createWorkspaceViaWizard,
   login,
@@ -21,6 +21,7 @@ import {
   resetLoginThrottle,
   strongPassword,
   uniq,
+  post,
 } from './helpers';
 
 /**
@@ -45,11 +46,6 @@ const COMPANY = `Northwind ${run}`;
 const at = (path: string) => `/${workspace.slug}/sales${path}`;
 
 /** POST through the API, failing with the server's own message. */
-async function post(request: APIRequestContext, path: string, data: Record<string, unknown>) {
-  const response = await request.post(`/api/v1/${path}`, { data });
-  expect(response.status(), `${path}: ${await response.text()}`).toBeLessThan(300);
-  return response.json();
-}
 
 test.describe('CRM lifecycle', () => {
   test.describe.configure({ mode: 'serial' });

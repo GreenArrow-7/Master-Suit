@@ -1,5 +1,3 @@
-// Sets this process's execution switch; see enable-deletion-execution.ts.
-import './enable-deletion-execution';
 import { randomBytes } from 'node:crypto';
 import { test, expect, devices, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import type { Queue, QueueEvents, Worker } from 'bullmq';
@@ -10,6 +8,12 @@ import { encryptSecret } from '@/services/identity/secrets';
 import { createWorkspaceUser } from '../helpers/fixtures';
 import { readEnvFile } from '../helpers/isolation';
 import { login, resetLoginThrottle, uniq } from './helpers';
+import { env } from '@/lib/env';
+
+// Execution on for THIS Playwright process: the raw variable for anything parsed later,
+// and the env this worker already parsed. The dev server keeps its own switch.
+process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = 'true';
+env.ACCOUNT_DELETION_EXECUTION_ENABLED = true;
 
 /**
  * Account deletion, the way a person meets it: through the sign-in form, the

@@ -8,7 +8,7 @@
  * moves inventory with the sale. Runs against whatever `APP_URL` points at.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq } from './helpers';
+import { createWorkspaceViaWizard, login, loginPlatformOwner, strongPassword, uniq, post } from './helpers';
 
 const run = uniq();
 const workspace = {
@@ -25,11 +25,6 @@ let unitA = '';
 let unitB = '';
 let leadId = '';
 
-async function post(request: APIRequestContext, path: string, data: Record<string, unknown>) {
-  const response = await request.post(`/api/v1/${path}`, { data });
-  expect(response.status(), `${path}: ${await response.text()}`).toBeLessThan(300);
-  return response.json();
-}
 const confirm = (request: APIRequestContext, bookingId: string) =>
   request.patch('/api/v1/bookings', { data: { action: 'CONFIRM', bookingId } });
 
