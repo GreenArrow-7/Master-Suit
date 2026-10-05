@@ -61,8 +61,9 @@ export interface NavTab {
    * Hidden when the workspace does hold this module, because another area
    * carries the same screen there. For a screen every workspace needs but one
    * product already files in its own place — so it is offered once, not twice.
+   * A list hides it when the workspace holds any of them.
    */
-  unlessModule?: Module;
+  unlessModule?: Module | readonly Module[];
   audience?: Audience;
   /** Other routes that are this same screen (older duplicates, sub-pages). */
   aliases?: string[];
@@ -124,9 +125,11 @@ function definitions(slug: string): SectionDef[] {
   const p = (path: string) => `/${slug}/people${path}`;
   const a = (path: string) => `/${slug}/admin${path}`;
   const r = (path: string) => `/${slug}/realty${path}`;
+  const le = (path: string) => `/${slug}/lead-eagle${path}`;
   const S = 'SALES' as const;
   const H = 'HRMS' as const;
   const R = 'REAL_ESTATE' as const;
+  const LE = 'LEAD_EAGLE' as const;
 
   return [
     {
@@ -347,6 +350,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Dashboard',
               href: r('/dashboard'),
+              aliases: [le('/dashboard')],
               permission: 'leads',
               module: R,
               keywords: 'brokerage overview today pipeline',
@@ -358,18 +362,34 @@ function definitions(slug: string): SectionDef[] {
           label: 'Leads',
           icon: 'lead',
           tabs: [
-            { label: 'Leads', href: r('/leads'), permission: 'leads', module: R, keywords: 'buyers enquiries' },
+            {
+              label: 'Leads',
+              href: r('/leads'),
+              aliases: [le('/leads')],
+              permission: 'leads',
+              module: R,
+              keywords: 'buyers enquiries',
+            },
             {
               label: 'Follow-ups',
               href: r('/follow-ups'),
+              aliases: [le('/follow-ups')],
               permission: 'leads',
               module: R,
               keywords: 'callbacks due today overdue',
             },
-            { label: 'Calls', href: r('/calls'), permission: 'calls', module: R, keywords: 'dialer recordings' },
+            {
+              label: 'Calls',
+              href: r('/calls'),
+              aliases: [le('/calls')],
+              permission: 'calls',
+              module: R,
+              keywords: 'dialer recordings',
+            },
             {
               label: 'Site Visits',
               href: r('/site-visits'),
+              aliases: [le('/site-visits')],
               permission: 'visits',
               module: R,
               keywords: 'viewings inspections',
@@ -380,6 +400,7 @@ function definitions(slug: string): SectionDef[] {
               // — this tab is the register, not a second matcher.
               label: 'Requirements',
               href: r('/requirements'),
+              aliases: [le('/requirements')],
               permission: 'requirements',
               module: R,
               keywords: 'buyer brief budget bedrooms matching',
@@ -404,6 +425,7 @@ function definitions(slug: string): SectionDef[] {
                */
               label: 'Allocation',
               href: r('/allocation'),
+              aliases: [le('/allocation')],
               permission: 'allocation',
               module: R,
               keywords: 'data pool unassigned distribution queue capacity',
@@ -423,6 +445,7 @@ function definitions(slug: string): SectionDef[] {
               // offered the link to someone the screen then refuses.
               label: 'Properties',
               href: r('/properties'),
+              aliases: [le('/properties')],
               permission: 'projects',
               module: R,
               keywords: 'units stock availability inventory',
@@ -430,6 +453,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Projects',
               href: r('/projects'),
+              aliases: [le('/projects')],
               permission: 'projects',
               module: R,
               keywords: 'developer community handover',
@@ -437,6 +461,7 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Listings',
               href: r('/listings'),
+              aliases: [le('/listings')],
               permission: 'listings',
               module: R,
               keywords: 'resale rental pocket',
@@ -517,8 +542,135 @@ function definitions(slug: string): SectionDef[] {
             {
               label: 'Reports',
               href: r('/reports'),
+              aliases: [le('/reports')],
               permission: 'reports',
               module: R,
+              keywords: 'funnel source agent performance',
+            },
+          ],
+        },
+      ],
+    },
+    // Lead Eagle, the lead-management product (owner, 5 Oct): Real Estate's
+    // registers without the money and marketing ones. A workspace that also owns
+    // Sales or Real Estate has these screens there already, fuller, so this
+    // section is offered only where Lead Eagle is the whole CRM.
+    {
+      key: 'lead-eagle',
+      label: 'Lead Eagle',
+      areas: [
+        {
+          key: 'le-overview',
+          label: 'Dashboard',
+          icon: 'home',
+          tabs: [
+            {
+              label: 'Dashboard',
+              href: le('/dashboard'),
+              permission: 'leads',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'lead eagle overview today pipeline',
+            },
+          ],
+        },
+        {
+          key: 'le-leads',
+          label: 'Leads',
+          icon: 'lead',
+          tabs: [
+            {
+              label: 'Leads',
+              href: le('/leads'),
+              permission: 'leads',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'buyers enquiries',
+            },
+            {
+              label: 'Follow-ups',
+              href: le('/follow-ups'),
+              permission: 'leads',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'callbacks due today overdue',
+            },
+            {
+              label: 'Calls',
+              href: le('/calls'),
+              permission: 'calls',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'dialer recordings',
+            },
+            {
+              label: 'Site Visits',
+              href: le('/site-visits'),
+              permission: 'visits',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'viewings inspections',
+            },
+            {
+              label: 'Requirements',
+              href: le('/requirements'),
+              permission: 'requirements',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'buyer brief budget bedrooms matching',
+            },
+            {
+              label: 'Allocation',
+              href: le('/allocation'),
+              permission: 'allocation',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'data pool unassigned distribution queue capacity assignment',
+            },
+          ],
+        },
+        {
+          key: 'le-inventory',
+          label: 'Inventory',
+          icon: 'company',
+          tabs: [
+            {
+              label: 'Properties',
+              href: le('/properties'),
+              permission: 'projects',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'units stock availability inventory',
+            },
+            {
+              label: 'Projects',
+              href: le('/projects'),
+              permission: 'projects',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'developer community handover',
+            },
+            {
+              label: 'Listings',
+              href: le('/listings'),
+              permission: 'listings',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'resale rental pocket',
+            },
+          ],
+        },
+        {
+          key: 'le-reports',
+          label: 'Reports',
+          icon: 'report',
+          tabs: [
+            {
+              label: 'Reports',
+              href: le('/reports'),
+              permission: 'reports',
+              module: LE,
+              unlessModule: [S, R],
               keywords: 'funnel source agent performance',
             },
           ],
@@ -958,11 +1110,15 @@ export const parsePermission = (token: string): [string, string] => {
  * The phone tab bar used to skip the URL and answer from entitlement alone, so a
  * workspace owning both products got the Sales tabs on every People screen.
  */
-export function activeModule(pathname: string, modules: readonly string[]): 'people' | 'sales' | 'realty' {
+export function activeModule(
+  pathname: string,
+  modules: readonly string[],
+): 'people' | 'sales' | 'realty' | 'lead-eagle' {
   const segment = pathname.split('/')[2];
   if (segment === 'people') return 'people';
   if (segment === 'sales') return 'sales';
   if (segment === 'realty') return 'realty';
+  if (segment === 'lead-eagle') return 'lead-eagle';
   /**
    * The URL said nothing, so fall back on what the workspace owns.
    *
@@ -976,12 +1132,13 @@ export function activeModule(pathname: string, modules: readonly string[]): 'peo
    */
   if (modules.includes('SALES')) return 'sales';
   if (modules.includes('REAL_ESTATE')) return 'realty';
+  if (modules.includes('LEAD_EAGLE')) return 'lead-eagle';
   return 'people';
 }
 
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {
   if (tab.module && !input.modules.includes(tab.module)) return false;
-  if (tab.unlessModule && input.modules.includes(tab.unlessModule)) return false;
+  if (tab.unlessModule && [tab.unlessModule].flat().some((module) => input.modules.includes(module))) return false;
   if (tab.audience === 'self' && input.peopleOversight) return false;
   if (tab.audience === 'oversight' && !input.peopleOversight) return false;
   return tokens(tab).every((token) => input.permitted.includes(token));

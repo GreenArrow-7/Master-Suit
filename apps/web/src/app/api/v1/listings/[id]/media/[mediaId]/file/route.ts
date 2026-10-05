@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -16,7 +16,7 @@ const params = z.object({ id: z.string().cuid(), mediaId: z.string().cuid() });
  * than to carve exceptions into.
  */
 export const GET = route(
-  { module: 'listings', productModule: SALES_OR_REALTY, action: 'VIEW', params },
+  { module: 'listings', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const media = await prisma.listingMedia.findFirst({
       where: { id: params.mediaId, tenantId: ctx.tenantId, listingId: params.id },

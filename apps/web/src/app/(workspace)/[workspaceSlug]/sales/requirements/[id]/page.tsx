@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import { matchesForRequirement } from '@/services/inventory/demand';
@@ -24,7 +24,7 @@ export const metadata = { title: 'Requirement' };
  */
 export default async function RequirementPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['requirements', 'VIEW'] });
 
   const owned = await prisma.clientRequirement.findFirst({
     where: { id, tenantId: ctx.tenantId, deletedAt: null },

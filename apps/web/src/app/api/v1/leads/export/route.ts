@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
 import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 import { SIMPLE_NAMED_LEAD_FILTERS } from '@/lib/leads/namedFilters';
@@ -47,7 +47,7 @@ function csvCell(value: unknown): string {
 }
 
 export const GET = route(
-  { module: 'leads', action: 'EXPORT', productModule: SALES_OR_REALTY, sessionOnly: true, query },
+  { module: 'leads', action: 'EXPORT', productModule: LEAD_MODULES, sessionOnly: true, query },
   async ({ ctx, query: params }) => {
     const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
     /**

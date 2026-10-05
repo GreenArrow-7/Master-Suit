@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { assignFromTriage } from '@/services/distribution/triageQueue';
@@ -25,7 +25,7 @@ const body = z.object({
 });
 
 export const POST = route(
-  { module: 'leads', productModule: SALES_OR_REALTY, action: 'ASSIGN', body, params },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'ASSIGN', body, params },
   async ({ ctx, body: input, params: p }) => {
     const result = await assignFromTriage({
       ctx,

@@ -22,10 +22,11 @@ const PAGE_SIZE = 200;
  * the brokerage question "what is available right now" had no screen at all,
  * while the dashboard counted the answer and linked here.
  *
- * `module: 'REAL_ESTATE'` rather than the shared `SALES_OR_REALTY`: the shared
+ * Real Estate or Lead Eagle, rather than the shared `SALES_OR_REALTY`: the shared
  * screens are shared because Sales has them and links to them. This one is
- * offered by the Real Estate navigation alone, and claiming otherwise would
- * promise a Sales screen that does not exist.
+ * offered by the Real Estate and Lead Eagle navigation alone
+ * (`lead-eagle/properties` re-exports it), and claiming otherwise would promise
+ * a Sales screen that does not exist.
  *
  * ── Permission: `projects`, not `listings` ──────────────────────────────────
  *
@@ -74,7 +75,7 @@ function address(tower: string | null, floor: number | null, unitNumber: string)
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: 'REAL_ESTATE', permission: ['projects', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: ['REAL_ESTATE', 'LEAD_EAGLE'], permission: ['projects', 'VIEW'] });
 
   const tab = TABS.find(([, key]) => key === (params.tab ?? '')) ?? TABS[0]!;
   const where: Prisma.UnitInventoryWhereInput = { tenantId: ctx.tenantId, ...tab[2] };

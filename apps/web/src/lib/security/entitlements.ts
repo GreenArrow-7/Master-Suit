@@ -16,6 +16,7 @@ const MODULE_LABEL: Record<ProductModule, string> = {
   HRMS: 'HR',
   SALES: 'Sales',
   REAL_ESTATE: 'Real Estate',
+  LEAD_EAGLE: 'Lead Eagle',
 };
 
 /**
@@ -31,6 +32,15 @@ const MODULE_LABEL: Record<ProductModule, string> = {
  * refusing a Real Estate workspace for not owning Sales.
  */
 export const SALES_OR_REALTY = ['SALES', 'REAL_ESTATE'] as const satisfies readonly ProductModule[];
+
+/**
+ * The screens and routes that work leads, which Lead Eagle shares too: leads,
+ * follow-ups, calls, tasks, activities, site visits, requirements, allocation,
+ * projects, listings, documents and reports. Lead Eagle is the lead-management
+ * product (owner, 5 Oct) — the money and marketing registers (collections,
+ * commissions, proposals, portals, events) stay `SALES_OR_REALTY`.
+ */
+export const LEAD_MODULES = ['SALES', 'REAL_ESTATE', 'LEAD_EAGLE'] as const satisfies readonly ProductModule[];
 
 /**
  * Short, and deliberately so.

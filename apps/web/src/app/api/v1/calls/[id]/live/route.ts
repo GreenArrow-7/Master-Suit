@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
@@ -86,7 +86,7 @@ const params = z.object({ id: z.string().cuid() });
  * full call audit moments after hanging up, without requiring a worker.
  */
 export const GET = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params },
   async ({ ctx, params, req }) => {
     const call = await prisma.call.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

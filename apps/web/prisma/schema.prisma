@@ -637,11 +637,13 @@ model Tenant {
 /// The product modules a workspace can be entitled to, independently of one
 /// another. REAL_ESTATE is a brokerage experience over the same authoritative
 /// entities SALES uses — Lead, Call, Project, Listing, UnitInventory, SiteVisit,
-/// Booking — not a second copy of them. A workspace may hold any combination.
+/// Booking — not a second copy of them. LEAD_EAGLE is the lead-management
+/// product over the same entities again. A workspace may hold any combination.
 enum ModuleKey {
   HRMS
   SALES
   REAL_ESTATE
+  LEAD_EAGLE
 }
 
 enum SubscriptionState {

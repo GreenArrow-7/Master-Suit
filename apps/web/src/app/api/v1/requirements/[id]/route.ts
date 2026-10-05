@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
@@ -33,7 +33,7 @@ const body = z
 export const PATCH = route(
   {
     module: 'requirements',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body,
@@ -57,7 +57,7 @@ export const PATCH = route(
 
 /** Soft, because a closed search is evidence of what the client wanted and when. */
 export const DELETE = route(
-  { module: 'requirements', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'requirements', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) =>
     withTx(ctx.tenantId, async (tx) => {
       const existing = await tx.clientRequirement.findFirst({

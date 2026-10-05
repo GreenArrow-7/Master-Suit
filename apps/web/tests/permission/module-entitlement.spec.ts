@@ -22,6 +22,7 @@ import { POST as hrAction } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/act
 import { GET as salesLeads } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
 import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
+import { GET as receiptsList } from '@/app/api/v1/collections/receipts/route';
 import { createSessionToken } from '../helpers/session';
 import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
@@ -39,7 +40,10 @@ interface Workspace {
  * A workspace with exactly the modules given, an admin holding every permission
  * used below, and a plain member holding none.
  */
-async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES' | 'REAL_ESTATE')[]): Promise<Workspace> {
+async function makeWorkspace(
+  label: string,
+  modules: ('HRMS' | 'SALES' | 'REAL_ESTATE' | 'LEAD_EAGLE')[],
+): Promise<Workspace> {
   const slug = `${label}-${suffix}`;
   const tenant = await prisma.tenant.create({
     data: { slug, legalName: `${label} LLC`, displayName: label, status: 'ACTIVE' },
@@ -61,6 +65,7 @@ async function makeWorkspace(label: string, modules: ('HRMS' | 'SALES' | 'REAL_E
     ['attendance', 'APPROVE'],
     ['leads', 'VIEW'],
     ['opportunities', 'VIEW'],
+    ['collections', 'VIEW'],
   ];
   await grantPermissions(tenant.id, adminRole.id, grants);
 
@@ -94,16 +99,18 @@ let hrOnly: Workspace;
 let salesOnly: Workspace;
 let both: Workspace;
 let realtyOnly: Workspace;
+let leadEagleOnly: Workspace;
 
 beforeAll(async () => {
   hrOnly = await makeWorkspace('ent-hr', ['HRMS']);
   salesOnly = await makeWorkspace('ent-sales', ['SALES']);
   both = await makeWorkspace('ent-both', ['HRMS', 'SALES']);
   realtyOnly = await makeWorkspace('ent-realty', ['REAL_ESTATE']);
+  leadEagleOnly = await makeWorkspace('ent-eagle', ['LEAD_EAGLE']);
 });
 
 afterAll(async () => {
-  for (const w of [hrOnly, salesOnly, both, realtyOnly]) {
+  for (const w of [hrOnly, salesOnly, both, realtyOnly, leadEagleOnly]) {
     if (w?.id) await prisma.tenant.delete({ where: { id: w.id } }).catch(() => {});
   }
 });
@@ -187,6 +194,24 @@ describe('Real Estate reaches the registers it shares with Sales, and nothing el
   it('an HRMS-only workspace is still refused the shared register', async () => {
     const res = await get(leadsList, '/api/v1/leads', hrOnly.cookie);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('Lead Eagle reaches lead work, and neither Sales-only nor money registers', () => {
+  // The admin holds `opportunities:VIEW` and `collections:VIEW`, so each refusal
+  // below is the entitlement's: Lead Eagle is the lead-management product.
+  it('a Lead-Eagle-only workspace reads the shared lead register', async () => {
+    expect((await get(leadsList, '/api/v1/leads', leadEagleOnly.cookie)).status).toBe(200);
+  });
+
+  it('a Lead-Eagle-only workspace is refused a Sales-only register', async () => {
+    expect((await get(opportunitiesList, '/api/v1/opportunities', leadEagleOnly.cookie)).status).toBe(403);
+  });
+
+  it('a Lead-Eagle-only workspace is refused collections, which Real Estate reads', async () => {
+    expect((await get(receiptsList, '/api/v1/collections/receipts', leadEagleOnly.cookie)).status).toBe(403);
+    // Past the module gate for Real Estate: the bare request fails only on its missing filters.
+    expect((await get(receiptsList, '/api/v1/collections/receipts', realtyOnly.cookie)).status).not.toBe(403);
   });
 });
 

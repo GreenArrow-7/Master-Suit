@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -18,7 +18,7 @@ const consentBody = z
 export const POST = route(
   {
     module: 'calls',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: consentBody,
@@ -62,7 +62,7 @@ export const POST = route(
 );
 
 export const DELETE = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, auditEvent: 'CONSENT_WITHDRAWN' },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const call = await prisma.call.findFirst({

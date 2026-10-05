@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
@@ -56,7 +56,7 @@ const LIST_SELECT = {
  * verification queues below useful rather than a list of strangers.
  */
 export const GET = route(
-  { module: 'visits', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
+  { module: 'visits', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const scope = await visibilityWhere(ctx, 'visits', 'VIEW');
 
@@ -121,7 +121,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'visits',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

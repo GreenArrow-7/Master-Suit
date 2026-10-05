@@ -40,8 +40,8 @@ export function useModuleBase(): string {
 // render module-relative links (`/leads`, `/site-visits`) that must resolve to
 // `/{slug}/realty/...`. `useModuleBase` already produced the right prefix; only
 // this guard disagreed, so every Real Estate page logged a warning saying its
-// own correct base was not a module root.
-const MODULE_ROOTS = new Set(['sales', 'realty', 'people', 'admin', 'profile']);
+// own correct base was not a module root. `lead-eagle`, for Lead Eagle's.
+const MODULE_ROOTS = new Set(['sales', 'realty', 'lead-eagle', 'people', 'admin', 'profile']);
 
 type Props = Omit<React.ComponentPropsWithoutRef<'a'>, 'href'> & { href: string };
 

@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -19,7 +19,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'leads',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: patchBody,
@@ -40,7 +40,7 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!activity) throw NotFound('Activity');

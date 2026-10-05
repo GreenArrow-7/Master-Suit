@@ -341,3 +341,46 @@ describe('every link the previous sidebar offered still has a place', () => {
     expect(at(nav, `/${SLUG}/${href}`)).not.toBeNull();
   });
 });
+
+describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
+  const leadEagle = (modules: NavInput['modules']) => buildNavigation({ ...everything, modules });
+
+  it('a Lead-Eagle-only workspace gets the Lead Eagle section and no Sales or Real Estate one', () => {
+    const nav = leadEagle(['LEAD_EAGLE']);
+    expect(areas(nav)).toEqual(expect.arrayContaining(['le-overview', 'le-leads', 'le-inventory', 'le-reports']));
+    expect(tabsOf(nav, 'le-leads')).toEqual([
+      'Leads',
+      'Follow-ups',
+      'Calls',
+      'Site Visits',
+      'Requirements',
+      'Allocation',
+    ]);
+    expect(areas(nav)).not.toContain('realty-clients');
+    expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
+  });
+
+  it('offers no money or marketing screens', () => {
+    const labels = leadEagle(['LEAD_EAGLE']).flatMap((s) => s.areas.flatMap((a) => a.tabs.map((t) => t.label)));
+    for (const absent of ['Collections', 'Commissions', 'Proposals', 'Portals', 'Events']) {
+      expect(labels).not.toContain(absent);
+    }
+  });
+
+  it('gives way to Real Estate or Sales, which carry the same screens, fuller', () => {
+    for (const modules of [
+      ['LEAD_EAGLE', 'REAL_ESTATE'],
+      ['LEAD_EAGLE', 'SALES'],
+    ] as NavInput['modules'][]) {
+      expect(areas(leadEagle(modules))).not.toContain('le-leads');
+    }
+    // And its addresses still light up the Real Estate tab.
+    expect(at(leadEagle(['LEAD_EAGLE', 'REAL_ESTATE']), `/${SLUG}/lead-eagle/leads`)).toBe('realty-clients / Leads');
+  });
+
+  it('is the phone tab bar for its own URLs, and for shared ones where it is the only CRM', () => {
+    expect(activeModule(`/${SLUG}/lead-eagle/leads`, ['LEAD_EAGLE'])).toBe('lead-eagle');
+    expect(activeModule(`/${SLUG}/dashboard`, ['LEAD_EAGLE', 'HRMS'])).toBe('lead-eagle');
+    expect(activeModule(`/${SLUG}/dashboard`, ['LEAD_EAGLE', 'REAL_ESTATE'])).toBe('realty');
+  });
+});

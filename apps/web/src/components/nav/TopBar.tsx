@@ -159,10 +159,19 @@ export default function TopBar({
    */
   const segment = pathname.split('/')[2];
   const area = fixedModule ?? (segment === 'people' ? 'people' : 'sales');
-  // Where + Create sends a new lead, call or event: the Real Estate screens when
-  // the viewer is working in Real Estate, or when the workspace has no Sales.
+  // Where + Create sends a new lead, call or event: the Real Estate or Lead Eagle
+  // screens when the viewer is working there, or when the workspace has no Sales
+  // (Real Estate first, the fuller product).
   const crmRoot =
-    segment === 'realty' || (!modules.includes('SALES') && modules.includes('REAL_ESTATE')) ? 'realty' : 'sales';
+    segment === 'realty' || segment === 'lead-eagle'
+      ? segment
+      : modules.includes('SALES')
+        ? 'sales'
+        : modules.includes('REAL_ESTATE')
+          ? 'realty'
+          : modules.includes('LEAD_EAGLE')
+            ? 'lead-eagle'
+            : 'sales';
   const router = useRouter();
   const search = useRef<HTMLInputElement>(null);
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
@@ -351,7 +360,7 @@ export default function TopBar({
               label: 'Lead',
               href: `${basePath}/${crmRoot}/leads/new`,
               module: 'leads',
-              group: crmRoot === 'realty' ? 'Real Estate' : 'Sales',
+              group: crmRoot === 'realty' ? 'Real Estate' : crmRoot === 'lead-eagle' ? 'Lead Eagle' : 'Sales',
             },
             {
               label: 'Opportunity',
@@ -362,7 +371,15 @@ export default function TopBar({
             { label: 'Account', href: `${basePath}/sales/accounts/new`, module: 'accounts', group: 'Sales' },
             { label: 'Contact', href: `${basePath}/sales/contacts/new`, module: 'contacts', group: 'Sales' },
             { label: 'Call', href: `${basePath}/${crmRoot}/calls/new`, module: 'calls', group: 'Engage' },
-            { label: 'Event', href: `${basePath}/${crmRoot}/events/new`, module: 'events', group: 'Engage' },
+            {
+              // Lead Eagle has no Events; the Sales route sends a workspace without
+              // Sales on to Real Estate's (sales/layout.tsx), and the menu offers it
+              // only where events are bought.
+              label: 'Event',
+              href: `${basePath}/${crmRoot === 'lead-eagle' ? 'sales' : crmRoot}/events/new`,
+              module: 'events',
+              group: 'Engage',
+            },
           ].filter((item) => !creatable || creatable.includes(item.module));
 
   /**

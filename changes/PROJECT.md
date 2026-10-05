@@ -14,6 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 73 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 34 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
+| Lead Eagle | `lead-eagle/` | 23 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, calls, site visits, requirements, allocation, properties, projects, listings, reports |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -35,14 +36,15 @@ Node 22 or newer (CI uses 24).
   tenants goes through `withPlatformTx`, nothing else.
 - **One record, several screens.** Real Estate reuses Sales' rows (`Lead`,
   `Call`, `SiteVisit`, `Booking`, `Project`, `Listing`, `UnitInventory`);
-  `realty/` pages are one-line re-exports of `sales/` pages, and
-  `tests/unit/realty-routes.spec.ts` guards that. Never add a parallel model —
-  Lead Eagle, when built, follows the same rule.
+  `realty/` and `lead-eagle/` pages are one-line re-exports of `sales/` pages,
+  and `tests/unit/realty-routes.spec.ts` and `lead-eagle-routes.spec.ts` guard
+  that. Never add a parallel model.
 - **Entitlement.** A page asserts its module with
   `resolveWorkspacePage(slug, { module, permission })` (`src/lib/workspace-page.ts`);
   an API route with `route({ productModule })` (`src/lib/api/handler.ts`).
-  `SALES_OR_REALTY` and `PRODUCT_MODULE_KEYS` (any module) exist for shared
-  screens. A layout asserting a module covers everything beneath it, so a screen
+  Shared screens assert a set: `LEAD_MODULES` (Sales, Real Estate, Lead Eagle)
+  for lead work, `SALES_OR_REALTY` for money and marketing, `PRODUCT_MODULE_KEYS`
+  for any module. A layout asserting a module covers everything beneath it, so a screen
   that must work without that module is re-exported from outside its folder.
 - **Permissions.** Roles live in the database. A new workspace gets one role,
   Company Admin, holding every permission; the admin builds the others in the
@@ -102,7 +104,8 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 
 Waiting on the owner:
 
-- **Lead Eagle inside YOUHAN ONE** — decided 5 Oct; the plan is not written yet.
+- **Lead Eagle inside YOUHAN ONE** — phase 1 (live in the platform portal) is
+  built; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams.
 - **Store submissions** — iOS and Android, in the owner's store consoles.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody

@@ -73,12 +73,12 @@ export default function MobileTabBar({ slug, modules }: { slug: string; modules:
           { key: 'calls', label: 'Check in', href: `/${slug}/check-in` },
           { key: 'leads', label: 'People', href: `/${slug}/people/employees` },
         ]
-      : product === 'realty'
+      : product === 'realty' || product === 'lead-eagle'
         ? [
-            { key: 'overview', label: 'Home', href: `/${slug}/realty/dashboard` },
-            { key: 'leads', label: 'Leads', href: `/${slug}/realty/leads` },
-            { key: 'calls', label: 'Calls', href: `/${slug}/realty/calls` },
-            { key: 'visits', label: 'Visits', href: `/${slug}/realty/site-visits` },
+            { key: 'overview', label: 'Home', href: `/${slug}/${product}/dashboard` },
+            { key: 'leads', label: 'Leads', href: `/${slug}/${product}/leads` },
+            { key: 'calls', label: 'Calls', href: `/${slug}/${product}/calls` },
+            { key: 'visits', label: 'Visits', href: `/${slug}/${product}/site-visits` },
           ]
         : [
             { key: 'overview', label: 'Home', href: `/${slug}/dashboard` },

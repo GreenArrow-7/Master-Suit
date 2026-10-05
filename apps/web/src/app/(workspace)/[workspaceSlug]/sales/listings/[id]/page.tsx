@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
+import { LEAD_MODULES, hasModuleEntitlement } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
@@ -29,7 +29,7 @@ export default async function ListingDetailPage({
   params: Promise<{ id: string; workspaceSlug: string }>;
 }) {
   const { id, workspaceSlug } = await params;
-  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['listings', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['listings', 'VIEW'] });
   // A contact is a Sales record with no Real Estate screen: link to it only where
   // the workspace has Sales, and by its Sales address.
   const contactsReachable = await hasModuleEntitlement(ctx.tenantId, 'SALES');

@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -39,7 +39,7 @@ const params = z.object({ id: z.string().cuid() });
  * a half-delete that threw would leave them unable to try again.
  */
 export const DELETE = route(
-  { module: 'documents', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'documents', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     const document = await prisma.document.findFirst({
       where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },

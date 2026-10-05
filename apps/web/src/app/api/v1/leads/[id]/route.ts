@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -11,7 +11,7 @@ import { updateLead, deleteLead } from '@/services/leads/updateLead';
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'leads', productModule: SALES_OR_REALTY, action: 'VIEW', params },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const rules = await loadFieldRules(ctx, 'LEAD');
     const scope = await visibilityWhere(ctx, 'leads', 'VIEW', { includeUnassigned: true });
@@ -48,7 +48,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'leads',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: patchBody,
@@ -63,7 +63,7 @@ export const PATCH = route(
 );
 
 export const DELETE = route(
-  { module: 'leads', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'leads', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     await deleteLead(ctx, params.id);
     return { ok: true };

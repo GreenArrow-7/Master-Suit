@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -66,7 +66,7 @@ async function loadContext(tenantId: string, callId: string) {
 }
 
 export const POST = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params },
   async ({ ctx, params }) => {
     await assertCallInScope(ctx, params.id);
     const { call, analysis, transcript, companyName } = await loadContext(ctx.tenantId, params.id);
@@ -105,7 +105,7 @@ const sendBody = z
 export const PUT = route(
   {
     module: 'calls',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: sendBody,
