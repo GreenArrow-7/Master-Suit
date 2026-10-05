@@ -27,6 +27,8 @@ const ICONS: Record<string, string> = {
   leads: 'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M4 21a8 8 0 0 1 16 0',
   calls: 'M5 4h4l2 5-3 2a16 16 0 0 0 5 5l2-3 5 2v4c0 1-1 2-2 2A17 17 0 0 1 3 6c0-1 1-2 2-2',
   tasks: 'M4 6h16 M4 12h16 M4 18h16',
+  // A map pin. Real Estate's and Lead Eagle's fourth tab had no icon since it was added.
+  visits: 'M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11 M12 7.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5',
   menu: 'M4 7h16 M4 12h16 M4 17h16',
 };
 
