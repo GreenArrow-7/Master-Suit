@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 const updateSchema = z
   .object({
@@ -39,9 +38,9 @@ const updateSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, 'At least one change is required.');
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const PATCH = bareRoute(
+  '/api/v1/platform/workspaces/[workspaceId]',
+  async (req, requestId, { params }: { params: Promise<{ workspaceId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
     const body = updateSchema.parse(await req.json());
@@ -149,11 +148,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
     // request rather than whenever the TTL happens to expire.
     await invalidateEntitlements(workspace.id);
 
-    return NextResponse.json({ workspace }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]' });
-  }
-}
+    return NextResponse.json({ workspace });
+  },
+);
 
 /**
  * Deletes a workspace — as a soft delete, deliberately.
@@ -165,9 +162,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ worksp
  * subscription is cancelled so billing stops. Restoring is a support operation
  * (clear deletedAt) rather than a data-recovery incident.
  */
-export async function DELETE(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const DELETE = bareRoute(
+  '/api/v1/platform/workspaces/[workspaceId]',
+  async (req, requestId, { params }: { params: Promise<{ workspaceId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
     const current = await prisma.tenant.findFirst({ where: { id: workspaceId, deletedAt: null } });
@@ -205,8 +202,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
     });
     await invalidateEntitlements(current.id);
 
-    return NextResponse.json({ deleted: true, id: current.id }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/workspaces/[workspaceId]' });
-  }
-}
+    return NextResponse.json({ deleted: true, id: current.id });
+  },
+);

@@ -339,6 +339,30 @@ function errorCode(err: unknown): string {
  * per-field errors for a ZodError, the AppError's own status (with Retry-After
  * and Allow where they apply), and a logged 500 for anything else.
  */
+/**
+ * The request id, problem+json errors and the id echoed on the response, for the
+ * handlers that authenticate their own way (the platform console, sign-in,
+ * invitation acceptance) and so do not run route().
+ *
+ * `name` is the route's template rather than the live path, so a metric label or
+ * log field never carries an id.
+ */
+export function bareRoute<C = { params: Promise<Record<string, string>> }>(
+  name: string,
+  fn: (req: Request, requestId: string, context: C) => Promise<Response>,
+) {
+  return async (req: Request, context: C) => {
+    const requestId = req.headers.get('x-request-id') ?? ulid();
+    try {
+      const res = await fn(req, requestId, context);
+      if (!res.headers.has('x-request-id')) res.headers.set('x-request-id', requestId);
+      return res;
+    } catch (err) {
+      return toResponse(err, requestId, { route: name });
+    }
+  };
+}
+
 export function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {
   const headers: Record<string, string> = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
 

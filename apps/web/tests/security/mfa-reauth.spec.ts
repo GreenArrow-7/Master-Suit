@@ -57,6 +57,7 @@ async function callEnroll(cookie: string, body: Record<string, unknown>) {
       headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
+    { params: Promise.resolve({}) },
   );
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }

@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { Forbidden } from '@/lib/errors';
 import { clientIp } from '@/lib/auth/session';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { acceptInvitation, previewInvitation } from '@/services/identity/invitations';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 /**
  * Redeeming an invitation. Unauthenticated by necessity — the whole point is
@@ -22,41 +21,31 @@ const acceptSchema = z.object({
 });
 
 /** GET renders the confirmation screen: which workspace, which role, for whom. */
-export async function GET(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    await consume(limits.inviteLookup(clientIp(req) ?? 'unknown'));
-    const token = new URL(req.url).searchParams.get('token');
-    if (!token) throw Forbidden('This invitation link is invalid, expired, or has already been used.');
+export const GET = bareRoute('/api/v1/auth/accept-invite', async (req) => {
+  await consume(limits.inviteLookup(clientIp(req) ?? 'unknown'));
+  const token = new URL(req.url).searchParams.get('token');
+  if (!token) throw Forbidden('This invitation link is invalid, expired, or has already been used.');
 
-    const preview = await previewInvitation(token);
-    if (!preview) throw Forbidden('This invitation link is invalid, expired, or has already been used.');
+  const preview = await previewInvitation(token);
+  if (!preview) throw Forbidden('This invitation link is invalid, expired, or has already been used.');
 
-    return NextResponse.json(preview, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/auth/accept-invite' });
-  }
-}
+  return NextResponse.json(preview);
+});
 
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    await consume(limits.inviteLookup(clientIp(req) ?? 'unknown'));
-    const body = acceptSchema.parse(await req.json());
-    const result = await acceptInvitation(body.token, { password: body.password, fullName: body.fullName });
+export const POST = bareRoute('/api/v1/auth/accept-invite', async (req) => {
+  await consume(limits.inviteLookup(clientIp(req) ?? 'unknown'));
+  const body = acceptSchema.parse(await req.json());
+  const result = await acceptInvitation(body.token, { password: body.password, fullName: body.fullName });
 
-    return NextResponse.json(
-      {
-        ...result,
-        destination: `/${result.workspaceSlug}/dashboard`,
-        note:
-          result.credential === 'EXISTING'
-            ? 'You already had an account on this platform. Sign in with your existing password — the one you just chose was not applied.'
-            : 'Your account is ready. Sign in with the password you just chose.',
-      },
-      { status: 201, headers: { 'x-request-id': requestId } },
-    );
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/auth/accept-invite' });
-  }
-}
+  return NextResponse.json(
+    {
+      ...result,
+      destination: `/${result.workspaceSlug}/dashboard`,
+      note:
+        result.credential === 'EXISTING'
+          ? 'You already had an account on this platform. Sign in with your existing password — the one you just chose was not applied.'
+          : 'Your account is ready. Sign in with the password you just chose.',
+    },
+    { status: 201 },
+  );
+});

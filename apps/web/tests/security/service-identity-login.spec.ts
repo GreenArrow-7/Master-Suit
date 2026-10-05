@@ -465,6 +465,7 @@ describe('session security', () => {
 
     const res = await serviceLogout(
       new Request('http://localhost/api/v1/auth/service-login', { method: 'DELETE', headers: { cookie } }),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
     expect((await res.json()).sessionsRevoked).toBe(1);
@@ -484,6 +485,7 @@ describe('session security', () => {
         method: 'DELETE',
         headers: { cookie },
       }),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
     expect(await prisma.platformSession.count({ where: { platformUserId: identityId, revokedAt: null } })).toBe(0);

@@ -20,7 +20,7 @@ import { readJsonBody } from '@/lib/api/read-body';
 import { consumeTotp } from '@/lib/auth/totp-consume';
 import { consumeRecoveryCode } from '@/services/identity/twoFactor';
 import { assertSameOrigin } from '@/lib/security/origin';
-import { toResponse } from '@/lib/api/handler';
+import { toResponse, bareRoute } from '@/lib/api/handler';
 
 /**
  * Interactive sign-in for an `AI_SERVICE` identity:
@@ -309,47 +309,39 @@ async function readableWorkspaces(allowlist: string[]) {
  * selection rather than only at read time. `serviceSessionActor` checks it again
  * on every request — this is the friendly refusal, that one is the real gate.
  */
-export async function PATCH(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    assertSameOrigin(req);
-    const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
-    if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
+export const PATCH = bareRoute('/api/v1/auth/service-login', async (req, requestId) => {
+  assertSameOrigin(req);
+  const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE']);
+  if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
 
-    const body = await readJsonBody(req, z.object({ workspaceId: z.string().min(1).max(64) }));
-    const identity = await prisma.platformUser.findUnique({
-      where: { id: ctx.platformUserId },
-      select: { serviceTenantAllowlist: true },
-    });
-    if (identity?.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(body.workspaceId)) {
-      throw Forbidden('This service identity is not permitted in that workspace.');
-    }
-    const workspace = await prisma.tenant.findFirst({
-      where: { id: body.workspaceId, status: 'ACTIVE', deletedAt: null },
-      select: { id: true, slug: true },
-    });
-    if (!workspace) throw Forbidden('That workspace is not available.');
-
-    await prisma.platformSession.update({
-      where: { id: ctx.sessionId },
-      data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
-    });
-    // Opening a customer's workspace is worth a record even before anything is
-    // read — the same reason the platform console audits WORKSPACE_OPENED.
-    await record(ctx.platformUserId, 'WORKSPACE_OPENED', ctx.ip, ctx.userAgent, requestId, {
-      workspaceId: workspace.id,
-      slug: workspace.slug,
-      mode: 'service_readonly',
-    });
-
-    return NextResponse.json(
-      { destination: `/${workspace.slug}/dashboard`, workspace },
-      { headers: { 'x-request-id': requestId } },
-    );
-  } catch (err) {
-    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
+  const body = await readJsonBody(req, z.object({ workspaceId: z.string().min(1).max(64) }));
+  const identity = await prisma.platformUser.findUnique({
+    where: { id: ctx.platformUserId },
+    select: { serviceTenantAllowlist: true },
+  });
+  if (identity?.serviceTenantAllowlist.length && !identity.serviceTenantAllowlist.includes(body.workspaceId)) {
+    throw Forbidden('This service identity is not permitted in that workspace.');
   }
-}
+  const workspace = await prisma.tenant.findFirst({
+    where: { id: body.workspaceId, status: 'ACTIVE', deletedAt: null },
+    select: { id: true, slug: true },
+  });
+  if (!workspace) throw Forbidden('That workspace is not available.');
+
+  await prisma.platformSession.update({
+    where: { id: ctx.sessionId },
+    data: { activeTenantId: workspace.id, lastSeenAt: new Date() },
+  });
+  // Opening a customer's workspace is worth a record even before anything is
+  // read — the same reason the platform console audits WORKSPACE_OPENED.
+  await record(ctx.platformUserId, 'WORKSPACE_OPENED', ctx.ip, ctx.userAgent, requestId, {
+    workspaceId: workspace.id,
+    slug: workspace.slug,
+    mode: 'service_readonly',
+  });
+
+  return NextResponse.json({ destination: `/${workspace.slug}/dashboard`, workspace });
+});
 
 /**
  * Ends the session that made the request, and optionally every other one.
@@ -357,39 +349,34 @@ export async function PATCH(req: Request) {
  * The `all` form is the credential-compromise path: one call and every browser
  * holding this identity is signed out.
  */
-export async function DELETE(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+export const DELETE = bareRoute('/api/v1/auth/service-login', async (req, requestId) => {
+  assertSameOrigin(req);
+  const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE', 'MFA_ENROLMENT']);
+  if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
+
+  const all = new URL(req.url).searchParams.get('all') === 'true';
+  const revoked = all
+    ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
+    : (
+        await prisma.platformSession.updateMany({
+          where: { id: ctx.sessionId, revokedAt: null },
+          data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
+        })
+      ).count;
+
+  await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
+
+  // The service cookie specifically — clearing `lf_session` here would sign
+  // the operator out of the platform console instead, which is a different
+  // identity that happens to share the browser.
   try {
-    assertSameOrigin(req);
-    const ctx = await resolvePlatformCtx(req, requestId, ['AI_SERVICE', 'MFA_ENROLMENT']);
-    if (!isPlatformServiceRole(ctx.platformRole)) throw Forbidden('Not a service identity session.');
-
-    const all = new URL(req.url).searchParams.get('all') === 'true';
-    const revoked = all
-      ? await revokeAllPlatformSessions(ctx.platformUserId, 'LOGOUT_ALL')
-      : (
-          await prisma.platformSession.updateMany({
-            where: { id: ctx.sessionId, revokedAt: null },
-            data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
-          })
-        ).count;
-
-    await record(ctx.platformUserId, 'LOGOUT', ctx.ip, ctx.userAgent, requestId, { all, revoked });
-
-    // The service cookie specifically — clearing `lf_session` here would sign
-    // the operator out of the platform console instead, which is a different
-    // identity that happens to share the browser.
-    try {
-      (await cookies()).delete(SERVICE_SESSION_COOKIE);
-    } catch {
-      /* no request scope */
-    }
-
-    return NextResponse.json({ signedOut: true, sessionsRevoked: revoked }, { headers: { 'x-request-id': requestId } });
-  } catch (err) {
-    return toResponse(err, requestId, { route: '/api/v1/auth/service-login' });
+    (await cookies()).delete(SERVICE_SESSION_COOKIE);
+  } catch {
+    /* no request scope */
   }
-}
+
+  return NextResponse.json({ signedOut: true, sessionsRevoked: revoked });
+});
 
 /**
  * One audit row per authentication event, in the protected platform log.

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
@@ -8,7 +7,7 @@ import { refuseOwnerLockout } from '@/services/platform/identity';
 import { isPlatformStaff } from '@/lib/auth/credentials';
 import { dropMonitoringCredential } from '@/services/identity/platformCredentials';
 import { platformAudit } from '@/lib/security/audit';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 const updateSchema = z
   .object({
@@ -30,9 +29,9 @@ function refuseSelfLockout(actorId: string, targetId: string) {
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const PATCH = bareRoute(
+  '/api/v1/platform/users/[userId]',
+  async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
     const body = updateSchema.parse(await req.json());
@@ -87,20 +86,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
       await dropMonitoringCredential(current.id, 'ROLE_CHANGED');
     }
 
-    return NextResponse.json({ user }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]' });
-  }
-}
+    return NextResponse.json({ user });
+  },
+);
 
 /**
  * Soft delete: the row keeps existing so audit trails and record attributions
  * stay resolvable, but every session is revoked and every workspace membership
  * suspended, so the account cannot be used or invited back by accident.
  */
-export async function DELETE(req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const DELETE = bareRoute(
+  '/api/v1/platform/users/[userId]',
+  async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
     refuseSelfLockout(ctx.platformUserId, userId);
@@ -143,8 +140,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ userI
       );
     });
 
-    return NextResponse.json({ deleted: true, id: current.id }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]' });
-  }
-}
+    return NextResponse.json({ deleted: true, id: current.id });
+  },
+);

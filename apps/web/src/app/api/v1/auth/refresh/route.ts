@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { createHash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
@@ -13,7 +12,7 @@ import {
   type SessionPurpose,
 } from '@/lib/auth/session';
 import { credentialRefusal } from '@/lib/auth/credentials';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 /**
  * Rotates the session token.
@@ -29,116 +28,111 @@ import { toResponse } from '@/lib/api/handler';
  * have to sign in again. That is the standard refresh-token-rotation response
  * and it is deliberately unforgiving.
  */
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const jar = await cookies();
-    const token = jar.get(SESSION_COOKIE)?.value;
-    if (!token) throw Unauthorized();
+export const POST = bareRoute('/api/v1/auth/refresh', async (req, requestId) => {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) throw Unauthorized();
 
-    const tokenHash = createHash('sha256').update(token).digest('hex');
-    const session = await prisma.platformSession.findUnique({
-      where: { tokenHash },
-      // Only what the checks below read. `true` would pull the credential
-      // columns into a rotation that has no use for them.
-      // The credential *version* columns are read so rotation can refuse a
-      // session whose credential changed; no hash is compared here.
-      include: {
-        platformUser: {
-          select: {
-            id: true,
-            status: true,
-            deletedAt: true,
-            platformRole: true,
-            passwordVersion: true,
-            monitoringPasswordHash: true,
-            monitoringPasswordVersion: true,
-          },
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const session = await prisma.platformSession.findUnique({
+    where: { tokenHash },
+    // Only what the checks below read. `true` would pull the credential
+    // columns into a rotation that has no use for them.
+    // The credential *version* columns are read so rotation can refuse a
+    // session whose credential changed; no hash is compared here.
+    include: {
+      platformUser: {
+        select: {
+          id: true,
+          status: true,
+          deletedAt: true,
+          platformRole: true,
+          passwordVersion: true,
+          monitoringPasswordHash: true,
+          monitoringPasswordVersion: true,
         },
       },
-    });
-    if (!session) throw Unauthorized('Your session has expired.');
+    },
+  });
+  if (!session) throw Unauthorized('Your session has expired.');
 
-    if (session.revokedAt) {
-      // A token that was already rotated away is being presented again.
-      await revokeAllPlatformSessions(session.platformUserId, 'ROTATED_TOKEN_REPLAYED');
-      await prisma.platformAuditEvent
-        .create({
-          data: {
-            tenantId: session.activeTenantId,
-            actorUserId: session.platformUserId,
-            event: 'LOGIN_FAILED',
-            objectType: 'platform_session',
-            objectId: session.id,
-            ipAddress: clientIp(req),
-            userAgent: req.headers.get('user-agent'),
-            requestId,
-            metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
-          },
-        })
-        .catch(() => {});
-      jar.delete(SESSION_COOKIE);
-      throw Unauthorized('Your session has expired.');
-    }
+  if (session.revokedAt) {
+    // A token that was already rotated away is being presented again.
+    await revokeAllPlatformSessions(session.platformUserId, 'ROTATED_TOKEN_REPLAYED');
+    await prisma.platformAuditEvent
+      .create({
+        data: {
+          tenantId: session.activeTenantId,
+          actorUserId: session.platformUserId,
+          event: 'LOGIN_FAILED',
+          objectType: 'platform_session',
+          objectId: session.id,
+          ipAddress: clientIp(req),
+          userAgent: req.headers.get('user-agent'),
+          requestId,
+          metadata: { reason: 'ROTATED_TOKEN_REPLAYED' },
+        },
+      })
+      .catch(() => {});
+    jar.delete(SESSION_COOKIE);
+    throw Unauthorized('Your session has expired.');
+  }
 
-    const now = new Date();
-    if (session.expiresAt < now) throw Unauthorized('Your session has expired.');
+  const now = new Date();
+  if (session.expiresAt < now) throw Unauthorized('Your session has expired.');
 
-    const idleCutoff = new Date(now.getTime() - (await getNumericSetting('sessionIdleTimeoutMinutes')) * 60_000);
-    if (session.lastSeenAt < idleCutoff) {
-      await prisma.platformSession.update({
-        where: { id: session.id },
-        data: { revokedAt: now, revokedReason: 'IDLE_TIMEOUT' },
-      });
-      throw Unauthorized('Your session timed out.');
-    }
-
-    const user = session.platformUser;
-    if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
-
-    /**
-     * Rotation carries the session exactly as it was, or does not happen.
-     *
-     * This used to mint the replacement with the default purpose, FULL, whatever
-     * it replaced — so an MFA-enrolment grant, which reaches only the enrolment
-     * endpoints and has never satisfied a second factor, rotated into an ordinary
-     * signed-in session. An enrolment grant is not refreshable: it lives ten
-     * minutes and ends at enrolment. Every other session keeps its purpose, its
-     * credential and that credential's version, and one whose credential has
-     * since changed or been revoked is refused rather than rotated.
-     */
-    if (session.purpose === 'MFA_ENROLMENT') {
-      throw Unauthorized('Finish setting up two-factor authentication before continuing.');
-    }
-    const credentialProblem = credentialRefusal(session, user);
-    if (credentialProblem) {
-      await prisma.platformSession.update({
-        where: { id: session.id },
-        data: { revokedAt: now, revokedReason: credentialProblem },
-      });
-      jar.delete(SESSION_COOKIE);
-      throw Unauthorized('Sign in again to continue.');
-    }
-
-    // New token first, then revoke the old one: if issuing fails, the caller
-    // still holds a working session rather than being signed out by a fault.
-    const rotated = await createPlatformSession({
-      platformUserId: user.id,
-      activeTenantId: session.activeTenantId,
-      ip: clientIp(req),
-      userAgent: req.headers.get('user-agent'),
-      mfaSatisfied: session.mfaSatisfied,
-      purpose: session.purpose as SessionPurpose,
-      credentialPurpose: session.credentialPurpose,
-      credentialVersion: session.credentialVersion,
-    });
+  const idleCutoff = new Date(now.getTime() - (await getNumericSetting('sessionIdleTimeoutMinutes')) * 60_000);
+  if (session.lastSeenAt < idleCutoff) {
     await prisma.platformSession.update({
       where: { id: session.id },
-      data: { revokedAt: new Date(), revokedReason: 'ROTATED' },
+      data: { revokedAt: now, revokedReason: 'IDLE_TIMEOUT' },
     });
-
-    return NextResponse.json({ expiresAt: rotated.expiresAt }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/auth/refresh' });
+    throw Unauthorized('Your session timed out.');
   }
-}
+
+  const user = session.platformUser;
+  if (!user || user.deletedAt || user.status !== 'ACTIVE') throw Unauthorized();
+
+  /**
+   * Rotation carries the session exactly as it was, or does not happen.
+   *
+   * This used to mint the replacement with the default purpose, FULL, whatever
+   * it replaced — so an MFA-enrolment grant, which reaches only the enrolment
+   * endpoints and has never satisfied a second factor, rotated into an ordinary
+   * signed-in session. An enrolment grant is not refreshable: it lives ten
+   * minutes and ends at enrolment. Every other session keeps its purpose, its
+   * credential and that credential's version, and one whose credential has
+   * since changed or been revoked is refused rather than rotated.
+   */
+  if (session.purpose === 'MFA_ENROLMENT') {
+    throw Unauthorized('Finish setting up two-factor authentication before continuing.');
+  }
+  const credentialProblem = credentialRefusal(session, user);
+  if (credentialProblem) {
+    await prisma.platformSession.update({
+      where: { id: session.id },
+      data: { revokedAt: now, revokedReason: credentialProblem },
+    });
+    jar.delete(SESSION_COOKIE);
+    throw Unauthorized('Sign in again to continue.');
+  }
+
+  // New token first, then revoke the old one: if issuing fails, the caller
+  // still holds a working session rather than being signed out by a fault.
+  const rotated = await createPlatformSession({
+    platformUserId: user.id,
+    activeTenantId: session.activeTenantId,
+    ip: clientIp(req),
+    userAgent: req.headers.get('user-agent'),
+    mfaSatisfied: session.mfaSatisfied,
+    purpose: session.purpose as SessionPurpose,
+    credentialPurpose: session.credentialPurpose,
+    credentialVersion: session.credentialVersion,
+  });
+  await prisma.platformSession.update({
+    where: { id: session.id },
+    data: { revokedAt: new Date(), revokedReason: 'ROTATED' },
+  });
+
+  return NextResponse.json({ expiresAt: rotated.expiresAt });
+});

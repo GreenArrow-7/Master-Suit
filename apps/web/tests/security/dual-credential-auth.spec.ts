@@ -282,6 +282,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status).toBe(403);
     const row = await prisma.platformUser.findUnique({
@@ -305,6 +306,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status).toBe(409);
   });
@@ -330,6 +332,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(409);
     const row = await prisma.platformUser.findUnique({
@@ -354,6 +357,7 @@ describe('setting the monitoring password', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -379,6 +383,7 @@ describe('setting the monitoring password', () => {
     const admin = await signIn(ownerEmail, PASSWORD_A);
     const res = await credentialsGet(
       request('http://localhost/api/v1/platform/credentials', 'GET', undefined, admin.cookie),
+      { params: Promise.resolve({}) },
     );
     const text = await res.text();
     expect(res.status).toBe(200);
@@ -503,10 +508,13 @@ describe('enrolment-only sessions and invalid credential data', () => {
     ).rejects.toMatchObject({ status: 401 });
     const creds = await credentialsGet(
       request('http://localhost/api/v1/platform/credentials', 'GET', undefined, cookie),
+      { params: Promise.resolve({}) },
     );
     expect(creds.status).toBe(401);
     jar.set(SESSION_COOKIE, res.token!);
-    const rotated = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, cookie));
+    const rotated = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, cookie), {
+      params: Promise.resolve({}),
+    });
     expect(rotated.status).toBe(401);
   });
 
@@ -564,6 +572,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(viaConsole.status).toBe(409);
 
@@ -596,6 +605,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
     });
     const viaReset = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: PASSWORD_B }),
+      { params: Promise.resolve({}) },
     );
     expect(viaReset.status).toBe(409);
 
@@ -620,6 +630,7 @@ describe('enrolment-only sessions and invalid credential data', () => {
           token,
           newPassword: `Brand-new-${suffix}-Pass9`,
         }),
+        { params: Promise.resolve({}) },
       );
       expect(res.status).toBe(401);
     }
@@ -785,6 +796,7 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
             },
             monitorCookie,
           ),
+          { params: Promise.resolve({}) },
         ),
       ],
       [
@@ -817,7 +829,9 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
       ],
       [
         'credentials read',
-        credentialsGet(request('http://localhost/api/v1/platform/credentials', 'GET', undefined, monitorCookie)),
+        credentialsGet(request('http://localhost/api/v1/platform/credentials', 'GET', undefined, monitorCookie), {
+          params: Promise.resolve({}),
+        }),
       ],
       [
         'credentials write',
@@ -832,16 +846,20 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
             },
             monitorCookie,
           ),
+          { params: Promise.resolve({}) },
         ),
       ],
       [
         'two-factor',
-        enroll2fa(request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, monitorCookie)),
+        enroll2fa(request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, monitorCookie), {
+          params: Promise.resolve({}),
+        }),
       ],
       [
         'membership switch',
         switchWorkspace(
           request('http://localhost/api/v1/auth/workspaces', 'POST', { workspaceId: granted.id }, monitorCookie),
+          { params: Promise.resolve({}) },
         ),
       ],
     ];
@@ -1009,6 +1027,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -1046,6 +1065,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(back.status).toBe(200);
   });
@@ -1104,6 +1124,7 @@ describe('changing and revoking credentials', () => {
         },
         admin.cookie,
       ),
+      { params: Promise.resolve({}) },
     );
     expect(restored.status).toBe(200);
   });
@@ -1178,7 +1199,9 @@ describe('separate sessions keep their own mode', () => {
   it('refreshing a monitoring session keeps it a monitoring session', async () => {
     const monitor = await signIn(ownerEmail, PASSWORD_B);
     jar.set(SESSION_COOKIE, monitor.token);
-    const res = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, monitor.cookie));
+    const res = await refresh(request('http://localhost/api/v1/auth/refresh', 'POST', undefined, monitor.cookie), {
+      params: Promise.resolve({}),
+    });
     expect(res.status).toBe(200);
     const rotated = jar.get(SESSION_COOKIE)!;
     expect(rotated).not.toBe(monitor.token);
@@ -1255,6 +1278,7 @@ describe('an emailed reset of the administration password', () => {
     });
     const res = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: NEW_A }),
+      { params: Promise.resolve({}) },
     );
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -1268,6 +1292,7 @@ describe('an emailed reset of the administration password', () => {
     // Single use.
     const again = await resetPasswordRoute(
       request('http://localhost/api/v1/auth/reset-password', 'POST', { token, newPassword: `${NEW_A}x` }),
+      { params: Promise.resolve({}) },
     );
     expect(again.status).toBe(401);
 
