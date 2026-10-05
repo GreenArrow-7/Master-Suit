@@ -28,6 +28,13 @@ import { describe, expect, it } from 'vitest';
 const web = path.join(__dirname, '..', '..');
 const release = readFileSync(path.join(web, 'scripts', 'release.sh'), 'utf8');
 
+function migrateService(file: string) {
+  const compose = readFileSync(path.join(web, 'infra', file), 'utf8');
+  const service = compose.slice(compose.indexOf('\n  migrate:'));
+  const nextService = service.slice(1).search(/\n {2}\w[\w-]*:/);
+  return nextService === -1 ? service : service.slice(0, nextService + 1);
+}
+
 describe('the migration runner cannot be stale', () => {
   it('builds migrate before running it', () => {
     const build = release.indexOf('--profile tools build migrate');
@@ -74,11 +81,20 @@ describe('the assumption behind the fix still holds', () => {
    * comment explaining it would be wrong. This is the tripwire for that.
    */
   it('migrate is still declared behind the tools profile', () => {
-    const compose = readFileSync(path.join(web, 'infra', 'docker-compose.azure.yml'), 'utf8');
-    const service = compose.slice(compose.indexOf('\n  migrate:'));
-    const nextService = service.slice(1).search(/\n {2}\w[\w-]*:/);
-    const block = nextService === -1 ? service : service.slice(0, nextService + 1);
-    expect(block).toMatch(/profiles:\s*\['tools'\]/);
+    expect(migrateService('docker-compose.azure.yml')).toMatch(/profiles:\s*\['tools'\]/);
+  });
+
+  /**
+   * The runner is built on the production VM, next to the running production
+   * and staging. Built from the `build` stage it ran `next build` on a 4 GB heap,
+   * and on 2026-10-03 that failed mid-preflight. It needs only what `deps` has.
+   */
+  it('the runner is built without `next build`', () => {
+    const dockerfile = readFileSync(path.join(web, 'infra', 'Dockerfile'), 'utf8');
+    expect(dockerfile).toMatch(/^FROM deps AS migrate\b/m);
+    for (const file of ['docker-compose.azure.yml', 'docker-compose.staging.yml']) {
+      expect(migrateService(file), file).toMatch(/target: migrate\b/);
+    }
   });
 
   /**

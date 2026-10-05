@@ -163,8 +163,9 @@ dc up -d postgres redis
 dc run --rm migrate
 ```
 
-`migrate` is a one-off container built from the Dockerfile's `build` stage: the
-production image contains only the standalone server, with no Prisma CLI in it.
+`migrate` is a one-off container built from the Dockerfile's `migrate` stage
+(node_modules, `prisma/` and `scripts/`, no `next build`): the production image
+contains only the standalone server, with no Prisma CLI in it.
 It runs `scripts/check-staging-first.mjs` and then `prisma migrate deploy` as the
 owning role.
 

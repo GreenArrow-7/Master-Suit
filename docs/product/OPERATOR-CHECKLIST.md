@@ -39,7 +39,7 @@ AUDIT() { $DC --profile tools run --rm --no-deps --entrypoint node -v /tmp/rc-au
 - The production overlay blanks the owner URL in `web` and `worker`, so an audit there exits.
 - Their app role is filtered by row-level security. Measured locally, it counts 0 bookings where the owner counts 1.
 - `migrate` is the only service given `.env.production` in full.
-- At the deployed commit it builds from the `build` stage, which has `WORKDIR /app`, the full source and `node_modules`, `pg` included. Only `rc/` has to be mounted.
+- At the deployed commit it builds from the `migrate` stage, which has `WORKDIR /app`, `node_modules` (`pg` included), `prisma/` and `scripts/`. Only `rc/` has to be mounted.
 - If the host has no `migrate` image yet, the first `run` builds one from the checkout. That reads no data.
 
 **What protects the result.** Every audit opens one read-only, repeatable-read transaction and prints the role it runs as. It then **exits 3 without printing any count** unless that role is superuser or bypasses row security. It also sets `row_security = off`, so a restricted role gets an error rather than a filtered number.
