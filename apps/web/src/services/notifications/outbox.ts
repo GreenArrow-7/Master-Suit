@@ -76,20 +76,23 @@ export interface OutboxNotice {
  * decision.
  */
 export async function enqueueNotice(tx: TxClient, tenantId: string, notice: OutboxNotice): Promise<void> {
-  await tx.$executeRaw`
-    INSERT INTO "NotificationOutbox" (
-      "id", "tenantId", "eventKey", "userId", "kind", "title", "body",
-      "objectType", "recordId", "priority", "status", "createdAt", "updatedAt"
-    )
-    VALUES (
-      gen_random_uuid()::text, ${tenantId}, ${notice.eventKey}, ${notice.userId},
-      ${notice.kind}, ${notice.title}, ${notice.body ?? null},
-      ${notice.objectType ?? null}, ${notice.recordId ?? null},
-      ${(notice.priority ?? 'MEDIUM') as string}::"Priority", 'PENDING'::"OutboxStatus",
-      NOW(), NOW()
-    )
-    ON CONFLICT ("tenantId", "eventKey") DO NOTHING
-  `;
+  // skipDuplicates is ON CONFLICT DO NOTHING: the second decision is the same decision.
+  await tx.notificationOutbox.createMany({
+    data: [
+      {
+        tenantId,
+        eventKey: notice.eventKey,
+        userId: notice.userId,
+        kind: notice.kind,
+        title: notice.title,
+        body: notice.body ?? null,
+        objectType: notice.objectType ?? null,
+        recordId: notice.recordId ?? null,
+        priority: notice.priority ?? 'MEDIUM',
+      },
+    ],
+    skipDuplicates: true,
+  });
 }
 
 /**
@@ -100,10 +103,8 @@ export async function enqueueNotice(tx: TxClient, tenantId: string, notice: Outb
  * is a thing that happened, and deleting it would make the record lie.
  */
 export async function withdrawNotice(tx: TxClient, tenantId: string, eventKey: string): Promise<number> {
-  return tx.$executeRaw`
-    DELETE FROM "NotificationOutbox"
-     WHERE "tenantId" = ${tenantId} AND "eventKey" = ${eventKey} AND "status" = 'PENDING'
-  `;
+  const { count } = await tx.notificationOutbox.deleteMany({ where: { tenantId, eventKey, status: 'PENDING' } });
+  return count;
 }
 
 /** How long a worker may hold a row before another may take it. */
@@ -176,13 +177,11 @@ export async function deliverOutbox(
 
   for (const row of claimed) {
     if (row.attempts > MAX_ATTEMPTS) {
-      await withTx(
-        row.tenantId,
-        (tx) =>
-          tx.$executeRaw`
-          UPDATE "NotificationOutbox" SET "status" = 'ABANDONED', "updatedAt" = ${now}
-           WHERE "id" = ${row.id} AND "tenantId" = ${row.tenantId}
-        `,
+      await withTx(row.tenantId, (tx) =>
+        tx.notificationOutbox.updateMany({
+          where: { id: row.id, tenantId: row.tenantId },
+          data: { status: 'ABANDONED', updatedAt: now },
+        }),
       );
       abandoned += 1;
       logger.error({ tenantId: row.tenantId, eventKey: row.eventKey }, 'notification abandoned after repeated failure');
@@ -210,12 +209,10 @@ export async function deliverOutbox(
             channels: ['in_app'],
           },
         });
-        await tx.$executeRaw`
-          UPDATE "NotificationOutbox"
-             SET "status" = 'DELIVERED', "deliveredAt" = ${now}, "claimedBy" = NULL,
-                 "claimedUntil" = NULL, "updatedAt" = ${now}
-           WHERE "id" = ${row.id} AND "tenantId" = ${row.tenantId} AND "status" = 'PENDING'
-        `;
+        await tx.notificationOutbox.updateMany({
+          where: { id: row.id, tenantId: row.tenantId, status: 'PENDING' },
+          data: { status: 'DELIVERED', deliveredAt: now, claimedBy: null, claimedUntil: null, updatedAt: now },
+        });
       });
       delivered += 1;
     } catch (err) {
@@ -223,15 +220,11 @@ export async function deliverOutbox(
       // Release the lease so the next sweep retries promptly rather than waiting
       // it out. If *this* write also fails, the lease simply expires — which is
       // the property the lease exists for.
-      await withTx(
-        row.tenantId,
-        (tx) =>
-          tx.$executeRaw`
-          UPDATE "NotificationOutbox"
-             SET "claimedUntil" = NULL, "claimedBy" = NULL,
-                 "lastError" = ${String(err).slice(0, 500)}, "updatedAt" = ${now}
-           WHERE "id" = ${row.id} AND "tenantId" = ${row.tenantId}
-        `,
+      await withTx(row.tenantId, (tx) =>
+        tx.notificationOutbox.updateMany({
+          where: { id: row.id, tenantId: row.tenantId },
+          data: { claimedUntil: null, claimedBy: null, lastError: String(err).slice(0, 500), updatedAt: now },
+        }),
       ).catch(() => undefined);
       logger.warn({ err, tenantId: row.tenantId, eventKey: row.eventKey }, 'notification delivery failed; will retry');
     }
