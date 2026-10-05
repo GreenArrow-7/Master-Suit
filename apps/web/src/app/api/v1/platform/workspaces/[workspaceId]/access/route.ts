@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
@@ -46,7 +45,7 @@ async function workspaceOr404(workspaceId: string) {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -94,7 +93,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -123,7 +122,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ workspac
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;

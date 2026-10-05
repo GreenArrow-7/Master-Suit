@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import type { PlatformCtx } from '@/lib/auth/session';
@@ -34,7 +33,7 @@ export async function requireMonitoringPage(): Promise<PlatformCtx> {
   try {
     return await requirePlatformSupport(
       new Request('http://internal/monitoring', { headers: await headers() }),
-      ulid(),
+      crypto.randomUUID(),
     );
   } catch (error) {
     // 401: no session, or an expired one. Signing in is the answer.

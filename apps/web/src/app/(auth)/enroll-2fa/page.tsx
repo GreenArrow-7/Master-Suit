@@ -1,4 +1,3 @@
-import { ulid } from 'ulid';
 import { headers } from 'next/headers';
 import AuthShell from '@/components/auth/AuthShell';
 import { resolvePlatformCtx } from '@/lib/auth/session';
@@ -23,10 +22,11 @@ export const metadata = { title: 'Set up your authenticator' };
 export default async function EnrolTwoFactorPage() {
   let requiresPassword = true;
   try {
-    const ctx = await resolvePlatformCtx(new Request('http://internal/', { headers: await headers() }), ulid(), [
-      'FULL',
-      'MFA_ENROLMENT',
-    ]);
+    const ctx = await resolvePlatformCtx(
+      new Request('http://internal/', { headers: await headers() }),
+      crypto.randomUUID(),
+      ['FULL', 'MFA_ENROLMENT'],
+    );
     requiresPassword = ctx.purpose === 'FULL';
   } catch {
     /**

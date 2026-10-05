@@ -1,6 +1,5 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
 import { readUpload } from '@/lib/api/read-body';
@@ -38,7 +37,7 @@ export const POST = route(
     const scan = await scanBuffer(bytes);
     let storageKey = '';
     if (scan.verdict === 'CLEAN') {
-      storageKey = `documents/t-${ctx.tenantId}/lead-${lead.id}/${ulid()}-${safeName}`;
+      storageKey = `documents/t-${ctx.tenantId}/lead-${lead.id}/${crypto.randomUUID()}-${safeName}`;
       await putObject(storageKey, bytes, contentType);
     }
 

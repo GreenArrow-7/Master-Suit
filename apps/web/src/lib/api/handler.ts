@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { ulid } from 'ulid';
 import { z, ZodError, type ZodTypeAny } from 'zod';
 import { AppError, Conflict, Forbidden, Invalid, MethodNotAllowedError, NotFound, Unauthorized } from '../errors';
 import { logger } from '../logger';
@@ -86,7 +85,7 @@ export function route<
   B = unknown extends z.infer<BS> ? unknown : z.infer<BS>,
 >(spec: RouteSpec<PS, QS, BS>, handler: (args: HandlerArgs<P, Q, B>) => Promise<unknown>) {
   return async (req: Request, context: { params: Promise<Record<string, string>> }) => {
-    const requestId = req.headers.get('x-request-id') ?? ulid();
+    const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
     const started = Date.now();
     let ctx: Ctx | null = null;
 
@@ -352,7 +351,7 @@ export function bareRoute<C = { params: Promise<Record<string, string>> }>(
   fn: (req: Request, requestId: string, context: C) => Promise<Response>,
 ) {
   return async (req: Request, context: C) => {
-    const requestId = req.headers.get('x-request-id') ?? ulid();
+    const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
     try {
       const res = await fn(req, requestId, context);
       if (!res.headers.has('x-request-id')) res.headers.set('x-request-id', requestId);

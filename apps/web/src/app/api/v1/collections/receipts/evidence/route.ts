@@ -1,5 +1,4 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
-import { ulid } from 'ulid';
 import { assertClean, scanBuffer } from '@/lib/antivirus';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -45,7 +44,7 @@ export const POST = route(
     assertClean(await scanBuffer(bytes));
 
     const safeName = file.name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'evidence';
-    const storedKey = `${evidencePrefix(ctx.tenantId, booking.id)}${ulid()}-${safeName}`;
+    const storedKey = `${evidencePrefix(ctx.tenantId, booking.id)}${crypto.randomUUID()}-${safeName}`;
     await putObject(storedKey, bytes, kind.type);
 
     // Stored but not recorded: take the object back out, so a failed upload

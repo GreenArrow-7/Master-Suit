@@ -1,7 +1,6 @@
 import { cache } from 'react';
 import { headers } from 'next/headers';
 import { forbidden } from 'next/navigation';
-import { ulid } from 'ulid';
 import { resolveCtx } from '@/lib/auth/session';
 import { requireWorkspace } from '@/lib/workspace';
 import { assertPermission, type Action, type Ctx } from '@/lib/security/rbac';
@@ -58,7 +57,7 @@ export const SELF_SERVICE = Symbol('self-service');
  * context can never survive into another user's request.
  */
 export const requestCtx = cache(async (): Promise<Ctx> =>
-  resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid()),
+  resolveCtx(new Request('http://internal/', { headers: await headers() }), crypto.randomUUID()),
 );
 
 /**

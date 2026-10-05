@@ -1,5 +1,4 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -120,7 +119,7 @@ export const PUT = route(
     assertClean(await scanBuffer(bytes));
 
     const durationSecs = Number(form.get('durationSecs') ?? 0) || null;
-    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${ulid()}`;
+    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${crypto.randomUUID()}`;
     await putObject(storageKey, bytes, mimeType);
 
     const recording = await prisma.recording.upsert({

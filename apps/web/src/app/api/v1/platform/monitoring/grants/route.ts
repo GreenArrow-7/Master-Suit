@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
@@ -69,7 +68,7 @@ async function subjectOr404(platformUserId: string) {
 }
 
 export async function POST(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const input = body.parse(await req.json());
@@ -163,7 +162,7 @@ export async function POST(req: Request) {
  * is the property that makes this a revocation rather than a note to self.
  */
 export async function DELETE(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const input = revokeBody.parse(await req.json());
@@ -198,7 +197,7 @@ export async function DELETE(req: Request) {
 
 /** What the console needs to render the form without hardcoding the same numbers. */
 export async function GET(req: Request) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     await requirePlatformOwner(req, requestId);
     return NextResponse.json(

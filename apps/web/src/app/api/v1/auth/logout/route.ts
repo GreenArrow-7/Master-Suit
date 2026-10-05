@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, revokeSession, resolveCtx } from '@/lib/auth/session';
 import { audit } from '@/lib/security/audit';
@@ -9,7 +8,7 @@ import { audit } from '@/lib/security/audit';
  * able to log out even if resolveCtx would otherwise reject it (e.g. idle timeout).
  */
 export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
 
   if (token) {

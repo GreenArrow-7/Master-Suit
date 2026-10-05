@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -67,7 +66,7 @@ const bodySchema = z.object({
 const GENERIC = 'That username and password combination did not work.';
 
 export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
+  const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const ip = clientIp(req) ?? 'unknown';
   const ua = req.headers.get('user-agent');
 

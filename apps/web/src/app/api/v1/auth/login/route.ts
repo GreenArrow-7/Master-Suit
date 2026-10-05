@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { isPrivilegedPlatformRole, isPlatformServiceRole } from '@/lib/auth/platform-policy';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import type { PlatformUser } from '@prisma/client';
 import { prisma } from '@/lib/db';
@@ -68,7 +67,7 @@ type RequestInfo = { requestId: string; ip: string; userAgent: string | null };
  */
 export async function POST(req: Request) {
   const info: RequestInfo = {
-    requestId: req.headers.get('x-request-id') ?? ulid(),
+    requestId: req.headers.get('x-request-id') ?? crypto.randomUUID(),
     ip: clientIp(req) ?? 'unknown',
     userAgent: req.headers.get('user-agent'),
   };
