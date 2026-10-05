@@ -18,11 +18,12 @@ import { GET as listUsers } from '@/app/api/v1/workspaces/[workspaceSlug]/identi
 import { GET as listRoles } from '@/app/api/v1/workspaces/[workspaceSlug]/roles/[action]/route';
 import { GET as selfStatus } from '@/app/api/v1/workspaces/[workspaceSlug]/identity/self/[action]/route';
 import { GET as hrRead } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/[resource]/route';
+import { POST as hrAction } from '@/app/api/v1/workspaces/[workspaceSlug]/hr/actions/[action]/route';
 import { GET as salesLeads } from '@/app/api/v1/workspaces/[workspaceSlug]/sales/leads/route';
 import { GET as leadsList } from '@/app/api/v1/leads/route';
 import { GET as opportunitiesList } from '@/app/api/v1/opportunities/route';
 import { createSessionToken } from '../helpers/session';
-import { get } from '../helpers/request';
+import { get, post } from '../helpers/request';
 import type { Grants } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
@@ -126,6 +127,37 @@ describe('product modules are gated by entitlement', () => {
     const sales = await get(salesLeads, salesPath(both), both.cookie, { workspaceSlug: both.slug });
     expect(hr.status).toBe(200);
     expect(sales.status).toBe(200);
+  });
+});
+
+describe('check-in setup is open to every workspace; the rest of HR is not', () => {
+  const action = (w: Workspace, name: string, body: Record<string, unknown>) =>
+    post(hrAction, `/api/v1/workspaces/${w.slug}/hr/actions/${name}`, body, w.cookie, {
+      workspaceSlug: w.slug,
+      action: name,
+    });
+
+  it('a Sales-only workspace reads its work locations', async () => {
+    const res = await get(hrRead, `/api/v1/workspaces/${salesOnly.slug}/hr/work-locations`, salesOnly.cookie, {
+      workspaceSlug: salesOnly.slug,
+      resource: 'work-locations',
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('a Sales-only workspace sets the check-out rules, and only those', async () => {
+    const res = await action(salesOnly, 'settings-update', { checkoutRequiresLeadWork: true, faceMatchThreshold: 0.5 });
+    expect(res.status).toBe(200);
+    const stored = await prisma.organizationSetting.findUnique({
+      where: { tenantId: salesOnly.id },
+      select: { hrPolicy: true },
+    });
+    expect(stored?.hrPolicy).toEqual({ checkoutRequiresLeadWork: true });
+  });
+
+  it('a Sales-only workspace is still refused every other HR action', async () => {
+    const res = await action(salesOnly, 'leave-apply', {});
+    expect(res.status).toBe(403);
   });
 });
 

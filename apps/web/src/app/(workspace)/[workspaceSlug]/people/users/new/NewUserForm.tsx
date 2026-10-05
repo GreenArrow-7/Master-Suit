@@ -134,7 +134,7 @@ export default function NewUserForm({
         </p>
         <p className="lf-users__once">{created.note}</p>
         <div className="lf-face__actions">
-          <a className="lf-btn" href={`/${workspaceSlug}/people/employees/${created.employeeId}/face`}>
+          <a className="lf-btn" href={`/${workspaceSlug}/admin/work-locations/${created.employeeId}/face`}>
             Enrol their face
           </a>
           <a className="lf-btn lf-btn--secondary" href={usersHref}>

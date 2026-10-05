@@ -130,6 +130,8 @@ const WORKSPACE_LEVEL = [
   'profile/security',
   'profile/role',
   'admin/users',
+  'admin/users/new',
+  'admin/work-locations',
   'admin/roles',
   'admin/settings',
   'admin/audit',

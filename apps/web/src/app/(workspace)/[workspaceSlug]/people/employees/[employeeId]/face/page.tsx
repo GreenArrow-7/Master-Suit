@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { resolveWorkspacePage } from '@/lib/workspace-page';
+import { hasModuleEntitlement } from '@/lib/security/entitlements';
+import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { isHrAdmin } from '@/services/hr/access';
 import { getHrPolicy } from '@/services/hr/settings';
 import { Forbidden } from '@/lib/errors';
@@ -30,7 +32,10 @@ const stamp = (value: Date) =>
  */
 export default async function Page({ params }: { params: Promise<{ workspaceSlug: string; employeeId: string }> }) {
   const { workspaceSlug, employeeId } = await params;
-  const { ctx } = await resolveWorkspacePage(workspaceSlug, { module: 'HRMS', permission: ['employee', 'EDIT'] });
+  const { ctx } = await resolveWorkspacePage(workspaceSlug, {
+    module: PRODUCT_MODULE_KEYS,
+    permission: ['employee', 'EDIT'],
+  });
   if (!isHrAdmin(ctx)) throw Forbidden('Only HR and administrators can run face enrolment.');
 
   const employee = await prisma.employeeProfile.findFirst({
@@ -47,7 +52,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
   });
   if (!employee) notFound();
 
-  const [templates, consent, policy, lastVerification] = await Promise.all([
+  const [templates, consent, policy, lastVerification, hrms] = await Promise.all([
     // Count only: never select `embedding`.
     prisma.hrFaceTemplate.aggregate({
       where: { tenantId: ctx.tenantId, employeeId: employee.id },
@@ -67,6 +72,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
       orderBy: { serverTime: 'desc' },
       select: { serverTime: true, result: true },
     }),
+    hasModuleEntitlement(ctx.tenantId, 'HRMS'),
   ]);
 
   const enrolledCount = templates._count._all;
@@ -127,7 +133,7 @@ export default async function Page({ params }: { params: Promise<{ workspaceSlug
         consented={Boolean(consent?.grantedAt)}
         enrolled={enrolledCount > 0}
         samplesRequired={policy.faceSamplesRequired}
-        activityHref={`/${workspaceSlug}/people/face-activity?employee=${employee.id}`}
+        activityHref={hrms ? `/${workspaceSlug}/people/face-activity?employee=${employee.id}` : undefined}
       />
     </div>
   );

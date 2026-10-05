@@ -41,7 +41,8 @@ export default function FaceEnrolmentConsole({
   consented: boolean;
   enrolled: boolean;
   samplesRequired: number;
-  activityHref: string;
+  /** Omitted where the activity screen is out of reach (no HRMS). */
+  activityHref?: string;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -209,9 +210,11 @@ export default function FaceEnrolmentConsole({
             Reset enrollment
           </button>
         )}
-        <Link className="lf-btn lf-btn--secondary" href={activityHref}>
-          View recognition activity
-        </Link>
+        {activityHref && (
+          <Link className="lf-btn lf-btn--secondary" href={activityHref}>
+            View recognition activity
+          </Link>
+        )}
       </div>
 
       {!consented && (
