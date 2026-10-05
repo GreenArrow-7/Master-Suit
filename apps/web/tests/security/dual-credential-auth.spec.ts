@@ -728,11 +728,15 @@ describe('a monitoring session for an OWNER who is also a workspace admin and ho
     const member = await callLogin({ email: memberEmail, password: OTHER_PASSWORD });
     const allowed = await exportLeads(
       request('http://localhost/api/v1/leads/export', 'GET', undefined, cookieOf(member.token!)),
+      { params: Promise.resolve({}) },
     );
     expect(allowed.status).toBe(200);
     expect(await allowed.text()).toContain(LEAD_NAME);
 
-    const refused = await exportLeads(request('http://localhost/api/v1/leads/export', 'GET', undefined, monitorCookie));
+    const refused = await exportLeads(
+      request('http://localhost/api/v1/leads/export', 'GET', undefined, monitorCookie),
+      { params: Promise.resolve({}) },
+    );
     expect(refused.status).toBe(403);
     expect(await refused.text()).not.toContain(LEAD_NAME);
   });

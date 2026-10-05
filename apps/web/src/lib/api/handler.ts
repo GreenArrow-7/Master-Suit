@@ -36,6 +36,18 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
    * `module` is still declared, for audit and rate-limit keys.
    */
   selfService?: boolean;
+  /**
+   * A browser session only: API keys and service tokens are refused. For the
+   * routes that hand out files (HR documents, payslips, the bank file, CSV
+   * exports) and the uploads beside them, which no key was ever meant to reach.
+   */
+  sessionOnly?: boolean;
+  /**
+   * The handler asserts the permission itself, because it depends on the record
+   * or the resource: a payslip is "your own, or payroll:VIEW for anyone else's",
+   * an export's permission is its resource's. Declared so the omission is seen.
+   */
+  permissionInHandler?: boolean;
   params?: PS;
   query?: QS;
   body?: BS;
@@ -81,7 +93,7 @@ export function route<
     try {
       // 1. Authenticate ────────────────────────────────────────────────────────
       if (!spec.anonymous) {
-        const bearer = req.headers.get('authorization');
+        const bearer = spec.sessionOnly ? null : req.headers.get('authorization');
         // Three credentials, told apart by the token's own prefix rather than by
         // a separate header, so a caller cannot pick which verifier examines its
         // token. `lf_svc_` is the cross-tenant platform service identity; a
@@ -141,7 +153,7 @@ export function route<
          * existing self-service routes (identity/self, hr/self) predate that
          * decision and are left as they were.
          */
-        if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
+        if (!spec.selfService && !spec.permissionInHandler) assertPermission(ctx, spec.module, spec.action);
         if (spec.sensitive) await assertSensitiveAccess(ctx, spec.sensitive);
       } else if (!spec.anonymous) throw Unauthorized();
 

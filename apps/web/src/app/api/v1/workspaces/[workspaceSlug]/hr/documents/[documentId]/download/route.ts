@@ -1,9 +1,8 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
+import { requireWorkspace } from '@/lib/workspace';
 import { downloadDocument } from '@/services/hr/documents';
-import { toResponse } from '@/lib/api/handler';
 
 /**
  * The only route to a stored document's bytes.
@@ -13,17 +12,17 @@ import { toResponse } from '@/lib/api/handler';
  * record of who did. Streaming through here keeps the permission check and the
  * audit row on the same path as the bytes.
  */
-export async function GET(req: Request, context: { params: Promise<{ workspaceSlug: string; documentId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug, documentId } = await context.params;
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: 'HRMS',
-      workspaceSlug,
-      permission: ['hr_documents', 'VIEW'],
-    });
-
-    const file = await downloadDocument(ctx, documentId);
+export const GET = route(
+  {
+    module: 'hr_documents',
+    action: 'VIEW',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    params: z.object({ workspaceSlug: z.string(), documentId: z.string() }),
+  },
+  async ({ ctx, params }) => {
+    await requireWorkspace(ctx, params.workspaceSlug);
+    const file = await downloadDocument(ctx, params.documentId);
 
     return new NextResponse(new Uint8Array(file.bytes), {
       headers: {
@@ -32,12 +31,7 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
         // `attachment` so a malicious upload cannot execute in the workspace origin.
         'content-disposition': `attachment; filename="${file.filename.replace(/"/g, '')}"`,
         'cache-control': 'private, no-store',
-        'x-request-id': requestId,
       },
     });
-  } catch (error) {
-    return toResponse(error, requestId, {
-      route: '/api/v1/workspaces/[workspaceSlug]/hr/documents/[documentId]/download',
-    });
-  }
-}
+  },
+);

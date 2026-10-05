@@ -685,6 +685,7 @@ describe('receipt evidence documents', () => {
         headers: { cookie },
         body: form,
       }),
+      { params: Promise.resolve({}) },
     );
     return { status: res.status, body: await res.json().catch(() => null) };
   };
@@ -765,6 +766,7 @@ describe('record scope: collections permissions reach only the sales their scope
         headers: { cookie },
         body: form,
       }),
+      { params: Promise.resolve({}) },
     );
     return { status: res.status, body: await res.json().catch(() => null) };
   };
