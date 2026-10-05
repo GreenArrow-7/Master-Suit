@@ -232,6 +232,24 @@ describe('with a policy set', () => {
     expect(await platformRows()).toBe(4);
   });
 
+  it('counts a dry run past one batch once, not once per pass', async () => {
+    // Nothing is deleted on a dry run, so paging like the sweep re-read the first
+    // 500 rows on every pass: 503 due rows were reported as 100,000 and truncated.
+    await prisma.auditLog.createMany({
+      data: Array.from({ length: 501 }, () => ({
+        tenantId: tenants[0]!.id,
+        event: 'LOGIN',
+        objectType: `old-${suffix}`,
+        occurredAt: OLD,
+      })),
+    });
+    windows.audit = 90;
+    const result = await runRetentionCleanup(true);
+
+    expect(result.auditSummary.AuditLog).toBe(503);
+    expect(result.truncated).toBe(false);
+  });
+
   it('deletes the capture before the punch row that points at it', async () => {
     // Object before row, the same ordering the recordings sweep uses and for the
     // same reason: delete the row first and the encrypted frame is left in the

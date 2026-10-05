@@ -158,6 +158,22 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
     let deleted = 0;
     let sweeps = 0;
 
+    // A dry run counts. Paging the way the sweep does would re-read the same first
+    // batch on every pass, since nothing is deleted, and report it up to MAX_BATCHES
+    // times over as "truncated".
+    if (dryRun) {
+      const [row] = await withPlatformTx(
+        (tx) =>
+          tx.$queryRawUnsafe<{ count: bigint }[]>(
+            `SELECT count(*) FROM "${table.name}" WHERE "${table.column}" < $1`,
+            cutoff,
+          ),
+        { timeoutMs: TX_TIMEOUT_MS },
+      );
+      result.auditSummary[table.name] = Number(row?.count ?? 0);
+      continue;
+    }
+
     for (;;) {
       if (sweeps++ >= MAX_BATCHES) {
         result.truncated = true;
@@ -183,11 +199,6 @@ export async function runRetentionCleanup(dryRun = false): Promise<RetentionResu
 
       if (due.length === 0) break;
       deleted += due.length;
-
-      if (dryRun) {
-        if (due.length < BATCH) break;
-        continue;
-      }
 
       // Object before row (see the header), outside the transaction: an S3 round
       // trip has no business holding a database connection.
