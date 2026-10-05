@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import type { Perms } from './ReceiptPanel';
+import { call } from '../call';
 
 interface AmendmentRow {
   id: string;
@@ -26,17 +27,6 @@ const money = (amount: string | null, currency: string) =>
   amount === null
     ? '—'
     : `${currency} ${Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-async function call(url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<string | null> {
-  const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (res.ok) return null;
-  try {
-    const problem = await res.json();
-    return problem.detail ?? problem.errors?.[0]?.message ?? problem.title ?? `Request failed (${res.status})`;
-  } catch {
-    return `Request failed (${res.status})`;
-  }
-}
 
 /** The agreed fee and its history; propose with a preview, decide as somebody else. */
 export default function FeeAmendmentPanel({

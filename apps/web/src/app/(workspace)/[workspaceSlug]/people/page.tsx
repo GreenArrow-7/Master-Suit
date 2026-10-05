@@ -3,6 +3,7 @@ import { resolveWorkspacePage, SELF_SERVICE } from '@/lib/workspace-page';
 import PageHeader from '@/components/ui/PageHeader';
 import { isHrAdmin } from '@/services/hr/access';
 import { loadDashboard, type Stat } from '@/services/hr/dashboard';
+import { Metric } from '@/components/ui/MetricCard';
 
 /**
  * The People landing is genuinely different per role (real-estate HRMS §5): an
@@ -109,16 +110,11 @@ const TONE_COLOR: Record<NonNullable<Stat['tone']>, string> = {
 
 function StatCard({ stat, href }: { stat: Stat; href?: string }) {
   const body = (
-    <article className="lf-metric-card" style={{ height: '100%' }}>
-      <div className="lf-eyebrow">{stat.label}</div>
-      <div className="lf-metric-card__value" style={stat.tone ? { color: TONE_COLOR[stat.tone] } : undefined}>
-        {stat.value}
-      </div>
-      {stat.hint && <div style={{ fontSize: 'var(--lf-text-2xs)', color: 'var(--lf-ink-3)' }}>{stat.hint}</div>}
-    </article>
+    <Metric label={stat.label} value={stat.value} color={stat.tone && TONE_COLOR[stat.tone]} hint={stat.hint} />
   );
+  // A grid, so the tile stretches to its row like an unlinked one.
   return href ? (
-    <Link href={href} style={{ textDecoration: 'none', color: 'inherit' }}>
+    <Link href={href} style={{ display: 'grid', textDecoration: 'none', color: 'inherit' }}>
       {body}
     </Link>
   ) : (

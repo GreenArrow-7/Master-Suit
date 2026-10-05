@@ -1,6 +1,18 @@
-'use client';
-
 import SalesLink from '@/components/workspace/SalesLink';
+
+const linkStyle = (active: boolean): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--lf-space-2)',
+  padding: '5px 8px',
+  borderRadius: 'var(--lf-radius-sm)',
+  fontSize: 'var(--lf-text-sm)',
+  textDecoration: 'none',
+  color: active ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)',
+  background: active ? 'var(--lf-wine-050)' : 'transparent',
+  fontWeight: active ? 600 : 400,
+  transition: 'background 100ms ease',
+});
 
 interface Props {
   systemViews: { key: string; name: string; icon: string }[];
@@ -31,19 +43,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
             <li key={v.key}>
               <SalesLink
                 href={v.key === 'all' ? '/smart-views' : `/smart-views?view=${v.key}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--lf-space-2)',
-                  padding: '5px 8px',
-                  borderRadius: 'var(--lf-radius-sm)',
-                  fontSize: 'var(--lf-text-sm)',
-                  textDecoration: 'none',
-                  color: active ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)',
-                  background: active ? 'var(--lf-wine-050)' : 'transparent',
-                  fontWeight: active ? 600 : 400,
-                  transition: 'background 100ms ease',
-                }}
+                style={linkStyle(active)}
               >
                 <span style={{ width: 16, textAlign: 'center', fontSize: 10, opacity: 0.7 }}>{v.icon}</span>
                 {v.name}
@@ -63,22 +63,7 @@ export default function ViewSidebar({ systemViews, savedViews, activeSystemKey, 
               const active = activeSavedId === v.id;
               return (
                 <li key={v.id}>
-                  <SalesLink
-                    href={`/smart-views?id=${v.id}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--lf-space-2)',
-                      padding: '5px 8px',
-                      borderRadius: 'var(--lf-radius-sm)',
-                      fontSize: 'var(--lf-text-sm)',
-                      textDecoration: 'none',
-                      color: active ? 'var(--lf-wine-700)' : 'var(--lf-ink-2)',
-                      background: active ? 'var(--lf-wine-050)' : 'transparent',
-                      fontWeight: active ? 600 : 400,
-                      transition: 'background 100ms ease',
-                    }}
-                  >
+                  <SalesLink href={`/smart-views?id=${v.id}`} style={linkStyle(active)}>
                     <span style={{ width: 16, textAlign: 'center', fontSize: 10, opacity: 0.7 }}>◈</span>
                     {v.name}
                     {!v.mine && (
