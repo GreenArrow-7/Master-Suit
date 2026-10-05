@@ -1,7 +1,7 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
-import { pageQuery, decodeCursor, cursorWhere, toPage } from '@/lib/api/pagination';
+import { pageQuery, cursorWhere, toPage } from '@/lib/api/pagination';
 import { mergeWhere } from '@/lib/api/where';
 import { compileFilterTree, decodeFilterTree, referencedFields } from '@/lib/api/filterTree';
 import { isNamedLeadFilter, simpleNamedLeadFilterWhere, wantsClosedOut } from '@/lib/leads/namedFilters';
@@ -26,7 +26,6 @@ import { OPEN_LEADS_WHERE } from '@/services/leads/closeOut';
 const listQuery = pageQuery.extend({
   q: z.string().max(200).optional(),
   filter: z.string().optional(),
-  fields: z.string().optional(),
   includeUnassigned: z.coerce.boolean().default(true),
   /** Closed-out leads (invalid, duplicate, archived) are left out unless asked for. */
   includeClosedOut: z.coerce.boolean().default(false),
@@ -83,8 +82,6 @@ export const GET = route(
     const tree = !named && query.filter ? decodeFilterTree(query.filter) : null;
     if (tree) assertFilterableFields(rules, referencedFields(tree));
 
-    const cursor = decodeCursor(query.cursor);
-
     // mergeWhere, not object spread: three of these four fragments can carry a
     // top-level `OR`, and a spread would keep only the last of them — which used
     // to drop the ownership restriction on every paginated request. See
@@ -94,7 +91,7 @@ export const GET = route(
       tree ? compileFilterTree('LEAD', tree, ctx) : null,
       namedWhere,
       query.q ? { fullName: { contains: query.q, mode: 'insensitive' as const } } : null,
-      cursorWhere(cursor),
+      cursorWhere(query.cursor),
       // `?filter=closed_out` is the one ask that is *for* closed-out leads, so
       // the standing exclusion would make it answer nothing.
       query.includeClosedOut || wantsClosedOut(named ?? undefined) ? null : OPEN_LEADS_WHERE,

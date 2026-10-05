@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { REPORTS, availableReports, exportReportCsv, runReport } from '@/services/hr/reports';
 import { buildActor, buildCtx } from '../helpers/ctx';
+import { createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `rpt-${suffix}`;
@@ -50,24 +51,20 @@ beforeAll(async () => {
   const role = await prisma.role.create({
     data: { tenantId, key: 'employee', name: 'Employee', rank: 90, defaultScope: 'OWN' },
   });
-  const email = `reporter-${suffix}@reports.test`;
-  const platformUser = await prisma.platformUser.create({
-    data: { email, normalizedEmail: email, fullName: 'Reporter', status: 'ACTIVE' },
-  });
-  const user = await prisma.user.create({
-    data: { tenantId, email, fullName: 'Reporter', roleId: role.id, status: 'ACTIVE' },
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `reporter-${suffix}@reports.test`,
+    fullName: 'Reporter',
   });
   userId = user.id;
-  const membership = await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
-  });
   const department = await prisma.department.create({
     data: { tenantId, name: 'Sales', code: `SLS-${suffix}` },
   });
   const employee = await prisma.employeeProfile.create({
     data: {
       tenantId,
-      membershipId: membership.id,
+      membershipId: user.membershipId,
       employeeNumber: `RPT-${suffix}`,
       employmentStatus: 'ACTIVE',
       joinedOn: new Date('2024-03-01'),
@@ -211,21 +208,17 @@ describe('CSV export', () => {
     const department = await prisma.department.create({
       data: { tenantId, name: '=cmd|calc', code: `EVIL-${suffix}` },
     });
-    const email = `evil-${suffix}@reports.test`;
-    const platformUser = await prisma.platformUser.create({
-      data: { email, normalizedEmail: email, fullName: 'Evil', status: 'ACTIVE' },
-    });
     const role = await prisma.role.findFirstOrThrow({ where: { tenantId, key: 'employee' } });
-    const user = await prisma.user.create({
-      data: { tenantId, email, fullName: 'Evil', roleId: role.id, status: 'ACTIVE' },
-    });
-    const membership = await prisma.workspaceMembership.create({
-      data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId: role.id,
+      email: `evil-${suffix}@reports.test`,
+      fullName: 'Evil',
     });
     await prisma.employeeProfile.create({
       data: {
         tenantId,
-        membershipId: membership.id,
+        membershipId: user.membershipId,
         employeeNumber: `EVIL-${suffix}`,
         employmentStatus: 'ACTIVE',
         joinedOn: new Date('2024-03-01'),

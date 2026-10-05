@@ -1,9 +1,8 @@
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
-
+import { z } from 'zod';
+import { route } from '@/lib/api/handler';
+import { requireWorkspace } from '@/lib/workspace';
 import { exportReportCsv } from '@/services/hr/reports';
-import { toResponse } from '@/lib/api/handler';
 
 /**
  * A report as a CSV.
@@ -20,14 +19,18 @@ import { toResponse } from '@/lib/api/handler';
  * is. Checking a fixed permission here would be the weaker of the two and would
  * read as if it were the whole check.
  */
-export async function GET(req: Request, context: { params: Promise<{ workspaceSlug: string; reportKey: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const { workspaceSlug, reportKey } = await context.params;
-    // No `permission` here: `exportReportCsv` decides it per report — an
-    // attendance report and a payroll one are not the same authority. The rate
-    // limit is not optional, and this route had none.
-    const ctx = await resolveGuardedCtx(req, requestId, { productModule: 'HRMS', workspaceSlug });
+export const GET = route(
+  {
+    module: 'reports',
+    action: 'EXPORT',
+    productModule: 'HRMS',
+    sessionOnly: true,
+    // `exportReportCsv` decides it per report, as above.
+    permissionInHandler: true,
+    params: z.object({ workspaceSlug: z.string(), reportKey: z.string() }),
+  },
+  async ({ ctx, params: { workspaceSlug, reportKey }, req }) => {
+    await requireWorkspace(ctx, workspaceSlug);
 
     const url = new URL(req.url);
     const date = (key: string) => {
@@ -54,10 +57,7 @@ export async function GET(req: Request, context: { params: Promise<{ workspaceSl
         'content-disposition': `attachment; filename="${file.filename.replace(/"/g, '')}"`,
         'cache-control': 'private, no-store',
         'x-row-count': String(file.rows),
-        'x-request-id': requestId,
       },
     });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/workspaces/[workspaceSlug]/hr/reports/[reportKey]/export' });
-  }
-}
+  },
+);

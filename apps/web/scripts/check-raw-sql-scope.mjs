@@ -155,7 +155,7 @@ function transactionalNames(source) {
     names.add(match[1]);
   }
 
-  const aliases = new Set(['Prisma.TransactionClient', 'TransactionClient']);
+  const aliases = new Set(['Prisma.TransactionClient', 'TransactionClient', 'TxClient']);
   for (const match of source.matchAll(/\btype\s+(\w+)\s*=[^;]*TransactionClient/g)) aliases.add(match[1]);
   const aliasPattern = [...aliases].map((a) => a.replace(/[.$]/g, '\\$&')).join('|');
   for (const match of source.matchAll(new RegExp(`\\(\\s*(\\w+)\\s*:\\s*(?:${aliasPattern})\\b`, 'g'))) {

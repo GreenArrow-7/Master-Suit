@@ -62,6 +62,24 @@ const RULE_SELECT = {
   respectWorkingHours: true,
 } satisfies Prisma.DistributionRuleSelect;
 
+/** The workspace's first active round-robin rule for leads. */
+const activeRule = (tenantId: string) =>
+  prisma.distributionRule.findFirst({
+    where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
+    orderBy: { position: 'asc' },
+    select: RULE_SELECT,
+  });
+
+/**
+ * The pool in rotation order, starting after whoever was assigned last — so an
+ * ineligible person is passed over rather than stopping every later enquiry
+ * until somebody edits the rule.
+ */
+function rotationOrder(pool: string[], lastAssignedUserId: string | null): string[] {
+  const lastIndex = lastAssignedUserId ? pool.indexOf(lastAssignedUserId) : -1;
+  return pool.map((_, step) => pool[(lastIndex + step + 1) % pool.length]!);
+}
+
 export async function assignLead(tenantId: string, leadId: string, now = new Date()): Promise<AssignOutcome> {
   const lead = await prisma.lead.findFirst({
     where: { tenantId, id: leadId, deletedAt: null },
@@ -70,11 +88,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
   if (!lead) return { outcome: 'gone', leadId };
   if (lead.ownerId) return { outcome: 'already-assigned', leadId };
 
-  const rule = await prisma.distributionRule.findFirst({
-    where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
-    orderBy: { position: 'asc' },
-    select: RULE_SELECT,
-  });
+  const rule = await activeRule(tenantId);
 
   // No rule at all. Previously a silent return; now an administrative exception
   // somebody is accountable for, which is the whole point of P1-1.
@@ -92,15 +106,7 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
   const verdicts = await assessEligibility(tenantId, pool, policy, now);
   const by = new Map(verdicts.map((v) => [v.userId, v]));
 
-  /**
-   * Walk the rotation from wherever it last stopped, taking the first person who
-   * may actually work the lead — rather than giving up on the first ineligible
-   * one, which would leave every later enquiry unassigned until somebody edited
-   * the rule.
-   */
-  const lastIndex = rule.lastAssignedUserId ? pool.indexOf(rule.lastAssignedUserId) : -1;
-  const order: string[] = [];
-  for (let step = 1; step <= pool.length; step += 1) order.push(pool[(lastIndex + step) % pool.length]!);
+  const order = rotationOrder(pool, rule.lastAssignedUserId);
 
   /**
    * Redacted before it is written, not before it is rendered.
@@ -224,7 +230,7 @@ async function tryAssign(
      * the same transaction, is what makes "assigning a lead resolves its pending
      * escalation" true rather than eventually true.
      */
-    const closed = await resolveTriageEntry(tx, tenantId, leadId, {
+    await resolveTriageEntry(tx, tenantId, leadId, {
       status: 'ASSIGNED',
       resolution: `Automatically assigned by ${rule.name}`,
       now,
@@ -233,7 +239,6 @@ async function tryAssign(
     return {
       outcome: 'done' as const,
       result: { outcome: 'assigned' as const, userId, leadId },
-      escalationAnswered: closed.wasEscalated,
     };
   });
 }
@@ -276,11 +281,7 @@ export async function nextDistributionOwner(
   tenantId: string,
   now = new Date(),
 ): Promise<{ userId: string | null; note: string | null }> {
-  const rule = await prisma.distributionRule.findFirst({
-    where: { tenantId, objectType: 'LEAD', isActive: true, method: 'ROUND_ROBIN', deletedAt: null },
-    orderBy: { position: 'asc' },
-    select: RULE_SELECT,
-  });
+  const rule = await activeRule(tenantId);
   if (!rule) return { userId: null, note: 'No matching distribution rule.' };
 
   const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
@@ -289,10 +290,8 @@ export async function nextDistributionOwner(
   const policy = policyFromRule(rule);
   const verdicts = await assessEligibility(tenantId, pool, policy, now);
   const by = new Map(verdicts.map((v) => [v.userId, v]));
-  const lastIndex = rule.lastAssignedUserId ? pool.indexOf(rule.lastAssignedUserId) : -1;
 
-  for (let step = 1; step <= pool.length; step += 1) {
-    const candidate = pool[(lastIndex + step) % pool.length]!;
+  for (const candidate of rotationOrder(pool, rule.lastAssignedUserId)) {
     if (!by.get(candidate)?.eligible) continue;
     await prisma.distributionRule.updateMany({
       where: { tenantId, id: rule.id },

@@ -254,7 +254,9 @@ describe('credential management', () => {
     return `${SESSION_COOKIE}=${res.token}`;
   }
   const credentials = (cookie: string, body: unknown) =>
-    credentialsPost(request('http://localhost/api/v1/platform/credentials', 'POST', body, cookie));
+    credentialsPost(request('http://localhost/api/v1/platform/credentials', 'POST', body, cookie), {
+      params: Promise.resolve({}),
+    });
 
   it('the code that signed in cannot also confirm a credential change; the next one can', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -352,11 +354,13 @@ describe('enrolment', () => {
     jar.set(SESSION_COOKIE, grant.token!);
     const begin = await enroll2fa(
       request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'begin' }, grantCookie),
+      { params: Promise.resolve({}) },
     );
     const secret = (await begin.json()).secret as string;
     const code = codeAt(secret);
     const confirm = await enroll2fa(
       request('http://localhost/api/v1/auth/enroll-2fa', 'POST', { step: 'confirm', code }, grantCookie),
+      { params: Promise.resolve({}) },
     );
     expect(confirm.status, await confirm.clone().text()).toBe(200);
     jar.clear();

@@ -555,7 +555,7 @@ export async function finaliseExit(ctx: Ctx, employeeId: string, confirmSettleme
   });
 
   if (employee.membership.salesUserId) {
-    await revokeAllSessions(ctx.tenantId, employee.membership.salesUserId, undefined, 'EMPLOYMENT_ENDED');
+    await revokeAllSessions(employee.membership.salesUserId, undefined, 'EMPLOYMENT_ENDED');
   }
 
   await audit(ctx, {

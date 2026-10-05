@@ -77,18 +77,6 @@ export const outputUsageMetric = (paidBy: PaidBy, at: Date = new Date()) =>
   `${AI_OUT_METRIC_PREFIX}${paidBy}:${period(at)}`;
 
 /**
- * Estimated cost in USD from the deployment's stated list prices per million tokens
- * (`AI_COST_USD_PER_MILLION_INPUT` / `_OUTPUT`). Null when the prices are not set —
- * the console then shows tokens only, never a guessed price.
- */
-export function estimateCostUsd(inputTokens: number, outputTokens: number): number | null {
-  const inRate = Number(process.env.AI_COST_USD_PER_MILLION_INPUT);
-  const outRate = Number(process.env.AI_COST_USD_PER_MILLION_OUTPUT);
-  if (!Number.isFinite(inRate) || !Number.isFinite(outRate) || (inRate <= 0 && outRate <= 0)) return null;
-  return Math.round(((inputTokens * inRate + outputTokens * outRate) / 1_000_000) * 10_000) / 10_000;
-}
-
-/**
  * §18: the same month's spend split by feature — `ai_feature:deployment:call-analysis:2026-09` —
  * so a plan can cap one feature (say, live coaching) without capping the rest.
  */
@@ -170,7 +158,7 @@ export const AI_TOKEN_LIMIT_KEY = 'ai_tokens_monthly';
  * a platform that has not decided on a number must not refuse work because of a
  * default somebody guessed.
  */
-async function planLimit(tenantId: string, key: string): Promise<number | null> {
+export async function planLimit(tenantId: string, key: string): Promise<number | null> {
   const subscription = await prisma.tenantSubscription.findUnique({
     where: { tenantId },
     select: { plan: { select: { planLimits: { where: { key }, select: { value: true } } } } },

@@ -174,11 +174,11 @@ describe('with no policy set', () => {
 
     expect(await auditRows()).toBe(before);
     expect(await platformRows()).toBe(4);
-    // HrEmployeeDocument has a fixed policy (purge when purgeAt passes), so it is
-    // always reported; with no policy elsewhere nothing else appears and it deleted nothing.
-    // Only the always-on document purge may appear; its count depends on whether a
-    // sibling suite left due rows, so the key set is asserted, not its value.
-    expect(Object.keys(result.auditSummary)).toEqual(['HrEmployeeDocument']);
+    // Recording and HrEmployeeDocument have fixed policies (purge when their own
+    // timestamp passes), so they are always reported; with no policy elsewhere nothing
+    // else appears. Their counts depend on whether a sibling suite left due rows, so
+    // the key set is asserted, not the values.
+    expect(Object.keys(result.auditSummary)).toEqual(['Recording', 'HrEmployeeDocument']);
   });
 });
 
@@ -230,6 +230,24 @@ describe('with a policy set', () => {
     expect(result.auditSummary.PlatformAuditEvent).toBe(2);
     expect(await auditRows()).toBe(4);
     expect(await platformRows()).toBe(4);
+  });
+
+  it('counts a dry run past one batch once, not once per pass', async () => {
+    // Nothing is deleted on a dry run, so paging like the sweep re-read the first
+    // 500 rows on every pass: 503 due rows were reported as 100,000 and truncated.
+    await prisma.auditLog.createMany({
+      data: Array.from({ length: 501 }, () => ({
+        tenantId: tenants[0]!.id,
+        event: 'LOGIN',
+        objectType: `old-${suffix}`,
+        occurredAt: OLD,
+      })),
+    });
+    windows.audit = 90;
+    const result = await runRetentionCleanup(true);
+
+    expect(result.auditSummary.AuditLog).toBe(503);
+    expect(result.truncated).toBe(false);
   });
 
   it('deletes the capture before the punch row that points at it', async () => {

@@ -82,9 +82,9 @@ describe('per-user AI allowance', () => {
   });
 });
 
-describe('token direction and cost estimate', () => {
-  it('records input and output tokens separately and prices them only when rates are stated', async () => {
-    const { inputUsageMetric, outputUsageMetric, estimateCostUsd } = await import('@/lib/ai/usage');
+describe('token direction', () => {
+  it('records input and output tokens separately', async () => {
+    const { inputUsageMetric, outputUsageMetric } = await import('@/lib/ai/usage');
     await recordAiUsage(
       tenantId,
       deployment,
@@ -98,13 +98,6 @@ describe('token direction and cost estimate', () => {
     const by = Object.fromEntries(rows.map((r) => [r.metric, r.used]));
     expect(by[inputUsageMetric('deployment')]).toBe(700);
     expect(by[outputUsageMetric('deployment')]).toBe(300);
-
-    vi.stubEnv('AI_COST_USD_PER_MILLION_INPUT', undefined);
-    vi.stubEnv('AI_COST_USD_PER_MILLION_OUTPUT', undefined);
-    expect(estimateCostUsd(700, 300)).toBeNull();
-    vi.stubEnv('AI_COST_USD_PER_MILLION_INPUT', '0.30');
-    vi.stubEnv('AI_COST_USD_PER_MILLION_OUTPUT', '2.50');
-    expect(estimateCostUsd(1_000_000, 1_000_000)).toBe(2.8);
   });
 });
 

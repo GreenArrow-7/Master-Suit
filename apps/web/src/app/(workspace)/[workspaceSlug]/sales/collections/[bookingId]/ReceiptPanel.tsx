@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
+import { call } from '../call';
 
 export interface ReceiptRow {
   id: string;
@@ -36,17 +37,6 @@ export interface Perms {
 
 const money = (amount: string, currency: string) =>
   `${currency} ${Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-async function call(url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<string | null> {
-  const res = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (res.ok) return null;
-  try {
-    const problem = await res.json();
-    return problem.detail ?? problem.errors?.[0]?.message ?? problem.title ?? `Request failed (${res.status})`;
-  } catch {
-    return `Request failed (${res.status})`;
-  }
-}
 
 /**
  * Every receipt on the sale, and the three things a finance user does with

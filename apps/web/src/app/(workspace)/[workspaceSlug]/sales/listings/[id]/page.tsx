@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { SALES_OR_REALTY, hasModuleEntitlement } from '@/lib/security/entitlements';
-import { workspacePath } from '@/lib/workspace';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/security/rbac';
 import { maskOwner } from '@/lib/inventory/listings';
@@ -261,7 +260,7 @@ export default async function ListingDetailPage({
                           <SalesLink href={`/leads/${r.leadId}`}>Lead</SalesLink>
                         ) : r.contactId ? (
                           contactsReachable ? (
-                            <Link href={workspacePath(workspaceSlug, `/sales/contacts/${r.contactId}`)}>Contact</Link>
+                            <Link href={`/${workspaceSlug}/sales/contacts/${r.contactId}`}>Contact</Link>
                           ) : (
                             'Contact'
                           )

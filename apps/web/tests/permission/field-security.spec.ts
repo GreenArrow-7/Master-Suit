@@ -32,7 +32,7 @@ import { GET as listOpportunities, POST as createOpportunityRoute } from '@/app/
 import { createSessionToken } from '../helpers/session';
 import { buildActor, buildCtx } from '../helpers/ctx';
 import { get, post } from '../helpers/request';
-import { grantPermissions, type Grants } from '../helpers/fixtures';
+import { grantPermissions, type Grants, createWorkspaceUser } from '../helpers/fixtures';
 
 const suffix = randomBytes(4).toString('hex');
 const slug = `fieldsec-${suffix}`;
@@ -66,19 +66,11 @@ async function member(label: string, grants: Grants) {
     data: { tenantId, key: `${label}-${suffix}`, name: label, rank: 50, defaultScope: 'ORGANIZATION' },
   });
   await grantPermissions(tenantId, role.id, grants);
-  const user = await prisma.user.create({
-    data: { tenantId, email: `${label}-${suffix}@fs.test`, fullName: label, roleId: role.id, status: 'ACTIVE' },
-  });
-  const platformUser = await prisma.platformUser.create({
-    data: {
-      email: `${label}-${suffix}@fs.test`,
-      normalizedEmail: `${label}-${suffix}@fs.test`,
-      fullName: label,
-      status: 'ACTIVE',
-    },
-  });
-  await prisma.workspaceMembership.create({
-    data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+  const user = await createWorkspaceUser({
+    tenantId,
+    roleId: role.id,
+    email: `${label}-${suffix}@fs.test`,
+    fullName: label,
   });
   userIds[label] = user.id;
   cookies[label] = await createSessionToken(tenantId, user.id);

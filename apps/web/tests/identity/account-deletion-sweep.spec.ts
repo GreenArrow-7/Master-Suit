@@ -5,7 +5,7 @@ import {
   requestAccountDeletion,
   sweepAccountDeletions,
 } from '@/services/identity/accountDeletion';
-import { handleMaintenanceJob } from '@/workers/maintenance';
+import { handleJob } from '@/workers/jobs';
 import { createWorkspaceUser, seedTwoTenants, type Fixture } from '../helpers/fixtures';
 import { buildActor, buildCtx } from '../helpers/ctx';
 
@@ -96,9 +96,9 @@ describe('the sweep that drives the executor', () => {
     const request = await requestAccountDeletion(person.ctx, { password: PASSWORD });
 
     // The job name the scheduler registers. A handler that silently does not recognise it
-    // would log "unknown maintenance job" and return undefined, which is the failure this
+    // would log "unknown job" and return undefined, which is the failure this
     // asserts against.
-    const result = (await handleMaintenanceJob({
+    const result = (await handleJob('maintenance', {
       name: 'account-deletions',
       data: { platformUserIds: mine() },
     })) as {

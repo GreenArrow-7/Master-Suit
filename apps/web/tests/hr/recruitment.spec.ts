@@ -33,7 +33,7 @@ import {
   submitRequisition,
 } from '@/services/hr/recruitment';
 import { buildActor, buildCtx } from '../helpers/ctx';
-import { createEmployee } from '../helpers/fixtures';
+import { createEmployee, createWorkspaceUser } from '../helpers/fixtures';
 
 // ── Pure pipeline rules ────────────────────────────────────────────────────
 
@@ -385,24 +385,16 @@ describe('offers and the hire', () => {
   it('links the employee back to the application once accepted, and onboards', async () => {
     // Standing in for acceptance, which is an unauthenticated flow with its own
     // suite: what matters here is that an employee carrying the link onboards.
-    const platformUser = await prisma.platformUser.create({
-      data: {
-        email: `joiner-${suffix}@example.test`,
-        normalizedEmail: `joiner2-${suffix}@example.test`,
-        fullName: 'New Joiner',
-        status: 'ACTIVE',
-      },
-    });
-    const user = await prisma.user.create({
-      data: { tenantId, email: `joiner2-${suffix}@example.test`, fullName: 'New Joiner', roleId, status: 'ACTIVE' },
-    });
-    const membership = await prisma.workspaceMembership.create({
-      data: { tenantId, platformUserId: platformUser.id, salesUserId: user.id, status: 'ACTIVE', joinedAt: new Date() },
+    const user = await createWorkspaceUser({
+      tenantId,
+      roleId,
+      email: `joiner2-${suffix}@example.test`,
+      fullName: 'New Joiner',
     });
     await prisma.employeeProfile.create({
       data: {
         tenantId,
-        membershipId: membership.id,
+        membershipId: user.membershipId,
         employeeNumber: `NEW-${suffix}`,
         employmentStatus: 'ONBOARDING',
         joinedOn: future(30),

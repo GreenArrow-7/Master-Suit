@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import SalesLink from '@/components/workspace/SalesLink';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import { problemSummary } from '@/components/forms/useFormErrors';
+import Field from '@/components/forms/Field';
 
 export default function OpportunityForm({
   accounts = [],
@@ -100,10 +101,7 @@ export default function OpportunityForm({
       </div>
 
       {!editing && (
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="accountId">
-            Account
-          </label>
+        <Field label="Account" htmlFor="accountId">
           <select id="accountId" className="lf-input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">No account</option>
             {accounts.map((a) => (
@@ -112,14 +110,11 @@ export default function OpportunityForm({
               </option>
             ))}
           </select>
-        </div>
+        </Field>
       )}
 
       {editing && stages.length > 0 && (
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="stageId">
-            Stage
-          </label>
+        <Field label="Stage" htmlFor="stageId">
           <select id="stageId" className="lf-input" value={stageId} onChange={(e) => setStageId(e.target.value)}>
             {stages.map((s) => (
               <option key={s.id} value={s.id}>
@@ -127,14 +122,11 @@ export default function OpportunityForm({
               </option>
             ))}
           </select>
-        </div>
+        </Field>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 'var(--lf-space-3)' }}>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="amount">
-            Amount
-          </label>
+        <Field label="Amount" htmlFor="amount">
           <input
             id="amount"
             className="lf-input"
@@ -144,11 +136,8 @@ export default function OpportunityForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="currency">
-            Currency
-          </label>
+        </Field>
+        <Field label="Currency" htmlFor="currency">
           <input
             id="currency"
             className="lf-input"
@@ -156,13 +145,10 @@ export default function OpportunityForm({
             value={currency}
             onChange={(e) => setCurrency(e.target.value.toUpperCase())}
           />
-        </div>
+        </Field>
       </div>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="expectedCloseDate">
-          Expected close date
-        </label>
+      <Field label="Expected close date" htmlFor="expectedCloseDate">
         <input
           id="expectedCloseDate"
           className="lf-input"
@@ -170,7 +156,7 @@ export default function OpportunityForm({
           value={expectedCloseDate}
           onChange={(e) => setExpectedCloseDate(e.target.value)}
         />
-      </div>
+      </Field>
 
       <div style={{ display: 'flex', gap: 'var(--lf-space-3)', marginTop: 'var(--lf-space-2)' }}>
         <button className="lf-btn" type="submit" disabled={busy}>

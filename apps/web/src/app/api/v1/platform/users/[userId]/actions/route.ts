@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 
 import { requirePlatformOwner } from '@/lib/auth/platform';
@@ -13,7 +12,7 @@ import {
   setPlatformRole,
   unlockAccount,
 } from '@/services/platform/identity';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 /**
  * Every privileged recovery action on one account, behind one owner-only gate.
@@ -49,9 +48,9 @@ const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('membership-role'), membershipId: z.string().min(1), roleId: z.string().min(1) }),
 ]);
 
-export async function POST(req: Request, { params }: { params: Promise<{ userId: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
+export const POST = bareRoute(
+  '/api/v1/platform/users/[userId]/actions',
+  async (req, requestId, { params }: { params: Promise<{ userId: string }> }) => {
     const ctx = await requirePlatformOwner(req, requestId);
     const { userId } = await params;
     const body = bodySchema.parse(await req.json());
@@ -62,10 +61,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
       // or a proxy log on the way back to the browser.
       headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
     });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/users/[userId]/actions' });
-  }
-}
+  },
+);
 
 type Ctx = Awaited<ReturnType<typeof requirePlatformOwner>>;
 

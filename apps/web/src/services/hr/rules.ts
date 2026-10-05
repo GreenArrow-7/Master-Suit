@@ -228,9 +228,13 @@ export function withinTimeWindow(start: string | null, end: string | null, minut
   return from <= to ? minutes >= from && minutes <= to : minutes >= from || minutes <= to;
 }
 
-function toMinutes(value: string): number | null {
+/** "HH:MM" to minutes past midnight, or null when it is not a time of day. */
+export function toMinutes(value: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours > 23 || minutes > 59 ? null : hours * 60 + minutes;
 }
 
 /** How urgently a document expiry needs acting on. A UAE visa renewal needs 30+ days of runway. */

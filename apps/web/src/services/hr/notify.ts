@@ -46,8 +46,7 @@ export type HrEventKey =
   | 'review.opened'
   | 'review.self_submitted'
   | 'review.released'
-  | 'pip.opened'
-  | 'document.expiring';
+  | 'pip.opened';
 
 interface Audience {
   /** Everyone holding this permission — "whoever can approve overtime". */

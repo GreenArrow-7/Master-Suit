@@ -7,8 +7,7 @@
  * their quota, and a request that reads APPROVED with nothing attached is
  * indistinguishable from one nobody has looked at.
  */
-import { Prisma } from '@prisma/client';
-import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, Invalid, NotFound, isUniqueViolation } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
 import { can, type Ctx } from '@/lib/security/rbac';
@@ -57,7 +56,7 @@ export async function askForLeads(input: AskInput) {
       return request;
     } catch (err) {
       // The index is the real guard; this turns it into a sentence.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isUniqueViolation(err)) {
         throw Conflict('You already have a request waiting. Cancel it first if you want to change the number.');
       }
       throw err;

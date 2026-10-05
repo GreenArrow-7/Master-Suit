@@ -1,5 +1,4 @@
 import { headers } from 'next/headers';
-import { ulid } from 'ulid';
 import { prisma } from '@/lib/db';
 import { resolveCtx } from '@/lib/auth/session';
 
@@ -53,7 +52,7 @@ export default async function Forbidden() {
  */
 async function workspaceAdmins(): Promise<string[]> {
   try {
-    const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), ulid());
+    const ctx = await resolveCtx(new Request('http://internal/', { headers: await headers() }), crypto.randomUUID());
     const memberships = await prisma.workspaceMembership.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE', isPrimaryAdmin: true },
       select: { platformUser: { select: { email: true } } },

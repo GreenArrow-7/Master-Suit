@@ -278,3 +278,20 @@ describe('the console', () => {
     expect(row.topUser?.name).toBeTruthy();
   });
 });
+
+describe('the plan limit', () => {
+  it('reads the per-user limit under the key the plans console writes', async () => {
+    const { USER_TOKEN_LIMIT_KEY } = await import('@/lib/ai/usage');
+    await prisma.planLimit.create({ data: { planId, key: USER_TOKEN_LIMIT_KEY, value: 200_000 } });
+    try {
+      // Last in the chain, below everything the console can write. It read
+      // 'ai_tokens:user', a key nothing writes, and so never appeared at all.
+      expect((await allowanceFor(tenantId, bob)).chain.at(-1)).toMatchObject({
+        source: 'plan-limit',
+        tokenLimit: 200_000,
+      });
+    } finally {
+      await prisma.planLimit.deleteMany({ where: { planId } });
+    }
+  });
+});

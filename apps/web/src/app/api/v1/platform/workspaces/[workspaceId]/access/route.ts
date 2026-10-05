@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { prisma, withPlatformTx } from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { Forbidden, NotFound } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import {
@@ -46,7 +45,7 @@ async function workspaceOr404(workspaceId: string) {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -71,20 +70,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
       requestId,
     });
 
-    await withPlatformTx(async (tx) => {
-      await platformAudit(
-        ctx,
-        {
-          tenantId: workspace.id,
-          event: 'PLATFORM_WRITE_ACCESS_OPENED',
-          objectType: 'workspace',
-          objectId: workspace.id,
-          // The reason is the point of the record. A grant whose justification
-          // lives only in somebody's memory is the thing this replaces.
-          metadata: { slug: workspace.slug, reason: grant.reason, expiresAt: grant.expiresAt.toISOString() },
-        },
-        tx,
-      );
+    await platformAudit(ctx, {
+      tenantId: workspace.id,
+      event: 'PLATFORM_WRITE_ACCESS_OPENED',
+      objectType: 'workspace',
+      objectId: workspace.id,
+      // The reason is the point of the record. A grant whose justification
+      // lives only in somebody's memory is the thing this replaces.
+      metadata: { slug: workspace.slug, reason: grant.reason, expiresAt: grant.expiresAt.toISOString() },
     });
 
     return NextResponse.json({ grant }, { status: 201, headers: { 'x-request-id': requestId } });
@@ -94,7 +87,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ workspa
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -123,7 +116,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ workspac
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ workspaceId: string }> }) {
-  const requestId = ulid();
+  const requestId = crypto.randomUUID();
   try {
     const ctx = await requirePlatformOwner(req, requestId);
     const { workspaceId } = await params;
@@ -139,18 +132,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ works
     // is idempotency, not an event, and a trail full of no-ops is a trail nobody
     // reads.
     if (closed > 0) {
-      await withPlatformTx(async (tx) => {
-        await platformAudit(
-          ctx,
-          {
-            tenantId: workspace.id,
-            event: 'PLATFORM_WRITE_ACCESS_CLOSED',
-            objectType: 'workspace',
-            objectId: workspace.id,
-            metadata: { slug: workspace.slug, closed },
-          },
-          tx,
-        );
+      await platformAudit(ctx, {
+        tenantId: workspace.id,
+        event: 'PLATFORM_WRITE_ACCESS_CLOSED',
+        objectType: 'workspace',
+        objectId: workspace.id,
+        metadata: { slug: workspace.slug, closed },
       });
     }
 

@@ -1,17 +1,9 @@
-'use client';
-
 import MetricCard from '@/components/ui/MetricCard';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 /**
- * The chart ramp, as literals.
- *
- * Recharts sets these as SVG presentation attributes (`fill`, `stroke`), and a
- * presentation attribute cannot resolve `var()` — this is the one place in the
- * product allowed to hold colour values rather than token names. Brand blue
- * leads, cyan follows, then the widest-separated hues that still sit in one
- * family. No rainbow. Mid-tone on purpose: a series is a fill, so it needs 3:1
- * against both white and midnight.
+ * The chart ramp. Brand blue leads, cyan follows, then the widest-separated hues
+ * that still sit in one family. No rainbow. Mid-tone on purpose: a series is a
+ * fill, so it needs 3:1 against both white and midnight.
  */
 const BLUE = '#3B82F6';
 const CYAN = '#06B6D4';
@@ -29,6 +21,12 @@ const SLA_COLORS: Record<string, string> = {
   PAUSED: SLATE,
 };
 
+interface Row {
+  name: string;
+  count: number;
+  color: string;
+}
+
 interface Props {
   totalLeads: number;
   newThisMonth: number;
@@ -39,6 +37,124 @@ interface Props {
   leadsByStage: { name: string; count: number }[];
   leadsBySource: { name: string; count: number }[];
   slaStats: { name: string; key: string; count: number }[];
+}
+
+const ramp = (rows: { name: string; count: number }[]): Row[] =>
+  rows.map((row, i) => ({ ...row, color: PIPELINE_COLORS[i % PIPELINE_COLORS.length]! }));
+
+/**
+ * One horizontal bar per row, scaled to the largest, with the count beside it.
+ * Flex rather than an inline grid: the phone stylesheet turns every inline
+ * grid-template-columns into one column, which would stack label, bar and count.
+ */
+function Bars({ rows }: { rows: Row[] }) {
+  const peak = Math.max(1, ...rows.map((row) => row.count));
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {rows.map((row) => (
+        <div
+          key={row.name}
+          style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 'var(--lf-space-3)' }}
+        >
+          <span
+            style={{
+              flex: '0 0 clamp(70px, 25%, 130px)',
+              fontSize: 'var(--lf-text-sm)',
+              color: 'var(--lf-ink-2)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {row.name}
+          </span>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: 24,
+              background: 'var(--lf-surface-2)',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ width: `${(row.count / peak) * 100}%`, height: '100%', background: row.color }} />
+          </div>
+          <span className="lf-num" style={{ flex: '0 0 32px', fontSize: 'var(--lf-text-sm)', textAlign: 'right' }}>
+            {row.count}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A conic-gradient donut; the legend beside it is the readable data. */
+function Donut({ rows }: { rows: Row[] }) {
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const stops: string[] = [];
+  let at = 0;
+  for (const row of rows) {
+    const from = at;
+    at += (row.count / Math.max(total, 1)) * 100;
+    stops.push(`${row.color} ${from}% ${at}%`);
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--lf-space-5)' }}>
+      <div
+        aria-hidden
+        style={{
+          width: 150,
+          height: 150,
+          flex: 'none',
+          borderRadius: '50%',
+          background: `conic-gradient(${stops.join(', ')})`,
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <span
+          className="lf-num"
+          style={{
+            width: '58%',
+            height: '58%',
+            borderRadius: '50%',
+            background: 'var(--lf-surface)',
+            display: 'grid',
+            placeItems: 'center',
+            fontWeight: 650,
+          }}
+        >
+          {total}
+        </span>
+      </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6, flex: '1 1 150px' }}>
+        {rows.map((row) => (
+          <li key={row.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--lf-text-sm)' }}>
+            <span
+              aria-hidden
+              style={{ width: 10, height: 10, flex: 'none', borderRadius: '50%', background: row.color }}
+            />
+            <span style={{ color: 'var(--lf-ink-2)' }}>{row.name}</span>
+            <span className="lf-num" style={{ marginLeft: 'auto' }}>
+              {row.count} · {Math.round((row.count / Math.max(total, 1)) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
+      <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-4)' }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 export default function DashboardCharts({
@@ -72,99 +188,30 @@ export default function DashboardCharts({
         )}
       </div>
 
-      {/* Pipeline funnel */}
       {leadsByStage.length > 0 && (
-        <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-          <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-            Pipeline by stage
-          </div>
-          <ResponsiveContainer width="100%" height={Math.max(200, leadsByStage.length * 40)}>
-            <BarChart data={leadsByStage} layout="vertical" margin={{ left: 20, right: 20 }}>
-              <XAxis type="number" hide />
-              {/* No `fill` here: recharts writes it as an SVG presentation
-                  attribute, which cannot resolve var(), so the label fell back
-                  to black. The colour comes from the `.recharts-*` rules in
-                  globals.css, where `fill` is a CSS property and tokens work. */}
-              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
-              <Tooltip
-                contentStyle={{
-                  background: 'var(--lf-surface)',
-                  border: '1px solid var(--lf-line)',
-                  borderRadius: 8,
-                  color: 'var(--lf-ink)',
-                }}
-                itemStyle={{ color: 'var(--lf-ink)' }}
-              />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {leadsByStage.map((_, i) => (
-                  <Cell key={i} fill={PIPELINE_COLORS[i % PIPELINE_COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ChartCard title="Pipeline by stage">
+          <Bars rows={ramp(leadsByStage)} />
+        </ChartCard>
       )}
 
-      {/* Two pie charts side by side */}
+      {/* Every lead has a source and an SLA state, so the two cards come as a pair:
+          side by side, and one per row on a phone (no repeat(), see Bars). */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
           gap: 'var(--lf-space-4)',
         }}
       >
         {leadsBySource.length > 0 && (
-          <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              Leads by source
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={leadsBySource} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                  {leadsBySource.map((_, i) => (
-                    <Cell key={i} fill={PIPELINE_COLORS[i % PIPELINE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--lf-surface)',
-                    border: '1px solid var(--lf-line)',
-                    borderRadius: 8,
-                    color: 'var(--lf-ink)',
-                  }}
-                  itemStyle={{ color: 'var(--lf-ink)' }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <ChartCard title="Leads by source">
+            <Donut rows={ramp(leadsBySource)} />
+          </ChartCard>
         )}
-
         {slaStats.length > 0 && (
-          <div className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
-            <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
-              SLA health
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={slaStats} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                  {slaStats.map((entry) => (
-                    <Cell key={entry.key} fill={SLA_COLORS[entry.key] ?? SLATE} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--lf-surface)',
-                    border: '1px solid var(--lf-line)',
-                    borderRadius: 8,
-                    color: 'var(--lf-ink)',
-                  }}
-                  itemStyle={{ color: 'var(--lf-ink)' }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <ChartCard title="SLA health">
+            <Donut rows={slaStats.map((row) => ({ ...row, color: SLA_COLORS[row.key] ?? SLATE }))} />
+          </ChartCard>
         )}
       </div>
     </div>

@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { coachAction } from '@/lib/ai/liveCoach';
 import { leadCallContext, contextPromptBlock } from '@/services/leads/callContext';
+import { seesWholeWorkspace } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 const body = z
@@ -38,8 +38,7 @@ export const POST = route(
       select: { id: true, callerId: true, leadId: true },
     });
     if (!call) throw NotFound('Call');
-    const scope = scopeFor(ctx, 'calls', 'EDIT');
-    if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Call');
+    if (call.callerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'calls', 'EDIT')) throw NotFound('Call');
 
     const context = call.leadId ? await leadCallContext(ctx.tenantId, call.leadId).catch(() => null) : null;
     const hint = await coachAction(

@@ -26,7 +26,6 @@ export default defineConfig(({ mode }) => {
       alias: { '@': path.resolve(rootDir, 'src') },
     },
     test: {
-      globals: true,
       // The erasure executor is off unless this is 'true'. The suites that prove erasure
       // need it on; the default-off behaviour has its own spec that sets the variable
       // itself before importing anything.

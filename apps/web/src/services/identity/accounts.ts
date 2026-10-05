@@ -220,7 +220,7 @@ export async function changeOwnPassword(
   await writePrimaryPassword(identity.id, newPassword, { passwordChangedAt: new Date() });
   await recordPreviousPassword(identity.id, identity.passwordHash);
 
-  await revokeAllSessions(ctx.tenantId, ctx.actor.id, keepSessionToken, 'PASSWORD_CHANGED');
+  await revokeAllSessions(ctx.actor.id, keepSessionToken, 'PASSWORD_CHANGED');
   await audit(ctx, {
     event: 'PASSWORD_CHANGED',
     objectType: 'user',
@@ -241,16 +241,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target);
 
-  /**
-   * The credential lives on PlatformUser, reached through the membership — and
-   * `User.workspaceMembership` is genuinely optional (`salesUserId` is a
-   * nullable unique). A `!` here turned "this account has no login" into
-   * `Cannot read properties of undefined`, so an administrator pressing Reset
-   * password on such a row got a bare 500 instead of being told what is wrong.
-   */
-  if (!target.workspaceMembership) {
-    throw Conflict('That account has no login to reset. Invite them, or recreate the account.');
-  }
+  const login = loginOf(target);
   /**
    * A workspace administrator resets workspace sign-ins, not platform ones.
    *
@@ -260,7 +251,7 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
    * administrator could then replace and read back. A platform staff identity's
    * credentials are managed on the platform.
    */
-  if (isPrivilegedPlatformRole(target.workspaceMembership.platformUser.platformRole)) {
+  if (isPrivilegedPlatformRole(login.platformUser.platformRole)) {
     throw Forbidden("This person's sign-in is managed by the platform owner, not by a workspace.");
   }
 
@@ -280,14 +271,14 @@ export async function resetUserPassword(ctx: Ctx, userId: string, temporaryPassw
   // out to account screens, and its comment says why `passwordHash` is kept out
   // of it. One narrow read is cheaper than a credential on every response.
   const previous = await prisma.platformUser.findUnique({
-    where: { id: target.workspaceMembership.platformUserId },
+    where: { id: login.platformUserId },
     select: { passwordHash: true },
   });
 
-  await writePrimaryPassword(target.workspaceMembership.platformUserId, password, { passwordChangedAt: null });
-  await recordPreviousPassword(target.workspaceMembership.platformUserId, previous?.passwordHash ?? null);
+  await writePrimaryPassword(login.platformUserId, password, { passwordChangedAt: null });
+  await recordPreviousPassword(login.platformUserId, previous?.passwordHash ?? null);
 
-  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'PASSWORD_RESET');
+  await revokeAllSessions(target.id, undefined, 'PASSWORD_RESET');
   await audit(ctx, {
     event: 'PASSWORD_CHANGED',
     objectType: 'user',
@@ -358,7 +349,7 @@ export async function setUserActive(ctx: Ctx, userId: string, active: boolean, r
     });
   });
 
-  if (!active) await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ACCOUNT_SUSPENDED');
+  if (!active) await revokeAllSessions(target.id, undefined, 'ACCOUNT_SUSPENDED');
   await audit(ctx, {
     event: 'RECORD_UPDATED',
     objectType: 'user',
@@ -432,7 +423,7 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
     });
   });
 
-  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ACCOUNT_REMOVED');
+  await revokeAllSessions(target.id, undefined, 'ACCOUNT_REMOVED');
   await audit(ctx, {
     event: 'RECORD_DELETED',
     objectType: 'user',
@@ -448,7 +439,7 @@ export async function deleteUser(ctx: Ctx, userId: string, reason?: string) {
 export async function revokeUserSessions(ctx: Ctx, userId: string) {
   const target = await loadTarget(ctx, userId);
   assertMayAdminister(ctx, target, true);
-  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ADMIN_REVOKED');
+  await revokeAllSessions(target.id, undefined, 'ADMIN_REVOKED');
   await audit(ctx, {
     event: 'RECORD_UPDATED',
     objectType: 'user',
@@ -580,7 +571,7 @@ export async function changeUserRole(ctx: Ctx, userId: string, roleId: string) {
   });
 
   // A role change alters what the session may do, so the session must be rebuilt.
-  await revokeAllSessions(ctx.tenantId, target.id, undefined, 'ROLE_CHANGED');
+  await revokeAllSessions(target.id, undefined, 'ROLE_CHANGED');
   await audit(ctx, {
     event: 'PERMISSION_CHANGED',
     objectType: 'user',

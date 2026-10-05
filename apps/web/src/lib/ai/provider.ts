@@ -208,12 +208,8 @@ export async function generateStructured(request: StructuredRequest): Promise<St
       feature: request.feature,
     });
     if (!verdict.allowed) throw Forbidden(verdict.message ?? 'This request was refused by an AI safety rule.');
-    if (verdict.prompt !== request.prompt) return sendStructured({ ...request, prompt: verdict.prompt });
+    if (verdict.prompt !== request.prompt) return complete({ ...request, prompt: verdict.prompt }, request.schema);
   }
-  return sendStructured(request);
-}
-
-function sendStructured(request: StructuredRequest): Promise<StructuredResponse> {
   return complete(request, request.schema);
 }
 
@@ -468,12 +464,8 @@ function parseArguments(raw: unknown, tool: string): Record<string, unknown> {
   }
 }
 
-/**
- * Exported for the call sites that still issue their own Google fetch. Each one
- * loses this line as it moves onto the transport above; until then the meter
- * takes one shape rather than two.
- */
-export function googleUsage(raw: unknown): ModelUsage {
+/** Google's usage block, in the meter's one shape. */
+function googleUsage(raw: unknown): ModelUsage {
   const usage = raw as { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | null;
   if (!usage) return NO_USAGE;
   const promptTokens = usage.promptTokenCount ?? 0;

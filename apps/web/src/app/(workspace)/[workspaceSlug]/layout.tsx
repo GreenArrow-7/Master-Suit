@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
-import { can, scopeFor, SCOPE_RANK, type Action } from '@/lib/security/rbac';
+import { can, type Action, atLeast } from '@/lib/security/rbac';
 import { NAV_PERMISSIONS, parsePermission } from '@/lib/nav/workspaceNav';
 import { passwordPolicy } from '@/services/identity/accounts';
 import { passwordExpired } from '@/services/identity/passwordHistory';
@@ -231,7 +231,7 @@ async function loadShell(workspaceSlug: string) {
       }),
       // Whether People screens show this person's own records or other people's;
       // decides "My Leave" versus "Leave Requests" for the same route.
-      peopleOversight: SCOPE_RANK[scopeFor(ctx, 'employee', 'VIEW')] >= SCOPE_RANK.TEAM,
+      peopleOversight: atLeast(ctx, 'employee', 'VIEW', 'TEAM'),
       // Same trick for the + Create menu: entries whose module the role cannot
       // CREATE never render (a read-only executive gets no menu at all). Nor do
       // entries the workspace has not bought: leads, calls and events are shared

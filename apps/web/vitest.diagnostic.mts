@@ -20,7 +20,6 @@ import base from './vitest.config.mts';
 export default defineConfig((env) => ({
   ...base(env),
   test: {
-    globals: true,
     include: ['tests/diagnostic/**/*.diag.ts'],
     testTimeout: 60_000,
     hookTimeout: 120_000,

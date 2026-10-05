@@ -459,7 +459,6 @@ export const PATCH = route(
         const input = z
           .object({ name: z.string().min(2).max(120).optional(), code: z.string().min(2).max(30).optional() })
           .parse(body);
-        await ensureOwned(prisma.department, ctx.tenantId, id);
         return prisma.department.update({
           where: { tenantId: ctx.tenantId, id },
           data: { ...input, code: input.code?.trim().toUpperCase(), updatedById: ctx.actor.id },
@@ -470,7 +469,6 @@ export const PATCH = route(
         const input = z
           .object({ name: z.string().min(2).max(120).optional(), code: z.string().min(2).max(30).optional() })
           .parse(body);
-        await ensureOwned(prisma.designation, ctx.tenantId, id);
         return prisma.designation.update({
           where: { tenantId: ctx.tenantId, id },
           data: { ...input, code: input.code?.trim().toUpperCase() },
@@ -493,7 +491,6 @@ export const PATCH = route(
             isActive: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrShift, ctx.tenantId, id);
         return prisma.hrShift.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -505,7 +502,6 @@ export const PATCH = route(
             confirmed: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrHoliday, ctx.tenantId, id);
         return prisma.hrHoliday.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -574,7 +570,6 @@ export const PATCH = route(
             isActive: z.coerce.boolean().optional(),
           })
           .parse(body);
-        await ensureOwned(prisma.hrLeaveType, ctx.tenantId, id);
         return prisma.hrLeaveType.update({ where: { tenantId: ctx.tenantId, id }, data: input });
       }
 
@@ -627,7 +622,6 @@ export const DELETE = route(
       // Soft-deleted: referenced by employment history, and the reads above
       // already exclude `deletedAt`.
       case 'departments': {
-        await ensureOwned(prisma.department, ctx.tenantId, id);
         const inUse = await prisma.employeeProfile.count({
           where: { tenantId: ctx.tenantId, departmentId: id, deletedAt: null },
         });
@@ -638,7 +632,6 @@ export const DELETE = route(
         return prisma.department.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
       }
       case 'designations': {
-        await ensureOwned(prisma.designation, ctx.tenantId, id);
         return prisma.designation.update({ where: { tenantId: ctx.tenantId, id }, data: { deletedAt: new Date() } });
       }
       case 'employees': {
@@ -652,15 +645,12 @@ export const DELETE = route(
       // Deactivated rather than removed: attendance and leave rows point at
       // these, and the flag is what the reads filter on.
       case 'shifts': {
-        await ensureOwned(prisma.hrShift, ctx.tenantId, id);
         return prisma.hrShift.update({ where: { tenantId: ctx.tenantId, id }, data: { isActive: false } });
       }
       case 'leave-types': {
-        await ensureOwned(prisma.hrLeaveType, ctx.tenantId, id);
         return prisma.hrLeaveType.update({ where: { tenantId: ctx.tenantId, id }, data: { isActive: false } });
       }
       case 'work-locations': {
-        await ensureOwned(prisma.hrWorkLocation, ctx.tenantId, id);
         return prisma.hrWorkLocation.update({
           where: { tenantId: ctx.tenantId, id },
           data: { status: 'RETIRED', isActive: false },
@@ -670,7 +660,6 @@ export const DELETE = route(
       // A holiday is referenced by nothing, so it really is removed. Entering
       // the wrong date is the common case and a tombstone helps nobody.
       case 'holidays': {
-        await ensureOwned(prisma.hrHoliday, ctx.tenantId, id);
         return prisma.hrHoliday.delete({ where: { tenantId: ctx.tenantId, id } });
       }
 
@@ -679,9 +668,3 @@ export const DELETE = route(
     }
   },
 );
-
-/** Confirms the row exists in this workspace before an update names it. */
-async function ensureOwned(model: { findFirst: (args: any) => Promise<unknown> }, tenantId: string, id: string) {
-  const found = await model.findFirst({ where: { tenantId, id } });
-  if (!found) throw NotFound('Record');
-}

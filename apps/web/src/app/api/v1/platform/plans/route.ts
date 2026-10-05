@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
 import { AI_TOKEN_LIMIT_KEY, USER_TOKEN_LIMIT_KEY, featureLimitKey } from '@/lib/ai/usage';
 import { prisma, withPlatformTx } from '@/lib/db';
-import { Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
 import { platformAudit } from '@/lib/security/audit';
-import { toResponse } from '@/lib/api/handler';
+import { bareRoute } from '@/lib/api/handler';
 
 const planSchema = z.object({
   code: z
@@ -35,76 +33,63 @@ const planSchema = z.object({
   aiTokensMonthlyByFeature: z.record(z.string().regex(/^[a-z0-9-]{2,40}$/), z.number().int().positive()).optional(),
 });
 
-export async function GET(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    await requirePlatformOwner(req, requestId);
-    const plans = await prisma.subscriptionPlan.findMany({
-      include: { planModules: true, planLimits: true, _count: { select: { subscriptions: true } } },
-      orderBy: { name: 'asc' },
-    });
-    return NextResponse.json({ plans }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/plans' });
-  }
-}
+export const GET = bareRoute('/api/v1/platform/plans', async (req, requestId) => {
+  await requirePlatformOwner(req, requestId);
+  const plans = await prisma.subscriptionPlan.findMany({
+    include: { planModules: true, planLimits: true, _count: { select: { subscriptions: true } } },
+    orderBy: { name: 'asc' },
+  });
+  return NextResponse.json({ plans });
+});
 
-export async function POST(req: Request) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const ctx = await requirePlatformOwner(req, requestId);
-    const body = planSchema.parse(await req.json());
-    const exists = await prisma.subscriptionPlan.findUnique({ where: { code: body.code } });
-    if (exists) throw Conflict('That plan code is already in use.');
-
-    const plan = await withPlatformTx(async (tx) => {
-      const created = await tx.subscriptionPlan.create({
-        data: {
-          code: body.code,
-          name: body.name,
-          modules: body.modules,
-          seatLimit: body.maxUsers,
-          storageMb: body.maxStorageMb,
-          featureLimits: { maxEmployees: body.maxEmployees },
-          planModules: { create: body.modules.map((module) => ({ module, enabled: true })) },
-          planLimits: {
-            create: [
-              { key: 'users', value: body.maxUsers },
-              { key: 'employees', value: body.maxEmployees },
-              { key: 'storage_mb', value: body.maxStorageMb },
-              // Only when set. An absent row is what `monthlyLimit` reads as
-              // unlimited; writing one unconditionally would cap every tier the
-              // moment this shipped.
-              ...(body.maxAiTokensMonthly === undefined
-                ? []
-                : [{ key: AI_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthly }]),
-              ...(body.maxAiTokensMonthlyPerUser === undefined
-                ? []
-                : [{ key: USER_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthlyPerUser }]),
-              ...Object.entries(body.aiTokensMonthlyByFeature ?? {}).map(([feature, value]) => ({
-                key: featureLimitKey(feature),
-                value,
-              })),
-            ],
-          },
+export const POST = bareRoute('/api/v1/platform/plans', async (req, requestId) => {
+  const ctx = await requirePlatformOwner(req, requestId);
+  const body = planSchema.parse(await req.json());
+  const plan = await withPlatformTx(async (tx) => {
+    const created = await tx.subscriptionPlan.create({
+      data: {
+        code: body.code,
+        name: body.name,
+        modules: body.modules,
+        seatLimit: body.maxUsers,
+        storageMb: body.maxStorageMb,
+        featureLimits: { maxEmployees: body.maxEmployees },
+        planModules: { create: body.modules.map((module) => ({ module, enabled: true })) },
+        planLimits: {
+          create: [
+            { key: 'users', value: body.maxUsers },
+            { key: 'employees', value: body.maxEmployees },
+            { key: 'storage_mb', value: body.maxStorageMb },
+            // Only when set. An absent row is what `monthlyLimit` reads as
+            // unlimited; writing one unconditionally would cap every tier the
+            // moment this shipped.
+            ...(body.maxAiTokensMonthly === undefined
+              ? []
+              : [{ key: AI_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthly }]),
+            ...(body.maxAiTokensMonthlyPerUser === undefined
+              ? []
+              : [{ key: USER_TOKEN_LIMIT_KEY, value: body.maxAiTokensMonthlyPerUser }]),
+            ...Object.entries(body.aiTokensMonthlyByFeature ?? {}).map(([feature, value]) => ({
+              key: featureLimitKey(feature),
+              value,
+            })),
+          ],
         },
-        include: { planModules: true, planLimits: true },
-      });
-      await platformAudit(
-        ctx,
-        {
-          event: 'PLAN_CREATED',
-          objectType: 'subscription_plan',
-          objectId: created.id,
-          metadata: { code: created.code, modules: body.modules, aiTokensMonthly: body.maxAiTokensMonthly ?? null },
-        },
-        tx,
-      );
-      return created;
+      },
+      include: { planModules: true, planLimits: true },
     });
+    await platformAudit(
+      ctx,
+      {
+        event: 'PLAN_CREATED',
+        objectType: 'subscription_plan',
+        objectId: created.id,
+        metadata: { code: created.code, modules: body.modules, aiTokensMonthly: body.maxAiTokensMonthly ?? null },
+      },
+      tx,
+    );
+    return created;
+  });
 
-    return NextResponse.json({ plan }, { status: 201, headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/platform/plans' });
-  }
-}
+  return NextResponse.json({ plan }, { status: 201 });
+});

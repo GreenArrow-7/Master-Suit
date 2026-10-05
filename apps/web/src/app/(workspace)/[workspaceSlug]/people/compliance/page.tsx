@@ -5,6 +5,7 @@ import ExportCsv from '@/components/workspace/ExportCsv';
 import { csvCell } from '@/lib/csv';
 import SalesLink from '@/components/workspace/SalesLink';
 import { complianceRegister } from '@/services/hr/compliance';
+import { Metric } from '@/components/ui/MetricCard';
 
 export const metadata = { title: 'Compliance' };
 
@@ -43,7 +44,6 @@ export default async function CompliancePage({
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="People / HRMS"
         title="Compliance register"
         description="Every work credential expiring soon — visa, Emirates ID, passport, labour card and RERA broker card — worst first. A lapsed credential can stop someone working or selling."
         breadcrumbs={[
@@ -97,21 +97,12 @@ export default async function CompliancePage({
             ['Total flagged', rows.length, undefined],
           ] as const
         ).map(([label, value, tone]) => (
-          <article className="lf-metric-card" key={label}>
-            <div className="lf-eyebrow">{label}</div>
-            <div
-              className="lf-metric-card__value"
-              style={
-                tone === 'bad'
-                  ? { color: SEVERITY_TONE.expired }
-                  : tone === 'warn'
-                    ? { color: SEVERITY_TONE.soon }
-                    : undefined
-              }
-            >
-              {value}
-            </div>
-          </article>
+          <Metric
+            key={label}
+            label={label}
+            value={value}
+            color={tone === 'bad' ? SEVERITY_TONE.expired : tone === 'warn' ? SEVERITY_TONE.soon : undefined}
+          />
         ))}
       </div>
 

@@ -8,6 +8,28 @@ import { withRetry, isTransient } from './retry';
  */
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
 
+/**
+ * POSTs to a transcription vendor under the shared deadline and retry, and
+ * returns the JSON. A non-2xx throws an error carrying `status`, which
+ * isTransient reads. `init` is a function so each attempt builds a fresh body.
+ */
+function send(label: string, vendor: string, url: string, init: () => RequestInit): Promise<any> {
+  return withRetry(
+    label,
+    async () => {
+      const res = await fetch(url, { ...init(), method: 'POST', signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS) });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        const err: any = new Error(`${vendor} error: ${res.status} — ${body.slice(0, 200)}`);
+        err.status = res.status;
+        throw err;
+      }
+      return res.json();
+    },
+    { maxAttempts: 3, retryOn: isTransient },
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Transcription (speech-to-text) provider abstraction
 //
@@ -169,37 +191,23 @@ export class GoogleTranscriptionProvider implements TranscriptionProvider {
 
     const language = request.language ?? 'en-US';
 
-    const data = await withRetry(
+    const data = await send(
       'google-stt',
-      async () => {
-        const res = await fetch(
-          `https://speech.googleapis.com/v1/speech:recognize?key=${encodeURIComponent(this.apiKey)}`,
-          {
-            signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              config: {
-                encoding,
-                languageCode: language,
-                enableAutomaticPunctuation: true,
-                // Two-party sales call: the agent and the client.
-                diarizationConfig: { enableSpeakerDiarization: true, minSpeakerCount: 2, maxSpeakerCount: 2 },
-              },
-              audio: { content: request.audio.toString('base64') },
-            }),
+      'Google Speech-to-Text',
+      `https://speech.googleapis.com/v1/speech:recognize?key=${encodeURIComponent(this.apiKey)}`,
+      () => ({
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: {
+            encoding,
+            languageCode: language,
+            enableAutomaticPunctuation: true,
+            // Two-party sales call: the agent and the client.
+            diarizationConfig: { enableSpeakerDiarization: true, minSpeakerCount: 2, maxSpeakerCount: 2 },
           },
-        );
-
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          const err: any = new Error(`Google Speech-to-Text error: ${res.status} — ${body.slice(0, 200)}`);
-          err.status = res.status;
-          throw err;
-        }
-        return res.json();
-      },
-      { maxAttempts: 3, retryOn: isTransient },
+          audio: { content: request.audio.toString('base64') },
+        }),
+      }),
     );
 
     type Word = { word?: string; speakerTag?: number; startTime?: string };
@@ -309,57 +317,43 @@ export class GeminiTranscriptionProvider implements TranscriptionProvider {
 
   private async transcribeWith(model: string, request: TranscriptionRequest): Promise<TranscriptionResult> {
     const language = request.language ?? 'en';
-    const data = await withRetry(
+    const data = await send(
       'gemini-stt',
-      async () => {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
-          {
-            signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [
+      'Gemini transcription',
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
+      () => ({
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
                 {
-                  parts: [
-                    {
-                      text:
-                        'Transcribe this sales call verbatim. Two speakers: label each turn ' +
-                        '"Agent:" or "Client:". Do not summarise, translate or annotate.',
-                    },
-                    {
-                      inline_data: {
-                        mime_type: request.mimeType.split(';')[0].trim(),
-                        data: request.audio.toString('base64'),
-                      },
-                    },
-                  ],
+                  text:
+                    'Transcribe this sales call verbatim. Two speakers: label each turn ' +
+                    '"Agent:" or "Client:". Do not summarise, translate or annotate.',
+                },
+                {
+                  inline_data: {
+                    mime_type: request.mimeType.split(';')[0].trim(),
+                    data: request.audio.toString('base64'),
+                  },
                 },
               ],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                  type: 'object',
-                  properties: {
-                    transcript: { type: 'string' },
-                    language: { type: 'string', description: 'BCP-47 tag of the spoken language' },
-                  },
-                  required: ['transcript'],
-                },
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'object',
+              properties: {
+                transcript: { type: 'string' },
+                language: { type: 'string', description: 'BCP-47 tag of the spoken language' },
               },
-            }),
+              required: ['transcript'],
+            },
           },
-        );
-
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          const err: any = new Error(`Gemini transcription error: ${res.status} — ${body.slice(0, 200)}`);
-          err.status = res.status;
-          throw err;
-        }
-        return res.json();
-      },
-      { maxAttempts: 3, retryOn: isTransient },
+        }),
+      }),
     );
 
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -401,26 +395,10 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       smart_format: 'true',
     });
 
-    const data = await withRetry(
-      'deepgram',
-      async () => {
-        const res = await fetch(`https://api.deepgram.com/v1/listen?${query}`, {
-          signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-          method: 'POST',
-          headers: { Authorization: `Token ${this.apiKey}`, 'Content-Type': request.mimeType },
-          body: new Uint8Array(request.audio),
-        });
-
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          const err: any = new Error(`Deepgram error: ${res.status} — ${body.slice(0, 200)}`);
-          err.status = res.status;
-          throw err;
-        }
-        return res.json();
-      },
-      { maxAttempts: 3, retryOn: isTransient },
-    );
+    const data = await send('deepgram', 'Deepgram', `https://api.deepgram.com/v1/listen?${query}`, () => ({
+      headers: { Authorization: `Token ${this.apiKey}`, 'Content-Type': request.mimeType },
+      body: new Uint8Array(request.audio),
+    }));
 
     const alternative = data.results?.channels?.[0]?.alternatives?.[0];
 
@@ -457,31 +435,13 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
   async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
     const language = request.language ?? 'en';
 
-    const data = await withRetry(
-      'whisper',
-      async () => {
-        const form = new FormData();
-        form.append('file', new Blob([new Uint8Array(request.audio)], { type: request.mimeType }), 'recording');
-        form.append('model', this.model);
-        form.append('language', language);
-
-        const res = await fetch(`${this.endpoint.replace(/\/$/, '')}/v1/audio/transcriptions`, {
-          signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-          method: 'POST',
-          headers: this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : undefined,
-          body: form,
-        });
-
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          const err: any = new Error(`Whisper error: ${res.status} — ${body.slice(0, 200)}`);
-          err.status = res.status;
-          throw err;
-        }
-        return res.json();
-      },
-      { maxAttempts: 3, retryOn: isTransient },
-    );
+    const data = await send('whisper', 'Whisper', `${this.endpoint.replace(/\/$/, '')}/v1/audio/transcriptions`, () => {
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(request.audio)], { type: request.mimeType }), 'recording');
+      form.append('model', this.model);
+      form.append('language', language);
+      return { headers: this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : undefined, body: form };
+    });
 
     // Whisper reports no confidence score; the field stays undefined rather than
     // inventing a number that reviewers would read as a quality signal.

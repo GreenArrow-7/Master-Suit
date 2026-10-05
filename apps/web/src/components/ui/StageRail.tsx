@@ -73,12 +73,8 @@ export default function StageRail({ stages, currentKey, slaState = 'ON_TRACK', s
                 <span>{stage.name}</span>
                 {showTimer && countdown && <span className="lf-rail__timer">{countdown}</span>}
               </>
-            ) : (
-              <span aria-hidden="true">{i < index ? '' : ''}</span>
-            )}
-            <span className="sr-only" style={SR_ONLY}>
-              {stage.name}
-            </span>
+            ) : null}
+            <span className="lf-visually-hidden">{stage.name}</span>
           </div>
         );
       })}
@@ -127,15 +123,3 @@ function useCountdown(due?: string | Date | null): string | null {
   const ss = String(s % 60).padStart(2, '0');
   return `${overdue ? '+' : ''}${hh}:${mm}:${ss}`;
 }
-
-const SR_ONLY: React.CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clip: 'rect(0 0 0 0)',
-  whiteSpace: 'nowrap',
-  border: 0,
-};

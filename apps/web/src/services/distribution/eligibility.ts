@@ -38,18 +38,6 @@
  */
 import { prisma, type TxClient } from '@/lib/db';
 
-/**
- * What `withTx` hands its callback, under the name
- * `scripts/check-raw-sql-scope.mjs` looks for.
- *
- * That checker reads the parameter's *annotation* to decide whether a raw
- * statement runs inside a tenant transaction — and a raw statement it cannot
- * classify is one nobody is checking. `TxClient` is the right type and does not
- * say so in text the checker can see, so it is named here rather than left
- * ambiguous.
- */
-type TransactionClient = TxClient;
-
 /** A read-only client: the request-scoped one, or a transaction. */
 type Reader = Pick<typeof prisma, 'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest'>;
 
@@ -375,7 +363,7 @@ async function counts(client: Reader, tenantId: string, userIds: string[], since
  * where the obligation subsystem's opposite ordering is reconciled with this one.
  */
 export async function lockAndVerify(
-  tx: TransactionClient,
+  tx: TxClient,
   tenantId: string,
   userId: string,
   policy: EligibilityPolicy,

@@ -1,20 +1,19 @@
-# PostgreSQL RLS rollout
+# PostgreSQL row-level security
 
-The role and policy templates live in `infrastructure/postgres`. They are not
-automatically applied by the local launcher because the current Sales server
-still has server-rendered and authentication bootstrap queries that do not all
-run inside tenant-context transactions.
+RLS is on. The migrations create the application role `master_saas_app`
+(`NOBYPASSRLS`, owning no tables; first in `20260803200000`),
+`20260803230000_rls_full_coverage` puts a policy on every tenant-owned table, and
+`20260806000000` adds `FORCE ROW LEVEL SECURITY`, so the owning role is held to
+the policies too. The application connects as that role, and every
+query carries a transaction-local `app.tenant_id` (`src/lib/db.ts`).
 
-Required rollout sequence:
+Two checks keep it that way:
 
-1. Refactor every HTTP request, page render and worker job to run inside one
-   transaction with transaction-local `app.tenant_id`.
-2. Implement narrowly scoped bootstrap functions for session, API-key and reset
-   token lookup; never permit tenantless table scans.
-3. Create migration and application roles with `roles.sql`; the application role
-   must not own tables or possess `BYPASSRLS`.
-4. Apply `rls.sql` in staging and run direct cross-tenant read/write/delete tests.
-5. Verify connection-pool reuse cannot retain tenant context, then promote through
-   a migration job with a tested backup and rollback plan.
+- `node scripts/check-rls.mjs` reads the live catalog and fails if any tenant
+  table lacks RLS or FORCE. CI runs it as the "Tenant isolation" gate.
+- `tests/tenant/` holds the cross-tenant read, write and delete tests, run as
+  the application role.
 
-Until this sequence passes, RLS remains a release blocker rather than a paper claim.
+This file used to hold the rollout plan written before any of that existed,
+with the role and policy SQL templates under `infrastructure/postgres/`. Both
+are in git history; the migrations are what is applied.

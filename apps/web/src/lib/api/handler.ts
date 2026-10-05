@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
+import { Prisma } from '@prisma/client';
 import { z, ZodError, type ZodTypeAny } from 'zod';
-import { AppError, Forbidden, Invalid, MethodNotAllowedError, Unauthorized } from '../errors';
+import { AppError, Conflict, Forbidden, Invalid, MethodNotAllowedError, NotFound, Unauthorized } from '../errors';
 import { logger } from '../logger';
 import { TenantGuardError } from '../db';
 import { resolveCtx, clientIp } from '../auth/session';
@@ -12,7 +12,8 @@ import { assertPermission, type Action, type Ctx } from '../security/rbac';
 import { env } from '../env';
 import { consume, limits } from '../security/ratelimit';
 import { audit, SECRET_KEYS, type AuditEventName } from '../security/audit';
-import { assertAnyModuleEntitlement, type ProductModule } from '../security/entitlements';
+import { assertAnyModuleEntitlement } from '../security/entitlements';
+import type { ProductModuleKey as ProductModule } from '../modules/catalogue';
 import { recordError, recordRequest } from '../metrics';
 
 export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS extends ZodTypeAny> {
@@ -35,6 +36,18 @@ export interface RouteSpec<PS extends ZodTypeAny, QS extends ZodTypeAny, BS exte
    * `module` is still declared, for audit and rate-limit keys.
    */
   selfService?: boolean;
+  /**
+   * A browser session only: API keys and service tokens are refused. For the
+   * routes that hand out files (HR documents, payslips, the bank file, CSV
+   * exports) and the uploads beside them, which no key was ever meant to reach.
+   */
+  sessionOnly?: boolean;
+  /**
+   * The handler asserts the permission itself, because it depends on the record
+   * or the resource: a payslip is "your own, or payroll:VIEW for anyone else's",
+   * an export's permission is its resource's. Declared so the omission is seen.
+   */
+  permissionInHandler?: boolean;
   params?: PS;
   query?: QS;
   body?: BS;
@@ -73,14 +86,14 @@ export function route<
   B = unknown extends z.infer<BS> ? unknown : z.infer<BS>,
 >(spec: RouteSpec<PS, QS, BS>, handler: (args: HandlerArgs<P, Q, B>) => Promise<unknown>) {
   return async (req: Request, context: { params: Promise<Record<string, string>> }) => {
-    const requestId = req.headers.get('x-request-id') ?? ulid();
+    const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
     const started = Date.now();
     let ctx: Ctx | null = null;
 
     try {
       // 1. Authenticate ────────────────────────────────────────────────────────
       if (!spec.anonymous) {
-        const bearer = req.headers.get('authorization');
+        const bearer = spec.sessionOnly ? null : req.headers.get('authorization');
         // Three credentials, told apart by the token's own prefix rather than by
         // a separate header, so a caller cannot pick which verifier examines its
         // token. `lf_svc_` is the cross-tenant platform service identity; a
@@ -140,7 +153,7 @@ export function route<
          * existing self-service routes (identity/self, hr/self) predate that
          * decision and are left as they were.
          */
-        if (!spec.selfService) assertPermission(ctx, spec.module, spec.action);
+        if (!spec.selfService && !spec.permissionInHandler) assertPermission(ctx, spec.module, spec.action);
         if (spec.sensitive) await assertSensitiveAccess(ctx, spec.sensitive);
       } else if (!spec.anonymous) throw Unauthorized();
 
@@ -326,6 +339,30 @@ function errorCode(err: unknown): string {
  * per-field errors for a ZodError, the AppError's own status (with Retry-After
  * and Allow where they apply), and a logged 500 for anything else.
  */
+/**
+ * The request id, problem+json errors and the id echoed on the response, for the
+ * handlers that authenticate their own way (the platform console, sign-in,
+ * invitation acceptance) and so do not run route().
+ *
+ * `name` is the route's template rather than the live path, so a metric label or
+ * log field never carries an id.
+ */
+export function bareRoute<C = { params: Promise<Record<string, string>> }>(
+  name: string,
+  fn: (req: Request, requestId: string, context: C) => Promise<Response>,
+) {
+  return async (req: Request, context: C) => {
+    const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
+    try {
+      const res = await fn(req, requestId, context);
+      if (!res.headers.has('x-request-id')) res.headers.set('x-request-id', requestId);
+      return res;
+    } catch (err) {
+      return toResponse(err, requestId, { route: name });
+    }
+  };
+}
+
 export function toResponse(err: unknown, requestId: string, meta: Record<string, unknown>) {
   const headers: Record<string, string> = { 'x-request-id': requestId, 'content-type': 'application/problem+json' };
 
@@ -354,6 +391,15 @@ export function toResponse(err: unknown, requestId: string, meta: Record<string,
     if (err.status >= 500) logger.error({ err, requestId, ...meta }, 'request failed');
     else logger.warn({ requestId, code: err.code, status: err.status, ...meta }, 'request rejected');
     return NextResponse.json(err.toProblem(requestId), { status: err.status, headers });
+  }
+
+  // The database is the uniqueness and existence check, so a duplicate is the
+  // client's 409 and a missing row the client's 404, never our 500. Named after
+  // the model: the driver adapter does not report which field clashed.
+  if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2002' || err.code === 'P2025')) {
+    const model = String(err.meta?.modelName ?? 'record');
+    const noun = model === 'Tenant' ? 'workspace' : model.replace(/(?!^)([A-Z])/g, ' $1').toLowerCase();
+    return toResponse(err.code === 'P2002' ? Conflict(`This ${noun} already exists.`) : NotFound(), requestId, meta);
   }
 
   // A tenant guard trip is a bug in a repository, not a client error. Log loudly.

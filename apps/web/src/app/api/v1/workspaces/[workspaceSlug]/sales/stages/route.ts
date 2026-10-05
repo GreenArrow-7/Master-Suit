@@ -53,11 +53,6 @@ export const POST = route(
   },
   async ({ ctx, params, body }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
-    const clash = await prisma.leadStage.findFirst({
-      where: { tenantId: ctx.tenantId, key: body.key, deletedAt: null },
-    });
-    if (clash) throw Conflict('A stage with that key already exists.');
-
     // Exactly one default, or a new lead has nowhere to land.
     if (body.isDefault) await clearDefault(ctx.tenantId);
     return prisma.leadStage.create({ data: { tenantId: ctx.tenantId, ...body } });

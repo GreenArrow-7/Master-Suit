@@ -24,7 +24,7 @@ export default async function AuthShell({ children }: { children: React.ReactNod
   const value = await platformValue();
   return (
     <main className="lf-auth">
-      <p className="lf-sr-only">
+      <p className="lf-visually-hidden">
         {PRODUCT_NAME}: {PRODUCT_DESCRIPTION} Modules: {MODULES.map((m) => m.label).join(', ')}.
       </p>
       <section className="lf-auth-story" aria-hidden="true">

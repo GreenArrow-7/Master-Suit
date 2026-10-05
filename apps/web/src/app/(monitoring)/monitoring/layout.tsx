@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ulid } from 'ulid';
 import { AppError } from '@/lib/errors';
 import { requirePlatformSupport } from '@/lib/auth/platform';
 import TopBar from '@/components/nav/TopBar';
@@ -30,7 +29,7 @@ export default async function MonitoringLayout({ children }: { children: React.R
   try {
     staff = await requirePlatformSupport(
       new Request('http://internal/monitoring', { headers: await headers() }),
-      ulid(),
+      crypto.randomUUID(),
     );
   } catch (error) {
     if (error instanceof AppError && error.status === 401) redirect('/login');

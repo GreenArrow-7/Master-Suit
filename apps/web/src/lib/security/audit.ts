@@ -82,11 +82,8 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
  */
 type AuditCapable = Pick<typeof prisma, 'auditLog'>;
 
-/** Values that must never reach the audit table, even as a "previous value". */
-const NEVER_LOG = SECRET_KEYS;
-
 export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = prisma) {
-  if (input.fieldKey && NEVER_LOG.has(input.fieldKey)) return;
+  if (input.fieldKey && SECRET_KEYS.has(input.fieldKey)) return;
 
   await tx.auditLog.create({
     data: {
@@ -111,10 +108,11 @@ export async function audit(ctx: Ctx, input: AuditInput, tx: AuditCapable = pris
 /**
  * The platform audit trail: what a platform identity did, from where, on which
  * request. The actor and request fields come from the context, so a call site
- * states only the event.
+ * states only the event. A null actor is the system (an erasure); a caller with
+ * no request (an invitation accepted in a service) leaves those fields empty.
  */
 export async function platformAudit(
-  ctx: Pick<PlatformCtx, 'platformUserId' | 'requestId' | 'ip' | 'userAgent'>,
+  ctx: { platformUserId: string | null } & Partial<Pick<PlatformCtx, 'requestId' | 'ip' | 'userAgent'>>,
   event: {
     event: string;
     objectType: string;
@@ -151,7 +149,7 @@ export async function auditDiff(
   const rows: AuditInput[] = [];
 
   for (const k of keys) {
-    if (NEVER_LOG.has(k)) continue;
+    if (SECRET_KEYS.has(k)) continue;
     if (Object.is(before[k], after[k])) continue;
     if (JSON.stringify(before[k]) === JSON.stringify(after[k])) continue;
 
@@ -170,7 +168,7 @@ function redact(value: unknown): unknown {
   if (typeof value !== 'object') return value;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = NEVER_LOG.has(k) ? '[redacted]' : v;
+    out[k] = SECRET_KEYS.has(k) ? '[redacted]' : v;
   }
   return out;
 }

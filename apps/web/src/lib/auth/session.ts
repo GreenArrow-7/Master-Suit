@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, hash } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '../db';
 import { readCachedActor, writeCachedActor } from './actorCache';
@@ -34,7 +34,7 @@ export const SERVICE_SESSION_COOKIE = 'lf_service_session';
 /** Which cookie a session's purpose belongs in. */
 const cookieFor = (purpose: SessionPurpose) => (purpose === 'AI_SERVICE' ? SERVICE_SESSION_COOKIE : SESSION_COOKIE);
 
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const sha256 = (s: string) => hash('sha256', s);
 
 /** Minutes an MFA-enrolment grant lives. Long enough to scan a QR code, no longer. */
 export const MFA_ENROLMENT_TTL_MINUTES = 10;
@@ -169,13 +169,11 @@ export async function revokeAllPlatformSessions(
   return count;
 }
 
-/** A password or role change invalidates every other session for that user. */
-export async function revokeAllSessions(
-  tenantId: string,
-  userId: string,
-  except?: string,
-  reason = 'CREDENTIAL_CHANGE',
-) {
+/**
+ * A password or role change invalidates every other session for that user's
+ * identity — platform-wide, since a session is not per workspace.
+ */
+export async function revokeAllSessions(userId: string, except?: string, reason = 'CREDENTIAL_CHANGE') {
   const membership = await prisma.workspaceMembership.findUnique({ where: { salesUserId: userId } });
   if (!membership) return;
   await prisma.platformSession.updateMany({

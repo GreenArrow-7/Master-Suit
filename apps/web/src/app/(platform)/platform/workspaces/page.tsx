@@ -40,7 +40,6 @@ export default async function WorkspacesPage({ searchParams }: { searchParams: P
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Customers"
         title="Workspaces"
         description="Manage companies, enabled modules, usage limits and subscription status."
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'Workspaces' }]}

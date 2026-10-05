@@ -9,6 +9,7 @@ import { consume, limits } from '../security/ratelimit';
 import { redis } from '../redis';
 import { logger } from '../logger';
 import type { Ctx } from '../security/rbac';
+import { platformAudit } from '@/lib/security/audit';
 
 /**
  * The anonymous platform service identity: background and AI reads across every
@@ -357,10 +358,10 @@ export async function recordPlatformAccess(
   // console does not produce the shape it looks for.
   if (ctx.service) await noteWorkspaceSpread(ctx.service.credentialId, ctx.tenantId);
 
-  await prisma.platformAuditEvent.create({
-    data: {
+  await platformAudit(
+    { ...ctx, platformUserId },
+    {
       tenantId: ctx.tenantId,
-      actorUserId: platformUserId,
       /**
        * Two streams, one table. The customer's audit screen already filters on
        * SERVICE_READ to separate automated reads from everything else, so a
@@ -379,9 +380,6 @@ export async function recordPlatformAccess(
       event: ctx.actor.roleKey === 'platform_service' ? 'SERVICE_READ' : 'SUPPORT_READ',
       objectType: detail.module,
       objectId: detail.objectId,
-      requestId: ctx.requestId,
-      ipAddress: ctx.ip,
-      userAgent: ctx.userAgent,
       metadata: {
         action: detail.action,
         method: detail.method,
@@ -404,5 +402,5 @@ export async function recordPlatformAccess(
             }),
       },
     },
-  });
+  );
 }

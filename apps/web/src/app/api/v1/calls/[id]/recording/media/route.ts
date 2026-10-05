@@ -1,15 +1,12 @@
 import { SALES_OR_REALTY } from '@/lib/security/entitlements';
-import { NextResponse } from 'next/server';
-import { ulid } from 'ulid';
 import { z } from 'zod';
-import { route, toResponse } from '@/lib/api/handler';
+import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { AppError, Forbidden, NotFound } from '@/lib/errors';
 import { getObject, putObject } from '@/lib/storage';
 import { assertClean, scanBuffer } from '@/lib/antivirus';
 import { readUpload } from '@/lib/api/read-body';
-import { resolveGuardedCtx } from '@/lib/api/guarded';
 import { audit } from '@/lib/security/audit';
 import { enqueueOrRun } from '@/lib/queue';
 import { analyseAndAudit, transcribeCall } from '@/services/shared/callIntelligence';
@@ -80,12 +77,9 @@ export const GET = route(
 /**
  * Uploads the recording itself — audio or video — for a call.
  *
- * Multipart, so it cannot go through the JSON kernel in lib/api/handler.ts.
- * `resolveGuardedCtx` runs the kernel's order for it — authenticate, entitle,
- * permit, throttle — rather than the prologue being retyped here. That matters
- * for the fourth step: the hand-written version of this had no rate limit, which
- * is the same omission the five HR bypasses had and for the same reason. There
- * is no way to ask that function for no limit.
+ * Multipart: the kernel leaves the body unread until readUpload, after the
+ * prologue. The hand-written version of this had no rate limit, the same
+ * omission the five HR downloads had; the kernel cannot leave it out.
  *
  * Consent is checked after the prologue and before a byte of the body is read.
  *
@@ -98,15 +92,9 @@ export const GET = route(
  * an object that was never stored is worse than no row — the transcription job
  * would retry against it forever.
  */
-export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
-  const requestId = req.headers.get('x-request-id') ?? ulid();
-  try {
-    const ctx = await resolveGuardedCtx(req, requestId, {
-      productModule: SALES_OR_REALTY,
-      permission: ['calls', 'EDIT'],
-    });
-
-    const { id: callId } = await context.params;
+export const PUT = route(
+  { module: 'calls', action: 'EDIT', productModule: SALES_OR_REALTY, sessionOnly: true, params },
+  async ({ ctx, params: { id: callId }, req }) => {
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
 
     const [call, consent] = await Promise.all([
@@ -131,7 +119,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     assertClean(await scanBuffer(bytes));
 
     const durationSecs = Number(form.get('durationSecs') ?? 0) || null;
-    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${ulid()}`;
+    const storageKey = `recordings/t-${ctx.tenantId}/call-${callId}/${crypto.randomUUID()}`;
     await putObject(storageKey, bytes, mimeType);
 
     const recording = await prisma.recording.upsert({
@@ -168,11 +156,9 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
       transcribeCall({ tenantId: ctx.tenantId, callId, language }).then(() => analyseAndAudit(ctx.tenantId, callId)),
     );
 
-    return NextResponse.json({ ...recording, transcription: 'QUEUED' }, { headers: { 'x-request-id': requestId } });
-  } catch (error) {
-    return toResponse(error, requestId, { route: '/api/v1/calls/[id]/recording/media' });
-  }
-}
+    return { ...recording, transcription: 'QUEUED' };
+  },
+);
 
 /** Audio and video only. A transcription provider rejects anything else anyway. */
 const ACCEPTED_MEDIA = /^(audio|video)\//;

@@ -36,6 +36,6 @@ describe('telephony webhook authentication', () => {
   });
 
   it('never accepts HTTP signatures through the mock provider', () => {
-    expect(new MockTelephonyProvider().verifyWebhookSignature()).toBe(false);
+    expect(new MockTelephonyProvider().validateWebhook()).toBe(false);
   });
 });

@@ -21,6 +21,21 @@ import { allowanceState, usageStatus, type AllowanceState, type UsageStatus } fr
  */
 const nz = (v: number | null | undefined) => v ?? 0;
 
+type Summed = { _sum: { inputTokens: number | null; outputTokens: number | null } };
+/** Input plus output, from a groupBy row's sums. */
+const tokens = (row: Summed | undefined) => nz(row?._sum.inputTokens) + nz(row?._sum.outputTokens);
+const mostTokens = (a: Summed, b: Summed) => tokens(b) - tokens(a);
+const limitOf = (value: unknown) => (value === undefined || value === null ? null : Number(value));
+const featureRow = (
+  f: Summed & { feature: string; _count: { _all: number }; _sum: { costMicros: bigint | null } },
+) => ({
+  feature: f.feature,
+  label: featureLabel(f.feature),
+  tokens: tokens(f),
+  requests: f._count._all,
+  amount: microsToAmount(f._sum.costMicros ?? 0n),
+});
+
 export interface WorkspaceRow {
   tenantId: string;
   name: string;
@@ -119,16 +134,12 @@ export async function loadWorkspaces(now: Date = new Date()): Promise<{ rows: Wo
     const output = nz(totals?._sum.outputTokens);
     const used = input + output;
     const ceiling = ceilingOf.get(tenant.id);
-    const limit = ceiling?.tokenLimit === undefined || ceiling?.tokenLimit === null ? null : Number(ceiling.tokenLimit);
+    const limit = limitOf(ceiling?.tokenLimit);
     const percent = limit === null ? null : limit > 0 ? Math.round((used / limit) * 1000) / 10 : 100;
 
     const mine = byTenantUser.filter((r) => r.tenantId === tenant.id);
-    const top = [...mine].sort(
-      (a, b) => nz(b._sum.inputTokens) + nz(b._sum.outputTokens) - (nz(a._sum.inputTokens) + nz(a._sum.outputTokens)),
-    )[0];
-    const feature = [...byTenantFeature.filter((r) => r.tenantId === tenant.id)].sort(
-      (a, b) => nz(b._sum.inputTokens) + nz(b._sum.outputTokens) - (nz(a._sum.inputTokens) + nz(a._sum.outputTokens)),
-    )[0];
+    const top = [...mine].sort(mostTokens)[0];
+    const feature = [...byTenantFeature.filter((r) => r.tenantId === tenant.id)].sort(mostTokens)[0];
     const model = [...byTenantModel.filter((r) => r.tenantId === tenant.id)].sort(
       (a, b) => b._count._all - a._count._all,
     )[0];
@@ -150,14 +161,14 @@ export async function loadWorkspaces(now: Date = new Date()): Promise<{ rows: Wo
         ? {
             userId: top.userId,
             name: nameOf.get(top.userId) ?? top.userId,
-            tokens: nz(top._sum.inputTokens) + nz(top._sum.outputTokens),
+            tokens: tokens(top),
           }
         : null,
       topFeature: feature
         ? {
             feature: feature.feature,
             label: featureLabel(feature.feature),
-            tokens: nz(feature._sum.inputTokens) + nz(feature._sum.outputTokens),
+            tokens: tokens(feature),
           }
         : null,
       topModel: model?.model
@@ -299,11 +310,7 @@ export async function loadWorkspace(tenantId: string, now: Date = new Date()): P
   for (const person of people.filter((p) => active.has(p.id))) {
     const row = byUser.find((u) => u.userId === person.id);
     const state = await allowanceState(tenantId, person.id, null, now);
-    const mineByFeature = topFeatureByUser
-      .filter((f) => f.userId === person.id)
-      .sort(
-        (a, b) => nz(b._sum.inputTokens) + nz(b._sum.outputTokens) - (nz(a._sum.inputTokens) + nz(a._sum.outputTokens)),
-      );
+    const mineByFeature = topFeatureByUser.filter((f) => f.userId === person.id).sort(mostTokens);
     users.push({
       userId: person.id,
       name: person.fullName ?? person.id,
@@ -333,7 +340,7 @@ export async function loadWorkspace(tenantId: string, now: Date = new Date()): P
     planId: subscription?.planId ?? null,
     since: since.toISOString(),
     totals: {
-      tokens: nz(totals._sum.inputTokens) + nz(totals._sum.outputTokens),
+      tokens: tokens(totals),
       input: nz(totals._sum.inputTokens),
       output: nz(totals._sum.outputTokens),
       amount: microsToAmount(totals._sum.costMicros ?? 0n),
@@ -342,44 +349,31 @@ export async function loadWorkspace(tenantId: string, now: Date = new Date()): P
     },
     ceiling: {
       id: ceilingRow?.id ?? null,
-      tokenLimit:
-        ceilingRow?.tokenLimit === undefined || ceilingRow?.tokenLimit === null ? null : Number(ceilingRow.tokenLimit),
-      costLimit:
-        ceilingRow?.costLimit === undefined || ceilingRow?.costLimit === null ? null : Number(ceilingRow.costLimit),
+      tokenLimit: limitOf(ceilingRow?.tokenLimit),
+      costLimit: limitOf(ceilingRow?.costLimit),
       thresholds: ceilingRow?.thresholds ?? [70, 85, 95],
       action: ceilingRow?.action ?? 'ALERT_ONLY',
       hardLimit: ceilingRow?.hardLimit ?? false,
     },
     perUserDefault: {
       id: perUserRow?.id ?? null,
-      tokenLimit:
-        perUserRow?.tokenLimit === undefined || perUserRow?.tokenLimit === null ? null : Number(perUserRow.tokenLimit),
+      tokenLimit: limitOf(perUserRow?.tokenLimit),
     },
     featureBudgets: featureRows.map((f) => ({
       id: f.id,
       feature: f.feature!,
       label: featureLabel(f.feature!),
       tokenLimit: f.tokenLimit === null ? null : Number(f.tokenLimit),
-      used:
-        nz(byFeature.find((b) => b.feature === f.feature)?._sum.inputTokens) +
-        nz(byFeature.find((b) => b.feature === f.feature)?._sum.outputTokens),
+      used: tokens(byFeature.find((b) => b.feature === f.feature)),
     })),
     users,
-    byFeature: byFeature
-      .map((f) => ({
-        feature: f.feature,
-        label: featureLabel(f.feature),
-        tokens: nz(f._sum.inputTokens) + nz(f._sum.outputTokens),
-        requests: f._count._all,
-        amount: microsToAmount(f._sum.costMicros ?? 0n),
-      }))
-      .sort((a, b) => b.tokens - a.tokens),
+    byFeature: byFeature.map(featureRow).sort((a, b) => b.tokens - a.tokens),
     byModel: byModel
       .map((m) => ({
         provider: m.provider ?? '—',
         model: m.model ?? '—',
         requests: m._count._all,
-        tokens: nz(m._sum.inputTokens) + nz(m._sum.outputTokens),
+        tokens: tokens(m),
       }))
       .sort((a, b) => b.requests - a.requests),
   };
@@ -497,21 +491,13 @@ export async function loadUser(tenantId: string, userId: string, now: Date = new
     planName: subscription?.plan?.name ?? null,
     state,
     amount: microsToAmount(state.usedMicros),
-    byFeature: byFeature
-      .map((f) => ({
-        feature: f.feature,
-        label: featureLabel(f.feature),
-        tokens: nz(f._sum.inputTokens) + nz(f._sum.outputTokens),
-        requests: f._count._all,
-        amount: microsToAmount(f._sum.costMicros ?? 0n),
-      }))
-      .sort((a, b) => b.tokens - a.tokens),
+    byFeature: byFeature.map(featureRow).sort((a, b) => b.tokens - a.tokens),
     byModel: byModel
       .map((m) => ({
         provider: m.provider ?? '—',
         model: m.model ?? '—',
         requests: m._count._all,
-        tokens: nz(m._sum.inputTokens) + nz(m._sum.outputTokens),
+        tokens: tokens(m),
         fallbacks: fallbacksByModel.find((f) => f.provider === m.provider && f.model === m.model)?._count._all ?? 0,
       }))
       .sort((a, b) => b.requests - a.requests),

@@ -10,13 +10,12 @@
  * The token is 256 bits of randomness, stored only as a SHA-256 hash. A leaked
  * database row is not redeemable; a leaked *email* is, which is why it expires.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { randomBytes, hash } from 'node:crypto';
 import { prisma, withTx } from '@/lib/db';
 import { env } from '@/lib/env';
-import { Conflict, Forbidden, NotFound } from '@/lib/errors';
+import { Conflict, Forbidden, NotFound, isUniqueViolation } from '@/lib/errors';
 import { assertMayAdministerRole, type Ctx } from '@/lib/security/rbac';
-import { audit } from '@/lib/security/audit';
+import { audit, platformAudit } from '@/lib/security/audit';
 import { hashPassword, assertPasswordPolicy } from '@/lib/auth/password';
 import { sendMail } from '@/lib/mailer';
 import { passwordPolicy } from './accounts';
@@ -25,7 +24,7 @@ import { resolvePolicy } from '@/services/hr/settings';
 
 export const INVITE_TTL_HOURS = 72;
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) => hash('sha256', value);
 
 export interface InviteInput {
   email: string;
@@ -111,7 +110,7 @@ export async function inviteUser(ctx: Ctx, input: InviteInput) {
       // open invitation to the same address; this turns its P2002 into a sentence
       // instead of a 500. Catching, rather than pre-reading, is also what holds
       // when two administrators invite the same person at the same moment.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+      if (isUniqueViolation(error))
         throw Conflict('An invitation to that address is already open. Resend or revoke it instead.');
       throw error;
     });
@@ -358,18 +357,16 @@ export async function acceptInvitation(token: string, input: { password: string;
     return { platformUserId: platformUser.id, reusedIdentity: Boolean(existing) };
   });
 
-  await prisma.platformAuditEvent
-    .create({
-      data: {
-        tenantId: invitation.tenantId,
-        actorUserId: result.platformUserId,
-        event: 'RECORD_CREATED',
-        objectType: 'invitation',
-        objectId: invitation.id,
-        metadata: { action: 'user.invitation_accepted', email, reusedIdentity: result.reusedIdentity },
-      },
-    })
-    .catch(() => {});
+  await platformAudit(
+    { platformUserId: result.platformUserId },
+    {
+      tenantId: invitation.tenantId,
+      event: 'RECORD_CREATED',
+      objectType: 'invitation',
+      objectId: invitation.id,
+      metadata: { action: 'user.invitation_accepted', email, reusedIdentity: result.reusedIdentity },
+    },
+  ).catch(() => {});
 
   return {
     workspaceSlug: tenant.slug,

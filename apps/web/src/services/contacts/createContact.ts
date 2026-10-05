@@ -19,7 +19,7 @@ export interface CreateContactInput {
 }
 
 export async function createContact(ctx: Ctx, input: CreateContactInput) {
-  const phoneNormalized = input.phone ? normalizePhone(input.phone, 'AE') : null;
+  const phoneNormalized = input.phone ? normalizePhone(input.phone) : null;
 
   const contact = await withTx(ctx.tenantId, async (tx) => {
     const reference = await nextReference(tx, ctx.tenantId, 'CONTACT');

@@ -58,7 +58,7 @@ export const POST = route(
     if (!enquiry) throw NotFound('Social enquiry');
     if (enquiry.linkedLeadId) throw Conflict('This enquiry is already linked to a customer.');
 
-    const phoneNormalized = body.phone ? normalizePhone(body.phone, 'AE') : null;
+    const phoneNormalized = body.phone ? normalizePhone(body.phone) : null;
     const email = body.email?.toLowerCase() ?? null;
 
     /**

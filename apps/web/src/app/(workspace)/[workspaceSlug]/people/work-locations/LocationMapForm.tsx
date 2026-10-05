@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type * as Leaflet from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import Field from '@/components/forms/Field';
 
 /**
  * HRMS-v21's location picker: a Leaflet map to place the geofence by clicking or
@@ -256,12 +257,9 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
           </label>
           <input id="wl-name" className="lf-input" value={form.name} onChange={set('name')} required />
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-code">
-            Code
-          </label>
+        <Field label="Code" htmlFor="wl-code">
           <input id="wl-code" className="lf-input" value={form.code} onChange={set('code')} />
-        </div>
+        </Field>
         <div className="lf-field">
           <label className="lf-label" data-required htmlFor="wl-lat">
             Latitude
@@ -303,10 +301,7 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
             required
           />
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-acc">
-            Worst acceptable GPS accuracy (m)
-          </label>
+        <Field label="Worst acceptable GPS accuracy (m)" htmlFor="wl-acc">
           <input
             id="wl-acc"
             className="lf-input"
@@ -317,17 +312,11 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
             onChange={set('maxAccuracyMeters')}
             placeholder="100"
           />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-open">
-            Opening time
-          </label>
+        </Field>
+        <Field label="Opening time" htmlFor="wl-open">
           <input id="wl-open" className="lf-input" type="time" value={form.openingTime} onChange={set('openingTime')} />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-close">
-            Closing time
-          </label>
+        </Field>
+        <Field label="Closing time" htmlFor="wl-close">
           <input
             id="wl-close"
             className="lf-input"
@@ -335,23 +324,17 @@ export default function LocationMapForm({ endpoint }: { endpoint: string }) {
             value={form.closingTime}
             onChange={set('closingTime')}
           />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-emirate">
-            Emirate
-          </label>
+        </Field>
+        <Field label="Emirate" htmlFor="wl-emirate">
           <input id="wl-emirate" className="lf-input" value={form.emirate} onChange={set('emirate')} />
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="wl-status">
-            Status
-          </label>
+        </Field>
+        <Field label="Status" htmlFor="wl-status">
           <select id="wl-status" className="lf-input" value={form.status} onChange={set('status')}>
             <option value="ACTIVE">Active</option>
             <option value="DRAFT">Draft</option>
             <option value="RETIRED">Retired</option>
           </select>
-        </div>
+        </Field>
       </div>
 
       <div>

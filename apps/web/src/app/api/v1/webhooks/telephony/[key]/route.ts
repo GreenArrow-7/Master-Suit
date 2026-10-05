@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
@@ -10,6 +10,7 @@ import { telephonyProvider } from '@/lib/integrations/telephony';
 import { TERMINAL_EVENTS, type CallEvent, type CallEventKind } from '@/lib/integrations/telephony/types';
 import { normalizePhone } from '@/services/leads/normalizePhone';
 import { touchLead } from '@/services/leads/touch';
+import { isUniqueViolation } from '@/lib/errors';
 
 /**
  * Every vendor's callbacks land here, keyed by the connection's `webhookKey` in
@@ -108,7 +109,7 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
   // Vendors retry on any non-2xx and several retry on success too. The unique
   // constraint is the whole idempotency story; a duplicate is a fast 200.
   const providerKey = `telephony:${connection.id}`;
-  const externalId = event.deliveryId || createHash('sha256').update(rawBody).digest('hex').slice(0, 40);
+  const externalId = event.deliveryId || hash('sha256', rawBody).slice(0, 40);
   try {
     await prisma.webhookEvent.create({
       data: {
@@ -120,7 +121,7 @@ export async function handleTelephonyWebhook(webhookKey: string, req: Request): 
       },
     });
   } catch (e) {
-    if ((e as { code?: string })?.code === 'P2002') return NextResponse.json({ ok: true, skipped: true });
+    if (isUniqueViolation(e)) return NextResponse.json({ ok: true, skipped: true });
     throw e;
   }
 

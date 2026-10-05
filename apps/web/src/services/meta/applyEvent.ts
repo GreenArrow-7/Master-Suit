@@ -78,7 +78,7 @@ async function applyLeadgen(tenantId: string, connectionId: string, event: Norma
     answers.full_name ?? ([answers.first_name, answers.last_name].filter(Boolean).join(' ').trim() || null);
   const email = answers.email?.trim().toLowerCase() ?? null;
   const rawPhone = answers.phone_number ?? answers.phone ?? null;
-  const phoneNormalized = rawPhone ? normalizePhone(rawPhone, 'AE') : null;
+  const phoneNormalized = rawPhone ? normalizePhone(rawPhone) : null;
 
   if (!fullName && !email && !phoneNormalized) {
     logger.warn({ tenantId, leadgenId }, 'meta lead carried no identifying field');
@@ -258,7 +258,7 @@ async function applyInboundMessage(tenantId: string, event: NormalizedMetaEvent)
   const threadId = event.threadId;
   if (!threadId || !event.messageId) return;
 
-  const phoneNormalized = normalizePhone(threadId, 'AE');
+  const phoneNormalized = normalizePhone(threadId);
   const [match] = await findDuplicates(tenantId, { phoneNormalized });
 
   const conversation = await prisma.conversation.upsert({

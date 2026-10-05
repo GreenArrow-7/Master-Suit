@@ -61,7 +61,6 @@ export default function AiControlView(data: AiControlData) {
   return (
     <div className="lf-page-stack">
       <PageHeader
-        eyebrow="Commercial"
         title="AI Control Center"
         description={`Prices, budgets, guardrails and model routing. Figures cover the last ${data.summary.days} days.`}
         breadcrumbs={[{ label: 'Platform', href: '/platform' }, { label: 'AI Control Center' }]}

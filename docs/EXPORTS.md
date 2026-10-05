@@ -56,11 +56,10 @@ mid-export shift the window so a row is skipped or repeated.
   carrying the row count, written **on completion** so it reflects what actually
   left rather than what was asked for.
 
-`/api/v1/exports/{resource}` is not routed through the API kernel, for the same
-reason the lead export is not: that helper always answers JSON and an export has
-to stream a file. It runs the same gates in the same order and translates errors
-the way the kernel would — without that, an unauthorised export answers 500 and
-reads as a fault rather than a refusal.
+Both export routes run through the API kernel, which passes the streamed
+Response back untouched, with `sessionOnly`: a browser session may export, an
+API key may not. The generic route asserts EXPORT on the resource's own module
+inside the handler, since only the resource names it.
 
 ## Checks
 

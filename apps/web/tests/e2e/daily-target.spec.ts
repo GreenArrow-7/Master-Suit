@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, resetLoginThrottle } from './helpers';
+import { login, resetLoginThrottle, ok } from './helpers';
 
 /**
  * Daily lead target, end to end: the manager sets a seller's "leads to call
@@ -13,11 +13,6 @@ const email = process.env.E2E_DEMO_EMAIL!;
 const password = process.env.E2E_DEMO_PASSWORD!;
 const base = () => process.env.APP_URL ?? 'http://localhost:3000';
 const run = Date.now().toString(36);
-
-async function ok(res: { ok(): boolean; text(): Promise<string>; json(): Promise<unknown> }, what: string) {
-  expect(res.ok(), `${what}: ${await res.text().catch(() => '')}`).toBeTruthy();
-  return (await res.json()) as Record<string, any>;
-}
 
 test.describe('Daily lead target', () => {
   test.skip(!slug || !email || !password, 'E2E_DEMO_SLUG / E2E_DEMO_EMAIL / E2E_DEMO_PASSWORD not set');

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
-import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { seesWholeWorkspace } from '@/lib/security/record-scope';
 
 const params = z.object({ id: z.string().cuid() });
 
@@ -29,8 +29,7 @@ export const PATCH = route(
     // An activity logged with the wrong outcome was previously permanent.
     const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!activity) throw NotFound('Activity');
-    const scope = scopeFor(ctx, 'leads', 'EDIT');
-    if (activity.ownerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Activity');
+    if (activity.ownerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'leads', 'EDIT')) throw NotFound('Activity');
 
     return prisma.activity.update({
       where: { tenantId: ctx.tenantId, id: params.id },
@@ -45,8 +44,7 @@ export const DELETE = route(
   async ({ ctx, params }) => {
     const activity = await prisma.activity.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
     if (!activity) throw NotFound('Activity');
-    const scope = scopeFor(ctx, 'leads', 'DELETE');
-    if (activity.ownerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) throw NotFound('Activity');
+    if (activity.ownerId !== ctx.actor.id && !seesWholeWorkspace(ctx, 'leads', 'DELETE')) throw NotFound('Activity');
 
     await prisma.activity.update({
       where: { tenantId: ctx.tenantId, id: params.id },

@@ -37,7 +37,6 @@ export default defineConfig({
    * trade.
    */
   workers: 1,
-  fullyParallel: false,
 
   /**
    * No retries, in CI either.
@@ -133,6 +132,5 @@ export default defineConfig({
     ignoreHTTPSErrors: process.env.E2E_ALLOW_UNTRUSTED_TLS === 'yes',
     timeout: 180_000,
     stdout: 'pipe',
-    stderr: 'pipe',
   },
 });

@@ -20,7 +20,7 @@ import ListHeader from '@/components/workspace/ListHeader';
 import SalesLink from '@/components/workspace/SalesLink';
 import { obligationAccess } from '@/services/leads/nextFollowUp';
 
-import { can, scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { can, atLeast } from '@/lib/security/rbac';
 import DailyBoardView from './DailyBoardView';
 import LiveRefresh from './LiveRefresh';
 import { dailyBoard } from '@/services/targets/dailyBoard';
@@ -131,8 +131,7 @@ export default async function LeadershipPage({
   const params = await searchParams;
   const ctx = await requirePageAccess({ module: 'SALES', permission: ['reports', 'VIEW'] });
   const view = TABS.some(([, k]) => k === params.view) ? (params.view ?? '') : '';
-  const canAssignTargets =
-    can(ctx, 'leads', 'ASSIGN') && SCOPE_RANK[scopeFor(ctx, 'leads', 'ASSIGN')] >= SCOPE_RANK.TEAM;
+  const canAssignTargets = can(ctx, 'leads', 'ASSIGN') && atLeast(ctx, 'leads', 'ASSIGN', 'TEAM');
 
   const period = (PERIODS.some(([k]) => k === params.period) ? params.period : 'mtd') as PeriodKey;
   const custom = Boolean(params.from);

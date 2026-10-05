@@ -827,15 +827,6 @@ export default function TopBar({
                     )}
                     <Link
                       href={item.href}
-                      style={{
-                        display: 'block',
-                        padding: '8px 16px',
-                        fontSize: 'var(--lf-text-sm)',
-                        color: 'var(--lf-ink)',
-                        textDecoration: 'none',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--lf-surface-2)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                       // A soft navigation no longer tears the menu down; close it.
                       onClick={() => setCreateOpen(false)}
                     >

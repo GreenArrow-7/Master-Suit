@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 type Action = 'set-monitoring' | 'revoke-monitoring' | 'change-admin-password';
 
@@ -163,10 +164,7 @@ export default function CredentialManager({
           <p className="lf-muted" style={{ margin: 0 }}>
             Confirm it is you: your current administration password and a code from your authenticator.
           </p>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="currentPassword">
-              Current administration password
-            </label>
+          <Field label="Current administration password" htmlFor="currentPassword">
             <input
               id="currentPassword"
               className="lf-input"
@@ -176,11 +174,8 @@ export default function CredentialManager({
               onChange={(event) => setCurrentPassword(event.target.value)}
               required
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="mfaCode">
-              Authentication code
-            </label>
+          </Field>
+          <Field label="Authentication code" htmlFor="mfaCode">
             <input
               id="mfaCode"
               className="lf-input lf-num"
@@ -191,7 +186,7 @@ export default function CredentialManager({
               onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
               required
             />
-          </div>
+          </Field>
           {open !== 'revoke-monitoring' && (
             <>
               <div className="lf-field">
@@ -209,10 +204,7 @@ export default function CredentialManager({
                 />
                 <span className="lf-hint">At least 12 characters, with upper and lower case letters and a number.</span>
               </div>
-              <div className="lf-field">
-                <label className="lf-label" htmlFor="confirmPassword">
-                  Repeat the new password
-                </label>
+              <Field label="Repeat the new password" htmlFor="confirmPassword">
                 <input
                   id="confirmPassword"
                   className="lf-input"
@@ -222,7 +214,7 @@ export default function CredentialManager({
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   required
                 />
-              </div>
+              </Field>
             </>
           )}
           {error && (

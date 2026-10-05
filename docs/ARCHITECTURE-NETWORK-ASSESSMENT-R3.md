@@ -3,10 +3,9 @@
 **Revision 3 · 2026-08-22 · commit `07d39c8`**
 
 > **A third assessment, not an update of the first two.**
-> `ARCHITECTURE-NETWORK-ASSESSMENT.md` records `aede392` and
-> `ARCHITECTURE-NETWORK-ASSESSMENT-R2.md` records `f1dd84e`. Both are left as
-> written, for the reason each of them gives: an assessment that edits itself is
-> no longer a record of anything. This document reads the tree as it stands at
+> The first recorded `aede392` and R2 recorded `f1dd84e`; both stay in git history
+> exactly as written (removed from the tree in October 2026), for the reason each
+> of them gave: an assessment that edits itself is no longer a record of anything. This document reads the tree as it stands at
 > `07d39c8`, twenty-five commits after R2, and reaches different conclusions
 > about several things R2 rated High.
 

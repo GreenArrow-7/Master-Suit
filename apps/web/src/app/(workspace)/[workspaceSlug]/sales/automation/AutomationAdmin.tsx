@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Compose a working automation: when <event> on <object> [and field matches],
@@ -128,12 +129,9 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="a-name">
-          Name
-        </label>
+      <Field label="Name" htmlFor="a-name">
         <input id="a-name" className="lf-input" value={form.name} onChange={set('name')} required autoFocus />
-      </div>
+      </Field>
 
       <div
         style={{
@@ -142,10 +140,7 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="a-object">
-            When a…
-          </label>
+        <Field label="When a…" htmlFor="a-object">
           <select id="a-object" className="lf-input" value={form.objectType} onChange={set('objectType')}>
             {OBJECTS.map((o) => (
               <option key={o} value={o}>
@@ -153,22 +148,16 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="a-event">
-            …is
-          </label>
+        <Field label="…is" htmlFor="a-event">
           <select id="a-event" className="lf-input" value={form.event} onChange={set('event')}>
             <option value="created">Created</option>
             <option value="updated">Updated</option>
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="a-action">
-            Then
-          </label>
+        <Field label="Then" htmlFor="a-action">
           <select id="a-action" className="lf-input" value={form.action} onChange={set('action')}>
             {ACTIONS.map(([value, label]) => (
               <option key={value} value={value}>
@@ -176,7 +165,7 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
               </option>
             ))}
           </select>
-        </div>
+        </Field>
       </div>
 
       {form.action === 'create_task' && (
@@ -187,16 +176,10 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
             gap: 'var(--lf-space-4)',
           }}
         >
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="a-tasktitle">
-              Task title
-            </label>
+          <Field label="Task title" htmlFor="a-tasktitle">
             <input id="a-tasktitle" className="lf-input" value={form.taskTitle} onChange={set('taskTitle')} />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="a-tasktype">
-              Task type
-            </label>
+          </Field>
+          <Field label="Task type" htmlFor="a-tasktype">
             <select id="a-tasktype" className="lf-input" value={form.taskTypeKey} onChange={set('taskTypeKey')}>
               {taskTypeKeys.map((key) => (
                 <option key={key} value={key}>
@@ -204,11 +187,8 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
                 </option>
               ))}
             </select>
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="a-due">
-              Due in (minutes)
-            </label>
+          </Field>
+          <Field label="Due in (minutes)" htmlFor="a-due">
             <input
               id="a-due"
               className="lf-input"
@@ -217,26 +197,20 @@ export function AutomationComposer({ taskTypeKeys }: { taskTypeKeys: string[] })
               value={form.dueInMinutes}
               onChange={set('dueInMinutes')}
             />
-          </div>
+          </Field>
         </div>
       )}
 
       {form.action === 'add_tag' && (
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="a-tag">
-            Tag
-          </label>
+        <Field label="Tag" htmlFor="a-tag">
           <input id="a-tag" className="lf-input" value={form.tag} onChange={set('tag')} />
-        </div>
+        </Field>
       )}
 
       {(form.action === 'notify_owner' || form.action === 'notify_manager') && (
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="a-template">
-            Notification text
-          </label>
+        <Field label="Notification text" htmlFor="a-template">
           <input id="a-template" className="lf-input" value={form.template} onChange={set('template')} />
-        </div>
+        </Field>
       )}
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>

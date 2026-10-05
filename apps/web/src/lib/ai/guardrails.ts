@@ -164,29 +164,26 @@ export async function applyGuardrails(input: {
   let prompt = input.prompt;
   let redacted: Record<string, number> = {};
   let detected: Record<string, number> = {};
+  const refuse = (key: string, message: string): GuardrailVerdict => ({
+    allowed: false,
+    reason: `GUARDRAIL_${key}`,
+    message,
+    prompt,
+    redacted,
+    detected,
+  });
 
   const size = rules.get('max_input_chars');
   if (size?.enabled && prompt.length > (size.config.chars ?? Infinity)) {
-    return {
-      allowed: false,
-      reason: 'GUARDRAIL_max_input_chars',
-      message: 'This request is too large to send to the AI provider. Shorten it and try again.',
-      prompt,
-      redacted,
-      detected,
-    };
+    return refuse('max_input_chars', 'This request is too large to send to the AI provider. Shorten it and try again.');
   }
 
   const injection = rules.get('prompt_injection');
   if (injection?.enabled && input.untrusted && INJECTION.some((p) => p.test(input.untrusted!))) {
-    return {
-      allowed: false,
-      reason: 'GUARDRAIL_prompt_injection',
-      message: 'This content could not be sent to the AI provider because it contains instructions aimed at the model.',
-      prompt,
-      redacted,
-      detected,
-    };
+    return refuse(
+      'prompt_injection',
+      'This content could not be sent to the AI provider because it contains instructions aimed at the model.',
+    );
   }
 
   const pii = rules.get('pii_redaction');
@@ -232,14 +229,7 @@ export async function applyGuardrails(input: {
         return 0;
       });
     if (count > limit) {
-      return {
-        allowed: false,
-        reason: 'GUARDRAIL_rate_limit_per_min',
-        message: 'Too many AI requests in the last minute. Wait a moment and try again.',
-        prompt,
-        redacted,
-        detected,
-      };
+      return refuse('rate_limit_per_min', 'Too many AI requests in the last minute. Wait a moment and try again.');
     }
   }
 
