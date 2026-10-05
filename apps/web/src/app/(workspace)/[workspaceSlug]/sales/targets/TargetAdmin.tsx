@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { METRICS } from './metrics';
+import Field from '@/components/forms/Field';
 
 /**
  * Assign a sales target to a teammate — the form the Targets page was missing.
@@ -107,10 +108,7 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-user">
-            Teammate
-          </label>
+        <Field label="Teammate" htmlFor="tg-user">
           <select id="tg-user" className="lf-input" value={form.userId} onChange={set('userId')} required>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
@@ -118,12 +116,9 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-metric">
-            What to achieve
-          </label>
+        <Field label="What to achieve" htmlFor="tg-metric">
           <select id="tg-metric" className="lf-input" value={form.metric} onChange={set('metric')}>
             {METRICS.map(([value, label]) => (
               <option key={value} value={value}>
@@ -131,12 +126,9 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
               </option>
             ))}
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-value">
-            How many
-          </label>
+        <Field label="How many" htmlFor="tg-value">
           <input
             id="tg-value"
             className="lf-input"
@@ -146,23 +138,17 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
             onChange={set('targetValue')}
             required
           />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-period">
-            Cadence
-          </label>
+        <Field label="Cadence" htmlFor="tg-period">
           <select id="tg-period" className="lf-input" value={form.period} onChange={set('period')}>
             <option value="DAILY">Daily</option>
             <option value="WEEKLY">Weekly</option>
             <option value="MONTHLY">Monthly</option>
           </select>
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-start">
-            From
-          </label>
+        <Field label="From" htmlFor="tg-start">
           <input
             id="tg-start"
             className="lf-input"
@@ -171,12 +157,9 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
             onChange={set('periodStart')}
             required
           />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="tg-end">
-            To
-          </label>
+        <Field label="To" htmlFor="tg-end">
           <input
             id="tg-end"
             className="lf-input"
@@ -185,7 +168,7 @@ export default function TargetAdmin({ users }: { users: { id: string; fullName: 
             onChange={set('periodEnd')}
             required
           />
-        </div>
+        </Field>
       </div>
 
       <div>

@@ -5,6 +5,7 @@ import Badge, { type Tone } from '@/components/ui/Badge';
 import { listPlatformUsers, platformUserDetail, type MfaState } from '@/services/platform/identity';
 import UserDrawer, { type PlatformUserView } from './UserDrawer';
 import { requirePlatformPage } from '@/lib/platform-page';
+import Field from '@/components/forms/Field';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Platform users' };
@@ -133,10 +134,7 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
             placeholder="Name, email, workspace or role"
           />
         </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="pu-workspace">
-            Workspace
-          </label>
+        <Field label="Workspace" htmlFor="pu-workspace">
           <select id="pu-workspace" className="lf-input" name="workspace" defaultValue={query.workspace ?? ''}>
             <option value="">All workspaces</option>
             {workspaces.map((workspace) => (
@@ -145,11 +143,8 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="pu-status">
-            Account status
-          </label>
+        </Field>
+        <Field label="Account status" htmlFor="pu-status">
           <select id="pu-status" className="lf-input" name="status" defaultValue={query.status ?? ''}>
             <option value="">Any</option>
             {['ACTIVE', 'INVITED', 'SUSPENDED', 'DEACTIVATED'].map((value) => (
@@ -158,11 +153,8 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="pu-role">
-            Workspace role
-          </label>
+        </Field>
+        <Field label="Workspace role" htmlFor="pu-role">
           <select id="pu-role" className="lf-input" name="role" defaultValue={query.role ?? ''}>
             <option value="">Any role</option>
             {roleKeys.map((key) => (
@@ -171,28 +163,22 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
               </option>
             ))}
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="pu-mfa">
-            MFA
-          </label>
+        </Field>
+        <Field label="MFA" htmlFor="pu-mfa">
           <select id="pu-mfa" className="lf-input" name="mfa" defaultValue={query.mfa ?? ''}>
             <option value="">Any</option>
             <option value="ENABLED">Enabled</option>
             <option value="DISABLED">Disabled</option>
             <option value="ENROLMENT_REQUIRED">Enrolment required</option>
           </select>
-        </div>
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="pu-lock">
-            Lock
-          </label>
+        </Field>
+        <Field label="Lock" htmlFor="pu-lock">
           <select id="pu-lock" className="lf-input" name="lock" defaultValue={query.lock ?? ''}>
             <option value="">Any</option>
             <option value="LOCKED">Locked</option>
             <option value="NORMAL">Not locked</option>
           </select>
-        </div>
+        </Field>
         <button className="lf-btn" type="submit">
           Apply
         </button>

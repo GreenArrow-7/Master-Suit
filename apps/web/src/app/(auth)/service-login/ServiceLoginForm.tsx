@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /**
  * Sign-in for a platform service identity.
@@ -212,10 +213,7 @@ export default function ServiceLoginForm() {
             </p>
           </div>
 
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="password">
-              Password
-            </label>
+          <Field label="Password" htmlFor="password">
             <div style={{ position: 'relative' }}>
               <input
                 id="password"
@@ -245,14 +243,11 @@ export default function ServiceLoginForm() {
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
-          </div>
+          </Field>
         </>
       ) : (
         <>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="identity">
-              Signing in as
-            </label>
+          <Field label="Signing in as" htmlFor="identity">
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--lf-space-3)' }}>
               <input id="identity" className="lf-input" value={username} readOnly />
               <button
@@ -267,13 +262,10 @@ export default function ServiceLoginForm() {
                 Change
               </button>
             </div>
-          </div>
+          </Field>
 
           {!useRecoveryCode ? (
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="mfaCode">
-                Authentication code
-              </label>
+            <Field label="Authentication code" htmlFor="mfaCode">
               <input
                 id="mfaCode"
                 className="lf-input"
@@ -284,12 +276,9 @@ export default function ServiceLoginForm() {
                 style={{ letterSpacing: '0.4em', textAlign: 'center', fontSize: 20 }}
                 required
               />
-            </div>
+            </Field>
           ) : (
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="recoveryCode">
-                Recovery code
-              </label>
+            <Field label="Recovery code" htmlFor="recoveryCode">
               <input
                 id="recoveryCode"
                 className="lf-input"
@@ -297,7 +286,7 @@ export default function ServiceLoginForm() {
                 onChange={(e) => setRecoveryCode(e.target.value)}
                 required
               />
-            </div>
+            </Field>
           )}
 
           <button

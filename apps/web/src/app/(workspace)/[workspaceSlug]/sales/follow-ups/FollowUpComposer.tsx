@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Field from '@/components/forms/Field';
 
 /** Create a follow-up from the Follow-ups page, against POST /api/v1/follow-ups. */
 const EMPTY = { title: '', dueAt: '', priority: 'MEDIUM', description: '' };
@@ -86,12 +87,9 @@ export default function FollowUpComposer() {
         </div>
       )}
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="f-title">
-          Title
-        </label>
+      <Field label="Title" htmlFor="f-title">
         <input id="f-title" className="lf-input" value={form.title} onChange={set('title')} required autoFocus />
-      </div>
+      </Field>
 
       <div
         style={{
@@ -100,10 +98,7 @@ export default function FollowUpComposer() {
           gap: 'var(--lf-space-4)',
         }}
       >
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="f-due">
-            Due
-          </label>
+        <Field label="Due" htmlFor="f-due">
           <input
             id="f-due"
             className="lf-input"
@@ -112,27 +107,21 @@ export default function FollowUpComposer() {
             onChange={set('dueAt')}
             required
           />
-        </div>
+        </Field>
 
-        <div className="lf-field">
-          <label className="lf-label" htmlFor="f-priority">
-            Priority
-          </label>
+        <Field label="Priority" htmlFor="f-priority">
           <select id="f-priority" className="lf-input" value={form.priority} onChange={set('priority')}>
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
             <option value="HIGH">High</option>
             <option value="URGENT">Urgent</option>
           </select>
-        </div>
+        </Field>
       </div>
 
-      <div className="lf-field">
-        <label className="lf-label" htmlFor="f-desc">
-          Notes
-        </label>
+      <Field label="Notes" htmlFor="f-desc">
         <textarea id="f-desc" className="lf-input" rows={3} value={form.description} onChange={set('description')} />
-      </div>
+      </Field>
 
       <div>
         <button className="lf-btn" type="submit" disabled={busy}>

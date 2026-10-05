@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
+import Field from '@/components/forms/Field';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -690,10 +691,7 @@ function TimelineTab({
               {err}
             </div>
           )}
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-type">
-              Type
-            </label>
+          <Field label="Type" htmlFor="activity-type">
             <select
               id="activity-type"
               className="lf-input"
@@ -706,11 +704,8 @@ function TimelineTab({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-outcome">
-              Outcome
-            </label>
+          </Field>
+          <Field label="Outcome" htmlFor="activity-outcome">
             <input
               id="activity-outcome"
               className="lf-input"
@@ -718,11 +713,8 @@ function TimelineTab({
               onChange={(e) => setForm((f) => ({ ...f, outcome: e.target.value }))}
               placeholder="e.g. Interested, No answer..."
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-notes">
-              Notes
-            </label>
+          </Field>
+          <Field label="Notes" htmlFor="activity-notes">
             <textarea
               id="activity-notes"
               className="lf-input"
@@ -730,11 +722,8 @@ function TimelineTab({
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="activity-duration">
-              Duration (minutes)
-            </label>
+          </Field>
+          <Field label="Duration (minutes)" htmlFor="activity-duration">
             <input
               id="activity-duration"
               className="lf-input"
@@ -743,7 +732,7 @@ function TimelineTab({
               value={form.durationMins}
               onChange={(e) => setForm((f) => ({ ...f, durationMins: e.target.value }))}
             />
-          </div>
+          </Field>
           <button className="lf-btn lf-btn--sm" type="submit" disabled={saving}>
             {saving ? 'Saving...' : 'Log'}
           </button>
@@ -881,10 +870,7 @@ function TasksTab({
               {err}
             </div>
           )}
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-title">
-              Title
-            </label>
+          <Field label="Title" htmlFor="task-title">
             <input
               id="task-title"
               className="lf-input"
@@ -892,12 +878,9 @@ function TasksTab({
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
-          </div>
+          </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--lf-space-3)' }}>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="task-type">
-                Type
-              </label>
+            <Field label="Type" htmlFor="task-type">
               <select
                 id="task-type"
                 className="lf-input"
@@ -910,11 +893,8 @@ function TasksTab({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="lf-field">
-              <label className="lf-label" htmlFor="task-priority">
-                Priority
-              </label>
+            </Field>
+            <Field label="Priority" htmlFor="task-priority">
               <select
                 id="task-priority"
                 className="lf-input"
@@ -927,12 +907,9 @@ function TasksTab({
                   </option>
                 ))}
               </select>
-            </div>
+            </Field>
           </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-due">
-              Due date
-            </label>
+          <Field label="Due date" htmlFor="task-due">
             <input
               id="task-due"
               className="lf-input"
@@ -941,11 +918,8 @@ function TasksTab({
               value={form.dueAt}
               onChange={(e) => setForm((f) => ({ ...f, dueAt: e.target.value }))}
             />
-          </div>
-          <div className="lf-field">
-            <label className="lf-label" htmlFor="task-description">
-              Description
-            </label>
+          </Field>
+          <Field label="Description" htmlFor="task-description">
             <textarea
               id="task-description"
               className="lf-input"
@@ -953,7 +927,7 @@ function TasksTab({
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
-          </div>
+          </Field>
           <button className="lf-btn lf-btn--sm" type="submit" disabled={saving}>
             {saving ? 'Saving...' : 'Create'}
           </button>
