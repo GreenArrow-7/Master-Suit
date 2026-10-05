@@ -179,7 +179,7 @@ export async function validatePunch(
   }
 
   const [assignments, timeZone] = await Promise.all([loadAssignments(ctx, employee.id), workspaceTimezone(ctx)]);
-  if (action === 'CHECK_OUT' && (effective.checkoutRequiresLeadWork || effective.checkoutRequiresDailyTarget)) {
+  if (action === 'CHECK_OUT' && workGateApplies(effective, open)) {
     const pending = effective.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0;
     const shortfall = effective.checkoutRequiresDailyTarget ? await dailyTargetShortfall(ctx, ctx.actor.id) : 0;
     if ((pending > 0 || shortfall > 0) && !(await workGateOverridden(ctx, employee.id, timeZone))) {
@@ -311,7 +311,7 @@ export async function preflight(
   let candidates = candidateAssignments(assignments, action, new Date(), timeZone);
   // Told before the punch, not only at it: the number falls as the day is worked.
   const pendingWork =
-    action === 'CHECK_OUT'
+    action === 'CHECK_OUT' && workGateApplies(policy, open)
       ? (policy.checkoutRequiresLeadWork ? await pendingLeadWork(ctx, timeZone) : 0) +
         (policy.checkoutRequiresDailyTarget ? await dailyTargetShortfall(ctx, ctx.actor.id) : 0)
       : 0;
@@ -422,6 +422,12 @@ export async function pendingLeadWork(ctx: Ctx, timeZone: string, now = new Date
     select: { assignedAt: true, lastActivityAt: true },
   });
   return leads.filter((l) => !l.lastActivityAt || (l.assignedAt && l.lastActivityAt < l.assignedAt)).length;
+}
+
+/** The work gate is on, and the shift has not yet reached the hours ceiling. */
+function workGateApplies(policy: HrPolicy, open: { serverTime: Date } | null, now = new Date()): boolean {
+  if (!policy.checkoutRequiresLeadWork && !policy.checkoutRequiresDailyTarget) return false;
+  return !open || now.getTime() - open.serverTime.getTime() < policy.checkoutWorkGateMaxHours * 3_600_000;
 }
 
 /** An approved attendance exception for today's check-out with reason work_pending lifts the gate. */

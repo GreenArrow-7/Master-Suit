@@ -7,6 +7,9 @@
  * where lib/db.ts looks for it, and that a merge with nothing to conjoin still
  * produces the same shape the codebase produced before.
  */
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
 import { describe, it, expect } from 'vitest';
 import { mergeWhere } from '@/lib/api/where';
 
@@ -84,5 +87,40 @@ describe('mergeWhere', () => {
     const b = { OR: [{ y: 2 }] };
     const c = { OR: [{ z: 3 }] };
     expect(mergeWhere(a, b, c)).toEqual({ tenantId: 't1', AND: [{ OR: a.OR }, { OR: b.OR }, { OR: c.OR }] });
+  });
+});
+
+/**
+ * The spread this file exists to replace came back twice after mergeWhere was
+ * written — the conversation search and the calendar's call dates each set their
+ * own `OR` after spreading a visibility scope, which replaced its ownership
+ * clause. Spread still reads like "apply both", so this finds the shape anywhere
+ * in src: a scope spread followed by an `OR` key, or by a spread carrying one.
+ */
+describe('no query spreads a scope and then sets its own OR', () => {
+  it('finds none in src', () => {
+    const src = path.join(__dirname, '..', '..', 'src');
+    const offenders: string[] = [];
+    for (const file of readdirSync(src, { recursive: true }) as string[]) {
+      if (!/\.tsx?$/.test(file)) continue;
+      const text = readFileSync(path.join(src, file), 'utf8');
+      if (!text.includes('OR')) continue;
+      const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isObjectLiteralExpression(node)) {
+          let scoped = false;
+          for (const p of node.properties) {
+            const spread = ts.isSpreadAssignment(p) ? p.expression.getText(sf) : null;
+            const carriesOr = spread !== null ? /\bOR\s*:/.test(spread) : p.name?.getText(sf) === 'OR';
+            if (scoped && carriesOr)
+              offenders.push(`${file}:${sf.getLineAndCharacterOfPosition(p.getStart(sf)).line + 1}`);
+            if (spread !== null && /scope|visib/i.test(spread)) scoped = true;
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    expect(offenders).toEqual([]);
   });
 });

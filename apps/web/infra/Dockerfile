@@ -20,6 +20,20 @@ RUN npx prisma generate
 EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
+# ── migrate ──────────────────────────────────────────────────────────────────
+# The one-off runner behind `docker compose run --rm migrate`: the staging-first
+# gate, `prisma migrate deploy`, and the operator scripts run as the owning role
+# (bootstrap-owner, the rc-* audits). They need node_modules, prisma/, scripts/
+# and the generated client — no application code.
+#
+# It used to be the `build` stage, which runs `next build` on a 4 GB heap. This
+# image is built on the production VM every release, next to the running
+# production and staging, and on 2026-10-03 that build failed there mid-preflight,
+# so the gate ran in the previous release's runner.
+FROM deps AS migrate
+COPY scripts ./scripts
+RUN npx prisma generate
+
 # ── build ────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS build
 WORKDIR /app
