@@ -1,5 +1,3 @@
-import { Worker } from 'bullmq';
-import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { sendMail } from '@/lib/mailer';
@@ -36,7 +34,8 @@ interface RecordPushJob {
  * Separate from the email job on purpose — see the comment at the enqueue in
  * services/hr/notify.ts. It never throws: the in-app row is already written and
  * the email is already queued, so a push is the third copy of a message that has
- * arrived twice. Failing the job would only retry the two that worked.
+ * arrived twice. Failing the job would only retry the two that worked — and
+ * re-ring the phones that did receive it, with no delivery stamp to filter them.
  *
  * The destination is resolved here rather than carried in the payload, because
  * it needs the workspace slug and `entityRoute` is the one place allowed to turn
@@ -44,7 +43,16 @@ interface RecordPushJob {
  * notification list, which is a worse destination than the record and a much
  * better one than nothing.
  */
-async function pushRecord(data: RecordPushJob) {
+export async function pushRecord(data: RecordPushJob) {
+  try {
+    return await deliverPush(data);
+  } catch (error) {
+    logger.warn({ err: error }, 'push notification failed');
+    return { pushed: 0 };
+  }
+}
+
+async function deliverPush(data: RecordPushJob) {
   if (!pushConfigured()) return { pushed: 0 };
 
   const [devices, tenant] = await Promise.all([
@@ -83,67 +91,42 @@ async function pushRecord(data: RecordPushJob) {
  * their email in between gets it at the new one, and a deactivated account gets
  * nothing at all.
  */
-export function startNotificationsWorker() {
-  return new Worker(
-    'notifications',
-    async (job) => {
-      // `hr-event-push` is the name this job had when only HR raised it. Still
-      // accepted, because jobs queued under the old name may be mid-flight
-      // across a deploy and an unknown name would drop them silently.
-      if (job.name === 'record-push' || job.name === 'hr-event-push') {
-        try {
-          return await pushRecord(job.data as RecordPushJob);
-        } catch (error) {
-          // Swallowed, not rethrown: a retry would re-ring the phones that did
-          // receive it, and there is no delivery stamp to filter them out.
-          logger.warn({ err: error }, 'push notification failed');
-          return { pushed: 0 };
-        }
-      }
-      if (job.name !== 'hr-event') {
-        logger.warn({ jobName: job.name }, 'unknown notifications job');
-        return;
-      }
-      const { tenantId, event, userIds, title, body } = job.data as HrEventJob;
+export async function emailHrEvent({ tenantId, event, userIds, title, body }: HrEventJob) {
+  const users = await prisma.user.findMany({
+    where: { tenantId, id: { in: userIds }, status: 'ACTIVE' },
+    select: { id: true, email: true, fullName: true },
+  });
 
-      const users = await prisma.user.findMany({
-        where: { tenantId, id: { in: userIds }, status: 'ACTIVE' },
-        select: { id: true, email: true, fullName: true },
-      });
+  let sent = 0;
+  const failures: string[] = [];
+  for (const user of users) {
+    try {
+      await sendMail(user.email, title, `${user.fullName},\n\n${body || title}\n`);
+      sent += 1;
+    } catch (error) {
+      // Collected rather than thrown immediately: one bad address must not
+      // stop the other nine people being told.
+      failures.push(user.id);
+      logger.warn({ err: error, userId: user.id, event }, 'notification email failed');
+    }
+  }
 
-      let sent = 0;
-      const failures: string[] = [];
-      for (const user of users) {
-        try {
-          await sendMail(user.email, title, `${user.fullName},\n\n${body || title}\n`);
-          sent += 1;
-        } catch (error) {
-          // Collected rather than thrown immediately: one bad address must not
-          // stop the other nine people being told.
-          failures.push(user.id);
-          logger.warn({ err: error, userId: user.id, event }, 'notification email failed');
-        }
-      }
+  const delivered = users.filter((user) => !failures.includes(user.id)).map((user) => user.id);
+  if (delivered.length) {
+    await prisma.notification.updateMany({
+      where: { tenantId, userId: { in: delivered }, kind: event, emailedAt: null },
+      data: { emailedAt: new Date() },
+    });
+  }
+  if (failures.length) {
+    await prisma.notification.updateMany({
+      where: { tenantId, userId: { in: failures }, kind: event, emailedAt: null },
+      data: { emailError: 'Delivery failed; see worker logs.' },
+    });
+    // Rethrown so BullMQ retries the job. The rows already emailed are
+    // filtered by `emailedAt: null`, so a retry does not send twice.
+    throw new Error(`${failures.length} of ${users.length} notification emails failed`);
+  }
 
-      const delivered = users.filter((user) => !failures.includes(user.id)).map((user) => user.id);
-      if (delivered.length) {
-        await prisma.notification.updateMany({
-          where: { tenantId, userId: { in: delivered }, kind: event, emailedAt: null },
-          data: { emailedAt: new Date() },
-        });
-      }
-      if (failures.length) {
-        await prisma.notification.updateMany({
-          where: { tenantId, userId: { in: failures }, kind: event, emailedAt: null },
-          data: { emailError: 'Delivery failed; see worker logs.' },
-        });
-        // Rethrown so BullMQ retries the job. The rows already emailed are
-        // filtered by `emailedAt: null`, so a retry does not send twice.
-        throw new Error(`${failures.length} of ${users.length} notification emails failed`);
-      }
-
-      return { sent };
-    },
-    { connection: redis },
-  );
+  return { sent };
 }

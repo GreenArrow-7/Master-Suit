@@ -1,4 +1,4 @@
-import { Queue, Worker } from 'bullmq';
+import { Queue } from 'bullmq';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { runRetentionCleanup } from '@/lib/jobs/retention';
@@ -10,10 +10,9 @@ import { sweepDriftCanary } from '@/services/leads/nextFollowUpReconcile';
 import { sweepAccountDeletions } from '@/services/identity/accountDeletion';
 
 /**
- * Consumer for the `maintenance` queue — the last slot lib/queue.ts reserved
- * with a retry policy and nothing listening.
+ * The `maintenance` queue: scheduled sweeps, one at a time (see startWorker).
  *
- * Its only job today is the retention sweep, which until now ran solely when an
+ * Its first job was the retention sweep, which until then ran only when an
  * operator sent `POST /api/v1/admin/retention` by hand. Every retention window
  * the product states — call recordings, biometric capture frames, webhook
  * payloads, 90-day soft deletes — was therefore aspirational: real in the
@@ -49,32 +48,18 @@ const QUARTER_HOURLY_PATTERN = '*/15 * * * *';
  */
 const FIVE_MINUTE_PATTERN = '*/5 * * * *';
 
-/**
- * The maintenance queue's dispatch, as a named function.
- *
- * Lifted out of the `Worker` constructor so a test can drive the **registered**
- * handler rather than a copy of it beside the real one. A copy passes while the
- * original is broken — a job name nobody handles, a payload unpacked wrongly —
- * which is exactly the class of failure a worker test exists to catch.
- */
-export async function handleMaintenanceJob(job: {
-  name: string;
-  /** Carried by a caller that wants a narrower run; the schedules below send none. */
-  data?: { platformUserIds?: string[] };
-}): Promise<unknown> {
-  if (job.name === 'retention') {
-    // Never a dry run from the scheduler. The dry run exists so an operator
-    // can see what a sweep *would* remove before authorising it; a
-    // scheduled sweep that only counted would be the current bug wearing a
-    // cron expression.
-    return runRetentionCleanup(false);
-  }
-  if (job.name === 'reminders') {
+/** The maintenance queue's jobs, by the names the schedules below send. */
+export const MAINTENANCE_JOBS = {
+  // Never a dry run from the scheduler. The dry run exists so an operator can see
+  // what a sweep *would* remove before authorising it; a scheduled sweep that only
+  // counted would be the current bug wearing a cron expression.
+  retention: () => runRetentionCleanup(false),
+  reminders: async () => {
     const result = await runReminderSweep();
     logger.info(result, 'reminder sweep complete');
     return result;
-  }
-  if (job.name === 'triage-sweep') {
+  },
+  'triage-sweep': async () => {
     /**
      * Stale first: an entry whose lead already has an owner must not be
      * escalated to a manager who would open it and find the work done. Then
@@ -98,58 +83,49 @@ export async function handleMaintenanceJob(job: {
     const result = { ...stale, ...deadlines, ...notices, ...delivery };
     logger.info(result, 'lead triage sweep complete');
     return result;
-  }
-  if (job.name === 'lead-recycle') {
-    /**
-     * Returns leads nobody has worked to the pool, for the workspaces that
-     * asked for it. Workspaces that have not set `leadRecycleAfterDays` are
-     * skipped entirely, so this is a no-op everywhere by default.
-     */
+  },
+  /**
+   * Returns leads nobody has worked to the pool, for the workspaces that
+   * asked for it. Workspaces that have not set `leadRecycleAfterDays` are
+   * skipped entirely, so this is a no-op everywhere by default.
+   */
+  'lead-recycle': async () => {
     const result = await runRecycleSweep();
     logger.info(result, 'lead recycle sweep complete');
     return result;
-  }
-  if (job.name === 'follow-up-drift') {
-    /**
-     * Report-only, by design and without an override.
-     *
-     * Every writer recomputes under the lead's lock, so a non-zero count here
-     * means a path exists that does not — and auto-correcting would hide the
-     * one signal that says so. Repair is an operator action against a named
-     * workspace, not something a cron does at 03:20.
-     */
+  },
+  /**
+   * Report-only, by design and without an override.
+   *
+   * Every writer recomputes under the lead's lock, so a non-zero count here
+   * means a path exists that does not — and auto-correcting would hide the
+   * one signal that says so. Repair is an operator action against a named
+   * workspace, not something a cron does at 03:20.
+   */
+  'follow-up-drift': async () => {
     const result = await sweepDriftCanary();
     logger.info(result, 'next-follow-up drift canary complete');
     return result;
-  }
-  if (job.name === 'account-deletions') {
-    /**
-     * Erasure of accounts whose owner asked for it.
-     *
-     * Every fifteen minutes rather than daily: this is a person exercising a deletion
-     * right, and the timeframe the product states to them is what this interval has to
-     * honour. The executor claims each row by conditional UPDATE, so two overlapping runs
-     * process each request once between them rather than once each.
-     */
-    // The scheduled job carries no data, so production sweeps everything due. A caller
-    // that names accounts gets only those: the reachability test drives this handler for
-    // real, and an unscoped sweep from inside a parallel test run erases the fixtures of
-    // whichever sibling suite happens to be mid-assertion.
-    const result = await sweepAccountDeletions(20, job.data?.platformUserIds);
+  },
+  /**
+   * Erasure of accounts whose owner asked for it.
+   *
+   * Every fifteen minutes rather than daily: this is a person exercising a deletion
+   * right, and the timeframe the product states to them is what this interval has to
+   * honour. The executor claims each row by conditional UPDATE, so two overlapping runs
+   * process each request once between them rather than once each.
+   *
+   * The scheduled job carries no data, so production sweeps everything due. A caller
+   * that names accounts gets only those: the reachability test drives this handler for
+   * real, and an unscoped sweep from inside a parallel test run erases the fixtures of
+   * whichever sibling suite happens to be mid-assertion.
+   */
+  'account-deletions': async (data?: { platformUserIds?: string[] }) => {
+    const result = await sweepAccountDeletions(20, data?.platformUserIds);
     logger.info(result, 'account deletion sweep complete');
     return result;
-  }
-  logger.warn({ jobName: job.name }, 'unknown maintenance job');
-}
-
-export function startMaintenanceWorker() {
-  return new Worker('maintenance', handleMaintenanceJob, {
-    connection: redis,
-    // One at a time. The sweep deletes across every tenant and two concurrent
-    // passes would contend on the same rows for no gain.
-    concurrency: 1,
-  });
-}
+  },
+};
 
 /**
  * Arms this queue's schedules. Idempotent: the scheduler ids are stable, so

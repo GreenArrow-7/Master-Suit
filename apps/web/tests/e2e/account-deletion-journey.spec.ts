@@ -195,8 +195,8 @@ for (const variant of variants) {
         await queue.getJobSchedulers(),
         'job schedulers are armed on this Redis index; the in-process worker would run them with execution on',
       ).toEqual([]);
-      const { startMaintenanceWorker } = await import('@/workers/maintenance');
-      const w = startMaintenanceWorker();
+      const { startWorker } = await import('@/workers/jobs');
+      const w = startWorker('maintenance');
       await w.waitUntilReady();
       worker = w;
     });

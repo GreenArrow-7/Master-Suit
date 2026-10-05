@@ -14,7 +14,7 @@ process.env.ACCOUNT_DELETION_EXECUTION_ENABLED = '';
 const { prisma } = await import('@/lib/db');
 const { executionEnabled, processAccountDeletion, requestAccountDeletion, sweepAccountDeletions } =
   await import('@/services/identity/accountDeletion');
-const { handleMaintenanceJob } = await import('@/workers/maintenance');
+const { handleJob } = await import('@/workers/jobs');
 const { createWorkspaceUser, seedTwoTenants } = await import('../helpers/fixtures');
 const { buildActor, buildCtx } = await import('../helpers/ctx');
 type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
@@ -64,7 +64,7 @@ describe('with execution disabled (the default)', () => {
     const direct = await processAccountDeletion(request.id);
     expect(direct).toMatchObject({ status: 'SKIPPED', reason: 'execution disabled' });
 
-    const viaWorker = (await handleMaintenanceJob({
+    const viaWorker = (await handleJob('maintenance', {
       name: 'account-deletions',
       data: { platformUserIds: [person.platformUserId] },
     })) as { disabled: boolean };

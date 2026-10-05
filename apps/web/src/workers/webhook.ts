@@ -1,5 +1,3 @@
-import { Worker } from 'bullmq';
-import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { applyMetaEvent, type ApplyMetaEventJob } from '@/services/meta/applyEvent';
@@ -14,30 +12,18 @@ import { applyMetaEvent, type ApplyMetaEventJob } from '@/services/meta/applyEve
  * job in its failed set — that is the dead-letter state, and `errorMessage` on
  * WebhookEvent is the copy an administrator can see without Redis access.
  */
-export function startWebhookWorker() {
-  return new Worker(
-    'webhook',
-    async (job) => {
-      if (job.name !== 'meta.event') {
-        logger.warn({ jobName: job.name }, 'unknown webhook job');
-        return;
-      }
-
-      const data = job.data as ApplyMetaEventJob & { externalId: string; provider: string };
-      try {
-        const result = await applyMetaEvent(data);
-        await mark(data, true);
-        return result;
-      } catch (err) {
-        // Recorded on every attempt, so the last message an administrator sees
-        // is the reason it finally gave up rather than the first thing that
-        // went wrong.
-        await mark(data, false, (err as Error).message.slice(0, 500));
-        throw err;
-      }
-    },
-    { connection: redis },
-  );
+export async function applyWebhookEvent(data: ApplyMetaEventJob & { externalId: string; provider: string }) {
+  try {
+    const result = await applyMetaEvent(data);
+    await mark(data, true);
+    return result;
+  } catch (err) {
+    // Recorded on every attempt, so the last message an administrator sees
+    // is the reason it finally gave up rather than the first thing that
+    // went wrong.
+    await mark(data, false, (err as Error).message.slice(0, 500));
+    throw err;
+  }
 }
 
 /**
