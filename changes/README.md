@@ -30,6 +30,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | Date | Entry | PR | Area |
 |---|---|---|---|
 | 2026-10-07 | [Lead Eagle, phase 2: leads from the portals and Google Ads; several numbers per lead](2026-10-07-lead-eagle-phase-2.md) | #130 | Lead Eagle |
+| 2026-10-07 | [sharp 0.35.5 for a new advisory](2026-10-07-sharp-advisory.md) | #130 | dependencies |
 | 2026-10-06 | [Release f89ae61](2026-10-06-release-f89ae61.md) | #127, #128 | release |
 | 2026-10-06 | [source-map-js 1.2.2 for a new advisory](2026-10-06-source-map-js-advisory.md) | #128 | dependencies |
 | 2026-10-06 | [A Real-Estate-only workspace could not take a lead; the Visits tab had no icon](2026-10-06-lead-work-provisioning.md) | #128 | fix |
