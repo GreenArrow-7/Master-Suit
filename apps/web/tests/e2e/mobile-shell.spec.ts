@@ -55,12 +55,19 @@ async function columnsSheetFits(page: Page, path: string) {
   await expect(dialog.getByRole('button', { name: 'Save for workspace' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  // Focus lands on the button, or on the ••• summary that hid it.
-  const focused = await page.evaluate(() => {
-    const el = document.activeElement as HTMLElement | null;
-    return `${el?.tagName.toLowerCase()} ${el?.getAttribute('aria-label') ?? el?.textContent?.trim()}`;
-  });
-  expect(focused, `${path}: focus after closing`).toMatch(/button Columns|summary More actions/);
+  // Focus lands on the button, or on the ••• summary that hid it — a frame
+  // after the sheet leaves the DOM (ColumnEditor's refocus), so wait for it:
+  // read at once, a busy runner sees <body> in between.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          return `${el?.tagName.toLowerCase()} ${el?.getAttribute('aria-label') ?? el?.textContent?.trim()}`;
+        }),
+      { message: `${path}: focus after closing` },
+    )
+    .toMatch(/button Columns|summary More actions/);
 }
 
 test.describe('phone shell', () => {
