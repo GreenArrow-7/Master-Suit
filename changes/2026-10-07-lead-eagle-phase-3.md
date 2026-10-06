@@ -34,11 +34,16 @@ needs somewhere for its sub-statuses and cold data to land.
   component) asks for name and mobile, email and message optional; a submission
   becomes a lead owned by the link's agent (or distributed), source Public
   form, `sourceDetail` `capture:<key>`, or a fresh touch on the lead already
-  holding the number. A switched-off link is a 404.
+  holding the number. A switched-off link is a 404. As with typing a lead in,
+  only leads:ASSIGN chooses who gets a link's leads (someone in the workspace,
+  or distribution); anyone else's link is their own, and they can switch off
+  only their own. A link whose agent is no longer active sends its leads to
+  distribution — printed codes outlive jobs.
 - **Cold data.** Cold Data imports a spreadsheet through the lead import's own
   screen (same column detection) into a list named after the file — contacts,
   not leads. Each list shows contacts, still to work, interested, converted and
-  its conversion rate; whoever holds leads:ASSIGN hands a list to an agent. An
+  its conversion rate; whoever holds leads:ASSIGN hands a list or a record to
+  an active member of the workspace. An
   agent sees what is assigned to them (organisation-wide lead access sees
   everything), sets each call's outcome, and **Make lead** turns a contact into
   a lead owned by them — or a touch on the existing lead with that number —
@@ -49,13 +54,17 @@ needs somewhere for its sub-statuses and cold data to land.
 **Verified.** Real routes and database: `tests/sales/stage-reasons.spec.ts`
 (4: no reason, an unoffered reason, the reason kept on the lead and its history
 and cleared on the next move, required fields — three fail on the old
-`updateLead`; clearing holds there trivially), `capture-links.spec.ts` (4: the agent's lead, a second
+`updateLead`; clearing holds there trivially), `capture-links.spec.ts` (8: the agent's lead, a second
 submission attached, a switched-off link and another workspace's key both
-404), `cold-data.spec.ts` (4: a list not leads with bad rows reported, an
+404; an agent without ASSIGN gets a link of their own whoever they name, cannot
+switch off or re-point another's, and nobody can point one outside the
+workspace; a departed agent's link goes to distribution — the last four fail on
+the first version of the routes), `cold-data.spec.ts` (4: a list not leads with bad rows reported, an
 own-scope agent works only what is assigned and cannot reassign, conversion
 keeps the record, a contact already in the pipeline attaches). Phase 2's intake
 spec still passes on the shared core; the nav spec's pinned menus gain the two
-tabs. Full suite: 3488 passed; the one failure, a rate-limit case crossing a
+tabs, as does the agent's Leads tab list in `e2e/workspace-navigation.spec.ts`
+(it failed in CI on the stack until then; the spec's 8 pass on the rig). Full suite: 3488 passed; the one failure, a rate-limit case crossing a
 minute boundary under load, passes alone and is unrelated (filed separately).
 Schema drift, RLS (195 tables), types and lint clean. In a browser on the rig,
 16 checks at 1280 and 390 px: a stage saves its reasons; the lead asks for the
