@@ -1,7 +1,7 @@
 # YOUHAN ONE — project state
 
-Updated 2026-10-05. Production runs `main` at 9f7e89b, released 5 Oct.
-Merged after that release: #117.
+Updated 2026-10-05. Production runs `main` at 0ae7e9d, released the evening of
+5 Oct.
 
 ## The product
 
