@@ -1,6 +1,7 @@
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/db';
 import { applyMetaEvent, type ApplyMetaEventJob } from '@/services/meta/applyEvent';
+import { applyEnquiry, type EnquiryJob } from '@/services/leads/intake';
 
 /**
  * Applies provider events that a webhook receiver has already authenticated,
@@ -12,9 +13,15 @@ import { applyMetaEvent, type ApplyMetaEventJob } from '@/services/meta/applyEve
  * job in its failed set — that is the dead-letter state, and `errorMessage` on
  * WebhookEvent is the copy an administrator can see without Redis access.
  */
-export async function applyWebhookEvent(data: ApplyMetaEventJob & { externalId: string; provider: string }) {
+export const applyWebhookEvent = (data: ApplyMetaEventJob & { externalId: string; provider: string }) =>
+  stamped(data, () => applyMetaEvent(data));
+
+/** Property portals and Google Ads lead forms: services/leads/intake.ts. */
+export const applyLeadSourceEvent = (data: EnquiryJob) => stamped(data, () => applyEnquiry(data));
+
+async function stamped<T>(data: { tenantId: string; provider: string; externalId: string }, run: () => Promise<T>) {
   try {
-    const result = await applyMetaEvent(data);
+    const result = await run();
     await mark(data, true);
     return result;
   } catch (err) {

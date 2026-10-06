@@ -60,7 +60,7 @@ export const GET = route({ module: 'integrations', action: 'VIEW' }, async ({ ct
       updatedAt: conn?.updatedAt ?? null,
       expiresAt: conn?.expiresAt ?? null,
       /** Only meaningful once connected: the key is minted with the connection. */
-      webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/telephony/${conn.webhookKey}${token}` : null,
+      webhookUrl: spec.webhook && conn ? `${base}/api/v1/webhooks/${spec.webhook}/${conn.webhookKey}${token}` : null,
     };
   });
 
