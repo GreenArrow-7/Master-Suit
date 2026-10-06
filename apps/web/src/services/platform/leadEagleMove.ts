@@ -718,6 +718,31 @@ export async function moveCompany(
         const bookingMap = new Map<Id, { id: Id; value: string }>();
         for (const b of snap.bookings) {
           const leadId = leadMap.get(b.leadId);
+          const projectId = b.projectId ? (projectMap.get(b.projectId) ?? null) : null;
+          const unitInventoryId = b.unitId ? (unitMap.get(b.unitId) ?? null) : null;
+          const listingId = b.listingId ? (listingMap.get(b.listingId) ?? null) : null;
+          // The booking rules here (Booking_buyer_check, _subject_check,
+          // _sale_value_check): a buyer, something bought, and a price.
+          if (!leadId) {
+            problems.push(`Booking ${b.reference} is on a lead that did not move; it is not moved.`);
+            continue;
+          }
+          if (!projectId && !unitInventoryId && !listingId) {
+            problems.push(
+              `Booking ${b.reference} is on nothing that moved (its listing stayed behind); it is not moved.`,
+            );
+            continue;
+          }
+          if (!(Number(b.dealValue) > 0)) {
+            problems.push(`Booking ${b.reference} has no deal value; it is not moved.`);
+            continue;
+          }
+          let status = BOOKING_STATUS[b.status] ?? 'DRAFT';
+          // A confirmed booking here names its unit (Booking_confirmed_requires_unit).
+          if (status === 'CONFIRMED' && !unitInventoryId) {
+            status = 'DRAFT';
+            problems.push(`Booking ${b.reference} was confirmed but names no unit; it moves as a draft.`);
+          }
           const lead = snap.leads.find((l) => l.id === b.leadId);
           const ownerId = owned(lead?.ownerId ?? null) ?? owned(b.createdById);
           if (!ownerId)
@@ -726,16 +751,17 @@ export async function moveCompany(
             data: {
               tenantId,
               reference: await nextReference(tx, tenantId, 'BOOKING'),
-              leadId: leadId ?? null,
-              projectId: b.projectId ? (projectMap.get(b.projectId) ?? null) : null,
-              unitInventoryId: b.unitId ? (unitMap.get(b.unitId) ?? null) : null,
-              listingId: b.listingId ? (listingMap.get(b.listingId) ?? null) : null,
+              leadId,
+              projectId,
+              unitInventoryId,
+              listingId,
               ownerId: ownerId ?? fallback.id,
-              status: BOOKING_STATUS[b.status] ?? 'DRAFT',
+              status,
               saleValue: b.dealValue,
               bookingDate: date(b.bookingDate)!,
-              cancelledAt: b.status === 'CANCELLED' ? date(b.updatedAt) : null,
-              cancelReason: b.cancelReason,
+              // Both or neither (Booking_cancel_check).
+              cancelledAt: status === 'CANCELLED' ? date(b.updatedAt) : null,
+              cancelReason: status === 'CANCELLED' ? (b.cancelReason ?? 'Cancelled in Lead Eagle') : null,
               notes: [
                 `Lead Eagle booking ${b.reference}${b.status === 'COMPLETED' ? ' (completed)' : ''}.`,
                 Number(b.received) > 0 ? `Received AED ${b.received}.` : null,

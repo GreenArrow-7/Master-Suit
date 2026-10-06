@@ -47,8 +47,11 @@ so this is the tool, proven on the seed company Meridian, ready for a real copy.
 - Projects (developer found or created), units, listings (landlord as an
   owner record) → Real Estate's; a listing without a price stays behind, as a
   listing here must have one. Bookings get new references (the old one in
-  notes); commissions to someone without an account (an outside channel
-  partner) stay behind, reported with the amount.
+  notes) and obey the booking rules here: one confirmed in Lead Eagle with no
+  unit moves as a draft, a cancellation without a reason gets "Cancelled in
+  Lead Eagle", and one whose lead or property did not move, or with no deal
+  value, stays behind — each reported. Commissions to someone without an
+  account (an outside channel partner) stay behind, reported with the amount.
 - Not moved, counted in the report: proposals, media files, payment plans,
   custom fields, saved views, assignment rules, integrations (reconnect them
   under Lead sources), attendance set-up, call recordings, portal feeds.
@@ -56,7 +59,8 @@ so this is the tool, proven on the seed company Meridian, ready for a real copy.
 **Verified.** `tests/platform/lead-eagle-move.spec.ts` (3, real database): a
 dry run writes everything and keeps nothing; a commit moves every table with
 the mappings above, including unmatched people, owner fallbacks, an unpriced
-listing, an external commission and the twice-written enquiry, and enables
+listing, an external commission, the twice-written enquiry and the three
+bookings the rules here would refuse as they were, and enables
 Real Estate when asked; a second commit is refused. Against the standalone's
 local database: Meridian dry-ran, then moved into a fresh Lead-Eagle-only rig
 workspace — 262 leads, 243 requirements, 197 activities and enquiries, 148

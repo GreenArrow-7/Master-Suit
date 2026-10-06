@@ -14,6 +14,24 @@ let fixture: Fixture;
 let tenantId: string;
 let adminEmail: string;
 
+/** A plain reserved booking on Omar's lead, varied per case below. */
+const booking = (id: string, listingId: string | null) => ({
+  id,
+  reference: `BK-ME-${id}`,
+  leadId: 'l-2',
+  unitId: null,
+  projectId: null,
+  listingId,
+  status: 'RESERVED' as const,
+  bookingDate: '2026-09-06T09:00:00Z',
+  dealValue: '100000.00',
+  received: '0.00',
+  cancelReason: null,
+  notes: null,
+  createdById: null,
+  updatedAt: '2026-09-07T09:00:00Z',
+});
+
 const snapshot = (): LeadEagleCompany => ({
   company: { id: 'le-company-1', slug: 'meridian', name: 'Meridian Properties' },
   users: [
@@ -359,6 +377,12 @@ const snapshot = (): LeadEagleCompany => ({
       createdById: null,
       updatedAt: '2026-09-05T09:00:00Z',
     },
+    // Confirmed on a listing, with no unit: a confirmed booking here names its unit.
+    { ...booking('b-3', 'li-1'), status: 'CONFIRMED' },
+    // Cancelled without a reason: a cancellation here carries one.
+    { ...booking('b-4', null), projectId: 'p-1', status: 'CANCELLED' },
+    // On the unpriced listing, which stays behind: nothing left to be a booking of.
+    { ...booking('b-5', 'li-2'), status: 'RESERVED' },
   ],
   commissions: [
     {
@@ -406,7 +430,7 @@ describe('moving a Lead Eagle company', () => {
     const report = await moveCompany(tenantId, snapshot(), { commit: false });
     expect(report.committed).toBe(false);
     expect(report.counts.leads).toEqual({ source: 2, moved: 2 });
-    expect(report.counts.bookings).toEqual({ source: 2, moved: 2 });
+    expect(report.counts.bookings).toEqual({ source: 5, moved: 4 });
     expect(await moved()).toHaveLength(0);
     expect(await prisma.leadStage.count({ where: { tenantId } })).toBe(stagesBefore);
   });
@@ -420,6 +444,8 @@ describe('moving a Lead Eagle company', () => {
         'Listing LS-ME-2 has no price, which a listing here needs; it is not moved.',
         expect.stringContaining('Booking BK-ME-2 has no owner'),
         expect.stringContaining('owed to Outside referrer'),
+        'Booking BK-ME-b-3 was confirmed but names no unit; it moves as a draft.',
+        'Booking BK-ME-b-5 is on nothing that moved (its listing stayed behind); it is not moved.',
       ]),
     );
 
@@ -470,10 +496,12 @@ describe('moving a Lead Eagle company', () => {
     expect(listing).toMatchObject({ listingType: 'RENT', ownerId: fixture.a.userId });
     expect(listing.propertyOwnerId).not.toBeNull();
 
-    const bookings = await prisma.booking.findMany({ where: { tenantId }, orderBy: { bookingDate: 'asc' } });
-    expect(bookings.map((b) => [b.status, b.ownerId])).toEqual([
-      ['CONFIRMED', fixture.a.userId],
-      ['DRAFT', fixture.a.userId],
+    const bookings = await prisma.booking.findMany({ where: { tenantId }, orderBy: { status: 'asc' } });
+    expect(bookings.map((b) => [b.status, b.ownerId, b.cancelReason])).toEqual([
+      ['DRAFT', fixture.a.userId, null],
+      ['DRAFT', fixture.a.userId, null],
+      ['CONFIRMED', fixture.a.userId, null],
+      ['CANCELLED', fixture.a.userId, 'Cancelled in Lead Eagle'],
     ]);
     const commissions = await prisma.commission.findMany({ where: { tenantId } });
     expect(commissions.map((c) => [c.status, c.amount.toString()])).toEqual([['COLLECTED', '70000']]);
