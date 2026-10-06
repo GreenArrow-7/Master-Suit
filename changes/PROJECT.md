@@ -114,7 +114,9 @@ Waiting on the owner:
   Bayut and Dubizzle deliver only to approved partners, so each needs its
   partner agreement and its signing secret. The standalone Lead Eagle has no
   deployment and no remote; its local database holds test and seed workspaces
-  only (7 Oct), so phase 5 is a tool that runs when a real copy exists.
+  only (7 Oct). Phase 5's tool (`scripts/move-lead-eagle.ts`, dry run by
+  default) moved the seed company on the rig; it runs for a real company when
+  a copy of its database exists.
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams.
 - **Store submissions** — iOS and Android, in the owner's store consoles.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody
