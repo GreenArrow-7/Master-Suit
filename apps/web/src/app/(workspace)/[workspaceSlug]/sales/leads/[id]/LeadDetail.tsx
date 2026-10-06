@@ -97,6 +97,8 @@ interface LeadData {
   stage: { key: string; name: string };
   /** The reason or sub-status it entered its stage with. */
   stageReason: string | null;
+  /** Why distribution chose the owner, when it did. */
+  assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
   tasks: TaskItem[];
@@ -481,6 +483,11 @@ export default function LeadDetail({
                     </>
                   ) : (
                     (lead.owner?.fullName ?? 'Unassigned')
+                  )}
+                  {lead.assignedWhy && lead.owner && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', textAlign: 'right' }}>
+                      {lead.assignedWhy}
+                    </div>
                   )}
                 </dd>
               </div>

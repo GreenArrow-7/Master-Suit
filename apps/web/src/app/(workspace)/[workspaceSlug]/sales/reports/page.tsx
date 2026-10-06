@@ -48,6 +48,12 @@ const REPORTS = [
         desc: 'Activity counts and average first response.',
       },
       {
+        key: 'follow-up-adherence',
+        icon: '⏰',
+        title: 'Follow-up Adherence',
+        desc: 'Follow-ups done on time, late or still overdue, by agent.',
+      },
+      {
         key: 'lead-assignment',
         icon: '🔀',
         title: 'Lead Assignment Report',
@@ -63,6 +69,12 @@ const REPORTS = [
         icon: '📣',
         title: 'Campaign Performance',
         desc: 'Lead volume and conversion by campaign.',
+      },
+      {
+        key: 'source-to-booking',
+        icon: '🎯',
+        title: 'Source to Booking',
+        desc: 'Each source and portal, from leads through site visits to bookings and value.',
       },
       {
         key: 'source-analysis',

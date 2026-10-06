@@ -109,7 +109,9 @@ Waiting on the owner:
 
 - **Lead Eagle inside YOUHAN ONE** — phase 1 (in the platform portal) is live since
   f89ae61; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
-  Phase 3 (stage reasons, QR capture, cold data) is built on top of it.
+  Phase 3 (stage reasons, QR capture, cold data) and phase 4 (assignment
+  explanations, working hours, adherence and source-to-booking reports) are
+  built on top of it.
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,
   Bayut and Dubizzle deliver only to approved partners, so each needs its
   partner agreement and its signing secret. The standalone Lead Eagle has no

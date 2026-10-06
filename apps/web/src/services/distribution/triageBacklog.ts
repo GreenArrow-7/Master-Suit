@@ -161,6 +161,7 @@ export async function importBacklog(
       respectLeave: true,
       respectQuotas: true,
       respectCapacity: true,
+      respectWorkingHours: true,
     },
   });
 

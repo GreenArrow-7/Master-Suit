@@ -3594,6 +3594,8 @@ model LeadAssignmentHistory {
   ruleId       String?
   method       DistributionMethod?
   reason       String?
+  /// Why this person, in a sentence: the rule, and who was passed over and why.
+  note         String?
   assignedById String?
   createdAt    DateTime            @default(now())
 

@@ -15,6 +15,7 @@ import { prismaRead } from '@/lib/db';
 import { csvHeader, csvRow, type CsvColumn } from '@/lib/csv';
 import { conversion, funnel, names, rank, subtree, type Range } from './rollups';
 import type { Ctx } from '@/lib/security/rbac';
+import { LEAD_SOURCES } from '@/lib/integrations/leadSources';
 
 /**
  * Every query in this module goes to `prismaRead` — the replica when
@@ -42,6 +43,8 @@ export const REPORT_KEYS = [
   'campaign-performance',
   'source-analysis',
   'lead-quality',
+  'follow-up-adherence',
+  'source-to-booking',
 ] as const;
 export type ReportKey = (typeof REPORT_KEYS)[number];
 
@@ -69,6 +72,21 @@ const money = (amount: Prisma.Decimal | null, currency = 'AED') =>
 
 /** Empty user list means the whole workspace, matching the rollups module. */
 const owned = (userIds: string[]) => (userIds.length === 0 ? {} : { ownerId: { in: userIds } });
+
+/**
+ * Where a lead came from, finer than its RecordSource: Marketplace is three
+ * portals, and the intake writes which one into `sourceDetail` (`bayut:…`),
+ * as Meta, QR capture and cold data do (`facebook:`, `capture:`, `data:`).
+ */
+const SOURCE_DETAIL: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(LEAD_SOURCES).map(([key, { label }]) => [key, label])),
+  facebook: 'Facebook lead ads',
+  capture: 'QR capture',
+  data: 'Cold data',
+};
+const sourceLabel = (source: string, detail: string | null) =>
+  SOURCE_DETAIL[detail?.split(':')[0] ?? ''] ??
+  (source === 'API' ? source : source.charAt(0) + source.slice(1).toLowerCase().replace(/_/g, ' '));
 
 export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise<Report> {
   const tenantId = ctx.tenantId;
@@ -365,6 +383,111 @@ export async function runReport(ctx: Ctx, key: ReportKey, range: Range): Promise
       };
     }
 
+    case 'follow-up-adherence': {
+      // Ported from Lead Eagle's report of the same name: are we doing what we
+      // said we would, when we said it?
+      const now = new Date();
+      const due = await prismaRead.followUpTask.findMany({
+        where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, dueAt: within, ...owned(userIds) },
+        select: { ownerId: true, dueAt: true, status: true, completedAt: true },
+      });
+      const who = await names(
+        tenantId,
+        due.map((f) => f.ownerId),
+      );
+      const by = new Map<string, { due: number; done: number; onTime: number; overdue: number }>();
+      for (const f of due) {
+        const row = by.get(f.ownerId) ?? { due: 0, done: 0, onTime: 0, overdue: 0 };
+        row.due += 1;
+        if (f.status === 'COMPLETED') {
+          row.done += 1;
+          if (f.completedAt && f.completedAt <= f.dueAt) row.onTime += 1;
+        } else if (f.dueAt < now) row.overdue += 1;
+        by.set(f.ownerId, row);
+      }
+      return {
+        key,
+        title: 'Follow-up adherence',
+        columns: [
+          { key: 'agent', label: 'Agent' },
+          { key: 'due', label: 'Due', align: 'right' },
+          { key: 'done', label: 'Done', align: 'right' },
+          { key: 'onTime', label: 'On time', align: 'right' },
+          { key: 'late', label: 'Late', align: 'right' },
+          { key: 'overdue', label: 'Still overdue', align: 'right' },
+          { key: 'rate', label: 'On-time rate', align: 'right' },
+        ],
+        rows: [...by]
+          .map(([ownerId, r]) => ({
+            agent: who.get(ownerId) ?? 'Unknown',
+            due: r.due,
+            done: r.done,
+            onTime: r.onTime,
+            late: r.done - r.onTime,
+            overdue: r.overdue,
+            rate: pct(Math.round((r.onTime / r.due) * 100)),
+          }))
+          .sort((a, b) => b.overdue - a.overdue || b.due - a.due),
+        note: 'On time is done no later than due. A follow-up due later in the period is neither late nor overdue yet, but counts in Due.',
+      };
+    }
+    case 'source-to-booking': {
+      const leads = await prismaRead.lead.findMany({
+        where: { tenantId, deletedAt: null, createdAt: within, ...owned(userIds) },
+        select: { id: true, source: true, sourceDetail: true },
+      });
+      // ponytail: the period's lead ids as one IN list; a join in SQL if a range ever holds 100k leads.
+      const leadId = { in: leads.map((l) => l.id) };
+      const [visited, booked] = await Promise.all([
+        prismaRead.siteVisit.findMany({
+          where: { tenantId, status: { in: ['CHECKED_IN', 'COMPLETED'] }, leadId },
+          select: { leadId: true },
+          distinct: ['leadId'],
+        }),
+        prismaRead.booking.findMany({
+          where: { tenantId, deletedAt: null, status: { not: 'CANCELLED' }, leadId },
+          select: { leadId: true, saleValue: true },
+        }),
+      ]);
+      const sourceOf = new Map(leads.map((l) => [l.id, sourceLabel(l.source, l.sourceDetail)]));
+      const by = new Map<string, { leads: number; visited: number; bookings: number; value: Prisma.Decimal }>();
+      const row = (source: string) => {
+        const r = by.get(source) ?? { leads: 0, visited: 0, bookings: 0, value: new Prisma.Decimal(0) };
+        by.set(source, r);
+        return r;
+      };
+      for (const l of leads) row(sourceOf.get(l.id)!).leads += 1;
+      for (const v of visited) if (v.leadId && sourceOf.has(v.leadId)) row(sourceOf.get(v.leadId)!).visited += 1;
+      for (const b of booked) {
+        if (!b.leadId || !sourceOf.has(b.leadId)) continue;
+        const r = row(sourceOf.get(b.leadId)!);
+        r.bookings += 1;
+        r.value = r.value.plus(b.saleValue);
+      }
+      return {
+        key,
+        title: 'Source to booking',
+        columns: [
+          { key: 'source', label: 'Source' },
+          { key: 'leads', label: 'Leads', align: 'right' },
+          { key: 'visited', label: 'Visited a property', align: 'right' },
+          { key: 'bookings', label: 'Bookings', align: 'right' },
+          { key: 'value', label: 'Booked value', align: 'right' },
+          { key: 'rate', label: 'Lead to booking', align: 'right' },
+        ],
+        rows: [...by]
+          .map(([source, r]) => ({
+            source,
+            leads: r.leads,
+            visited: r.visited,
+            bookings: r.bookings,
+            value: money(r.value),
+            rate: pct(Math.round((r.bookings / r.leads) * 100)),
+          }))
+          .sort((a, b) => b.bookings - a.bookings || b.leads - a.leads),
+        note: 'Leads that arrived in the period, followed to their site visits and bookings whenever those happened. Cancelled bookings are left out.',
+      };
+    }
     case 'source-analysis':
     case 'lead-quality': {
       const [bySource, converted] = await Promise.all([

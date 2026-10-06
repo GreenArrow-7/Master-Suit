@@ -31,7 +31,6 @@ export interface QueueRow {
   reasonText: string;
   reason: string;
   candidates: QueueCandidate[];
-  unsupportedPolicy: string[];
   openedAt: string;
   waitingMs: number;
   reviewDueAt: string | null;
@@ -258,11 +257,6 @@ export default function WaitingQueue({
                           </ul>
                         )}
                       </>
-                    )}
-                    {row.unsupportedPolicy.length > 0 && (
-                      <div className="lf-hint" style={{ marginTop: 4 }}>
-                        Ignored configuration: {row.unsupportedPolicy.join('; ')}
-                      </div>
                     )}
                   </td>
 

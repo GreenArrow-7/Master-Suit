@@ -1,14 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma, withTx } from '@/lib/db';
 import { logger } from '@/lib/logger';
-import {
-  assessEligibility,
-  lockAndVerify,
-  policyFromRule,
-  redactForSales,
-  unsupportedPolicy,
-  type Eligibility,
-} from './eligibility';
+import { assessEligibility, lockAndVerify, policyFromRule, redactForSales, type Eligibility } from './eligibility';
 import { openTriageEntry, resolveTriageEntry, type TriageDetail, type TriageReason } from './triage';
 
 /**
@@ -96,10 +89,9 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
     return queue(tenantId, lead, null, 'NO_RULE', {}, now);
   }
 
-  const unsupported = unsupportedPolicy(rule);
   const pool = (rule.candidatePool as { userIds?: string[] })?.userIds ?? [];
   if (pool.length === 0) {
-    return queue(tenantId, lead, rule, 'EMPTY_POOL', { ruleName: rule.name, unsupported }, now);
+    return queue(tenantId, lead, rule, 'EMPTY_POOL', { ruleName: rule.name }, now);
   }
 
   const policy = policyFromRule(rule);
@@ -124,7 +116,6 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
    */
   const detail: TriageDetail = {
     ruleName: rule.name,
-    unsupported,
     candidates: order.map((userId) => ({
       userId,
       blockers: redactForSales(by.get(userId)?.blockers ?? [], false),
@@ -150,8 +141,22 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
    * re-verified under a lock inside the transaction, and the shortlist is walked
    * until one of them still holds.
    */
+  // Names for the sentence that says why: the people in turn, by name.
+  const people = new Map(
+    (await prisma.user.findMany({ where: { tenantId, id: { in: order } }, select: { id: true, fullName: true } })).map(
+      (u) => [u.id, u.fullName],
+    ),
+  );
   for (const userId of candidates) {
-    const placed = await tryAssign(tenantId, lead.id, userId, rule, policy, now);
+    const placed = await tryAssign(
+      tenantId,
+      lead.id,
+      userId,
+      rule,
+      policy,
+      now,
+      why(rule.name, order, userId, detail, people),
+    );
     if (placed.outcome !== 'retry') return placed.result;
     detail.candidates = detail.candidates?.map((c) =>
       c.userId === userId ? { userId, blockers: redactForSales(placed.blockers, false) } : c,
@@ -164,6 +169,25 @@ export async function assignLead(tenantId: string, leadId: string, now = new Dat
 }
 
 type TryResult = { outcome: 'done'; result: AssignOutcome } | { outcome: 'retry'; blockers: Eligibility['blockers'] };
+
+/**
+ * Why this person, in one sentence for the lead's owner line: the rule, and
+ * everyone ahead of them in the rotation who was passed over, with the reason.
+ * Built from the triage detail, so an HR reason is already "unavailable".
+ */
+function why(
+  ruleName: string,
+  order: string[],
+  userId: string,
+  detail: TriageDetail,
+  people: Map<string, string>,
+): string {
+  const passed = order.slice(0, order.indexOf(userId)).map((id) => {
+    const reasons = detail.candidates?.find((c) => c.userId === id)?.blockers.map((b) => b.detail) ?? [];
+    return `${people.get(id) ?? 'someone'} (${reasons.join(', ') || 'taken by another assignment'})`;
+  });
+  return `Next in turn on ${ruleName}${passed.length ? `; passed over ${passed.join(', ')}` : ''}.`;
+}
 
 /**
  * One attempt, entirely inside a transaction.
@@ -185,6 +209,7 @@ async function tryAssign(
   rule: { id: string; name: string },
   policy: ReturnType<typeof policyFromRule>,
   now: Date,
+  note: string,
 ): Promise<TryResult> {
   return withTx(tenantId, async (tx) => {
     const verdict = await lockAndVerify(tx, tenantId, userId, policy, now);
@@ -214,6 +239,7 @@ async function tryAssign(
         ruleId: rule.id,
         method: 'ROUND_ROBIN',
         reason: 'DISTRIBUTION_RULE',
+        note,
       },
     });
 
