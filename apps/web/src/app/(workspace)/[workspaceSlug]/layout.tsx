@@ -235,14 +235,15 @@ async function loadShell(workspaceSlug: string) {
       // Same trick for the + Create menu: entries whose module the role cannot
       // CREATE never render (a read-only executive gets no menu at all). Nor do
       // entries the workspace has not bought: leads, calls and events are shared
-      // with Real Estate, the rest are Sales alone, and a Real-Estate-only
-      // workspace was offered Opportunity, Account and Contact forms it could
-      // only be bounced from.
+      // with Real Estate, leads and calls with Lead Eagle, the rest are Sales
+      // alone, and a Real-Estate-only workspace was offered Opportunity, Account
+      // and Contact forms it could only be bounced from.
       creatable: ['leads', 'opportunities', 'accounts', 'contacts', 'calls', 'events'].filter(
         (key) =>
           can(ctx, key, 'CREATE') &&
           (modules.includes('SALES') ||
-            (modules.includes('REAL_ESTATE') && ['leads', 'calls', 'events'].includes(key))),
+            (modules.includes('REAL_ESTATE') && ['leads', 'calls', 'events'].includes(key)) ||
+            (modules.includes('LEAD_EAGLE') && ['leads', 'calls'].includes(key))),
       ),
       user: {
         // buildActor carries the name from the row it loads anyway; the support

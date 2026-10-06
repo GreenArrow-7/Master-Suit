@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { AppError } from '@/lib/errors';
-import { realtyEquivalent } from '@/lib/nav/realtyShared';
+import { leadEagleEquivalent, realtyEquivalent } from '@/lib/nav/realtyShared';
 import { requestCtx, requestWorkspace } from '@/lib/workspace-page';
 
 /**
@@ -53,15 +53,22 @@ export default async function SalesLayout({
  * Record links — the notification bell, a push notification already on a
  * phone, the assistant — are built as `/sales/...` (lib/nav/entityRoute.ts).
  * A workspace that bought only Real Estate owns the same registers under
- * `/realty/`, so it is sent to the same screen there rather than to the
- * dashboard. Anything Real Estate has no screen for still goes to the dashboard.
+ * `/realty/`, and one that bought Lead Eagle owns most of them under
+ * `/lead-eagle/`, so it is sent to the same screen there rather than to the
+ * dashboard — Real Estate first, the fuller of the two. Anything neither has a
+ * screen for still goes to the dashboard.
  */
 async function elsewhere(workspaceSlug: string): Promise<string> {
   const header = await headers();
-  const target = realtyEquivalent(`${header.get('x-pathname') ?? ''}${header.get('x-search') ?? ''}`);
-  if (target) {
+  const url = `${header.get('x-pathname') ?? ''}${header.get('x-search') ?? ''}`;
+  const choices = [
+    ['REAL_ESTATE', realtyEquivalent(url)],
+    ['LEAD_EAGLE', leadEagleEquivalent(url)],
+  ] as const;
+  for (const [module, target] of choices) {
+    if (!target) continue;
     try {
-      await requestWorkspace(await requestCtx(), workspaceSlug, 'REAL_ESTATE');
+      await requestWorkspace(await requestCtx(), workspaceSlug, module);
       return target;
     } catch (error) {
       if (!(error instanceof AppError && error.status === 403)) throw error;

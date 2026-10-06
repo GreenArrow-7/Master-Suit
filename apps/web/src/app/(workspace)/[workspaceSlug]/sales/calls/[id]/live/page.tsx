@@ -1,5 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
@@ -19,7 +19,7 @@ export default async function LiveCallPage({
   params: Promise<{ workspaceSlug: string; id: string }>;
 }) {
   const params = await paramsPromise;
-  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['calls', 'EDIT'] });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['calls', 'EDIT'] });
 
   const call = await prisma.call.findFirst({
     where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -31,10 +31,12 @@ export default async function LiveCallPage({
   if (call.callerId !== ctx.actor.id && SCOPE_RANK[scope] < SCOPE_RANK.TEAM) notFound();
 
   // A finished call has no live session — its story lives on the detail page.
-  // Under whichever product the viewer came through: a Real Estate workspace
-  // does not own Sales, so a hard-coded /sales/ would redirect into a refusal.
+  // Under whichever product the viewer came through: a Real Estate or Lead Eagle
+  // workspace does not own Sales, so a hard-coded /sales/ would redirect into a
+  // refusal.
   if (!['SCHEDULED', 'RINGING', 'IN_PROGRESS'].includes(call.status)) {
-    const product = (await headers()).get('x-pathname')?.includes('/realty/') ? 'realty' : 'sales';
+    const path = (await headers()).get('x-pathname') ?? '';
+    const product = path.includes('/realty/') ? 'realty' : path.includes('/lead-eagle/') ? 'lead-eagle' : 'sales';
     redirect(`/${params.workspaceSlug}/${product}/calls/${call.id}`);
   }
 

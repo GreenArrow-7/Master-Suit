@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -39,7 +39,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'projects',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: createBody,
@@ -67,7 +67,7 @@ const deleteQuery = z.object({ mediaId: z.string().cuid() }).strict();
 export const DELETE = route(
   {
     module: 'projects',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     query: deleteQuery,

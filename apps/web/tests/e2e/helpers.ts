@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db';
 import { totp } from '@/lib/auth/mfa';
 import { decryptSecret, encryptSecret } from '@/services/identity/secrets';
 import { RUN_TAG } from './run-tag';
-import { PRODUCT_MODULE_CHOICES } from '@/lib/modules/catalogue';
+import { PRODUCT_MODULE_CHOICES, type ProductModuleKey } from '@/lib/modules/catalogue';
 
 /**
  * Clears the login rate-limit counters.
@@ -364,7 +364,7 @@ export interface NewWorkspace {
   adminName: string;
   adminEmail: string;
   adminPassword: string;
-  modules: ('SALES' | 'HRMS')[];
+  modules: ProductModuleKey[];
 }
 
 /**

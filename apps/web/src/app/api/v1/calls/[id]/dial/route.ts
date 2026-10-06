@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -32,7 +32,7 @@ const body = z
  * later on /api/v1/webhooks/telephony/{webhookKey}.
  */
 export const POST = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'EDIT', params, body, auditEvent: 'CALL_STARTED' },
   async ({ ctx, params, body }) => {
     await assertCallInScope(ctx, params.id);
     const [call, actor] = await Promise.all([

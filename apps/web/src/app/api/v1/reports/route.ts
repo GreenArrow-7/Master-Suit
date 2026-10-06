@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { runReport, toCsv, REPORT_KEYS } from '@/services/leadership/reports';
@@ -23,7 +23,7 @@ const query = z
  * across all ten reports means that is one function rather than ten.
  */
 export const GET = route(
-  { module: 'reports', productModule: SALES_OR_REALTY, action: 'VIEW', query },
+  { module: 'reports', productModule: LEAD_MODULES, action: 'VIEW', query },
   async ({ ctx, query: q }) => {
     const to = q.to ?? new Date();
     const from = q.from ?? new Date(to.getFullYear(), to.getMonth() - 2, 1);

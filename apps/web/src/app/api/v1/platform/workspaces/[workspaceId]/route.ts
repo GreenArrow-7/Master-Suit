@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { invalidateEntitlements } from '@/lib/security/entitlements';
+import { invalidateEntitlements, LEAD_MODULES } from '@/lib/security/entitlements';
+import { provisionLeadWork } from '@/services/platform/provisioning';
 import { z } from 'zod';
 import { prisma, withPlatformTx } from '@/lib/db';
 import { NotFound } from '@/lib/errors';
@@ -121,6 +122,11 @@ export const PATCH = bareRoute(
               },
             });
           }
+        }
+        // Switching on a module that works leads in a workspace that never had one
+        // (an HR-only workspace adding Lead Eagle) needs the same starting lists.
+        if (body.enabledModules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) {
+          await provisionLeadWork(tx, current.id);
         }
       }
       if (body.revokeSessions) {

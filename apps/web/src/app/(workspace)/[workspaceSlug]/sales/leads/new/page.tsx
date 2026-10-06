@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { can } from '@/lib/security/rbac';
 import LeadForm from './LeadForm';
 import SalesLink from '@/components/workspace/SalesLink';
@@ -8,7 +8,7 @@ import SalesLink from '@/components/workspace/SalesLink';
 export const metadata = { title: 'Add lead' };
 
 export default async function NewLeadPage() {
-  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['leads', 'CREATE'] });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'CREATE'] });
   if (!can(ctx, 'leads', 'CREATE')) redirect('/leads');
 
   return (

@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -26,7 +26,7 @@ const params = z.object({ id: z.string().cuid() });
  * every priced project look overpriced.
  */
 export const GET = route(
-  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', params },
+  { module: 'projects', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const project = await prisma.project.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

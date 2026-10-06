@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -28,7 +28,7 @@ const params = z.object({ id: z.string().cuid() });
 export const GET = route(
   {
     module: 'calls',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'VIEW',
     params,
     auditEvent: 'RECORDING_ACCESSED',
@@ -93,7 +93,7 @@ export const GET = route(
  * would retry against it forever.
  */
 export const PUT = route(
-  { module: 'calls', action: 'EDIT', productModule: SALES_OR_REALTY, sessionOnly: true, params },
+  { module: 'calls', action: 'EDIT', productModule: LEAD_MODULES, sessionOnly: true, params },
   async ({ ctx, params: { id: callId }, req }) => {
     if (!/^[a-z0-9]{20,32}$/i.test(callId)) throw new AppError(422, 'validation-failed', 'Invalid call id.');
 

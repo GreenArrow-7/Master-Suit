@@ -1,5 +1,5 @@
 import { requirePageAccess } from '@/lib/workspace-page';
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { mergeWhere } from '@/lib/api/where';
 import { prisma } from '@/lib/db';
 import { visibilityWhere } from '@/lib/security/visibility';
@@ -20,7 +20,7 @@ export const metadata = { title: 'Requirements' };
  */
 export default async function RequirementsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const params = await searchParams;
-  const ctx = await requirePageAccess({ module: SALES_OR_REALTY, permission: ['requirements', 'VIEW'] });
+  const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['requirements', 'VIEW'] });
 
   const scope = await visibilityWhere(ctx, 'requirements', 'VIEW');
   const status = ['OPEN', 'MATCHED', 'FULFILLED', 'CLOSED'].includes(params.status ?? '') ? params.status : undefined;

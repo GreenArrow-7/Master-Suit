@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -8,7 +8,7 @@ import { POSSESSION_STATUSES, PROJECT_STATUSES } from '@/lib/inventory/catalogue
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', params },
+  { module: 'projects', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     const project = await prisma.project.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },
@@ -77,7 +77,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'projects',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: patchBody,
@@ -107,7 +107,7 @@ export const PATCH = route(
  * live deal.
  */
 export const DELETE = route(
-  { module: 'projects', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'projects', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     const project = await prisma.project.findFirst({
       where: { id: params.id, tenantId: ctx.tenantId, deletedAt: null },

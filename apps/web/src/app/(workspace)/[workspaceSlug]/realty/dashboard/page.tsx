@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { requirePageAccess } from '@/lib/workspace-page';
 import { realtyDashboard } from '@/services/realty/dashboard';
 import ListHeader from '@/components/workspace/ListHeader';
@@ -60,12 +61,21 @@ function Tile({
 }
 
 export default async function RealtyDashboardPage() {
-  const ctx = await requirePageAccess({ module: 'REAL_ESTATE', permission: ['leads', 'VIEW'] });
+  // The same board for Lead Eagle (`lead-eagle/dashboard` re-exports this page),
+  // without bookings and revenue: Lead Eagle is the lead-management product.
+  const leadEagle = (await headers()).get('x-pathname')?.includes('/lead-eagle/') ?? false;
+  const ctx = await requirePageAccess({
+    module: leadEagle ? 'LEAD_EAGLE' : 'REAL_ESTATE',
+    permission: ['leads', 'VIEW'],
+  });
   const board = await realtyDashboard(ctx);
 
   return (
     <>
-      <ListHeader title="Real Estate" description="Your brokerage day, and where it stands." />
+      <ListHeader
+        title={leadEagle ? 'Lead Eagle' : 'Real Estate'}
+        description={leadEagle ? 'Your leads today, and where they stand.' : 'Your brokerage day, and where it stands.'}
+      />
 
       <section aria-labelledby="realty-today">
         <h2 id="realty-today" className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-2)' }}>
@@ -87,13 +97,17 @@ export default async function RealtyDashboardPage() {
           <MetricCard label="Total Leads" value={board.pipeline.totalLeads} href="/leads" />
           <Tile label="Visits Approved" value={board.pipeline.visitsApproved} href="/site-visits" />
           <Tile label="Visits Completed" value={board.pipeline.visitsCompleted} href="/site-visits" />
-          <Tile label="Bookings" value={board.pipeline.bookings} href="/collections" />
-          <Tile
-            label="Confirmed Bookings"
-            value={board.pipeline.confirmedBookings}
-            href="/collections"
-            tone="viridian"
-          />
+          {!leadEagle && (
+            <>
+              <Tile label="Bookings" value={board.pipeline.bookings} href="/collections" />
+              <Tile
+                label="Confirmed Bookings"
+                value={board.pipeline.confirmedBookings}
+                href="/collections"
+                tone="viridian"
+              />
+            </>
+          )}
         </div>
       </section>
 
@@ -102,20 +116,24 @@ export default async function RealtyDashboardPage() {
           Business
         </h2>
         <div style={CARD_GRID}>
-          <Tile
-            label="Revenue Today"
-            value={board.business.revenueToday}
-            href="/collections"
-            tone="wine"
-            format={money}
-          />
-          <Tile
-            label="Revenue 7 Days"
-            value={board.business.revenue7Days}
-            href="/collections"
-            tone="wine"
-            format={money}
-          />
+          {!leadEagle && (
+            <>
+              <Tile
+                label="Revenue Today"
+                value={board.business.revenueToday}
+                href="/collections"
+                tone="wine"
+                format={money}
+              />
+              <Tile
+                label="Revenue 7 Days"
+                value={board.business.revenue7Days}
+                href="/collections"
+                tone="wine"
+                format={money}
+              />
+            </>
+          )}
           <Tile label="Available Inventory" value={board.business.availableInventory} href="/properties" />
         </div>
       </section>
@@ -127,7 +145,7 @@ export default async function RealtyDashboardPage() {
           gap: 'var(--lf-space-4)',
         }}
       >
-        {board.business.topAgents !== null && (
+        {board.business.topAgents !== null && !leadEagle && (
           <section className="lf-card" style={{ padding: 'var(--lf-space-5)' }}>
             <div className="lf-eyebrow" style={{ marginBottom: 'var(--lf-space-3)' }}>
               Top Agents

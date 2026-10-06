@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { allocate, headroom, poolDepth, routeLeads } from '@/services/distribution/allocation';
@@ -23,7 +23,7 @@ const listQuery = z
 
 /** The queue, how deep the pool is, or what a set of people can still take. */
 export const GET = route(
-  { module: 'allocation', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
+  { module: 'allocation', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     if (query.view === 'pool') return { depth: await poolDepth(ctx.tenantId) };
     if (query.view === 'headroom') {
@@ -75,7 +75,7 @@ const routeBody = z
 export const POST = route(
   {
     module: 'allocation',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: z.discriminatedUnion('action', [askBody, allocateBody, routeBody]),
     auditEvent: 'RECORD_CREATED',
@@ -111,7 +111,7 @@ const cancelBody = z.object({ action: z.literal('CANCEL'), requestId: z.string()
 export const PATCH = route(
   {
     module: 'allocation',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'VIEW',
     body: z.discriminatedUnion('action', [decideBody, cancelBody]),
     auditEvent: 'STAGE_CHANGED',

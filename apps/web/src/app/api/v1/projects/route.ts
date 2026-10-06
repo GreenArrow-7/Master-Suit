@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
@@ -24,7 +24,7 @@ import {
 const listQuery = pageQuery.merge(catalogueFilters);
 
 export const GET = route(
-  { module: 'projects', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
+  { module: 'projects', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     // Resolved before the main query and passed in as ids: the favourite set is
     // per user and small, so an IN list beats a relation filter the planner has
@@ -90,7 +90,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'projects',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

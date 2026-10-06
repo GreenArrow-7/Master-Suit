@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -24,7 +24,7 @@ const createBody = z
   .strict();
 
 export const POST = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'CREATE', body: createBody, auditEvent: 'CALL_STARTED' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'CREATE', body: createBody, auditEvent: 'CALL_STARTED' },
   async ({ ctx, body }) => {
     const call = await prisma.call.create({
       data: {
@@ -70,7 +70,7 @@ const listQuery = z
   .strict();
 
 export const GET = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     const scope = scopeFor(ctx, 'calls', 'VIEW');
     const where: Record<string, unknown> = { tenantId: ctx.tenantId, deletedAt: null };

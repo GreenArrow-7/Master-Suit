@@ -92,7 +92,8 @@ describe('the shared Sales pages admit a Real Estate workspace', () => {
     // The failure this catches is silent: `module: 'SALES'` typechecks and
     // refuses every Real Estate workspace the screen at runtime.
     expect(source).not.toMatch(/module: 'SALES'/);
-    expect(source).toContain('module: SALES_OR_REALTY');
+    // LEAD_MODULES (lead work, which Lead Eagle shares too) admits Real Estate as well.
+    expect(source).toMatch(/module: (SALES_OR_REALTY|LEAD_MODULES)/);
     expect(source).toContain("from '@/lib/security/entitlements'");
   });
 });
@@ -126,7 +127,7 @@ describe('the APIs behind the shared screens admit a Real Estate workspace', () 
   it.each(routes)('%s asserts either product, not Sales alone', (route) => {
     const source = read(path.join(API, route));
     expect(source).not.toMatch(/productModule: 'SALES'/);
-    if (source.includes('productModule')) expect(source).toContain('productModule: SALES_OR_REALTY');
+    if (source.includes('productModule')) expect(source).toMatch(/productModule: (SALES_OR_REALTY|LEAD_MODULES)/);
   });
 });
 
@@ -221,7 +222,11 @@ describe('the inventory navigation points somewhere real', () => {
    * it then refuses, and disagreed with the API about the same rows.
    */
   it('Properties is gated on the permission its own screen asserts', () => {
-    const tab = /label: 'Properties',\s*\n\s*href: r\('\/properties'\),\s*\n\s*permission: '([a-z]+)'/.exec(nav);
+    // An `aliases` line (Lead Eagle's address for the same screen) may sit between the two.
+    const tab =
+      /label: 'Properties',\s*\n\s*href: r\('\/properties'\),\s*\n(?:\s*aliases: \[[^\]]*\],\s*\n)?\s*permission: '([a-z]+)'/.exec(
+        nav,
+      );
     expect(tab, 'Properties tab not found').not.toBeNull();
     expect(tab![1]).toBe('projects');
 

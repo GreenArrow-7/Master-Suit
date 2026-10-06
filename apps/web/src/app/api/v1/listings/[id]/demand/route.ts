@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { NotFound } from '@/lib/errors';
@@ -21,7 +21,7 @@ const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(
  * this route.
  */
 export const GET = route(
-  { module: 'requirements', productModule: SALES_OR_REALTY, action: 'VIEW', params, query },
+  { module: 'requirements', productModule: LEAD_MODULES, action: 'VIEW', params, query },
   async ({ ctx, params, query }) => {
     const result = await requirementsWanting(ctx.tenantId, params.id, query.limit);
     if (!result) throw NotFound('Listing');

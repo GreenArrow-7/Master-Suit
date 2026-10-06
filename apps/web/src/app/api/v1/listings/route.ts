@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
@@ -28,7 +28,7 @@ import {
 const listQuery = pageQuery.merge(listingFilters);
 
 export const GET = route(
-  { module: 'listings', productModule: SALES_OR_REALTY, action: 'VIEW', query: listQuery },
+  { module: 'listings', productModule: LEAD_MODULES, action: 'VIEW', query: listQuery },
   async ({ ctx, query }) => {
     // Lapsed mandates take their listings off the market at the moment somebody
     // looks. Doing it here rather than on a schedule means the book is never
@@ -84,7 +84,7 @@ const createBody = z
 export const POST = route(
   {
     module: 'listings',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'CREATE',
     body: createBody,
     auditEvent: 'RECORD_CREATED',

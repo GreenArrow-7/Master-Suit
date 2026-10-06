@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { MANDATE_STATUSES, decideMandate } from '@/services/inventory/mandates';
@@ -23,7 +23,7 @@ const body = z
 export const PATCH = route(
   {
     module: 'listings',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body,

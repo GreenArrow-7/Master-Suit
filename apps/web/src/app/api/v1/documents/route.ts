@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
 import { env } from '@/lib/env';
@@ -19,7 +19,7 @@ import { route } from '@/lib/api/handler';
  * keeping unscanned bytes around.
  */
 export const POST = route(
-  { module: 'leads', action: 'EDIT', productModule: SALES_OR_REALTY, sessionOnly: true },
+  { module: 'leads', action: 'EDIT', productModule: LEAD_MODULES, sessionOnly: true },
   async ({ ctx, req }) => {
     const { form, file } = await readUpload(req);
 

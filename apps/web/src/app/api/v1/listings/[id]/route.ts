@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
@@ -10,7 +10,7 @@ import { FURNISHINGS, LISTING_STATUSES, PROPERTY_TYPES, maskOwner } from '@/lib/
 const params = z.object({ id: z.string().cuid() });
 
 export const GET = route(
-  { module: 'listings', productModule: SALES_OR_REALTY, action: 'VIEW', params },
+  { module: 'listings', productModule: LEAD_MODULES, action: 'VIEW', params },
   async ({ ctx, params }) => {
     await expireLapsedMandates(ctx.tenantId);
 
@@ -74,7 +74,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'listings',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: patchBody,
@@ -119,7 +119,7 @@ export const PATCH = route(
  * does not end it.
  */
 export const DELETE = route(
-  { module: 'listings', productModule: SALES_OR_REALTY, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
+  { module: 'listings', productModule: LEAD_MODULES, action: 'DELETE', params, auditEvent: 'RECORD_DELETED' },
   async ({ ctx, params }) => {
     return withTx(ctx.tenantId, async (tx) => {
       const listing = await tx.listing.findFirst({

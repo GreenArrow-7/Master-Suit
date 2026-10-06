@@ -5,6 +5,8 @@ import { Conflict } from '@/lib/errors';
 import { requirePlatformOwner } from '@/lib/auth/platform';
 import { hashPassword } from '@/lib/auth/password';
 import { PRODUCT_MODULE_KEYS } from '@/lib/modules/catalogue';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { provisionLeadWork } from '@/services/platform/provisioning';
 import { platformAudit } from '@/lib/security/audit';
 import { bareRoute } from '@/lib/api/handler';
 
@@ -270,53 +272,11 @@ export const POST = bareRoute('/api/v1/platform/workspaces', async (req, request
         joinedOn: new Date(),
       },
     });
+    // Lead stages, activity and task types: every module that works leads needs them.
+    if (body.enabledModules.some((module) => (LEAD_MODULES as readonly string[]).includes(module))) {
+      await provisionLeadWork(tx, created.id);
+    }
     if (body.enabledModules.includes('SALES')) {
-      await tx.leadStage.createMany({
-        data: [
-          { tenantId: created.id, key: 'new', name: 'New', position: 1, isDefault: true },
-          { tenantId: created.id, key: 'qualified', name: 'Qualified', position: 2 },
-          { tenantId: created.id, key: 'won', name: 'Won', position: 3, category: 'CONVERSION' },
-          { tenantId: created.id, key: 'lost', name: 'Lost', position: 4, category: 'TERMINAL_NEGATIVE' },
-        ],
-      });
-
-      /**
-       * Activity and task types, without which a new workspace cannot record
-       * that anything happened.
-       *
-       * Both are required foreign keys on their rows (`Activity.typeId`,
-       * `Task.typeId`) and both composers pick from a per-tenant list. With
-       * the list empty the select renders no options, the guard in the form
-       * returns before it posts, and pressing "Log" does nothing at all — no
-       * error, no row. Lead stages were provisioned here from the start; these
-       * two existed only in the demo seed, so every workspace created through
-       * the wizard — that is, every real customer — arrived unable to log a
-       * call or raise a task.
-       *
-       * Deliberately a small starting set rather than the seed's twenty: these
-       * are the ones every sales team uses on day one, and a workspace is
-       * expected to add its own. `scoreDelta` mirrors the seed so lead scoring
-       * behaves the same way in a provisioned workspace as in the demo.
-       */
-      await tx.activityType.createMany({
-        data: [
-          { tenantId: created.id, key: 'call_out', name: 'Outbound call', scoreDelta: 3, position: 0 },
-          { tenantId: created.id, key: 'call_in', name: 'Incoming call', scoreDelta: 8, position: 1 },
-          { tenantId: created.id, key: 'email_sent', name: 'Email sent', scoreDelta: 1, position: 2 },
-          { tenantId: created.id, key: 'meeting', name: 'Meeting', scoreDelta: 12, position: 3 },
-          { tenantId: created.id, key: 'follow_up', name: 'Follow-up completed', scoreDelta: 3, position: 4 },
-          { tenantId: created.id, key: 'note', name: 'Lead note', scoreDelta: 0, position: 5 },
-        ],
-      });
-      await tx.taskType.createMany({
-        data: [
-          { tenantId: created.id, key: 'call', name: 'Call', category: 'TODO' },
-          { tenantId: created.id, key: 'meeting', name: 'Meeting', category: 'APPOINTMENT' },
-          { tenantId: created.id, key: 'follow_up', name: 'Follow-up', category: 'TODO' },
-          { tenantId: created.id, key: 'internal', name: 'Internal task', category: 'TODO' },
-        ],
-      });
-
       /**
        * The default opportunity pipeline and its stages.
        *
@@ -324,9 +284,9 @@ export const POST = bareRoute('/api/v1/platform/workspaces', async (req, request
        * `NotFound('Pipeline')` when there is none, so without this a newly
        * provisioned workspace cannot create an opportunity at all — the
        * central object of the CRM — and the failure surfaces to the user as a
-       * bare 404 on save. Like the type tables above, a pipeline existed only
-       * in the demo seed, so this was invisible in the demo tenant and broken
-       * for every real customer.
+       * bare 404 on save. Like the type tables (`provisionLeadWork`), a pipeline
+       * existed only in the demo seed, so this was invisible in the demo tenant
+       * and broken for every real customer.
        *
        * Mirrors the seed's stage set, including the probability each stage
        * carries: forecasting multiplies amount by stage probability, so a

@@ -1,4 +1,4 @@
-import { SALES_OR_REALTY } from '@/lib/security/entitlements';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
@@ -33,7 +33,7 @@ async function assertCallVisible(ctx: Ctx, callId: string) {
 // A manager's note on how a conversation went is conversation content, not call
 // metadata: a monitoring grant reads it only when it is marked sensitive.
 export const GET = route(
-  { module: 'calls', productModule: SALES_OR_REALTY, action: 'VIEW', params, sensitive: 'coaching notes' },
+  { module: 'calls', productModule: LEAD_MODULES, action: 'VIEW', params, sensitive: 'coaching notes' },
   async ({ ctx, params }) => {
     await assertCallVisible(ctx, params.id);
     const data = await prisma.coachingNote.findMany({
@@ -50,7 +50,7 @@ const createBody = z.object({ body: z.string().min(1).max(5000) }).strict();
 export const POST = route(
   {
     module: 'calls',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: createBody,
@@ -91,7 +91,7 @@ const patchBody = z
 export const PATCH = route(
   {
     module: 'calls',
-    productModule: SALES_OR_REALTY,
+    productModule: LEAD_MODULES,
     action: 'EDIT',
     params,
     body: patchBody,
