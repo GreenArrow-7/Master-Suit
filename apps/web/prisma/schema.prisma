@@ -630,6 +630,7 @@ model Tenant {
   listingPublications ListingPublication[]
   proposals           Proposal[]
   proposalItems       ProposalItem[]
+  leadPhones          LeadPhone[]
 
   @@index([status])
 }
@@ -3383,6 +3384,7 @@ model Lead {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   socialComments SocialComment[]
+  phones         LeadPhone[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
@@ -3400,6 +3402,26 @@ model Lead {
   @@index([tenantId, ownerId, updatedAt(sort: Desc)])
   @@index([accountId])
   @@index([campaignId])
+}
+
+/// A lead's numbers beyond `Lead.phone`, which stays the number the screens
+/// call and the dialer queues. Duplicate matching reads both, so an enquiry
+/// from a customer's second number lands on the lead that already holds it.
+model LeadPhone {
+  id         String   @id @default(cuid())
+  tenantId   String
+  leadId     String
+  raw        String
+  normalized String
+  label      String?
+  isWhatsapp Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, normalized])
+  @@index([tenantId, normalized])
 }
 
 model LeadCustomFieldDefinition {

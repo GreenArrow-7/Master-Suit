@@ -11,6 +11,8 @@ export interface DuplicateMatch {
 export interface DuplicateProbe {
   email?: string | null;
   phoneNormalized?: string | null;
+  /** Further numbers the newcomer gave, normalised; matched like `phoneNormalized`. */
+  otherPhones?: string[];
   fullName?: string | null;
   excludeId?: string;
 }
@@ -74,10 +76,16 @@ function buildWhere(fields: string[], probe: DuplicateProbe): Record<string, unk
         clauses.push({ email: probe.email.toLowerCase() });
         break;
       case 'phone':
-      case 'phoneNormalized':
-        if (!probe.phoneNormalized) return null;
-        clauses.push({ phoneNormalized: probe.phoneNormalized });
+      case 'phoneNormalized': {
+        // Any of the newcomer's numbers against any of the lead's: the main
+        // number and every LeadPhone.
+        const numbers = [probe.phoneNormalized, ...(probe.otherPhones ?? [])].filter((n): n is string => !!n);
+        if (!numbers.length) return null;
+        clauses.push({
+          OR: [{ phoneNormalized: { in: numbers } }, { phones: { some: { normalized: { in: numbers } } } }],
+        });
         break;
+      }
       case 'fullName':
         if (!probe.fullName) return null;
         clauses.push({ fullName: { equals: probe.fullName, mode: 'insensitive' } });

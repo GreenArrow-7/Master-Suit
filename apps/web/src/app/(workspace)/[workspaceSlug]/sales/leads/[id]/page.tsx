@@ -49,6 +49,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         },
       },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
+      phones: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, raw: true, normalized: true, label: true, isWhatsapp: true },
+      },
     },
   });
 
@@ -81,6 +85,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const scopedDue = await scopedNextFollowUp(ctx.tenantId, [lead.id], personalAccess);
 
   const safe = applyFieldSecurity(ctx, 'LEAD', rules, lead, LEAD_SENSITIVE_FIELDS) as typeof lead;
+  // The other numbers follow the main one: a role that may not see `phone`, or
+  // sees it masked, sees none of them.
+  const phoneVisible = safe.phone === lead.phone;
 
   // Serialize dates to ISO strings for the client component
   const serializedLead = {
@@ -89,6 +96,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     fullName: safe.fullName,
     email: safe.email,
     phone: safe.phone,
+    phoneNormalized: phoneVisible ? lead.phoneNormalized : null,
+    phones: phoneVisible ? lead.phones : null,
     company: lead.company,
     jobTitle: lead.jobTitle,
     industry: lead.industry,

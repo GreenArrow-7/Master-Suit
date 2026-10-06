@@ -68,6 +68,10 @@ interface LeadData {
   status?: string | null;
   email: string | null;
   phone: string | null;
+  /** E.164, for wa.me — which refuses a number typed in local form. */
+  phoneNormalized: string | null;
+  /** Null when the viewer's role may not see the main number either. */
+  phones: { id: string; raw: string; normalized: string; label: string | null; isWhatsapp: boolean }[] | null;
   company: string | null;
   jobTitle: string | null;
   industry: string | null;
@@ -258,7 +262,13 @@ export default function LeadDetail({
           </nav>
 
           {tab === 'Overview' && (
-            <OverviewTab lead={lead} editing={editing} setEditing={setEditing} patchLead={patchLead} />
+            <OverviewTab
+              lead={lead}
+              editing={editing}
+              setEditing={setEditing}
+              patchLead={patchLead}
+              canEdit={canEdit}
+            />
           )}
           {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
           {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
@@ -308,7 +318,7 @@ export default function LeadDetail({
               {lead.phone && (
                 <button
                   className="lf-btn lf-btn--secondary lf-btn--sm"
-                  onClick={() => window.open(`https://wa.me/${lead.phone!.replace(/[^0-9]/g, '')}`)}
+                  onClick={() => window.open(waLink(lead.phoneNormalized ?? lead.phone!))}
                 >
                   WhatsApp
                 </button>
@@ -512,11 +522,13 @@ function OverviewTab({
   editing,
   setEditing,
   patchLead,
+  canEdit,
 }: {
   lead: Props['lead'];
   editing: boolean;
   setEditing: (v: boolean) => void;
   patchLead: (d: Record<string, unknown>) => Promise<void>;
+  canEdit: boolean;
 }) {
   const [form, setForm] = useState({
     email: lead.email ?? '',
@@ -603,6 +615,9 @@ function OverviewTab({
             </div>
           )}
         </dl>
+        {lead.phones && (lead.phones.length > 0 || canEdit) && (
+          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit} />
+        )}
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
             <button className="lf-btn lf-btn--sm" disabled={saving} onClick={handleSave}>
@@ -614,6 +629,116 @@ function OverviewTab({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+const waLink = (phone: string) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}`;
+
+/** A lead's numbers beyond the main one (LeadPhone), each with its WhatsApp flag. */
+function OtherNumbers({
+  phones,
+  leadId,
+  canEdit,
+}: {
+  phones: NonNullable<LeadData['phones']>;
+  leadId: string;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const blank = { phone: '', label: '', isWhatsapp: true };
+  const [form, setForm] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (write: () => Promise<unknown>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await write();
+      router.refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ marginTop: 'var(--lf-space-4)' }}>
+      <div className="lf-label">Other numbers</div>
+      {err && (
+        <div className="lf-alert" role="alert" style={{ margin: '6px 0', fontSize: 'var(--lf-text-sm)' }}>
+          {err}
+        </div>
+      )}
+      <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'grid', gap: 6 }}>
+        {phones.map((p) => (
+          <li
+            key={p.id}
+            style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
+          >
+            <a href={`tel:${p.raw}`}>{p.raw}</a>
+            {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
+            {p.isWhatsapp && (
+              <a href={waLink(p.normalized)} target="_blank" rel="noreferrer">
+                WhatsApp
+              </a>
+            )}
+            {canEdit && (
+              <button
+                className="lf-btn lf-btn--ghost lf-btn--sm"
+                disabled={busy}
+                aria-label={`Remove ${p.raw}`}
+                onClick={() => run(() => api(`/api/v1/leads/${leadId}/phones?phoneId=${p.id}`, { method: 'DELETE' }))}
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+        {phones.length === 0 && <li style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>None yet.</li>}
+      </ul>
+      {canEdit && (
+        <form
+          style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await api(`/api/v1/leads/${leadId}/phones`, { method: 'POST', body: JSON.stringify(form) });
+              setForm(blank);
+            });
+          }}
+        >
+          <input
+            className="lf-input"
+            type="tel"
+            required
+            placeholder="Number"
+            aria-label="Another number"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--lf-text-sm)' }}
+          />
+          <input
+            className="lf-input"
+            placeholder="Label, e.g. Office"
+            aria-label="Label"
+            value={form.label}
+            onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+            style={{ flex: '1 1 120px', minWidth: 0, fontSize: 'var(--lf-text-sm)' }}
+          />
+          <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+            <input
+              type="checkbox"
+              checked={form.isWhatsapp}
+              onChange={(e) => setForm((f) => ({ ...f, isWhatsapp: e.target.checked }))}
+            />
+            On WhatsApp
+          </label>
+          <button className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy || !form.phone.trim()}>
+            Add number
+          </button>
+        </form>
+      )}
     </div>
   );
 }

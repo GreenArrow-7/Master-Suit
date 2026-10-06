@@ -6,6 +6,7 @@ import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
+import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -90,7 +91,9 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
       data: {
         ...(input.fullName !== undefined && { fullName: input.fullName }),
         ...(input.email !== undefined && { email: input.email.toLowerCase() }),
-        ...(input.phone !== undefined && { phone: input.phone }),
+        // Both columns, as updateContact does: duplicate matching reads the
+        // normalised one, and leaving it behind matched the old number forever.
+        ...(input.phone !== undefined && { phone: input.phone, phoneNormalized: normalizePhone(input.phone) }),
         ...(input.company !== undefined && { company: input.company }),
         ...(input.jobTitle !== undefined && { jobTitle: input.jobTitle }),
         ...(input.country !== undefined && { country: input.country }),
