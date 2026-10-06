@@ -13,7 +13,7 @@ publishing or events — named "Lead Eagle" in the menu.
 **Where.**
 
 - `prisma/schema.prisma`, migration `20261005200000_module_key_lead_eagle`:
-  `ModuleKey` gains `LEAD_EAGLE` (migrations 92 → 93).
+  `ModuleKey` gains `LEAD_EAGLE` (migrations 92 → 93; the repair in [2026-10-06-lead-work-provisioning](2026-10-06-lead-work-provisioning.md) makes 94).
 - `lib/modules/catalogue.ts`: the catalogue entry, which puts it in the portal.
 - `lib/security/entitlements.ts`: `LEAD_MODULES` (Sales, Real Estate, Lead
   Eagle). 79 lead-work pages and API routes moved to it from
@@ -41,5 +41,5 @@ opportunities and collections 403), `workspace-nav.spec`, the full unit suite;
 `tests/e2e/lead-eagle-workspace.spec.ts` creates a Lead-Eagle-only workspace
 through the portal's wizard and works a lead in it.
 
-**Left open.** Phases 2–6 of the plan. Release with 93 migrations:
-`chain-release.sh <sha> 93`.
+**Left open.** Phases 2–6 of the plan. Release with 94 migrations:
+`chain-release.sh <sha> 94`.

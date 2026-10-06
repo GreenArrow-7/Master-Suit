@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-06 | [A Real-Estate-only workspace could not take a lead; the Visits tab had no icon](2026-10-06-lead-work-provisioning.md) | #128 | fix |
 | 2026-10-05 | [Lead Eagle, phase 1: live in the platform portal](2026-10-05-lead-eagle-phase-1.md) | #128 | Lead Eagle |
 | 2026-10-05 | [Lead Eagle: build it inside YOUHAN ONE](2026-10-05-lead-eagle-decision.md) | — | decision |
 | 2026-10-05 | [Attendance in every workspace](2026-10-05-attendance-every-workspace.md) | #117, #124 | attendance |
