@@ -17,8 +17,11 @@ async function send(url: string, method: string, body: unknown) {
   }
 }
 
-/** A new QR capture link: what it is for, who gets its leads, and what the page says. */
-export default function CaptureLinkForm({ agents }: { agents: { id: string; fullName: string }[] }) {
+/**
+ * A new QR capture link: what it is for, who gets its leads, and what the page
+ * says. Without `agents` (no leads:ASSIGN) the link is the maker's own.
+ */
+export default function CaptureLinkForm({ agents }: { agents: { id: string; fullName: string }[] | null }) {
   const router = useRouter();
   const blank = { label: '', headline: '', ownerId: '', campaign: '' };
   const [form, setForm] = useState(blank);
@@ -68,16 +71,18 @@ export default function CaptureLinkForm({ agents }: { agents: { id: string; full
           onChange={set('label')}
         />
       </Field>
-      <Field label="Leads go to" htmlFor="capture-owner">
-        <select id="capture-owner" className="lf-input" value={form.ownerId} onChange={set('ownerId')}>
-          <option value="">Distribution decides</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.fullName}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {agents && (
+        <Field label="Leads go to" htmlFor="capture-owner">
+          <select id="capture-owner" className="lf-input" value={form.ownerId} onChange={set('ownerId')}>
+            <option value="">Distribution decides</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.fullName}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="Project or campaign" htmlFor="capture-campaign">
         <input
           id="capture-campaign"

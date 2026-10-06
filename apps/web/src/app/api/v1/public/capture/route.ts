@@ -36,7 +36,10 @@ export const POST = route(
       select: { id: true },
     });
     const link = tenant
-      ? await prisma.captureLink.findFirst({ where: { tenantId: tenant.id, key: body.form, isActive: true } })
+      ? await prisma.captureLink.findFirst({
+          where: { tenantId: tenant.id, key: body.form, isActive: true },
+          include: { owner: { select: { status: true } } },
+        })
       : null;
     if (!tenant || !link) throw NotFound('Form');
     await assertAnyModuleEntitlement(tenant.id, LEAD_MODULES).catch(() => {
@@ -58,7 +61,8 @@ export const POST = route(
         label: `QR code: ${link.label}`,
         source: 'PUBLIC_FORM',
         sourceDetail: `capture:${link.key}`,
-        ownerId: link.ownerId,
+        // Printed codes outlive jobs: an agent who has left gets nothing more.
+        ownerId: link.owner?.status === 'ACTIVE' ? link.ownerId : null,
       },
     );
     await prisma.captureLink.update({
