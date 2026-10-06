@@ -1,7 +1,7 @@
 # YOUHAN ONE — project state
 
-Updated 2026-10-05. Production runs `main` at 0ae7e9d, released the evening of
-5 Oct.
+Updated 2026-10-06. Production runs `main` at f89ae61, released 6 Oct, with
+94 migrations.
 
 ## The product
 
@@ -104,8 +104,10 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 
 Waiting on the owner:
 
-- **Lead Eagle inside YOUHAN ONE** — phase 1 (live in the platform portal) is
-  built; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
+- **Lead Eagle inside YOUHAN ONE** — phase 1 (in the platform portal) is live since
+  f89ae61; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md` —
+  phase 2 waits on partner access (Property Finder, Bayut and Dubizzle, Google
+  Ads), phase 5 on the standalone Lead Eagle's details.
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams.
 - **Store submissions** — iOS and Android, in the owner's store consoles.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody
