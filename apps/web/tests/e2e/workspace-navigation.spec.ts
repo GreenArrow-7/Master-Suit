@@ -138,7 +138,13 @@ test.describe('Work-area navigation', () => {
 
       await rail(page).getByRole('link', { name: 'Leads', exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`${at('/sales/leads')}$`));
-      await expect(tabs(page, 'Leads').getByRole('link')).toHaveText(['All Leads', 'My Leads', 'Unassigned']);
+      await expect(tabs(page, 'Leads').getByRole('link')).toHaveText([
+        'All Leads',
+        'My Leads',
+        'Unassigned',
+        'QR Capture',
+        'Cold Data',
+      ]);
       await expect(currentTab(page, 'Leads')).toHaveText('All Leads');
       await expect(rail(page).getByRole('link', { name: 'Leads', exact: true })).toHaveAttribute(
         'aria-current',

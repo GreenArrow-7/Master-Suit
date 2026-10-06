@@ -19,6 +19,7 @@ export const metadata = { title: 'QR capture' };
 export default async function CaptureLinksPage({ params }: { params: Promise<{ workspaceSlug: string }> }) {
   const { workspaceSlug } = await params;
   const ctx = await requirePageAccess({ module: LEAD_MODULES, permission: ['leads', 'VIEW'] });
+  const canAssign = can(ctx, 'leads', 'ASSIGN');
   const [links, agents] = await Promise.all([
     prisma.captureLink.findMany({
       where: { tenantId: ctx.tenantId },
@@ -26,11 +27,13 @@ export default async function CaptureLinksPage({ params }: { params: Promise<{ w
       take: 200,
       include: { owner: { select: { fullName: true } } },
     }),
-    prisma.user.findMany({
-      where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
-      select: { id: true, fullName: true },
-      orderBy: { fullName: 'asc' },
-    }),
+    canAssign
+      ? prisma.user.findMany({
+          where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },
+          select: { id: true, fullName: true },
+          orderBy: { fullName: 'asc' },
+        })
+      : null,
   ]);
   const base = env.APP_URL.replace(/\/$/, '');
   const canEdit = can(ctx, 'leads', 'EDIT');
@@ -39,7 +42,7 @@ export default async function CaptureLinksPage({ params }: { params: Promise<{ w
     <>
       <ListHeader
         title="QR capture"
-        description="A short form behind a QR code. Whoever fills it in becomes a lead, credited to the agent you choose."
+        description="A short form behind a QR code. Whoever fills it in becomes a lead for the code's agent."
       />
       {can(ctx, 'leads', 'CREATE') && <CaptureLinkForm agents={agents} />}
       {links.length === 0 ? (
@@ -79,7 +82,9 @@ export default async function CaptureLinksPage({ params }: { params: Promise<{ w
                 <div style={{ fontSize: 'var(--lf-text-sm)' }}>
                   {link.openCount} opened · {link.submitCount} sent
                 </div>
-                {canEdit && <LinkSwitch id={link.id} active={link.isActive} />}
+                {canEdit && (canAssign || link.ownerId === ctx.actor.id) && (
+                  <LinkSwitch id={link.id} active={link.isActive} />
+                )}
               </section>
             );
           })}
