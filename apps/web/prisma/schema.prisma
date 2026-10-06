@@ -631,6 +631,8 @@ model Tenant {
   proposals           Proposal[]
   proposalItems       ProposalItem[]
   leadPhones          LeadPhone[]
+  captureLinks        CaptureLink[]
+  dataRecords         DataRecord[]
 
   @@index([status])
 }
@@ -1216,6 +1218,8 @@ model User {
   coachingNotes       CoachingNote[]        @relation("CoachingAuthor")
   workspaceMembership WorkspaceMembership?
   proposals           Proposal[]            @relation("ProposalOwner")
+  captureLinks        CaptureLink[]         @relation("CaptureLinkOwner")
+  dataRecords         DataRecord[]          @relation("DataRecordOwner")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -3280,6 +3284,11 @@ model LeadStage {
   requiredFields    String[]      @default([])
   allowedNextStages String[]      @default([])
   slaMinutes        Int?
+  /// Moving a lead here needs a reason: one of `reasons` when there are any,
+  /// otherwise written in.
+  requiresReason    Boolean       @default(false)
+  /// The sub-statuses offered on entry (Lead Eagle's), e.g. "Budget", "Bought elsewhere".
+  reasons           String[]      @default([])
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   createdById       String?
@@ -3325,6 +3334,8 @@ model Lead {
   campaignId            String?
   productInterestId     String?
   stageId               String
+  /// Why it is in its current stage: the reason or sub-status given on entry.
+  stageReason           String?
   status                String?
   score                 Int           @default(0)
   grade                 String?
@@ -3385,6 +3396,7 @@ model Lead {
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   socialComments SocialComment[]
   phones         LeadPhone[]
+  dataRecords    DataRecord[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, stageId, updatedAt(sort: Desc)])
@@ -3422,6 +3434,76 @@ model LeadPhone {
 
   @@unique([leadId, normalized])
   @@index([tenantId, normalized])
+}
+
+/// A QR code's form: a short public page, `/c/{workspace}/{key}`, that creates
+/// an attributed lead (Lead Eagle plan, gap 4).
+model CaptureLink {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String
+  label       String
+  /// What the page says above the form.
+  headline    String?
+  /// The agent who gets the lead; none leaves it to distribution.
+  ownerId     String?
+  /// A project or campaign, written into the lead's sourceDetail with the key.
+  campaign    String?
+  isActive    Boolean  @default(true)
+  openCount   Int      @default(0)
+  submitCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner  User?  @relation("CaptureLinkOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, key])
+}
+
+enum DataStatus {
+  NOT_CONTACTED
+  NOT_REACHABLE
+  NOT_INTERESTED
+  INTERESTED
+  CONVERTED
+  INVALID
+}
+
+/// Cold data (Lead Eagle plan, gap 5): a contact from a raw list — an expo's
+/// cards, a bought list — worked by phone before it is a lead. Kept after
+/// conversion, so a list's conversion rate stays answerable.
+model DataRecord {
+  id              String     @id @default(cuid())
+  tenantId        String
+  fullName        String
+  phone           String?
+  phoneNormalized String?
+  email           String?
+  company         String?
+  jobTitle        String?
+  city            String?
+  country         String?
+  notes           String?
+  status          DataStatus @default(NOT_CONTACTED)
+  /// The list it came from: the import's file name.
+  batch           String
+  ownerId         String?
+  convertedLeadId String?
+  convertedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  createdById     String?
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner         User?  @relation("DataRecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  convertedLead Lead?  @relation(fields: [convertedLeadId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, ownerId, status])
+  @@index([tenantId, batch])
+  @@index([tenantId, phoneNormalized])
 }
 
 model LeadCustomFieldDefinition {

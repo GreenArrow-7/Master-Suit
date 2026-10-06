@@ -6,6 +6,7 @@ import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
+import StageReason, { asksForReason } from '@/components/workspace/StageReason';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -28,6 +29,8 @@ interface Stage {
   id: string;
   key: string;
   name: string;
+  requiresReason: boolean;
+  reasons: string[];
 }
 
 interface Activity {
@@ -92,6 +95,8 @@ interface LeadData {
   lastActivityAt: string | null;
   createdAt: string;
   stage: { key: string; name: string };
+  /** The reason or sub-status it entered its stage with. */
+  stageReason: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
   tasks: TaskItem[];
@@ -149,6 +154,8 @@ export default function LeadDetail({
 
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
+  /** A stage that asks for a reason waits here until one is given. */
+  const [pendingStage, setPendingStage] = useState<Stage | null>(null);
 
   // -- More menu (edit / delete) --
   const [showMore, setShowMore] = useState(false);
@@ -203,13 +210,18 @@ export default function LeadDetail({
     })();
   };
 
+  const moveTo = (target: Stage, reason: string) =>
+    void withBusy(async () => {
+      await patchLead({ stageId: target.id, ...(reason && { stageReason: reason }) });
+      setPendingStage(null);
+    })();
+
   const handleStageChange = (stageKey: string) => {
     setShowStageMenu(false);
     const target = stages.find((s) => s.key === stageKey);
     if (!target) return;
-    void withBusy(async () => {
-      await patchLead({ stageId: target.id });
-    })();
+    if (asksForReason(target)) setPendingStage(target);
+    else moveTo(target, '');
   };
 
   const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
@@ -384,6 +396,20 @@ export default function LeadDetail({
               )}
             </div>
 
+            {pendingStage && (
+              <div style={{ margin: 'var(--lf-space-3) 0' }}>
+                <div className="lf-label" style={{ marginBottom: 6 }}>
+                  {pendingStage.requiresReason ? 'Why is it moving?' : 'Reason (optional)'}
+                </div>
+                <StageReason
+                  stage={pendingStage}
+                  busy={busy}
+                  onMove={(reason) => moveTo(pendingStage, reason)}
+                  onCancel={() => setPendingStage(null)}
+                />
+              </div>
+            )}
+
             <dl className="lf-kv">
               <div>
                 <dt>Stage</dt>
@@ -396,6 +422,9 @@ export default function LeadDetail({
                   >
                     {lead.stage.name} &#9662;
                   </button>
+                  {lead.stageReason && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{lead.stageReason}</div>
+                  )}
                   {showStageMenu && (
                     <Dropdown onClose={() => setShowStageMenu(false)}>
                       {stages.map((s) => (

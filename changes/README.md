@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-07 | [Lead Eagle, phase 3: stage reasons, QR capture links, cold data](2026-10-07-lead-eagle-phase-3.md) | #131 | Lead Eagle |
 | 2026-10-07 | [Lead Eagle, phase 2: leads from the portals and Google Ads; several numbers per lead](2026-10-07-lead-eagle-phase-2.md) | #130 | Lead Eagle |
 | 2026-10-06 | [Release f89ae61](2026-10-06-release-f89ae61.md) | #127, #128 | release |
 | 2026-10-06 | [source-map-js 1.2.2 for a new advisory](2026-10-06-source-map-js-advisory.md) | #128 | dependencies |

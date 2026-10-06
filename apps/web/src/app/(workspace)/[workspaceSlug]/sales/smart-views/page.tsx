@@ -207,9 +207,9 @@ export default async function SmartViewsPage({
     // `id` is required: LeadGrid's stage picker renders `value={stage.id}`, so
     // omitting it produced options with no value rather than only a type error.
     prisma.leadStage.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true },
+      select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
     }),
     prisma.lead.count({ where }),
     // LeadGrid needs the same context here as on the leads list, or its stage,
