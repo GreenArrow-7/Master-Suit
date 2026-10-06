@@ -29,6 +29,8 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-05 | [Lead Eagle inside YOUHAN ONE — plan](2026-10-05-lead-eagle-plan.md) | — | plan, approved |
+| 2026-10-05 | [Release 0ae7e9d](2026-10-05-release-0ae7e9d.md) | #117, #124–#126 | release |
 | 2026-10-05 | [Lead Eagle: build it inside YOUHAN ONE](2026-10-05-lead-eagle-decision.md) | — | decision |
 | 2026-10-05 | [Attendance in every workspace](2026-10-05-attendance-every-workspace.md) | #117, #124 | attendance |
 | 2026-10-05 | [Two specs that failed only in parallel](2026-10-05-parallel-flaky-specs.md) | #125 | tests |
