@@ -3,6 +3,8 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Conflict, NotFound } from '@/lib/errors';
 import { requireWorkspace } from '@/lib/workspace';
+import { LEAD_MODULES } from '@/lib/security/entitlements';
+import { LEAD_FIELDS } from '@/lib/leads/importMapping';
 
 /**
  * Pipeline stages.
@@ -27,12 +29,17 @@ const stageBody = z.object({
     .regex(/^[a-z0-9_]+$/, 'Use lower-case letters, numbers and underscores.'),
   name: z.string().min(2).max(80),
   position: z.coerce.number().int().min(0).max(100),
-  category: z.enum(['OPEN', 'CONVERSION', 'TERMINAL_NEGATIVE']).default('OPEN'),
+  category: z.enum(['OPEN', 'CONVERSION', 'TERMINAL_NEGATIVE', 'TERMINAL_JUNK']).default('OPEN'),
   isDefault: z.coerce.boolean().optional(),
+  slaMinutes: z.coerce.number().int().min(1).max(43_200).nullable().optional(),
+  requiresReason: z.boolean().optional(),
+  reasons: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+  /** Lead fields that must be filled before a lead may enter the stage. */
+  requiredFields: z.array(z.enum(LEAD_FIELDS)).max(LEAD_FIELDS.length).optional(),
 });
 
 export const GET = route(
-  { module: 'settings', productModule: 'SALES', action: 'VIEW', params: paramsSchema },
+  { module: 'settings', productModule: LEAD_MODULES, action: 'VIEW', params: paramsSchema },
   async ({ ctx, params }) => {
     await requireWorkspace(ctx, params.workspaceSlug);
     return prisma.leadStage.findMany({
@@ -45,7 +52,7 @@ export const GET = route(
 export const POST = route(
   {
     module: 'settings',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'MANAGE_CONFIGURATION',
     params: paramsSchema,
     body: stageBody,
@@ -62,7 +69,7 @@ export const POST = route(
 export const PATCH = route(
   {
     module: 'settings',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'MANAGE_CONFIGURATION',
     params: paramsSchema,
     query: idQuery,
@@ -84,7 +91,7 @@ export const PATCH = route(
 export const DELETE = route(
   {
     module: 'settings',
-    productModule: 'SALES',
+    productModule: LEAD_MODULES,
     action: 'MANAGE_CONFIGURATION',
     params: paramsSchema,
     query: idQuery,

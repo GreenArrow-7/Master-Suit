@@ -20,6 +20,8 @@ export const REALTY_SHARED_ROOTS = [
   'events',
   'proposals',
   'portals',
+  'capture-links',
+  'cold-data',
 ] as const;
 
 /**
@@ -38,6 +40,8 @@ export const LEAD_EAGLE_SHARED_ROOTS = [
   'requirements',
   'allocation',
   'reports',
+  'capture-links',
+  'cold-data',
 ] as const;
 
 /** The same screen under another product root, or null when that product has none. */

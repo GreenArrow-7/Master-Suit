@@ -33,6 +33,7 @@ const CATEGORY_TITLES: Record<string, string> = {
   MEETINGS: 'Meetings',
   TRANSCRIPTION: 'Speech to text',
   AI: 'Intelligence',
+  LEADS: 'Lead sources',
 };
 
 const TONE: Record<string, 'viridian' | 'brass' | 'vermillion' | 'slate'> = {

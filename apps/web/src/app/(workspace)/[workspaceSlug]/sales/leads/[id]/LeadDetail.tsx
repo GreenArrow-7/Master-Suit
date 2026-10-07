@@ -6,6 +6,8 @@ import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
+import StageReason, { asksForReason } from '@/components/workspace/StageReason';
+import { sendOrQueue } from '@/lib/offline';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -28,6 +30,8 @@ interface Stage {
   id: string;
   key: string;
   name: string;
+  requiresReason: boolean;
+  reasons: string[];
 }
 
 interface Activity {
@@ -68,6 +72,10 @@ interface LeadData {
   status?: string | null;
   email: string | null;
   phone: string | null;
+  /** E.164, for wa.me — which refuses a number typed in local form. */
+  phoneNormalized: string | null;
+  /** Null when the viewer's role may not see the main number either. */
+  phones: { id: string; raw: string; normalized: string; label: string | null; isWhatsapp: boolean }[] | null;
   company: string | null;
   jobTitle: string | null;
   industry: string | null;
@@ -88,6 +96,10 @@ interface LeadData {
   lastActivityAt: string | null;
   createdAt: string;
   stage: { key: string; name: string };
+  /** The reason or sub-status it entered its stage with. */
+  stageReason: string | null;
+  /** Why distribution chose the owner, when it did. */
+  assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
   tasks: TaskItem[];
@@ -122,6 +134,21 @@ async function api(url: string, opts: RequestInit = {}) {
   return res.json();
 }
 
+/**
+ * A write that may wait for a connection: sent now, or kept on the device and
+ * sent by the offline banner later (lib/offline.ts). Throws as `api` does when
+ * the server refuses it; resolves `'queued'` when it was kept.
+ */
+async function sendLater(url: string, method: string, body: unknown, label: string) {
+  const res = await sendOrQueue(url, method, body, label);
+  if (res === 'queued') return res;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export default function LeadDetail({
   lead,
   stages,
@@ -145,6 +172,8 @@ export default function LeadDetail({
 
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
+  /** A stage that asks for a reason waits here until one is given. */
+  const [pendingStage, setPendingStage] = useState<Stage | null>(null);
 
   // -- More menu (edit / delete) --
   const [showMore, setShowMore] = useState(false);
@@ -163,9 +192,10 @@ export default function LeadDetail({
     };
   }
 
+  // Setting values, so safe to send late: kept on the device when offline.
   async function patchLead(data: Record<string, unknown>) {
-    await api(`/api/v1/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify(data) });
-    router.refresh();
+    const done = await sendLater(`/api/v1/leads/${lead.id}`, 'PATCH', data, `${lead.fullName}: update`);
+    if (done !== 'queued') router.refresh();
   }
 
   const handleDelete = withBusy(async () => {
@@ -199,13 +229,18 @@ export default function LeadDetail({
     })();
   };
 
+  const moveTo = (target: Stage, reason: string) =>
+    void withBusy(async () => {
+      await patchLead({ stageId: target.id, ...(reason && { stageReason: reason }) });
+      setPendingStage(null);
+    })();
+
   const handleStageChange = (stageKey: string) => {
     setShowStageMenu(false);
     const target = stages.find((s) => s.key === stageKey);
     if (!target) return;
-    void withBusy(async () => {
-      await patchLead({ stageId: target.id });
-    })();
+    if (asksForReason(target)) setPendingStage(target);
+    else moveTo(target, '');
   };
 
   const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
@@ -258,7 +293,13 @@ export default function LeadDetail({
           </nav>
 
           {tab === 'Overview' && (
-            <OverviewTab lead={lead} editing={editing} setEditing={setEditing} patchLead={patchLead} />
+            <OverviewTab
+              lead={lead}
+              editing={editing}
+              setEditing={setEditing}
+              patchLead={patchLead}
+              canEdit={canEdit}
+            />
           )}
           {tab === 'Timeline' && <TimelineTab lead={lead} activityTypes={activityTypes} router={router} />}
           {tab === 'Tasks' && <TasksTab lead={lead} taskTypes={taskTypes} router={router} />}
@@ -308,7 +349,7 @@ export default function LeadDetail({
               {lead.phone && (
                 <button
                   className="lf-btn lf-btn--secondary lf-btn--sm"
-                  onClick={() => window.open(`https://wa.me/${lead.phone!.replace(/[^0-9]/g, '')}`)}
+                  onClick={() => window.open(waLink(lead.phoneNormalized ?? lead.phone!))}
                 >
                   WhatsApp
                 </button>
@@ -374,6 +415,20 @@ export default function LeadDetail({
               )}
             </div>
 
+            {pendingStage && (
+              <div style={{ margin: 'var(--lf-space-3) 0' }}>
+                <div className="lf-label" style={{ marginBottom: 6 }}>
+                  {pendingStage.requiresReason ? 'Why is it moving?' : 'Reason (optional)'}
+                </div>
+                <StageReason
+                  stage={pendingStage}
+                  busy={busy}
+                  onMove={(reason) => moveTo(pendingStage, reason)}
+                  onCancel={() => setPendingStage(null)}
+                />
+              </div>
+            )}
+
             <dl className="lf-kv">
               <div>
                 <dt>Stage</dt>
@@ -386,6 +441,9 @@ export default function LeadDetail({
                   >
                     {lead.stage.name} &#9662;
                   </button>
+                  {lead.stageReason && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{lead.stageReason}</div>
+                  )}
                   {showStageMenu && (
                     <Dropdown onClose={() => setShowStageMenu(false)}>
                       {stages.map((s) => (
@@ -442,6 +500,11 @@ export default function LeadDetail({
                     </>
                   ) : (
                     (lead.owner?.fullName ?? 'Unassigned')
+                  )}
+                  {lead.assignedWhy && lead.owner && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', textAlign: 'right' }}>
+                      {lead.assignedWhy}
+                    </div>
                   )}
                 </dd>
               </div>
@@ -512,11 +575,13 @@ function OverviewTab({
   editing,
   setEditing,
   patchLead,
+  canEdit,
 }: {
   lead: Props['lead'];
   editing: boolean;
   setEditing: (v: boolean) => void;
   patchLead: (d: Record<string, unknown>) => Promise<void>;
+  canEdit: boolean;
 }) {
   const [form, setForm] = useState({
     email: lead.email ?? '',
@@ -603,6 +668,9 @@ function OverviewTab({
             </div>
           )}
         </dl>
+        {lead.phones && (lead.phones.length > 0 || canEdit) && (
+          <OtherNumbers phones={lead.phones} leadId={lead.id} canEdit={canEdit} />
+        )}
         {editing && (
           <div style={{ display: 'flex', gap: 'var(--lf-space-2)', marginTop: 'var(--lf-space-4)' }}>
             <button className="lf-btn lf-btn--sm" disabled={saving} onClick={handleSave}>
@@ -614,6 +682,116 @@ function OverviewTab({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+const waLink = (phone: string) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}`;
+
+/** A lead's numbers beyond the main one (LeadPhone), each with its WhatsApp flag. */
+function OtherNumbers({
+  phones,
+  leadId,
+  canEdit,
+}: {
+  phones: NonNullable<LeadData['phones']>;
+  leadId: string;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const blank = { phone: '', label: '', isWhatsapp: true };
+  const [form, setForm] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (write: () => Promise<unknown>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await write();
+      router.refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ marginTop: 'var(--lf-space-4)' }}>
+      <div className="lf-label">Other numbers</div>
+      {err && (
+        <div className="lf-alert" role="alert" style={{ margin: '6px 0', fontSize: 'var(--lf-text-sm)' }}>
+          {err}
+        </div>
+      )}
+      <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'grid', gap: 6 }}>
+        {phones.map((p) => (
+          <li
+            key={p.id}
+            style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--lf-text-sm)' }}
+          >
+            <a href={`tel:${p.raw}`}>{p.raw}</a>
+            {p.label && <span style={{ color: 'var(--lf-ink-3)' }}>{p.label}</span>}
+            {p.isWhatsapp && (
+              <a href={waLink(p.normalized)} target="_blank" rel="noreferrer">
+                WhatsApp
+              </a>
+            )}
+            {canEdit && (
+              <button
+                className="lf-btn lf-btn--ghost lf-btn--sm"
+                disabled={busy}
+                aria-label={`Remove ${p.raw}`}
+                onClick={() => run(() => api(`/api/v1/leads/${leadId}/phones?phoneId=${p.id}`, { method: 'DELETE' }))}
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+        {phones.length === 0 && <li style={{ fontSize: 'var(--lf-text-sm)', color: 'var(--lf-ink-3)' }}>None yet.</li>}
+      </ul>
+      {canEdit && (
+        <form
+          style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await api(`/api/v1/leads/${leadId}/phones`, { method: 'POST', body: JSON.stringify(form) });
+              setForm(blank);
+            });
+          }}
+        >
+          <input
+            className="lf-input"
+            type="tel"
+            required
+            placeholder="Number"
+            aria-label="Another number"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            style={{ flex: '1 1 140px', minWidth: 0, fontSize: 'var(--lf-text-sm)' }}
+          />
+          <input
+            className="lf-input"
+            placeholder="Label, e.g. Office"
+            aria-label="Label"
+            value={form.label}
+            onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+            style={{ flex: '1 1 120px', minWidth: 0, fontSize: 'var(--lf-text-sm)' }}
+          />
+          <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
+            <input
+              type="checkbox"
+              checked={form.isWhatsapp}
+              onChange={(e) => setForm((f) => ({ ...f, isWhatsapp: e.target.checked }))}
+            />
+            On WhatsApp
+          </label>
+          <button className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy || !form.phone.trim()}>
+            Add number
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -640,19 +818,25 @@ function TimelineTab({
     setSaving(true);
     setErr(null);
     try {
-      await api('/api/v1/activities', {
-        method: 'POST',
-        body: JSON.stringify({
+      // The request key lets a late or repeated send be replayed, not doubled;
+      // occurredAt keeps the time it happened, not the time it was sent.
+      const done = await sendLater(
+        '/api/v1/activities',
+        'POST',
+        {
           typeId: form.typeId,
           leadId: lead.id,
           outcome: form.outcome || undefined,
           notes: form.notes || undefined,
           durationSecs: form.durationMins ? Number(form.durationMins) * 60 : undefined,
-        }),
-      });
+          requestKey: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
+        },
+        `${lead.fullName}: activity`,
+      );
       setForm({ typeId: activityTypes[0]?.id ?? '', outcome: '', notes: '', durationMins: '' });
       setShowForm(false);
-      router.refresh();
+      if (done !== 'queued') router.refresh();
     } catch (e: any) {
       setErr(e.message);
     }

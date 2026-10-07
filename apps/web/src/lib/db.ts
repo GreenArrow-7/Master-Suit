@@ -79,6 +79,10 @@ export const GLOBAL_MODELS = new Set([
   'PlatformCoverageGrant',
   // A sign-in's second step, before any workspace is chosen. No tenantId.
   'PlatformMfaChallenge',
+  // A self-serve sign-up before its workspace exists: there is no tenant yet to
+  // scope it by. Reached only through services/platform/signup.ts, by the hash
+  // of the emailed token or by the email that asked.
+  'SignupRequest',
   // A push registration belongs to a handset, not to a workspace. The device
   // mints one token and returns it to whoever signs in next, so the row has to
   // be globally unique on that token — a tenant-scoped copy per workspace is
