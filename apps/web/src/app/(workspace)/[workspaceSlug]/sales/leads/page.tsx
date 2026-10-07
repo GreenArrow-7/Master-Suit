@@ -141,9 +141,9 @@ export default async function LeadsPage({
       },
     }),
     prisma.leadStage.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true },
+      select: { id: true, key: true, name: true, requiresReason: true, reasons: true },
     }),
     prisma.user.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE', deletedAt: null },

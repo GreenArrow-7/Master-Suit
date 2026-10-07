@@ -7,8 +7,9 @@
  */
 import { VENDOR_FIELDS, TELEPHONY_VENDORS, type VendorField } from './telephony/types';
 import { vendorCapabilities } from './telephony';
+import { LEAD_SOURCES } from './leadSources';
 
-export type IntegrationCategory = 'TELEPHONY' | 'MESSAGING' | 'MEETINGS' | 'TRANSCRIPTION' | 'AI';
+export type IntegrationCategory = 'TELEPHONY' | 'MESSAGING' | 'MEETINGS' | 'TRANSCRIPTION' | 'AI' | 'LEADS';
 
 export interface SettingField extends VendorField {
   /** Settings live in `metadata` and are readable without the encryption key. */
@@ -25,8 +26,8 @@ export interface ProviderSpec {
   /** Operational configuration; safe to read back. */
   settings: SettingField[];
   capabilities: readonly string[];
-  /** True when the vendor delivers callbacks to us and needs the URL. */
-  webhook: boolean;
+  /** The receiver under /api/v1/webhooks/ when the vendor calls us and needs the URL. */
+  webhook: false | 'telephony' | 'meta' | 'leads';
   /**
    * Vendors that cannot sign their callbacks, so the secret in the URL is the
    * only credential. Surfaced in the UI rather than buried in a doc.
@@ -75,7 +76,7 @@ export const PROVIDERS: ProviderSpec[] = [
     credentials: VENDOR_FIELDS[vendor],
     settings: TELEPHONY_SETTINGS,
     capabilities: vendorCapabilities(vendor),
-    webhook: true,
+    webhook: 'telephony',
     unsignedCallbacks: TELEPHONY_LABELS[vendor].unsigned,
   })),
   {
@@ -107,7 +108,7 @@ export const PROVIDERS: ProviderSpec[] = [
     ],
     settings: [],
     capabilities: ['TEMPLATE_MESSAGE', 'DELIVERY_STATUS'],
-    webhook: true,
+    webhook: 'meta',
   },
   {
     key: 'google',
@@ -182,6 +183,44 @@ export const PROVIDERS: ProviderSpec[] = [
     capabilities: ['ANALYSE', 'AUDIT', 'COACH', 'DRAFT'],
     webhook: false,
   },
+  ...Object.entries(LEAD_SOURCES).map<ProviderSpec>(([key, { label }]) =>
+    key === 'google_ads'
+      ? {
+          key,
+          label,
+          category: 'LEADS',
+          description:
+            'Leads from your Google Ads lead forms. In the form’s lead delivery settings, paste the webhook URL below and enter the same key.',
+          credentials: [
+            {
+              key: 'secret',
+              label: 'Key',
+              secret: true,
+              hint: 'Any long random text; Google sends it back with every lead.',
+            },
+          ],
+          settings: [],
+          capabilities: ['LEADS'],
+          webhook: 'leads',
+        }
+      : {
+          key,
+          label,
+          category: 'LEADS',
+          description: `Enquiries from your ${label} listings, delivered as they arrive. ${label} signs each delivery with the secret below.`,
+          credentials: [
+            {
+              key: 'secret',
+              label: 'Signing secret',
+              secret: true,
+              hint: `The secret ${label} issues for your account, or one you choose and send them.`,
+            },
+          ],
+          settings: [],
+          capabilities: ['LEADS'],
+          webhook: 'leads',
+        },
+  ),
 ];
 
 export const providerSpec = (key: string) => PROVIDERS.find((p) => p.key === key);

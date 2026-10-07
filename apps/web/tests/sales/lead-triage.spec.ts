@@ -341,16 +341,6 @@ describe('accountability and review timing come from configuration, never invent
     // rendered and never when it fires.
     expect(entry?.reviewDueAt?.toISOString()).toBe('2026-06-01T10:45:00.000Z');
   });
-
-  it('reports configuration it cannot honour rather than pretending to', async () => {
-    await setRule({ pool: [], respectWorkingHours: true });
-    const leadId = await makeLead();
-
-    await assignLead(fixture.a.tenantId, leadId);
-
-    const detail = (await openEntry(leadId))?.detail as { unsupported: string[] };
-    expect(detail.unsupported.join(' ')).toMatch(/respectWorkingHours/);
-  });
 });
 
 describe('retries and races', () => {

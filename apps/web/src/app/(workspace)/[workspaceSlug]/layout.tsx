@@ -14,6 +14,7 @@ import SupportModeBanner from '@/components/platform/SupportModeBanner';
 import AssistantWidget from '@/components/assistant/AssistantWidget';
 import NativePush from '@/components/pwa/NativePush';
 import CommandPalette from '@/components/nav/CommandPalette';
+import OfflineBanner from '@/components/workspace/OfflineBanner';
 import { loginPathFor, needsPasswordChangeRedirect } from '@/lib/security/redirect';
 // The approved workspace look, scoped to this frame's marker; see the file header.
 import './workspace-surface.css';
@@ -112,6 +113,7 @@ export default async function WorkspaceLayout({
             peopleOversight={shell.peopleOversight}
             platformStaff={shell.platformStaff}
           />
+          <OfflineBanner />
           {children}
         </main>
         {/* Phone-tier primary navigation; hidden by CSS above it. */}

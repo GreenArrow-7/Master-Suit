@@ -13,7 +13,7 @@ import { escalateSocialSla } from '@/services/social/escalateSocialSla';
 import { AI_CONCURRENCY, fairShare } from './ai';
 import { MAINTENANCE_JOBS } from './maintenance';
 import { emailHrEvent, pushRecord } from './notifications';
-import { applyWebhookEvent } from './webhook';
+import { applyLeadSourceEvent, applyWebhookEvent } from './webhook';
 
 // A job's payload is whatever its producer enqueued; each handler states the shape it reads.
 type Jobs = Record<string, (data: any) => unknown>;
@@ -46,7 +46,7 @@ export const JOBS: Record<QueueName, Jobs> = {
     'hr-event-push': pushRecord,
     'hr-event': emailHrEvent,
   },
-  webhook: { 'meta.event': applyWebhookEvent },
+  webhook: { 'meta.event': applyWebhookEvent, 'lead-source.enquiry': applyLeadSourceEvent },
   maintenance: MAINTENANCE_JOBS,
 };
 

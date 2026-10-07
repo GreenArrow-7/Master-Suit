@@ -1,11 +1,12 @@
 import { withTx } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
+import { AppError, NotFound } from '@/lib/errors';
 import { auditDiff } from '@/lib/security/audit';
 import { assertRecordVisible } from '@/lib/security/visibility';
 import { can, type Ctx } from '@/lib/security/rbac';
 import { enqueue } from '@/lib/queue';
 import { notifyCrm } from '../crm/notify';
 import { recordTargetProgress } from '../targets/progress';
+import { normalizePhone } from './normalizePhone';
 
 export interface UpdateLeadInput {
   fullName?: string;
@@ -18,6 +19,8 @@ export interface UpdateLeadInput {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   tags?: string[];
   stageId?: string;
+  /** Why it moves: required when the target stage says so. */
+  stageReason?: string;
   ownerId?: string | null;
   [k: string]: unknown;
 }
@@ -43,6 +46,8 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
    * events that change who is responsible and what happens next.
    */
   let stageChangedTo: string | null = null;
+  /** Set only when the stage changes: the new stage's reason, or null. */
+  let enteredReason: string | null | undefined;
   let stageChangedKey: string | null = null;
   let stageChangedCategory: string | null = null;
   let previousOwnerId: string | null = null;
@@ -56,6 +61,17 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
     if (input.stageId && input.stageId !== before.stageId) {
       const stage = await tx.leadStage.findFirst({ where: { tenantId: ctx.tenantId, id: input.stageId } });
       if (!stage) throw NotFound('Lead stage');
+      // A stage that claims something happened carries the evidence: its reason,
+      // and the fields it names. Checked here, so every screen obeys it.
+      const reason = input.stageReason?.trim() || null;
+      if (stage.requiresReason && !reason) refuse('stageReason', `Moving a lead to ${stage.name} needs a reason.`);
+      if (reason && stage.reasons.length && !stage.reasons.includes(reason)) {
+        refuse('stageReason', `Choose one of ${stage.name}'s reasons: ${stage.reasons.join(', ')}.`);
+      }
+      const after = { ...before, ...input } as Record<string, unknown>;
+      const missing = stage.requiredFields.filter((field) => !String(after[field] ?? '').trim());
+      if (missing.length) refuse(missing[0]!, `${stage.name} needs: ${missing.join(', ')}.`);
+      enteredReason = reason;
       stageChangedTo = stage.name;
       stageChangedKey = stage.key;
       stageChangedCategory = stage.category;
@@ -66,6 +82,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
           fromStageId: before.stageId,
           toStageId: stage.id,
           changedById: ctx.actor.id,
+          reason,
         },
       });
     }
@@ -90,7 +107,9 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
       data: {
         ...(input.fullName !== undefined && { fullName: input.fullName }),
         ...(input.email !== undefined && { email: input.email.toLowerCase() }),
-        ...(input.phone !== undefined && { phone: input.phone }),
+        // Both columns, as updateContact does: duplicate matching reads the
+        // normalised one, and leaving it behind matched the old number forever.
+        ...(input.phone !== undefined && { phone: input.phone, phoneNormalized: normalizePhone(input.phone) }),
         ...(input.company !== undefined && { company: input.company }),
         ...(input.jobTitle !== undefined && { jobTitle: input.jobTitle }),
         ...(input.country !== undefined && { country: input.country }),
@@ -99,6 +118,7 @@ export async function updateLead(ctx: Ctx, id: string, input: UpdateLeadInput) {
         ...(input.tags !== undefined && { tags: input.tags }),
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.stageId !== undefined && { stageId: input.stageId }),
+        ...(enteredReason !== undefined && { stageReason: enteredReason }),
         ...(input.ownerId !== undefined && { ownerId: input.ownerId, assignedAt: input.ownerId ? new Date() : null }),
         updatedById: ctx.actor.id,
       },
@@ -176,4 +196,9 @@ export async function deleteLead(ctx: Ctx, id: string) {
     });
     await auditDiff(ctx, 'lead', id, before, { ...before, deletedAt: new Date() }, tx);
   });
+}
+
+/** A 422 whose detail is the sentence the screen shows. */
+function refuse(field: string, message: string): never {
+  throw new AppError(422, 'validation-failed', message, [{ field, code: 'required', message }]);
 }

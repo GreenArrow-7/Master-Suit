@@ -46,6 +46,8 @@ export type CrmEventKey =
   | 'lead.stage_changed'
   /** Raised by the recycling sweep, to the owner who lost it. See leads/recycle.ts. */
   | 'lead.recycled'
+  /** A known person enquired again through a portal or ad. See leads/intake.ts. */
+  | 'lead.enquiry'
   | 'follow_up.due'
   | 'call.scheduled'
   | 'call.reminder'

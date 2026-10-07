@@ -6,6 +6,7 @@ import Badge from '@/components/ui/Badge';
 import SalesLink from '@/components/workspace/SalesLink';
 import { columnPriority, type ColumnDef } from '@/lib/grid/columns';
 import RowDetails from '@/components/workspace/RowDetails';
+import StageReason, { asksForReason, type ReasonedStage } from '@/components/workspace/StageReason';
 
 export interface LeadRow {
   id: string;
@@ -44,7 +45,7 @@ export default function LeadGrid({
 }: {
   rows: LeadRow[];
   columns: ColumnDef[];
-  stages: { id: string; key: string; name: string }[];
+  stages: (ReasonedStage & { key: string })[];
   users: { id: string; fullName: string }[];
   taskTypes: { id: string; name: string }[];
   canAssign: boolean;
@@ -58,6 +59,8 @@ export default function LeadGrid({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'updatedAt', dir: 'desc' });
   const [action, setAction] = useState<BulkAction | null>(null);
+  /** The chosen stage, while it waits for its reason. */
+  const [reasonFor, setReasonFor] = useState<ReasonedStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -112,6 +115,7 @@ export default function LeadGrid({
       return;
     }
     setAction(null);
+    setReasonFor(null);
     setSelected(new Set());
     router.refresh();
   }
@@ -135,7 +139,8 @@ export default function LeadGrid({
     router.refresh();
   }
 
-  const changeStage = (stageId: string) => run((leadId) => post(`/api/v1/leads/${leadId}`, { stageId }, 'PATCH'));
+  const changeStage = (stageId: string, stageReason = '') =>
+    run((leadId) => post(`/api/v1/leads/${leadId}`, { stageId, ...(stageReason && { stageReason }) }, 'PATCH'));
 
   const addTask = (form: FormData) =>
     run((leadId) =>
@@ -202,7 +207,10 @@ export default function LeadGrid({
             {canEdit && (
               <button
                 className="lf-btn lf-btn--sm lf-btn--secondary"
-                onClick={() => setAction(action === 'stage' ? null : 'stage')}
+                onClick={() => {
+                  setReasonFor(null);
+                  setAction(action === 'stage' ? null : 'stage');
+                }}
               >
                 Change stage
               </button>
@@ -273,14 +281,27 @@ export default function LeadGrid({
                 </label>
               )}
 
-              {action === 'stage' && (
+              {action === 'stage' && reasonFor && (
+                <StageReason
+                  stage={reasonFor}
+                  busy={busy}
+                  onMove={(reason) => void changeStage(reasonFor.id, reason)}
+                  onCancel={() => setReasonFor(null)}
+                />
+              )}
+
+              {action === 'stage' && !reasonFor && (
                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--lf-text-sm)' }}>
                   Move to stage
                   <select
                     className="lf-input"
                     defaultValue=""
                     disabled={busy}
-                    onChange={(event) => event.target.value && changeStage(event.target.value)}
+                    onChange={(event) => {
+                      const stage = stages.find((s) => s.id === event.target.value);
+                      if (stage && asksForReason(stage)) setReasonFor(stage);
+                      else if (stage) void changeStage(stage.id);
+                    }}
                   >
                     <option value="" disabled>
                       Choose a stage…

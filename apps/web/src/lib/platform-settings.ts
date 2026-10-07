@@ -56,6 +56,14 @@ export const EDITABLE_SETTINGS = {
     // letting someone stream a disk image into object storage.
     parse: (raw: string) => wholeNumber(raw, 1, 500, 'Upload limit (MB)'),
   },
+  signupTrialDays: {
+    label: 'Self-serve sign-up (trial days)',
+    description:
+      'Anyone may make a Lead Eagle workspace at /signup, with a trial this many days long, on the smallest active plan that includes Lead Eagle (none, and sign-up stays closed). 0 keeps it closed.',
+    // Closed until the owner opens it: who may make a workspace is a business decision.
+    fallback: () => 0,
+    parse: (raw: string) => wholeNumber(raw, 0, 90, 'Sign-up trial'),
+  },
 } as const;
 
 export type EditableSettingKey = keyof typeof EDITABLE_SETTINGS;

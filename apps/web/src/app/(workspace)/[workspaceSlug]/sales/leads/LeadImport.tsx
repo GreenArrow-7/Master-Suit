@@ -81,7 +81,15 @@ type Report = { created: number; failed: { line: number; reason: string }[] };
  * endpoint, which creates each one through the same `createLead` service the form uses,
  * so scoring, deduplication, distribution and audit behave exactly as for a typed lead.
  */
-export default function LeadImport() {
+export default function LeadImport({
+  endpoint = '/api/v1/leads/import',
+  noun = 'lead',
+}: {
+  /** Cold data imports the same columns into its own table. */
+  endpoint?: string;
+  noun?: string;
+} = {}) {
+  const many = (n: number) => `${noun}${n === 1 ? '' : 's'}`;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -146,7 +154,7 @@ export default function LeadImport() {
     const CHUNK = 500;
     const rows = toSend.map(({ line, values }) => ({ line, values }));
     for (let offset = 0; offset < rows.length; offset += CHUNK) {
-      const res = await fetch('/api/v1/leads/import', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ rows: rows.slice(offset, offset + CHUNK), fileName: file.name, onDuplicate }),
@@ -187,7 +195,7 @@ export default function LeadImport() {
           marginBottom: 'var(--lf-space-3)',
         }}
       >
-        <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import leads from Excel or CSV</strong>
+        <strong style={{ fontSize: 'var(--lf-text-sm)' }}>Import {noun}s from Excel or CSV</strong>
         <button
           className="lf-toast__action"
           onClick={() => {
@@ -291,15 +299,17 @@ export default function LeadImport() {
               ))}
             </ul>
           )}
-          <label style={{ ...small, display: 'block', margin: '0 0 var(--lf-space-3)' }}>
-            <input
-              type="checkbox"
-              checked={onDuplicate === 'WARN'}
-              disabled={busy}
-              onChange={(event) => setOnDuplicate(event.target.checked ? 'WARN' : 'BLOCK')}
-            />{' '}
-            Also import rows that match a lead already in the workspace (otherwise they are skipped and listed)
-          </label>
+          {noun === 'lead' && (
+            <label style={{ ...small, display: 'block', margin: '0 0 var(--lf-space-3)' }}>
+              <input
+                type="checkbox"
+                checked={onDuplicate === 'WARN'}
+                disabled={busy}
+                onChange={(event) => setOnDuplicate(event.target.checked ? 'WARN' : 'BLOCK')}
+              />{' '}
+              Also import rows that match a lead already in the workspace (otherwise they are skipped and listed)
+            </label>
+          )}
 
           {ready.length > 0 && (
             <div
@@ -341,9 +351,7 @@ export default function LeadImport() {
               disabled={busy || toSend.length === 0}
               onClick={() => void importRows()}
             >
-              {busy
-                ? `Importing… ${progress}/${toSend.length}`
-                : `Import ${toSend.length} lead${toSend.length === 1 ? '' : 's'}`}
+              {busy ? `Importing… ${progress}/${toSend.length}` : `Import ${toSend.length} ${many(toSend.length)}`}
             </button>
             <button className="lf-btn lf-btn--secondary lf-btn--sm" disabled={busy} onClick={reset}>
               Choose another file
@@ -357,7 +365,7 @@ export default function LeadImport() {
       {report && (
         <div style={{ marginTop: 'var(--lf-space-3)', fontSize: 'var(--lf-text-2xs)' }}>
           <p style={{ margin: 0, color: 'var(--lf-viridian)' }}>
-            {report.created} lead{report.created === 1 ? '' : 's'} created.
+            {report.created} {many(report.created)} created.
           </p>
           {report.failed.length > 0 && (
             <>
