@@ -3594,6 +3594,8 @@ model LeadAssignmentHistory {
   ruleId       String?
   method       DistributionMethod?
   reason       String?
+  /// Why this person, in a sentence: the rule, and who was passed over and why.
+  note         String?
   assignedById String?
   createdAt    DateTime            @default(now())
 
@@ -8371,6 +8373,25 @@ model AllocationRequest {
 /// Environment variables stay the source of *defaults*; a row here overrides
 /// one at runtime without a redeploy. Keys are namespaced strings so adding a
 /// setting is a data change, not a schema change.
+/// A self-serve sign-up waiting for its email to be confirmed (Lead Eagle plan,
+/// gap 8). Nothing exists until the emailed link is used: the workspace, the
+/// administrator and the trial are made then, so an unconfirmed address never
+/// owns anything. The link is the token; only its hash is kept.
+model SignupRequest {
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  email        String
+  companyName  String
+  slug         String
+  fullName     String
+  passwordHash String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
 model PlatformSetting {
   key       String   @id
   value     String

@@ -109,7 +109,12 @@ Waiting on the owner:
 
 - **Lead Eagle inside YOUHAN ONE** — phase 1 (in the platform portal) is live since
   f89ae61; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
-  Phase 3 (stage reasons, QR capture, cold data) is built on top of it.
+  Phases 3 (stage reasons, QR capture, cold data), 4 (assignment explanations,
+  working hours, two reports), 5 (the move tool) and 6 (self-serve sign-up,
+  shipped closed; offline actions on the lead screen) are built on top of it —
+  every phase of the plan, in PRs #130–#134 merged in order.
+- **Self-serve sign-up** — built and closed: the platform owner decides whether
+  to open it (console → Settings → Self-serve sign-up, trial days).
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,
   Bayut and Dubizzle deliver only to approved partners, so each needs its
   partner agreement and its signing secret. The standalone Lead Eagle has no

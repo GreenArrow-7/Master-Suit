@@ -39,7 +39,6 @@ export interface TriageDetail {
   /** Per-candidate refusal, in the order the rotation considered them. */
   candidates?: { userId: string; blockers: Ineligibility[] }[];
   /** Configuration the workspace enabled that this build cannot honour. */
-  unsupported?: string[];
   /** The rule's name at the time, so the queue reads without a join. */
   ruleName?: string;
   /**

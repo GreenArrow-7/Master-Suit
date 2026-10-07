@@ -101,7 +101,6 @@ export default async function AllocationPage({ searchParams }: { searchParams: P
             reason: r.reason,
             reasonText: r.reasonText,
             candidates: r.detail.candidates ?? [],
-            unsupportedPolicy: r.detail.unsupported ?? [],
             openedAt: r.openedAt.toISOString(),
             waitingMs: r.waitingMs,
             reviewDueAt: r.reviewDueAt?.toISOString() ?? null,

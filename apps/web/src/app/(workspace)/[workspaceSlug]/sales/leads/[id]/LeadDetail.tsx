@@ -7,6 +7,7 @@ import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
 import StageReason, { asksForReason } from '@/components/workspace/StageReason';
+import { sendOrQueue } from '@/lib/offline';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -97,6 +98,8 @@ interface LeadData {
   stage: { key: string; name: string };
   /** The reason or sub-status it entered its stage with. */
   stageReason: string | null;
+  /** Why distribution chose the owner, when it did. */
+  assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
   tasks: TaskItem[];
@@ -127,6 +130,21 @@ async function api(url: string, opts: RequestInit = {}) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * A write that may wait for a connection: sent now, or kept on the device and
+ * sent by the offline banner later (lib/offline.ts). Throws as `api` does when
+ * the server refuses it; resolves `'queued'` when it was kept.
+ */
+async function sendLater(url: string, method: string, body: unknown, label: string) {
+  const res = await sendOrQueue(url, method, body, label);
+  if (res === 'queued') return res;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? `Request failed (${res.status})`);
   }
   return res.json();
 }
@@ -174,9 +192,10 @@ export default function LeadDetail({
     };
   }
 
+  // Setting values, so safe to send late: kept on the device when offline.
   async function patchLead(data: Record<string, unknown>) {
-    await api(`/api/v1/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify(data) });
-    router.refresh();
+    const done = await sendLater(`/api/v1/leads/${lead.id}`, 'PATCH', data, `${lead.fullName}: update`);
+    if (done !== 'queued') router.refresh();
   }
 
   const handleDelete = withBusy(async () => {
@@ -481,6 +500,11 @@ export default function LeadDetail({
                     </>
                   ) : (
                     (lead.owner?.fullName ?? 'Unassigned')
+                  )}
+                  {lead.assignedWhy && lead.owner && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', textAlign: 'right' }}>
+                      {lead.assignedWhy}
+                    </div>
                   )}
                 </dd>
               </div>
@@ -794,19 +818,25 @@ function TimelineTab({
     setSaving(true);
     setErr(null);
     try {
-      await api('/api/v1/activities', {
-        method: 'POST',
-        body: JSON.stringify({
+      // The request key lets a late or repeated send be replayed, not doubled;
+      // occurredAt keeps the time it happened, not the time it was sent.
+      const done = await sendLater(
+        '/api/v1/activities',
+        'POST',
+        {
           typeId: form.typeId,
           leadId: lead.id,
           outcome: form.outcome || undefined,
           notes: form.notes || undefined,
           durationSecs: form.durationMins ? Number(form.durationMins) * 60 : undefined,
-        }),
-      });
+          requestKey: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
+        },
+        `${lead.fullName}: activity`,
+      );
       setForm({ typeId: activityTypes[0]?.id ?? '', outcome: '', notes: '', durationMins: '' });
       setShowForm(false);
-      router.refresh();
+      if (done !== 'queued') router.refresh();
     } catch (e: any) {
       setErr(e.message);
     }
