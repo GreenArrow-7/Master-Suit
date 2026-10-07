@@ -12,7 +12,7 @@
  *      has not grown.
  */
 import { randomBytes } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { redis } from '@/lib/redis';
 import { consume, limits } from '@/lib/security/ratelimit';
 import { clientIp } from '@/lib/auth/session';
@@ -25,6 +25,18 @@ afterAll(async () => {
   const found = await redis.keys(`rl:test:${tag}:*`);
   if (found.length) await redis.del(...found);
 });
+
+// Windows are fixed slices of the wall clock, so on the real clock a boundary
+// could pass between spending a bucket and expecting the refusal, which then
+// landed in a fresh window and was allowed (seen in a full parallel run under
+// load). Every case runs with Date pinned one second into a window — five
+// minutes is a whole number of each window used here. Only Date is faked: the
+// Redis client and the counters' TTLs keep the real clock.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Math.floor(Date.now() / 300_000) * 300_000 + 1000);
+});
+afterEach(() => vi.useRealTimers());
 
 describe('consume', () => {
   it('allows up to max and refuses the next', async () => {
