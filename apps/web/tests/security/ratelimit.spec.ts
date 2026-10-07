@@ -80,11 +80,11 @@ describe('consume', () => {
   it('reports a retry-after that does not exceed the window', async () => {
     const limit = { key: key('retry'), max: 1, windowSeconds: 60 };
     await consume(limit);
+    // One second into a sixty-second window, so fifty-nine seconds remain.
     await expect(consume(limit)).rejects.toMatchObject({
       status: 429,
-      retryAfter: expect.any(Number),
+      retryAfter: 59,
     });
-    await consume({ ...limit, key: key('retry2') }).catch(() => {});
   });
 
   it('expires the key so the bucket drains on its own', async () => {
