@@ -14,7 +14,7 @@ Paths below are under `apps/web/`.
 | Sales | `sales/` | 73 | leads (spreadsheet import, close-out), contacts, accounts, opportunities, tasks, follow-ups; calls with AI coaching, analysis and audits; campaigns, inbox, forms, landing pages, social leads; dashboards, leadership (productivity, value, daily target); projects, listings, bookings, collections, commissions, proposals, portals |
 | HRMS | `people/` | 32 | employees, users, roles, departments; face check-in, attendance, shifts, roster, leave, overtime; payroll, payslips, WPS; recruitment, performance, documents, compliance |
 | Real Estate | `realty/` | 34 | the Sales property screens as a brokerage works them, plus Properties, allocation (data pool), events with QR passes, lead recycling |
-| Lead Eagle | `lead-eagle/` | 23 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module) |
+| Lead Eagle | `lead-eagle/` | 23 | the lead-management product: Real Estate's lead screens without the money and marketing ones — dashboard, leads, follow-ups, calls, site visits, requirements, allocation, properties, projects, listings, reports. Leads arrive from Property Finder, Bayut, Dubizzle and Google Ads lead forms (Admin → Integrations → Lead sources; any lead module). Every lead module also has QR Capture and Cold Data, and Lead Stages under Administration → Settings |
 
 Outside the modules: `check-in` and `attendance` (every workspace), `admin/`
 (users, roles, work locations, settings, audit), `profile/`, and the platform
@@ -109,11 +109,19 @@ Waiting on the owner:
 
 - **Lead Eagle inside YOUHAN ONE** — phase 1 (in the platform portal) is live since
   f89ae61; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
+  Phases 3 (stage reasons, QR capture, cold data), 4 (assignment explanations,
+  working hours, two reports), 5 (the move tool) and 6 (self-serve sign-up,
+  shipped closed; offline actions on the lead screen) are built on top of it —
+  every phase of the plan, in PRs #130–#134 merged in order.
+- **Self-serve sign-up** — built and closed: the platform owner decides whether
+  to open it (console → Settings → Self-serve sign-up, trial days).
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,
   Bayut and Dubizzle deliver only to approved partners, so each needs its
   partner agreement and its signing secret. The standalone Lead Eagle has no
   deployment and no remote; its local database holds test and seed workspaces
-  only (7 Oct), so phase 5 is a tool that runs when a real copy exists.
+  only (7 Oct). Phase 5's tool (`scripts/move-lead-eagle.ts`, dry run by
+  default) moved the seed company on the rig; it runs for a real company when
+  a copy of its database exists.
 - **Real AI and telephony** — a Gemini API key; a Twilio account with Media Streams.
 - **Store submissions** — iOS and Android, in the owner's store consoles.
 - **Read-only CRM monitoring of every workspace** — built (v1.4.0), but nobody

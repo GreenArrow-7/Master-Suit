@@ -49,6 +49,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         },
       },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
+      // The latest only: a manual reassignment after it carries no note, and hides it.
+      assignments: { orderBy: { createdAt: 'desc' }, take: 1, select: { note: true } },
       phones: {
         orderBy: { createdAt: 'asc' },
         select: { id: true, raw: true, normalized: true, label: true, isWhatsapp: true },
@@ -59,9 +61,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const [lead, stages, activityTypes, taskTypes, tenantUsers, rules] = await Promise.all([
     leadPromise,
     prisma.leadStage.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { position: 'asc' },
-      select: { id: true, key: true, name: true, category: true },
+      select: { id: true, key: true, name: true, category: true, requiresReason: true, reasons: true },
     }),
     prisma.activityType.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
@@ -120,6 +122,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     lastActivityAt: lead.lastActivityAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(),
     stage: { key: lead.stage.key, name: lead.stage.name },
+    stageReason: lead.stageReason,
+    assignedWhy: lead.assignments[0]?.note ?? null,
     owner: lead.owner,
     activities: lead.activities.map((a) => ({
       id: a.id,

@@ -41,6 +41,7 @@ const patchBody = z
     tags: z.array(z.string().max(40)).max(20).optional(),
     notes: z.string().max(5000).nullable().optional(),
     stageId: z.string().cuid().optional(),
+    stageReason: z.string().max(200).optional(),
     ownerId: z.string().cuid().nullable().optional(),
   })
   .strict();

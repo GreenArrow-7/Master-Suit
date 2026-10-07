@@ -15,10 +15,13 @@ export default function LeadForm({
   workspace,
   formKey,
   fields,
+  endpoint = '/api/v1/public/forms',
 }: {
   workspace: string;
   formKey: string;
   fields: FieldDef[];
+  /** A QR capture link's page posts the same shape to its own route. */
+  endpoint?: string;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -30,7 +33,7 @@ export default function LeadForm({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/public/forms', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ workspace, form: formKey, answers }),

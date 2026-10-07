@@ -4,20 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { loadFieldRules, stripUneditableFields } from '@/lib/security/fieldSecurity';
 import { createLead } from '@/services/leads/createLead';
-
-/** Mirrors the create endpoint's accepted fields, minus anything an import cannot set. */
-const importRow = z
-  .object({
-    fullName: z.string().min(1).max(160),
-    email: z.string().email().max(254).optional(),
-    phone: z.string().max(32).optional(),
-    company: z.string().max(160).optional(),
-    jobTitle: z.string().max(120).optional(),
-    city: z.string().max(80).optional(),
-    country: z.string().max(80).optional(),
-    notes: z.string().max(5000).optional(),
-  })
-  .strict();
+import { importRow } from '@/lib/leads/importRow';
 
 const body = z
   .object({

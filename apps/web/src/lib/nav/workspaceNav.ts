@@ -56,7 +56,8 @@ export interface NavTab {
   href: string;
   /** `module` means VIEW; `module:ACTION` names another action. All must be held. */
   permission?: string | string[];
-  module?: Module;
+  /** Shown when the workspace holds this module, or any of a list. */
+  module?: Module | readonly Module[];
   /**
    * Hidden when the workspace does hold this module, because another area
    * carries the same screen there. For a screen every workspace needs but one
@@ -221,6 +222,20 @@ function definitions(slug: string): SectionDef[] {
               permission: 'smartviews',
               module: S,
               keywords: 'smart filters',
+            },
+            {
+              label: 'QR Capture',
+              href: s('/capture-links'),
+              permission: 'leads',
+              module: S,
+              keywords: 'qr code stand expo flyer sign board capture form',
+            },
+            {
+              label: 'Cold Data',
+              href: s('/cold-data'),
+              permission: 'leads',
+              module: S,
+              keywords: 'cold data lists expo bought list calling convert',
             },
           ],
         },
@@ -430,6 +445,22 @@ function definitions(slug: string): SectionDef[] {
               module: R,
               keywords: 'data pool unassigned distribution queue capacity',
             },
+            {
+              label: 'QR Capture',
+              href: r('/capture-links'),
+              aliases: [le('/capture-links')],
+              permission: 'leads',
+              module: R,
+              keywords: 'qr code stand expo flyer sign board capture form',
+            },
+            {
+              label: 'Cold Data',
+              href: r('/cold-data'),
+              aliases: [le('/cold-data')],
+              permission: 'leads',
+              module: R,
+              keywords: 'cold data lists expo bought list calling convert',
+            },
           ],
         },
         {
@@ -626,6 +657,22 @@ function definitions(slug: string): SectionDef[] {
               module: LE,
               unlessModule: [S, R],
               keywords: 'data pool unassigned distribution queue capacity assignment',
+            },
+            {
+              label: 'QR Capture',
+              href: le('/capture-links'),
+              permission: 'leads',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'qr code stand expo flyer sign board capture form',
+            },
+            {
+              label: 'Cold Data',
+              href: le('/cold-data'),
+              permission: 'leads',
+              module: LE,
+              unlessModule: [S, R],
+              keywords: 'cold data lists expo bought list calling convert',
             },
           ],
         },
@@ -1001,6 +1048,13 @@ function definitions(slug: string): SectionDef[] {
             { label: 'Subscription', href: a('/subscription'), permission: 'settings', keywords: 'plan billing' },
             { label: 'Security Policy', href: a('/security'), permission: 'settings', keywords: 'mfa password policy' },
             {
+              label: 'Lead Stages',
+              href: a('/lead-stages'),
+              permission: 'settings',
+              module: [S, R, LE],
+              keywords: 'pipeline status sub-status reasons',
+            },
+            {
               label: 'Users',
               href: a('/users'),
               permission: 'users',
@@ -1137,7 +1191,7 @@ export function activeModule(
 }
 
 export function tabAllowed(tab: NavTab, input: NavInput): boolean {
-  if (tab.module && !input.modules.includes(tab.module)) return false;
+  if (tab.module && ![tab.module].flat().some((module) => input.modules.includes(module))) return false;
   if (tab.unlessModule && [tab.unlessModule].flat().some((module) => input.modules.includes(module))) return false;
   if (tab.audience === 'self' && input.peopleOversight) return false;
   if (tab.audience === 'oversight' && !input.peopleOversight) return false;

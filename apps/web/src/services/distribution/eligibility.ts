@@ -37,9 +37,13 @@
  * the answer goes in `HrLeaveType`, not in a constant in this file.
  */
 import { prisma, type TxClient } from '@/lib/db';
+import { toDay, withinTimeWindow, zonedParts } from '@/services/hr/rules';
 
 /** A read-only client: the request-scoped one, or a transaction. */
-type Reader = Pick<typeof prisma, 'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest'>;
+type Reader = Pick<
+  typeof prisma,
+  'user' | 'lead' | 'leadAssignmentHistory' | 'hrLeaveRequest' | 'tenant' | 'hrAttendanceRecord' | 'hrRosterEntry'
+>;
 
 /**
  * Why somebody may not be given a lead.
@@ -59,7 +63,9 @@ export type IneligibilityCode =
   /** What an HR-sourced blocker becomes for a Sales viewer. See `redactForSales`. */
   | 'UNAVAILABLE'
   | 'QUOTA_REACHED'
-  | 'AT_CAPACITY';
+  | 'AT_CAPACITY'
+  /** Rostered on a shift that does not cover now, or checked out for the day. */
+  | 'OFF_SHIFT';
 
 export interface Ineligibility {
   code: IneligibilityCode;
@@ -128,40 +134,35 @@ export interface Eligibility {
 }
 
 /**
- * Which checks apply. Straight off `DistributionRule`, whose four `respect*`
- * flags have been in the schema since the beginning and were read by nothing.
+ * Which checks apply. Straight off `DistributionRule`'s four `respect*` flags.
  *
- * `respectWorkingHours` is deliberately absent: there is no working-hours model
- * to consult, so honouring it would mean inventing one. `describePolicy` reports
- * it as unsupported rather than silently treating it as satisfied.
+ * Working hours are the agent's own schedule where one exists — a roster entry
+ * today, a check-out today — and nothing where none does: a workspace that keeps
+ * neither rosters nor attendance assigns exactly as it did before. Off by
+ * default outside a rule, so a leader's manual allocation is never refused for
+ * the hour it is made at.
  */
 export interface EligibilityPolicy {
   respectLeave: boolean;
   respectQuotas: boolean;
   respectCapacity: boolean;
+  respectWorkingHours: boolean;
 }
 
 export const DEFAULT_POLICY: EligibilityPolicy = {
   respectLeave: true,
   respectQuotas: true,
   respectCapacity: true,
+  respectWorkingHours: false,
 };
 
-export function policyFromRule(rule: {
-  respectLeave: boolean;
-  respectQuotas: boolean;
-  respectCapacity: boolean;
-}): EligibilityPolicy {
+export function policyFromRule(rule: EligibilityPolicy): EligibilityPolicy {
   return {
     respectLeave: rule.respectLeave,
     respectQuotas: rule.respectQuotas,
     respectCapacity: rule.respectCapacity,
+    respectWorkingHours: rule.respectWorkingHours,
   };
-}
-
-/** Configuration a workspace has switched on that this build cannot honour. */
-export function unsupportedPolicy(rule: { respectWorkingHours: boolean }): string[] {
-  return rule.respectWorkingHours ? ['respectWorkingHours — no working-hours schedule exists to consult; ignored'] : [];
 }
 
 const startOfUtcDay = (now: Date) => {
@@ -220,7 +221,7 @@ export async function assessEligibility(
     .map((u) => u.workspaceMembership?.employee?.id)
     .filter((id): id is string => typeof id === 'string');
 
-  const [onLeave, dayRows, weekRows, monthRows, heldRows] = await Promise.all([
+  const [onLeave, dayRows, weekRows, monthRows, heldRows, offShift] = await Promise.all([
     policy.respectLeave && employeeIds.length > 0
       ? client.hrLeaveRequest.findMany({
           where: {
@@ -244,6 +245,9 @@ export async function assessEligibility(
           _count: { _all: true },
         })
       : Promise.resolve([] as { ownerId: string | null; _count: { _all: number } }[]),
+    policy.respectWorkingHours && employeeIds.length > 0
+      ? offShiftNow(client, tenantId, employeeIds, now)
+      : Promise.resolve(new Map<string, string>()),
   ]);
 
   const leaveByEmployee = new Map(onLeave.map((l) => [l.employeeId, l.endDate]));
@@ -304,6 +308,9 @@ export async function assessEligibility(
       if (!u.isAvailable) blockers.push({ code: 'MARKED_UNAVAILABLE', detail: 'marked unavailable' });
     }
 
+    const off = employee ? offShift.get(employee.id) : undefined;
+    if (off) blockers.push({ code: 'OFF_SHIFT', detail: off });
+
     // Quotas are computed even for a blocked user, because "at quota *and* on
     // leave" is more useful to a manager than whichever the code checked first.
     const limits: number[] = [];
@@ -334,6 +341,41 @@ export async function assessEligibility(
 
     return { userId, eligible: blockers.length === 0, blockers, available };
   });
+}
+
+/**
+ * Who is not at work now by their own schedule: checked out today (and not back
+ * in), or rostered today on shifts none of which covers now in the workspace's
+ * timezone. Someone with neither has no verdict — a missing schedule is not an
+ * absence.
+ */
+async function offShiftNow(client: Reader, tenantId: string, employeeIds: string[], now: Date) {
+  const workDate = toDay(now);
+  const [tenant, days, roster] = await Promise.all([
+    client.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } }),
+    client.hrAttendanceRecord.findMany({
+      where: { tenantId, employeeId: { in: employeeIds }, workDate, checkOutAt: { not: null } },
+      select: { employeeId: true, checkInAt: true, checkOutAt: true },
+    }),
+    client.hrRosterEntry.findMany({
+      where: { tenantId, employeeId: { in: employeeIds }, workDate },
+      select: { employeeId: true, shift: { select: { startTime: true, endTime: true } } },
+    }),
+  ]);
+  const off = new Map<string, string>();
+  // A check-in after the check-out leaves checkOutAt behind; only a check-out
+  // that is the day's last word means gone.
+  for (const day of days) {
+    if (!day.checkInAt || day.checkOutAt! >= day.checkInAt) off.set(day.employeeId, 'checked out for the day');
+  }
+  const { minutes } = zonedParts(now, tenant?.timezone ?? 'Asia/Dubai');
+  const shifts = new Map<string, { startTime: string; endTime: string }[]>();
+  for (const entry of roster) shifts.set(entry.employeeId, [...(shifts.get(entry.employeeId) ?? []), entry.shift]);
+  for (const [employeeId, today] of shifts) {
+    if (off.has(employeeId) || today.some((s) => withinTimeWindow(s.startTime, s.endTime, minutes))) continue;
+    off.set(employeeId, `off shift (${today.map((s) => `${s.startTime}–${s.endTime}`).join(', ')})`);
+  }
+  return off;
 }
 
 async function counts(client: Reader, tenantId: string, userIds: string[], since: Date | null) {

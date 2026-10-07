@@ -1,17 +1,19 @@
 /**
- * A stored lead-source delivery becomes a lead, or a fresh enquiry on the lead
- * that already holds the person's number or email.
+ * An enquiry becomes a lead, or a fresh enquiry on the lead that already holds
+ * the person's number or email: a portal or ad delivery (`applyEnquiry`), or a
+ * QR capture form (`takeEnquiry`).
  *
  * Runs on the `webhook` queue (five attempts, exponential backoff) after the
  * receiver in api/v1/webhooks/leads has verified, stored and de-duplicated the
  * delivery. Reads the stored payload rather than the job's, so fixing a field
  * mapping and replaying the event is enough to recover a badly parsed lead.
  */
+import type { RecordSource } from '@prisma/client';
 import { prisma, withTx, type TxClient } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { enqueue } from '@/lib/queue';
 import { assertAnyModuleEntitlement, LEAD_MODULES } from '@/lib/security/entitlements';
-import { LEAD_SOURCES, parseEnquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
+import { LEAD_SOURCES, parseEnquiry, type Enquiry, type LeadSourceKey } from '@/lib/integrations/leadSources';
 import { findDuplicates } from './findDuplicates';
 import { normalizePhone } from './normalizePhone';
 import { nextReference } from '../shared/reference';
@@ -38,6 +40,29 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
   const enquiry = parseEnquiry(JSON.parse(event.payload as string));
   if (enquiry.isTest) return { skipped: 'test' as const };
 
+  const { label, source: recordSource } = LEAD_SOURCES[source];
+  return takeEnquiry(tenantId, enquiry, {
+    label,
+    source: recordSource,
+    sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
+  });
+}
+
+/** Where an enquiry came from, as the lead records it. */
+export interface EnquiryOrigin {
+  /** "Enquiry via …" on the timeline. */
+  label: string;
+  source: RecordSource;
+  sourceDetail: string;
+  /** Straight to this agent; none leaves it to distribution. */
+  ownerId?: string | null;
+}
+
+export async function takeEnquiry(
+  tenantId: string,
+  enquiry: Pick<Enquiry, 'fullName' | 'email' | 'phones' | 'message' | 'reference' | 'details'>,
+  origin: EnquiryOrigin,
+) {
   // [normalised, as typed], one per distinct number.
   const numbers = [
     ...new Map(
@@ -48,7 +73,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     ),
   ];
   if (!enquiry.fullName && !enquiry.email && !numbers.length) {
-    logger.warn({ tenantId, provider }, 'lead source delivery named nobody');
+    logger.warn({ tenantId, source: origin.sourceDetail }, 'enquiry named nobody');
     return { skipped: 'anonymous' as const };
   }
 
@@ -62,7 +87,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     })
   ).find((m) => m.matchedOn !== 'fullName');
 
-  const { label, source: recordSource } = LEAD_SOURCES[source];
+  const { label, source: recordSource, ownerId } = origin;
   const note = [
     `Enquiry via ${label}`,
     enquiry.reference && `Ref: ${enquiry.reference}`,
@@ -71,11 +96,16 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
   ]
     .filter(Boolean)
     .join('\n');
-  const noteType = await prisma.activityType.findFirst({ where: { tenantId, key: 'note' }, select: { id: true } });
+  // Created when missing, as the spreadsheet import does: the note is the only
+  // place the enquiry's own words are kept.
+  const noteType = await prisma.activityType.upsert({
+    where: { tenantId_key: { tenantId, key: 'note' } },
+    update: {},
+    create: { tenantId, key: 'note', name: 'Note', icon: 'note' },
+    select: { id: true },
+  });
   const timeline = (tx: TxClient, leadId: string) =>
-    noteType
-      ? tx.activity.create({ data: { tenantId, typeId: noteType.id, leadId, notes: note, source: recordSource } })
-      : null;
+    tx.activity.create({ data: { tenantId, typeId: noteType.id, leadId, notes: note, source: recordSource } });
 
   if (match) {
     await withTx(tenantId, async (tx) => {
@@ -108,7 +138,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
         });
       }
     });
-    logger.info({ tenantId, leadId: match.id, source }, 'lead source enquiry attached to existing lead');
+    logger.info({ tenantId, leadId: match.id, source: origin.sourceDetail }, 'enquiry attached to existing lead');
     return { leadId: match.id, created: false };
   }
 
@@ -131,13 +161,19 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
         phoneNormalized: main?.[0] ?? null,
         stageId: stage.id,
         source: recordSource,
-        sourceDetail: enquiry.reference ? `${source}:${enquiry.reference}` : source,
+        sourceDetail: origin.sourceDetail,
         // They asked to be contacted.
         consentStatus: 'IMPLIED',
         slaDueAt,
+        ...(ownerId && { ownerId, assignedAt: new Date() }),
       },
       select: { id: true },
     });
+    if (ownerId) {
+      await tx.leadAssignmentHistory.create({
+        data: { tenantId, leadId: lead.id, toOwnerId: ownerId, reason: 'CREATED' },
+      });
+    }
     await addPhones(tx, tenantId, lead.id, numbers, main?.[0], label);
     await tx.leadStageHistory.create({ data: { tenantId, leadId: lead.id, toStageId: stage.id } });
     await timeline(tx, lead.id);
@@ -147,7 +183,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
   // The after-commit pipeline every new lead gets: an owner, the first-contact
   // clock, and the workspace's automations.
   await Promise.all([
-    enqueue('distribution', 'assign-lead', { tenantId, leadId: lead.id }),
+    enqueue('distribution', 'assign-lead', { tenantId, leadId: lead.id }, { skip: !!ownerId }),
     enqueue(
       'sla',
       'lead-first-contact',
@@ -156,7 +192,7 @@ export async function applyEnquiry({ tenantId, provider, externalId, source }: E
     ),
     enqueue('automation', 'trigger', { tenantId, event: 'record.created', object: 'LEAD', recordId: lead.id }),
   ]);
-  logger.info({ tenantId, leadId: lead.id, source }, 'lead source enquiry created a lead');
+  logger.info({ tenantId, leadId: lead.id, source: origin.sourceDetail }, 'enquiry created a lead');
   return { leadId: lead.id, created: true };
 }
 

@@ -6,6 +6,8 @@ import Badge from '@/components/ui/Badge';
 import { useModuleBase } from '@/components/workspace/SalesLink';
 import Field from '@/components/forms/Field';
 import TaskComposer from '../../tasks/TaskComposer';
+import StageReason, { asksForReason } from '@/components/workspace/StageReason';
+import { sendOrQueue } from '@/lib/offline';
 
 type Tab = 'Overview' | 'Timeline' | 'Tasks' | 'Notes' | 'Documents';
 const TABS: Tab[] = ['Overview', 'Timeline', 'Tasks', 'Notes', 'Documents'];
@@ -28,6 +30,8 @@ interface Stage {
   id: string;
   key: string;
   name: string;
+  requiresReason: boolean;
+  reasons: string[];
 }
 
 interface Activity {
@@ -92,6 +96,10 @@ interface LeadData {
   lastActivityAt: string | null;
   createdAt: string;
   stage: { key: string; name: string };
+  /** The reason or sub-status it entered its stage with. */
+  stageReason: string | null;
+  /** Why distribution chose the owner, when it did. */
+  assignedWhy: string | null;
   owner: { fullName: string; email: string } | null;
   activities: Activity[];
   tasks: TaskItem[];
@@ -126,6 +134,21 @@ async function api(url: string, opts: RequestInit = {}) {
   return res.json();
 }
 
+/**
+ * A write that may wait for a connection: sent now, or kept on the device and
+ * sent by the offline banner later (lib/offline.ts). Throws as `api` does when
+ * the server refuses it; resolves `'queued'` when it was kept.
+ */
+async function sendLater(url: string, method: string, body: unknown, label: string) {
+  const res = await sendOrQueue(url, method, body, label);
+  if (res === 'queued') return res;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export default function LeadDetail({
   lead,
   stages,
@@ -149,6 +172,8 @@ export default function LeadDetail({
 
   // -- Stage dropdown --
   const [showStageMenu, setShowStageMenu] = useState(false);
+  /** A stage that asks for a reason waits here until one is given. */
+  const [pendingStage, setPendingStage] = useState<Stage | null>(null);
 
   // -- More menu (edit / delete) --
   const [showMore, setShowMore] = useState(false);
@@ -167,9 +192,10 @@ export default function LeadDetail({
     };
   }
 
+  // Setting values, so safe to send late: kept on the device when offline.
   async function patchLead(data: Record<string, unknown>) {
-    await api(`/api/v1/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify(data) });
-    router.refresh();
+    const done = await sendLater(`/api/v1/leads/${lead.id}`, 'PATCH', data, `${lead.fullName}: update`);
+    if (done !== 'queued') router.refresh();
   }
 
   const handleDelete = withBusy(async () => {
@@ -203,13 +229,18 @@ export default function LeadDetail({
     })();
   };
 
+  const moveTo = (target: Stage, reason: string) =>
+    void withBusy(async () => {
+      await patchLead({ stageId: target.id, ...(reason && { stageReason: reason }) });
+      setPendingStage(null);
+    })();
+
   const handleStageChange = (stageKey: string) => {
     setShowStageMenu(false);
     const target = stages.find((s) => s.key === stageKey);
     if (!target) return;
-    void withBusy(async () => {
-      await patchLead({ stageId: target.id });
-    })();
+    if (asksForReason(target)) setPendingStage(target);
+    else moveTo(target, '');
   };
 
   const followUpOverdue = lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) < new Date() : false;
@@ -384,6 +415,20 @@ export default function LeadDetail({
               )}
             </div>
 
+            {pendingStage && (
+              <div style={{ margin: 'var(--lf-space-3) 0' }}>
+                <div className="lf-label" style={{ marginBottom: 6 }}>
+                  {pendingStage.requiresReason ? 'Why is it moving?' : 'Reason (optional)'}
+                </div>
+                <StageReason
+                  stage={pendingStage}
+                  busy={busy}
+                  onMove={(reason) => moveTo(pendingStage, reason)}
+                  onCancel={() => setPendingStage(null)}
+                />
+              </div>
+            )}
+
             <dl className="lf-kv">
               <div>
                 <dt>Stage</dt>
@@ -396,6 +441,9 @@ export default function LeadDetail({
                   >
                     {lead.stage.name} &#9662;
                   </button>
+                  {lead.stageReason && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)' }}>{lead.stageReason}</div>
+                  )}
                   {showStageMenu && (
                     <Dropdown onClose={() => setShowStageMenu(false)}>
                       {stages.map((s) => (
@@ -452,6 +500,11 @@ export default function LeadDetail({
                     </>
                   ) : (
                     (lead.owner?.fullName ?? 'Unassigned')
+                  )}
+                  {lead.assignedWhy && lead.owner && (
+                    <div style={{ fontSize: 'var(--lf-text-xs)', color: 'var(--lf-ink-3)', textAlign: 'right' }}>
+                      {lead.assignedWhy}
+                    </div>
                   )}
                 </dd>
               </div>
@@ -765,19 +818,25 @@ function TimelineTab({
     setSaving(true);
     setErr(null);
     try {
-      await api('/api/v1/activities', {
-        method: 'POST',
-        body: JSON.stringify({
+      // The request key lets a late or repeated send be replayed, not doubled;
+      // occurredAt keeps the time it happened, not the time it was sent.
+      const done = await sendLater(
+        '/api/v1/activities',
+        'POST',
+        {
           typeId: form.typeId,
           leadId: lead.id,
           outcome: form.outcome || undefined,
           notes: form.notes || undefined,
           durationSecs: form.durationMins ? Number(form.durationMins) * 60 : undefined,
-        }),
-      });
+          requestKey: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
+        },
+        `${lead.fullName}: activity`,
+      );
       setForm({ typeId: activityTypes[0]?.id ?? '', outcome: '', notes: '', durationMins: '' });
       setShowForm(false);
-      router.refresh();
+      if (done !== 'queued') router.refresh();
     } catch (e: any) {
       setErr(e.message);
     }

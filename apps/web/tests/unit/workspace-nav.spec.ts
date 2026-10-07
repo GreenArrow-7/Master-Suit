@@ -84,7 +84,7 @@ describe('what a role sees', () => {
     );
     for (const hidden of ['collections', 'commissions', 'settings', 'payroll', 'employees'])
       expect(areas(agent)).not.toContain(hidden);
-    expect(tabsOf(agent, 'leads')).toEqual(['All Leads', 'My Leads', 'Unassigned']);
+    expect(tabsOf(agent, 'leads')).toEqual(['All Leads', 'My Leads', 'Unassigned', 'QR Capture', 'Cold Data']);
     expect(tabsOf(agent, 'my-hr')).toEqual(
       expect.arrayContaining(['My Attendance', 'My Leave', 'My Roster', 'My Overtime', 'Holidays', 'My Payslips']),
     );
@@ -355,6 +355,8 @@ describe('Lead Eagle: its own menu only where it is the whole CRM', () => {
       'Site Visits',
       'Requirements',
       'Allocation',
+      'QR Capture',
+      'Cold Data',
     ]);
     expect(areas(nav)).not.toContain('realty-clients');
     expect(at(nav, `/${SLUG}/lead-eagle/leads/42`)).toBe('le-leads / Leads');
