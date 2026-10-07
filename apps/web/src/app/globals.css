@@ -1627,6 +1627,24 @@ a:hover {
   cursor: pointer;
   font: 600 var(--lf-text-sm)/1 var(--lf-font-ui);
 }
+/* The offline outbox's notice (components/workspace/OfflineBanner): where the
+   person is, not at the top of a long screen; above the phone's tab bar. */
+.lf-outbox {
+  position: fixed;
+  right: var(--lf-space-4);
+  bottom: var(--lf-space-4);
+  left: var(--lf-space-4);
+  z-index: 60;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 480px;
+  margin-left: auto;
+}
+@media (max-width: 760px) {
+  .lf-outbox {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
 
 /* ── Responsive: the grid becomes labelled cards below 860px ─────────────────
    Same treatment as .lf-table: each cell shows its column header via

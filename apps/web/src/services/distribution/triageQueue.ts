@@ -250,7 +250,9 @@ export async function assignFromTriage(input: ManualAssignInput): Promise<Manual
         select: { respectLeave: true, respectQuotas: true, respectCapacity: true },
       })
     : null;
-  const policy = rule ? policyFromRule(rule) : DEFAULT_POLICY;
+  // A manager placing a lead by hand has chosen the hour too: working hours
+  // steer the automatic rotation, not a person's decision.
+  const policy = rule ? policyFromRule({ ...rule, respectWorkingHours: false }) : DEFAULT_POLICY;
 
   const result = await withTx(ctx.tenantId, async (tx) => {
     // Lock order for this subsystem: User, then Lead. See assignLead.ts.

@@ -49,6 +49,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         },
       },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 10 },
+      // The latest only: a manual reassignment after it carries no note, and hides it.
+      assignments: { orderBy: { createdAt: 'desc' }, take: 1, select: { note: true } },
       phones: {
         orderBy: { createdAt: 'asc' },
         select: { id: true, raw: true, normalized: true, label: true, isWhatsapp: true },
@@ -121,6 +123,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     createdAt: lead.createdAt.toISOString(),
     stage: { key: lead.stage.key, name: lead.stage.name },
     stageReason: lead.stageReason,
+    assignedWhy: lead.assignments[0]?.note ?? null,
     owner: lead.owner,
     activities: lead.activities.map((a) => ({
       id: a.id,

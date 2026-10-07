@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import AuthShell from '@/components/auth/AuthShell';
+import { signupOffer } from '@/services/platform/signup';
 import LoginForm from './LoginForm';
 
 export const metadata = { title: 'Sign in' };
@@ -14,9 +16,16 @@ export const metadata = { title: 'Sign in' };
  */
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
   const { next } = await searchParams;
+  // Offered only while the platform owner keeps self-serve sign-up open.
+  const trialDays = (await signupOffer())?.days ?? 0;
   return (
     <AuthShell>
       <LoginForm next={typeof next === 'string' ? next : null} />
+      {trialDays > 0 && (
+        <p style={{ fontSize: 'var(--lf-text-sm)', textAlign: 'center', marginTop: 'var(--lf-space-4)' }}>
+          New here? <Link href="/signup">Start a {trialDays}-day free trial</Link>
+        </p>
+      )}
     </AuthShell>
   );
 }
