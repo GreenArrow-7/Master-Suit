@@ -14,7 +14,7 @@
  * Against a real Redis, because the thing under test is which keys exist in it.
  */
 import { randomBytes } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { redis } from '@/lib/redis';
 import { clear as clearLimit, consume } from '@/lib/security/ratelimit';
 import { invalidateEntitlements } from '@/lib/security/entitlements';
@@ -58,6 +58,18 @@ describe('entitlement invalidation', () => {
 });
 
 describe('rate-limit reset', () => {
+  // Windows are fixed slices of the wall clock, so on the real clock a boundary
+  // could pass mid-case: the expected refusal then landed in a fresh window and
+  // was allowed, or `clearLimit` worked out a window one later than the key it
+  // was meant to drop. Each case runs with Date pinned one second into a
+  // fifteen-minute window. Only Date is faked: the Redis client and the
+  // counters' TTLs keep the real clock.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Math.floor(Date.now() / 900_000) * 900_000 + 1000);
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('lets a throttled key through again immediately', async () => {
     const limit = { key: `test:${suffix}`, max: 2, windowSeconds: 900 };
 
