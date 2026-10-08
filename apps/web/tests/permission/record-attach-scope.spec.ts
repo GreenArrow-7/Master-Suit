@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { POST as createCall } from '@/app/api/v1/calls/route';
 import { POST as saveProfile } from '@/app/api/v1/client-profiles/route';
+import { POST as createFollowUp } from '@/app/api/v1/follow-ups/route';
 import { POST as referral } from '@/app/api/v1/referrals/route';
 import { POST as createRequirement } from '@/app/api/v1/requirements/route';
 import { POST as createVisit } from '@/app/api/v1/site-visits/route';
@@ -10,13 +11,13 @@ import { grantPermissions, seedHierarchy, type Hierarchy } from '../helpers/fixt
 import { post } from '../helpers/request';
 
 /**
- * #140 checked the lead a body names. The same bodies name a contact, and that
- * got a workspace check at most: an agent at OWN scope could read a
- * colleague's contact back through a call's follow-up email or a visit's page,
- * or take the one referral code, testimonial ask or client profile a contact
- * may have.
+ * #140 checked the lead a body names. The same bodies name a contact or a
+ * call, and those got a workspace check at most: an agent at OWN scope could
+ * read a colleague's contact back through a call's follow-up email or a
+ * visit's page, take the one referral code, testimonial ask or client profile
+ * a contact may have, or put a follow-up on a colleague's call page.
  */
-type Ref = 'contact';
+type Ref = 'contact' | 'call';
 let h: Hierarchy;
 const mine = {} as Record<Ref, string>;
 const theirs = {} as Record<Ref, string>;
@@ -25,7 +26,7 @@ let unassignedContact: string;
 const MISSING = `c${'0'.repeat(24)}`;
 const soon = () => new Date(Date.now() + 86_400_000).toISOString();
 
-/** Every write that names a contact, as the OWN-scope rep `as` sends it. */
+/** Every write that names a contact or a call, as the OWN-scope rep `as` sends it. */
 const ATTACH: { name: string; ref: Ref; send: (id: string, as: string) => ReturnType<typeof post> }[] = [
   {
     name: 'a call with a contact',
@@ -62,6 +63,11 @@ const ATTACH: { name: string; ref: Ref; send: (id: string, as: string) => Return
     name: 'a client profile',
     ref: 'contact',
     send: (contactId, as) => post(saveProfile, '/api/v1/client-profiles', { contactId, profession: 'Engineer' }, as),
+  },
+  {
+    name: 'a follow-up from a call',
+    ref: 'call',
+    send: (callId, as) => post(createFollowUp, '/api/v1/follow-ups', { callId, title: 'Call back', dueAt: soon() }, as),
   },
 ];
 
@@ -103,6 +109,11 @@ beforeAll(async () => {
   theirs.contact = await contact('CT-A2', h.repA2.id);
   otherTeamContact = await contact('CT-B1', h.repB1.id);
   unassignedContact = await contact('CT-NONE', null);
+
+  const call = async (callerId: string) =>
+    (await prisma.call.create({ data: { tenantId, callerId, recipientNumber: '+971500000003' } })).id;
+  mine.call = await call(h.repA1.id);
+  theirs.call = await call(h.repA2.id);
 }, 60_000);
 afterAll(async () => {
   await h?.cleanup();
@@ -124,7 +135,7 @@ describe.each(ATTACH)('$name', ({ ref, send }) => {
 });
 
 describe('the refusals', () => {
-  it('left nothing on the teammate’s contact', async () => {
+  it('left nothing on the teammate’s contact or call', async () => {
     const { tenantId } = h;
     const contactId = theirs.contact;
     const counts = await Promise.all([
@@ -134,6 +145,7 @@ describe('the refusals', () => {
       prisma.referralCode.count({ where: { tenantId, contactId } }),
       prisma.testimonial.count({ where: { tenantId, contactId } }),
       prisma.clientProfile.count({ where: { tenantId, contactId } }),
+      prisma.followUpTask.count({ where: { tenantId, callId: theirs.call } }),
     ]);
     expect(counts).toEqual(counts.map(() => 0));
   });
