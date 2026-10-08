@@ -9,9 +9,11 @@ start and every `next build`: CI's server suite and Build step, and the
 production image build. On 6 Oct, CI run 37541802826 (#133) failed in
 Integration (server): Turbopack failed on the fonts ("next/font/google queries
 have exactly one entry"), the app answered 500 for 180 s and set-up gave up.
-Four other runs in the same ten minutes passed. The likely cause is a font URL
-from Google with `&` in it, which Turbopack's query parsing splits. The owner
-asked for the fonts to be self-hosted.
+Four other runs in the same ten minutes passed. On 8 Oct the same error, again
+on JetBrains Mono, stopped `next build` in the worker image for main `e0c8e06`
+(build-images run 37745401425), so it can block a release too. The likely cause
+is a font URL from Google with `&` in it, which Turbopack's query parsing
+splits. The owner asked for the fonts to be self-hosted.
 
 **Where.**
 
