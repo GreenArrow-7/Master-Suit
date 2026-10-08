@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-08 | [The image build stopped at /signup](2026-10-08-signup-image-build.md) | #139 | fix, release |
 | 2026-10-07 | [Lead Eagle, phase 6: self-serve sign-up (closed by default); offline actions on the phone](2026-10-07-lead-eagle-phase-6.md) | #134 | Lead Eagle |
 | 2026-10-07 | [Lead Eagle, phase 4: assignment that explains itself and keeps hours; two reports](2026-10-07-lead-eagle-phase-4.md) | #133 | Lead Eagle |
 | 2026-10-07 | [Lead Eagle, phase 5: moving a standalone Lead Eagle company in](2026-10-07-lead-eagle-phase-5.md) | #132 | Lead Eagle |
