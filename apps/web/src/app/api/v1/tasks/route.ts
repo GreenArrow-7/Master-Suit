@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -51,8 +52,9 @@ export const POST = route(
     // A new task can be earlier than everything already open on the lead, so the
     // stored aggregate is recomputed under the lead's lock in the same
     // transaction that creates the row. A task with no lead locks nothing.
-    return withTx(ctx.tenantId, (tx) =>
-      withRecompute(tx, ctx.tenantId, [rest.leadId], () =>
+    return withTx(ctx.tenantId, async (tx) => {
+      if (rest.leadId) await assertLeadInScope(ctx, rest.leadId, tx, 'EDIT');
+      return withRecompute(tx, ctx.tenantId, [rest.leadId], () =>
         tx.task.create({
           data: {
             tenantId: ctx.tenantId,
@@ -62,7 +64,7 @@ export const POST = route(
           },
           include: { type: true, owner: { select: { fullName: true } } },
         }),
-      ),
-    );
+      );
+    });
   },
 );

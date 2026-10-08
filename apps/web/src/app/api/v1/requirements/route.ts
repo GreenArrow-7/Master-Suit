@@ -4,6 +4,7 @@ import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
+import { assertLeadCallable } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { FURNISHINGS, PROPERTY_TYPES } from '@/lib/inventory/listings';
 
@@ -87,14 +88,9 @@ export const POST = route(
     }
 
     // The subject must exist and be ours. Without this a requirement can be
-    // hung off an id from another workspace and surface in its owner's list.
-    if (body.leadId) {
-      const lead = await prisma.lead.findFirst({
-        where: { id: body.leadId, tenantId: ctx.tenantId },
-        select: { id: true },
-      });
-      if (!lead) throw Invalid([{ field: 'leadId', code: 'not_found', message: 'No such lead.' }]);
-    }
+    // hung off an id from another workspace and surface in its owner's list —
+    // and, without the scope, off a colleague's lead.
+    if (body.leadId) await assertLeadCallable(ctx, body.leadId);
     if (body.contactId) {
       const contact = await prisma.contact.findFirst({
         where: { id: body.contactId, tenantId: ctx.tenantId },

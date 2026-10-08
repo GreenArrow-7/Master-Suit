@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import {
   deactivateCode,
@@ -100,6 +101,10 @@ export const POST = route(
     auditEvent: 'RECORD_CREATED',
   },
   async ({ ctx, body }) => {
+    // One live code per client and one referrer per lead: either, taken on a
+    // colleague's lead, stops them asking or crediting their own client.
+    const leadId = body.action === 'ISSUE' ? body.leadId : body.referredLeadId;
+    if (leadId) await assertLeadInScope(ctx, leadId, prisma, 'VIEW');
     if (body.action === 'ISSUE') {
       return issueCode({
         ctx,

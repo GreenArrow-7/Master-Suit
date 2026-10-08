@@ -5,6 +5,7 @@ import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
 import { Invalid } from '@/lib/errors';
 import type { Prisma } from '@prisma/client';
+import { assertLeadCallable } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 
 const KINDS = ['PROPERTY_VISIT', 'CLIENT_MEETING'] as const;
@@ -140,6 +141,8 @@ export const POST = route(
         { field: 'scheduledAt', code: 'past', message: 'Log a past visit as an activity; the register is forward.' },
       ]);
     }
+    // The visit's page shows its client's name and number.
+    if (body.leadId) await assertLeadCallable(ctx, body.leadId);
 
     return prisma.siteVisit.create({
       data: {

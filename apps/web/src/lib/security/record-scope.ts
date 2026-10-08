@@ -1,6 +1,7 @@
-import { prisma } from '@/lib/db';
-import { NotFound } from '@/lib/errors';
-import { atLeast, type Action, type Ctx } from '@/lib/security/rbac';
+import { prisma, type TxClient } from '@/lib/db';
+import { AppError, NotFound } from '@/lib/errors';
+import { atLeast, can, type Action, type Ctx } from '@/lib/security/rbac';
+import { assertRecordVisible } from '@/lib/security/visibility';
 
 /**
  * Record scope for the routes that load one record by id.
@@ -51,6 +52,48 @@ export function eventScopeFilter(actorId: string) {
   return {
     OR: [{ hostId: actorId }, { createdById: actorId }, { invitees: { some: { userId: actorId } } }],
   };
+}
+
+/**
+ * The lead a record is being hung on, in the caller's scope under the lead's
+ * own rule: `EDIT` where the route is lead work (a task, a follow-up), `VIEW`
+ * where the record is another module's and the lead is its client. A body's
+ * `leadId` was otherwise the whole check — an agent at OWN scope could put a
+ * call, visit or sale on any lead in the workspace and read its name back on
+ * their own screens. Not found either way. Inside `withTx`, pass its `tx`.
+ */
+export async function assertLeadInScope(ctx: Ctx, leadId: string, db: TxClient | typeof prisma, action: Action) {
+  const lead = await db.lead.findFirst({
+    where: { tenantId: ctx.tenantId, id: leadId, deletedAt: null },
+    select: { tenantId: true, ownerId: true },
+  });
+  if (!lead) throw NotFound('Lead');
+  try {
+    await assertRecordVisible(ctx, 'leads', lead, db, action);
+  } catch (err) {
+    if (err instanceof AppError && err.status === 403) throw NotFound('Lead');
+    throw err;
+  }
+}
+
+/**
+ * `assertLeadInScope` at `VIEW`, or a lead on a calling queue. Who the dialer
+ * rings is the campaign's decision, whoever owns the lead (services/dialer/queue.ts),
+ * and `dialer:VIEW` already lists the queue — so the call, and the visit,
+ * requirement or shortlist booked from it, may name a lead outside the
+ * caller's own scope.
+ */
+export async function assertLeadCallable(ctx: Ctx, leadId: string) {
+  try {
+    await assertLeadInScope(ctx, leadId, prisma, 'VIEW');
+  } catch (err) {
+    if (!(err instanceof AppError && err.status === 404) || !can(ctx, 'dialer', 'VIEW')) throw err;
+    const queued = await prisma.campaignContact.findFirst({
+      where: { tenantId: ctx.tenantId, leadId },
+      select: { id: true },
+    });
+    if (!queued) throw err;
+  }
 }
 
 /** True when the caller sees every record of this kind in the workspace. */

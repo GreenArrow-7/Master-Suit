@@ -33,6 +33,8 @@ let ctx: Ctx;
 const D = (n: number) => new Prisma.Decimal(n);
 
 const GRANTS: readonly (readonly [string, PermissionAction])[] = [
+  // A sale names its buyer, and the buyer has to be a lead the seller can see.
+  ['leads', 'VIEW'],
   ['bookings', 'VIEW'],
   ['bookings', 'CREATE'],
   ['bookings', 'EDIT'],

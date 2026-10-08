@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
 const params = z.object({ id: z.string().cuid() });
@@ -53,13 +54,7 @@ export const PATCH = route(
         if (!target) throw Invalid([{ field: 'ownerId', code: 'not_found', message: 'That teammate was not found.' }]);
       }
 
-      if (body.leadId) {
-        const target = await tx.lead.findFirst({
-          where: { tenantId: ctx.tenantId, id: body.leadId, deletedAt: null },
-          select: { id: true },
-        });
-        if (!target) throw Invalid([{ field: 'leadId', code: 'not_found', message: 'That lead was not found.' }]);
-      }
+      if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
 
       // Marking complete stamps the time if the client did not; reopening clears it.
       const data: Record<string, unknown> = { ...body, updatedById: ctx.actor.id };

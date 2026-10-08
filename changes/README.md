@@ -33,6 +33,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 | 2026-10-08 | [Release c46624f](2026-10-08-release-c46624f.md) | #134, #139 | release |
 | 2026-10-08 | [The image build stopped at /signup](2026-10-08-signup-image-build.md) | #139 | fix, release |
 | 2026-10-08 | [Two more specs could fail when a limiter window turned mid-case](2026-10-08-limiter-window-specs.md) | #138 | tests |
+| 2026-10-08 | [Records could name any lead in the workspace](2026-10-08-lead-attach-scope.md) | #140 | security |
 | 2026-10-07 | [The fonts are committed, not fetched from Google](2026-10-07-self-hosted-fonts.md) | #137 | build |
 | 2026-10-07 | [Logging an activity reached any lead in the workspace](2026-10-07-activity-lead-scope.md) | #136 | security |
 | 2026-10-07 | [The rate-limit spec failed when a window turned mid-case](2026-10-07-ratelimit-window-flake.md) | #135 | tests |

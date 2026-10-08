@@ -4,6 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { recordTargetProgress } from '@/services/targets/progress';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
@@ -63,13 +64,7 @@ export const PATCH = route(
       if (completingNow) data.completedAt = new Date();
       if (body.status && body.status !== 'COMPLETED' && followUp.completedAt) data.completedAt = null;
 
-      if (body.leadId) {
-        const target = await tx.lead.findFirst({
-          where: { tenantId: ctx.tenantId, id: body.leadId, deletedAt: null },
-          select: { id: true },
-        });
-        if (!target) throw Invalid([{ field: 'leadId', code: 'not_found', message: 'That lead was not found.' }]);
-      }
+      if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
 
       // Both leads, ascending, before the write — see the task route for why, and
       // why a concurrent move is refused rather than locked out of order.

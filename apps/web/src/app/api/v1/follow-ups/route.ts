@@ -2,6 +2,7 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma, withTx } from '@/lib/db';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { withRecompute } from '@/services/leads/nextFollowUp';
 
 const createBody = z
@@ -21,13 +22,14 @@ export const POST = route(
   async ({ ctx, body }) => {
     // Same contract as a task: the lead is locked and its stored aggregate
     // recomputed in the transaction that creates the obligation.
-    return withTx(ctx.tenantId, (tx) =>
-      withRecompute(tx, ctx.tenantId, [body.leadId], () =>
+    return withTx(ctx.tenantId, async (tx) => {
+      if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'EDIT');
+      return withRecompute(tx, ctx.tenantId, [body.leadId], () =>
         tx.followUpTask.create({
           data: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, createdById: ctx.actor.id, ...body },
         }),
-      ),
-    );
+      );
+    });
   },
 );
 

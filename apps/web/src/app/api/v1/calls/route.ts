@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { touchLead } from '@/services/leads/touch';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
+import { assertLeadCallable } from '@/lib/security/record-scope';
 import { notifyAboutCall } from '@/services/crm/notify';
 
 const createBody = z
@@ -26,6 +27,8 @@ const createBody = z
 export const POST = route(
   { module: 'calls', productModule: LEAD_MODULES, action: 'CREATE', body: createBody, auditEvent: 'CALL_STARTED' },
   async ({ ctx, body }) => {
+    // The call lists, stamps and notifies on its lead: one the caller may call.
+    if (body.leadId) await assertLeadCallable(ctx, body.leadId);
     const call = await prisma.call.create({
       data: {
         tenantId: ctx.tenantId,

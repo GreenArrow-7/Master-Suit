@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { mergeWhere } from '@/lib/api/where';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { visibilityWhere } from '@/lib/security/visibility';
 import { completeness, deleteProfile, profileFor, upsertProfile } from '@/services/clients/profile';
 
@@ -99,6 +100,9 @@ export const POST = route(
   },
   async ({ ctx, body }) => {
     const { leadId, contactId, ...fields } = body;
+    // A lead has one profile, owned by whoever started it: creating it on a
+    // colleague's lead locked them out of their own client's.
+    if (leadId) await assertLeadInScope(ctx, leadId, prisma, 'VIEW');
     return upsertProfile({ ctx, subject: { leadId, contactId }, fields });
   },
 );
