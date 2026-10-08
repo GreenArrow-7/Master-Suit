@@ -55,7 +55,8 @@ green: 22 related files (618 tests), `tsc`, eslint and prettier.
     the whole workspace.
   - `GET client-profiles?leadId=` applies no scope.
   - `contactId`, `callId`, `requirementId` and `accountId` on these routes
-    get a tenant check at most.
+    get a tenant check at most. Audited in #145
+    ([record-attach-scope](2026-10-08-record-attach-scope.md)).
 - `assertRecordVisible` lets anyone who holds the action reach an unassigned
   lead, but `docs/01-PERMISSIONS.md` §2 shows unassigned leads only to people
   who may assign them.

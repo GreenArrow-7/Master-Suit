@@ -1,7 +1,7 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
 import { atLeast, can, type Action, type Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 
 /**
  * Record scope for the routes that load one record by id.
@@ -94,6 +94,29 @@ export async function assertLeadCallable(ctx: Ctx, leadId: string) {
     });
     if (!queued) throw err;
   }
+}
+
+/**
+ * The contact a record names, as its own page shows it (`GET /contacts/{id}`):
+ * the contacts list's rule, under which an unassigned contact is only for
+ * those who may claim it. A call's follow-up email reads its contact's name
+ * and address, a visit's page its name and number, and a contact has one
+ * referral code, open testimonial ask and client profile — a body's
+ * `contactId` was otherwise checked against the workspace at most. Not found
+ * either way. Reads through the global client, so call it outside `withTx`.
+ */
+export async function assertContactInScope(ctx: Ctx, contactId: string) {
+  const contact =
+    can(ctx, 'contacts', 'VIEW') &&
+    (await prisma.contact.findFirst({
+      where: {
+        ...(await visibilityWhere(ctx, 'contacts', 'VIEW', { includeUnassigned: true })),
+        id: contactId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    }));
+  if (!contact) throw NotFound('Contact');
 }
 
 /** True when the caller sees every record of this kind in the workspace. */
