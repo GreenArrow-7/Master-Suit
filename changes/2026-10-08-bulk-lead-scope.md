@@ -1,7 +1,7 @@
 # Bulk assign and event invitees reached any lead in the workspace
 
 **What.** Two bulk routes that take lead ids in the body keep to the caller's
-lead scope now (#NNN, after #140): bulk assign moves only the leads the caller
+lead scope now (#144, after #140): bulk assign moves only the leads the caller
 may assign, and adding event invitees takes only leads the caller can read, on
 an event the caller may edit.
 
