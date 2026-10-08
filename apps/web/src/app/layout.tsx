@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono, Manrope } from 'next/font/google';
+import localFont from 'next/font/local';
 import { PRODUCT_NAME } from '@/lib/branding';
 import ServiceWorkerRegistration from '@/components/pwa/ServiceWorkerRegistration';
 import { THEME_BOOTSTRAP } from '@/lib/theme';
@@ -8,11 +8,22 @@ import './globals.css';
 /**
  * The two YOUHAN faces, self-hosted, plus the diagnostics mono.
  *
- * next/font downloads these at build time and serves them from our own origin,
- * which is what the `font-src 'self'` CSP allows — a Google Fonts <link> would
- * be blocked. That CSP is also why this list is the *only* place a face can be
- * added: tokens.css previously named 'Inter' without anything loading it, so
- * every Sales screen had silently been rendering in Segoe UI.
+ * The files are committed in ./fonts, each beside its family's OFL licence:
+ * the Latin subset Google Fonts serves, one variable file per family that covers
+ * every weight. They used to come through next/font/google, which fetches them
+ * from Google on every `next dev` start and every `next build`. On 6 Oct 2026
+ * a Turbopack error in that fetch, seen in one CI run and not in the runs
+ * around it, made every page answer 500. The build no longer reaches Google.
+ *
+ * next/font serves them from our own origin, which is what the `font-src 'self'`
+ * CSP allows — a Google Fonts <link> would be blocked. That CSP is also why this
+ * list is the *only* place a face can be added: tokens.css previously named
+ * 'Inter' without anything loading it, so every Sales screen had silently been
+ * rendering in Segoe UI.
+ *
+ * One src entry per weight, as Google's stylesheet declared them, so a weight
+ * that is not listed resolves to the same face it always did. Latin only:
+ * Cyrillic, Greek and most Latin Extended letters render in the fallback.
  *
  * Inter is the product face — headings, tables, controls, forms, body: one
  * family for the whole working UI. Manrope is the marketing site's face and
@@ -23,21 +34,28 @@ import './globals.css';
  * Fraunces and Inter Tight were the People module's separate serif identity and
  * are gone with it: one product, one type system.
  */
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['600', '700'],
+const manrope = localFont({
+  src: [
+    { path: './fonts/manrope-latin.woff2', weight: '600' },
+    { path: './fonts/manrope-latin.woff2', weight: '700' },
+  ],
   variable: '--yh-font-manrope',
   display: 'swap',
 });
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
+const inter = localFont({
+  src: [
+    { path: './fonts/inter-latin.woff2', weight: '400' },
+    { path: './fonts/inter-latin.woff2', weight: '500' },
+    { path: './fonts/inter-latin.woff2', weight: '600' },
+  ],
   variable: '--yh-font-inter',
   display: 'swap',
 });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const jetbrainsMono = localFont({
+  src: [
+    { path: './fonts/jetbrains-mono-latin.woff2', weight: '400' },
+    { path: './fonts/jetbrains-mono-latin.woff2', weight: '500' },
+  ],
   variable: '--yh-font-mono',
   display: 'swap',
 });
