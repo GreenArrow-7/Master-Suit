@@ -1,7 +1,7 @@
 import { prisma, type TxClient } from '@/lib/db';
 import { AppError, NotFound } from '@/lib/errors';
-import { atLeast, can, type Action, type Ctx } from '@/lib/security/rbac';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { atLeast, can, scopeFor, type Action, type Ctx } from '@/lib/security/rbac';
+import { assertRecordVisible, resolveOwnerIds } from '@/lib/security/visibility';
 
 /**
  * Record scope for the routes that load one record by id.
@@ -93,6 +93,31 @@ export async function assertLeadCallable(ctx: Ctx, leadId: string) {
       select: { id: true },
     });
     if (!queued) throw err;
+  }
+}
+
+/**
+ * A task or follow-up by id: yours, or owned by someone your `module` scope for
+ * `action` covers. `tasks/{id}` checked nothing about the task, so `leads:EDIT`
+ * changed, completed or took any task in the workspace, and `tasks:DELETE`
+ * deleted it; `follow-ups/{id}` treated TEAM scope as the whole workspace. A
+ * record with no owner is listed only at ORGANIZATION scope, so only that
+ * reaches one here — `assertRecordVisible` would pass it for anyone. Not found
+ * either way.
+ */
+export async function assertOwnerInScope(
+  ctx: Ctx,
+  tx: TxClient,
+  module: string,
+  action: Action,
+  ownerId: string | null,
+  what: string,
+) {
+  if (ownerId === ctx.actor.id) return;
+  const scope = scopeFor(ctx, module, action);
+  if (scope === 'ORGANIZATION') return;
+  if (scope === 'NONE' || !ownerId || !(await resolveOwnerIds(ctx, scope, tx)).includes(ownerId)) {
+    throw NotFound(what);
   }
 }
 

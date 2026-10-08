@@ -4,7 +4,7 @@ import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
 import { NotFound, Invalid, Conflict } from '@/lib/errors';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
-import { assertLeadInScope } from '@/lib/security/record-scope';
+import { assertLeadInScope, assertOwnerInScope } from '@/lib/security/record-scope';
 import { lockLeads, recomputeNextFollowUp } from '@/services/leads/nextFollowUp';
 
 const params = z.object({ id: z.string().cuid() });
@@ -40,6 +40,9 @@ export const PATCH = route(
     withTx(ctx.tenantId, async (tx) => {
       const task = await tx.task.findFirst({ where: { tenantId: ctx.tenantId, id: params.id } });
       if (!task) throw NotFound('Task');
+      // The gate says you may change tasks; which ones is the task lists' rule.
+      // Seeded managers hold `tasks:VIEW` and `ASSIGN`, not `tasks:EDIT`.
+      await assertOwnerInScope(ctx, tx, 'tasks', 'VIEW', task.ownerId, 'Task');
 
       // Reassigning to another person needs the same reach creating for them does.
       if (body.ownerId && body.ownerId !== task.ownerId) {
@@ -118,9 +121,10 @@ export const DELETE = route(
     withTx(ctx.tenantId, async (tx) => {
       const task = await tx.task.findFirst({
         where: { tenantId: ctx.tenantId, id: params.id, deletedAt: null },
-        select: { id: true, leadId: true },
+        select: { id: true, leadId: true, ownerId: true },
       });
       if (!task) throw NotFound('Task');
+      await assertOwnerInScope(ctx, tx, 'tasks', 'DELETE', task.ownerId, 'Task');
 
       const locked = await lockLeads(tx, ctx.tenantId, [task.leadId]);
       const current = await tx.task.findFirst({
