@@ -4,6 +4,10 @@ import { signupOffer } from '@/services/platform/signup';
 import SignupForm from './SignupForm';
 
 export const metadata = { title: 'Start a free trial' };
+// Whether sign-up is open is a console setting, read per request: prerendered,
+// the build would need the database (the image build has none) and would freeze
+// the answer until the next release.
+export const dynamic = 'force-dynamic';
 
 /** Self-serve sign-up: a 404 until the platform owner opens it in the console. */
 export default async function SignupPage() {
