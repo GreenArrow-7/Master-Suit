@@ -29,6 +29,7 @@ Then add a row to the index and correct `PROJECT.md` wherever it is now wrong.
 
 | Date | Entry | PR | Area |
 |---|---|---|---|
+| 2026-10-08 | [Bulk assign and event invitees reached any lead in the workspace](2026-10-08-bulk-lead-scope.md) | #NNN | security |
 | 2026-10-08 | [Release 6ebdb2e](2026-10-08-release-6ebdb2e.md) | #136, #137, #141 | release |
 | 2026-10-08 | [Release c46624f](2026-10-08-release-c46624f.md) | #134, #139 | release |
 | 2026-10-08 | [The image build stopped at /signup](2026-10-08-signup-image-build.md) | #139 | fix, release |
