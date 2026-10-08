@@ -20,8 +20,9 @@ and the owner asked for the audit on 8 Oct. An agent at OWN scope could:
 **Where.**
 
 - `lib/security/record-scope.ts`: `assertContactInScope` applies the
-  contact page's own rule (`visibilityWhere(contacts, VIEW,
-  includeUnassigned)`) and answers 404 like a missing contact.
+  contact page's own rule,
+  `visibilityWhere(contacts, VIEW, includeUnassigned)`, and answers 404 like
+  a missing contact.
 - `api/v1/calls`, `site-visits`, `requirements`, `referrals` (ISSUE),
   `testimonials`, `client-profiles`: one contact check each. `calls` also
   checks `eventId` with `assertEventInScope`.
