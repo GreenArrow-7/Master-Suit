@@ -9,10 +9,11 @@
  * disagree with what is actually answered.
  */
 import { Prisma } from '@prisma/client';
+import { mergeWhere } from '@/lib/api/where';
 import { Invalid, NotFound } from '@/lib/errors';
 import { prisma, withTx } from '@/lib/db';
 import { audit } from '@/lib/security/audit';
-import { assertRecordVisible } from '@/lib/security/visibility';
+import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
 import type { Ctx } from '@/lib/security/rbac';
 
 /** Who a profile is about. Exactly one, matching ClientRequirement. */
@@ -164,9 +165,16 @@ export async function upsertProfile(input: UpsertInput) {
   });
 }
 
-/** The profile and where a wizard should resume. Null profile is a valid answer. */
+/**
+ * The profile and where a wizard should resume. Null profile is a valid answer,
+ * and the answer for one the list would not show the caller: the subject's id
+ * alone read any buyer's income and nationality at OWN scope. The lead is not
+ * checked: nothing of it is returned, and the list shows a profile whatever
+ * became of its lead.
+ */
 export async function profileFor(ctx: Ctx, subject: Subject) {
-  const profile = await prisma.clientProfile.findFirst({ where: subjectWhere(ctx, subject) });
+  const where = mergeWhere(subjectWhere(ctx, subject), await visibilityWhere(ctx, 'clientprofiles', 'VIEW'));
+  const profile = await prisma.clientProfile.findFirst({ where });
   return { profile, completeness: completeness(profile as Record<string, unknown> | null) };
 }
 
