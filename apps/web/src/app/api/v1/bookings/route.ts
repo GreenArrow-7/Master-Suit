@@ -5,6 +5,7 @@ import { can } from '@/lib/security/rbac';
 import { prisma, withTx } from '@/lib/db';
 import { Conflict, Forbidden, Invalid, NotFound } from '@/lib/errors';
 import { assertRecordVisible, visibilityWhere } from '@/lib/security/visibility';
+import { assertLeadInScope } from '@/lib/security/record-scope';
 import { moveUnitIn } from '@/services/inventory/unitStatus';
 import { nextReference } from '@/services/shared/reference';
 
@@ -108,6 +109,8 @@ export const POST = route(
     }
 
     return withTx(ctx.tenantId, async (tx) => {
+      // The buyer is a client you can see, not any lead in the workspace.
+      if (body.leadId) await assertLeadInScope(ctx, body.leadId, tx, 'VIEW');
       const reference = await nextReference(tx, ctx.tenantId, 'BOOKING');
       return tx.booking.create({
         data: {

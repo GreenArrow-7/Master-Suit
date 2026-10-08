@@ -2,6 +2,7 @@ import { SALES_OR_REALTY } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
+import { assertLeadCallable } from '@/lib/security/record-scope';
 import { createProposal } from '@/services/proposals/proposals';
 
 /**
@@ -88,8 +89,9 @@ export const POST = route(
     body: createBody,
     auditEvent: 'RECORD_CREATED',
   },
-  async ({ ctx, body }) =>
-    createProposal(ctx, {
+  async ({ ctx, body }) => {
+    if (body.leadId) await assertLeadCallable(ctx, body.leadId);
+    return createProposal(ctx, {
       leadId: body.leadId ?? null,
       contactId: body.contactId ?? null,
       requirementId: body.requirementId ?? null,
@@ -97,5 +99,6 @@ export const POST = route(
       message: body.message ?? null,
       listingIds: body.listingIds,
       expiresAt: body.expiresInDays ? new Date(Date.now() + body.expiresInDays * 86_400_000) : null,
-    }),
+    });
+  },
 );
