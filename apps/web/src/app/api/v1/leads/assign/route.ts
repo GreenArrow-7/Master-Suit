@@ -2,6 +2,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { prisma } from '@/lib/db';
+import { NotFound } from '@/lib/errors';
+import { visibilityWhere } from '@/lib/security/visibility';
 
 const body = z
   .object({
@@ -17,18 +19,26 @@ export const POST = route(
       where: { id: ownerId, tenantId: ctx.tenantId, deletedAt: null },
       select: { id: true },
     });
-    if (!owner) throw new Error('Target user not found');
+    if (!owner) throw NotFound('User');
+
+    // Only the leads the caller may assign. One outside that reach is skipped
+    // like a missing one, so the count confirms no id.
+    const scope = await visibilityWhere(ctx, 'leads', 'ASSIGN', { includeUnassigned: true });
+    const ids = (
+      await prisma.lead.findMany({ where: { ...scope, id: { in: leadIds }, deletedAt: null }, select: { id: true } })
+    ).map((lead) => lead.id);
+    if (ids.length === 0) return { assigned: 0 };
 
     const now = new Date();
 
     const [updated] = await prisma.$transaction([
       prisma.lead.updateMany({
-        where: { id: { in: leadIds }, tenantId: ctx.tenantId },
+        where: { id: { in: ids }, tenantId: ctx.tenantId },
         data: { ownerId, assignedAt: now, updatedById: ctx.actor.id },
       }),
       // record assignment history for each lead
       prisma.leadAssignmentHistory.createMany({
-        data: leadIds.map((leadId) => ({
+        data: ids.map((leadId) => ({
           tenantId: ctx.tenantId,
           leadId,
           toOwnerId: ownerId,
