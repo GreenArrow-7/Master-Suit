@@ -1,7 +1,7 @@
 # YOUHAN ONE — project state
 
-Updated 2026-10-07. Production runs `main` at f89ae61, released 6 Oct, with
-94 migrations; `main` is ahead of production where the index says so.
+Updated 2026-10-08. Production runs `main` at 6ebdb2e, released 8 Oct, with
+98 migrations; `main` is ahead of production where the index says so.
 
 ## The product
 
@@ -107,12 +107,11 @@ the Real Estate module, proposals and portals, attendance in every workspace.
 
 Waiting on the owner:
 
-- **Lead Eagle inside YOUHAN ONE** — phase 1 (in the platform portal) is live since
-  f89ae61; phases 2–6 follow the plan, `changes/2026-10-05-lead-eagle-plan.md`.
-  Phases 3 (stage reasons, QR capture, cold data), 4 (assignment explanations,
-  working hours, two reports), 5 (the move tool) and 6 (self-serve sign-up,
-  shipped closed; offline actions on the lead screen) are built on top of it —
-  every phase of the plan, in PRs #130–#134 merged in order.
+- **Lead Eagle inside YOUHAN ONE** — every phase of the plan
+  (`changes/2026-10-05-lead-eagle-plan.md`) is live: phase 1 since f89ae61,
+  phases 2–6 since c46624f (8 Oct, #134 + #139). What waits on the owner:
+  partner credentials for the portals and Google Ads, opening sign-up, and a
+  real standalone database for the move tool, if one exists.
 - **Self-serve sign-up** — built and closed: the platform owner decides whether
   to open it (console → Settings → Self-serve sign-up, trial days).
   Phase 2 is built: Google Ads lead forms work once connected; Property Finder,

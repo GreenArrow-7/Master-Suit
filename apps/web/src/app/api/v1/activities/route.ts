@@ -2,6 +2,8 @@ import { LEAD_MODULES } from '@/lib/security/entitlements';
 import { z } from 'zod';
 import { route } from '@/lib/api/handler';
 import { withTx } from '@/lib/db';
+import { AppError, NotFound } from '@/lib/errors';
+import { assertRecordVisible } from '@/lib/security/visibility';
 import { touchLead } from '@/services/leads/touch';
 import { findReplay, recordOutcome } from '@/services/idempotency';
 
@@ -40,6 +42,17 @@ export const POST = route(
       if (replay) return replay.result;
     }
     const activity = await withTx(ctx.tenantId, async (tx) => {
+      // The lead's own write rule (updateLead): `leads:EDIT` alone let an agent
+      // at OWN scope log on, and stamp, any lead in the workspace by its id. Not
+      // found either way — a 403 would confirm the lead exists.
+      const lead = await tx.lead.findFirst({ where: { tenantId: ctx.tenantId, id: body.leadId } });
+      if (!lead) throw NotFound('Lead');
+      try {
+        await assertRecordVisible(ctx, 'leads', lead, tx, 'EDIT');
+      } catch (err) {
+        if (err instanceof AppError && err.status === 403) throw NotFound('Lead');
+        throw err;
+      }
       const created = await tx.activity.create({
         data: { tenantId: ctx.tenantId, ownerId: ctx.actor.id, ...fields },
         include: { type: { select: { name: true, key: true } } },
