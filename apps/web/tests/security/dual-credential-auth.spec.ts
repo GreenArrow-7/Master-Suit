@@ -987,7 +987,17 @@ describe('workspace grants change under a live monitoring session', () => {
 // ── Rate limiting ────────────────────────────────────────────────────────────
 
 describe('combined rate limiting', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('attempts against either password spend one per-account allowance', async () => {
+    // Pinned one second into a five-minute window. The limiter's windows are
+    // fixed slices of the wall clock, and five wrong passwords at two Argon2
+    // verifications each can take seconds under load, so on the real clock a
+    // boundary inside the loop could hand the sixth a fresh bucket. Faking Date
+    // is safe here because no attempt reaches a second factor or a session: five
+    // stop at the password, the sixth at the limiter. Only Date is faked.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Math.floor(Date.now() / 300_000) * 300_000 + 1000);
     await freshLimits(ownerEmail);
     const outcomes: number[] = [];
     // Five wrong guesses, alternating the slot the guess resembles.
