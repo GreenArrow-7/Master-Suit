@@ -11,13 +11,14 @@ import { grantPermissions, seedHierarchy, type Hierarchy } from '../helpers/fixt
 import { post } from '../helpers/request';
 
 /**
- * #140 checked the lead a body names. The same bodies name a contact or a
- * call, and those got a workspace check at most: an agent at OWN scope could
- * read a colleague's contact back through a call's follow-up email or a
+ * #140 checked the lead a body names. The same bodies name a contact, a call
+ * or an event, and those got a workspace check at most: an agent at OWN scope
+ * could read a colleague's contact back through a call's follow-up email or a
  * visit's page, take the one referral code, testimonial ask or client profile
- * a contact may have, or put a follow-up on a colleague's call page.
+ * a contact may have, or put a follow-up on a colleague's call page and a
+ * meeting on an event's.
  */
-type Ref = 'contact' | 'call';
+type Ref = 'contact' | 'call' | 'event';
 let h: Hierarchy;
 const mine = {} as Record<Ref, string>;
 const theirs = {} as Record<Ref, string>;
@@ -26,7 +27,7 @@ let unassignedContact: string;
 const MISSING = `c${'0'.repeat(24)}`;
 const soon = () => new Date(Date.now() + 86_400_000).toISOString();
 
-/** Every write that names a contact or a call, as the OWN-scope rep `as` sends it. */
+/** Every write that names a contact, a call or an event, as the OWN-scope rep `as` sends it. */
 const ATTACH: { name: string; ref: Ref; send: (id: string, as: string) => ReturnType<typeof post> }[] = [
   {
     name: 'a call with a contact',
@@ -68,6 +69,11 @@ const ATTACH: { name: string; ref: Ref; send: (id: string, as: string) => Return
     name: 'a follow-up from a call',
     ref: 'call',
     send: (callId, as) => post(createFollowUp, '/api/v1/follow-ups', { callId, title: 'Call back', dueAt: soon() }, as),
+  },
+  {
+    name: 'a meeting for an event',
+    ref: 'event',
+    send: (eventId, as) => post(createCall, '/api/v1/calls', { eventId, recipientNumber: '+971500000002' }, as),
   },
 ];
 
@@ -114,6 +120,22 @@ beforeAll(async () => {
     (await prisma.call.create({ data: { tenantId, callerId, recipientNumber: '+971500000003' } })).id;
   mine.call = await call(h.repA1.id);
   theirs.call = await call(h.repA2.id);
+
+  const event = async (hostId: string) =>
+    (
+      await prisma.event.create({
+        data: {
+          tenantId,
+          title: 'Launch evening',
+          startAt: new Date(soon()),
+          endAt: new Date(Date.now() + 90_000_000),
+          hostId,
+          createdById: hostId,
+        },
+      })
+    ).id;
+  mine.event = await event(h.repA1.id);
+  theirs.event = await event(h.repA2.id);
 }, 60_000);
 afterAll(async () => {
   await h?.cleanup();
@@ -135,7 +157,7 @@ describe.each(ATTACH)('$name', ({ ref, send }) => {
 });
 
 describe('the refusals', () => {
-  it('left nothing on the teammate’s contact or call', async () => {
+  it('left nothing on the teammate’s contact, call or event', async () => {
     const { tenantId } = h;
     const contactId = theirs.contact;
     const counts = await Promise.all([
@@ -146,6 +168,7 @@ describe('the refusals', () => {
       prisma.testimonial.count({ where: { tenantId, contactId } }),
       prisma.clientProfile.count({ where: { tenantId, contactId } }),
       prisma.followUpTask.count({ where: { tenantId, callId: theirs.call } }),
+      prisma.call.count({ where: { tenantId, eventId: theirs.event } }),
     ]);
     expect(counts).toEqual(counts.map(() => 0));
   });

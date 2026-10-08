@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { touchLead } from '@/services/leads/touch';
 import { scopeFor, SCOPE_RANK } from '@/lib/security/rbac';
 import { hasSensitiveAccess } from '@/lib/auth/sensitive-access';
-import { assertContactInScope, assertLeadCallable } from '@/lib/security/record-scope';
+import { assertContactInScope, assertEventInScope, assertLeadCallable } from '@/lib/security/record-scope';
 import { notifyAboutCall } from '@/services/crm/notify';
 
 const createBody = z
@@ -29,8 +29,9 @@ export const POST = route(
   async ({ ctx, body }) => {
     // The call lists, stamps and notifies on its lead: one the caller may call.
     if (body.leadId) await assertLeadCallable(ctx, body.leadId);
-    // Its follow-up email reads the contact's address.
+    // Its follow-up email reads the contact's address; a meeting shows on its event's page.
     if (body.contactId) await assertContactInScope(ctx, body.contactId);
+    if (body.eventId) await assertEventInScope(ctx, body.eventId);
     const call = await prisma.call.create({
       data: {
         tenantId: ctx.tenantId,
