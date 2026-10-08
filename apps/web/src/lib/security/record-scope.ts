@@ -35,23 +35,22 @@ export async function assertCallInScope(ctx: Ctx, callId: string, action: Action
 /**
  * The event equivalent. An event has no visibility column, so below TEAM scope
  * the rule is the one the records themselves carry: the event is yours when you
- * host it or created it, and an invitee may see the event they were invited to
- * (read only — the write routes keep their own checks).
+ * host it or created it, and an invitee may see the event they were invited to.
+ * Read only: at any other action the invitee clause drops out.
  */
 export async function assertEventInScope(ctx: Ctx, eventId: string, action: Action = 'VIEW'): Promise<void> {
   if (atLeast(ctx, 'events', action, 'TEAM')) return;
   const visible = await prisma.event.findFirst({
-    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id) },
+    where: { id: eventId, tenantId: ctx.tenantId, deletedAt: null, ...eventScopeFilter(ctx.actor.id, action) },
     select: { id: true },
   });
   if (!visible) throw NotFound('Event');
 }
 
 /** The same rule as a `where` fragment, for the list route. */
-export function eventScopeFilter(actorId: string) {
-  return {
-    OR: [{ hostId: actorId }, { createdById: actorId }, { invitees: { some: { userId: actorId } } }],
-  };
+export function eventScopeFilter(actorId: string, action: Action = 'VIEW') {
+  const mine = [{ hostId: actorId }, { createdById: actorId }];
+  return { OR: action === 'VIEW' ? [...mine, { invitees: { some: { userId: actorId } } }] : mine };
 }
 
 /**
