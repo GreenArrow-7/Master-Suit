@@ -61,12 +61,16 @@ Node 22 or newer (CI uses 24).
   a follow-up under `leads` (`src/services/leads/nextFollowUp.ts`); a task is
   changed only where `tasks:VIEW` and `leads:EDIT` both reach its owner. A
   record loaded by id outside the caller's scope answers 404, as a missing id
-  does (`src/lib/security/record-scope.ts`).
+  does (`src/lib/security/record-scope.ts`). Every read of events, screens and
+  the assistant included, adds `eventListScope(ctx)`.
 - **Identities.** A workspace path that attaches an existing platform identity
   (Add user, invite and accept, a new workspace) takes it through
-  `assertIdentityReusable` (`src/services/identity/accounts.ts`): a suspended,
-  deactivated, deleted or erasing account answers 409, and only the platform
-  console's reactivate brings one back.
+  `assertIdentityReusable` and sets it ACTIVE with `activateIdentity`
+  (`src/services/identity/accounts.ts`): a suspended, deactivated, deleted or
+  erasing account answers 409, with one neutral message to a workspace
+  administrator. A suspended or deactivated one comes back only through the
+  platform console's reactivate, an erasing one when its owner withdraws the
+  request, a deleted one never.
 - **API kernel.** `route()` and `bareRoute()` in `src/lib/api/handler.ts`. Prisma
   P2002 answers 409 and P2025 404, a zod failure 422 — let the database say
   "already exists" or "not found" instead of reading first.
